@@ -9,7 +9,7 @@ struct EditingProject: Identifiable {
     var timelines: [Timeline]
     var rootTimelineID: UUID
 
-    static let empty: EditingProject = {
+    static var empty: EditingProject {
         let main = Timeline(
             name: "Main",
             layers: [],
@@ -18,7 +18,7 @@ struct EditingProject: Identifiable {
             colorSpace: .rec709
         )
         return EditingProject(id: UUID(), name: "Untitled Project", clips: [], timelines: [main], rootTimelineID: main.id)
-    }()
+    }
 
     func timeline(id: UUID) -> Timeline? {
         timelines.first { $0.id == id }
@@ -71,6 +71,7 @@ struct EditingProject: Identifiable {
     /// already contains (directly or transitively) — that would be a cycle.
     func canEmbed(_ timelineID: UUID, into targetTimelineID: UUID) -> Bool {
         if timelineID == targetTimelineID { return false }
+        guard let nested = timeline(id: timelineID), nested.duration > .zero else { return false }
         var visited: Set<UUID> = []
         collectNestedTimelineIDs(startingFrom: timelineID, visited: &visited)
         return !visited.contains(targetTimelineID)
@@ -91,6 +92,7 @@ struct EditingProject: Identifiable {
     mutating func embedTimeline(_ timelineID: UUID, intoTimeline targetTimelineID: UUID) -> (layerID: UUID, clipID: UUID)? {
         guard canEmbed(timelineID, into: targetTimelineID),
               let nested = timeline(id: timelineID),
+              nested.duration > .zero,
               let index = timelines.firstIndex(where: { $0.id == targetTimelineID })
         else {
             return nil
@@ -102,7 +104,9 @@ struct EditingProject: Identifiable {
     }
 
     /// Repositions a clip within its layer by setting its absolute start
-    /// time — the drag-to-move interaction in the timeline UI.
+    /// time — the drag-to-move interaction in the timeline UI. Clips on one
+    /// layer never overlap: a drop onto a neighbor snaps to the nearest free
+    /// edge, and the move is rejected if the layer has no gap big enough.
     mutating func moveClip(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to newStart: CMTime) {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
@@ -110,7 +114,51 @@ struct EditingProject: Identifiable {
         else {
             return
         }
-        timelines[tIndex].layers[lIndex].clips[cIndex].startOffset = CMTimeMaximum(.zero, newStart)
+        let moving = timelines[tIndex].layers[lIndex].clips[cIndex]
+        let others = timelines[tIndex].layers[lIndex].clips.filter { $0.id != id }
+        let length = moving.trimmedDuration
+        var candidate = CMTimeMaximum(.zero, newStart)
+
+        for _ in 0...others.count {
+            guard let blocker = others.first(where: { candidate < $0.endOffset && CMTimeAdd(candidate, length) > $0.startOffset }) else {
+                timelines[tIndex].layers[lIndex].clips[cIndex].startOffset = candidate
+                timelines[tIndex].layers[lIndex].clips.sort { $0.startOffset < $1.startOffset }
+                return
+            }
+            let before = CMTimeSubtract(blocker.startOffset, length)
+            let after = blocker.endOffset
+            let canGoBefore = before >= .zero
+            if canGoBefore, CMTimeAbsoluteValue(CMTimeSubtract(candidate, before)) < CMTimeAbsoluteValue(CMTimeSubtract(candidate, after)) {
+                candidate = before
+            } else {
+                candidate = after
+            }
+        }
+    }
+
+    /// Splits the clip at a timeline-space time (e.g. the playhead). The time
+    /// must fall strictly inside the clip's placed range.
+    mutating func split(_ id: UUID, in timelineID: UUID, layer layerID: UUID, atTimelineTime time: CMTime) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
+              let clip = timelines[tIndex].layers[lIndex].clips.first(where: { $0.id == id })
+        else {
+            return
+        }
+        let sourceTime = CMTimeAdd(clip.trimStart, CMTimeSubtract(time, clip.startOffset))
+        Self.split(&timelines[tIndex].layers[lIndex].clips, id: id, at: sourceTime)
+    }
+
+    mutating func deleteClip(_ id: UUID, in timelineID: UUID, layer layerID: UUID) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        else {
+            return
+        }
+        timelines[tIndex].layers[lIndex].clips.removeAll { $0.id == id }
+        if timelines[tIndex].layers[lIndex].clips.isEmpty {
+            timelines[tIndex].layers.remove(at: lIndex)
+        }
     }
 
     mutating func split(_ id: UUID, in timelineID: UUID, layer layerID: UUID, at time: CMTime) {
@@ -176,9 +224,16 @@ struct EditingProject: Identifiable {
             return
         }
         let clip = timelines[tIndex].layers[lIndex].clips[cIndex]
-        // Can't reveal frames before the source's own start, and can't push
-        // the clip's start before timeline t=0.
-        let lowerBound = CMTimeMaximum(.zero, CMTimeSubtract(clip.trimStart, clip.startOffset))
+        // Can't reveal frames before the source's own start, push the
+        // clip's start before timeline t=0, or run into the previous clip.
+        var lowerBound = CMTimeMaximum(.zero, CMTimeSubtract(clip.trimStart, clip.startOffset))
+        let previousEnd = timelines[tIndex].layers[lIndex].clips
+            .filter { $0.id != id && $0.endOffset <= clip.startOffset }
+            .map(\.endOffset)
+            .max()
+        if let previousEnd {
+            lowerBound = CMTimeMaximum(lowerBound, CMTimeAdd(clip.trimStart, CMTimeSubtract(previousEnd, clip.startOffset)))
+        }
         let upperBound = CMTimeSubtract(clip.trimEnd, minimumClipDuration)
         guard upperBound > lowerBound else { return }
         let newTrimStart = CMTimeMinimum(CMTimeMaximum(proposedTrimStart, lowerBound), upperBound)
@@ -199,7 +254,14 @@ struct EditingProject: Identifiable {
         }
         let clip = timelines[tIndex].layers[lIndex].clips[cIndex]
         let lowerBound = CMTimeAdd(clip.trimStart, minimumClipDuration)
-        let upperBound = sourceDuration
+        var upperBound = sourceDuration
+        let nextStart = timelines[tIndex].layers[lIndex].clips
+            .filter { $0.id != id && $0.startOffset >= clip.endOffset }
+            .map(\.startOffset)
+            .min()
+        if let nextStart {
+            upperBound = CMTimeMinimum(upperBound, CMTimeAdd(clip.trimStart, CMTimeSubtract(nextStart, clip.startOffset)))
+        }
         guard upperBound > lowerBound else { return }
         let newTrimEnd = CMTimeMinimum(CMTimeMaximum(proposedTrimEnd, lowerBound), upperBound)
         timelines[tIndex].layers[lIndex].clips[cIndex].trimEnd = newTrimEnd
@@ -394,7 +456,8 @@ extension CMTime {
     var formatted: String {
         guard isNumeric else { return "--:--" }
         let totalSeconds = max(0, seconds)
-        return String(format: "%02d:%04.1f", Int(totalSeconds) / 60, totalSeconds.truncatingRemainder(dividingBy: 60))
+        let tenths = Int((totalSeconds * 10).rounded())
+        return String(format: "%02ld:%02ld.%ld", (tenths / 10) / 60, (tenths / 10) % 60, tenths % 10)
     }
 
     /// hh:mm:ss:ff timecode using the given frame rate for the frames field.
