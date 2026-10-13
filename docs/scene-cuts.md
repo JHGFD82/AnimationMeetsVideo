@@ -133,13 +133,22 @@ In the package's `Reference/<asset id>/` folder:
 | --- | --- |
 | `signature.bin`: the per-frame change scores (magic `AMVS`, version 1, little endian: timescale, frame count, an Int64 time per frame, one score byte per frame; about 9 bytes per frame). | Implemented. A damaged file reads as "not analyzed" and is recomputed. |
 | Thumbnails at each cut, interval thumbnails, dense frames near used ranges | Not implemented. Today the browser makes thumbnails on demand and keeps them in memory only. |
-| Frame-luma signature, audio envelope, metadata snapshot | Not implemented. |
+| `reference.json`: metadata snapshot of the original file (name and path, size and modification time, duration as a rational, frame rate, displayed size, codec, color tags, audio sample rate, capture time). | Implemented. Captured once, in the background, before scoring. A damaged file reads as "no reference". |
+| `audio.bin`: audio envelope, 100 loudness values a second (magic `AMVE`, version 1, little endian: windows per second, start window, count, one byte per window; 0 is silence, 255 full scale). Absent for files without audio. | Implemented. A damaged file only loses the audio match. |
+| Frame-luma signature | The change-score track in `signature.bin` serves as the picture signature, since cut times and picture activity are what two versions of a file share. There is no separate absolute-luma file. |
 
 This data is **not part of the evictable render cache.** It can be the only
 surviving record of an original file after the file is replaced, so it is never
 deleted automatically. See [project-package.md](project-package.md).
 
-New scores are written on the next save. A project that was never saved has
+Reference data is captured once per asset and never captured again: if the
+file is replaced, the saved reference keeps describing the original. The
+snapshot's size and modification time show whether the file at the saved
+path is still the one described. A project saved before reference capture
+existed gets its reference taken from whatever file is there when it is
+next opened, so it describes that file, not necessarily the original.
+
+New scores and reference data are written on the next save. A project that was never saved has
 nowhere to put them yet, so they are recomputed after reopening if the
 project was closed before saving.
 
@@ -174,7 +183,7 @@ changes like any other.
 - Moving a boundary by dragging, and splitting at the timeline playhead.
 - The original whole file as a separate item next to its scenes.
 - A screen for the project default sensitivity.
-- Persisting thumbnails and the other reference items above.
+- Persisting thumbnails (at cuts, at intervals, and near used ranges).
 - Dropping onto a specific layer or time; a drop always creates a new layer.
 
 ## How it fits the existing model

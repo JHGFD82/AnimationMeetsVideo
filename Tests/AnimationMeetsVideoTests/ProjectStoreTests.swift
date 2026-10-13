@@ -432,3 +432,82 @@ private struct Sandbox {
         #expect(loaded.project.clips.count == 1)
     }
 }
+
+@Suite struct ReferenceDataPersistenceTests {
+    private func sampleReference() -> AssetReference {
+        AssetReference(
+            metadata: AssetMetadataSnapshot(
+                fileName: "footage.mov", originalPath: "/Volumes/Footage/footage.mov", byteCount: 1234, modified: 1_700_000_000.5,
+                isVideo: true, durationValue: 10010, durationTimescale: 1000, frameRate: 29.97, width: 3840, height: 2160,
+                codecName: "HEVC", colorPrimaries: "ITU_R_2020", colorTransfer: "SMPTE_ST_2084_PQ", colorMatrix: "ITU_R_2020",
+                audioSampleRate: 48000, capturedAt: 1_700_000_100
+            ),
+            audioEnvelope: AudioEnvelope(startWindow: 0, levels: [0, 40, 200, 255])
+        )
+    }
+
+    @Test func referenceRoundTripsThroughThePackage() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        let reference = sampleReference()
+
+        try await ProjectStore.save(project, to: sandbox.packageURL, references: [assetID: reference])
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        #expect(loaded.references[assetID] == reference)
+    }
+
+    @Test func aFileWithoutAudioWritesNoEnvelope() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        var reference = sampleReference()
+        reference.audioEnvelope = nil
+
+        try await ProjectStore.save(project, to: sandbox.packageURL, references: [assetID: reference])
+
+        let folder = ProjectStore.referenceFolder(for: assetID, in: sandbox.packageURL)
+        #expect(!FileManager.default.fileExists(atPath: folder.appending(path: ProjectStore.audioEnvelopeFileName).path))
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.references[assetID] == reference)
+    }
+
+    @Test func aDamagedEnvelopeIsDroppedButTheSnapshotSurvives() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL, references: [assetID: sampleReference()])
+        let folder = ProjectStore.referenceFolder(for: assetID, in: sandbox.packageURL)
+        try Data("garbage".utf8).write(to: folder.appending(path: ProjectStore.audioEnvelopeFileName))
+
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        #expect(loaded.references[assetID]?.metadata == sampleReference().metadata)
+        #expect(loaded.references[assetID]?.audioEnvelope == nil)
+    }
+
+    @Test func aDamagedSnapshotMeansNoReference() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL, references: [assetID: sampleReference()])
+        let folder = ProjectStore.referenceFolder(for: assetID, in: sandbox.packageURL)
+        try Data("{".utf8).write(to: folder.appending(path: ProjectStore.referenceMetadataFileName))
+
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        #expect(loaded.references[assetID] == nil)
+    }
+
+    @Test func referencesForUnknownAssetsAreNotWritten() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        let stray = UUID()
+
+        try await ProjectStore.save(project, to: sandbox.packageURL, references: [stray: sampleReference()])
+
+        #expect(!FileManager.default.fileExists(atPath: ProjectStore.referenceFolder(for: stray, in: sandbox.packageURL).path))
+    }
+}

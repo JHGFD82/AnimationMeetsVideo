@@ -52,7 +52,7 @@ enum MediaImporter {
         )
     }
 
-    private static func codecName(for formatDescription: CMFormatDescription) -> String {
+    static func codecName(for formatDescription: CMFormatDescription) -> String {
         let subType = CMFormatDescriptionGetMediaSubType(formatDescription)
         switch subType {
         case kCMVideoCodecType_AppleProRes4444: return "ProRes 4444"

@@ -51,6 +51,14 @@ import Testing
         Issue.record("analysis did not finish")
     }
 
+    private func waitForReferences(_ analysis: AssetAnalysis, expecting count: Int) async throws {
+        for _ in 0..<2000 {
+            if analysis.progress.isEmpty && analysis.references.count + analysis.referenceFailures.count >= count { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        Issue.record("reference capture did not finish")
+    }
+
     @Test func analyzesVideoAssetsAndMarksThemUnsaved() async throws {
         let first = try await makeMovie(frames: 24), second = try await makeMovie(frames: 48)
         defer { try? FileManager.default.removeItem(at: first); try? FileManager.default.removeItem(at: second) }
@@ -68,22 +76,61 @@ import Testing
         #expect(Set(analysis.unsavedTracks.keys) == [project.clips[1].id])
     }
 
-    @Test func skipsAudioAndAssetsThatAlreadyHaveScores() async throws {
+    @Test func audioAssetsGetReferenceDataButNoScores() async throws {
         let movie = try await makeMovie(frames: 24)
         defer { try? FileManager.default.removeItem(at: movie) }
         let audio = project(with: [movie], kind: .audio)
         let analysis = AssetAnalysis()
-        analysis.analyzeMissing(in: audio)
-        #expect(analysis.progress.isEmpty)
-        #expect(analysis.tracks.isEmpty)
 
+        analysis.analyzeMissing(in: audio)
+        try await waitForReferences(analysis, expecting: 1)
+
+        #expect(analysis.tracks.isEmpty)
+        #expect(analysis.references[audio.clips[0].id] != nil)
+    }
+
+    @Test func skipsAssetsThatAlreadyHaveEverything() async throws {
+        let movie = try await makeMovie(frames: 24)
+        defer { try? FileManager.default.removeItem(at: movie) }
         let video = project(with: [movie])
+        let id = video.clips[0].id
         let saved = ChangeScoreTrack(timescale: 600, times: [0], scores: [0])
-        analysis.reset(tracks: [video.clips[0].id: saved])
+        let reference = try await ReferenceCapture.capture(url: movie)
+        let analysis = AssetAnalysis()
+
+        analysis.reset(tracks: [id: saved], references: [id: reference])
         analysis.analyzeMissing(in: video)
+
         #expect(analysis.progress.isEmpty)
-        #expect(analysis.tracks[video.clips[0].id] == saved)
+        #expect(analysis.tracks[id] == saved)
         #expect(analysis.unsavedTracks.isEmpty)
+        #expect(analysis.unsavedReferences.isEmpty)
+    }
+
+    @Test func capturesReferenceDataOnceAndKeepsItWhenTheFileChanges() async throws {
+        let first = try await makeMovie(frames: 24)
+        defer { try? FileManager.default.removeItem(at: first) }
+        var video = project(with: [first])
+        let id = video.clips[0].id
+        let analysis = AssetAnalysis()
+
+        analysis.analyzeMissing(in: video)
+        try await waitForReferences(analysis, expecting: 1)
+        let captured = try #require(analysis.references[id])
+        #expect(analysis.unsavedReferences[id] == captured)
+
+        analysis.markReferencesSaved([id])
+        #expect(analysis.unsavedReferences.isEmpty)
+
+        let replacement = try await makeMovie(frames: 96)
+        defer { try? FileManager.default.removeItem(at: replacement) }
+        video.clips[0].url = replacement
+        analysis.analyzeMissing(in: video)
+        analysis.reanalyze(video.clips[0], in: video)
+        try await waitUntilIdle(analysis, expecting: 1)
+
+        #expect(analysis.references[id] == captured)
+        #expect(analysis.unsavedReferences.isEmpty)
     }
 
     @Test func anUnreadableFileIsReportedAndNotRetried() async throws {

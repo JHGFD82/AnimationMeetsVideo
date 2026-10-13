@@ -6,7 +6,7 @@ import Testing
 
 /// Writes a small H.264 movie of solid-color frames: `segments` is a list of
 /// (luma, frame count). Lets tests run real decoding without footage.
-private func writeMovie(to url: URL, segments: [(luma: UInt8, frames: Int)], fps: Int32 = 24) async throws {
+func writeMovie(to url: URL, segments: [(luma: UInt8, frames: Int)], fps: Int32 = 24) async throws {
     let width = 128, height = 72
     let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
     let input = AVAssetWriterInput(mediaType: .video, outputSettings: [

@@ -137,6 +137,8 @@ struct ProjectLoadResult {
     /// Saved change scores found in `Reference/`, by asset ID. Assets with no
     /// entry haven't been analyzed yet.
     var changeScores: [UUID: ChangeScoreTrack] = [:]
+    /// Saved reference data of each asset's original file, by asset ID.
+    var references: [UUID: AssetReference] = [:]
 }
 
 /// A media file that saving would copy into the project package.
@@ -221,6 +223,34 @@ enum ProjectStore {
         return try? ChangeScoreTrack(decoding: data)
     }
 
+    static let referenceMetadataFileName = "reference.json"
+    static let audioEnvelopeFileName = "audio.bin"
+
+    static func writeReference(_ reference: AssetReference, for assetID: UUID, in packageURL: URL) throws {
+        let folder = referenceFolder(for: assetID, in: packageURL)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        try encoder.encode(reference.metadata).write(to: folder.appending(path: referenceMetadataFileName), options: .atomic)
+        if let envelope = reference.audioEnvelope {
+            try envelope.encoded().write(to: folder.appending(path: audioEnvelopeFileName), options: .atomic)
+        }
+    }
+
+    /// Nil when there is no usable metadata snapshot. A missing or damaged
+    /// envelope only costs the audio match, so it is dropped on its own.
+    static func readReference(for assetID: UUID, in packageURL: URL) -> AssetReference? {
+        let folder = referenceFolder(for: assetID, in: packageURL)
+        guard let data = try? Data(contentsOf: folder.appending(path: referenceMetadataFileName)),
+              let metadata = try? JSONDecoder().decode(AssetMetadataSnapshot.self, from: data)
+        else {
+            return nil
+        }
+        let envelope = (try? Data(contentsOf: folder.appending(path: audioEnvelopeFileName)))
+            .flatMap { try? AudioEnvelope(decoding: $0) }
+        return AssetReference(metadata: metadata, audioEnvelope: envelope)
+    }
+
     // MARK: Media consolidation
 
     /// Media that saving into `packageURL` would copy in: anything with a file
@@ -274,13 +304,14 @@ enum ProjectStore {
     /// pointing at its new location. `copying` lists the media IDs to copy
     /// into `Media/`; on APFS a same-volume copy is a clone and costs no
     /// extra space. `changeScores` are written to `Reference/`; pass only the
-    /// ones that aren't saved yet.
+    /// ones that aren't saved yet, and so are `references`.
     @discardableResult
     static func save(
         _ project: EditingProject,
         to packageURL: URL,
         copying: Set<UUID> = [],
-        changeScores: [UUID: ChangeScoreTrack] = [:]
+        changeScores: [UUID: ChangeScoreTrack] = [:],
+        references: [UUID: AssetReference] = [:]
     ) async throws -> EditingProject {
         try preparePackage(at: packageURL)
 
@@ -296,6 +327,9 @@ enum ProjectStore {
 
         for (assetID, track) in changeScores where project.mediaClip(id: assetID) != nil {
             try writeChangeScores(track, for: assetID, in: packageURL)
+        }
+        for (assetID, reference) in references where project.mediaClip(id: assetID) != nil {
+            try writeReference(reference, for: assetID, in: packageURL)
         }
 
         try encode(project, packageURL: packageURL)
@@ -501,10 +535,12 @@ enum ProjectStore {
             defaultSensitivity: file.defaultSensitivity ?? SceneDetector.balancedSensitivity
         )
         var scores: [UUID: ChangeScoreTrack] = [:]
+        var references: [UUID: AssetReference] = [:]
         for id in orderedIDs {
             scores[id] = readChangeScores(for: id, in: packageURL)
+            references[id] = readReference(for: id, in: packageURL)
         }
-        return ProjectLoadResult(project: project, missingMedia: missingMedia, changeScores: scores)
+        return ProjectLoadResult(project: project, missingMedia: missingMedia, changeScores: scores, references: references)
     }
 }
 
