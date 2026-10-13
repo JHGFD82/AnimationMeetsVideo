@@ -27,6 +27,9 @@ struct AnimationMeetsVideoApp: App {
     @State private var lastAutosaved: EditingProject?
     @State private var analysis = AssetAnalysis()
     @State private var replacement = MediaReplacementController()
+    @State private var fileMonitor = ProjectFileMonitor()
+    /// True while the project file is being written or reloaded.
+    @State private var isBusy = false
 
     private static let autosaveInterval: Duration = .seconds(60)
 
@@ -45,6 +48,7 @@ struct AnimationMeetsVideoApp: App {
                 .environment(replacement)
                 .environment(\.projectPackageURL, projectURL)
                 .mediaReplacementDialogs(project: $project)
+                .onExternalProjectChange { checkForExternalProjectChange() }
                 .frame(minWidth: 1_100, minHeight: 700)
                 .task {
                     while !Task.isCancelled {
@@ -91,6 +95,7 @@ struct AnimationMeetsVideoApp: App {
         projectLock = nil
         analysis.reset()
         replacement.reset()
+        fileMonitor.stop()
     }
 
     private func openProject() {
@@ -115,6 +120,7 @@ struct AnimationMeetsVideoApp: App {
                 lastAutosaved = nil
                 projectURL = url
                 projectLock = lock
+                fileMonitor.track(package: url)
                 analysis.reset(tracks: result.changeScores, references: result.references, thumbnailed: result.assetsWithThumbnails)
                 analysis.analyzeMissing(in: result.project)
                 replacement.reset()
@@ -155,6 +161,8 @@ struct AnimationMeetsVideoApp: App {
         guard let url = destination else { return }
 
         Task {
+            isBusy = true
+            defer { isBusy = false }
             do {
                 try ProjectStore.preparePackage(at: url)
                 let lock = try lockForProject(at: url)
@@ -177,8 +185,62 @@ struct AnimationMeetsVideoApp: App {
                 lastAutosaved = nil
                 projectURL = url
                 projectLock = lock
+                fileMonitor.track(package: url)
             } catch {
                 showAlert(title: "Couldn't Save Project", message: error.localizedDescription)
+            }
+        }
+    }
+
+    /// Picks up edits made to `project.json` outside the app. With nothing
+    /// unsaved the file's version replaces the project; with unsaved edits
+    /// the person chooses. Either way the switch is an ordinary edit, so
+    /// undo brings the previous version back.
+    private func checkForExternalProjectChange() {
+        guard let url = projectURL, !isBusy, replacement.session == nil,
+              let change = fileMonitor.pendingChange()
+        else { return }
+
+        isBusy = true
+        Task {
+            defer { isBusy = false }
+            do {
+                let result = try await ProjectStore.load(from: url)
+                if project != savedProject {
+                    let alert = NSAlert()
+                    alert.messageText = "The project file was changed outside the app"
+                    alert.informativeText = "You also have unsaved changes. If you keep them, the next save overwrites the file. If you use the file's version, you can undo to get your changes back."
+                    alert.addButton(withTitle: "Keep My Changes")
+                    alert.addButton(withTitle: "Use the File's Version")
+                    guard alert.runModal() == .alertSecondButtonReturn else {
+                        fileMonitor.acknowledge(change)
+                        return
+                    }
+                }
+                project = result.project
+                savedProject = result.project
+                lastAutosaved = nil
+                fileMonitor.acknowledge(change)
+                analysis.reset(
+                    tracks: result.changeScores, references: result.references,
+                    thumbnailed: result.assetsWithThumbnails
+                )
+                analysis.analyzeMissing(in: result.project)
+                replacement.reset()
+                replacement.markChanged(result.changedMedia)
+                if !result.missingMedia.isEmpty {
+                    let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
+                    showAlert(
+                        title: "Some Media Couldn't Be Opened",
+                        message: "These files are missing or unreadable, so their clips were removed from the timelines:\n\n\(names)"
+                    )
+                }
+            } catch {
+                fileMonitor.acknowledge(change)
+                showAlert(
+                    title: "The Project File Changed but Couldn't Be Read",
+                    message: "\(error.localizedDescription)\n\nThe open project is unchanged. Saving will overwrite the file."
+                )
             }
         }
     }

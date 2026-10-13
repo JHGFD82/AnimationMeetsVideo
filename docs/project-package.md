@@ -7,7 +7,7 @@ into `Backups/`. Step 3 is partly implemented: `Reference/<asset id>/
 signature.bin` holds each video's change scores, `reference.json` and
 `audio.bin` hold the metadata snapshot and audio envelope captured at import,
 and `project.json` holds scene edits (see [scene-cuts.md](scene-cuts.md)).
-`thumbs/` holds reference pictures. Not yet implemented: dense reference frames, the render cache, live reload, a restore-from-backup screen (copy a backup over
+`thumbs/` holds reference pictures. Not yet implemented: dense reference frames, the render cache, a restore-from-backup screen (copy a backup over
 `project.json` by hand for now), and a Finder-visible package type (that
 needs an app bundle that declares the `.amv` type).
 Step 4 is implemented except "forget original" (see
@@ -118,19 +118,32 @@ version control. Settings to move the cache elsewhere come later.
 
 ## Live reload
 
+Status: **implemented** for `project.json`. (Changes to the media files
+themselves are covered in [media-replacement.md](media-replacement.md).)
+
 The project file may be edited outside the app, and the app picks up the
 change:
 
-- Watch the file using `NSFilePresenter`, not only on window focus. The app
-  remembers the hash of what it last wrote, so its own saves never trigger a
-  reload.
-- If the file changed and there are no unsaved edits, reload and restore
-  selection and the playhead by ID.
-- If there are unsaved edits, ask which version to keep.
-- Do not reload during an export, a drag, or a save. Wait until the app is
-  idle.
-- If the new file does not parse, keep the in-memory project, show the
-  error, and do not overwrite the file.
+- The app checks the file every two seconds and whenever it becomes active,
+  rather than using `NSFilePresenter`, so that a file replaced by renaming
+  over it is noticed too. It remembers the size, date and hash of what it
+  last read or wrote, so its own saves never trigger a reload and touching
+  the file without changing it is ignored.
+- If the file changed and there are no unsaved edits, the file's version
+  replaces the project. Selection is kept when its clip still exists and
+  cleared otherwise; the playhead is left where it is.
+- If there are unsaved edits, ask which version to keep. Keeping the
+  person's version leaves the next save to overwrite the file.
+- The switch is an ordinary edit, so undo brings back the previous version.
+  Because the file's version counts as saved, the restored version shows as
+  unsaved.
+- Nothing is reloaded while a save or another reload is running or while the
+  replace-media dialog is open. An export already running keeps rendering the
+  project as it was when it started.
+- If the new file does not parse, keep the in-memory project and show the
+  error. The app does not overwrite the file itself, but the next save will.
+- Media the new file lists that can't be opened is dropped from the
+  timelines, as when opening a project.
 
 A diff engine is not needed for this. Stable IDs and deterministic output
 make a structural comparison cheap. A visual diff is only useful later for a
@@ -143,8 +156,7 @@ Foundation first, because the other features depend on it:
 1. Persist stable IDs in the model and the file, add `formatVersion`, and
    write the package layout. **Done.**
 2. Undo and redo, single-writer lock, and autosave, and define how reloads
-   interact with undo. **Done**, except the reload interaction, which belongs
-   with live reload.
+   interact with undo. **Done.**
 3. Scene detection and the browser ([scene-cuts.md](scene-cuts.md)),
    including the reference data capture. **Mostly done**: detection, saved
    scores and edits, and the browser. Reference capture
@@ -154,4 +166,4 @@ Foundation first, because the other features depend on it:
    ([media-replacement.md](media-replacement.md)). **Mostly done**: the
    comparison, alignment suggestion, dialog, folder replacement, and offset
    at playback and export. Forget original remains.
-5. Live reload.
+5. Live reload. **Done** for `project.json`.
