@@ -335,3 +335,100 @@ private struct Sandbox {
         #expect(live.clips[0].url?.path == "/package/Media/a.mov")
     }
 }
+
+@Suite struct SceneDataPersistenceTests {
+    private func sampleEdits() -> SceneEdits {
+        SceneEdits(
+            sensitivity: 0.7,
+            regions: [SensitivityRegion(start: CMTime(value: 1001, timescale: 24000), end: CMTime(value: 5, timescale: 1), value: 0.9)],
+            manualCuts: [CMTime(value: 2002, timescale: 24000)],
+            ignoredCuts: [CMTime(value: 3, timescale: 1)]
+        )
+    }
+
+    @Test func sceneEditsAndDefaultSensitivityRoundTrip() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, assetID) = sandbox.makeProject()
+        project.defaultSensitivity = 0.35
+        let edits = sampleEdits()
+        project.clips[0].sceneEdits = edits
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        #expect(loaded.project.defaultSensitivity == 0.35)
+        #expect(loaded.project.mediaClip(id: assetID)?.sceneEdits == edits)
+    }
+
+    @Test func untouchedProjectsWriteNoSceneFields() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let text = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+
+        #expect(!text.contains("sceneEdits"))
+        #expect(!text.contains("defaultSensitivity"))
+    }
+
+    @Test func projectFilesFromBeforeSceneDetectionStillLoad() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        #expect(loaded.project.defaultSensitivity == SceneDetector.balancedSensitivity)
+        #expect(loaded.project.mediaClip(id: assetID)?.sceneEdits == SceneEdits())
+        #expect(loaded.changeScores.isEmpty)
+    }
+
+    @Test func changeScoresAreSavedInReferenceAndLoadedBack() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        let track = ChangeScoreTrack(timescale: 600, times: [0, 25, 50], scores: [0, 200, 3])
+
+        try await ProjectStore.save(project, to: sandbox.packageURL, changeScores: [assetID: track])
+
+        let file = ProjectStore.referenceFolder(for: assetID, in: sandbox.packageURL)
+            .appending(path: ProjectStore.changeScoreFileName)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.changeScores[assetID] == track)
+    }
+
+    @Test func scoresForUnknownAssetsAreNotWritten() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        let stray = UUID()
+
+        try await ProjectStore.save(
+            project, to: sandbox.packageURL,
+            changeScores: [stray: ChangeScoreTrack(timescale: 600, times: [0], scores: [0])]
+        )
+
+        let folder = ProjectStore.referenceFolder(for: stray, in: sandbox.packageURL)
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    @Test func aDamagedScoreFileJustMeansNotAnalyzed() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        let track = ChangeScoreTrack(timescale: 600, times: [0, 25], scores: [0, 9])
+        try await ProjectStore.save(project, to: sandbox.packageURL, changeScores: [assetID: track])
+        let file = ProjectStore.referenceFolder(for: assetID, in: sandbox.packageURL)
+            .appending(path: ProjectStore.changeScoreFileName)
+        try Data("garbage".utf8).write(to: file)
+
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        #expect(loaded.changeScores[assetID] == nil)
+        #expect(loaded.project.clips.count == 1)
+    }
+}

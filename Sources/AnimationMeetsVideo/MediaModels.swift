@@ -8,6 +8,9 @@ struct EditingProject: Identifiable, Equatable {
     var clips: [MediaClip]
     var timelines: [Timeline]
     var rootTimelineID: UUID
+    /// Cut sensitivity for assets that don't override it, from 0 (only
+    /// obvious cuts) to 1 (small changes count).
+    var defaultSensitivity = SceneDetector.balancedSensitivity
 
     static var empty: EditingProject {
         let main = Timeline(
@@ -430,6 +433,9 @@ struct MediaClip: Identifiable, Equatable {
     var frameRate: Double
     var colorSpace: ProjectColorSpace
     var codecName: String
+    /// Hand-made changes to this asset's scene list. Detected cuts are not
+    /// stored; they are recomputed from the saved change scores.
+    var sceneEdits = SceneEdits()
 
     var formatSummary: String {
         "\(kind.rawValue) · \(codecName) · \(colorSpace.rawValue)"

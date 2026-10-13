@@ -75,18 +75,52 @@ private struct ProjectFile: Codable {
         var layers: [LayerEntry]
     }
 
+    struct RegionEntry: Codable {
+        var id: UUID
+        var start: TimeEntry
+        var end: TimeEntry
+        var value: Double
+    }
+
+    struct SceneEditsEntry: Codable {
+        var sensitivity: Double?
+        var regions: [RegionEntry]
+        var manualCuts: [TimeEntry]
+        var ignoredCuts: [TimeEntry]
+
+        init(_ edits: SceneEdits) {
+            sensitivity = edits.sensitivity
+            regions = edits.regions.map { RegionEntry(id: $0.id, start: TimeEntry($0.start), end: TimeEntry($0.end), value: $0.value) }
+            manualCuts = edits.manualCuts.map(TimeEntry.init)
+            ignoredCuts = edits.ignoredCuts.map(TimeEntry.init)
+        }
+
+        var edits: SceneEdits {
+            SceneEdits(
+                sensitivity: sensitivity,
+                regions: regions.map { SensitivityRegion(id: $0.id, start: $0.start.time, end: $0.end.time, value: $0.value) },
+                manualCuts: manualCuts.map(\.time),
+                ignoredCuts: ignoredCuts.map(\.time)
+            )
+        }
+    }
+
     struct AssetEntry: Codable {
         var id: UUID
         var name: String
         /// Relative to the package when the file is inside it, otherwise an
         /// absolute path.
         var path: String
+        /// Absent when the person hasn't edited the scene list.
+        var sceneEdits: SceneEditsEntry?
     }
 
     var formatVersion: Int
     var id: UUID
     var name: String
     var rootTimelineID: UUID
+    /// Absent in files written before scene detection; reads as balanced.
+    var defaultSensitivity: Double?
     var assets: [AssetEntry]
     var timelines: [TimelineEntry]
 }
@@ -100,6 +134,9 @@ struct ProjectLoadResult {
     /// Media files referenced by the project that couldn't be opened; clips
     /// using them were dropped from the timelines.
     var missingMedia: [URL]
+    /// Saved change scores found in `Reference/`, by asset ID. Assets with no
+    /// entry haven't been analyzed yet.
+    var changeScores: [UUID: ChangeScoreTrack] = [:]
 }
 
 /// A media file that saving would copy into the project package.
@@ -160,6 +197,30 @@ enum ProjectStore {
         }
     }
 
+    // MARK: Reference data
+
+    static let changeScoreFileName = "signature.bin"
+
+    static func referenceFolder(for assetID: UUID, in packageURL: URL) -> URL {
+        packageURL
+            .appending(path: referenceFolderName, directoryHint: .isDirectory)
+            .appending(path: assetID.uuidString, directoryHint: .isDirectory)
+    }
+
+    static func writeChangeScores(_ track: ChangeScoreTrack, for assetID: UUID, in packageURL: URL) throws {
+        let folder = referenceFolder(for: assetID, in: packageURL)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try track.encoded().write(to: folder.appending(path: changeScoreFileName), options: .atomic)
+    }
+
+    /// Nil when the asset was never analyzed or the file can't be read; the
+    /// scores are recomputable, so a damaged file just means analyzing again.
+    static func readChangeScores(for assetID: UUID, in packageURL: URL) -> ChangeScoreTrack? {
+        let url = referenceFolder(for: assetID, in: packageURL).appending(path: changeScoreFileName)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? ChangeScoreTrack(decoding: data)
+    }
+
     // MARK: Media consolidation
 
     /// Media that saving into `packageURL` would copy in: anything with a file
@@ -212,9 +273,15 @@ enum ProjectStore {
     /// Writes the package and returns the project with any copied media
     /// pointing at its new location. `copying` lists the media IDs to copy
     /// into `Media/`; on APFS a same-volume copy is a clone and costs no
-    /// extra space.
+    /// extra space. `changeScores` are written to `Reference/`; pass only the
+    /// ones that aren't saved yet.
     @discardableResult
-    static func save(_ project: EditingProject, to packageURL: URL, copying: Set<UUID> = []) async throws -> EditingProject {
+    static func save(
+        _ project: EditingProject,
+        to packageURL: URL,
+        copying: Set<UUID> = [],
+        changeScores: [UUID: ChangeScoreTrack] = [:]
+    ) async throws -> EditingProject {
         try preparePackage(at: packageURL)
 
         var project = project
@@ -225,6 +292,10 @@ enum ProjectStore {
             let destination = uniqueDestination(for: source.lastPathComponent, in: mediaFolder)
             try FileManager.default.copyItem(at: source, to: destination)
             project.clips[index].url = destination
+        }
+
+        for (assetID, track) in changeScores where project.mediaClip(id: assetID) != nil {
+            try writeChangeScores(track, for: assetID, in: packageURL)
         }
 
         try encode(project, packageURL: packageURL)
@@ -327,8 +398,14 @@ enum ProjectStore {
             id: project.id,
             name: project.name,
             rootTimelineID: project.rootTimelineID,
+            defaultSensitivity: project.defaultSensitivity == SceneDetector.balancedSensitivity ? nil : project.defaultSensitivity,
             assets: urlClips.map { clip in
-                ProjectFile.AssetEntry(id: clip.id, name: clip.name, path: relativePath(for: clip.url!))
+                ProjectFile.AssetEntry(
+                    id: clip.id,
+                    name: clip.name,
+                    path: relativePath(for: clip.url!),
+                    sceneEdits: clip.sceneEdits == SceneEdits() ? nil : ProjectFile.SceneEditsEntry(clip.sceneEdits)
+                )
             },
             timelines: timelines
         )
@@ -366,6 +443,7 @@ enum ProjectStore {
                 var clip = try await importMedia(url)
                 clip.id = asset.id
                 clip.name = asset.name
+                clip.sceneEdits = asset.sceneEdits?.edits ?? SceneEdits()
                 importedClips[asset.id] = clip
                 orderedIDs.append(asset.id)
             } catch {
@@ -419,9 +497,14 @@ enum ProjectStore {
             name: file.name,
             clips: orderedIDs.compactMap { importedClips[$0] },
             timelines: timelines,
-            rootTimelineID: rootID
+            rootTimelineID: rootID,
+            defaultSensitivity: file.defaultSensitivity ?? SceneDetector.balancedSensitivity
         )
-        return ProjectLoadResult(project: project, missingMedia: missingMedia)
+        var scores: [UUID: ChangeScoreTrack] = [:]
+        for id in orderedIDs {
+            scores[id] = readChangeScores(for: id, in: packageURL)
+        }
+        return ProjectLoadResult(project: project, missingMedia: missingMedia, changeScores: scores)
     }
 }
 
