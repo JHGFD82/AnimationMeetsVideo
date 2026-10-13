@@ -110,7 +110,11 @@ Requirements for the file:
   Likewise a clip's `streams` (`"video"` or `"audio"`) is written only once
   a video's sound has been detached, and `transitionIn` / `transitionOut`
   (`{"kind": "crossDissolve", "duration": "1s"}`) only when the clip has
-  one. An unknown transition kind is dropped on load.
+  one. An unknown transition kind is dropped on load. A transition's
+  `curve` is written only when it isn't linear, as its points:
+  `{"time": 0.4, "value": 0.2, "in": [-0.1, 0], "out": [0.2, 0]}`, with
+  handles as offsets and absent for a corner. A curve that doesn't run from
+  (0, 0) to (1, 1) in increasing time loads as linear.
 - Written atomically so a crash cannot leave a half-written file.
 
 ## Retention

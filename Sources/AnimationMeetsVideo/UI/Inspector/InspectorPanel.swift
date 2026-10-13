@@ -141,6 +141,17 @@ struct InspectorPanel: View {
                 .buttonStyle(.borderless)
                 .help("Remove transition")
             }
+            Menu("Curve: \(transition.curve.preset?.name ?? "Custom")") {
+                ForEach(TransitionCurve.Preset.allCases) { preset in
+                    Button("\(preset.name) — \(preset.detail)") {
+                        project.setTransitionCurve(
+                            TransitionCurve(preset: preset),
+                            at: edge, of: clip.id, in: timelineID, layer: selection.layerID
+                        )
+                    }
+                }
+            }
+            .help("Select the transition on the timeline and zoom in to edit its curve's points")
         }
     }
 

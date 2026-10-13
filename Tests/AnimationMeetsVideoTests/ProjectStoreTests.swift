@@ -103,7 +103,10 @@ private struct Sandbox {
         let t = project.timelines.firstIndex { $0.id == project.rootTimelineID }!
         project.timelines[t].layers[0].clips[0].streams = .video
         project.timelines[t].layers[0].clips[0].transitionIn = ClipTransition(kind: .wipeUp, duration: CMTime(value: 1001, timescale: 24000))
-        project.timelines[t].layers[0].clips[0].transitionOut = ClipTransition(kind: .zoom, duration: CMTime(value: 1, timescale: 2))
+        var curve = TransitionCurve(preset: .easyEase)
+        curve.insertPoint(atTime: 0.4)
+        curve.toggleCorner(1)
+        project.timelines[t].layers[0].clips[0].transitionOut = ClipTransition(kind: .zoom, duration: CMTime(value: 1, timescale: 2), curve: curve)
 
         try await ProjectStore.save(project, to: sandbox.packageURL)
         let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)

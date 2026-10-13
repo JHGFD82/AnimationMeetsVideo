@@ -34,6 +34,15 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The curve a newly dropped transition gets. Moves start and stop
+    /// gently; fades and wipes run evenly.
+    var defaultCurve: TransitionCurve {
+        switch self {
+        case .slideLeft, .slideRight, .zoom: TransitionCurve(preset: .easyEase)
+        default: .linear
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .crossDissolve: "circle.lefthalf.filled"
@@ -56,6 +65,8 @@ enum TransitionEdge: Hashable {
 struct ClipTransition: Equatable {
     var kind: TransitionKind
     var duration: CMTime
+    /// How it progresses over its length.
+    var curve: TransitionCurve = .linear
 
     /// What a transition is given when it is first dropped on a clip.
     static let defaultDuration = CMTime(value: 1, timescale: 1)
@@ -97,9 +108,9 @@ extension TimelineClip {
 
 extension EditingProject {
     /// Puts a transition on one end of a clip. One already there keeps its
-    /// length and only changes kind; a new one is a second long, or shorter
-    /// to fit beside the transition at the other end. Only clips with
-    /// pictures take transitions.
+    /// length and curve and only changes kind; a new one is a second long,
+    /// or shorter to fit beside the transition at the other end, with its
+    /// kind's default curve. Only clips with pictures take transitions.
     mutating func setTransition(_ kind: TransitionKind, at edge: TransitionEdge, of clipID: UUID, in timelineID: UUID, layer layerID: UUID) {
         guard let timeline = timeline(id: timelineID),
               let clip = timeline.layer(id: layerID)?.clips.first(where: { $0.id == clipID }),
@@ -108,8 +119,10 @@ extension EditingProject {
             return
         }
         let duration: CMTime
+        var curve = kind.defaultCurve
         if let existing = clip.transition(at: edge) {
             duration = existing.duration
+            curve = existing.curve
         } else {
             let other = clip.transition(at: edge == .leading ? .trailing : .leading)?.duration ?? .zero
             let room = CMTimeSubtract(clip.trimmedDuration, other)
@@ -117,7 +130,7 @@ extension EditingProject {
             duration = fitted > .zero ? fitted : timeline.frameDuration
         }
         updateClip(clipID, in: timelineID, layer: layerID) {
-            $0.setTransition(ClipTransition(kind: kind, duration: duration), at: edge)
+            $0.setTransition(ClipTransition(kind: kind, duration: duration, curve: curve), at: edge)
         }
     }
 
@@ -135,6 +148,14 @@ extension EditingProject {
         let snapped = timeline.frameAligned(CMTimeMinimum(duration, room), .nearest)
         transition.duration = CMTimeMaximum(timeline.frameDuration, snapped)
         updateClip(clipID, in: timelineID, layer: layerID) { $0.setTransition(transition, at: edge) }
+    }
+
+    mutating func setTransitionCurve(_ curve: TransitionCurve, at edge: TransitionEdge, of clipID: UUID, in timelineID: UUID, layer layerID: UUID) {
+        updateClip(clipID, in: timelineID, layer: layerID) { clip in
+            guard var transition = clip.transition(at: edge) else { return }
+            transition.curve = curve
+            clip.setTransition(transition, at: edge)
+        }
     }
 
     mutating func removeTransition(at edge: TransitionEdge, of clipID: UUID, in timelineID: UUID, layer layerID: UUID) {
@@ -159,18 +180,18 @@ extension EditingProject {
 struct EdgeTransitions {
     var start: CMTime
     var end: CMTime
-    var leading: (kind: TransitionKind, duration: CMTime)?
-    var trailing: (kind: TransitionKind, duration: CMTime)?
+    var leading: (kind: TransitionKind, duration: CMTime, curve: TransitionCurve)?
+    var trailing: (kind: TransitionKind, duration: CMTime, curve: TransitionCurve)?
     /// The frame of the timeline the clip is on.
     var frameSize: CGSize
 
     init?(clip: TimelineClip, frameSize: CGSize) {
         let durations = clip.effectiveTransitionDurations
         if let transition = clip.transitionIn, durations.leading > .zero {
-            leading = (transition.kind, durations.leading)
+            leading = (transition.kind, durations.leading, transition.curve)
         }
         if let transition = clip.transitionOut, durations.trailing > .zero {
-            trailing = (transition.kind, durations.trailing)
+            trailing = (transition.kind, durations.trailing, transition.curve)
         }
         guard leading != nil || trailing != nil else { return nil }
         start = clip.startOffset
@@ -191,15 +212,22 @@ struct EdgeTransitions {
         [leading?.kind, trailing?.kind].contains { $0?.isWipe == true }
     }
 
+    /// Each transition's curve maps the fraction of its length that has
+    /// passed to how far it has got; a way in shows more of the clip as it
+    /// goes, a way out less.
     func effect(at time: CMTime) -> Effect {
         var effect = Effect()
         if let leading {
-            let progress = CMTimeSubtract(time, start).seconds / leading.duration.seconds
-            if progress < 1 { apply(leading.kind, visibility: progress, edge: .leading, to: &effect) }
+            let elapsed = CMTimeSubtract(time, start).seconds / leading.duration.seconds
+            if elapsed < 1 {
+                apply(leading.kind, visibility: leading.curve.value(at: elapsed), edge: .leading, to: &effect)
+            }
         }
         if let trailing {
-            let progress = CMTimeSubtract(end, time).seconds / trailing.duration.seconds
-            if progress < 1 { apply(trailing.kind, visibility: progress, edge: .trailing, to: &effect) }
+            let elapsed = 1 - CMTimeSubtract(end, time).seconds / trailing.duration.seconds
+            if elapsed > 0 {
+                apply(trailing.kind, visibility: 1 - trailing.curve.value(at: elapsed), edge: .trailing, to: &effect)
+            }
         }
         if hasWipe, effect.visibleRect == nil {
             effect.visibleRect = CGRect(origin: .zero, size: frameSize)
@@ -221,7 +249,6 @@ struct EdgeTransitions {
     /// comes in from the left and leaves to the right.
     private func apply(_ kind: TransitionKind, visibility: Double, edge: TransitionEdge, to effect: inout Effect) {
         let v = min(max(visibility, 0), 1)
-        let eased = v * v * (3 - 2 * v)
         let width = frameSize.width, height = frameSize.height
         let entering = edge == .leading
         switch kind {
@@ -243,12 +270,12 @@ struct EdgeTransitions {
             effect.visibleRect = effect.visibleRect.map { $0.intersection(rect) } ?? rect
         case .slideLeft, .slideRight:
             let direction: CGFloat = kind == .slideRight ? 1 : -1
-            let distance = width * (1 - eased) * direction
+            let distance = width * (1 - v) * direction
             effect.transform = effect.transform.concatenating(
                 CGAffineTransform(translationX: entering ? -distance : distance, y: 0)
             )
         case .zoom:
-            let scale = max(eased, 0.001)
+            let scale = max(v, 0.001)
             effect.transform = effect.transform.concatenating(
                 CGAffineTransform(translationX: -width / 2, y: -height / 2)
                     .concatenating(CGAffineTransform(scaleX: scale, y: scale))

@@ -4,6 +4,9 @@ struct TimelineSelection: Equatable {
     var timelineID: UUID
     var layerID: UUID
     var timelineClipID: UUID
+    /// Set when one of the clip's transitions is selected rather than the
+    /// clip as a whole.
+    var transitionEdge: TransitionEdge? = nil
 }
 
 struct EditorView: View {

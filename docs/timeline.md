@@ -134,9 +134,39 @@ All are drawn with the built-in compositor's opacity, transform and crop
 layer's keyframes), so preview and export match. A wipe or slide acts in the
 frame of the timeline the clip is on, after the layer's transform.
 
+### Curves
+
+Each transition has a progress curve (`TransitionCurve`): bezier segments
+from (0, 0) to (1, 1), time across, progress up. New slides and zooms get
+Easy Ease, everything else Linear. Presets, named as in After Effects:
+
+| Preset | Shape |
+| --- | --- |
+| Linear | Steady |
+| Ease In | Slows into the end (flat handle at the end, 33% influence) |
+| Ease Out | Starts slowly (flat handle at the start) |
+| Easy Ease | Both |
+
+They are in the transition's right-click menu on the timeline and the
+inspector's **Curve** menu. Clicking a transition's wedge selects it; the
+wedge's top edge is the curve (rising for a way in, falling for a way out).
+Once the selected transition is drawn at least 80 points wide (zoom in) and
+the layer is at least 30 points tall, its points and handles appear:
+
+- Drag a point or a handle. Handles can't point back in time or past the
+  neighboring point, so the curve never turns back; the end points stay at
+  0 and 1 but their handles can be dragged.
+- Click the line to add a point there; the curve keeps its shape.
+- Option-click a point to make it a corner, or a corner smooth again.
+  Option-click the line to make that segment straight.
+- Right-click a point to delete it or toggle its corner.
+
+A drag is saved when it ends, as one undo step.
+
 ## Not implemented yet
 
 - Audio crossfades under transitions, and transitions on detached sound.
+- A larger graph editor for curves on short transitions.
 - **Snapping** to other clips' edges, the playhead or beat markers.
 - Scrolling to follow the playhead during playback.
 - Moving a clip to another layer by dragging it up or down.

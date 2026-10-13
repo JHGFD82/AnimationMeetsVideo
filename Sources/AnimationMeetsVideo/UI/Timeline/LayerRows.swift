@@ -134,6 +134,8 @@ struct LayerClipRow: View {
     let onTrimClipEnd: (UUID, CMTime) -> Void
     let onSetTransition: (UUID, TransitionKind, TransitionEdge) -> Void
     let onRemoveTransition: (UUID, TransitionEdge) -> Void
+    let onSelectTransition: (TimelineClip, TransitionEdge) -> Void
+    let onSetTransitionCurve: (UUID, TransitionEdge, TransitionCurve) -> Void
     let onDetachAudio: (UUID) -> Void
 
     var body: some View {
@@ -148,6 +150,7 @@ struct LayerClipRow: View {
                     hasLinkedAudio: project.hasLinkedAudio(clip),
                     acceptsTransitions: project.playsVideo(clip),
                     isSelected: isSelected,
+                    selectedTransition: isSelected ? selection?.transitionEdge : nil,
                     pixelsPerSecond: pixelsPerSecond,
                     height: height,
                     visibleX: visibleX,
@@ -160,6 +163,8 @@ struct LayerClipRow: View {
                     onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) },
                     onSetTransition: { kind, edge in onSetTransition(clip.id, kind, edge) },
                     onRemoveTransition: { edge in onRemoveTransition(clip.id, edge) },
+                    onSelectTransition: { edge in onSelectTransition(clip, edge) },
+                    onSetTransitionCurve: { edge, curve in onSetTransitionCurve(clip.id, edge, curve) },
                     onDetachAudio: { onDetachAudio(clip.id) }
                 )
             }
@@ -208,6 +213,9 @@ struct ClipBlockView: View {
     /// Clips with pictures take transitions dropped from the panel.
     let acceptsTransitions: Bool
     let isSelected: Bool
+    /// The transition selected on this clip, which shows its curve's points
+    /// when there is room.
+    let selectedTransition: TransitionEdge?
     let pixelsPerSecond: CGFloat
     let height: CGFloat
     let visibleX: ClosedRange<CGFloat>
@@ -220,6 +228,8 @@ struct ClipBlockView: View {
     let onTrimEnd: (CMTime) -> Void
     let onSetTransition: (TransitionKind, TransitionEdge) -> Void
     let onRemoveTransition: (TransitionEdge) -> Void
+    let onSelectTransition: (TransitionEdge) -> Void
+    let onSetTransitionCurve: (TransitionEdge, TransitionCurve) -> Void
     let onDetachAudio: () -> Void
 
     /// The clip as it will be if the current drag ends now. After a drop
@@ -236,6 +246,10 @@ struct ClipBlockView: View {
     @State private var isTransitionTarget = false
 
     private let handleWidth: CGFloat = 8
+    private let space = "clipBlock"
+    /// How wide a transition must be drawn before its curve can be edited
+    /// on the clip; zoom in to get there.
+    private let curveEditingWidth: CGFloat = 80
 
     var body: some View {
         let shown = preview ?? clip
@@ -322,15 +336,22 @@ struct ClipBlockView: View {
                         moved.startOffset = start ?? clip.startOffset
                         showPreview(moved)
                     }
-                    .onEnded { value in
+                    .onEnded { _ in
                         if let preview, preview.startOffset != clip.startOffset {
                             commitDrop { onMove(preview.startOffset) }
                         } else {
-                            if hypot(value.translation.width, value.translation.height) < 3 { onSelect() }
                             endDrop()
                         }
                     }
             )
+            // A click selects the clip, or the transition under it.
+            .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(space)).onEnded { value in
+                if let edge = transitionEdge(atX: value.location.x, liveX: liveX) {
+                    onSelectTransition(edge)
+                } else {
+                    onSelect()
+                }
+            })
 
             // Edge handles are layered on top so grabbing within a few
             // points of either side trims that edge instead of moving the
@@ -340,9 +361,23 @@ struct ClipBlockView: View {
             trimHandle(edge: .trailing, liveX: liveX, liveWidth: liveWidth)
         }
         .frame(height: height, alignment: .topLeading)
+        .coordinateSpace(.named(space))
         .onChange(of: clip) { _, _ in
             if pendingDrop != nil { endDrop() }
         }
+    }
+
+    /// The end whose transition covers `x` (in the clip's row), if any.
+    private func transitionEdge(atX x: CGFloat, liveX: CGFloat) -> TransitionEdge? {
+        let durations = clip.effectiveTransitionDurations
+        let end = liveX + clip.trimmedDuration.seconds * pixelsPerSecond
+        if clip.transitionIn != nil, x >= liveX, x <= liveX + durations.leading.seconds * pixelsPerSecond {
+            return .leading
+        }
+        if clip.transitionOut != nil, x <= end, x >= end - durations.trailing.seconds * pixelsPerSecond {
+            return .trailing
+        }
+        return nil
     }
 
     private enum Edge { case leading, trailing }
@@ -362,27 +397,62 @@ struct ClipBlockView: View {
     }
 
     /// Shaded wedges over the part of the clip each transition plays in,
-    /// in the block's drawn coordinates.
+    /// shaped by their curves, in the block's drawn coordinates. A selected
+    /// one wide enough on screen shows its curve's points to edit.
     private func transitionMarks(of shown: TimelineClip, liveX: CGFloat, drawnX: CGFloat, drawnWidth: CGFloat) -> some View {
         let durations = shown.effectiveTransitionDurations
+        let liveEnd = liveX + shown.trimmedDuration.seconds * pixelsPerSecond
         let leadingWidth = durations.leading.seconds * pixelsPerSecond
         let trailingWidth = durations.trailing.seconds * pixelsPerSecond
-        let liveEnd = liveX + shown.trimmedDuration.seconds * pixelsPerSecond
         return ZStack(alignment: .topLeading) {
             if let transition = shown.transitionIn, leadingWidth > 0 {
-                TransitionMark(kind: transition.kind, edge: .leading)
-                    .frame(width: leadingWidth, height: height)
+                transitionMark(transition, edge: .leading, width: leadingWidth)
                     .offset(x: liveX - drawnX)
             }
             if let transition = shown.transitionOut, trailingWidth > 0 {
-                TransitionMark(kind: transition.kind, edge: .trailing)
-                    .frame(width: trailingWidth, height: height)
+                transitionMark(transition, edge: .trailing, width: trailingWidth)
                     .offset(x: liveEnd - trailingWidth - drawnX)
             }
         }
         .frame(width: drawnWidth, height: height, alignment: .topLeading)
         .clipped()
-        .allowsHitTesting(false)
+    }
+
+    private func transitionMark(_ transition: ClipTransition, edge: TransitionEdge, width: CGFloat) -> some View {
+        let isSelected = selectedTransition == edge
+        return ZStack(alignment: .topLeading) {
+            TransitionMark(kind: transition.kind, curve: transition.curve, edge: edge, isSelected: isSelected)
+                .frame(width: width, height: height)
+                .contextMenu { transitionMenu(transition, edge: edge) }
+            if isSelected, width >= curveEditingWidth, height >= 30 {
+                TransitionCurveEditor(
+                    curve: transition.curve,
+                    edge: edge,
+                    size: CGSize(width: width, height: height),
+                    onChange: { onSetTransitionCurve(edge, $0) }
+                )
+            }
+        }
+        .frame(width: width, height: height, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private func transitionMenu(_ transition: ClipTransition, edge: TransitionEdge) -> some View {
+        let current = transition.curve.preset
+        ForEach(TransitionCurve.Preset.allCases) { preset in
+            Button {
+                onSetTransitionCurve(edge, TransitionCurve(preset: preset))
+            } label: {
+                if current == preset {
+                    Label(preset.name, systemImage: "checkmark")
+                } else {
+                    Text(preset.name)
+                }
+            }
+            .help(preset.detail)
+        }
+        Divider()
+        Button("Remove \(transition.kind.name)") { onRemoveTransition(edge) }
     }
 
     /// Sets the preview for a drag in progress.
@@ -452,42 +522,42 @@ struct ClipBlockView: View {
     }
 }
 
-/// Marks where a transition plays on a clip: a wedge that rises over a way
-/// in and falls over a way out, with the transition's symbol.
+/// Marks where a transition plays on a clip: a wedge whose top edge is the
+/// transition's curve, rising over a way in and falling over a way out,
+/// with the transition's symbol.
 private struct TransitionMark: View {
     let kind: TransitionKind
+    let curve: TransitionCurve
     let edge: TransitionEdge
+    let isSelected: Bool
 
     var body: some View {
         ZStack {
-            TransitionWedge(edge: edge)
-                .fill(Color.white.opacity(0.22))
+            TransitionWedge(curve: curve, edge: edge)
+                .fill(Color.white.opacity(isSelected ? 0.32 : 0.22))
+            if isSelected {
+                TransitionWedge(curve: curve, edge: edge)
+                    .stroke(Color.accentColor, lineWidth: 1)
+            }
             Image(systemName: kind.systemImage)
                 .font(.caption2)
                 .foregroundStyle(.white.opacity(0.85))
         }
-        .help(kind.name)
+        .contentShape(Rectangle())
+        .help("\(kind.name): click to select, right-click for curves")
     }
 }
 
-/// Rises across the frame for a way in, falls for a way out.
+/// The area under a transition's curve.
 private struct TransitionWedge: Shape {
+    let curve: TransitionCurve
     let edge: TransitionEdge
 
     func path(in rect: CGRect) -> Path {
-        var path = Path()
-        switch edge {
-        case .leading:
-            path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        case .trailing:
-            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        }
+        var path = TransitionCurveFrame(size: rect.size, edge: edge, inset: 0).path(of: curve)
+        path.addLine(to: CGPoint(x: edge == .leading ? rect.width : 0, y: rect.height))
         path.closeSubpath()
-        return path
+        return path.offsetBy(dx: rect.minX, dy: rect.minY)
     }
 }
 

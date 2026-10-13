@@ -149,6 +149,12 @@ struct TimelineEditorSurface<Library: View>: View {
                 onRemoveTransition: { layerID, clipID, edge in
                     project.removeTransition(at: edge, of: clipID, in: timelineID, layer: layerID)
                 },
+                onSelectTransition: { layerID, clip, edge in
+                    selection = TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clip.id, transitionEdge: edge)
+                },
+                onSetTransitionCurve: { layerID, clipID, edge, curve in
+                    project.setTransitionCurve(curve, at: edge, of: clipID, in: timelineID, layer: layerID)
+                },
                 onDetachAudio: { layerID, clipIDs in
                     project.detachAudio(of: clipIDs, in: timelineID, layer: layerID)
                 },

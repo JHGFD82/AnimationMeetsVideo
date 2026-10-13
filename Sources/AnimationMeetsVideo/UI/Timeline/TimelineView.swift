@@ -20,6 +20,8 @@ struct TimelineView: View {
     let onEditTransform: (UUID, (inout LayerTransform) -> Void) -> Void
     let onSetTransition: (UUID, UUID, TransitionKind, TransitionEdge) -> Void
     let onRemoveTransition: (UUID, UUID, TransitionEdge) -> Void
+    let onSelectTransition: (UUID, TimelineClip, TransitionEdge) -> Void
+    let onSetTransitionCurve: (UUID, UUID, TransitionEdge, TransitionCurve) -> Void
     /// Detaches the sound of the given clips on a layer, or of all its
     /// linked clips when nil.
     let onDetachAudio: (UUID, Set<UUID>?) -> Void
@@ -312,6 +314,8 @@ struct TimelineView: View {
                         onTrimClipEnd: { clipID, newEnd in onTrimClipEnd(layer.id, clipID, newEnd) },
                         onSetTransition: { clipID, kind, edge in onSetTransition(layer.id, clipID, kind, edge) },
                         onRemoveTransition: { clipID, edge in onRemoveTransition(layer.id, clipID, edge) },
+                        onSelectTransition: { clip, edge in onSelectTransition(layer.id, clip, edge) },
+                        onSetTransitionCurve: { clipID, edge, curve in onSetTransitionCurve(layer.id, clipID, edge, curve) },
                         onDetachAudio: { clipID in onDetachAudio(layer.id, [clipID]) }
                     )
                     if showsLinkedAudio(of: layer) {

@@ -66,18 +66,47 @@ private struct ProjectFile: Codable {
 
     /// A transition at one end of a clip. `kind` is a `TransitionKind`
     /// name such as `"crossDissolve"`; an unknown kind is dropped on load.
+    /// `curve` is absent for a linear one.
     struct TransitionEntry: Codable {
         var kind: String
         var duration: TimeEntry
+        var curve: [CurvePointEntry]?
 
         init(_ transition: ClipTransition) {
             kind = transition.kind.rawValue
             duration = TimeEntry(transition.duration)
+            curve = transition.curve == .linear ? nil : transition.curve.points.map(CurvePointEntry.init)
         }
 
+        /// A curve that doesn't run from 0 to 1 is read as linear.
         var transition: ClipTransition? {
             guard let kind = TransitionKind(rawValue: kind), duration.time > .zero else { return nil }
-            return ClipTransition(kind: kind, duration: duration.time)
+            let points = curve?.map(\.point)
+            return ClipTransition(kind: kind, duration: duration.time, curve: points.flatMap(TransitionCurve.init(points:)) ?? .linear)
+        }
+    }
+
+    /// One point of a transition curve, in fractions of the transition.
+    /// Handles are `[dx, dy]` offsets from the point; absent for none.
+    struct CurvePointEntry: Codable {
+        var time: Double
+        var value: Double
+        var `in`: [Double]?
+        var out: [Double]?
+
+        init(_ point: TransitionCurve.Point) {
+            time = point.time
+            value = point.value
+            `in` = point.inHandle.map { [Double($0.dx), Double($0.dy)] }
+            out = point.outHandle.map { [Double($0.dx), Double($0.dy)] }
+        }
+
+        var point: TransitionCurve.Point {
+            func vector(_ pair: [Double]?) -> CGVector? {
+                guard let pair, pair.count == 2 else { return nil }
+                return CGVector(dx: pair[0], dy: pair[1])
+            }
+            return TransitionCurve.Point(time: time, value: value, inHandle: vector(`in`), outHandle: vector(out))
         }
     }
 
