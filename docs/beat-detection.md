@@ -40,9 +40,13 @@ audio's first presentation time) and the tempo. It belongs to the asset, not
 to a clip or layer, so moving or trimming a clip, or using the same file
 twice, needs no re-detection.
 
+Beats are found in the asset's current file, so for a replaced asset they
+are in that file's time, while trims stay in the original's time.
+
 Where beats fall on the timeline is **derived**, never stored:
-`EditingProject.beatMarkers(in:tracks:)` takes each clip on a layer, keeps
-the beats inside its trim range, and moves them by the clip's start offset.
+`EditingProject.beatMarkers(in:tracks:)` takes each clip on a layer, maps its
+trim range into file time with the asset's alignment offset, keeps the beats
+inside it, and moves them to where the clip sits.
 
 ## Choosing which layer's beats to show
 

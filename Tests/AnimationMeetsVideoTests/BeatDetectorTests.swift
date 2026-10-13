@@ -160,6 +160,23 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         #expect(markers.map { seconds($0) } == [10.25, 10.75, 11.25])
     }
 
+    @Test func markersOfAReplacedFileAreShiftedByItsOffset() throws {
+        var project = EditingProject.empty
+        let asset = audioAsset()
+        let ids = add(asset, to: &project)
+        // Original time t is at t + 0.5s in the current file, where the beats were found.
+        project.setAlignmentOffset(t(0.5), forAsset: asset.id)
+        var layer = try #require(project.timelines[0].layer(id: ids.layerID))
+        layer.clips[0].trimStart = t(0.75)
+        layer.clips[0].trimEnd = t(2.25)
+        layer.clips[0].startOffset = t(10)
+
+        let markers = project.beatMarkers(in: layer, tracks: [asset.id: sample])
+
+        // File beats 1.5 and 2.0 fall in the file range 1.25..<2.75.
+        #expect(markers.map { seconds($0) } == [10.25, 10.75])
+    }
+
     @Test func markersCombineEveryClipOnTheLayerInOrder() throws {
         var project = EditingProject.empty
         let asset = audioAsset()

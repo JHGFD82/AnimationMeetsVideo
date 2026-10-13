@@ -115,12 +115,18 @@ extension EditingProject {
     /// Where the beats of one timeline layer fall in timeline time: each clip
     /// on the layer contributes the beats inside its trimmed range, moved to
     /// where the clip sits. Empty for layers with no audio beats.
+    ///
+    /// Beats are found in the current file, but trims are in the original's
+    /// time, so a replaced file's alignment offset is applied in between.
     func beatMarkers(in layer: TimelineLayer, tracks: [UUID: BeatTrack]) -> [CMTime] {
         var markers: [CMTime] = []
         for clip in layer.clips {
-            guard case .media(let assetID) = clip.source, let track = tracks[assetID] else { continue }
-            for beat in track.beats(from: clip.trimStart, to: clip.trimEnd) {
-                markers.append(CMTimeAdd(clip.startOffset, CMTimeSubtract(beat, clip.trimStart)))
+            guard case .media(let assetID) = clip.source, let track = tracks[assetID],
+                  let asset = mediaClip(id: assetID)
+            else { continue }
+            let fileStart = asset.fileTime(forSourceTime: clip.trimStart)
+            for beat in track.beats(from: fileStart, to: asset.fileTime(forSourceTime: clip.trimEnd)) {
+                markers.append(CMTimeAdd(clip.startOffset, CMTimeSubtract(beat, fileStart)))
             }
         }
         return markers.sorted { CMTimeCompare($0, $1) < 0 }
