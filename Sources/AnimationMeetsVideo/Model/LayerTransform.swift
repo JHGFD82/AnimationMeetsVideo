@@ -347,10 +347,7 @@ extension Timeline {
     /// The start of the frame nearest `time`, never before zero. Keyframes
     /// sit on frames so two edits at the same playhead hit the same keyframe.
     func snappedToFrame(_ time: CMTime) -> CMTime {
-        let frame = frameDuration
-        guard time.isNumeric, frame.seconds > 0 else { return .zero }
-        let index = max(0, (time.seconds / frame.seconds).rounded())
-        return CMTime(value: Int64(index) * frame.value, timescale: frame.timescale)
+        CMTimeMaximum(.zero, frameAligned(time, .nearest))
     }
 }
 

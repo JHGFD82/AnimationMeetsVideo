@@ -119,36 +119,19 @@ struct EditingProject: Identifiable, Equatable {
     }
 
     /// Repositions a clip within its layer by setting its absolute start
-    /// time — the drag-to-move interaction in the timeline UI. Clips on one
-    /// layer never overlap: a drop onto a neighbor snaps to the nearest free
-    /// edge, and the move is rejected if the layer has no gap big enough.
+    /// time — the drag-to-move interaction in the timeline UI. Where it
+    /// lands is `resolvedStart(ofMoving:in:layer:to:)`; a move onto a layer
+    /// with no gap big enough is rejected.
     mutating func moveClip(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to newStart: CMTime) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+        guard let start = resolvedStart(ofMoving: id, in: timelineID, layer: layerID, to: newStart),
+              let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
               let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id })
         else {
             return
         }
-        let moving = timelines[tIndex].layers[lIndex].clips[cIndex]
-        let others = timelines[tIndex].layers[lIndex].clips.filter { $0.id != id }
-        let length = moving.trimmedDuration
-        var candidate = CMTimeMaximum(.zero, newStart)
-
-        for _ in 0...others.count {
-            guard let blocker = others.first(where: { candidate < $0.endOffset && CMTimeAdd(candidate, length) > $0.startOffset }) else {
-                timelines[tIndex].layers[lIndex].clips[cIndex].startOffset = candidate
-                timelines[tIndex].layers[lIndex].clips.sort { $0.startOffset < $1.startOffset }
-                return
-            }
-            let before = CMTimeSubtract(blocker.startOffset, length)
-            let after = blocker.endOffset
-            let canGoBefore = before >= .zero
-            if canGoBefore, CMTimeAbsoluteValue(CMTimeSubtract(candidate, before)) < CMTimeAbsoluteValue(CMTimeSubtract(candidate, after)) {
-                candidate = before
-            } else {
-                candidate = after
-            }
-        }
+        timelines[tIndex].layers[lIndex].clips[cIndex].startOffset = start
+        timelines[tIndex].layers[lIndex].clips.sort { $0.startOffset < $1.startOffset }
     }
 
     /// Splits the clip at a timeline-space time (e.g. the playhead). The time
@@ -215,71 +198,29 @@ struct EditingProject: Identifiable, Equatable {
         timelines[tIndex].layers[lIndex].clips[cIndex].autoMatteEnabled = enabled
     }
 
-    /// A floor on clip duration so dragging a trim handle can never collapse
-    /// a clip to zero (or negative) length.
-    private var minimumClipDuration: CMTime { CMTime(seconds: 0.05, preferredTimescale: 600) }
-
-    private func sourceDuration(for source: ClipSource) -> CMTime? {
-        switch resolvedInfo(for: source) {
-        case .media(let clip): clip.duration
-        case .timeline(let timeline): timeline.duration
-        case nil: nil
-        }
-    }
-
     /// Drags the clip's leading edge, non-destructively revealing or hiding
     /// source frames. Unlike a plain move, trimming the start keeps the
-    /// clip's *end* fixed in time — `startOffset` shifts by the same amount
-    /// as `trimStart` so the clip's timeline-end position doesn't change.
+    /// clip's *end* fixed in time; see `resolvedTrimStart(of:in:layer:to:)`.
     mutating func trimClipStart(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
-              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id })
-        else {
-            return
-        }
-        let clip = timelines[tIndex].layers[lIndex].clips[cIndex]
-        // Can't reveal frames before the source's own start, push the
-        // clip's start before timeline t=0, or run into the previous clip.
-        var lowerBound = CMTimeMaximum(.zero, CMTimeSubtract(clip.trimStart, clip.startOffset))
-        let previousEnd = timelines[tIndex].layers[lIndex].clips
-            .filter { $0.id != id && $0.endOffset <= clip.startOffset }
-            .map(\.endOffset)
-            .max()
-        if let previousEnd {
-            lowerBound = CMTimeMaximum(lowerBound, CMTimeAdd(clip.trimStart, CMTimeSubtract(previousEnd, clip.startOffset)))
-        }
-        let upperBound = CMTimeSubtract(clip.trimEnd, minimumClipDuration)
-        guard upperBound > lowerBound else { return }
-        let newTrimStart = CMTimeMinimum(CMTimeMaximum(proposedTrimStart, lowerBound), upperBound)
-        let delta = CMTimeSubtract(newTrimStart, clip.trimStart)
-        timelines[tIndex].layers[lIndex].clips[cIndex].trimStart = newTrimStart
-        timelines[tIndex].layers[lIndex].clips[cIndex].startOffset = CMTimeMaximum(.zero, CMTimeAdd(clip.startOffset, delta))
+        guard let trimmed = resolvedTrimStart(of: id, in: timelineID, layer: layerID, to: proposedTrimStart) else { return }
+        replaceClip(trimmed, in: timelineID, layer: layerID)
     }
 
     /// Drags the clip's trailing edge; the start stays fixed and only the
-    /// trimmed-out duration changes, bounded by how much source media exists.
+    /// trimmed-out duration changes. See `resolvedTrimEnd(of:in:layer:to:)`.
     mutating func trimClipEnd(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimEnd: CMTime) {
+        guard let trimmed = resolvedTrimEnd(of: id, in: timelineID, layer: layerID, to: proposedTrimEnd) else { return }
+        replaceClip(trimmed, in: timelineID, layer: layerID)
+    }
+
+    private mutating func replaceClip(_ clip: TimelineClip, in timelineID: UUID, layer layerID: UUID) {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
-              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id }),
-              let sourceDuration = sourceDuration(for: timelines[tIndex].layers[lIndex].clips[cIndex].source)
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == clip.id })
         else {
             return
         }
-        let clip = timelines[tIndex].layers[lIndex].clips[cIndex]
-        let lowerBound = CMTimeAdd(clip.trimStart, minimumClipDuration)
-        var upperBound = sourceDuration
-        let nextStart = timelines[tIndex].layers[lIndex].clips
-            .filter { $0.id != id && $0.startOffset >= clip.endOffset }
-            .map(\.startOffset)
-            .min()
-        if let nextStart {
-            upperBound = CMTimeMinimum(upperBound, CMTimeAdd(clip.trimStart, CMTimeSubtract(nextStart, clip.startOffset)))
-        }
-        guard upperBound > lowerBound else { return }
-        let newTrimEnd = CMTimeMinimum(CMTimeMaximum(proposedTrimEnd, lowerBound), upperBound)
-        timelines[tIndex].layers[lIndex].clips[cIndex].trimEnd = newTrimEnd
+        timelines[tIndex].layers[lIndex].clips[cIndex] = clip
     }
 
     private static func split(_ clips: inout [TimelineClip], id: UUID, at time: CMTime) {

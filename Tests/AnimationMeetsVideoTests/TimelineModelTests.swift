@@ -178,6 +178,71 @@ private struct Fixture {
     }
 }
 
+@Suite struct FrameLockTests {
+    private func frames(_ count: Int64) -> CMTime {
+        CMTime(value: count, timescale: 24)
+    }
+
+    @Test func videoMovesLandOnFrames() {
+        var f = Fixture(duration: 2)
+        f.project.moveClip(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(1.03))
+        #expect(f.clip.startOffset == frames(25))
+    }
+
+    @Test func videoMovesPastAnOffFrameNeighborStartOnTheNextFrame() {
+        var f = Fixture(duration: 2)
+        _ = f.addNeighbor(start: 0, length: 10.01)
+        f.project.moveClip(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(9.5))
+        #expect(f.clip.startOffset == frames(241))
+    }
+
+    @Test func audioMovesBetweenFrames() {
+        var project = EditingProject.empty
+        let audio = MediaClip(
+            name: "Song", kind: .audio, url: nil, duration: seconds(5),
+            frameRate: 0, colorSpace: .rec709, codecName: "AAC"
+        )
+        let ids = project.importClip(audio, intoTimeline: project.rootTimelineID)!
+        project.moveClip(ids.clipID, in: project.rootTimelineID, layer: ids.layerID, to: seconds(1.01))
+        let clip = project.timelines[0].layers[0].clips[0]
+        #expect(clip.startOffset == seconds(1.01))
+    }
+
+    @Test func videoTrimsLandOnFrames() {
+        var f = Fixture()
+        f.project.trimClipEnd(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(4.01))
+        #expect(f.clip.trimEnd == frames(96))
+        f.project.trimClipStart(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(1.03))
+        #expect(f.clip.startOffset == frames(25))
+        #expect(f.clip.trimStart == frames(25))
+        #expect(f.clip.endOffset == frames(96))
+    }
+
+    @Test func videoTrimKeepsOneFrame() {
+        var f = Fixture()
+        f.project.trimClipEnd(f.clipID, in: f.timelineID, layer: f.layerID, to: .zero)
+        #expect(f.clip.trimmedDuration == frames(1))
+    }
+
+    @Test func previewMatchesTheCommittedMove() {
+        var f = Fixture(duration: 2)
+        _ = f.addNeighbor(start: 10, length: 4)
+        let preview = f.project.resolvedStart(ofMoving: f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(9.2))
+        f.project.moveClip(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(9.2))
+        #expect(preview == f.clip.startOffset)
+        #expect(f.clip.startOffset == seconds(8))
+    }
+
+    @Test func alignmentIsExactAtNTSCRates() {
+        let timeline = Timeline(name: "T", layers: [], frameSize: CGSize(width: 16, height: 9), frameRate: 29.97, colorSpace: .rec709)
+        let tenFrames = CMTime(value: 10_010, timescale: 30_000)
+        #expect(timeline.frameAligned(tenFrames, .up) == tenFrames)
+        #expect(timeline.frameAligned(tenFrames, .down) == tenFrames)
+        #expect(timeline.frameAligned(CMTimeAdd(tenFrames, CMTime(value: 1, timescale: 30_000)), .up)
+            == CMTime(value: 11_011, timescale: 30_000))
+    }
+}
+
 @Suite struct EmbedTests {
     @Test func cannotEmbedSelfOrEmptyTimeline() {
         var f = Fixture()
