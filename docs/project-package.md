@@ -42,6 +42,33 @@ If the source is on a different volume, the app shows the size and warns
 before making a real copy. References from `project.json` use paths relative
 to the package where possible, so the project can be moved or archived.
 
+### Clones, deleting, and backups
+
+A clone is an ordinary, independent file that shares disk blocks with its
+source:
+
+- Finder shows both files at full size, but the volume stores the shared
+  data once. Per-file sizes add up to more than the space actually used.
+- Deleting either file is safe. The shared blocks are freed only when the
+  last file using them is gone, and the other file is unaffected. This also
+  means deleting the original after cloning does not free space, because the
+  package's copy still uses it.
+- Editing one file writes the changed blocks to new space (copy-on-write),
+  so the two only start costing extra for the parts that differ.
+- Cloning only works within one APFS volume. Copying a package to another
+  drive, a non-APFS volume, or a network share makes a full copy, so an
+  archived package can be much larger than it looked on the original disk.
+
+**Backup advisory.** Time Machine and most sync or backup tools see each
+clone as a separate full-size file and do not preserve the sharing. Copying
+media into a package therefore makes backups store that footage again, even
+though the local disk does not. This is intended for setups where source
+footage is excluded from backup and only becomes backed up once it is used
+in a project, but anyone who backs up both the source folder and their
+projects will store the footage twice. To avoid that, exclude the source
+footage or the packages' `Media/` folders from the backup, or choose
+"Reference in Place" when saving.
+
 The package is a macOS package folder (`.amv`) rather than a plain visible
 folder: it appears as one file in Finder and "Show Package Contents" gives
 the plain folder.
