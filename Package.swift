@@ -17,6 +17,10 @@ let package = Package(
         .executableTarget(
             name: "AnimationMeetsVideo",
             path: "Sources/AnimationMeetsVideo"
+        ),
+        .testTarget(
+            name: "AnimationMeetsVideoTests",
+            dependencies: ["AnimationMeetsVideo"]
         )
     ]
 )
