@@ -122,6 +122,16 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         #expect(empty.isEmpty)
     }
 
+    @Test func lowerBoundFindsTheFirstElementAtOrAfterTheValue() {
+        let values = [1, 3, 3, 5]
+        #expect(values.lowerBound(of: 0) { $0 } == 0)
+        #expect(values.lowerBound(of: 3) { $0 } == 1)
+        #expect(values.lowerBound(of: 4) { $0 } == 3)
+        #expect(values.lowerBound(of: 6) { $0 } == 4)
+        #expect([Int]().lowerBound(of: 1) { $0 } == 0)
+        #expect(values[1...].lowerBound(of: 5) { $0 } == 3)
+    }
+
     @Test func damagedDataIsRejected() {
         #expect(throws: BeatTrackError.self) { try BeatTrack(decoding: Data("nonsense".utf8)) }
         #expect(throws: BeatTrackError.self) { try BeatTrack(decoding: sample.encoded().dropLast(3)) }

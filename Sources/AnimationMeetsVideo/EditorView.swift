@@ -1329,8 +1329,8 @@ private struct BeatMarkerOverlay: View {
     var body: some View {
         let lower = max(0, visibleX.lowerBound - margin)
         let upper = max(lower + 1, visibleX.upperBound + margin)
-        let first = lowerBound(of: Double(lower / max(pixelsPerSecond, 0.01)))
-        let last = lowerBound(of: Double(upper / max(pixelsPerSecond, 0.01)))
+        let first = markers.lowerBound(of: Double(lower / max(pixelsPerSecond, 0.01))) { $0.seconds }
+        let last = markers.lowerBound(of: Double(upper / max(pixelsPerSecond, 0.01))) { $0.seconds }
         Canvas { context, _ in
             var context = context
             context.translateBy(x: -lower, y: 0)
@@ -1350,16 +1350,6 @@ private struct BeatMarkerOverlay: View {
         .frame(width: upper - lower, height: height)
         .offset(x: lower)
         .allowsHitTesting(false)
-    }
-
-    /// Index of the first marker at or after `seconds`.
-    private func lowerBound(of seconds: Double) -> Int {
-        var low = 0, high = markers.count
-        while low < high {
-            let mid = (low + high) / 2
-            if markers[mid].seconds < seconds { low = mid + 1 } else { high = mid }
-        }
-        return low
     }
 }
 

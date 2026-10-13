@@ -32,12 +32,7 @@ struct BeatTrack: Equatable, Sendable {
     }
 
     private func firstIndex(atOrAfter value: Int64) -> Int {
-        var low = 0, high = times.count
-        while low < high {
-            let middle = (low + high) / 2
-            if times[middle] < value { low = middle + 1 } else { high = middle }
-        }
-        return low
+        times.lowerBound(of: value) { $0 }
     }
 
     // MARK: Serialization
@@ -92,6 +87,26 @@ struct BeatTrack: Equatable, Sendable {
         times.reserveCapacity(count)
         for _ in 0..<count { times.append(try read(Int64.self)) }
         self.init(timescale: timescale, times: times, beatsPerMinute: Double(tempo))
+    }
+}
+
+extension RandomAccessCollection {
+    /// The index of the first element whose key is at or after `value`, or
+    /// `endIndex` if none is, in a collection sorted by `key`.
+    func lowerBound<Key: Comparable>(of value: Key, by key: (Element) -> Key) -> Index {
+        var low = startIndex
+        var count = self.count
+        while count > 0 {
+            let half = count / 2
+            let middle = index(low, offsetBy: half)
+            if key(self[middle]) < value {
+                low = index(after: middle)
+                count -= half + 1
+            } else {
+                count = half
+            }
+        }
+        return low
     }
 }
 
