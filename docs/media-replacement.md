@@ -128,35 +128,26 @@ a decision open the dialog, and a summary lists what was not replaced.
 
 ## Files changed outside the app
 
-When a project opens, any media file whose size or modification time differs
-from what was accepted at the last save is flagged. The clip's context menu
-then offers **File Changed — Check Sync…**, which runs the same analysis on
-the file already in place and stores the result. There is no live watching of
-files yet.
+Each asset remembers the size and modification time of the file it last
+accepted (set at import, save, or replacement). The app compares these when
+a project opens, when the app becomes active, and every few seconds while it
+runs. A file that no longer matches is flagged once, with a message naming
+it, and the caches that might hold its old contents are dropped. The clip's
+context menu then offers **File Changed — Check Sync…**, which runs the same
+analysis on the file already in place and stores the result as the new
+accepted state. A file that matches again, or is missing, is not flagged.
 
-## Export
+Until the change is reviewed, playback and export keep using the file as it
+is on disk, at the old offset. Accepting is an ordinary edit, so undoing it
+flags the file again.
 
-Exports render from whatever each asset currently points at. If an asset
-points at a file the person knowingly chose as a lower-quality stand-in, that
-is their responsibility, and the app does not check or warn before exporting.
-
-## Decisions
-
-- **Alignment is an offset only.** No rate is stored.
-- **"Forget original" requires confirmation.** It deletes the asset's
-  reference data and disables the sync dialog for that asset, and it cannot
-  be undone, so the app explains this and asks first.
-- **Color handling starts with detect and flag.** The first version reads
-  color tags, flags SDR-to-HDR and untagged mismatches, and offers a
-  per-asset override. Actual conversion waits until the project's color
-  space is applied when rendering (today it is only a label).
-- **No pre-export check** of which file each asset points at.
+Checking is by polling rather than by file-system events, so that a file
+replaced by renaming over it is noticed too.
 
 ## Not yet implemented
 
 - **Forget original** (with its confirmation), including remembering that the
   reference was forgotten so it isn't captured again.
-- Watching files while the app runs (live reload).
 - A per-asset color override and actual SDR/HDR conversion.
 - Dense reference frames near cuts and used ranges, which would allow
   frame-exact matching on the original's side.

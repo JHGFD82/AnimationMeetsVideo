@@ -99,6 +99,35 @@ final class MediaReplacementController {
         changedMedia.formUnion(ids)
     }
 
+    /// Flags assets whose file no longer matches what was last accepted for
+    /// them, and unflags those that match again. A newly changed file also
+    /// leaves the caches, so nothing keeps reading the old contents.
+    func checkForChanges(in project: EditingProject) {
+        var newlyChanged: [MediaClip] = []
+        for clip in project.clips {
+            guard let url = clip.url, let accepted = clip.acceptedStamp, let current = FileStamp(url: url) else { continue }
+            if current == accepted {
+                changedMedia.remove(clip.id)
+            } else if changedMedia.insert(clip.id).inserted {
+                newlyChanged.append(clip)
+            }
+        }
+        guard !newlyChanged.isEmpty else { return }
+
+        let urls = newlyChanged.compactMap(\.url)
+        Task {
+            for url in urls { await CompositionExporter.forgetCachedMedia(at: url) }
+            SceneThumbnailStore.invalidate()
+        }
+        if notice == nil, session == nil {
+            let names = newlyChanged.map(\.name).joined(separator: "\n")
+            notice = Notice(
+                title: "Media Changed on Disk",
+                message: "These files changed outside the app:\n\n\(names)\n\nControl-click one in the Clips list and choose \u{201C}File Changed — Check Sync…\u{201D} to line it up."
+            )
+        }
+    }
+
     /// Forgets everything, for a different project.
     func reset() {
         task?.cancel()
@@ -614,16 +643,26 @@ extension ReferenceThumbnails {
 
 extension View {
     /// Presents the replacement dialog and the batch summary.
-    func mediaReplacementDialogs() -> some View {
-        modifier(MediaReplacementDialogs())
+    func mediaReplacementDialogs(project: Binding<EditingProject>) -> some View {
+        modifier(MediaReplacementDialogs(project: project))
     }
 }
 
 private struct MediaReplacementDialogs: ViewModifier {
     @Environment(MediaReplacementController.self) private var controller
+    @Binding var project: EditingProject
 
     func body(content: Content) -> some View {
         content
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(5))
+                    controller.checkForChanges(in: project)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                controller.checkForChanges(in: project)
+            }
             .sheet(item: Binding(
                 get: { controller.session },
                 set: { if $0 == nil { controller.dismissCurrent() } }

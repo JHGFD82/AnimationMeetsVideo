@@ -44,7 +44,7 @@ struct AnimationMeetsVideoApp: App {
             EditorView(project: $project, history: history, analysis: analysis)
                 .environment(replacement)
                 .environment(\.projectPackageURL, projectURL)
-                .mediaReplacementDialogs()
+                .mediaReplacementDialogs(project: $project)
                 .frame(minWidth: 1_100, minHeight: 700)
                 .task {
                     while !Task.isCancelled {
