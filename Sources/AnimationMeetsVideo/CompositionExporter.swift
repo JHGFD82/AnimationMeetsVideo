@@ -42,106 +42,254 @@ struct ComposedTimeline {
     var videoComposition: AVMutableVideoComposition?
 }
 
-private struct LayerTrackInfo {
-    let videoTrack: AVMutableCompositionTrack?
-    let clips: [TimelineClip]
+/// Track metadata for one media file, loaded once and reused across the many
+/// rebuilds an editing session triggers.
+private struct MediaTrackInfo: @unchecked Sendable {
+    let asset: AVURLAsset
+    let video: AVAssetTrack?
+    let audio: AVAssetTrack?
+    let videoRange: CMTimeRange
+    let audioRange: CMTimeRange
+    /// The track's preferredTransform shifted so the rotated frame's origin
+    /// is (0, 0), and the size of the frame after rotation.
+    let orientedTransform: CGAffineTransform
+    let orientedSize: CGSize
+}
+
+private actor MediaTrackCache {
+    static let shared = MediaTrackCache()
+    private var entries: [URL: MediaTrackInfo] = [:]
+
+    func info(for url: URL) async throws -> MediaTrackInfo {
+        if let cached = entries[url] { return cached }
+
+        let asset = AVURLAsset(url: url)
+        let video = try await asset.loadTracks(withMediaType: .video).first
+        let audio = try await asset.loadTracks(withMediaType: .audio).first
+
+        var videoRange = CMTimeRange.invalid
+        var audioRange = CMTimeRange.invalid
+        var transform = CGAffineTransform.identity
+        var size = CGSize.zero
+        if let video {
+            videoRange = try await video.load(.timeRange)
+            let natural = try await video.load(.naturalSize)
+            let preferred = try await video.load(.preferredTransform)
+            let rect = CGRect(origin: .zero, size: natural).applying(preferred)
+            transform = preferred.concatenating(CGAffineTransform(translationX: -rect.minX, y: -rect.minY))
+            size = rect.size
+        }
+        if let audio {
+            audioRange = try await audio.load(.timeRange)
+        }
+
+        let info = MediaTrackInfo(
+            asset: asset,
+            video: video,
+            audio: audio,
+            videoRange: videoRange,
+            audioRange: audioRange,
+            orientedTransform: transform,
+            orientedSize: size
+        )
+        entries[url] = info
+        return info
+    }
+}
+
+/// One piece of media placed at an absolute time in the root timeline, with
+/// the transform that fits it into the root's render space.
+private struct Placement {
+    let info: MediaTrackInfo
+    let sourceRange: CMTimeRange
+    let start: CMTime
+    let transform: CGAffineTransform
+}
+
+/// An ordered run of non-overlapping placements that share composition
+/// tracks. Nested timelines are flattened into extra layers of the root.
+private struct FlatLayer {
+    var placements: [Placement] = []
+}
+
+private struct VideoSegment {
+    let timeRange: CMTimeRange
+    let transform: CGAffineTransform
+}
+
+private struct VideoLayer {
+    let track: AVMutableCompositionTrack
+    let segments: [VideoSegment]
 }
 
 enum CompositionExporter {
-    static func buildComposedTimeline(
-        for project: EditingProject,
-        timelineID: UUID,
-        visiting: Set<UUID> = []
-    ) async throws -> ComposedTimeline {
-        guard !visiting.contains(timelineID) else {
-            throw CompositionError.cyclicTimeline
-        }
-        guard let timeline = project.timeline(id: timelineID) else {
-            throw CompositionError.emptyTimeline
-        }
-        guard !timeline.layers.isEmpty else {
+    static func buildComposedTimeline(for project: EditingProject, timelineID: UUID) async throws -> ComposedTimeline {
+        guard let timeline = project.timeline(id: timelineID), !timeline.layers.isEmpty else {
             throw CompositionError.emptyTimeline
         }
 
-        var visiting = visiting
-        visiting.insert(timelineID)
+        let window = CMTimeRange(start: .zero, duration: timeline.duration)
+        let flatLayers = try await flatten(
+            project: project,
+            timelineID: timelineID,
+            visiting: [],
+            window: window,
+            offset: .zero,
+            fit: .identity
+        )
 
         let composition = AVMutableComposition()
+        var videoLayers: [VideoLayer] = []
 
-        var layerInfos: [LayerTrackInfo] = []
+        for flat in flatLayers {
+            var videoTrack: AVMutableCompositionTrack?
+            var audioTrack: AVMutableCompositionTrack?
+            var segments: [VideoSegment] = []
 
-        // Layers are processed top-to-bottom (array order), matching how
-        // they'll later be listed in each video composition instruction.
-        for layer in timeline.layers {
-            let videoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
-            let audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
-            var sawVideo = false
-
-            for clip in layer.clips {
-                let range = CMTimeRange(start: clip.trimStart, end: clip.trimEnd)
-                let at = clip.startOffset
-
-                switch clip.source {
-                case .media(let mediaID):
-                    if let mediaClip = project.mediaClip(id: mediaID), let url = mediaClip.url {
-                        let asset = AVURLAsset(url: url)
-                        if let sourceVideoTrack = try await asset.loadTracks(withMediaType: .video).first {
-                            try videoTrack?.insertTimeRange(range, of: sourceVideoTrack, at: at)
-                            sawVideo = true
+            for placement in flat.placements {
+                let info = placement.info
+                if let sourceVideo = info.video {
+                    let range = placement.sourceRange.intersection(info.videoRange)
+                    if range.isValid, range.duration > .zero {
+                        if videoTrack == nil {
+                            videoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
                         }
-                        if let sourceAudioTrack = try await asset.loadTracks(withMediaType: .audio).first {
-                            try audioTrack?.insertTimeRange(range, of: sourceAudioTrack, at: at)
+                        let at = CMTimeAdd(placement.start, CMTimeSubtract(range.start, placement.sourceRange.start))
+                        try videoTrack?.insertTimeRange(range, of: sourceVideo, at: at)
+                        segments.append(VideoSegment(timeRange: CMTimeRange(start: at, duration: range.duration), transform: placement.transform))
+                    }
+                }
+                if let sourceAudio = info.audio {
+                    let range = placement.sourceRange.intersection(info.audioRange)
+                    if range.isValid, range.duration > .zero {
+                        if audioTrack == nil {
+                            audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
                         }
-                    }
-                case .timeline(let nestedID):
-                    let nested = try await buildComposedTimeline(for: project, timelineID: nestedID, visiting: visiting)
-                    if let sourceVideoTrack = try await nested.composition.loadTracks(withMediaType: .video).first {
-                        try videoTrack?.insertTimeRange(range, of: sourceVideoTrack, at: at)
-                        sawVideo = true
-                    }
-                    if let sourceAudioTrack = try await nested.composition.loadTracks(withMediaType: .audio).first {
-                        try audioTrack?.insertTimeRange(range, of: sourceAudioTrack, at: at)
+                        let at = CMTimeAdd(placement.start, CMTimeSubtract(range.start, placement.sourceRange.start))
+                        try audioTrack?.insertTimeRange(range, of: sourceAudio, at: at)
                     }
                 }
             }
 
-            layerInfos.append(LayerTrackInfo(videoTrack: sawVideo ? videoTrack : nil, clips: layer.clips))
+            if let videoTrack {
+                videoLayers.append(VideoLayer(track: videoTrack, segments: segments))
+            }
+        }
+
+        guard composition.duration > .zero else {
+            throw CompositionError.emptyTimeline
         }
 
         let videoComposition = Self.buildVideoComposition(
-            layerInfos: layerInfos,
-            overallDuration: timeline.duration,
+            layers: videoLayers,
+            overallDuration: composition.duration,
             renderSize: timeline.frameSize,
             frameRate: timeline.frameRate
         )
-
         return ComposedTimeline(composition: composition, videoComposition: videoComposition)
     }
 
-    /// Builds the per-time-range layer stacking instructions. Clips within a
-    /// layer can now start anywhere (independent `startOffset`) and leave
-    /// gaps, so breakpoints come from every clip's own start/end across all
-    /// layers, and a layer only contributes to a sub-range when one of its
-    /// clips actually covers it (top layer first).
+    /// Resolves a timeline (recursively expanding nested timelines) into flat
+    /// layers of media placements at absolute root-timeline times, top layer
+    /// first. `window` is the visible range in this timeline's own time,
+    /// `offset` maps this timeline's time to root time, and `fit` maps this
+    /// timeline's render space into the root's.
+    private static func flatten(
+        project: EditingProject,
+        timelineID: UUID,
+        visiting: Set<UUID>,
+        window: CMTimeRange,
+        offset: CMTime,
+        fit: CGAffineTransform
+    ) async throws -> [FlatLayer] {
+        guard !visiting.contains(timelineID) else {
+            throw CompositionError.cyclicTimeline
+        }
+        guard let timeline = project.timeline(id: timelineID) else { return [] }
+        var visiting = visiting
+        visiting.insert(timelineID)
+
+        var result: [FlatLayer] = []
+        for layer in timeline.layers {
+            var own = FlatLayer()
+            var nestedLayers: [FlatLayer] = []
+
+            for clip in layer.clips.sorted(by: { $0.startOffset < $1.startOffset }) {
+                let placed = CMTimeRange(start: clip.startOffset, duration: clip.trimmedDuration)
+                let visible = placed.intersection(window)
+                guard visible.isValid, visible.duration > .zero else { continue }
+                let intoClip = CMTimeSubtract(visible.start, clip.startOffset)
+
+                switch clip.source {
+                case .media(let mediaID):
+                    guard let media = project.mediaClip(id: mediaID), let url = media.url else { continue }
+                    let info = try await MediaTrackCache.shared.info(for: url)
+                    let wanted = CMTimeRange(start: CMTimeAdd(clip.trimStart, intoClip), duration: visible.duration)
+                    let transform = info.orientedTransform
+                        .concatenating(fitTransform(from: info.orientedSize, to: timeline.frameSize))
+                        .concatenating(fit)
+                    own.placements.append(Placement(
+                        info: info,
+                        sourceRange: wanted,
+                        start: CMTimeAdd(visible.start, offset),
+                        transform: transform
+                    ))
+                case .timeline(let nestedID):
+                    guard let nested = project.timeline(id: nestedID) else { continue }
+                    // Nested time = this timeline's time - clip.startOffset + clip.trimStart.
+                    let shift = CMTimeSubtract(clip.startOffset, clip.trimStart)
+                    let nestedWindow = CMTimeRange(start: CMTimeSubtract(visible.start, shift), duration: visible.duration)
+                    let childFit = fitTransform(from: nested.frameSize, to: timeline.frameSize).concatenating(fit)
+                    nestedLayers += try await flatten(
+                        project: project,
+                        timelineID: nestedID,
+                        visiting: visiting,
+                        window: nestedWindow,
+                        offset: CMTimeAdd(offset, shift),
+                        fit: childFit
+                    )
+                }
+            }
+
+            if !own.placements.isEmpty { result.append(own) }
+            result += nestedLayers
+        }
+        return result
+    }
+
+    /// Scales `source` to fit inside `target` (aspect-preserving) and centers it.
+    private static func fitTransform(from source: CGSize, to target: CGSize) -> CGAffineTransform {
+        guard source.width > 0, source.height > 0, target.width > 0, target.height > 0 else { return .identity }
+        let scale = min(target.width / source.width, target.height / source.height)
+        return CGAffineTransform(scaleX: scale, y: scale).concatenating(CGAffineTransform(
+            translationX: (target.width - source.width * scale) / 2,
+            y: (target.height - source.height * scale) / 2
+        ))
+    }
+
+    /// Builds the per-time-range layer stacking instructions. Breakpoints come
+    /// from every video segment's start/end across all layers, and a layer
+    /// only contributes to a sub-range that one of its segments fully covers
+    /// (top layer first). Gaps produce empty instructions, which render black.
     private static func buildVideoComposition(
-        layerInfos: [LayerTrackInfo],
+        layers: [VideoLayer],
         overallDuration: CMTime,
         renderSize: CGSize,
         frameRate: Double
     ) -> AVMutableVideoComposition? {
-        let videoLayers = layerInfos.filter { $0.videoTrack != nil }
-        guard !videoLayers.isEmpty else { return nil }
+        guard !layers.isEmpty else { return nil }
 
-        let timescale: CMTimeScale = 600
-        var breakpointValues: Set<CMTimeValue> = [0]
-        for info in videoLayers {
-            for clip in info.clips {
-                breakpointValues.insert(clip.startOffset.convertScale(timescale, method: .default).value)
-                breakpointValues.insert(clip.endOffset.convertScale(timescale, method: .default).value)
+        var breakpoints: [CMTime] = [.zero]
+        for layer in layers {
+            for segment in layer.segments {
+                breakpoints.append(segment.timeRange.start)
+                breakpoints.append(segment.timeRange.end)
             }
         }
-        breakpointValues.insert(overallDuration.convertScale(timescale, method: .default).value)
-        let breakpoints = breakpointValues.sorted().map { CMTime(value: $0, timescale: timescale) }
+        breakpoints = breakpoints.filter { $0 > .zero && $0 < overallDuration }
+        breakpoints.append(.zero)
+        breakpoints.sort()
+        breakpoints.append(overallDuration)
 
         var instructions: [AVMutableVideoCompositionInstruction] = []
         for index in 0..<(breakpoints.count - 1) {
@@ -151,21 +299,33 @@ enum CompositionExporter {
 
             let instruction = AVMutableVideoCompositionInstruction()
             instruction.timeRange = CMTimeRange(start: start, end: end)
-            instruction.layerInstructions = videoLayers
-                .filter { info in
-                    info.clips.contains { $0.startOffset <= start && $0.endOffset >= end }
+            instruction.layerInstructions = layers.compactMap { layer in
+                guard let segment = layer.segments.first(where: { $0.timeRange.start <= start && $0.timeRange.end >= end }) else {
+                    return nil
                 }
-                .compactMap { info in
-                    info.videoTrack.map { AVMutableVideoCompositionLayerInstruction(assetTrack: $0) }
-                }
+                let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: layer.track)
+                layerInstruction.setTransform(segment.transform, at: start)
+                return layerInstruction
+            }
             instructions.append(instruction)
         }
 
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = renderSize
-        videoComposition.frameDuration = CMTime(value: 1, timescale: Int32(max(1, frameRate.rounded())))
+        videoComposition.frameDuration = frameDuration(for: frameRate)
         videoComposition.instructions = instructions
         return videoComposition
+    }
+
+    /// Exact frame durations for the NTSC-family rates (23.976, 29.97, 59.94)
+    /// rather than rounding them to 24/30/60.
+    private static func frameDuration(for frameRate: Double) -> CMTime {
+        let clamped = min(max(frameRate, 1), 1000)
+        let rounded = clamped.rounded()
+        if abs(clamped - rounded * 1000 / 1001) < 0.01 {
+            return CMTime(value: 1001, timescale: Int32(rounded) * 1000)
+        }
+        return CMTime(value: 1, timescale: Int32(rounded))
     }
 
     static func export(project: EditingProject, timelineID: UUID, preset: ProResPreset, to url: URL) async throws {
@@ -184,6 +344,10 @@ enum CompositionExporter {
             throw CompositionError.noExportSession
         }
         exportSession.videoComposition = composed.videoComposition
+
+        // The save panel already confirmed replacing an existing file, but
+        // AVAssetExportSession refuses to write over one.
+        try? FileManager.default.removeItem(at: url)
 
         do {
             try await exportSession.export(to: url, as: .mov)
