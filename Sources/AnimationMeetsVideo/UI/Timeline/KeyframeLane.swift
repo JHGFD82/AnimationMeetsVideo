@@ -59,7 +59,7 @@ private struct KeyframeDiamond: View {
             .contentShape(Rectangle())
             .offset(x: x - (size + 6) / 2)
             .gesture(
-                DragGesture(minimumDistance: 0)
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .updating($dragX) { value, state, _ in state = value.translation.width }
                     .onEnded { value in
                         if abs(value.translation.width) < 3 {

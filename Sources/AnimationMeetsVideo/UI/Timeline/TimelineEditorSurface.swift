@@ -215,7 +215,7 @@ struct TimelineResizeHandle: View {
         .contentShape(Rectangle())
         .pointerStyle(.rowResize)
         .gesture(
-            DragGesture(minimumDistance: 0)
+            DragGesture(minimumDistance: 0, coordinateSpace: .global)
                 .onChanged { value in
                     let start = dragStartHeight ?? height
                     if dragStartHeight == nil { dragStartHeight = height }

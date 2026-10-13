@@ -238,8 +238,12 @@ struct ClipBlockView: View {
             .background(typeColor.opacity(isSelected ? 0.6 : 0.35))
             .overlay(Rectangle().strokeBorder(isSelected ? Color.white.opacity(0.9) : typeColor.opacity(0.8), lineWidth: isSelected ? 1.5 : 0.75))
             .offset(x: drawnX)
+            // Measured in window coordinates: the block moves (and resizes)
+            // as the preview changes, so in its own coordinates every
+            // one-frame step would shrink the translation by a frame and
+            // bounce the preview back to where it was.
             .gesture(
-                DragGesture(minimumDistance: 0)
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
                         guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
                         let start = resolveMove(CMTimeAdd(clip.startOffset, timeDelta(value.translation.width)))
@@ -281,7 +285,7 @@ struct ClipBlockView: View {
             .contentShape(Rectangle())
             .offset(x: handleX)
             .gesture(
-                DragGesture(minimumDistance: 0)
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
                         guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
                         isTrimming = true

@@ -32,7 +32,7 @@ struct TimelineScrollbar: View {
                 .contentShape(Rectangle())
                 .offset(x: thumbX)
                 .gesture(
-                    DragGesture(minimumDistance: 0)
+                    DragGesture(minimumDistance: 0, coordinateSpace: .global)
                         .onChanged { value in
                             let start = dragStartScrollX ?? viewport.scrollX
                             if dragStartScrollX == nil { dragStartScrollX = start }
