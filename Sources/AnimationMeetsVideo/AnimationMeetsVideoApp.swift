@@ -26,6 +26,7 @@ struct AnimationMeetsVideoApp: App {
     @State private var savedProject: EditingProject
     @State private var lastAutosaved: EditingProject?
     @State private var analysis = AssetAnalysis()
+    @State private var replacement = MediaReplacementController()
 
     private static let autosaveInterval: Duration = .seconds(60)
 
@@ -41,6 +42,9 @@ struct AnimationMeetsVideoApp: App {
     var body: some Scene {
         WindowGroup("Animation Meets Video") {
             EditorView(project: $project, history: history, analysis: analysis)
+                .environment(replacement)
+                .environment(\.projectPackageURL, projectURL)
+                .mediaReplacementDialogs()
                 .frame(minWidth: 1_100, minHeight: 700)
                 .task {
                     while !Task.isCancelled {
@@ -86,6 +90,7 @@ struct AnimationMeetsVideoApp: App {
         projectURL = nil
         projectLock = nil
         analysis.reset()
+        replacement.reset()
     }
 
     private func openProject() {
@@ -112,6 +117,14 @@ struct AnimationMeetsVideoApp: App {
                 projectLock = lock
                 analysis.reset(tracks: result.changeScores, references: result.references, thumbnailed: result.assetsWithThumbnails)
                 analysis.analyzeMissing(in: result.project)
+                replacement.reset()
+                replacement.markChanged(result.changedMedia)
+                if !result.changedMedia.isEmpty {
+                    replacement.notice = .init(
+                        title: "Media Changed Since Last Saved",
+                        message: "\(result.changedMedia.count) media file(s) were changed outside the app. Control-click each one in the Clips list and choose \u{201C}File Changed — Check Sync…\u{201D}."
+                    )
+                }
                 if !result.missingMedia.isEmpty {
                     let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
                     showAlert(

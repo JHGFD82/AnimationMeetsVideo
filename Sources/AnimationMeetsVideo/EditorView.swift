@@ -102,19 +102,7 @@ struct TimelineEditorSurface: View {
         project.timeline(id: timelineID)
     }
 
-    /// Everything that affects the rendered composition — layer renames and
-    /// timeline names are stripped so they don't trigger a rebuild (which
-    /// would swap the player item and interrupt playback).
-    private var compositionKey: [Timeline] {
-        project.timelines.map { timeline in
-            var copy = timeline
-            copy.name = ""
-            for index in copy.layers.indices {
-                copy.layers[index].customName = nil
-            }
-            return copy
-        }
-    }
+    private var compositionKey: CompositionKey { CompositionKey(project: project) }
 
     private var selectedTimelineClip: TimelineClip? {
         guard let selection, selection.timelineID == timelineID, let timeline,
@@ -482,6 +470,7 @@ private struct LibrarySidebar: View {
                         videoRow(clip)
                     } else {
                         assetLabel(clip)
+                            .contextMenu { ReplaceMediaMenuItems(clip: clip, project: $project, analysis: analysis) }
                     }
                 }
             }
@@ -596,6 +585,8 @@ private struct LibrarySidebar: View {
                         analysis.reanalyze(clip, in: project)
                     }
                     .disabled(analysis.progress[clip.id] != nil)
+                    Divider()
+                    ReplaceMediaMenuItems(clip: clip, project: $project, analysis: analysis)
                 }
         }
     }
