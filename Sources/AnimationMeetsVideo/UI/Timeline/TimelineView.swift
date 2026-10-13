@@ -18,9 +18,12 @@ struct TimelineView: View {
     let onTrimClipStart: (UUID, UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, UUID, CMTime) -> Void
     let onEditTransform: (UUID, (inout LayerTransform) -> Void) -> Void
+    let onSetTransition: (UUID, UUID, TransitionKind, TransitionEdge) -> Void
+    let onRemoveTransition: (UUID, UUID, TransitionEdge) -> Void
     /// Detaches the sound of the given clips on a layer, or of all its
     /// linked clips when nil.
     let onDetachAudio: (UUID, Set<UUID>?) -> Void
+    @Binding var showsTransitions: Bool
 
     /// The chosen zoom, or nil while the whole timeline is fitted to the
     /// window. Kept in points per second, not relative to the fit, so
@@ -139,6 +142,11 @@ struct TimelineView: View {
                         onPreviewClick: beatClicks.preview
                     )
                 }
+                Toggle(isOn: $showsTransitions) {
+                    Image(systemName: "square.on.square.dashed")
+                }
+                .toggleStyle(.button)
+                .help(showsTransitions ? "Hide transitions" : "Show transitions")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
@@ -302,6 +310,8 @@ struct TimelineView: View {
                         onMoveClip: { clipID, newStart in onMoveClip(layer.id, clipID, newStart) },
                         onTrimClipStart: { clipID, newStart in onTrimClipStart(layer.id, clipID, newStart) },
                         onTrimClipEnd: { clipID, newEnd in onTrimClipEnd(layer.id, clipID, newEnd) },
+                        onSetTransition: { clipID, kind, edge in onSetTransition(layer.id, clipID, kind, edge) },
+                        onRemoveTransition: { clipID, edge in onRemoveTransition(layer.id, clipID, edge) },
                         onDetachAudio: { clipID in onDetachAudio(layer.id, [clipID]) }
                     )
                     if showsLinkedAudio(of: layer) {

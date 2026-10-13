@@ -56,6 +56,8 @@ extension EditingProject {
             var audio = clip
             audio.id = UUID()
             audio.streams = .audio
+            audio.transitionIn = nil
+            audio.transitionOut = nil
             audio.autoMatteEnabled = false
             audioClips.append(audio)
         }

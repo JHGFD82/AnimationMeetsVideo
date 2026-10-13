@@ -96,27 +96,33 @@ private struct Sandbox {
         #expect(!json.contains("transform"))
     }
 
-    @Test func roundTripKeepsDetachedStreams() async throws {
+    @Test func roundTripKeepsStreamsAndTransitions() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
         var (project, clipID, _) = sandbox.makeProject()
         let t = project.timelines.firstIndex { $0.id == project.rootTimelineID }!
         project.timelines[t].layers[0].clips[0].streams = .video
+        project.timelines[t].layers[0].clips[0].transitionIn = ClipTransition(kind: .wipeUp, duration: CMTime(value: 1001, timescale: 24000))
+        project.timelines[t].layers[0].clips[0].transitionOut = ClipTransition(kind: .zoom, duration: CMTime(value: 1, timescale: 2))
 
         try await ProjectStore.save(project, to: sandbox.packageURL)
         let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
 
+        let saved = project.timelines[t].layers[0].clips[0]
         let clip = try #require(loaded.project.timeline(id: project.rootTimelineID)?.layers.first?.clips.first { $0.id == clipID })
         #expect(clip.streams == .video)
+        #expect(clip.transitionIn == saved.transitionIn)
+        #expect(clip.transitionOut == saved.transitionOut)
     }
 
-    @Test func linkedClipsWriteNoStreams() async throws {
+    @Test func linkedClipsWithoutTransitionsWriteNeither() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
         let (project, _, _) = sandbox.makeProject()
         try await ProjectStore.save(project, to: sandbox.packageURL)
         let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
         #expect(!json.contains("streams"))
+        #expect(!json.contains("transition"))
     }
 
     @Test func roundTripKeepsStableIDsAndExactTimes() async throws {

@@ -60,6 +60,25 @@ private struct ProjectFile: Codable {
         /// `"video"` or `"audio"` once a video's sound is detached; absent
         /// while the clip plays everything its file has.
         var streams: String?
+        var transitionIn: TransitionEntry?
+        var transitionOut: TransitionEntry?
+    }
+
+    /// A transition at one end of a clip. `kind` is a `TransitionKind`
+    /// name such as `"crossDissolve"`; an unknown kind is dropped on load.
+    struct TransitionEntry: Codable {
+        var kind: String
+        var duration: TimeEntry
+
+        init(_ transition: ClipTransition) {
+            kind = transition.kind.rawValue
+            duration = TimeEntry(transition.duration)
+        }
+
+        var transition: ClipTransition? {
+            guard let kind = TransitionKind(rawValue: kind), duration.time > .zero else { return nil }
+            return ClipTransition(kind: kind, duration: duration.time)
+        }
     }
 
     /// One keyframe. Vector values are written as `[x, y]`.
@@ -642,7 +661,9 @@ enum ProjectStore {
                                 trimStart: ProjectFile.TimeEntry(clip.trimStart),
                                 trimEnd: ProjectFile.TimeEntry(clip.trimEnd),
                                 autoMatteEnabled: clip.autoMatteEnabled,
-                                streams: clip.streams == .videoAndAudio ? nil : clip.streams.rawValue
+                                streams: clip.streams == .videoAndAudio ? nil : clip.streams.rawValue,
+                                transitionIn: clip.transitionIn.map(ProjectFile.TransitionEntry.init),
+                                transitionOut: clip.transitionOut.map(ProjectFile.TransitionEntry.init)
                             )
                         },
                         transform: ProjectFile.TransformEntry(layer.transform)
@@ -745,7 +766,9 @@ enum ProjectStore {
                                 trimStart: clipEntry.trimStart.time,
                                 trimEnd: clipEntry.trimEnd.time,
                                 autoMatteEnabled: clipEntry.autoMatteEnabled,
-                                streams: clipEntry.streams.flatMap(ClipStreams.init(rawValue:)) ?? .videoAndAudio
+                                streams: clipEntry.streams.flatMap(ClipStreams.init(rawValue:)) ?? .videoAndAudio,
+                                transitionIn: clipEntry.transitionIn?.transition,
+                                transitionOut: clipEntry.transitionOut?.transition
                             )
                         },
                         transform: layerEntry.transform?.transform ?? .identity

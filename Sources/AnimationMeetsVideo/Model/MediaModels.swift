@@ -252,14 +252,16 @@ struct EditingProject: Identifiable, Equatable {
         // apart afterward.
         let offsetIntoClip = CMTimeSubtract(time, clip.trimStart)
         let secondStart = CMTimeAdd(clip.startOffset, offsetIntoClip)
-        // Both halves copy the clip, so they keep the streams it plays.
+        // The first half keeps the way in, the second the way out.
         var first = clip
         first.id = UUID()
         first.trimEnd = time
+        first.transitionOut = nil
         var second = clip
         second.id = UUID()
         second.startOffset = secondStart
         second.trimStart = time
+        second.transitionIn = nil
         clips.replaceSubrange(index...index, with: [first, second])
     }
 }
@@ -333,6 +335,9 @@ struct TimelineClip: Identifiable, Equatable {
     /// Which of a media file's streams this clip plays. Always
     /// `.videoAndAudio` for nested timelines.
     var streams: ClipStreams = .videoAndAudio
+    /// Brings the clip in at its start, and takes it out at its end.
+    var transitionIn: ClipTransition?
+    var transitionOut: ClipTransition?
 
     var trimmedDuration: CMTime {
         CMTimeSubtract(trimEnd, trimStart)

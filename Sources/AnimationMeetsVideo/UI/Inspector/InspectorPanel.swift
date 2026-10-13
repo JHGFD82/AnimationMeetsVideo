@@ -84,6 +84,13 @@ struct InspectorPanel: View {
                     }
                 }
 
+                if timelineClip.transitionIn != nil || timelineClip.transitionOut != nil {
+                    Section("Transitions") {
+                        transitionRow(.leading, of: timelineClip, selection: selection)
+                        transitionRow(.trailing, of: timelineClip, selection: selection)
+                    }
+                }
+
                 Section("Arrange") {
                     Button("Split at Playhead") {
                         project.split(selection.timelineClipID, in: timelineID, layer: selection.layerID, atTimelineTime: playheadTime)
@@ -104,6 +111,37 @@ struct InspectorPanel: View {
         }
         .formStyle(.grouped)
         .disabled(info == nil)
+    }
+
+    /// A transition's kind and length, a frame per step, with a way to
+    /// remove it.
+    @ViewBuilder
+    private func transitionRow(_ edge: TransitionEdge, of clip: TimelineClip, selection: TimelineSelection) -> some View {
+        if let transition = clip.transition(at: edge), let timeline = project.timeline(id: timelineID) {
+            let frames = Int((transition.duration.seconds / timeline.frameDuration.seconds).rounded())
+            HStack {
+                Stepper(
+                    "\(edge == .leading ? "Start" : "End"): \(transition.kind.name), \(frames) fr",
+                    value: Binding(
+                        get: { frames },
+                        set: { newFrames in
+                            project.setTransitionDuration(
+                                CMTimeMultiply(timeline.frameDuration, multiplier: Int32(max(1, newFrames))),
+                                at: edge, of: clip.id, in: timelineID, layer: selection.layerID
+                            )
+                        }
+                    ),
+                    in: 1...Int.max
+                )
+                Button {
+                    project.removeTransition(at: edge, of: clip.id, in: timelineID, layer: selection.layerID)
+                } label: {
+                    Image(systemName: "minus.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("Remove transition")
+            }
+        }
     }
 
     private func setTrimStart(_ seconds: Double, selection: TimelineSelection) {

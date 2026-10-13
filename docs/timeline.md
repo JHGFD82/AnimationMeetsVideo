@@ -10,7 +10,8 @@ with a trackpad. What is not built is listed under
 The timeline sits under the library, viewer and inspector and spans the
 full width of the window: a label column on the left (layer number and
 name, and transform property rows when shown), and the track area on the
-right with the ruler across its top.
+right with the ruler across its top. The transitions panel, opened with the
+button in the timeline's header, takes its place at the right end.
 
 Importing a file only adds it to the library. It reaches a timeline when
 dragged there (a whole asset, or scenes of it), or from **Add to Timeline**
@@ -108,10 +109,34 @@ in the inspector) splits them: the clips keep only their picture
 (`streams = .video`), and copies with the same timing and trims, playing
 only the sound (`streams = .audio`), go onto a new layer just below. From
 then on the two are ordinary clips: the sound is colored as audio, moves
-freely off the frame grid, and carries the beats.
+freely off the frame grid, carries the beats, and takes no transitions.
+
+## Transitions
+
+Transitions are dragged from the panel onto a clip with pictures; the
+nearer end of the clip gets it. Each end holds at most one, a second long
+by default (shorter to fit beside the other end), and dropping another kind
+on the same end keeps its length. The inspector sets the length in frames
+and removes it; so does the clip's menu. A shaded wedge on the clip shows
+where it plays. Splitting a clip keeps the way in on the first half and the
+way out on the second. Detached sound is not affected.
+
+A transition plays inside the clip's own range, bringing it in over (or
+taking it out to) whatever is underneath: lower layers, or black. Where two
+clips on the same layer meet at a cut, the neighbor's frames beyond its
+trim play underneath on a track of their own, so a dissolve blends the two
+clips. Without spare frames the transition plays over the layers below.
+Only media neighbors are extended, not nested timelines.
+
+Kinds: cross dissolve, wipe left/right/up/down, slide left/right and zoom.
+All are drawn with the built-in compositor's opacity, transform and crop
+(`EdgeTransitions` in `ClipTransition.swift`, applied per frame with the
+layer's keyframes), so preview and export match. A wipe or slide acts in the
+frame of the timeline the clip is on, after the layer's transform.
 
 ## Not implemented yet
 
+- Audio crossfades under transitions, and transitions on detached sound.
 - **Snapping** to other clips' edges, the playhead or beat markers.
 - Scrolling to follow the playhead during playback.
 - Moving a clip to another layer by dragging it up or down.

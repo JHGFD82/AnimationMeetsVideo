@@ -108,7 +108,9 @@ Requirements for the file:
   example a layer's `transform` (see [layer-transforms.md](layer-transforms.md))
   is written only once the layer is moved, scaled, turned, faded or animated.
   Likewise a clip's `streams` (`"video"` or `"audio"`) is written only once
-  a video's sound has been detached.
+  a video's sound has been detached, and `transitionIn` / `transitionOut`
+  (`{"kind": "crossDissolve", "duration": "1s"}`) only when the clip has
+  one. An unknown transition kind is dropped on load.
 - Written atomically so a crash cannot leave a half-written file.
 
 ## Retention

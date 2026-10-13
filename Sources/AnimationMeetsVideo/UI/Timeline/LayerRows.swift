@@ -132,6 +132,8 @@ struct LayerClipRow: View {
     let onMoveClip: (UUID, CMTime) -> Void
     let onTrimClipStart: (UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, CMTime) -> Void
+    let onSetTransition: (UUID, TransitionKind, TransitionEdge) -> Void
+    let onRemoveTransition: (UUID, TransitionEdge) -> Void
     let onDetachAudio: (UUID) -> Void
 
     var body: some View {
@@ -144,6 +146,7 @@ struct LayerClipRow: View {
                     info: info,
                     typeColor: clipTypeColor(for: info, streams: clip.streams),
                     hasLinkedAudio: project.hasLinkedAudio(clip),
+                    acceptsTransitions: project.playsVideo(clip),
                     isSelected: isSelected,
                     pixelsPerSecond: pixelsPerSecond,
                     height: height,
@@ -155,6 +158,8 @@ struct LayerClipRow: View {
                     onMove: { newStart in onMoveClip(clip.id, newStart) },
                     onTrimStart: { newTrimStart in onTrimClipStart(clip.id, newTrimStart) },
                     onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) },
+                    onSetTransition: { kind, edge in onSetTransition(clip.id, kind, edge) },
+                    onRemoveTransition: { edge in onRemoveTransition(clip.id, edge) },
                     onDetachAudio: { onDetachAudio(clip.id) }
                 )
             }
@@ -200,6 +205,8 @@ struct ClipBlockView: View {
     let typeColor: Color
     /// Shows a sound badge, and offers to detach the sound.
     let hasLinkedAudio: Bool
+    /// Clips with pictures take transitions dropped from the panel.
+    let acceptsTransitions: Bool
     let isSelected: Bool
     let pixelsPerSecond: CGFloat
     let height: CGFloat
@@ -211,6 +218,8 @@ struct ClipBlockView: View {
     let onMove: (CMTime) -> Void
     let onTrimStart: (CMTime) -> Void
     let onTrimEnd: (CMTime) -> Void
+    let onSetTransition: (TransitionKind, TransitionEdge) -> Void
+    let onRemoveTransition: (TransitionEdge) -> Void
     let onDetachAudio: () -> Void
 
     /// The clip as it will be if the current drag ends now. After a drop
@@ -224,6 +233,7 @@ struct ClipBlockView: View {
     @State private var pendingDrop: Int?
     @State private var dropCount = 0
     @State private var isTrimming = false
+    @State private var isTransitionTarget = false
 
     private let handleWidth: CGFloat = 8
 
@@ -280,7 +290,23 @@ struct ClipBlockView: View {
             .frame(width: drawnWidth, height: height, alignment: .leading)
             .clipped()
             .background(typeColor.opacity(isSelected ? 0.6 : 0.35))
-            .overlay(Rectangle().strokeBorder(isSelected ? Color.white.opacity(0.9) : typeColor.opacity(0.8), lineWidth: isSelected ? 1.5 : 0.75))
+            .overlay(alignment: .topLeading) {
+                transitionMarks(of: shown, liveX: liveX, drawnX: drawnX, drawnWidth: drawnWidth)
+            }
+            .overlay(Rectangle().strokeBorder(
+                isTransitionTarget ? Color.accentColor : isSelected ? Color.white.opacity(0.9) : typeColor.opacity(0.8),
+                lineWidth: isTransitionTarget ? 2 : isSelected ? 1.5 : 0.75
+            ))
+            .dropDestination(for: TransitionDragPayload.self) { payloads, location in
+                guard acceptsTransitions, let payload = payloads.first else { return false }
+                // The nearer end of the clip gets the transition.
+                let x = drawnX + location.x
+                onSetTransition(payload.kind, x - liveX < liveWidth / 2 ? .leading : .trailing)
+                onSelect()
+                return true
+            } isTargeted: { targeted in
+                isTransitionTarget = targeted && acceptsTransitions
+            }
             .contextMenu { clipMenu }
             .offset(x: drawnX)
             // Measured in window coordinates: the block moves (and resizes)
@@ -323,9 +349,40 @@ struct ClipBlockView: View {
 
     @ViewBuilder
     private var clipMenu: some View {
+        if let transition = clip.transitionIn {
+            Button("Remove \(transition.kind.name) at Start") { onRemoveTransition(.leading) }
+        }
+        if let transition = clip.transitionOut {
+            Button("Remove \(transition.kind.name) at End") { onRemoveTransition(.trailing) }
+        }
         if hasLinkedAudio {
+            if clip.transitionIn != nil || clip.transitionOut != nil { Divider() }
             Button("Detach Audio", action: onDetachAudio)
         }
+    }
+
+    /// Shaded wedges over the part of the clip each transition plays in,
+    /// in the block's drawn coordinates.
+    private func transitionMarks(of shown: TimelineClip, liveX: CGFloat, drawnX: CGFloat, drawnWidth: CGFloat) -> some View {
+        let durations = shown.effectiveTransitionDurations
+        let leadingWidth = durations.leading.seconds * pixelsPerSecond
+        let trailingWidth = durations.trailing.seconds * pixelsPerSecond
+        let liveEnd = liveX + shown.trimmedDuration.seconds * pixelsPerSecond
+        return ZStack(alignment: .topLeading) {
+            if let transition = shown.transitionIn, leadingWidth > 0 {
+                TransitionMark(kind: transition.kind, edge: .leading)
+                    .frame(width: leadingWidth, height: height)
+                    .offset(x: liveX - drawnX)
+            }
+            if let transition = shown.transitionOut, trailingWidth > 0 {
+                TransitionMark(kind: transition.kind, edge: .trailing)
+                    .frame(width: trailingWidth, height: height)
+                    .offset(x: liveEnd - trailingWidth - drawnX)
+            }
+        }
+        .frame(width: drawnWidth, height: height, alignment: .topLeading)
+        .clipped()
+        .allowsHitTesting(false)
     }
 
     /// Sets the preview for a drag in progress.
@@ -392,6 +449,45 @@ struct ClipBlockView: View {
                     }
             )
             .pointerStyle(.columnResize)
+    }
+}
+
+/// Marks where a transition plays on a clip: a wedge that rises over a way
+/// in and falls over a way out, with the transition's symbol.
+private struct TransitionMark: View {
+    let kind: TransitionKind
+    let edge: TransitionEdge
+
+    var body: some View {
+        ZStack {
+            TransitionWedge(edge: edge)
+                .fill(Color.white.opacity(0.22))
+            Image(systemName: kind.systemImage)
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.85))
+        }
+        .help(kind.name)
+    }
+}
+
+/// Rises across the frame for a way in, falls for a way out.
+private struct TransitionWedge: Shape {
+    let edge: TransitionEdge
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        switch edge {
+        case .leading:
+            path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        case .trailing:
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        }
+        path.closeSubpath()
+        return path
     }
 }
 

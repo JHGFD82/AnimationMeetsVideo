@@ -112,6 +112,22 @@ struct TransformStage {
     /// Fits that timeline's frame into the frame of the next stage out
     /// (identity at the root).
     var toOuter: CGAffineTransform
+    /// The transitions of the clip placed on the layer, in that timeline's
+    /// time, applied after the layer's own transform.
+    var edges: EdgeTransitions? = nil
+
+    /// `inner` carried out through this stage: the layer's transform, the
+    /// clip's transitions, then into the next stage's frame.
+    func outward(_ inner: CGAffineTransform, at time: CMTime) -> CGAffineTransform {
+        placed(inner, at: CMTimeSubtract(time, shift)).concatenating(toOuter)
+    }
+
+    /// `inner` in this stage's own frame at its own time `local`.
+    fileprivate func placed(_ inner: CGAffineTransform, at local: CMTime) -> CGAffineTransform {
+        let layered = inner.concatenating(transform.affineTransform(at: local, center: center))
+        guard let edges else { return layered }
+        return layered.concatenating(edges.effect(at: local).transform)
+    }
 }
 
 /// Where a placement is drawn and how opaque it is at each root time: its
@@ -122,24 +138,55 @@ struct PlacementAnimation {
     var stages: [TransformStage]
 
     func transform(at time: CMTime) -> CGAffineTransform {
-        stages.reduce(base) { result, stage in
-            result
-                .concatenating(stage.transform.affineTransform(at: CMTimeSubtract(time, stage.shift), center: stage.center))
-                .concatenating(stage.toOuter)
-        }
+        stages.reduce(base) { result, stage in stage.outward(result, at: time) }
     }
 
     func opacity(at time: CMTime) -> Float {
-        Float(stages.reduce(1.0) { $0 * $1.transform.opacityFraction(at: CMTimeSubtract(time, $1.shift)) })
+        Float(stages.reduce(1.0) { result, stage in
+            let local = CMTimeSubtract(time, stage.shift)
+            let fade = stage.edges?.effect(at: local).opacity ?? 1
+            return result * stage.transform.opacityFraction(at: local) * fade
+        })
+    }
+
+    /// Whether a wipe ever crops the media, so a crop must be set.
+    var hasCrop: Bool {
+        stages.contains { $0.edges?.hasWipe == true }
+    }
+
+    /// The part of the media's own frame (before orientation) to draw at
+    /// `time`: each wipe's visible part of its timeline's frame, mapped back
+    /// through everything that places the media there. Nil without wipes.
+    func cropRectangle(at time: CMTime) -> CGRect? {
+        var crop: CGRect?
+        var inner = base
+        for stage in stages {
+            let local = CMTimeSubtract(time, stage.shift)
+            let placed = stage.placed(inner, at: local)
+            if let visible = stage.edges?.effect(at: local).visibleRect {
+                // A transform scaled to nothing shows nothing anyway.
+                if abs(placed.a * placed.d - placed.b * placed.c) > 1e-9 {
+                    let rect = visible.applying(placed.inverted())
+                    crop = crop.map { $0.intersection(rect) } ?? rect
+                }
+            }
+            inner = placed.concatenating(stage.toOuter)
+        }
+        if let cropped = crop, cropped.isNull { return .zero }
+        return crop
     }
 
     /// Root-time ranges where some stage is between keyframes, in order and
     /// not overlapping. Outside them the transform and opacity are constant.
     var animatedRanges: [CMTimeRange] {
         let ranges = stages.flatMap { stage in
-            stage.transform.animatedRanges.map { range in
+            let keyframed = stage.transform.animatedRanges.map { range in
                 CMTimeRange(start: CMTimeAdd(range.lowerBound, stage.shift), end: CMTimeAdd(range.upperBound, stage.shift))
             }
+            let transitions = (stage.edges?.animatedRanges ?? []).map { range in
+                CMTimeRange(start: CMTimeAdd(range.start, stage.shift), duration: range.duration)
+            }
+            return keyframed + transitions
         }
         var merged: [CMTimeRange] = []
         for range in ranges.sorted(by: { $0.start < $1.start }) {
@@ -282,31 +329,62 @@ enum CompositionExporter {
         let center = CGPoint(x: timeline.frameSize.width / 2, y: timeline.frameSize.height / 2)
         var result: [FlatLayer] = []
         for layer in timeline.layers {
-            let stages = [TransformStage(transform: layer.transform, center: center, shift: offset, toOuter: toOuter)] + outer
+            let layerStage = TransformStage(transform: layer.transform, center: center, shift: offset, toOuter: toOuter)
+            let clips = layer.clips.sorted(by: { $0.startOffset < $1.startOffset })
             var own = FlatLayer()
+            // Frames shown under a transition at a cut, on a track of their
+            // own below the layer's so the two can overlap.
+            var underlay = FlatLayer()
             var nestedLayers: [FlatLayer] = []
 
-            for clip in layer.clips.sorted(by: { $0.startOffset < $1.startOffset }) {
+            for (index, clip) in clips.enumerated() {
+                var stage = layerStage
+                if project.playsVideo(clip) {
+                    stage.edges = EdgeTransitions(clip: clip, frameSize: timeline.frameSize)
+                }
+                let stages = [stage] + outer
                 let placed = CMTimeRange(start: clip.startOffset, duration: clip.trimmedDuration)
                 let visible = placed.intersection(window)
                 guard visible.isValid, visible.duration > .zero else { continue }
-                let intoClip = CMTimeSubtract(visible.start, clip.startOffset)
 
                 switch clip.source {
-                case .media(let mediaID):
-                    guard let media = project.mediaClip(id: mediaID), let url = media.url else { continue }
-                    let info = try await MediaTrackCache.shared.info(for: url)
-                    let wanted = CMTimeRange(start: media.fileTime(forSourceTime: CMTimeAdd(clip.trimStart, intoClip)), duration: visible.duration)
-                    let base = info.orientedTransform
-                        .concatenating(fitTransform(from: info.orientedSize, to: timeline.frameSize))
-                    own.placements.append(Placement(
-                        info: info,
-                        sourceRange: wanted,
-                        start: CMTimeAdd(visible.start, offset),
-                        animation: PlacementAnimation(base: base, stages: stages),
-                        includesVideo: clip.streams != .audio,
-                        includesAudio: clip.streams != .video
-                    ))
+                case .media:
+                    if let placement = try await mediaPlacement(
+                        of: clip, from: clip.trimStart, at: clip.startOffset, for: clip.trimmedDuration,
+                        project: project, frameSize: timeline.frameSize, window: window, offset: offset, stages: stages,
+                        includesVideo: clip.streams != .audio, includesAudio: clip.streams != .video
+                    ) {
+                        own.placements.append(placement)
+                    }
+                    // Where this clip meets its neighbor at a cut, the
+                    // neighbor's frames beyond its trim play underneath the
+                    // transition, so a dissolve blends the two clips rather
+                    // than passing through what is below the layer. Without
+                    // spare frames there is nothing to show, and the
+                    // transition plays over the layers below.
+                    let durations = stage.edges == nil ? (leading: CMTime.zero, trailing: CMTime.zero) : clip.effectiveTransitionDurations
+                    let neighborStages = [layerStage] + outer
+                    if durations.leading > .zero, index > 0, clips[index - 1].endOffset == clip.startOffset,
+                       project.playsVideo(clips[index - 1]),
+                       let placement = try await mediaPlacement(
+                           of: clips[index - 1], from: clips[index - 1].trimEnd, at: clip.startOffset, for: durations.leading,
+                           project: project, frameSize: timeline.frameSize, window: window, offset: offset,
+                           stages: neighborStages, includesVideo: true, includesAudio: false
+                       ) {
+                        underlay.placements.append(placement)
+                    }
+                    if durations.trailing > .zero, index + 1 < clips.count, clips[index + 1].startOffset == clip.endOffset,
+                       project.playsVideo(clips[index + 1]) {
+                        let next = clips[index + 1]
+                        if let placement = try await mediaPlacement(
+                            of: next, from: CMTimeSubtract(next.trimStart, durations.trailing),
+                            at: CMTimeSubtract(clip.endOffset, durations.trailing), for: durations.trailing,
+                            project: project, frameSize: timeline.frameSize, window: window, offset: offset,
+                            stages: neighborStages, includesVideo: true, includesAudio: false
+                        ) {
+                            underlay.placements.append(placement)
+                        }
+                    }
                 case .timeline(let nestedID):
                     guard let nested = project.timeline(id: nestedID) else { continue }
                     // Nested time = this timeline's time - clip.startOffset + clip.trimStart.
@@ -325,9 +403,50 @@ enum CompositionExporter {
             }
 
             if !own.placements.isEmpty { result.append(own) }
+            if !underlay.placements.isEmpty { result.append(underlay) }
             result += nestedLayers
         }
         return result
+    }
+
+    /// A media clip's frames from `sourceStart` (in its asset's original
+    /// time) placed at `placedStart` in the timeline for `duration`, cut to
+    /// the window. Nil when it falls outside the window, the clip isn't
+    /// media, or its file is missing. Frames past either end of the file
+    /// are dropped when the tracks are built.
+    private static func mediaPlacement(
+        of clip: TimelineClip,
+        from sourceStart: CMTime,
+        at placedStart: CMTime,
+        for duration: CMTime,
+        project: EditingProject,
+        frameSize: CGSize,
+        window: CMTimeRange,
+        offset: CMTime,
+        stages: [TransformStage],
+        includesVideo: Bool,
+        includesAudio: Bool
+    ) async throws -> Placement? {
+        guard case .media(let mediaID) = clip.source,
+              let media = project.mediaClip(id: mediaID), let url = media.url
+        else {
+            return nil
+        }
+        let visible = CMTimeRange(start: placedStart, duration: duration).intersection(window)
+        guard visible.isValid, visible.duration > .zero else { return nil }
+        let intoClip = CMTimeSubtract(visible.start, placedStart)
+        let info = try await MediaTrackCache.shared.info(for: url)
+        let wanted = CMTimeRange(start: media.fileTime(forSourceTime: CMTimeAdd(sourceStart, intoClip)), duration: visible.duration)
+        let base = info.orientedTransform
+            .concatenating(fitTransform(from: info.orientedSize, to: frameSize))
+        return Placement(
+            info: info,
+            sourceRange: wanted,
+            start: CMTimeAdd(visible.start, offset),
+            animation: PlacementAnimation(base: base, stages: stages),
+            includesVideo: includesVideo,
+            includesAudio: includesAudio
+        )
     }
 
     /// Scales `source` to fit inside `target` (aspect-preserving) and centers it.
@@ -365,6 +484,7 @@ enum CompositionExporter {
         breakpoints.append(overallDuration)
 
         let frame = frameDuration(for: frameRate)
+
         var instructions: [AVMutableVideoCompositionInstruction] = []
         for index in 0..<(breakpoints.count - 1) {
             let start = breakpoints[index]
@@ -408,8 +528,11 @@ enum CompositionExporter {
     ) {
         var lastTransform = animation.transform(at: range.start)
         var lastOpacity = animation.opacity(at: range.start)
+        let crops = animation.hasCrop
+        var lastCrop = crops ? animation.cropRectangle(at: range.start) : nil
         instruction.setTransform(lastTransform, at: range.start)
         instruction.setOpacity(lastOpacity, at: range.start)
+        if let lastCrop { instruction.setCropRectangle(lastCrop, at: range.start) }
         guard frame.seconds > 0 else { return }
 
         var lastSet = range.start
@@ -433,6 +556,10 @@ enum CompositionExporter {
                 if opacity != lastOpacity {
                     instruction.setOpacity(opacity, at: time)
                     lastOpacity = opacity
+                }
+                if crops, let crop = animation.cropRectangle(at: time), crop != lastCrop {
+                    instruction.setCropRectangle(crop, at: time)
+                    lastCrop = crop
                 }
             }
         }

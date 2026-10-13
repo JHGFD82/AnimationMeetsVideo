@@ -18,6 +18,7 @@ struct TimelineEditorSurface<Library: View>: View {
     @State private var buildTask: Task<Void, Never>?
     @State private var buildError: String?
     @State private var timelineHeight: CGFloat = 280
+    @AppStorage("showsTransitionsPanel") private var showsTransitions = false
 
     private let minTimelineHeight: CGFloat = 140
     private let minTopAreaHeight: CGFloat = 220
@@ -76,8 +77,17 @@ struct TimelineEditorSurface<Library: View>: View {
 
                 TimelineResizeHandle(height: $timelineHeight, minHeight: minTimelineHeight, maxHeight: maxTimelineHeight)
 
-                timelineView
-                    .frame(height: resolvedTimelineHeight)
+                HStack(spacing: 0) {
+                    timelineView
+                    if showsTransitions {
+                        Divider()
+                        TransitionsPanel(onClose: { showsTransitions = false })
+                            .frame(width: 220)
+                            .transition(.move(edge: .trailing))
+                    }
+                }
+                .frame(height: resolvedTimelineHeight)
+                .animation(.easeInOut(duration: 0.2), value: showsTransitions)
             }
         }
         .onChange(of: timelineID) { _, newValue in
@@ -133,9 +143,16 @@ struct TimelineEditorSurface<Library: View>: View {
                 onEditTransform: { layerID, change in
                     project.editTransform(of: layerID, in: timelineID, change)
                 },
+                onSetTransition: { layerID, clipID, kind, edge in
+                    project.setTransition(kind, at: edge, of: clipID, in: timelineID, layer: layerID)
+                },
+                onRemoveTransition: { layerID, clipID, edge in
+                    project.removeTransition(at: edge, of: clipID, in: timelineID, layer: layerID)
+                },
                 onDetachAudio: { layerID, clipIDs in
                     project.detachAudio(of: clipIDs, in: timelineID, layer: layerID)
-                }
+                },
+                showsTransitions: $showsTransitions
             )
         } else {
             ContentUnavailableView("No Timeline Selected", systemImage: "timeline.selection")
