@@ -4,20 +4,6 @@ import CoreMedia
 import Observation
 import SwiftUI
 
-// MARK: - Environment
-
-private struct ProjectPackageURLKey: EnvironmentKey {
-    static let defaultValue: URL? = nil
-}
-
-extension EnvironmentValues {
-    /// Where the open project is saved, or nil before its first save.
-    var projectPackageURL: URL? {
-        get { self[ProjectPackageURLKey.self] }
-        set { self[ProjectPackageURLKey.self] = newValue }
-    }
-}
-
 // MARK: - Session
 
 /// One replacement in progress: a file being compared with an asset's
@@ -276,11 +262,12 @@ final class MediaReplacementController {
 
 /// Context-menu items for replacing an asset's file.
 struct ReplaceMediaMenuItems: View {
-    @Environment(MediaReplacementController.self) private var controller
-    @Environment(\.projectPackageURL) private var packageURL
     let clip: MediaClip
     @Binding var project: EditingProject
     let analysis: AssetAnalysis
+    let controller: MediaReplacementController
+    /// Where the project is saved, or nil before its first save.
+    let packageURL: URL?
 
     private var allClips: [MediaClip] { project.clips }
     private var references: [UUID: AssetReference] { analysis.references }

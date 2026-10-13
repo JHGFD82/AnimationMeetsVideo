@@ -14,6 +14,9 @@ struct EditorView: View {
     @Binding var project: EditingProject
     let history: ProjectHistory
     let analysis: AssetAnalysis
+    let replacement: MediaReplacementController
+    /// Where the project is saved, or nil before its first save.
+    let packageURL: URL?
     @Environment(\.undoManager) private var undoManager
     @State private var activeTimelineID: UUID
     @State private var selection: TimelineSelection?
@@ -21,16 +24,27 @@ struct EditorView: View {
     @State private var annotations = AnnotationModel()
     @State private var externalDisplay = ExternalDisplayController()
 
-    init(project: Binding<EditingProject>, history: ProjectHistory, analysis: AssetAnalysis) {
+    init(
+        project: Binding<EditingProject>,
+        history: ProjectHistory,
+        analysis: AssetAnalysis,
+        replacement: MediaReplacementController,
+        packageURL: URL?
+    ) {
         self._project = project
         self.history = history
         self.analysis = analysis
+        self.replacement = replacement
+        self.packageURL = packageURL
         self._activeTimelineID = State(initialValue: project.wrappedValue.rootTimelineID)
     }
 
     var body: some View {
         NavigationSplitView {
-            LibrarySidebar(project: $project, activeTimelineID: $activeTimelineID, selection: $selection, analysis: analysis)
+            LibrarySidebar(
+                project: $project, activeTimelineID: $activeTimelineID, selection: $selection,
+                analysis: analysis, replacement: replacement, packageURL: packageURL
+            )
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260)
         } detail: {
             VStack(spacing: 0) {
@@ -459,6 +473,8 @@ private struct LibrarySidebar: View {
     @Binding var activeTimelineID: UUID
     @Binding var selection: TimelineSelection?
     let analysis: AssetAnalysis
+    let replacement: MediaReplacementController
+    let packageURL: URL?
     @State private var importError: String?
     @State private var selectedScenes: Set<SceneKey> = []
     @State private var expandedAssets: Set<UUID> = []
@@ -473,7 +489,12 @@ private struct LibrarySidebar: View {
                         videoRow(clip)
                     } else {
                         assetLabel(clip)
-                            .contextMenu { ReplaceMediaMenuItems(clip: clip, project: $project, analysis: analysis) }
+                            .contextMenu {
+                                ReplaceMediaMenuItems(
+                                    clip: clip, project: $project, analysis: analysis,
+                                    controller: replacement, packageURL: packageURL
+                                )
+                            }
                     }
                 }
             }
@@ -598,7 +619,10 @@ private struct LibrarySidebar: View {
                     }
                     .disabled(analysis.progress[clip.id] != nil)
                     Divider()
-                    ReplaceMediaMenuItems(clip: clip, project: $project, analysis: analysis)
+                    ReplaceMediaMenuItems(
+                        clip: clip, project: $project, analysis: analysis,
+                        controller: replacement, packageURL: packageURL
+                    )
                 }
         }
     }
