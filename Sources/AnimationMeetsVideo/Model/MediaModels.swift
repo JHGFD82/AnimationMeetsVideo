@@ -195,6 +195,18 @@ struct EditingProject: Identifiable, Equatable {
         timelines[tIndex].layers[lIndex].customName = name
     }
 
+    /// Moves a layer to `index` in the stack (0 is the top), as when its
+    /// header is dragged.
+    mutating func moveLayer(_ layerID: UUID, in timelineID: UUID, toIndex index: Int) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let from = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        else {
+            return
+        }
+        let layer = timelines[tIndex].layers.remove(at: from)
+        timelines[tIndex].layers.insert(layer, at: min(max(index, 0), timelines[tIndex].layers.count))
+    }
+
     mutating func moveLayer(_ layerID: UUID, in timelineID: UUID, by offset: Int) {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let index = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })

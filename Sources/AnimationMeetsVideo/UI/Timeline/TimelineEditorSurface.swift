@@ -141,6 +141,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 },
                 onRenameLayer: { layerID, name in project.renameLayer(layerID, in: timelineID, to: name) },
                 onMoveLayer: { layerID, offset in project.moveLayer(layerID, in: timelineID, by: offset) },
+                onMoveLayerTo: { layerID, index in project.moveLayer(layerID, in: timelineID, toIndex: index) },
                 onMoveClip: { layerID, clipID, newStart in
                     project.moveClip(clipID, in: timelineID, layer: layerID, to: newStart)
                 },

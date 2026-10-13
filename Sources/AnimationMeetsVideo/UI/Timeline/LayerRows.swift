@@ -27,6 +27,10 @@ struct LayerHeaderRow: View {
     let onDetachAudio: () -> Void
     let onRename: (String?) -> Void
     let onMove: (Int) -> Void
+    /// Dragging the header up or down reorders the layers; these get the
+    /// vertical distance dragged.
+    let onDragChanged: (CGFloat) -> Void
+    let onDragEnded: (CGFloat) -> Void
 
     @State private var isEditingName = false
     @State private var draftName: String = ""
@@ -98,6 +102,13 @@ struct LayerHeaderRow: View {
         }
         .padding(.horizontal, 8)
         .frame(height: height, alignment: .leading)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 4, coordinateSpace: .global)
+                .onChanged { value in onDragChanged(value.translation.height) }
+                .onEnded { value in onDragEnded(value.translation.height) }
+        )
+        .help("Drag to reorder layers")
         .contextMenu {
             Button("Move Layer Up") { onMove(-1) }
                 .disabled(!canMoveUp)

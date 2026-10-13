@@ -22,6 +22,13 @@ Importing a file only adds it to the library. It reaches a timeline when
 dragged there (a whole asset, or scenes of it), or from **Add to Timeline**
 in its menu; each placement gets a new layer at the top.
 
+## Layers
+
+Dragging a layer's header (its number and name) up or down reorders the
+stack; a line shows where it will land, and it goes there on release
+(`moveLayer(_:in:toIndex:)`). **Move Layer Up/Down** in the header's menu
+step it one place.
+
 ## Zoom and scroll
 
 The track area scrolls itself sideways instead of sitting in a horizontal

@@ -14,6 +14,8 @@ struct TimelineView: View {
     let onSelectClip: (UUID, TimelineClip) -> Void
     let onRenameLayer: (UUID, String?) -> Void
     let onMoveLayer: (UUID, Int) -> Void
+    /// Moves a layer to an index in the stack, after dragging its header.
+    let onMoveLayerTo: (UUID, Int) -> Void
     let onMoveClip: (UUID, UUID, CMTime) -> Void
     /// The height the timeline needs to show every layer without empty
     /// space under them, so the window can give the rest to the viewer.
@@ -49,6 +51,8 @@ struct TimelineView: View {
     /// depend on changes. The view's body runs on every playback tick and
     /// scroll, and a long song has thousands of beats to collect and sort.
     @State private var beatMarkers: [CMTime] = []
+    /// The layer whose header is being dragged, and how far.
+    @State private var layerDrag: (id: UUID, dy: CGFloat)?
     @State private var headerBarHeight: CGFloat = 32
     @AppStorage("clickOnBeats") private var clickOnBeats = false
     @AppStorage("beatClickFrequency") private var beatClickFrequency = 1000.0
@@ -66,6 +70,16 @@ struct TimelineView: View {
             + (showsLinkedAudio(of: layer) ? audioLaneHeight : 0)
             + CGFloat(shownProperties(of: layer).count) * propertyRowHeight
             + separatorHeight
+    }
+
+    private var layerTops: [CGFloat] {
+        var tops: [CGFloat] = []
+        var y: CGFloat = 0
+        for layer in timeline.layers {
+            tops.append(y)
+            y += blockHeight(of: layer)
+        }
+        return tops
     }
 
     private var contentHeight: CGFloat {
@@ -215,6 +229,7 @@ struct TimelineView: View {
                                 .contentShape(Rectangle())
                                 .gesture(scrubGesture(in: viewport))
                         }
+                        .overlay(alignment: .topLeading) { layerDropIndicator }
                     }
                     .frame(height: layersHeight)
 
@@ -278,55 +293,103 @@ struct TimelineView: View {
         }
     }
 
+    // MARK: - Layer and clip dragging
+
+    /// Where a layer dragged by `dy` would go: the number of other layers
+    /// whose middle is above its middle.
+    private func dropIndex(forLayer id: UUID, dy: CGFloat) -> Int? {
+        let tops = layerTops
+        guard let from = timeline.layers.firstIndex(where: { $0.id == id }) else { return nil }
+        let middle = tops[from] + blockHeight(of: timeline.layers[from]) / 2 + dy
+        return timeline.layers.indices.filter { index in
+            index != from && tops[index] + blockHeight(of: timeline.layers[index]) / 2 < middle
+        }.count
+    }
+
+    /// A line where a dragged layer will land.
+    @ViewBuilder
+    private var layerDropIndicator: some View {
+        if let drag = layerDrag, let index = dropIndex(forLayer: drag.id, dy: drag.dy) {
+            let others = timeline.layers.indices.filter { timeline.layers[$0].id != drag.id }
+            let tops = layerTops
+            let y = index < others.count
+                ? tops[others[index]]
+                : tops.last.map { $0 + blockHeight(of: timeline.layers[timeline.layers.count - 1]) } ?? 0
+            Rectangle()
+                .fill(Color.accentColor)
+                .frame(height: 2)
+                .offset(y: y - 1)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func endLayerDrag(_ id: UUID, dy: CGFloat) {
+        if let index = dropIndex(forLayer: id, dy: dy),
+           index != timeline.layers.firstIndex(where: { $0.id == id }) {
+            onMoveLayerTo(id, index)
+        }
+        layerDrag = nil
+    }
+
     private func layerHeaders(frameTime: CMTime) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(timeline.layers.enumerated()), id: \.element.id) { index, layer in
-                LayerHeaderRow(
-                    number: index + 1,
-                    layer: layer,
-                    project: project,
-                    height: layerHeight,
-                    canMoveUp: index > 0,
-                    canMoveDown: index < timeline.layers.count - 1,
-                    isExpanded: layer.isVisual(in: project) ? !shownProperties(of: layer).isEmpty : nil,
-                    onToggleExpanded: { toggleExpanded(layer) },
-                    isAudioExpanded: project.layerHasLinkedAudio(layer) ? showsLinkedAudio(of: layer) : nil,
-                    onToggleAudio: { toggleLinkedAudio(layer) },
-                    onDetachAudio: { onDetachAudio(layer.id, nil) },
-                    onRename: { name in onRenameLayer(layer.id, name) },
-                    onMove: { offset in onMoveLayer(layer.id, offset) }
-                )
-                if showsLinkedAudio(of: layer) {
-                    Label("Linked Audio", systemImage: "waveform")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 30)
-                        .frame(height: audioLaneHeight, alignment: .leading)
-                        .contextMenu {
-                            Button("Detach Audio") { onDetachAudio(layer.id, nil) }
-                        }
-                }
-                ForEach(shownProperties(of: layer)) { property in
-                    TransformPropertyRow(
-                        property: property,
-                        transform: layer.transform,
-                        time: frameTime,
-                        frameSize: timeline.frameSize,
-                        onEdit: { change in onEditTransform(layer.id, change) },
-                        onSeek: onScrub
+                let isDragged = layerDrag?.id == layer.id
+                VStack(alignment: .leading, spacing: 0) {
+                    LayerHeaderRow(
+                        number: index + 1,
+                        layer: layer,
+                        project: project,
+                        height: layerHeight,
+                        canMoveUp: index > 0,
+                        canMoveDown: index < timeline.layers.count - 1,
+                        isExpanded: layer.isVisual(in: project) ? !shownProperties(of: layer).isEmpty : nil,
+                        onToggleExpanded: { toggleExpanded(layer) },
+                        isAudioExpanded: project.layerHasLinkedAudio(layer) ? showsLinkedAudio(of: layer) : nil,
+                        onToggleAudio: { toggleLinkedAudio(layer) },
+                        onDetachAudio: { onDetachAudio(layer.id, nil) },
+                        onRename: { name in onRenameLayer(layer.id, name) },
+                        onMove: { offset in onMoveLayer(layer.id, offset) },
+                        onDragChanged: { dy in layerDrag = (layer.id, dy) },
+                        onDragEnded: { dy in endLayerDrag(layer.id, dy: dy) }
                     )
-                    .padding(.leading, 30)
-                    .padding(.trailing, 8)
-                    .frame(height: propertyRowHeight)
+                    if showsLinkedAudio(of: layer) {
+                        Label("Linked Audio", systemImage: "waveform")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 30)
+                            .frame(height: audioLaneHeight, alignment: .leading)
+                            .contextMenu {
+                                Button("Detach Audio") { onDetachAudio(layer.id, nil) }
+                            }
+                    }
+                    ForEach(shownProperties(of: layer)) { property in
+                        TransformPropertyRow(
+                            property: property,
+                            transform: layer.transform,
+                            time: frameTime,
+                            frameSize: timeline.frameSize,
+                            onEdit: { change in onEditTransform(layer.id, change) },
+                            onSeek: onScrub
+                        )
+                        .padding(.leading, 30)
+                        .padding(.trailing, 8)
+                        .frame(height: propertyRowHeight)
+                    }
+                    separator
                 }
-                separator
+                .background(.background)
+                .background(isDragged ? Color.accentColor.opacity(0.15) : .clear)
+                .shadow(color: .black.opacity(isDragged ? 0.3 : 0), radius: 4)
+                .offset(y: isDragged ? layerDrag?.dy ?? 0 : 0)
+                .zIndex(isDragged ? 1 : 0)
             }
         }
         .background(.background)
     }
 
     /// A fixed-height line between layers, so the two columns line up and
-    /// the timeline's height can be worked out exactly.
+    /// layer positions can be worked out for dragging.
     private var separator: some View {
         Rectangle()
             .fill(Color(nsColor: .separatorColor))
