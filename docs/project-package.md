@@ -7,7 +7,8 @@ into `Backups/`. Step 3 is partly implemented: `Reference/<asset id>/
 signature.bin` holds each video's change scores, `reference.json` and
 `audio.bin` hold the metadata snapshot and audio envelope captured at import,
 and `project.json` holds scene edits (see [scene-cuts.md](scene-cuts.md)).
-`thumbs/` holds reference pictures. Not yet implemented: dense reference frames, the render cache, a restore-from-backup screen (copy a backup over
+`thumbs/` holds reference pictures. `beats.bin` holds detected beats (see
+[beat-detection.md](beat-detection.md)). Not yet implemented: dense reference frames, the render cache, a restore-from-backup screen (copy a backup over
 `project.json` by hand for now), and a Finder-visible package type (that
 needs an app bundle that declares the `.amv` type).
 Step 4 is implemented (see [media-replacement.md](media-replacement.md)):
@@ -37,6 +38,7 @@ MyProject.amv/
       reference.json      metadata snapshot of the original file
       audio.bin           audio envelope
       signature.bin       per-frame picture change scores
+      beats.bin           beat times of the audio (see beat-detection.md)
       thumbs/ ...         pictures of the original at cuts and intervals
   Cache/              render cache (disposable, size-capped)
   Backups/            autosaves

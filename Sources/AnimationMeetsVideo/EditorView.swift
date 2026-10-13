@@ -40,10 +40,11 @@ struct EditorView: View {
                     selection: $selection,
                     playback: playback,
                     annotations: annotations,
-                    externalDisplay: externalDisplay
+                    externalDisplay: externalDisplay,
+                    analysis: analysis
                 )
                 Divider()
-                TimelineEditorSurface(project: $project, timelineID: $activeTimelineID, selection: $selection, playback: playback)
+                TimelineEditorSurface(project: $project, timelineID: $activeTimelineID, selection: $selection, playback: playback, analysis: analysis)
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
@@ -89,6 +90,7 @@ struct TimelineEditorSurface: View {
     @Binding var timelineID: UUID
     @Binding var selection: TimelineSelection?
     let playback: PlaybackModel
+    let analysis: AssetAnalysis
 
     @State private var playheadTime: CMTime = .zero
     @State private var buildTask: Task<Void, Never>?
@@ -156,6 +158,7 @@ struct TimelineEditorSurface: View {
                         timeline: timeline,
                         timelineID: timelineID,
                         selection: selection,
+                        beatTracks: analysis.beats,
                         playheadTime: $playheadTime,
                         onScrub: { time in scrub(to: time) },
                         onSelectClip: { layerID, clip in
@@ -547,13 +550,22 @@ private struct LibrarySidebar: View {
         if let fraction = analysis.progress[clip.id] {
             HStack(spacing: 6) {
                 ProgressView(value: fraction).frame(width: 60)
-                Text("Finding scenes…").font(.caption).foregroundStyle(.secondary)
+                Text(clip.kind == .video ? "Analyzing…" : "Finding beats…").font(.caption).foregroundStyle(.secondary)
             }
         } else if let failure = analysis.failures[clip.id] {
             Text("Scene detection failed")
                 .font(.caption)
                 .foregroundStyle(.orange)
                 .help(failure)
+        } else if let failure = analysis.beatFailures[clip.id] {
+            Text("Beat detection failed")
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .help(failure)
+        } else if let beats = analysis.beats[clip.id], !beats.isEmpty {
+            Text("\(clip.kind.rawValue) · \(Int(beats.beatsPerMinute.rounded())) BPM")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         } else {
             Text(clip.kind.rawValue)
                 .font(.caption)
@@ -734,6 +746,7 @@ private struct EditorToolbar: View {
     let playback: PlaybackModel
     let annotations: AnnotationModel
     let externalDisplay: ExternalDisplayController
+    let analysis: AssetAnalysis
     @State private var selectedPreset: ProResPreset = .proRes422
     @State private var exportTask: Task<Void, Never>?
     @State private var exportProgress: Double = 0
@@ -763,7 +776,8 @@ private struct EditorToolbar: View {
                             primaryTimelineID: $activeTimelineID,
                             primarySelection: $selection,
                             sharedPlayback: playback,
-                            annotations: annotations
+                            annotations: annotations,
+                            analysis: analysis
                         )
                     }
                 }
@@ -1013,6 +1027,7 @@ private struct TimelineView: View {
     let timeline: Timeline
     let timelineID: UUID
     let selection: TimelineSelection?
+    let beatTracks: [UUID: BeatTrack]
     @Binding var playheadTime: CMTime
     let onScrub: (CMTime) -> Void
     let onSelectClip: (UUID, TimelineClip) -> Void
@@ -1025,6 +1040,9 @@ private struct TimelineView: View {
     @State private var zoomScale: CGFloat = 1
     @State private var layerHeight: CGFloat = 56
     @State private var showingViewOptions = false
+    /// The layer whose beats are shown. Only layers that still have beats are
+    /// offered, so a deleted layer simply stops matching and markers vanish.
+    @State private var chosenBeatLayerID: UUID?
     @GestureState private var magnifyBy: CGFloat = 1
     @State private var scrollMetrics = TimelineScrollMetrics()
 
@@ -1032,6 +1050,24 @@ private struct TimelineView: View {
     private let columnHeaderHeight: CGFloat = 20
     private let labelColumnWidth: CGFloat = 150
 
+    private var beatLayerChoices: [(id: UUID, name: String)] {
+        let withBeats = Set(project.beatLayers(in: timeline, tracks: beatTracks).map(\.id))
+        return timeline.layers.enumerated()
+            .filter { withBeats.contains($0.element.id) }
+            .map { (id: $0.element.id, name: project.displayName(of: $0.element, number: $0.offset + 1)) }
+    }
+
+    private var beatMarkers: [CMTime] {
+        guard let id = chosenBeatLayerID, let layer = timeline.layer(id: id) else { return [] }
+        return project.beatMarkers(in: layer, tracks: beatTracks)
+    }
+
+    private var beatLayerSelection: Binding<UUID?> {
+        Binding(
+            get: { beatLayerChoices.contains { $0.id == chosenBeatLayerID } ? chosenBeatLayerID : nil },
+            set: { chosenBeatLayerID = $0 }
+        )
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -1048,7 +1084,10 @@ private struct TimelineView: View {
                 }
                 .help("View options")
                 .popover(isPresented: $showingViewOptions) {
-                    ViewOptionsPopover(zoomScale: $zoomScale, layerHeight: $layerHeight)
+                    ViewOptionsPopover(
+                        zoomScale: $zoomScale, layerHeight: $layerHeight,
+                        beatLayers: beatLayerChoices, beatLayerID: beatLayerSelection
+                    )
                 }
             }
             .padding(.horizontal, 14)
@@ -1067,6 +1106,7 @@ private struct TimelineView: View {
                 let pixelsPerSecond = fitPixelsPerSecond * effectiveZoom
                 let contentWidth = max(availableWidth, CGFloat(timeline.duration.seconds) * pixelsPerSecond)
                 let contentHeight = rulerHeight + columnHeaderHeight + CGFloat(timeline.layers.count) * layerHeight
+                let markers = beatMarkers
 
                 ScrollView([.horizontal, .vertical]) {
                     HStack(alignment: .top, spacing: 0) {
@@ -1121,6 +1161,15 @@ private struct TimelineView: View {
                                         Divider()
                                     }
                                 }
+                            }
+                            if !markers.isEmpty {
+                                BeatMarkerOverlay(
+                                    markers: markers,
+                                    pixelsPerSecond: pixelsPerSecond,
+                                    rulerHeight: rulerHeight,
+                                    height: contentHeight,
+                                    visibleX: (scrollMetrics.offsetX - labelColumnWidth)...(scrollMetrics.offsetX + scrollMetrics.viewportWidth - labelColumnWidth)
+                                )
                             }
                             PlayheadLine(time: playheadTime, pixelsPerSecond: pixelsPerSecond, height: contentHeight)
                         }
@@ -1189,6 +1238,9 @@ private struct TimelineColumnHeaderRow: View {
 private struct ViewOptionsPopover: View {
     @Binding var zoomScale: CGFloat
     @Binding var layerHeight: CGFloat
+    /// Layers with beats, as (layer ID, name), in timeline order.
+    let beatLayers: [(id: UUID, name: String)]
+    @Binding var beatLayerID: UUID?
 
     var body: some View {
         Form {
@@ -1199,9 +1251,81 @@ private struct ViewOptionsPopover: View {
             Section("Layer Height") {
                 Slider(value: $layerHeight, in: 32...120)
             }
+            Section("Beat Markers") {
+                if beatLayers.isEmpty {
+                    Text("No audio on this timeline has detected beats.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Show beats of", selection: $beatLayerID) {
+                        Text("None").tag(UUID?.none)
+                        ForEach(beatLayers, id: \.id) { layer in
+                            Text(layer.name).tag(UUID?.some(layer.id))
+                        }
+                    }
+                }
+            }
         }
         .padding()
         .frame(width: 260)
+    }
+}
+
+/// Beat ticks in the ruler and faint lines down through the layers, for the
+/// beats of the one layer chosen in the view options.
+private struct BeatMarkerOverlay: View {
+    let markers: [CMTime]
+    let pixelsPerSecond: CGFloat
+    let rulerHeight: CGFloat
+    let height: CGFloat
+    let visibleX: ClosedRange<CGFloat>
+
+    private let margin: CGFloat = 100
+
+    var body: some View {
+        let lower = max(0, visibleX.lowerBound - margin)
+        let upper = max(lower + 1, visibleX.upperBound + margin)
+        let first = lowerBound(of: Double(lower / max(pixelsPerSecond, 0.01)))
+        let last = lowerBound(of: Double(upper / max(pixelsPerSecond, 0.01)))
+        Canvas { context, _ in
+            var context = context
+            context.translateBy(x: -lower, y: 0)
+            guard first < last else { return }
+            var ticks = Path()
+            var lines = Path()
+            for index in first..<last {
+                let x = CGFloat(markers[index].seconds) * pixelsPerSecond
+                ticks.move(to: CGPoint(x: x, y: rulerHeight - 9))
+                ticks.addLine(to: CGPoint(x: x, y: rulerHeight))
+                lines.move(to: CGPoint(x: x, y: rulerHeight))
+                lines.addLine(to: CGPoint(x: x, y: height))
+            }
+            context.stroke(lines, with: .color(.orange.opacity(0.22)), lineWidth: 1)
+            context.stroke(ticks, with: .color(.orange), lineWidth: 1.5)
+        }
+        .frame(width: upper - lower, height: height)
+        .offset(x: lower)
+        .allowsHitTesting(false)
+    }
+
+    /// Index of the first marker at or after `seconds`.
+    private func lowerBound(of seconds: Double) -> Int {
+        var low = 0, high = markers.count
+        while low < high {
+            let mid = (low + high) / 2
+            if markers[mid].seconds < seconds { low = mid + 1 } else { high = mid }
+        }
+        return low
+    }
+}
+
+extension EditingProject {
+    /// A layer's name as shown in the timeline: its own name, else its first
+    /// clip's, else "Layer N".
+    func displayName(of layer: TimelineLayer, number: Int) -> String {
+        if let customName = layer.customName, !customName.isEmpty { return customName }
+        if let firstClip = layer.clips.first, let info = resolvedInfo(for: firstClip.source) { return info.name }
+        return "Layer \(number)"
     }
 }
 
@@ -1339,9 +1463,7 @@ private struct LayerHeaderRow: View {
     @FocusState private var isNameFieldFocused: Bool
 
     private var displayName: String {
-        if let customName = layer.customName, !customName.isEmpty { return customName }
-        if let firstClip = layer.clips.first, let info = project.resolvedInfo(for: firstClip.source) { return info.name }
-        return "Layer \(number)"
+        project.displayName(of: layer, number: number)
     }
 
     var body: some View {

@@ -155,7 +155,8 @@ final class ExternalDisplayController {
         primaryTimelineID: Binding<UUID>,
         primarySelection: Binding<TimelineSelection?>,
         sharedPlayback: PlaybackModel,
-        annotations: AnnotationModel
+        annotations: AnnotationModel,
+        analysis: AssetAnalysis
     ) {
         stop()
 
@@ -179,6 +180,7 @@ final class ExternalDisplayController {
             primarySelection: primarySelection,
             sharedPlayback: sharedPlayback,
             annotations: annotations,
+            analysis: analysis,
             onClose: { [weak self] in self?.stop() }
         )
         window.contentView = NSHostingView(rootView: content)
@@ -207,6 +209,7 @@ private struct ExternalViewerContent: View {
     @Binding var primarySelection: TimelineSelection?
     let sharedPlayback: PlaybackModel
     let annotations: AnnotationModel
+    let analysis: AssetAnalysis
     let onClose: () -> Void
 
     @State private var isSynced = true
@@ -247,7 +250,8 @@ private struct ExternalViewerContent: View {
                         set: { independentTimelineID = $0 }
                     ),
                     selection: $independentSelection,
-                    playback: independentPlayback
+                    playback: independentPlayback,
+                    analysis: analysis
                 )
             }
         }
