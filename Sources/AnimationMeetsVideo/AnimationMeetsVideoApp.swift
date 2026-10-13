@@ -179,7 +179,8 @@ struct AnimationMeetsVideoApp: App {
                 let saved = try await ProjectStore.save(
                     snapshot, to: url, copying: copying,
                     changeScores: scoresToSave, references: referencesToSave,
-                    thumbnails: thumbnailsToSave, beats: beatsToSave
+                    thumbnails: thumbnailsToSave, beats: beatsToSave,
+                    previousPackageURL: projectURL
                 )
                 analysis.markSaved(scoresToSave.keys)
                 analysis.markReferencesSaved(referencesToSave.keys)

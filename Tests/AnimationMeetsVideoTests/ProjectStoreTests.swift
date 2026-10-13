@@ -711,6 +711,49 @@ private struct Sandbox {
         #expect(loaded.references[assetID] == nil)
     }
 
+    @Test func saveAsCarriesTheSavedReferenceDataToTheNewPackage() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        let track = ChangeScoreTrack(timescale: 600, times: [0, 25], scores: [0, 200])
+        let pictures = ReferenceThumbnails(frames: [ReferenceFrame(time: .zero, jpeg: Data([1]))])
+        try await ProjectStore.save(
+            project, to: sandbox.packageURL,
+            changeScores: [assetID: track], references: [assetID: reference()], thumbnails: [assetID: pictures]
+        )
+
+        let copy = sandbox.root.appending(path: "Copy.amv", directoryHint: .isDirectory)
+        try await ProjectStore.save(project, to: copy, previousPackageURL: sandbox.packageURL)
+
+        #expect(ProjectStore.readReference(for: assetID, in: copy) == reference())
+        #expect(ProjectStore.readChangeScores(for: assetID, in: copy) == track)
+        #expect(ProjectStore.readThumbnails(for: assetID, in: copy) == pictures)
+    }
+
+    @Test func saveAsLeavesAForgottenOriginalBehind() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, assetID) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL, references: [assetID: reference()])
+
+        project.markReferenceForgotten(forAsset: assetID)
+        let copy = sandbox.root.appending(path: "Copy.amv", directoryHint: .isDirectory)
+        try await ProjectStore.save(project, to: copy, previousPackageURL: sandbox.packageURL)
+
+        #expect(ProjectStore.readReference(for: assetID, in: copy) == nil)
+    }
+
+    @Test func savingInPlaceWithItselfAsThePreviousPackageChangesNothing() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL, references: [assetID: reference()])
+
+        try await ProjectStore.save(project, to: sandbox.packageURL, previousPackageURL: sandbox.packageURL)
+
+        #expect(ProjectStore.readReference(for: assetID, in: sandbox.packageURL) == reference())
+    }
+
     @Test func forgettingWhenNothingWasSavedIsHarmless() throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }

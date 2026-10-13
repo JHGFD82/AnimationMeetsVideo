@@ -110,7 +110,7 @@ Requirements for the file:
 
 | Folder | May the app delete it? |
 | --- | --- |
-| `Reference/` | No, only through an explicit "forget original" action. It may be the only record of a replaced file. |
+| `Reference/` | No, only through an explicit "forget original" action, applied at the next save. It may be the only record of a replaced file, so Save As copies each asset's folder into the new package. |
 | `Cache/` | Yes. It has a size cap and evicts oldest-first. Entries are keyed by a hash of the exact content they render, so any upstream edit invalidates them. |
 | `Backups/` | Yes, by age and count. |
 

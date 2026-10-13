@@ -350,6 +350,27 @@ enum ProjectStore {
         return CMTime(value: value, timescale: scale)
     }
 
+    /// Copies each asset's saved reference data, scores, beats and pictures
+    /// from one package to another. Files already at the destination are
+    /// kept. The original's data may exist nowhere else, so it must follow
+    /// the project to a new package.
+    static func copyReferenceData(for assetIDs: [UUID], from source: URL, to destination: URL) throws {
+        let same = source.standardizedFileURL.resolvingSymlinksInPath() == destination.standardizedFileURL.resolvingSymlinksInPath()
+        guard !same else { return }
+        let fileManager = FileManager.default
+        for id in assetIDs {
+            let from = referenceFolder(for: id, in: source)
+            guard let names = try? fileManager.contentsOfDirectory(atPath: from.path) else { continue }
+            let to = referenceFolder(for: id, in: destination)
+            try fileManager.createDirectory(at: to, withIntermediateDirectories: true)
+            for name in names where !name.hasSuffix(".partial") {
+                let target = to.appending(path: name)
+                guard !fileManager.fileExists(atPath: target.path) else { continue }
+                try fileManager.copyItem(at: from.appending(path: name), to: target)
+            }
+        }
+    }
+
     // MARK: Media consolidation
 
     /// Media that saving into `packageURL` would copy in: anything with a file
@@ -405,7 +426,9 @@ enum ProjectStore {
     /// extra space. `changeScores` are written to `Reference/`; pass only the
     /// ones that aren't saved yet, and so are `references` and `thumbnails`.
     /// The reference data of assets marked `referenceForgotten` is deleted
-    /// rather than written.
+    /// rather than written. For Save As, `previousPackageURL` is where the
+    /// project was saved before: what it holds in `Reference/` is copied
+    /// first, since only unsaved results are passed in.
     @discardableResult
     static func save(
         _ project: EditingProject,
@@ -414,9 +437,16 @@ enum ProjectStore {
         changeScores: [UUID: ChangeScoreTrack] = [:],
         references: [UUID: AssetReference] = [:],
         thumbnails: [UUID: ReferenceThumbnails] = [:],
-        beats: [UUID: BeatTrack] = [:]
+        beats: [UUID: BeatTrack] = [:],
+        previousPackageURL: URL? = nil
     ) async throws -> EditingProject {
         try preparePackage(at: packageURL)
+        if let previousPackageURL {
+            try copyReferenceData(
+                for: project.clips.filter { !$0.referenceForgotten }.map(\.id),
+                from: previousPackageURL, to: packageURL
+            )
+        }
 
         var project = project
         let mediaFolder = packageURL.appending(path: mediaFolderName, directoryHint: .isDirectory)
