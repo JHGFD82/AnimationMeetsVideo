@@ -1067,6 +1067,10 @@ private struct TimelineView: View {
     /// The layer whose beats are shown. Only layers that still have beats are
     /// offered, so a deleted layer simply stops matching and markers vanish.
     @State private var chosenBeatLayerID: UUID?
+    /// The chosen layer's markers, worked out again only when what they
+    /// depend on changes. The view's body runs on every playback tick and
+    /// scroll, and a long song has thousands of beats to collect and sort.
+    @State private var beatMarkers: [CMTime] = []
     @GestureState private var magnifyBy: CGFloat = 1
     @State private var scrollMetrics = TimelineScrollMetrics()
 
@@ -1081,9 +1085,22 @@ private struct TimelineView: View {
             .map { (id: $0.element.id, name: project.displayName(of: $0.element, number: $0.offset + 1)) }
     }
 
-    private var beatMarkers: [CMTime] {
-        guard let id = chosenBeatLayerID, let layer = timeline.layer(id: id) else { return [] }
-        return project.beatMarkers(in: layer, tracks: beatTracks)
+    /// Everything `EditingProject.beatMarkers` reads for the chosen layer.
+    private struct BeatMarkerInputs: Equatable {
+        var layer: TimelineLayer?
+        var tracks: [UUID: BeatTrack] = [:]
+        var offsets: [UUID: CMTime] = [:]
+    }
+
+    private var beatMarkerInputs: BeatMarkerInputs {
+        guard let id = chosenBeatLayerID, let layer = timeline.layer(id: id) else { return BeatMarkerInputs() }
+        var inputs = BeatMarkerInputs(layer: layer)
+        for clip in layer.clips {
+            guard case .media(let assetID) = clip.source else { continue }
+            inputs.tracks[assetID] = beatTracks[assetID]
+            inputs.offsets[assetID] = project.mediaClip(id: assetID)?.alignmentOffset
+        }
+        return inputs
     }
 
     private var beatLayerSelection: Binding<UUID?> {
@@ -1221,6 +1238,9 @@ private struct TimelineView: View {
             }
         }
         .padding(.vertical, 12)
+        .onChange(of: beatMarkerInputs, initial: true) { _, inputs in
+            beatMarkers = inputs.layer.map { project.beatMarkers(in: $0, tracks: inputs.tracks) } ?? []
+        }
     }
 
     /// Only moves the playhead — per-clip selection and repositioning are

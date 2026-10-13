@@ -52,7 +52,9 @@ opens.
 Where beats fall on the timeline is **derived**, never stored:
 `EditingProject.beatMarkers(in:tracks:)` takes each clip on a layer, maps its
 trim range into file time with the asset's alignment offset, keeps the beats
-inside it, and moves them to where the clip sits.
+inside it, and moves them to where the clip sits. The timeline view keeps
+the result and works it out again only when the chosen layer, its beats or
+its assets' offsets change, not on every playback tick or scroll.
 
 ## Choosing which layer's beats to show
 
