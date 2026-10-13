@@ -18,12 +18,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct AnimationMeetsVideoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var project = EditingProject.empty
+    @State private var project: EditingProject
+    @State private var history: ProjectHistory
     @State private var projectURL: URL?
+
+    init() {
+        let initial = EditingProject.empty
+        _project = State(initialValue: initial)
+        _history = State(initialValue: ProjectHistory(project: initial))
+    }
 
     var body: some Scene {
         WindowGroup("Animation Meets Video") {
-            EditorView(project: $project)
+            EditorView(project: $project, history: history)
                 .frame(minWidth: 1_100, minHeight: 700)
         }
         .windowResizability(.contentSize)
@@ -57,6 +64,7 @@ struct AnimationMeetsVideoApp: App {
     private func newProject() {
         guard confirmDiscardingCurrentProject() else { return }
         project = EditingProject.empty
+        history.reset(to: project)
         projectURL = nil
     }
 
@@ -75,6 +83,7 @@ struct AnimationMeetsVideoApp: App {
             do {
                 let result = try await ProjectStore.load(from: url)
                 project = result.project
+                history.reset(to: result.project)
                 projectURL = url
                 if !result.missingMedia.isEmpty {
                     let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
@@ -109,7 +118,9 @@ struct AnimationMeetsVideoApp: App {
             do {
                 try ProjectStore.preparePackage(at: url)
                 guard let copying = chooseMediaToCopy(for: project, into: url) else { return }
-                project = try await ProjectStore.save(project, to: url, copying: copying)
+                let saved = try await ProjectStore.save(project, to: url, copying: copying)
+                history.adopt(saved)
+                project = saved
                 projectURL = url
             } catch {
                 showAlert(title: "Couldn't Save Project", message: error.localizedDescription)

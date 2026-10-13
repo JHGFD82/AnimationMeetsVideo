@@ -2,7 +2,7 @@ import AVFoundation
 import CoreMedia
 import Foundation
 
-struct EditingProject: Identifiable {
+struct EditingProject: Identifiable, Equatable {
     let id: UUID
     var name: String
     var clips: [MediaClip]
@@ -410,7 +410,7 @@ enum ResolvedClipInfo {
     }
 }
 
-struct MediaClip: Identifiable {
+struct MediaClip: Identifiable, Equatable {
     var id = UUID()
     var name: String
     var kind: MediaKind

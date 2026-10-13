@@ -1,0 +1,148 @@
+import Foundation
+import Testing
+@testable import AnimationMeetsVideo
+
+/// Drives a `ProjectHistory` the way the editor does: the app owns the
+/// project value, and tells the history whenever it changes.
+@MainActor
+private final class Harness {
+    var project = EditingProject.empty
+    let history: ProjectHistory
+    let undoManager = UndoManager()
+    private var clock = Date(timeIntervalSince1970: 1_000)
+
+    init() {
+        history = ProjectHistory(project: project)
+        history.undoManager = undoManager
+        history.restore = { [unowned self] in project = $0 }
+    }
+
+    /// Applies an edit `gap` seconds after the previous one.
+    func edit(after gap: TimeInterval = 10, _ change: (inout EditingProject) -> Void) {
+        clock = clock.addingTimeInterval(gap)
+        change(&project)
+        history.projectDidChange(project, now: clock)
+        closeEventGroup()
+    }
+
+    /// The undo manager groups registrations per run loop event, so let the
+    /// loop turn the way it would between two user actions.
+    func closeEventGroup() {
+        let turn = Timer(timeInterval: 0, repeats: false) { _ in }
+        RunLoop.current.add(turn, forMode: .default)
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+    }
+
+    func undo() {
+        undoManager.undo()
+        closeEventGroup()
+        // The app reports the restored value back; it must not be recorded.
+        history.projectDidChange(project, now: clock)
+    }
+
+    func redo() {
+        undoManager.redo()
+        closeEventGroup()
+        history.projectDidChange(project, now: clock)
+    }
+}
+
+@MainActor
+@Suite struct ProjectHistoryTests {
+    @Test func undoRestoresPreviousProjectAndRedoReappliesIt() {
+        let h = Harness()
+        h.edit { $0.name = "First" }
+        h.edit { $0.name = "Second" }
+
+        h.undo()
+        #expect(h.project.name == "First")
+        h.undo()
+        #expect(h.project.name == "Untitled Project")
+        #expect(!h.undoManager.canUndo)
+
+        h.redo()
+        #expect(h.project.name == "First")
+        h.redo()
+        #expect(h.project.name == "Second")
+        #expect(!h.undoManager.canRedo)
+    }
+
+    @Test func rapidChangesMergeIntoOneStep() {
+        let h = Harness()
+        h.edit { $0.name = "A" }
+        h.edit(after: 0.1) { $0.name = "AB" }
+        h.edit(after: 0.1) { $0.name = "ABC" }
+
+        h.undo()
+        #expect(h.project.name == "Untitled Project")
+        #expect(!h.undoManager.canUndo)
+    }
+
+    @Test func changesFarApartAreSeparateSteps() {
+        let h = Harness()
+        h.edit { $0.name = "A" }
+        h.edit(after: 2) { $0.name = "B" }
+
+        h.undo()
+        #expect(h.project.name == "A")
+    }
+
+    @Test func newEditAfterUndoClearsRedo() {
+        let h = Harness()
+        h.edit { $0.name = "A" }
+        h.undo()
+        #expect(h.undoManager.canRedo)
+
+        h.edit { $0.name = "B" }
+        #expect(!h.undoManager.canRedo)
+        #expect(h.project.name == "B")
+    }
+
+    @Test func unchangedProjectRecordsNothing() {
+        let h = Harness()
+        h.edit { _ in }
+        #expect(!h.undoManager.canUndo)
+    }
+
+    @Test func resetDiscardsHistoryAndTreatsNewProjectAsBaseline() {
+        let h = Harness()
+        h.edit { $0.name = "A" }
+
+        var opened = EditingProject.empty
+        opened.name = "Opened"
+        h.project = opened
+        h.history.reset(to: opened)
+        h.history.projectDidChange(h.project)
+
+        #expect(!h.undoManager.canUndo)
+        #expect(!h.undoManager.canRedo)
+    }
+
+    @Test func adoptedChangesAreNotUndoable() {
+        let h = Harness()
+        h.project.name = "Saved As"
+        h.history.adopt(h.project)
+        h.history.projectDidChange(h.project)
+
+        #expect(!h.undoManager.canUndo)
+    }
+
+    @Test func undoingTimelineEditsRestoresClips() {
+        let h = Harness()
+        let media = MediaClip(
+            name: "Clip", kind: .video, url: nil,
+            duration: .init(seconds: 5, preferredTimescale: 600),
+            frameRate: 24, colorSpace: .rec709, codecName: "Stub"
+        )
+        h.edit { _ = $0.importClip(media, intoTimeline: $0.rootTimelineID) }
+        #expect(h.project.timelines[0].layers.count == 1)
+
+        h.undo()
+        #expect(h.project.timelines[0].layers.isEmpty)
+        #expect(h.project.clips.isEmpty)
+
+        h.redo()
+        #expect(h.project.timelines[0].layers.count == 1)
+        #expect(h.project.clips.count == 1)
+    }
+}

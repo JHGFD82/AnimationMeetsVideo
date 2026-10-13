@@ -12,14 +12,17 @@ struct TimelineSelection: Equatable {
 
 struct EditorView: View {
     @Binding var project: EditingProject
+    let history: ProjectHistory
+    @Environment(\.undoManager) private var undoManager
     @State private var activeTimelineID: UUID
     @State private var selection: TimelineSelection?
     @State private var playback = PlaybackModel()
     @State private var annotations = AnnotationModel()
     @State private var externalDisplay = ExternalDisplayController()
 
-    init(project: Binding<EditingProject>) {
+    init(project: Binding<EditingProject>, history: ProjectHistory) {
         self._project = project
+        self.history = history
         self._activeTimelineID = State(initialValue: project.wrappedValue.rootTimelineID)
     }
 
@@ -45,6 +48,30 @@ struct EditorView: View {
         .onChange(of: project.id) { _, _ in
             activeTimelineID = project.rootTimelineID
             selection = nil
+        }
+        .onChange(of: project) { _, newValue in
+            history.projectDidChange(newValue)
+            keepViewStateValid(for: newValue)
+        }
+        .onAppear { connectHistory() }
+        .onChange(of: undoManager) { _, _ in connectHistory() }
+    }
+
+    private func connectHistory() {
+        history.undoManager = undoManager
+        history.restore = { project = $0 }
+    }
+
+    /// Undo and redo can remove the timeline or clip the view was pointing at.
+    private func keepViewStateValid(for project: EditingProject) {
+        if project.timeline(id: activeTimelineID) == nil {
+            activeTimelineID = project.rootTimelineID
+        }
+        if let selection,
+           project.timeline(id: selection.timelineID)?
+               .layer(id: selection.layerID)?
+               .clips.contains(where: { $0.id == selection.timelineClipID }) != true {
+            self.selection = nil
         }
     }
 }
