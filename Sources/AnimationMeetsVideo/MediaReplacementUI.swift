@@ -159,6 +159,8 @@ final class MediaReplacementController {
         }
     }
 
+    /// Cancels `session` if it is still the current one, so a late call for
+    /// a session already finished or replaced by the next does nothing.
     func cancel(_ session: ReplacementSession) {
         guard self.session?.id == session.id else { return }
         task?.cancel()
@@ -166,11 +168,6 @@ final class MediaReplacementController {
         self.session = nil
         queue.removeAll()
         finish()
-    }
-
-    /// Dismissing the sheet by any route counts as cancelling it.
-    func dismissCurrent() {
-        if let session { cancel(session) }
     }
 
     /// Points an asset back at a file it used before. The usual comparison
@@ -672,12 +669,17 @@ private struct MediaReplacementDialogs: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 controller.checkForChanges(in: project)
             }
+            // Only the controller closes the sheet. A nil written back here
+            // can arrive after the controller has moved on to the next file,
+            // so it is ignored; a sheet closed by any other route cancels
+            // its own session, which does nothing once that session is over.
             .sheet(item: Binding(
                 get: { controller.session },
-                set: { if $0 == nil { controller.dismissCurrent() } }
+                set: { _ in }
             )) { session in
                 ReplaceMediaSheet(session: session, controller: controller)
                     .interactiveDismissDisabled()
+                    .onDisappear { controller.cancel(session) }
             }
             .alert(
                 controller.notice?.title ?? "",
