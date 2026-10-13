@@ -328,7 +328,15 @@ enum CompositionExporter {
         return CMTime(value: 1, timescale: Int32(rounded))
     }
 
-    static func export(project: EditingProject, timelineID: UUID, preset: ProResPreset, to url: URL) async throws {
+    /// Cancelling the calling task cancels the export, deletes the partial
+    /// file, and throws `CancellationError`.
+    static func export(
+        project: EditingProject,
+        timelineID: UUID,
+        preset: ProResPreset,
+        to url: URL,
+        progress: @escaping @Sendable (Double) -> Void = { _ in }
+    ) async throws {
         let composed = try await buildComposedTimeline(for: project, timelineID: timelineID)
 
         let isCompatible = await AVAssetExportSession.compatibility(
@@ -349,9 +357,23 @@ enum CompositionExporter {
         // AVAssetExportSession refuses to write over one.
         try? FileManager.default.removeItem(at: url)
 
+        let states = exportSession.states(updateInterval: 0.2)
+        let progressTask = Task {
+            for await state in states {
+                if case .exporting(let exportProgress) = state {
+                    progress(exportProgress.fractionCompleted)
+                }
+            }
+        }
+        defer { progressTask.cancel() }
+
         do {
             try await exportSession.export(to: url, as: .mov)
         } catch {
+            try? FileManager.default.removeItem(at: url)
+            if error is CancellationError || Task.isCancelled {
+                throw CancellationError()
+            }
             throw CompositionError.exportFailed(error.localizedDescription)
         }
     }

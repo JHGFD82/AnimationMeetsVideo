@@ -518,8 +518,11 @@ private struct EditorToolbar: View {
     let annotations: AnnotationModel
     let externalDisplay: ExternalDisplayController
     @State private var selectedPreset: ProResPreset = .proRes422
-    @State private var isExporting = false
+    @State private var exportTask: Task<Void, Never>?
+    @State private var exportProgress: Double = 0
     @State private var exportError: String?
+
+    private var isExporting: Bool { exportTask != nil }
 
     private var externalScreens: [NSScreen] {
         // Exclude the screen the editor window is on; covering it with the
@@ -563,11 +566,18 @@ private struct EditorToolbar: View {
             }
             .pickerStyle(.menu)
             .frame(width: 150)
-            Button(isExporting ? "Exporting…" : "Export") {
-                exportProject()
+            if isExporting {
+                ProgressView(value: exportProgress)
+                    .frame(width: 90)
+                Button("Cancel") {
+                    exportTask?.cancel()
+                }
+            } else {
+                Button("Export") {
+                    exportProject()
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isExporting)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -590,11 +600,21 @@ private struct EditorToolbar: View {
         let snapshot = project
         let timelineID = activeTimelineID
         let preset = selectedPreset
-        isExporting = true
-        Task {
-            defer { isExporting = false }
+        exportProgress = 0
+        exportTask = Task {
+            defer { exportTask = nil }
             do {
-                try await CompositionExporter.export(project: snapshot, timelineID: timelineID, preset: preset, to: url)
+                try await CompositionExporter.export(
+                    project: snapshot,
+                    timelineID: timelineID,
+                    preset: preset,
+                    to: url,
+                    progress: { fraction in
+                        Task { @MainActor in exportProgress = fraction }
+                    }
+                )
+            } catch is CancellationError {
+                // The user cancelled; nothing to report.
             } catch {
                 exportError = error.localizedDescription
             }
