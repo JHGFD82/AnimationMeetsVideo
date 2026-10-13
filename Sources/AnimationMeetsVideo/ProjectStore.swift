@@ -8,11 +8,24 @@ private struct ProjectFile: Codable {
         var index: Int
     }
 
+    /// Exact rational time, so frame boundaries survive a save/load round trip.
+    struct TimeEntry: Codable {
+        var value: Int64
+        var timescale: Int32
+
+        init(_ time: CMTime) {
+            value = time.value
+            timescale = time.timescale
+        }
+
+        var time: CMTime { CMTime(value: value, timescale: timescale) }
+    }
+
     struct TimelineEntryClip: Codable {
         var source: ClipSourceEntry
-        var startOffsetSeconds: Double
-        var trimStartSeconds: Double
-        var trimEndSeconds: Double
+        var startOffset: TimeEntry
+        var trimStart: TimeEntry
+        var trimEnd: TimeEntry
         var autoMatteEnabled: Bool
     }
 
@@ -65,9 +78,9 @@ enum ProjectStore {
                 guard let source = sourceEntry(for: clip.source) else { return nil }
                 return ProjectFile.TimelineEntryClip(
                     source: source,
-                    startOffsetSeconds: clip.startOffset.seconds,
-                    trimStartSeconds: clip.trimStart.seconds,
-                    trimEndSeconds: clip.trimEnd.seconds,
+                    startOffset: ProjectFile.TimeEntry(clip.startOffset),
+                    trimStart: ProjectFile.TimeEntry(clip.trimStart),
+                    trimEnd: ProjectFile.TimeEntry(clip.trimEnd),
                     autoMatteEnabled: clip.autoMatteEnabled
                 )
             }
@@ -140,9 +153,9 @@ enum ProjectStore {
                 guard let source = resolveSource(entry.source) else { return nil }
                 return TimelineClip(
                     source: source,
-                    startOffset: CMTime(seconds: entry.startOffsetSeconds, preferredTimescale: 600),
-                    trimStart: CMTime(seconds: entry.trimStartSeconds, preferredTimescale: 600),
-                    trimEnd: CMTime(seconds: entry.trimEndSeconds, preferredTimescale: 600),
+                    startOffset: entry.startOffset.time,
+                    trimStart: entry.trimStart.time,
+                    trimEnd: entry.trimEnd.time,
                     autoMatteEnabled: entry.autoMatteEnabled
                 )
             }
