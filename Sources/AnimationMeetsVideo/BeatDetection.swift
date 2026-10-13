@@ -151,11 +151,14 @@ extension EditingProject {
     /// picker. A layer drops out as soon as it is deleted or its clips lose
     /// their beats, so nothing needs cleaning up.
     func beatLayers(in timeline: Timeline, tracks: [UUID: BeatTrack]) -> [TimelineLayer] {
-        timeline.layers.filter { layer in
-            layer.clips.contains { clip in
-                guard case .media(let id) = clip.source, let track = tracks[id] else { return false }
-                return !track.isEmpty
-            }
+        timeline.layers.filter { layerHasBeats($0, tracks: tracks) }
+    }
+
+    /// True when any clip on the layer plays audio with beats.
+    func layerHasBeats(_ layer: TimelineLayer, tracks: [UUID: BeatTrack]) -> Bool {
+        layer.clips.contains { clip in
+            guard case .media(let id) = clip.source, let track = tracks[id] else { return false }
+            return !track.isEmpty
         }
     }
 }

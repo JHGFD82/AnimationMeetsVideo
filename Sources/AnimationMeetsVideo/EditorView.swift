@@ -1079,9 +1079,8 @@ private struct TimelineView: View {
     private let labelColumnWidth: CGFloat = 150
 
     private var beatLayerChoices: [(id: UUID, name: String)] {
-        let withBeats = Set(project.beatLayers(in: timeline, tracks: beatTracks).map(\.id))
-        return timeline.layers.enumerated()
-            .filter { withBeats.contains($0.element.id) }
+        timeline.layers.enumerated()
+            .filter { project.layerHasBeats($0.element, tracks: beatTracks) }
             .map { (id: $0.element.id, name: project.displayName(of: $0.element, number: $0.offset + 1)) }
     }
 

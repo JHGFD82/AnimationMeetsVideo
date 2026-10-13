@@ -63,8 +63,9 @@ be unreadable. The view options popover (the sliders button on the timeline)
 has a **Beat Markers** picker listing the layers whose clips have beats, plus
 None.
 
-The choice is just a layer ID held by the timeline view. The choices come
-from `EditingProject.beatLayers(in:tracks:)` every time, so when a layer is
+The choice is just a layer ID held by the timeline view. The choices are
+the layers for which `EditingProject.layerHasBeats(_:tracks:)` holds,
+checked every time (`beatLayers(in:tracks:)` gives the same list), so when a layer is
 deleted (or its clips lose their beats) it **drops out of the picker and its
 markers disappear**, with no cleanup step. The choice is view state and is
 not saved with the project.
