@@ -57,6 +57,9 @@ private struct ProjectFile: Codable {
         var trimStart: TimeEntry
         var trimEnd: TimeEntry
         var autoMatteEnabled: Bool
+        /// `"video"` or `"audio"` once a video's sound is detached; absent
+        /// while the clip plays everything its file has.
+        var streams: String?
     }
 
     /// One keyframe. Vector values are written as `[x, y]`.
@@ -638,7 +641,8 @@ enum ProjectStore {
                                 startOffset: ProjectFile.TimeEntry(clip.startOffset),
                                 trimStart: ProjectFile.TimeEntry(clip.trimStart),
                                 trimEnd: ProjectFile.TimeEntry(clip.trimEnd),
-                                autoMatteEnabled: clip.autoMatteEnabled
+                                autoMatteEnabled: clip.autoMatteEnabled,
+                                streams: clip.streams == .videoAndAudio ? nil : clip.streams.rawValue
                             )
                         },
                         transform: ProjectFile.TransformEntry(layer.transform)
@@ -740,7 +744,8 @@ enum ProjectStore {
                                 startOffset: clipEntry.startOffset.time,
                                 trimStart: clipEntry.trimStart.time,
                                 trimEnd: clipEntry.trimEnd.time,
-                                autoMatteEnabled: clipEntry.autoMatteEnabled
+                                autoMatteEnabled: clipEntry.autoMatteEnabled,
+                                streams: clipEntry.streams.flatMap(ClipStreams.init(rawValue:)) ?? .videoAndAudio
                             )
                         },
                         transform: layerEntry.transform?.transform ?? .identity

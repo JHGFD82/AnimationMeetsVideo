@@ -54,12 +54,10 @@ extension EditingProject {
 
     /// Whether a clip's edges lock to the timeline's frames. Everything with
     /// pictures does, so a moved or trimmed clip never starts between two
-    /// frames; only audio moves freely.
+    /// frames; only audio (including sound detached from a video) moves
+    /// freely.
     func isFrameLocked(_ clip: TimelineClip) -> Bool {
-        switch resolvedInfo(for: clip.source) {
-        case .media(let media): media.kind == .video
-        case .timeline, nil: true
-        }
+        resolvedInfo(for: clip.source) == nil || playsVideo(clip)
     }
 
     /// The shortest a trim can make a clip: one frame for pictures, a

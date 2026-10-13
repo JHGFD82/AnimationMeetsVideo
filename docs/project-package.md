@@ -107,6 +107,8 @@ Requirements for the file:
 - **Defaults are left out**, so untouched data adds nothing to a diff. For
   example a layer's `transform` (see [layer-transforms.md](layer-transforms.md))
   is written only once the layer is moved, scaled, turned, faded or animated.
+  Likewise a clip's `streams` (`"video"` or `"audio"`) is written only once
+  a video's sound has been detached.
 - Written atomically so a crash cannot leave a half-written file.
 
 ## Retention

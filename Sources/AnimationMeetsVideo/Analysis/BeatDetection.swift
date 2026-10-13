@@ -154,7 +154,7 @@ extension EditingProject {
         var markers: [CMTime] = []
         for clip in layer.clips {
             guard case .media(let assetID) = clip.source, let track = tracks[assetID],
-                  let asset = mediaClip(id: assetID)
+                  let asset = mediaClip(id: assetID), playsAudio(clip)
             else { continue }
             let fileStart = asset.fileTime(forSourceTime: clip.trimStart)
             for beat in track.beats(from: fileStart, to: asset.fileTime(forSourceTime: clip.trimEnd)) {
@@ -174,7 +174,7 @@ extension EditingProject {
     /// True when any clip on the layer plays audio with beats.
     func layerHasBeats(_ layer: TimelineLayer, tracks: [UUID: BeatTrack]) -> Bool {
         layer.clips.contains { clip in
-            guard case .media(let id) = clip.source, let track = tracks[id] else { return false }
+            guard case .media(let id) = clip.source, let track = tracks[id], playsAudio(clip) else { return false }
             return !track.isEmpty
         }
     }

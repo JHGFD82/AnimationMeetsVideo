@@ -21,6 +21,10 @@ struct LayerHeaderRow: View {
     /// Nil for layers without transform properties (audio), which get no arrow.
     let isExpanded: Bool?
     let onToggleExpanded: () -> Void
+    /// Nil for layers with no video still carrying its sound.
+    let isAudioExpanded: Bool?
+    let onToggleAudio: () -> Void
+    let onDetachAudio: () -> Void
     let onRename: (String?) -> Void
     let onMove: (Int) -> Void
 
@@ -79,6 +83,18 @@ struct LayerHeaderRow: View {
                         isEditingName = true
                     }
             }
+            Spacer(minLength: 0)
+            if let isAudioExpanded {
+                Button(action: onToggleAudio) {
+                    Image(systemName: "waveform")
+                        .font(.caption)
+                        .foregroundStyle(isAudioExpanded ? Color.accentColor : .secondary)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(isAudioExpanded ? "Hide linked audio" : "Show linked audio")
+            }
         }
         .padding(.horizontal, 8)
         .frame(height: height, alignment: .leading)
@@ -87,6 +103,11 @@ struct LayerHeaderRow: View {
                 .disabled(!canMoveUp)
             Button("Move Layer Down") { onMove(1) }
                 .disabled(!canMoveDown)
+            if let isAudioExpanded {
+                Divider()
+                Button(isAudioExpanded ? "Hide Linked Audio" : "Show Linked Audio", action: onToggleAudio)
+                Button("Detach Audio", action: onDetachAudio)
+            }
         }
     }
 
@@ -111,14 +132,18 @@ struct LayerClipRow: View {
     let onMoveClip: (UUID, CMTime) -> Void
     let onTrimClipStart: (UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, CMTime) -> Void
+    let onDetachAudio: (UUID) -> Void
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             ForEach(layer.clips) { clip in
                 let isSelected = selection?.layerID == layer.id && selection?.timelineClipID == clip.id
+                let info = project.resolvedInfo(for: clip.source)
                 ClipBlockView(
                     clip: clip,
-                    info: project.resolvedInfo(for: clip.source),
+                    info: info,
+                    typeColor: clipTypeColor(for: info, streams: clip.streams),
+                    hasLinkedAudio: project.hasLinkedAudio(clip),
                     isSelected: isSelected,
                     pixelsPerSecond: pixelsPerSecond,
                     height: height,
@@ -129,7 +154,8 @@ struct LayerClipRow: View {
                     onSelect: { onSelectClip(clip) },
                     onMove: { newStart in onMoveClip(clip.id, newStart) },
                     onTrimStart: { newTrimStart in onTrimClipStart(clip.id, newTrimStart) },
-                    onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) }
+                    onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) },
+                    onDetachAudio: { onDetachAudio(clip.id) }
                 )
             }
         }
@@ -143,14 +169,15 @@ struct LayerClipRow: View {
 }
 
 /// Colors a clip by its layer type, After Effects/Premiere-style — video is
-/// purple, audio gets its own color, nested timelines (compound clips) get
-/// another. Image and text layers aren't modeled yet, but will slot into
-/// this same switch (green/orange per the design) once they exist.
-private func clipTypeColor(for info: ResolvedClipInfo?) -> Color {
+/// purple, audio (including sound detached from a video) gets its own
+/// color, nested timelines (compound clips) get another. Image and text
+/// layers aren't modeled yet, but will slot into this same switch
+/// (green/orange per the design) once they exist.
+private func clipTypeColor(for info: ResolvedClipInfo?, streams: ClipStreams) -> Color {
     switch info {
     case .media(let mediaClip):
         switch mediaClip.kind {
-        case .video: .purple
+        case .video: streams == .audio ? .teal : .purple
         case .audio: .teal
         }
     case .timeline:
@@ -170,6 +197,9 @@ private func clipTypeColor(for info: ResolvedClipInfo?) -> Color {
 struct ClipBlockView: View {
     let clip: TimelineClip
     let info: ResolvedClipInfo?
+    let typeColor: Color
+    /// Shows a sound badge, and offers to detach the sound.
+    let hasLinkedAudio: Bool
     let isSelected: Bool
     let pixelsPerSecond: CGFloat
     let height: CGFloat
@@ -181,6 +211,7 @@ struct ClipBlockView: View {
     let onMove: (CMTime) -> Void
     let onTrimStart: (CMTime) -> Void
     let onTrimEnd: (CMTime) -> Void
+    let onDetachAudio: () -> Void
 
     /// The clip as it will be if the current drag ends now. After a drop
     /// it stays up until the edited clip comes back down from the project:
@@ -195,8 +226,6 @@ struct ClipBlockView: View {
     @State private var isTrimming = false
 
     private let handleWidth: CGFloat = 8
-
-    private var typeColor: Color { clipTypeColor(for: info) }
 
     var body: some View {
         let shown = preview ?? clip
@@ -229,20 +258,30 @@ struct ClipBlockView: View {
                     if case .timeline = clip.source {
                         Image(systemName: "rectangle.stack")
                             .font(.caption2)
+                    } else if clip.streams == .audio {
+                        Image(systemName: "waveform")
+                            .font(.caption2)
                     }
                     Text(info?.name ?? "Unknown")
                         .font(.caption)
                         .lineLimit(1)
                 }
-                Text(shown.trimmedDuration.formatted)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(shown.trimmedDuration.formatted)
+                    if hasLinkedAudio {
+                        Image(systemName: "speaker.wave.2.fill")
+                            .help("Plays its own sound; show it with the layer's waveform button")
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
             .padding(.leading, drawnX > liveX ? 8 : 4)
             .frame(width: drawnWidth, height: height, alignment: .leading)
             .clipped()
             .background(typeColor.opacity(isSelected ? 0.6 : 0.35))
             .overlay(Rectangle().strokeBorder(isSelected ? Color.white.opacity(0.9) : typeColor.opacity(0.8), lineWidth: isSelected ? 1.5 : 0.75))
+            .contextMenu { clipMenu }
             .offset(x: drawnX)
             // Measured in window coordinates: the block moves (and resizes)
             // as the preview changes, so in its own coordinates every
@@ -281,6 +320,13 @@ struct ClipBlockView: View {
     }
 
     private enum Edge { case leading, trailing }
+
+    @ViewBuilder
+    private var clipMenu: some View {
+        if hasLinkedAudio {
+            Button("Detach Audio", action: onDetachAudio)
+        }
+    }
 
     /// Sets the preview for a drag in progress.
     private func showPreview(_ clip: TimelineClip) {
@@ -346,5 +392,51 @@ struct ClipBlockView: View {
                     }
             )
             .pointerStyle(.columnResize)
+    }
+}
+
+/// The sound of a layer's video clips, shown under the clips when the layer's
+/// waveform button is on. Each block sits under the clip it belongs to and
+/// moves with it; detaching makes it a clip of its own.
+struct LinkedAudioLane: View {
+    let layer: TimelineLayer
+    let project: EditingProject
+    let pixelsPerSecond: CGFloat
+    let width: CGFloat
+    let height: CGFloat
+    let visibleX: ClosedRange<CGFloat>
+    let onSelectClip: (TimelineClip) -> Void
+    let onDetachAudio: (UUID) -> Void
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(layer.clips.filter { project.hasLinkedAudio($0) }) { clip in
+                let x = clip.startOffset.seconds * pixelsPerSecond
+                let clipWidth = max(2, clip.trimmedDuration.seconds * pixelsPerSecond)
+                let drawnMinX = max(x, visibleX.lowerBound - 4)
+                let drawnMaxX = min(x + clipWidth, visibleX.upperBound + 4)
+                if drawnMaxX > drawnMinX {
+                    HStack(spacing: 4) {
+                        Image(systemName: "waveform")
+                        Text("Linked audio")
+                            .lineLimit(1)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 4)
+                    .frame(width: drawnMaxX - drawnMinX, height: height, alignment: .leading)
+                    .clipped()
+                    .background(Color.teal.opacity(0.3))
+                    .overlay(Rectangle().strokeBorder(Color.teal.opacity(0.7), lineWidth: 0.75))
+                    .contentShape(Rectangle())
+                    .onTapGesture { onSelectClip(clip) }
+                    .contextMenu {
+                        Button("Detach Audio") { onDetachAudio(clip.id) }
+                    }
+                    .offset(x: drawnMinX)
+                }
+            }
+        }
+        .frame(width: width, height: height, alignment: .topLeading)
     }
 }

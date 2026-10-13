@@ -89,6 +89,11 @@ struct InspectorPanel: View {
                         project.split(selection.timelineClipID, in: timelineID, layer: selection.layerID, atTimelineTime: playheadTime)
                     }
                     .disabled(!(playheadTime > timelineClip.startOffset && playheadTime < timelineClip.endOffset))
+                    if project.hasLinkedAudio(timelineClip) {
+                        Button("Detach Audio") {
+                            project.detachAudio(of: [timelineClip.id], in: timelineID, layer: selection.layerID)
+                        }
+                    }
                     Button("Delete Clip", role: .destructive) {
                         project.deleteClip(selection.timelineClipID, in: timelineID, layer: selection.layerID)
                         onDeleteSelection()

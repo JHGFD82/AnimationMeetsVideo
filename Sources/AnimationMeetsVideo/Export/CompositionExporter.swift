@@ -160,6 +160,10 @@ private struct Placement {
     let sourceRange: CMTimeRange
     let start: CMTime
     let animation: PlacementAnimation
+    /// Which of the file's streams to use; detached audio and its picture
+    /// each play only one.
+    let includesVideo: Bool
+    let includesAudio: Bool
 }
 
 /// An ordered run of non-overlapping placements that share composition
@@ -211,7 +215,7 @@ enum CompositionExporter {
 
             for placement in flat.placements {
                 let info = placement.info
-                if let sourceVideo = info.video {
+                if let sourceVideo = info.video, placement.includesVideo {
                     let range = placement.sourceRange.intersection(info.videoRange)
                     if range.isValid, range.duration > .zero {
                         if videoTrack == nil {
@@ -222,7 +226,7 @@ enum CompositionExporter {
                         segments.append(VideoSegment(timeRange: CMTimeRange(start: at, duration: range.duration), animation: placement.animation))
                     }
                 }
-                if let sourceAudio = info.audio {
+                if let sourceAudio = info.audio, placement.includesAudio {
                     let range = placement.sourceRange.intersection(info.audioRange)
                     if range.isValid, range.duration > .zero {
                         if audioTrack == nil {
@@ -299,7 +303,9 @@ enum CompositionExporter {
                         info: info,
                         sourceRange: wanted,
                         start: CMTimeAdd(visible.start, offset),
-                        animation: PlacementAnimation(base: base, stages: stages)
+                        animation: PlacementAnimation(base: base, stages: stages),
+                        includesVideo: clip.streams != .audio,
+                        includesAudio: clip.streams != .video
                     ))
                 case .timeline(let nestedID):
                     guard let nested = project.timeline(id: nestedID) else { continue }

@@ -252,20 +252,14 @@ struct EditingProject: Identifiable, Equatable {
         // apart afterward.
         let offsetIntoClip = CMTimeSubtract(time, clip.trimStart)
         let secondStart = CMTimeAdd(clip.startOffset, offsetIntoClip)
-        let first = TimelineClip(
-            source: clip.source,
-            startOffset: clip.startOffset,
-            trimStart: clip.trimStart,
-            trimEnd: time,
-            autoMatteEnabled: clip.autoMatteEnabled
-        )
-        let second = TimelineClip(
-            source: clip.source,
-            startOffset: secondStart,
-            trimStart: time,
-            trimEnd: clip.trimEnd,
-            autoMatteEnabled: clip.autoMatteEnabled
-        )
+        // Both halves copy the clip, so they keep the streams it plays.
+        var first = clip
+        first.id = UUID()
+        first.trimEnd = time
+        var second = clip
+        second.id = UUID()
+        second.startOffset = secondStart
+        second.trimStart = time
         clips.replaceSubrange(index...index, with: [first, second])
     }
 }
@@ -336,6 +330,9 @@ struct TimelineClip: Identifiable, Equatable {
     /// the UI pending a working live-preview capture pipeline; kept on the
     /// model since it's harmless and non-destructive by construction.
     var autoMatteEnabled: Bool = false
+    /// Which of a media file's streams this clip plays. Always
+    /// `.videoAndAudio` for nested timelines.
+    var streams: ClipStreams = .videoAndAudio
 
     var trimmedDuration: CMTime {
         CMTimeSubtract(trimEnd, trimStart)
@@ -344,6 +341,15 @@ struct TimelineClip: Identifiable, Equatable {
     var endOffset: CMTime {
         CMTimeAdd(startOffset, trimmedDuration)
     }
+}
+
+/// Which streams of a media file a clip plays. A video with sound plays
+/// both, linked, until its audio is detached: then the picture stays as a
+/// `.video` clip and the sound moves to an `.audio` clip on its own layer.
+enum ClipStreams: String {
+    case videoAndAudio
+    case video
+    case audio
 }
 
 /// What a `TimelineClip` resolves to, for display and playback.

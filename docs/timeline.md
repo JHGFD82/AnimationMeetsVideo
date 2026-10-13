@@ -98,6 +98,18 @@ work this out (`resolvedStart(ofMoving:…)`, `resolvedTrimStart(of:…)`,
 `resolvedTrimEnd(of:…)`) do not change the project, and the editing
 functions commit what they return.
 
+## Linked and detached audio
+
+A video clip whose file has sound plays both, linked, and shows a speaker
+badge. Its layer header gets a waveform button that expands a **linked
+audio** lane under the clips, one block under each clip that carries sound.
+**Detach Audio** (on a clip, on a linked audio block, on the layer header or
+in the inspector) splits them: the clips keep only their picture
+(`streams = .video`), and copies with the same timing and trims, playing
+only the sound (`streams = .audio`), go onto a new layer just below. From
+then on the two are ordinary clips: the sound is colored as audio, moves
+freely off the frame grid, and carries the beats.
+
 ## Not implemented yet
 
 - **Snapping** to other clips' edges, the playhead or beat markers.

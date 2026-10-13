@@ -18,6 +18,9 @@ struct TimelineView: View {
     let onTrimClipStart: (UUID, UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, UUID, CMTime) -> Void
     let onEditTransform: (UUID, (inout LayerTransform) -> Void) -> Void
+    /// Detaches the sound of the given clips on a layer, or of all its
+    /// linked clips when nil.
+    let onDetachAudio: (UUID, Set<UUID>?) -> Void
 
     /// The chosen zoom, or nil while the whole timeline is fitted to the
     /// window. Kept in points per second, not relative to the fit, so
@@ -27,6 +30,8 @@ struct TimelineView: View {
     @State private var trackAreaWidth: CGFloat = 800
     /// The transform properties shown under each layer, by layer ID.
     @State private var revealed: [UUID: Set<TransformProperty>] = [:]
+    /// Layers showing their video clips' linked audio.
+    @State private var audioRevealed: Set<UUID> = []
     @State private var layerHeight: CGFloat = 56
     @State private var showingViewOptions = false
     /// The layer whose beats are shown. Only layers that still have beats are
@@ -41,6 +46,12 @@ struct TimelineView: View {
 
     private let rulerHeight: CGFloat = 28
     private let propertyRowHeight: CGFloat = 22
+
+    private var audioLaneHeight: CGFloat { max(22, (layerHeight * 0.6).rounded()) }
+
+    private func showsLinkedAudio(of layer: TimelineLayer) -> Bool {
+        audioRevealed.contains(layer.id) && project.layerHasLinkedAudio(layer)
+    }
     private let zoomStep: CGFloat = 1.5
 
     /// Wider while property rows are showing, to fit their values.
@@ -235,9 +246,22 @@ struct TimelineView: View {
                     canMoveDown: index < timeline.layers.count - 1,
                     isExpanded: layer.isVisual(in: project) ? !shownProperties(of: layer).isEmpty : nil,
                     onToggleExpanded: { toggleExpanded(layer) },
+                    isAudioExpanded: project.layerHasLinkedAudio(layer) ? showsLinkedAudio(of: layer) : nil,
+                    onToggleAudio: { toggleLinkedAudio(layer) },
+                    onDetachAudio: { onDetachAudio(layer.id, nil) },
                     onRename: { name in onRenameLayer(layer.id, name) },
                     onMove: { offset in onMoveLayer(layer.id, offset) }
                 )
+                if showsLinkedAudio(of: layer) {
+                    Label("Linked Audio", systemImage: "waveform")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 30)
+                        .frame(height: audioLaneHeight, alignment: .leading)
+                        .contextMenu {
+                            Button("Detach Audio") { onDetachAudio(layer.id, nil) }
+                        }
+                }
                 ForEach(shownProperties(of: layer)) { property in
                     TransformPropertyRow(
                         property: property,
@@ -277,8 +301,21 @@ struct TimelineView: View {
                         onSelectClip: { clip in onSelectClip(layer.id, clip) },
                         onMoveClip: { clipID, newStart in onMoveClip(layer.id, clipID, newStart) },
                         onTrimClipStart: { clipID, newStart in onTrimClipStart(layer.id, clipID, newStart) },
-                        onTrimClipEnd: { clipID, newEnd in onTrimClipEnd(layer.id, clipID, newEnd) }
+                        onTrimClipEnd: { clipID, newEnd in onTrimClipEnd(layer.id, clipID, newEnd) },
+                        onDetachAudio: { clipID in onDetachAudio(layer.id, [clipID]) }
                     )
+                    if showsLinkedAudio(of: layer) {
+                        LinkedAudioLane(
+                            layer: layer,
+                            project: project,
+                            pixelsPerSecond: pixelsPerSecond,
+                            width: contentWidth,
+                            height: audioLaneHeight,
+                            visibleX: viewport.visibleContentX,
+                            onSelectClip: { clip in onSelectClip(layer.id, clip) },
+                            onDetachAudio: { clipID in onDetachAudio(layer.id, [clipID]) }
+                        )
+                    }
                     ForEach(shownProperties(of: layer)) { property in
                         KeyframeLane(
                             times: layer.transform.keyframeTimes(property),
@@ -356,6 +393,10 @@ struct TimelineView: View {
     private func scrub(atX x: CGFloat, in viewport: TimelineViewport) {
         let seconds = max(0, min(timeline.duration.seconds, viewport.seconds(atX: x)))
         onScrub(timeline.snappedToFrame(CMTime(seconds: seconds, preferredTimescale: 600)))
+    }
+
+    private func toggleLinkedAudio(_ layer: TimelineLayer) {
+        if audioRevealed.contains(layer.id) { audioRevealed.remove(layer.id) } else { audioRevealed.insert(layer.id) }
     }
 
     /// The disclosure arrow shows all four properties, or hides them all.

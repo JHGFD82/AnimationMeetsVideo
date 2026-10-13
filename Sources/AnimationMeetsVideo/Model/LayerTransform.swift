@@ -357,12 +357,7 @@ extension TimelineLayer {
     /// Whether the layer draws pictures, so its transform means something.
     /// Audio-only layers have no transform controls.
     func isVisual(in project: EditingProject) -> Bool {
-        clips.contains { clip in
-            switch clip.source {
-            case .media(let id): project.mediaClip(id: id)?.kind == .video
-            case .timeline: true
-            }
-        }
+        clips.contains { project.playsVideo($0) }
     }
 }
 

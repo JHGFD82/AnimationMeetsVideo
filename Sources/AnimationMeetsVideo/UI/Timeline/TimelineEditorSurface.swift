@@ -76,39 +76,8 @@ struct TimelineEditorSurface<Library: View>: View {
 
                 TimelineResizeHandle(height: $timelineHeight, minHeight: minTimelineHeight, maxHeight: maxTimelineHeight)
 
-                if let timeline {
-                    TimelineView(
-                        project: project,
-                        timeline: timeline,
-                        timelineID: timelineID,
-                        selection: selection,
-                        beatTracks: analysis.beats,
-                        beatClicks: playback.beatClicks,
-                        playheadTime: $playheadTime,
-                        onScrub: { time in scrub(to: time) },
-                        onSelectClip: { layerID, clip in
-                            selection = TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clip.id)
-                        },
-                        onRenameLayer: { layerID, name in project.renameLayer(layerID, in: timelineID, to: name) },
-                        onMoveLayer: { layerID, offset in project.moveLayer(layerID, in: timelineID, by: offset) },
-                        onMoveClip: { layerID, clipID, newStart in
-                            project.moveClip(clipID, in: timelineID, layer: layerID, to: newStart)
-                        },
-                        onTrimClipStart: { layerID, clipID, newTrimStart in
-                            project.trimClipStart(clipID, in: timelineID, layer: layerID, to: newTrimStart)
-                        },
-                        onTrimClipEnd: { layerID, clipID, newTrimEnd in
-                            project.trimClipEnd(clipID, in: timelineID, layer: layerID, to: newTrimEnd)
-                        },
-                        onEditTransform: { layerID, change in
-                            project.editTransform(of: layerID, in: timelineID, change)
-                        }
-                    )
+                timelineView
                     .frame(height: resolvedTimelineHeight)
-                } else {
-                    ContentUnavailableView("No Timeline Selected", systemImage: "timeline.selection")
-                        .frame(height: resolvedTimelineHeight)
-                }
             }
         }
         .onChange(of: timelineID) { _, newValue in
@@ -132,6 +101,44 @@ struct TimelineEditorSurface<Library: View>: View {
         }
         .dropDestination(for: SceneDragPayload.self) { payloads, _ in
             dropScenes(payloads)
+        }
+    }
+
+    @ViewBuilder
+    private var timelineView: some View {
+        if let timeline {
+            TimelineView(
+                project: project,
+                timeline: timeline,
+                timelineID: timelineID,
+                selection: selection,
+                beatTracks: analysis.beats,
+                beatClicks: playback.beatClicks,
+                playheadTime: $playheadTime,
+                onScrub: { time in scrub(to: time) },
+                onSelectClip: { layerID, clip in
+                    selection = TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clip.id)
+                },
+                onRenameLayer: { layerID, name in project.renameLayer(layerID, in: timelineID, to: name) },
+                onMoveLayer: { layerID, offset in project.moveLayer(layerID, in: timelineID, by: offset) },
+                onMoveClip: { layerID, clipID, newStart in
+                    project.moveClip(clipID, in: timelineID, layer: layerID, to: newStart)
+                },
+                onTrimClipStart: { layerID, clipID, newTrimStart in
+                    project.trimClipStart(clipID, in: timelineID, layer: layerID, to: newTrimStart)
+                },
+                onTrimClipEnd: { layerID, clipID, newTrimEnd in
+                    project.trimClipEnd(clipID, in: timelineID, layer: layerID, to: newTrimEnd)
+                },
+                onEditTransform: { layerID, change in
+                    project.editTransform(of: layerID, in: timelineID, change)
+                },
+                onDetachAudio: { layerID, clipIDs in
+                    project.detachAudio(of: clipIDs, in: timelineID, layer: layerID)
+                }
+            )
+        } else {
+            ContentUnavailableView("No Timeline Selected", systemImage: "timeline.selection")
         }
     }
 

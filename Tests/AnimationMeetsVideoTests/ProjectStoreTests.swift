@@ -96,6 +96,29 @@ private struct Sandbox {
         #expect(!json.contains("transform"))
     }
 
+    @Test func roundTripKeepsDetachedStreams() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, _) = sandbox.makeProject()
+        let t = project.timelines.firstIndex { $0.id == project.rootTimelineID }!
+        project.timelines[t].layers[0].clips[0].streams = .video
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        let clip = try #require(loaded.project.timeline(id: project.rootTimelineID)?.layers.first?.clips.first { $0.id == clipID })
+        #expect(clip.streams == .video)
+    }
+
+    @Test func linkedClipsWriteNoStreams() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(!json.contains("streams"))
+    }
+
     @Test func roundTripKeepsStableIDsAndExactTimes() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
