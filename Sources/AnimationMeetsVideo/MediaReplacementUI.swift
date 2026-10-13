@@ -666,13 +666,16 @@ extension ReferenceThumbnails {
 
 extension View {
     /// Presents the replacement dialog and the batch summary.
-    func mediaReplacementDialogs(project: Binding<EditingProject>) -> some View {
-        modifier(MediaReplacementDialogs(project: project))
+    func mediaReplacementDialogs(
+        project: Binding<EditingProject>,
+        controller: MediaReplacementController
+    ) -> some View {
+        modifier(MediaReplacementDialogs(controller: controller, project: project))
     }
 }
 
 private struct MediaReplacementDialogs: ViewModifier {
-    @Environment(MediaReplacementController.self) private var controller
+    let controller: MediaReplacementController
     @Binding var project: EditingProject
 
     func body(content: Content) -> some View {

@@ -45,7 +45,7 @@ struct AnimationMeetsVideoApp: App {
     var body: some Scene {
         WindowGroup("Animation Meets Video") {
             EditorView(project: $project, history: history, analysis: analysis)
-                .mediaReplacementDialogs(project: $project)
+                .mediaReplacementDialogs(project: $project, controller: replacement)
                 .environment(replacement)
                 .environment(\.projectPackageURL, projectURL)
                 .onExternalProjectChange { checkForExternalProjectChange() }
