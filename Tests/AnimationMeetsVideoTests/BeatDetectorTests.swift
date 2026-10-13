@@ -22,6 +22,52 @@ private func clickTrack(seconds: Double, interval: Double, first: Double, sample
     return samples
 }
 
+/// Clicks at the given times, like `clickTrack`.
+private func clicks(at times: [Double], seconds: Double, sampleRate: Double) -> [Float] {
+    var samples = [Float](repeating: 0, count: Int(seconds * sampleRate))
+    var generator = SystemRandomNumberGenerator()
+    for time in times {
+        let start = Int(time * sampleRate)
+        let length = Int(0.03 * sampleRate)
+        for i in 0..<length where start + i < samples.count {
+            let envelope = Float(exp(-Double(i) / (0.006 * sampleRate)))
+            samples[start + i] = Float.random(in: -1...1, using: &generator) * envelope * 0.8
+        }
+    }
+    return samples
+}
+
+/// Click times for a tempo that follows `bpm(t)`, from `first` to `seconds`.
+private func clickTimes(seconds: Double, first: Double, bpm: (Double) -> Double) -> [Double] {
+    var times: [Double] = []
+    var time = first
+    while time < seconds {
+        times.append(time)
+        time += 60 / bpm(time)
+    }
+    return times
+}
+
+/// How well detected beats match the clicks, away from the first and last
+/// two seconds: the share of clicks with a beat within 50 ms, and the share
+/// of beats within 50 ms of a click.
+private func agreement(beats: [Double], clicks: [Double], seconds: Double) -> (found: Double, accurate: Double) {
+    func near(_ time: Double, _ others: [Double]) -> Bool { others.contains { abs($0 - time) < 0.05 } }
+    let inner = { (time: Double) in time > 2 && time < seconds - 2 }
+    let innerClicks = clicks.filter(inner), innerBeats = beats.filter(inner)
+    let found = Double(innerClicks.filter { near($0, beats) }.count) / Double(max(innerClicks.count, 1))
+    let accurate = Double(innerBeats.filter { near($0, clicks) }.count) / Double(max(innerBeats.count, 1))
+    return (found, accurate)
+}
+
+private func trackBeats(_ samples: [Float]) throws -> (seconds: [Double], result: BeatTracker.Result) {
+    let analyzer = OnsetAnalyzer()
+    samples.withUnsafeBufferPointer { analyzer.append($0) }
+    let result = try #require(BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond))
+    let seconds = result.frames.map { Double(OnsetAnalyzer.centerSample(ofFrame: $0)) / BeatDetector.sampleRate }
+    return (seconds, result)
+}
+
 private func seconds(_ time: CMTime) -> Double { time.seconds }
 
 @Suite struct BeatDetectorTests {
@@ -53,6 +99,50 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         let result = try #require(BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond))
 
         #expect(abs(result.beatsPerMinute - 90) < 3)
+    }
+
+    @Test func followsATempoThatRampsUp() throws {
+        let length = 40.0
+        let times = clickTimes(seconds: length, first: 0.2) { 90 + 50 * $0 / length }
+        let (beats, result) = try trackBeats(clicks(at: times, seconds: length, sampleRate: BeatDetector.sampleRate))
+
+        let match = agreement(beats: beats, clicks: times, seconds: length)
+        #expect(match.found > 0.9, "only \(match.found) of the clicks have a beat")
+        #expect(match.accurate > 0.9, "only \(match.accurate) of the beats are on a click")
+        #expect(abs(result.beatsPerMinute - 115) < 10)
+    }
+
+    @Test func followsASuddenChangeOfTempo() throws {
+        let length = 30.0
+        let times = clickTimes(seconds: length, first: 0.2) { $0 < 15 ? 100 : 150 }
+        let (beats, _) = try trackBeats(clicks(at: times, seconds: length, sampleRate: BeatDetector.sampleRate))
+
+        let match = agreement(beats: beats, clicks: times, seconds: length)
+        #expect(match.found > 0.95, "only \(match.found) of the clicks have a beat")
+        #expect(match.accurate > 0.95, "only \(match.accurate) of the beats are on a click")
+        // Not even the beats around the change stray between the two tempos.
+        let around = beats.filter { $0 > 12 && $0 < 18 }
+        #expect(around.allSatisfy { beat in times.contains { abs($0 - beat) < 0.05 } })
+    }
+
+    @Test func aSteadyTempoStaysSteady() throws {
+        let length = 40.0
+        let times = clickTimes(seconds: length, first: 0.3) { _ in 120 }
+        let (beats, result) = try trackBeats(clicks(at: times, seconds: length, sampleRate: BeatDetector.sampleRate))
+
+        let gaps = zip(beats.dropFirst(), beats).map { $0 - $1 }
+        #expect(gaps.allSatisfy { abs($0 - 0.5) < 0.03 }, "a gap strays from 0.5 s: \(gaps)")
+        #expect(abs(result.beatsPerMinute - 120) < 2)
+    }
+
+    @Test func followsASlowdown() throws {
+        let length = 40.0
+        let times = clickTimes(seconds: length, first: 0.2) { 150 - 60 * $0 / length }
+        let (beats, _) = try trackBeats(clicks(at: times, seconds: length, sampleRate: BeatDetector.sampleRate))
+
+        let match = agreement(beats: beats, clicks: times, seconds: length)
+        #expect(match.found > 0.9, "only \(match.found) of the clicks have a beat")
+        #expect(match.accurate > 0.9, "only \(match.accurate) of the beats are on a click")
     }
 
     @Test func silenceAndShortAudioHaveNoBeats() {
@@ -130,6 +220,22 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         #expect(values.lowerBound(of: 6) { $0 } == 4)
         #expect([Int]().lowerBound(of: 1) { $0 } == 0)
         #expect(values[1...].lowerBound(of: 5) { $0 } == 3)
+    }
+
+    @Test func beatsFromTheSteadyOnlyVersionAreReadAsMissing() {
+        var old = sample.encoded()
+        old.replaceSubrange(4..<8, with: withUnsafeBytes(of: UInt32(1).littleEndian) { Data($0) })
+        #expect(throws: BeatTrackError.self) { try BeatTrack(decoding: old) }
+    }
+
+    @Test func theTempoRangeSpansARampButNotASteadyBeat() throws {
+        #expect(BeatTrack(timescale: 1000, times: Array(stride(from: 0, to: 20_000, by: 500)), beatsPerMinute: 120).tempoRange == 120...120)
+
+        let times = clickTimes(seconds: 40, first: 0, bpm: { 90 + 50 * $0 / 40 })
+        let ramp = BeatTrack(timescale: 1000, times: times.map { Int64($0 * 1000) }, beatsPerMinute: 115)
+        let range = try #require(ramp.tempoRange)
+        #expect(abs(range.lowerBound - 95) < 5)
+        #expect(abs(range.upperBound - 135) < 5)
     }
 
     @Test func damagedDataIsRejected() {

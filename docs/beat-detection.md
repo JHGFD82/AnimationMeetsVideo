@@ -12,8 +12,8 @@ options.
 
 ## What is detected
 
-`BeatDetector.detect(url:)` reads the file's first audio track and finds a
-steady beat:
+`BeatDetector.detect(url:)` reads the file's first audio track and finds
+its beats, following the tempo where it ramps or changes:
 
 1. The audio is decoded in a stream to mono, 22,050 Hz floats, so a long
    file is never held in memory.
@@ -21,12 +21,25 @@ steady beat:
    256) and measures, frame by frame, how much louder each frequency has
    become (spectral flux, log compressed). The result is an onset curve:
    about 86 values per second saying how much new sound starts there.
-3. `BeatTracker` estimates one tempo from the curve's autocorrelation,
-   weighted toward 120 BPM (which settles tempo versus double or half
-   tempo), within 60 to 200 BPM. It then picks beats with dynamic
-   programming: each beat should land on a strong onset and about one tempo
-   period after the previous one. Weak beats at the very start and end are
-   trimmed.
+3. `BeatTracker` measures the tempo locally: for each 8-second stretch,
+   one second apart, it scores every period from 60 to 200 BPM by the
+   curve's autocorrelation, weighted toward 120 BPM (which settles tempo
+   versus double or half tempo). The curve is blurred slightly for this
+   step only, so a period that falls between two whole frames isn't
+   undercounted.
+4. A Viterbi pass picks one tempo per stretch. Changing tempo between
+   neighbouring stretches costs 40 per squared octave, capped at 2.5 (a
+   stretch's best score is 1). A ramp's small steps are cheap to follow,
+   while a sudden change, or a flip to double or half tempo, is taken only
+   once a few seconds of music are better explained by it.
+5. The period is interpolated between the stretches' centers. Across a
+   jump of more than about 7% it isn't interpolated: for a second and a
+   half either side of the jump, the next step may use either tempo, so
+   the onsets decide where the change falls.
+6. Beats are picked with dynamic programming (after Ellis, "Beat Tracking
+   by Dynamic Programming"): each beat should land on a strong onset and
+   about one local period after the previous one. Weak beats at the very
+   start and end are trimmed.
 
 Audio shorter than 4 seconds, or with no usable onsets, gives an **empty
 result**. That is saved like any other result, so the file is not analyzed
@@ -80,13 +93,15 @@ the layers, under the playhead and ignoring the mouse.
 | Field | Type |
 | --- | --- |
 | magic `AMVB` | 4 bytes |
-| version | UInt32 (1) |
+| version | UInt32 (2) |
 | timescale | Int32 |
 | beat count | UInt32 |
-| tempo | Float32 bit pattern |
+| tempo (median over the beats) | Float32 bit pattern |
 | beat times | Int64 each |
 
-All integers are little endian. `AssetAnalysis` holds results in memory,
+All integers are little endian. Version 1 files hold beats fitted to one
+steady tempo; they are read as missing, so those beats are detected again
+with the changing-tempo tracker. `AssetAnalysis` holds results in memory,
 remembers which are unsaved, and `ProjectStore.save` writes only those.
 Saved beats that were dropped because the file changed are deleted at the
 next save, so a reopened project never shows beats from an earlier file. A
@@ -102,12 +117,15 @@ background queue. Beats are queued for assets whose `MediaClip.hasAudio` is
 set, which the importer fills in from the file's audio tracks. The browser
 row names the stage running (reading the original, finding scenes, saving
 pictures, finding beats) with that stage's progress, starting from zero for
-each, and once done shows the tempo.
+each, and once done shows the tempo: the median, or the range the beats
+keep up for a few beats ("92–140 BPM") when it varies by more than 4%.
 
 ## Not implemented yet
 
-- **Changing tempo.** One steady tempo is assumed. Music that speeds up,
-  slows down, or has tempo changes drifts off the markers after the change.
+- **Tempo changes faster than a few seconds.** The tempo is measured over
+  8-second stretches, so rubato or a change that lasts only a bar or two
+  is smoothed over. Only click tracks have been tested; tune the constants
+  in `BeatTracker` against real music.
 - **Editing markers** by hand, nudging, or adding missing beats.
 - **Snapping** clips or the playhead to markers.
 - **Re-detect** from the browser, or a choice of tempo range.

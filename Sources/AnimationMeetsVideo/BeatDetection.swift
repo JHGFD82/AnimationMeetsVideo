@@ -12,10 +12,25 @@ struct BeatTrack: Equatable, Sendable {
     var timescale: Int32
     /// Beat positions in `timescale` units, ascending.
     var times: [Int64]
-    /// The steady tempo the beats were fitted to; 0 when no beat was found.
+    /// The typical tempo, the median over the beats; 0 when no beat was found.
     var beatsPerMinute: Double
 
     var isEmpty: Bool { times.isEmpty }
+
+    /// The slowest and fastest tempo the beats keep up for a few beats,
+    /// leaving out the slowest and fastest tenth so one odd gap doesn't
+    /// count. Nil with too few beats to tell.
+    var tempoRange: ClosedRange<Double>? {
+        guard times.count >= 6 else { return nil }
+        let gaps = zip(times.dropFirst(), times).map { Double($0 - $1) / Double(timescale) }
+        let steady = (0...(gaps.count - 4)).map { index -> Double in
+            gaps[index..<(index + 4)].sorted()[1...2].reduce(0, +) / 2
+        }
+        let tempos = steady.filter { $0 > 0 }.map { 60 / $0 }.sorted()
+        guard !tempos.isEmpty else { return nil }
+        let low = tempos[tempos.count / 10], high = tempos[tempos.count - 1 - tempos.count / 10]
+        return low...high
+    }
 
     /// Nothing was found. Saved like any other result so the audio is not
     /// analyzed again every time the project opens.
@@ -38,7 +53,9 @@ struct BeatTrack: Equatable, Sendable {
     // MARK: Serialization
 
     private static let magic: [UInt8] = Array("AMVB".utf8)
-    private static let version: UInt32 = 1
+    /// 2 since the tempo may change; files of version 1 hold beats fitted to
+    /// one steady tempo, so they are read as missing and detected again.
+    private static let version: UInt32 = 2
 
     /// Compact binary form: a header, then every beat time. All integers are
     /// little endian; the tempo is a 32-bit float's bit pattern.
@@ -373,14 +390,16 @@ final class OnsetAnalyzer {
 
 // MARK: - Beat tracking
 
-/// Finds the tempo of an onset curve and places beats on it (the approach of
-/// Ellis, "Beat Tracking by Dynamic Programming"): pick the most likely
-/// steady period, then choose the string of beats that lands on strong onsets
-/// while keeping close to that period.
+/// Finds the tempo of an onset curve and places beats on it, after Ellis,
+/// "Beat Tracking by Dynamic Programming", extended to a tempo that changes:
+/// the period is measured over short stretches, joined into one path that
+/// may glide or jump, and the beats are the string that lands on strong
+/// onsets while keeping close to the period at each moment.
 enum BeatTracker {
     struct Result {
         /// Envelope frame of each beat.
         var frames: [Int]
+        /// The typical tempo: the median over the beats.
         var beatsPerMinute: Double
     }
 
@@ -393,18 +412,34 @@ enum BeatTracker {
     static let tightness = 100.0
     /// Shorter than this there isn't enough to tell a tempo from noise.
     static let minimumSeconds = 4.0
+    /// The stretch each local tempo is measured over, and how far apart
+    /// the stretches start. Long enough to hold several beats at the
+    /// slowest tempo, short enough to follow a ramp.
+    static let tempoWindowSeconds = 8.0
+    static let tempoHopSeconds = 1.0
+    /// What a change of tempo between neighbouring stretches costs, per
+    /// squared octave, so a gradual ramp is cheap to follow.
+    static let tempoGlide = 40.0
+    /// The most a change between neighbouring stretches costs. A sudden
+    /// change, or a flip to double or half tempo, is taken only once a few
+    /// seconds of music are better explained by it.
+    static let tempoJump = 2.5
+    /// A change between neighbouring stretches bigger than this, in
+    /// octaves (about 7%), is a jump rather than part of a ramp.
+    static let suddenChange = 0.1
 
     static func track(envelope raw: [Float], framesPerSecond: Double) -> Result? {
         guard Double(raw.count) / framesPerSecond >= minimumSeconds,
               let onsets = prepared(raw, framesPerSecond: framesPerSecond),
-              let period = period(of: onsets, framesPerSecond: framesPerSecond)
+              let periods = periods(of: onsets, framesPerSecond: framesPerSecond)
         else {
             return nil
         }
-        let frames = chain(onsets, period: period)
+        let frames = chain(onsets, periods: periods)
         let kept = trimmed(frames, onsets: onsets)
         guard kept.count >= 2 else { return nil }
-        return Result(frames: kept, beatsPerMinute: 60 * framesPerSecond / period)
+        let tempos = kept.map { 60 * framesPerSecond / periods.main[$0] }.sorted()
+        return Result(frames: kept, beatsPerMinute: tempos[tempos.count / 2])
     }
 
     /// Keeps only what stands out from the surrounding second, then scales
@@ -426,55 +461,188 @@ enum BeatTracker {
         return onsets.map { $0 / spread }
     }
 
-    /// The beat period in frames (fractional), from the autocorrelation of
-    /// the onset curve weighted toward everyday tempos.
-    private static func period(of onsets: [Float], framesPerSecond: Double) -> Double? {
+    /// The beat period in frames (fractional) at every frame. Where the
+    /// tempo jumps, the frames between the two stretches' centers also get
+    /// the period on the other side of the jump, and the beat chain takes
+    /// whichever fits, so the onsets decide exactly where the change falls.
+    struct Periods {
+        var main: [Double]
+        var alternative: [Double?]
+    }
+
+    /// The periods at every frame (see `Periods`). Each stretch
+    /// of `tempoWindowSeconds` scores every candidate period by its
+    /// autocorrelation, weighted toward everyday tempos; a Viterbi pass
+    /// then picks one period per stretch, trading those scores against
+    /// the cost of changing tempo, and the result is interpolated between
+    /// the stretches' centers.
+    private static func periods(of onsets: [Float], framesPerSecond: Double) -> Periods? {
         let shortest = max(2, Int((framesPerSecond * 60 / maximumBPM).rounded(.down)))
         let longest = Int((framesPerSecond * 60 / minimumBPM).rounded(.up))
         guard longest + 1 < onsets.count else { return nil }
 
+        let length = min(onsets.count, max(Int(tempoWindowSeconds * framesPerSecond), 2 * (longest + 2)))
+        let hop = max(1, Int(tempoHopSeconds * framesPerSecond))
+        var starts = Array(stride(from: 0, to: onsets.count - length, by: hop))
+        starts.append(onsets.count - length)
+
+        let lags = Array(shortest...(longest + 1))
+        let states = lags.count - 1
         let preferred = framesPerSecond * 60 / preferredBPM
-        var scores = [Double](repeating: 0, count: longest + 2)
-        for lag in shortest...(longest + 1) {
-            var sum: Float = 0
-            let overlap = onsets.count - lag
-            onsets.withUnsafeBufferPointer { buffer in
-                vDSP_dotpr(buffer.baseAddress!, 1, buffer.baseAddress! + lag, 1, &sum, vDSP_Length(overlap))
-            }
+        let weights = lags.map { lag -> Double in
             let octaves = log2(Double(lag) / preferred) / 1.4
-            scores[lag] = Double(sum) / Double(overlap) * exp(-0.5 * octaves * octaves)
+            return exp(-0.5 * octaves * octaves)
         }
 
-        var best = shortest
-        for lag in shortest...longest where scores[lag] > scores[best] { best = lag }
-        guard scores[best] > 0 else { return nil }
+        // Onset peaks are a frame or two wide, so a period between two whole
+        // frames splits its match across both lags and loses to a slower
+        // tempo whose period happens to be whole. Blurring the curve a
+        // little, for measuring tempo only, lets every period match fully.
+        let blurred = blurred(onsets)
 
-        // Refine between frames: at 86 frames a second, one frame is several BPM.
-        guard best > shortest else { return Double(best) }
-        let left = scores[best - 1], middle = scores[best], right = scores[best + 1]
-        let curve = left - 2 * middle + right
-        guard curve < 0 else { return Double(best) }
-        return Double(best) + min(max(0.5 * (left - right) / curve, -0.5), 0.5)
+        // Each stretch's scores, scaled so its best is 1. A silent stretch
+        // scores nothing, and the tempo carries through it.
+        var scores: [[Double]] = []
+        var anyEvidence = false
+        blurred.withUnsafeBufferPointer { buffer in
+            for start in starts {
+                var row = lags.indices.map { index -> Double in
+                    let lag = lags[index]
+                    let overlap = length - lag
+                    guard overlap > 0 else { return 0 }
+                    var sum: Float = 0
+                    vDSP_dotpr(buffer.baseAddress! + start, 1, buffer.baseAddress! + start + lag, 1, &sum, vDSP_Length(overlap))
+                    return Double(sum) / Double(overlap) * weights[index]
+                }
+                let best = row[..<states].max() ?? 0
+                if best > 0 {
+                    anyEvidence = true
+                    row = row.map { max(0, $0) / best }
+                } else {
+                    row = row.map { _ in 0 }
+                }
+                scores.append(row)
+            }
+        }
+        guard anyEvidence else { return nil }
+
+        // Viterbi over the candidate periods.
+        let logLags = lags.map { log2(Double($0)) }
+        var total = Array(scores[0][..<states])
+        var backlinks: [[Int]] = []
+        for row in scores.dropFirst() {
+            var next = [Double](repeating: -.infinity, count: states)
+            var links = [Int](repeating: 0, count: states)
+            for state in 0..<states {
+                var best = -Double.infinity
+                for previous in 0..<states {
+                    let change = logLags[state] - logLags[previous]
+                    let candidate = total[previous] - min(tempoGlide * change * change, tempoJump)
+                    if candidate > best {
+                        best = candidate
+                        links[state] = previous
+                    }
+                }
+                next[state] = best + row[state]
+            }
+            total = next
+            backlinks.append(links)
+        }
+        var path = [Int](repeating: 0, count: scores.count)
+        path[path.count - 1] = total.indices.max { total[$0] < total[$1] } ?? 0
+        for index in stride(from: path.count - 1, to: 0, by: -1) {
+            path[index - 1] = backlinks[index - 1][path[index]]
+        }
+
+        // Refine each stretch's period between frames: at 86 frames a
+        // second, one frame is several BPM.
+        let periods = path.indices.map { index -> Double in
+            let state = path[index], row = scores[index]
+            guard state > 0 else { return Double(lags[state]) }
+            let left = row[state - 1], middle = row[state], right = row[state + 1]
+            let curve = left - 2 * middle + right
+            guard curve < 0 else { return Double(lags[state]) }
+            return Double(lags[state]) + min(max(0.5 * (left - right) / curve, -0.5), 0.5)
+        }
+
+        let centers = starts.map { Double($0) + Double(length) / 2 }
+        var perFrame = [Double](repeating: periods[0], count: onsets.count)
+        var alternative = [Double?](repeating: nil, count: onsets.count)
+        var segment = 0
+        for frame in onsets.indices {
+            let position = Double(frame)
+            while segment + 1 < centers.count, centers[segment + 1] <= position { segment += 1 }
+            if position <= centers[0] {
+                perFrame[frame] = periods[0]
+            } else if segment + 1 >= centers.count {
+                perFrame[frame] = periods[periods.count - 1]
+            } else {
+                let fraction = (position - centers[segment]) / (centers[segment + 1] - centers[segment])
+                let before = periods[segment], after = periods[segment + 1]
+                if abs(log2(after / before)) > suddenChange {
+                    // A jump, not a glide: easing into it would put beats between the two tempos.
+                    perFrame[frame] = fraction < 0.5 ? before : after
+                } else {
+                    perFrame[frame] = before + fraction * (after - before)
+                }
+            }
+        }
+        // The change can fall anywhere the two stretches overlap, so the
+        // chain may use either period from a stretch before the jump's
+        // midpoint to a stretch after it.
+        for segment in 0..<max(0, centers.count - 1) {
+            let before = periods[segment], after = periods[segment + 1]
+            guard abs(log2(after / before)) > suddenChange else { continue }
+            let middle = (centers[segment] + centers[segment + 1]) / 2
+            let reach = Double(hop) * 1.5
+            let low = max(0, Int(middle - reach)), high = min(onsets.count - 1, Int(middle + reach))
+            guard low <= high else { continue }
+            for frame in low...high {
+                alternative[frame] = Double(frame) < middle ? after : before
+            }
+        }
+        return Periods(main: perFrame, alternative: alternative)
+    }
+
+    /// The curve smoothed with a small Gaussian (a deviation of 1.5 frames).
+    private static func blurred(_ onsets: [Float]) -> [Float] {
+        let kernel: [Float] = (-4...4).map { exp(-Float($0 * $0) / (2 * 1.5 * 1.5)) }
+        var result = [Float](repeating: 0, count: onsets.count)
+        for index in onsets.indices {
+            var total: Float = 0
+            for (offset, weight) in kernel.enumerated() {
+                let position = index + offset - 4
+                guard onsets.indices.contains(position) else { continue }
+                total += onsets[position] * weight
+            }
+            result[index] = total
+        }
+        return result
     }
 
     /// Dynamic programming: each frame's best score is its onset strength
-    /// plus the best earlier beat, minus a penalty for straying from the period.
-    private static func chain(_ onsets: [Float], period: Double) -> [Int] {
+    /// plus the best earlier beat, minus a penalty for straying from the
+    /// period at that frame.
+    private static func chain(_ onsets: [Float], periods: Periods) -> [Int] {
         let count = onsets.count
-        let nearest = max(1, Int((period / 2).rounded()))
-        let farthest = max(nearest + 1, Int((period * 2).rounded()))
-        let penalties: [Double] = (0...farthest).map { gap in
-            gap < nearest ? -.infinity : -tightness * pow(log(Double(gap) / period), 2)
-        }
+        let longestPeriod = max(periods.main.max() ?? 2, periods.alternative.compactMap { $0 }.max() ?? 2)
+        let farthestAnywhere = max(2, Int((longestPeriod * 2).rounded()))
+        let logGaps = (0...farthestAnywhere).map { log(Double(max($0, 1))) }
 
         var score = [Double](repeating: 0, count: count)
         var backlink = [Int](repeating: -1, count: count)
         for t in 0..<count {
+            let period = periods.main[t]
+            let other = periods.alternative[t] ?? period
+            let logPeriod = log(period), logOther = log(other)
+            let nearest = max(1, Int((min(period, other) / 2).rounded()))
+            let farthest = max(nearest + 1, Int((max(period, other) * 2).rounded()))
             var best = 0.0
             var from = -1
             if t - nearest >= 0 {
                 for gap in nearest...min(farthest, t) {
-                    let candidate = score[t - gap] + penalties[gap]
+                    let stray = min(abs(logGaps[gap] - logPeriod), abs(logGaps[gap] - logOther))
+                    let candidate = score[t - gap] - tightness * stray * stray
                     if candidate > best {
                         best = candidate
                         from = t - gap

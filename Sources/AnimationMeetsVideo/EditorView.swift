@@ -566,6 +566,14 @@ private struct LibrarySidebar: View {
         }
     }
 
+    /// "120 BPM", or "92–140 BPM" when the tempo changes noticeably.
+    static func tempoText(_ beats: BeatTrack) -> String {
+        if let range = beats.tempoRange, range.upperBound / range.lowerBound > 1.04 {
+            return "\(Int(range.lowerBound.rounded()))–\(Int(range.upperBound.rounded())) BPM"
+        }
+        return "\(Int(beats.beatsPerMinute.rounded())) BPM"
+    }
+
     @ViewBuilder
     private func assetStatus(_ clip: MediaClip) -> some View {
         if let fraction = analysis.progress[clip.id] {
@@ -584,7 +592,7 @@ private struct LibrarySidebar: View {
                 .foregroundStyle(.orange)
                 .help(failure)
         } else if let beats = analysis.beats[clip.id], !beats.isEmpty {
-            Text("\(clip.kind.rawValue) · \(Int(beats.beatsPerMinute.rounded())) BPM")
+            Text("\(clip.kind.rawValue) · \(Self.tempoText(beats))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else {
