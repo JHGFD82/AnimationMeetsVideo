@@ -63,10 +63,13 @@ struct AnimationMeetsVideoApp: App {
     private func openProject() {
         guard confirmDiscardingCurrentProject() else { return }
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
+        panel.allowedContentTypes = [.folder, .json]
         panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.message = "Choose a project (.\(ProjectStore.packageExtension)) to open."
+        guard panel.runModal() == .OK, let selection = panel.url else { return }
+        let url = ProjectStore.packageURL(forSelection: selection)
 
         Task {
             do {
@@ -90,17 +93,55 @@ struct AnimationMeetsVideoApp: App {
         var destination = forcePanel ? nil : projectURL
         if destination == nil {
             let panel = NSSavePanel()
-            panel.allowedContentTypes = [.json]
+            if let type = UTType(filenameExtension: ProjectStore.packageExtension, conformingTo: .package) {
+                panel.allowedContentTypes = [type]
+            }
             panel.nameFieldStringValue = project.name
-            guard panel.runModal() == .OK, let url = panel.url else { return }
+            guard panel.runModal() == .OK, var url = panel.url else { return }
+            if url.pathExtension != ProjectStore.packageExtension {
+                url.appendPathExtension(ProjectStore.packageExtension)
+            }
             destination = url
         }
         guard let url = destination else { return }
-        do {
-            try ProjectStore.save(project, to: url)
-            projectURL = url
-        } catch {
-            showAlert(title: "Couldn't Save Project", message: error.localizedDescription)
+
+        Task {
+            do {
+                try ProjectStore.preparePackage(at: url)
+                guard let copying = chooseMediaToCopy(for: project, into: url) else { return }
+                project = try await ProjectStore.save(project, to: url, copying: copying)
+                projectURL = url
+            } catch {
+                showAlert(title: "Couldn't Save Project", message: error.localizedDescription)
+            }
+        }
+    }
+
+    /// Picks which media to copy into the package. Same-volume copies are
+    /// APFS clones that cost no space, so they happen without asking; copies
+    /// that use real disk space need confirmation. Returns nil to cancel.
+    private func chooseMediaToCopy(for project: EditingProject, into packageURL: URL) -> Set<UUID>? {
+        let candidates = ProjectStore.mediaToCopy(in: project, into: packageURL)
+        var selected = Set(candidates.filter(\.isClone).map(\.clipID))
+        let heavy = candidates.filter { !$0.isClone }
+        guard !heavy.isEmpty else { return selected }
+
+        let total = heavy.reduce(Int64(0)) { $0 + $1.byteCount }
+        let size = ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        let alert = NSAlert()
+        alert.messageText = "Copy \(heavy.count) media file\(heavy.count == 1 ? "" : "s") into the project?"
+        alert.informativeText = "\(size) will be copied because the files are on a different volume than the project, so it uses real disk space. You can leave them where they are and the project will reference them in place."
+        alert.addButton(withTitle: "Copy \(size)")
+        alert.addButton(withTitle: "Reference in Place")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            selected.formUnion(heavy.map(\.clipID))
+            return selected
+        case .alertSecondButtonReturn:
+            return selected
+        default:
+            return nil
         }
     }
 
