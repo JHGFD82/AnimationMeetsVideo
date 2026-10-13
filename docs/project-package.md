@@ -10,6 +10,10 @@ and `project.json` holds scene edits (see [scene-cuts.md](scene-cuts.md)).
 `thumbs/` holds reference pictures. Not yet implemented: dense reference frames, the render cache, live reload, a restore-from-backup screen (copy a backup over
 `project.json` by hand for now), and a Finder-visible package type (that
 needs an app bundle that declares the `.amv` type).
+Step 4 is implemented except "forget original" (see
+[media-replacement.md](media-replacement.md)): `project.json` stores each
+asset's alignment offset, earlier file paths, and the file stamp accepted at
+the last save.
 
 ## Goals
 
@@ -147,5 +151,7 @@ Foundation first, because the other features depend on it:
    (metadata snapshot, audio envelope, thumbnails at cuts and intervals) is
    done.
 4. Media replacement and the sync dialog
-   ([media-replacement.md](media-replacement.md)).
+   ([media-replacement.md](media-replacement.md)). **Mostly done**: the
+   comparison, alignment suggestion, dialog, folder replacement, and offset
+   at playback and export. Forget original remains.
 5. Live reload.

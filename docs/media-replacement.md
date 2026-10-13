@@ -1,6 +1,9 @@
 # Media replacement ("bait and switch")
 
-Status: **planned, not implemented.**
+Status: **implemented, apart from the items under "Not yet implemented"
+at the end.** Replacement, the comparison tiers, the alignment suggestion,
+the sync dialog, folder replacement and the offset applied at playback and
+export all work.
 
 Editors often cut with one version of a file and finish with another, for
 example a lower-quality copy for speed and the full-quality original for the
@@ -15,7 +18,9 @@ footage costs a lot of disk space, so the app does not do it.
 - Replacing media changes only the file behind the asset. Nothing that
   refers to the asset needs to change.
 - The asset records its previous file paths. These are only paths, no files
-  are copied, so a person can point the asset back at an earlier file.
+  are copied, so a person can point the asset back at an earlier file
+  (**Use Earlier File** in the clip's context menu). The usual comparison
+  and sync check still run.
 - The person is responsible for choosing the right footage. The app compares
   the old and new file, adjusts what it safely can, and flags the rest.
 
@@ -32,13 +37,17 @@ Because it is the only record of the original, it is kept separately from
 the render cache and is never evicted automatically. See
 [project-package.md](project-package.md).
 
-If a file is swapped outside the app before its reference record finished
-generating, the comparison uses whatever exists so far and says so.
+If a file is replaced before its reference record finished generating,
+there is nothing to compare against. The dialog says so, asks the person to
+judge the alignment, and does not suggest an offset.
 
 ## What happens when a file is replaced
 
-The app reads the new file's metadata and compares it with the snapshot.
-Differences fall into three tiers.
+The app reads the new file's metadata, audio and (when needed) picture
+changes and compares them with the saved reference. Differences fall into
+three tiers. A replacement with no differences in tiers 2 and 3 that
+aligns at the offset already in effect is applied without opening a
+dialog, which keeps folder replacement quiet for the files that match.
 
 ### 1. Adjusted silently
 
@@ -46,7 +55,7 @@ Differences fall into three tiers.
 | --- | --- |
 | Resolution | Ignored. The new file is scaled to occupy the same frame as the old one, preserving aspect ratio. |
 | Frame rate | Ignored. Times are stored as rational seconds, so the new file is sampled at the nearest frame for the project's frame rate. Variable-frame-rate files get a warning. |
-| Color space, SDR to SDR | Converted as needed. |
+| Color space, SDR to SDR | Not yet converted; the project's color space is only a label today (see Decisions). |
 
 ### 2. Confirmed with the person
 
@@ -54,7 +63,10 @@ Differences fall into three tiers.
 | --- | --- |
 | Aspect ratio | Keeping the framing and cropping or letterboxing it is an editorial choice. |
 | SDR to HDR (PQ or HLG) or the reverse | The look changes significantly and tone mapping is required. |
-| Untagged or inconsistently tagged color | The app can only guess, so it asks and offers a per-asset color override. |
+| Untagged or incompletely tagged color | The app can only guess, so it asks. A per-asset color override is not built yet. |
+
+Each confirmation is a checkbox in the dialog; Replace stays disabled until
+all are ticked.
 
 ### 3. Blocking: sync must be confirmed
 
@@ -65,34 +77,62 @@ be offset, and a differently trimmed file can be a different length and still
 match. When the new file does not obviously line up, the app opens the sync
 dialog.
 
+The blocking differences are: the new file has no picture or no sound where
+the original had one (the person can tick "Replace anyway"), and any used
+range that falls outside the new file at the chosen offset. The last one
+cannot be overridden; change the offset or choose another file.
+
 ## The sync dialog
 
-The dialog shows the saved reference frames of the original on one side and
-the new file on the other, each with its own timeline.
+The dialog shows the saved picture of the original nearest a chosen moment
+next to the new file's frame at the matching time. A slider moves the
+chosen moment (it starts at the first used range).
 
-1. The app computes a **suggested alignment** by matching signatures:
-   the audio envelope when both files have audio (the most reliable, down to
-   individual samples), otherwise scene cuts and frame-luma.
-2. The person can accept it, or navigate each side to the same scene change
-   and mark them as the same moment. Reference frames are dense around cuts
-   and used ranges, so those points can be matched to the exact frame.
+1. The app computes a **suggested alignment**. Audio is tried first: the
+   loudness envelope (about 100 values a second, so accurate to roughly
+   10 ms) of each file is cross-correlated, and the confidence is how far
+   the best match stands above the runner-up. When audio is missing or not
+   confident, the files' scene cuts are compared instead, which means
+   scoring every frame of the new file and is slower. A suggestion with
+   confidence below 0.25 is shown as weak.
+2. The person can accept it, nudge the offset by a frame or a second until
+   the two pictures show the same moment, use the suggestion again, or set
+   the offset to zero.
 3. The result is stored as an **alignment on the asset**: a single time
-   offset. Differences in speed between versions are not corrected.
+   offset, the file time minus the original time. Differences in speed
+   between versions are not corrected.
 
 Alignment is stored on the asset, not by rewriting timeline clips or
-keyframes. Trims, scenes, and future keyframes all stay in the original
-source time and the offset is applied at playback and export. Re-aligning
-later changes one value.
+keyframes. Trims, scenes, cuts, beats and future keyframes all stay in the
+original's time; a clip reading original time `t` reads the file at
+`t + offset`. Re-aligning later changes one value.
 
-Limits: the original side can only show frames that were saved, so
-frame-exact matching depends on cuts and used ranges. Footage with no cuts
-and no audio falls back to a manual offset.
+After a replacement the asset's `duration` is the **new file's** duration,
+and the used ranges are checked against it.
+
+Limits: the original side can only show pictures that were saved, which are
+sparse (at cuts and intervals), so the nearest saved picture can be a
+little off the chosen moment. Footage with no cuts and no audio falls back
+to a manual offset.
 
 ## Bulk replacement
 
-Replacing a folder of files at once (matching by filename, and checking each
-match with the same tiers above) should be supported, since the common case
-is "point everything at the full-quality folder".
+**Replace Media from Folder…** matches the files in a folder (including
+subfolders) to the project's media by name. An asset matches by its current
+file name, then by the original's name, ignoring case; failing that, a
+single file with the same name apart from the extension is accepted, since a
+stand-in is often a different container. A name that more than one file
+could match is skipped rather than guessed, and one file is never given to
+two assets. Each match goes through the same checks; only the ones that need
+a decision open the dialog, and a summary lists what was not replaced.
+
+## Files changed outside the app
+
+When a project opens, any media file whose size or modification time differs
+from what was accepted at the last save is flagged. The clip's context menu
+then offers **File Changed — Check Sync…**, which runs the same analysis on
+the file already in place and stores the result. There is no live watching of
+files yet.
 
 ## Export
 
@@ -111,3 +151,13 @@ is their responsibility, and the app does not check or warn before exporting.
   per-asset override. Actual conversion waits until the project's color
   space is applied when rendering (today it is only a label).
 - **No pre-export check** of which file each asset points at.
+
+## Not yet implemented
+
+- **Forget original** (with its confirmation), including remembering that the
+  reference was forgotten so it isn't captured again.
+- Watching files while the app runs (live reload).
+- A per-asset color override and actual SDR/HDR conversion.
+- Dense reference frames near cuts and used ranges, which would allow
+  frame-exact matching on the original's side.
+- Variable-frame-rate warnings.
