@@ -1,10 +1,12 @@
 # Project package format
 
-Status: **step 1 implemented** (package layout, `formatVersion` 1, stable
-IDs, rational times, deterministic output, media copy on save). Not yet
-implemented: the `.lock` file, autosave into `Backups/`, `Reference/`
-contents, the render cache, live reload, and a Finder-visible package type
-(that needs an app bundle that declares the `.amv` type).
+Status: **steps 1 and 2 implemented**: package layout, `formatVersion` 1,
+stable IDs, rational times, deterministic output, media copy on save, undo
+and redo, the single-writer `.lock`, unsaved-change tracking, and autosave
+into `Backups/`. Not yet implemented: `Reference/` contents, the render
+cache, live reload, a restore-from-backup screen (copy a backup over
+`project.json` by hand for now), and a Finder-visible package type (that
+needs an app bundle that declares the `.amv` type).
 
 ## Goals
 
@@ -31,7 +33,7 @@ MyProject.amv/
       signature.bin
   Cache/              render cache (disposable, size-capped)
   Backups/            autosaves
-  .lock               single-writer lock
+  .lock               single-writer lock (an flock held while the project is open)
 ```
 
 Media may be copied into `Media/` or referenced from elsewhere, chosen per
@@ -133,7 +135,8 @@ Foundation first, because the other features depend on it:
 1. Persist stable IDs in the model and the file, add `formatVersion`, and
    write the package layout. **Done.**
 2. Undo and redo, single-writer lock, and autosave, and define how reloads
-   interact with undo.
+   interact with undo. **Done**, except the reload interaction, which belongs
+   with live reload.
 3. Scene detection and the browser ([scene-cuts.md](scene-cuts.md)),
    including the reference data capture.
 4. Media replacement and the sync dialog

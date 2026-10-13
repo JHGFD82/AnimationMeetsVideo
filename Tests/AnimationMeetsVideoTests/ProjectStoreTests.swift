@@ -257,4 +257,81 @@ private struct Sandbox {
         #expect(ProjectStore.packageURL(forSelection: package) == package)
         #expect(ProjectStore.packageURL(forSelection: file).path == package.path)
     }
+
+    @Test func backupGoesToBackupsFolderAndLeavesProjectFileAlone() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let savedBytes = try Data(contentsOf: sandbox.projectJSON)
+
+        var edited = project
+        edited.name = "Edited since save"
+        let backup = try ProjectStore.writeBackup(of: edited, in: sandbox.packageURL)
+
+        #expect(backup.deletingLastPathComponent().lastPathComponent == "Backups")
+        #expect(try String(contentsOf: backup, encoding: .utf8).contains("Edited since save"))
+        #expect(try Data(contentsOf: sandbox.projectJSON) == savedBytes)
+    }
+
+    @Test func backupIsALoadablePackageFile() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+
+        var edited = project
+        edited.name = "Recovered"
+        let backup = try ProjectStore.writeBackup(of: edited, in: sandbox.packageURL)
+        try FileManager.default.removeItem(at: sandbox.projectJSON)
+        try FileManager.default.copyItem(at: backup, to: sandbox.projectJSON)
+
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.project.name == "Recovered")
+    }
+
+    @Test func oldestBackupsArePrunedBeyondTheLimit() throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+
+        for second in 0..<5 {
+            try ProjectStore.writeBackup(
+                of: project,
+                in: sandbox.packageURL,
+                now: Date(timeIntervalSince1970: 1_700_000_000 + Double(second)),
+                keeping: 3
+            )
+        }
+
+        let folder = sandbox.packageURL.appending(path: "Backups")
+        let names = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
+        #expect(names.count == 3)
+        let newest = ProjectStore.backupPrefix
+        #expect(names.allSatisfy { $0.hasPrefix(newest) })
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let kept = (2..<5).map { "\(newest)\(formatter.string(from: Date(timeIntervalSince1970: 1_700_000_000 + Double($0)))).json" }
+        #expect(names == kept)
+    }
+
+    @Test func applyingMediaLocationsKeepsOtherEdits() {
+        var live = EditingProject.empty
+        let media = MediaClip(
+            name: "A", kind: .video, url: URL(fileURLWithPath: "/old/a.mov"),
+            duration: .init(seconds: 1, preferredTimescale: 600),
+            frameRate: 24, colorSpace: .rec709, codecName: "Stub"
+        )
+        live.clips = [media]
+        var saved = live
+        saved.clips[0].url = URL(fileURLWithPath: "/package/Media/a.mov")
+
+        live.name = "Edited while saving"
+        live.applyMediaLocations(from: saved)
+
+        #expect(live.name == "Edited while saving")
+        #expect(live.clips[0].url?.path == "/package/Media/a.mov")
+    }
 }

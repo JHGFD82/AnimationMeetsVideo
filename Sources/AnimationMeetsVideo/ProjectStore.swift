@@ -227,13 +227,50 @@ enum ProjectStore {
             project.clips[index].url = destination
         }
 
-        let file = makeFile(from: project, packageURL: packageURL)
+        try encode(project, packageURL: packageURL)
+            .write(to: packageURL.appending(path: projectFileName), options: .atomic)
+        return project
+    }
+
+    private static func encode(_ project: EditingProject, packageURL: URL) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        var data = try encoder.encode(file)
+        var data = try encoder.encode(makeFile(from: project, packageURL: packageURL))
         data.append(0x0A)
-        try data.write(to: packageURL.appending(path: projectFileName), options: .atomic)
-        return project
+        return data
+    }
+
+    // MARK: Backups
+
+    static let backupPrefix = "autosave-"
+
+    /// Writes a timestamped copy of the project into `Backups/` and deletes
+    /// the oldest beyond `limit`. It never touches `project.json`, so an
+    /// autosave can't overwrite work the person chose to save. To recover,
+    /// copy a backup over `project.json`.
+    @discardableResult
+    static func writeBackup(
+        of project: EditingProject,
+        in packageURL: URL,
+        now: Date = Date(),
+        keeping limit: Int = 20
+    ) throws -> URL {
+        let folder = packageURL.appending(path: backupsFolderName, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let url = folder.appending(path: "\(backupPrefix)\(formatter.string(from: now)).json")
+        try encode(project, packageURL: packageURL).write(to: url, options: .atomic)
+
+        let backups = (try FileManager.default.contentsOfDirectory(atPath: folder.path))
+            .filter { $0.hasPrefix(backupPrefix) && $0.hasSuffix(".json") }
+            .sorted()
+        for name in backups.dropLast(max(limit, 1)) {
+            try? FileManager.default.removeItem(at: folder.appending(path: name))
+        }
+        return url
     }
 
     private static func makeFile(from project: EditingProject, packageURL: URL) -> ProjectFile {

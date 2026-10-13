@@ -121,7 +121,7 @@ private final class Harness {
     @Test func adoptedChangesAreNotUndoable() {
         let h = Harness()
         h.project.name = "Saved As"
-        h.history.adopt(h.project)
+        h.history.adopt { $0.name = "Saved As" }
         h.history.projectDidChange(h.project)
 
         #expect(!h.undoManager.canUndo)

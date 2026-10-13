@@ -20,6 +20,17 @@ struct EditingProject: Identifiable, Equatable {
         return EditingProject(id: UUID(), name: "Untitled Project", clips: [], timelines: [main], rootTimelineID: main.id)
     }
 
+    /// Copies each asset's file location from `other`, leaving everything else
+    /// alone. Used after a save moves media into the package, so edits made
+    /// while the save was running are kept.
+    mutating func applyMediaLocations(from other: EditingProject) {
+        for clip in other.clips {
+            if let index = clips.firstIndex(where: { $0.id == clip.id }) {
+                clips[index].url = clip.url
+            }
+        }
+    }
+
     func timeline(id: UUID) -> Timeline? {
         timelines.first { $0.id == id }
     }

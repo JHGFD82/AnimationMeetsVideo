@@ -22,10 +22,18 @@ struct AnimationMeetsVideoApp: App {
     @State private var history: ProjectHistory
     @State private var projectURL: URL?
     @State private var projectLock: ProjectLock?
+    /// The project as last saved or opened, to tell whether there are unsaved changes.
+    @State private var savedProject: EditingProject
+    @State private var lastAutosaved: EditingProject?
+
+    private static let autosaveInterval: Duration = .seconds(60)
+
+    private var hasUnsavedChanges: Bool { project != savedProject }
 
     init() {
         let initial = EditingProject.empty
         _project = State(initialValue: initial)
+        _savedProject = State(initialValue: initial)
         _history = State(initialValue: ProjectHistory(project: initial))
     }
 
@@ -33,6 +41,12 @@ struct AnimationMeetsVideoApp: App {
         WindowGroup("Animation Meets Video") {
             EditorView(project: $project, history: history)
                 .frame(minWidth: 1_100, minHeight: 700)
+                .task {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: Self.autosaveInterval)
+                        autosave()
+                    }
+                }
         }
         .windowResizability(.contentSize)
         .commands {
@@ -66,6 +80,8 @@ struct AnimationMeetsVideoApp: App {
         guard confirmDiscardingCurrentProject() else { return }
         project = EditingProject.empty
         history.reset(to: project)
+        savedProject = project
+        lastAutosaved = nil
         projectURL = nil
         projectLock = nil
     }
@@ -88,6 +104,8 @@ struct AnimationMeetsVideoApp: App {
                 let result = try await ProjectStore.load(from: url)
                 project = result.project
                 history.reset(to: result.project)
+                savedProject = result.project
+                lastAutosaved = nil
                 projectURL = url
                 projectLock = lock
                 if !result.missingMedia.isEmpty {
@@ -124,9 +142,13 @@ struct AnimationMeetsVideoApp: App {
                 try ProjectStore.preparePackage(at: url)
                 let lock = try lockForProject(at: url)
                 guard let copying = chooseMediaToCopy(for: project, into: url) else { return }
-                let saved = try await ProjectStore.save(project, to: url, copying: copying)
-                history.adopt(saved)
-                project = saved
+                let snapshot = project
+                let saved = try await ProjectStore.save(snapshot, to: url, copying: copying)
+                // Edits made while saving stay; only the media locations change.
+                history.adopt { $0.applyMediaLocations(from: saved) }
+                project.applyMediaLocations(from: saved)
+                savedProject = saved
+                lastAutosaved = nil
                 projectURL = url
                 projectLock = lock
             } catch {
@@ -175,12 +197,21 @@ struct AnimationMeetsVideoApp: App {
         }
     }
 
-    /// There's no unsaved-changes tracking yet, so replacing a project that
-    /// has content always asks first.
+    /// Writes a recovery copy into the package's `Backups/` folder. Only for
+    /// projects that have been saved once (there is no package before that),
+    /// and only when something changed since the last save or autosave.
+    private func autosave() {
+        guard let url = projectURL, hasUnsavedChanges, project != lastAutosaved else { return }
+        do {
+            try ProjectStore.writeBackup(of: project, in: url)
+            lastAutosaved = project
+        } catch {
+            NSLog("Autosave failed: \(error.localizedDescription)")
+        }
+    }
+
     private func confirmDiscardingCurrentProject() -> Bool {
-        let hasContent = !project.clips.isEmpty || project.timelines.count > 1
-            || project.timelines.contains { !$0.layers.isEmpty }
-        guard hasContent else { return true }
+        guard hasUnsavedChanges else { return true }
         let alert = NSAlert()
         alert.messageText = "Replace the current project?"
         alert.informativeText = "Changes you haven't saved will be lost."

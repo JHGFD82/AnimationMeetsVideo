@@ -29,10 +29,11 @@ final class ProjectHistory {
         undoManager?.removeAllActions()
     }
 
-    /// Adopts a change that must not be undoable, such as media URLs being
-    /// rewritten by a save.
-    func adopt(_ project: EditingProject) {
-        baseline = project
+    /// Applies a change to the baseline so it is not recorded as an edit,
+    /// such as media URLs being rewritten by a save. Apply the same change to
+    /// the live project.
+    func adopt(_ change: (inout EditingProject) -> Void) {
+        change(&baseline)
     }
 
     /// Call whenever the project value changes.
