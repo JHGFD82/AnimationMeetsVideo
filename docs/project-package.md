@@ -1,8 +1,10 @@
 # Project package format
 
-Status: **planned, not implemented.** Today a project is a single JSON file
-written by `ProjectStore`. Clip times are stored as exact value and
-timescale, and clips and timelines are referenced by array index.
+Status: **step 1 implemented** (package layout, `formatVersion` 1, stable
+IDs, rational times, deterministic output, media copy on save). Not yet
+implemented: the `.lock` file, autosave into `Backups/`, `Reference/`
+contents, the render cache, live reload, and a Finder-visible package type
+(that needs an app bundle that declares the `.amv` type).
 
 ## Goals
 
@@ -102,7 +104,7 @@ make a structural comparison cheap. A visual diff is only useful later for a
 Foundation first, because the other features depend on it:
 
 1. Persist stable IDs in the model and the file, add `formatVersion`, and
-   write the package layout.
+   write the package layout. **Done.**
 2. Undo and redo, single-writer lock, and autosave, and define how reloads
    interact with undo.
 3. Scene detection and the browser ([scene-cuts.md](scene-cuts.md)),
