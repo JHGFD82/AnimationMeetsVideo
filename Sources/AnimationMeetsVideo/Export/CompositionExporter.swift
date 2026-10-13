@@ -346,18 +346,23 @@ enum CompositionExporter {
             let layerStage = TransformStage(transform: layer.transform, center: center, shift: offset, toOuter: toOuter)
             let clips = layer.clips.sorted(by: { $0.startOffset < $1.startOffset })
             var own = FlatLayer()
+            // The incoming clip's frames before a joined cut, on a track of
+            // their own above the layer's, so they can overlap the outgoing
+            // clip that is still playing there.
+            var overlay = FlatLayer()
             // Frames shown under a transition at a cut, on a track of their
             // own below the layer's so the two can overlap.
             var underlay = FlatLayer()
             var nestedLayers: [FlatLayer] = []
 
-            for (index, clip) in clips.enumerated() {
+            for clip in clips {
                 var stage = layerStage
+                let lead = project.joinedLead(of: clip, among: clips) ?? .zero
                 if project.playsVideo(clip) {
-                    stage.edges = EdgeTransitions(clip: clip, frameSize: timeline.frameSize)
+                    stage.edges = EdgeTransitions(clip: clip, frameSize: timeline.frameSize, lead: lead)
                 }
                 let stages = [stage] + outer
-                let placed = CMTimeRange(start: clip.startOffset, duration: clip.trimmedDuration)
+                let placed = CMTimeRange(start: CMTimeSubtract(clip.startOffset, lead), end: clip.endOffset)
                 let visible = placed.intersection(window)
                 guard visible.isValid, visible.duration > .zero else { continue }
 
@@ -373,31 +378,36 @@ enum CompositionExporter {
                     // Where this clip meets its neighbor at a cut, the
                     // neighbor's frames beyond its trim play underneath the
                     // transition, so a dissolve blends the two clips rather
-                    // than passing through what is below the layer. Without
-                    // spare frames there is nothing to show, and the
+                    // than passing through what is below the layer. A way in
+                    // that joins the clip before may also start before the
+                    // cut, playing this clip's frames before its in point.
+                    // Without spare frames there is nothing to show, and the
                     // transition plays over the layers below.
-                    let durations = stage.edges == nil ? (leading: CMTime.zero, trailing: CMTime.zero) : clip.effectiveTransitionDurations
+                    let durations = stage.edges == nil ? (leading: CMTime.zero, trailing: CMTime.zero) : clip.effectiveTransitionDurations(lead: lead)
                     let neighborStages = [layerStage] + outer
-                    if durations.leading > .zero, index > 0, clips[index - 1].endOffset == clip.startOffset,
-                       project.playsVideo(clips[index - 1]),
+                    if lead > .zero, let placement = try await mediaPlacement(
+                        of: clip, from: CMTimeSubtract(clip.trimStart, lead), at: CMTimeSubtract(clip.startOffset, lead), for: lead,
+                        project: project, frameSize: timeline.frameSize, window: window, offset: offset, stages: stages,
+                        includesVideo: true, includesAudio: false
+                    ) {
+                        overlay.placements.append(placement)
+                    }
+                    if durations.leading > .zero, let previous = project.predecessor(joining: clip, among: clips),
                        let placement = try await mediaPlacement(
-                           of: clips[index - 1], from: clips[index - 1].trimEnd, at: clip.startOffset, for: durations.leading,
+                           of: previous, from: previous.trimEnd, at: clip.startOffset, for: durations.leading,
                            project: project, frameSize: timeline.frameSize, window: window, offset: offset,
                            stages: neighborStages, includesVideo: true, includesAudio: false
                        ) {
                         underlay.placements.append(placement)
                     }
-                    if durations.trailing > .zero, index + 1 < clips.count, clips[index + 1].startOffset == clip.endOffset,
-                       project.playsVideo(clips[index + 1]) {
-                        let next = clips[index + 1]
-                        if let placement = try await mediaPlacement(
-                            of: next, from: CMTimeSubtract(next.trimStart, durations.trailing),
-                            at: CMTimeSubtract(clip.endOffset, durations.trailing), for: durations.trailing,
-                            project: project, frameSize: timeline.frameSize, window: window, offset: offset,
-                            stages: neighborStages, includesVideo: true, includesAudio: false
-                        ) {
-                            underlay.placements.append(placement)
-                        }
+                    if durations.trailing > .zero, let next = project.successor(joining: clip, among: clips),
+                       let placement = try await mediaPlacement(
+                           of: next, from: CMTimeSubtract(next.trimStart, durations.trailing),
+                           at: CMTimeSubtract(clip.endOffset, durations.trailing), for: durations.trailing,
+                           project: project, frameSize: timeline.frameSize, window: window, offset: offset,
+                           stages: neighborStages, includesVideo: true, includesAudio: false
+                       ) {
+                        underlay.placements.append(placement)
                     }
                 case .timeline(let nestedID):
                     guard let nested = project.timeline(id: nestedID) else { continue }
@@ -416,6 +426,7 @@ enum CompositionExporter {
                 }
             }
 
+            if !overlay.placements.isEmpty { result.append(overlay) }
             if !own.placements.isEmpty { result.append(own) }
             if !underlay.placements.isEmpty { result.append(underlay) }
             result += nestedLayers

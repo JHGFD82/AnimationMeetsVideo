@@ -150,6 +150,9 @@ struct TimelineEditorSurface<Library: View>: View {
                     }
                 },
                 onDropScenes: { payloads, layerID, time in dropScenes(payloads, onLayer: layerID, at: time) },
+                onApplyJointEdit: { layerID, clipID, edit in
+                    project.applyJointEdit(edit, at: clipID, in: timelineID, layer: layerID)
+                },
                 onIdealHeightChange: { timelineIdealHeight = $0 },
                 onTrimClipStart: { layerID, clipID, newTrimStart in
                     project.trimClipStart(clipID, in: timelineID, layer: layerID, to: newTrimStart)

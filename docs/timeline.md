@@ -142,11 +142,37 @@ where it plays. Splitting a clip keeps the way in on the first half and the
 way out on the second. Detached sound is not affected.
 
 A transition plays inside the clip's own range, bringing it in over (or
-taking it out to) whatever is underneath: lower layers, or black. Where two
-clips on the same layer meet at a cut, the neighbor's frames beyond its
-trim play underneath on a track of their own, so a dissolve blends the two
-clips. Without spare frames the transition plays over the layers below.
-Only media neighbors are extended, not nested timelines.
+taking it out to) whatever is underneath: lower layers, or black.
+
+### Transitions joining two clips
+
+Where two media clips with pictures meet on a layer, a transition dropped
+at the cut, on either clip, **joins** them: it becomes the incoming clip's
+way in and is drawn as one box across the cut, over both clips. It blends
+the outgoing clip into the incoming one, which needs footage beyond their
+trims: before the cut the incoming clip plays the frames before its in
+point, and after the cut the outgoing clip plays the frames after its out
+point. A new one is centered on the cut, a second long, as far as that
+spare footage allows (`fittedJoint`). Its `lead` is how much plays before
+the cut. With no spare footage at all it plays inside the incoming clip as
+above, over the layers below.
+
+Double-clicking the box (or **Edit Footage…** in its menu) opens the
+**transition footage** lane under the layer: the outgoing clip on top and
+the incoming one below, each with its spare footage drawn faintly, the
+transition across both and the cut as a white line.
+
+- Drag the transition to move it across the cut, and its edges to change
+  its length. It can't need more footage than there is.
+- Drag the cut to roll it: the outgoing clip's out point and the incoming
+  clip's in point move together, so the clips still meet, nothing else
+  moves, and the transition draws on different footage
+  (`applyJointEdit(.roll…)`). Each clip keeps at least a frame.
+
+Edits land on frames and are saved when a drag ends. **Done** in the
+label column closes the lane. In the composition, the incoming clip's
+frames before the cut go on a track above the layer's and the outgoing
+clip's frames after it on a track below. Nested timelines don't join.
 
 Kinds: cross dissolve, film dissolve, wipe left/right/up/down, slide
 left/right and zoom. A wipe or slide acts in the frame of the timeline the
@@ -205,5 +231,8 @@ A drag is saved when it ends, as one undo step.
 
 - Audio crossfades under transitions, and transitions on detached sound.
 - A larger graph editor for curves on short transitions.
+- Thumbnails of the frames in the transition footage lane.
+- Joining nested timelines, and trimming at a joined cut from the clips
+  themselves (the transition box covers the edges; roll the cut instead).
 - **Snapping** to other clips' edges, the playhead or beat markers.
 - Scrolling to follow the playhead during playback.

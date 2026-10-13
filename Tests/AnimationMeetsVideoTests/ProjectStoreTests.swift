@@ -102,7 +102,9 @@ private struct Sandbox {
         var (project, clipID, _) = sandbox.makeProject()
         let t = project.timelines.firstIndex { $0.id == project.rootTimelineID }!
         project.timelines[t].layers[0].clips[0].streams = .video
-        project.timelines[t].layers[0].clips[0].transitionIn = ClipTransition(kind: .wipeUp, duration: CMTime(value: 1001, timescale: 24000))
+        project.timelines[t].layers[0].clips[0].transitionIn = ClipTransition(
+            kind: .wipeUp, duration: CMTime(value: 1001, timescale: 24000), lead: CMTime(value: 1, timescale: 24000)
+        )
         var curve = TransitionCurve(preset: .easyEase)
         curve.insertPoint(atTime: 0.4)
         curve.toggleCorner(1)

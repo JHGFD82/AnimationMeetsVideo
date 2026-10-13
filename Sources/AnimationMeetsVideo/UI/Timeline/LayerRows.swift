@@ -156,6 +156,7 @@ struct LayerClipRow: View {
     let onMoveClip: (UUID, UUID?, CMTime) -> Void
     let onDraggingClip: (Bool) -> Void
     let onDropScenes: ([SceneDragPayload], CMTime) -> Bool
+    let onEditJoint: (UUID) -> Void
     let onTrimClipStart: (UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, CMTime) -> Void
     let onSetTransition: (UUID, TransitionKind, TransitionEdge) -> Void
@@ -169,12 +170,14 @@ struct LayerClipRow: View {
             ForEach(layer.clips) { clip in
                 let isSelected = selection?.layerID == layer.id && selection?.timelineClipID == clip.id
                 let info = project.resolvedInfo(for: clip.source)
+                let joinedLead = project.joinedLead(of: clip, among: layer.clips)
                 ClipBlockView(
                     clip: clip,
                     info: info,
                     typeColor: clipTypeColor(for: info, streams: clip.streams),
                     hasLinkedAudio: project.hasLinkedAudio(clip),
                     acceptsTransitions: project.playsVideo(clip),
+                    joinedLead: joinedLead,
                     isSelected: isSelected,
                     selectedTransition: isSelected ? selection?.transitionEdge : nil,
                     pixelsPerSecond: pixelsPerSecond,
@@ -194,6 +197,24 @@ struct LayerClipRow: View {
                     onSetTransitionCurve: { edge, curve in onSetTransitionCurve(clip.id, edge, curve) },
                     onDetachAudio: { onDetachAudio(clip.id) }
                 )
+            }
+            // Transitions joining two clips sit over the cut, on top of both.
+            ForEach(layer.clips) { clip in
+                if let joint = project.joint(at: clip.id, in: timelineID, layer: layer.id) {
+                    let isSelected = selection?.layerID == layer.id && selection?.timelineClipID == clip.id
+                        && selection?.transitionEdge == .leading
+                    JoinedTransitionBridge(
+                        joint: joint,
+                        isSelected: isSelected,
+                        pixelsPerSecond: pixelsPerSecond,
+                        height: height,
+                        onSelect: { onSelectTransition(clip, .leading) },
+                        onEdit: { onEditJoint(clip.id) },
+                        onSetKind: { kind in onSetTransition(clip.id, kind, .leading) },
+                        onSetCurve: { curve in onSetTransitionCurve(clip.id, .leading, curve) },
+                        onRemove: { onRemoveTransition(clip.id, .leading) }
+                    )
+                }
             }
         }
         // offset() shifts rendering without changing the size a view reports
@@ -244,6 +265,9 @@ struct ClipBlockView: View {
     let hasLinkedAudio: Bool
     /// Clips with pictures take transitions dropped from the panel.
     let acceptsTransitions: Bool
+    /// Set when the clip's way in joins it to the clip before: that
+    /// transition is drawn over the cut by the row instead.
+    let joinedLead: CMTime?
     let isSelected: Bool
     /// The transition selected on this clip, which shows its curve's points
     /// when there is room.
@@ -410,9 +434,9 @@ struct ClipBlockView: View {
 
     /// The end whose transition covers `x` (in the clip's row), if any.
     private func transitionEdge(atX x: CGFloat, liveX: CGFloat) -> TransitionEdge? {
-        let durations = clip.effectiveTransitionDurations
+        let durations = clip.effectiveTransitionDurations(lead: joinedLead ?? .zero)
         let end = liveX + clip.trimmedDuration.seconds * pixelsPerSecond
-        if clip.transitionIn != nil, x >= liveX, x <= liveX + durations.leading.seconds * pixelsPerSecond {
+        if clip.transitionIn != nil, joinedLead == nil, x >= liveX, x <= liveX + durations.leading.seconds * pixelsPerSecond {
             return .leading
         }
         if clip.transitionOut != nil, x <= end, x >= end - durations.trailing.seconds * pixelsPerSecond {
@@ -441,12 +465,12 @@ struct ClipBlockView: View {
     /// shaped by their curves, in the block's drawn coordinates. A selected
     /// one wide enough on screen shows its curve's points to edit.
     private func transitionMarks(of shown: TimelineClip, liveX: CGFloat, drawnX: CGFloat, drawnWidth: CGFloat) -> some View {
-        let durations = shown.effectiveTransitionDurations
+        let durations = shown.effectiveTransitionDurations(lead: joinedLead ?? .zero)
         let liveEnd = liveX + shown.trimmedDuration.seconds * pixelsPerSecond
         let leadingWidth = durations.leading.seconds * pixelsPerSecond
         let trailingWidth = durations.trailing.seconds * pixelsPerSecond
         return ZStack(alignment: .topLeading) {
-            if let transition = shown.transitionIn, leadingWidth > 0 {
+            if let transition = shown.transitionIn, joinedLead == nil, leadingWidth > 0 {
                 transitionMark(transition, edge: .leading, width: leadingWidth)
                     .offset(x: liveX - drawnX)
             }
@@ -591,7 +615,7 @@ private struct TransitionMark: View {
 }
 
 /// The area under a transition's curve.
-private struct TransitionWedge: Shape {
+struct TransitionWedge: Shape {
     let curve: TransitionCurve
     let edge: TransitionEdge
 

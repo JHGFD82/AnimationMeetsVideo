@@ -66,23 +66,31 @@ private struct ProjectFile: Codable {
 
     /// A transition at one end of a clip. `kind` is a `TransitionKind`
     /// name such as `"crossDissolve"`; an unknown kind is dropped on load.
-    /// `curve` is absent for a linear one.
+    /// `curve` is absent for a linear one, `lead` (the part played before
+    /// the cut by a way in joining two clips) when it is zero.
     struct TransitionEntry: Codable {
         var kind: String
         var duration: TimeEntry
         var curve: [CurvePointEntry]?
+        var lead: TimeEntry?
 
         init(_ transition: ClipTransition) {
             kind = transition.kind.rawValue
             duration = TimeEntry(transition.duration)
             curve = transition.curve == .linear ? nil : transition.curve.points.map(CurvePointEntry.init)
+            lead = transition.lead == .zero ? nil : TimeEntry(transition.lead)
         }
 
         /// A curve that doesn't run from 0 to 1 is read as linear.
         var transition: ClipTransition? {
             guard let kind = TransitionKind(rawValue: kind), duration.time > .zero else { return nil }
             let points = curve?.map(\.point)
-            return ClipTransition(kind: kind, duration: duration.time, curve: points.flatMap(TransitionCurve.init(points:)) ?? .linear)
+            return ClipTransition(
+                kind: kind,
+                duration: duration.time,
+                curve: points.flatMap(TransitionCurve.init(points:)) ?? .linear,
+                lead: CMTimeMaximum(.zero, CMTimeMinimum(lead?.time ?? .zero, duration.time))
+            )
         }
     }
 

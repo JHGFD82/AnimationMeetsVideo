@@ -113,7 +113,8 @@ Requirements for the file:
   one. An unknown transition kind is dropped on load. A transition's
   `curve` is written only when it isn't linear, as its points:
   `{"time": 0.4, "value": 0.2, "in": [-0.1, 0], "out": [0.2, 0]}`, with
-  handles as offsets and absent for a corner. A curve that doesn't run from
+  handles as offsets and absent for a corner. A way in joining two clips
+  also has `lead`, the part played before the cut, when it isn't zero. A curve that doesn't run from
   (0, 0) to (1, 1) in increasing time loads as linear.
 - Written atomically so a crash cannot leave a half-written file.
 

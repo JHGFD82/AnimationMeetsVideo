@@ -73,7 +73,7 @@ private func videoWithSound(url: URL? = nil, duration: Double = 10) -> MediaClip
         var clip = TimelineClip(source: .media(UUID()), startOffset: .zero, trimStart: .zero, trimEnd: seconds(2))
         clip.transitionIn = ClipTransition(kind: .crossDissolve, duration: seconds(3))
         clip.transitionOut = ClipTransition(kind: .crossDissolve, duration: seconds(1))
-        let durations = clip.effectiveTransitionDurations
+        let durations = clip.effectiveTransitionDurations()
         #expect(abs(durations.leading.seconds - 4.0 / 3) < 0.001)
         #expect(abs(durations.trailing.seconds - 2.0 / 3) < 0.001)
     }
@@ -140,6 +140,8 @@ private func videoWithSound(url: URL? = nil, duration: Double = 10) -> MediaClip
         #expect(plain.composition.tracks(withMediaType: .video).count == 1)
 
         project.setTransition(.crossDissolve, at: .leading, of: next.id, in: t, layer: ids.layerID)
+        // All of it after the cut, so only the outgoing clip needs extending.
+        project.applyJointEdit(.place(duration: seconds(1), lead: .zero), at: next.id, in: t, layer: ids.layerID)
         let blended = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
         let tracks = blended.composition.tracks(withMediaType: .video)
         #expect(tracks.count == 2)

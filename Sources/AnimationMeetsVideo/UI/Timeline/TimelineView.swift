@@ -20,6 +20,7 @@ struct TimelineView: View {
     let onMoveClip: (UUID, UUID, UUID?, CMTime) -> Void
     /// Scenes dropped on a layer (or, with nil, below the layers) at a time.
     let onDropScenes: ([SceneDragPayload], UUID?, CMTime) -> Bool
+    let onApplyJointEdit: (UUID, UUID, JointEdit) -> Void
     /// The height the timeline needs to show every layer without empty
     /// space under them, so the window can give the rest to the viewer.
     let onIdealHeightChange: (CGFloat) -> Void
@@ -59,6 +60,8 @@ struct TimelineView: View {
     /// The layer of a clip being dragged, drawn above the others so the
     /// clip stays visible over the layer it is moving to.
     @State private var draggingClipLayerID: UUID?
+    /// The incoming clip of the joining transition whose footage is open.
+    @State private var expandedJoint: UUID?
     @State private var headerBarHeight: CGFloat = 32
     @AppStorage("clickOnBeats") private var clickOnBeats = false
     @AppStorage("beatClickFrequency") private var beatClickFrequency = 1000.0
@@ -70,11 +73,18 @@ struct TimelineView: View {
     private let newLayerRowHeight: CGFloat = 22
     private let topPadding: CGFloat = 6
 
+    /// The joining transition whose footage is open on this layer.
+    private func shownJoint(in layer: TimelineLayer) -> TransitionJoint? {
+        guard let id = expandedJoint, layer.clips.contains(where: { $0.id == id }) else { return nil }
+        return project.joint(at: id, in: timelineID, layer: layer.id)
+    }
+
     /// Everything one layer shows, top to bottom. The header column and the
     /// track area lay out the same rows, so this is each layer's height in
     /// both.
     private func blockHeight(of layer: TimelineLayer) -> CGFloat {
         layerHeight
+            + (shownJoint(in: layer) != nil ? TransitionFootageLane.height : 0)
             + (showsLinkedAudio(of: layer) ? audioLaneHeight : 0)
             + CGFloat(shownProperties(of: layer).count) * propertyRowHeight
             + separatorHeight
@@ -291,6 +301,7 @@ struct TimelineView: View {
         .onChange(of: timelineID) { _, _ in
             zoomedPixelsPerSecond = nil
             scrollX = 0
+            expandedJoint = nil
         }
     }
 
@@ -370,6 +381,19 @@ struct TimelineView: View {
                         onDragChanged: { dy in layerDrag = (layer.id, dy) },
                         onDragEnded: { dy in endLayerDrag(layer.id, dy: dy) }
                     )
+                    if shownJoint(in: layer) != nil {
+                        HStack {
+                            Label("Transition Footage", systemImage: "square.on.square.dashed")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Done") { expandedJoint = nil }
+                                .controlSize(.small)
+                        }
+                        .padding(.leading, 30)
+                        .padding(.trailing, 8)
+                        .frame(height: TransitionFootageLane.height)
+                    }
                     if showsLinkedAudio(of: layer) {
                         Label("Linked Audio", systemImage: "waveform")
                             .font(.caption)
@@ -436,6 +460,12 @@ struct TimelineView: View {
                         onMoveClip: { clipID, target, newStart in onMoveClip(layer.id, clipID, target, newStart) },
                         onDraggingClip: { dragging in draggingClipLayerID = dragging ? layer.id : nil },
                         onDropScenes: { payloads, time in onDropScenes(payloads, layer.id, time) },
+                        onEditJoint: { clipID in
+                            expandedJoint = clipID
+                            if let clip = layer.clips.first(where: { $0.id == clipID }) {
+                                onSelectTransition(layer.id, clip, .leading)
+                            }
+                        },
                         onTrimClipStart: { clipID, newStart in onTrimClipStart(layer.id, clipID, newStart) },
                         onTrimClipEnd: { clipID, newEnd in onTrimClipEnd(layer.id, clipID, newEnd) },
                         onSetTransition: { clipID, kind, edge in onSetTransition(layer.id, clipID, kind, edge) },
@@ -446,6 +476,23 @@ struct TimelineView: View {
                     )
                     // Empty space on a layer scrubs; clips claim their own clicks.
                     .gesture(contentScrubGesture(in: viewport))
+                    if let joint = shownJoint(in: layer) {
+                        TransitionFootageLane(
+                            joint: joint,
+                            frameRate: timeline.frameRate,
+                            outgoingName: project.resolvedInfo(for: joint.outgoing.source)?.name ?? "Clip",
+                            incomingName: project.resolvedInfo(for: joint.incoming.source)?.name ?? "Clip",
+                            pixelsPerSecond: pixelsPerSecond,
+                            width: contentWidth,
+                            visibleX: viewport.visibleContentX,
+                            preview: { edit in
+                                var copy = project
+                                copy.applyJointEdit(edit, at: joint.incoming.id, in: timelineID, layer: layer.id)
+                                return copy.joint(at: joint.incoming.id, in: timelineID, layer: layer.id)
+                            },
+                            onCommit: { edit in onApplyJointEdit(layer.id, joint.incoming.id, edit) }
+                        )
+                    }
                     if showsLinkedAudio(of: layer) {
                         LinkedAudioLane(
                             layer: layer,
