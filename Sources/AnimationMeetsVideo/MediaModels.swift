@@ -6,43 +6,360 @@ struct EditingProject: Identifiable {
     let id: UUID
     var name: String
     var clips: [MediaClip]
+    var timelines: [Timeline]
+    var rootTimelineID: UUID
+
+    static let empty: EditingProject = {
+        let main = Timeline(
+            name: "Main",
+            layers: [],
+            frameSize: CGSize(width: 1920, height: 1080),
+            frameRate: 24,
+            colorSpace: .rec709
+        )
+        return EditingProject(id: UUID(), name: "Untitled Project", clips: [], timelines: [main], rootTimelineID: main.id)
+    }()
+
+    func timeline(id: UUID) -> Timeline? {
+        timelines.first { $0.id == id }
+    }
+
+    func mediaClip(id: UUID) -> MediaClip? {
+        clips.first { $0.id == id }
+    }
+
+    func resolvedInfo(for source: ClipSource) -> ResolvedClipInfo? {
+        switch source {
+        case .media(let mediaID):
+            guard let clip = mediaClip(id: mediaID) else { return nil }
+            return .media(clip)
+        case .timeline(let timelineID):
+            guard let timeline = timeline(id: timelineID) else { return nil }
+            return .timeline(timeline)
+        }
+    }
+
+    /// Adds an imported clip to the media pool and creates a new layer for
+    /// it at the top of the stack, After Effects-style — each new piece of
+    /// footage gets its own layer rather than merging into a shared track.
+    @discardableResult
+    mutating func importClip(_ clip: MediaClip, intoTimeline timelineID: UUID) -> (layerID: UUID, clipID: UUID)? {
+        clips.append(clip)
+        guard let index = timelines.firstIndex(where: { $0.id == timelineID }) else { return nil }
+        let timelineClip = TimelineClip(source: .media(clip.id), startOffset: .zero, trimStart: .zero, trimEnd: clip.duration)
+        let layer = TimelineLayer(customName: nil, clips: [timelineClip])
+        timelines[index].layers.insert(layer, at: 0)
+        return (layer.id, timelineClip.id)
+    }
+
+    @discardableResult
+    mutating func addTimeline(name: String, frameSize: CGSize, frameRate: Double, colorSpace: ProjectColorSpace) -> UUID {
+        let timeline = Timeline(name: name, layers: [], frameSize: frameSize, frameRate: frameRate, colorSpace: colorSpace)
+        timelines.append(timeline)
+        return timeline.id
+    }
+
+    mutating func updateTimelineSettings(_ id: UUID, name: String, frameSize: CGSize, frameRate: Double, colorSpace: ProjectColorSpace) {
+        guard let index = timelines.firstIndex(where: { $0.id == id }) else { return }
+        timelines[index].name = name
+        timelines[index].frameSize = frameSize
+        timelines[index].frameRate = frameRate
+        timelines[index].colorSpace = colorSpace
+    }
+
+    /// A timeline can't be embedded into itself or into any timeline it
+    /// already contains (directly or transitively) — that would be a cycle.
+    func canEmbed(_ timelineID: UUID, into targetTimelineID: UUID) -> Bool {
+        if timelineID == targetTimelineID { return false }
+        var visited: Set<UUID> = []
+        collectNestedTimelineIDs(startingFrom: timelineID, visited: &visited)
+        return !visited.contains(targetTimelineID)
+    }
+
+    private func collectNestedTimelineIDs(startingFrom timelineID: UUID, visited: inout Set<UUID>) {
+        guard visited.insert(timelineID).inserted, let timeline = timeline(id: timelineID) else { return }
+        for layer in timeline.layers {
+            for clip in layer.clips {
+                if case .timeline(let nestedID) = clip.source {
+                    collectNestedTimelineIDs(startingFrom: nestedID, visited: &visited)
+                }
+            }
+        }
+    }
+
+    @discardableResult
+    mutating func embedTimeline(_ timelineID: UUID, intoTimeline targetTimelineID: UUID) -> (layerID: UUID, clipID: UUID)? {
+        guard canEmbed(timelineID, into: targetTimelineID),
+              let nested = timeline(id: timelineID),
+              let index = timelines.firstIndex(where: { $0.id == targetTimelineID })
+        else {
+            return nil
+        }
+        let timelineClip = TimelineClip(source: .timeline(timelineID), startOffset: .zero, trimStart: .zero, trimEnd: nested.duration)
+        let layer = TimelineLayer(customName: nil, clips: [timelineClip])
+        timelines[index].layers.insert(layer, at: 0)
+        return (layer.id, timelineClip.id)
+    }
+
+    /// Repositions a clip within its layer by setting its absolute start
+    /// time — the drag-to-move interaction in the timeline UI.
+    mutating func moveClip(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to newStart: CMTime) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id })
+        else {
+            return
+        }
+        timelines[tIndex].layers[lIndex].clips[cIndex].startOffset = CMTimeMaximum(.zero, newStart)
+    }
+
+    mutating func split(_ id: UUID, in timelineID: UUID, layer layerID: UUID, at time: CMTime) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        else {
+            return
+        }
+        Self.split(&timelines[tIndex].layers[lIndex].clips, id: id, at: time)
+    }
+
+    mutating func renameLayer(_ layerID: UUID, in timelineID: UUID, to name: String?) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        else {
+            return
+        }
+        timelines[tIndex].layers[lIndex].customName = name
+    }
+
+    mutating func moveLayer(_ layerID: UUID, in timelineID: UUID, by offset: Int) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let index = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        else {
+            return
+        }
+        let newIndex = index + offset
+        guard timelines[tIndex].layers.indices.contains(newIndex) else { return }
+        timelines[tIndex].layers.swapAt(index, newIndex)
+    }
+
+    mutating func setAutoMatteEnabled(_ enabled: Bool, for id: UUID, in timelineID: UUID, layer layerID: UUID) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id })
+        else {
+            return
+        }
+        timelines[tIndex].layers[lIndex].clips[cIndex].autoMatteEnabled = enabled
+    }
+
+    /// A floor on clip duration so dragging a trim handle can never collapse
+    /// a clip to zero (or negative) length.
+    private var minimumClipDuration: CMTime { CMTime(seconds: 0.05, preferredTimescale: 600) }
+
+    private func sourceDuration(for source: ClipSource) -> CMTime? {
+        switch resolvedInfo(for: source) {
+        case .media(let clip): clip.duration
+        case .timeline(let timeline): timeline.duration
+        case nil: nil
+        }
+    }
+
+    /// Drags the clip's leading edge, non-destructively revealing or hiding
+    /// source frames. Unlike a plain move, trimming the start keeps the
+    /// clip's *end* fixed in time — `startOffset` shifts by the same amount
+    /// as `trimStart` so the clip's timeline-end position doesn't change.
+    mutating func trimClipStart(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id })
+        else {
+            return
+        }
+        let clip = timelines[tIndex].layers[lIndex].clips[cIndex]
+        // Can't reveal frames before the source's own start, and can't push
+        // the clip's start before timeline t=0.
+        let lowerBound = CMTimeMaximum(.zero, CMTimeSubtract(clip.trimStart, clip.startOffset))
+        let upperBound = CMTimeSubtract(clip.trimEnd, minimumClipDuration)
+        guard upperBound > lowerBound else { return }
+        let newTrimStart = CMTimeMinimum(CMTimeMaximum(proposedTrimStart, lowerBound), upperBound)
+        let delta = CMTimeSubtract(newTrimStart, clip.trimStart)
+        timelines[tIndex].layers[lIndex].clips[cIndex].trimStart = newTrimStart
+        timelines[tIndex].layers[lIndex].clips[cIndex].startOffset = CMTimeMaximum(.zero, CMTimeAdd(clip.startOffset, delta))
+    }
+
+    /// Drags the clip's trailing edge; the start stays fixed and only the
+    /// trimmed-out duration changes, bounded by how much source media exists.
+    mutating func trimClipEnd(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimEnd: CMTime) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id }),
+              let sourceDuration = sourceDuration(for: timelines[tIndex].layers[lIndex].clips[cIndex].source)
+        else {
+            return
+        }
+        let clip = timelines[tIndex].layers[lIndex].clips[cIndex]
+        let lowerBound = CMTimeAdd(clip.trimStart, minimumClipDuration)
+        let upperBound = sourceDuration
+        guard upperBound > lowerBound else { return }
+        let newTrimEnd = CMTimeMinimum(CMTimeMaximum(proposedTrimEnd, lowerBound), upperBound)
+        timelines[tIndex].layers[lIndex].clips[cIndex].trimEnd = newTrimEnd
+    }
+
+    private static func split(_ clips: inout [TimelineClip], id: UUID, at time: CMTime) {
+        guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
+        let clip = clips[index]
+        guard time > clip.trimStart, time < clip.trimEnd else { return }
+        // The split point is in trim-relative coordinates; convert it to how
+        // far into the clip's absolute placement that point falls, so the
+        // second half starts exactly where the first half now ends — no gap
+        // introduced by splitting, even though either half can be dragged
+        // apart afterward.
+        let offsetIntoClip = CMTimeSubtract(time, clip.trimStart)
+        let secondStart = CMTimeAdd(clip.startOffset, offsetIntoClip)
+        let first = TimelineClip(
+            source: clip.source,
+            startOffset: clip.startOffset,
+            trimStart: clip.trimStart,
+            trimEnd: time,
+            autoMatteEnabled: clip.autoMatteEnabled
+        )
+        let second = TimelineClip(
+            source: clip.source,
+            startOffset: secondStart,
+            trimStart: time,
+            trimEnd: clip.trimEnd,
+            autoMatteEnabled: clip.autoMatteEnabled
+        )
+        clips.replaceSubrange(index...index, with: [first, second])
+    }
+}
+
+/// A named sequence of numbered layers, After Effects-style. Timelines can
+/// embed one another (nested/compound-clip style) via `ClipSource.timeline`.
+struct Timeline: Identifiable, Equatable {
+    let id = UUID()
+    var name: String
+    /// Index 0 is the topmost layer — matches After Effects' convention
+    /// where newer/higher layers composite over lower ones.
+    var layers: [TimelineLayer]
+    var frameSize: CGSize
     var frameRate: Double
     var colorSpace: ProjectColorSpace
 
-    var timebaseSummary: String {
-        "\(Int(frameRate)) fps · \(colorSpace.rawValue)"
+    var duration: CMTime {
+        layers.map(\.duration).max(by: { $0.seconds < $1.seconds }) ?? .zero
     }
 
-    static let empty = EditingProject(
-        id: UUID(),
-        name: "Untitled Project",
-        clips: [],
-        frameRate: 24,
-        colorSpace: .rec709
-    )
+    var timebaseSummary: String {
+        "\(Int(frameSize.width))×\(Int(frameSize.height)) · \(String(format: "%.2f", frameRate)) fps · \(colorSpace.rawValue)"
+    }
 
-    static let demo = EditingProject(
-        id: UUID(),
-        name: "Animation Meets Video",
-        clips: [
-            MediaClip(name: "Opening animation", kind: .video, duration: CMTime(seconds: 8.4, preferredTimescale: 600), colorSpace: .rec709),
-            MediaClip(name: "Voiceover", kind: .audio, duration: CMTime(seconds: 12.1, preferredTimescale: 600), colorSpace: .rec709),
-            MediaClip(name: "ProRes plate", kind: .video, duration: CMTime(seconds: 14.8, preferredTimescale: 600), colorSpace: .rec2020PQ)
-        ],
-        frameRate: 24,
-        colorSpace: .rec2020PQ
-    )
+    func layer(id: UUID) -> TimelineLayer? {
+        layers.first { $0.id == id }
+    }
+
+    /// The clip in the given layer whose [startOffset, endOffset) range
+    /// covers `time`, if any — nil if `time` falls in a gap.
+    func clip(at time: CMTime, layer layerID: UUID) -> TimelineClip? {
+        guard let layer = layer(id: layerID) else { return nil }
+        return layer.clips.first { time >= $0.startOffset && time < $0.endOffset }
+    }
+}
+
+struct TimelineLayer: Identifiable, Equatable {
+    let id = UUID()
+    /// User-assigned name, if any. Falls back to the footage/nested
+    /// timeline's own name when nil.
+    var customName: String?
+    var clips: [TimelineClip]
+
+    var duration: CMTime {
+        clips.map(\.endOffset).max(by: { $0.seconds < $1.seconds }) ?? .zero
+    }
+}
+
+enum ClipSource: Equatable {
+    case media(UUID)
+    case timeline(UUID)
+}
+
+/// A placement of a clip (raw media or a nested timeline) on a layer, with
+/// its own non-destructive trim range and an independent, draggable
+/// position in time — clips are not forced to be back-to-back or to start
+/// at the timeline's t=0.
+struct TimelineClip: Identifiable, Equatable {
+    let id = UUID()
+    var source: ClipSource
+    var startOffset: CMTime
+    var trimStart: CMTime
+    var trimEnd: CMTime
+    /// Non-destructive Vision-based foreground matte. Currently disabled in
+    /// the UI pending a working live-preview capture pipeline; kept on the
+    /// model since it's harmless and non-destructive by construction.
+    var autoMatteEnabled: Bool = false
+
+    var trimmedDuration: CMTime {
+        CMTimeSubtract(trimEnd, trimStart)
+    }
+
+    var endOffset: CMTime {
+        CMTimeAdd(startOffset, trimmedDuration)
+    }
+}
+
+/// What a `TimelineClip` resolves to, for display and playback.
+enum ResolvedClipInfo {
+    case media(MediaClip)
+    case timeline(Timeline)
+
+    var name: String {
+        switch self {
+        case .media(let clip): clip.name
+        case .timeline(let timeline): timeline.name
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .media(let clip): clip.kind.systemImage
+        case .timeline: "rectangle.stack"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .media(let clip): clip.formatSummary
+        case .timeline(let timeline): "Nested Timeline · \(timeline.timebaseSummary)"
+        }
+    }
+
+    var isVideo: Bool {
+        switch self {
+        case .media(let clip): clip.kind == .video
+        case .timeline(let timeline): !timeline.layers.isEmpty
+        }
+    }
+
+    var isHDR: Bool {
+        switch self {
+        case .media(let clip): clip.colorSpace.isHDR
+        case .timeline(let timeline): timeline.colorSpace.isHDR
+        }
+    }
 }
 
 struct MediaClip: Identifiable {
     let id = UUID()
     var name: String
     var kind: MediaKind
+    var url: URL?
     var duration: CMTime
+    var frameRate: Double
     var colorSpace: ProjectColorSpace
+    var codecName: String
 
     var formatSummary: String {
-        "\(kind.rawValue) · \(colorSpace.rawValue)"
+        "\(kind.rawValue) · \(codecName) · \(colorSpace.rawValue)"
     }
 }
 
@@ -58,10 +375,19 @@ enum MediaKind: String {
     }
 }
 
-enum ProjectColorSpace: String {
+enum ProjectColorSpace: String, CaseIterable, Identifiable {
     case rec709 = "Rec. 709"
     case rec2020PQ = "Rec. 2020 PQ HDR"
     case rec2020HLG = "Rec. 2020 HLG"
+
+    var id: Self { self }
+
+    var isHDR: Bool {
+        switch self {
+        case .rec709: false
+        case .rec2020PQ, .rec2020HLG: true
+        }
+    }
 }
 
 extension CMTime {
@@ -69,5 +395,36 @@ extension CMTime {
         guard isNumeric else { return "--:--" }
         let totalSeconds = max(0, seconds)
         return String(format: "%02d:%04.1f", Int(totalSeconds) / 60, totalSeconds.truncatingRemainder(dividingBy: 60))
+    }
+
+    /// hh:mm:ss:ff timecode using the given frame rate for the frames field.
+    func timecode(frameRate: Double) -> String {
+        guard isNumeric, frameRate > 0 else { return "00:00:00:00" }
+        let totalSeconds = max(0, seconds)
+        let framesPerSecond = max(1, Int(frameRate.rounded()))
+        let totalFrames = Int((totalSeconds * frameRate).rounded())
+        let frames = totalFrames % framesPerSecond
+        let totalWholeSeconds = totalFrames / framesPerSecond
+        let secs = totalWholeSeconds % 60
+        let mins = (totalWholeSeconds / 60) % 60
+        let hours = totalWholeSeconds / 3600
+        return String(format: "%02d:%02d:%02d:%02d", hours, mins, secs, frames)
+    }
+
+    /// The same timecode with leading zero-valued fields dropped (always
+    /// keeping at least seconds:frames) and the leftmost remaining field's
+    /// own leading zero stripped — "00:00:05:00" -> "5:00",
+    /// "00:12:05:00" -> "12:05:00".
+    func compactTimecode(frameRate: Double) -> String {
+        let parts = timecode(frameRate: frameRate).split(separator: ":").map(String.init)
+        var startIndex = 0
+        while startIndex < parts.count - 2 && parts[startIndex] == "00" {
+            startIndex += 1
+        }
+        var kept = Array(parts[startIndex...])
+        if let first = kept.first {
+            kept[0] = String(Int(first) ?? 0)
+        }
+        return kept.joined(separator: ":")
     }
 }
