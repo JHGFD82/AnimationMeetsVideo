@@ -248,6 +248,36 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
     return url
 }
 
+@Suite struct SampleReadingTests {
+    /// Blocking reads used to run on the cooperative pool, where more of
+    /// them than there are cores stalled every task in the process.
+    @Test func moreReadsThanCoresAtOnceAllFinish() async throws {
+        let url = try writeClickFile(seconds: 5)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let count = ProcessInfo.processInfo.activeProcessorCount * 2
+
+        let finished = try await withThrowingTaskGroup(of: Bool.self) { group in
+            for _ in 0..<count {
+                group.addTask { !(try await BeatDetector.detect(url: url)).isEmpty }
+            }
+            return try await group.reduce(0) { $0 + ($1 ? 1 : 0) }
+        }
+
+        #expect(finished == count)
+    }
+
+    @Test func cancellingStopsTheRead() async throws {
+        let task = Task {
+            try await SampleReading.run { isCancelled in
+                while !isCancelled() { usleep(1_000) }
+                throw CancellationError()
+            }
+        }
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+    }
+}
+
 @MainActor
 @Suite struct BeatAnalysisQueueTests {
     private func project(url: URL, hasAudio: Bool) -> EditingProject {

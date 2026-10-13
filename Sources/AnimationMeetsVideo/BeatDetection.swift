@@ -196,76 +196,80 @@ enum BeatDetector {
         }
     }
 
-    private static func detectBeats(url: URL, progress: @Sendable (Double) -> Void) async throws -> BeatTrack {
+    private static func detectBeats(url: URL, progress: @escaping @Sendable (Double) -> Void) async throws -> BeatTrack {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
             throw DetectionError.noAudioTrack
         }
         let duration = try await asset.load(.duration).seconds
 
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: sampleRate,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleaved: false,
-        ])
-        output.alwaysCopiesSampleData = false
-        guard reader.canAdd(output) else { throw DetectionError.readerFailed("unsupported audio format") }
-        reader.add(output)
-        guard reader.startReading() else {
-            throw DetectionError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
-        }
-
-        let analyzer = OnsetAnalyzer()
-        var originSamples: Int64?
-        var lastReported = -1.0
-        var chunk: [Float] = []
-
-        while let sample = output.copyNextSampleBuffer() {
-            if Task.isCancelled {
-                reader.cancelReading()
-                throw CancellationError()
+        let handedOver = HandedOver(value: track)
+        return try await SampleReading.run { isCancelled in
+            let track = handedOver.value
+            let reader = try AVAssetReader(asset: asset)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: sampleRate,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 32,
+                AVLinearPCMIsFloatKey: true,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: false,
+            ])
+            output.alwaysCopiesSampleData = false
+            guard reader.canAdd(output) else { throw DetectionError.readerFailed("unsupported audio format") }
+            reader.add(output)
+            guard reader.startReading() else {
+                throw DetectionError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
             }
-            let presentation = CMSampleBufferGetPresentationTimeStamp(sample)
-            if originSamples == nil, presentation.isNumeric {
-                originSamples = Int64((presentation.seconds * sampleRate).rounded())
-            }
-            guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
-            let length = CMBlockBufferGetDataLength(block)
-            chunk = [Float](repeating: 0, count: length / MemoryLayout<Float>.size)
-            let status = chunk.withUnsafeMutableBytes {
-                CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!)
-            }
-            guard status == kCMBlockBufferNoErr else { continue }
-            chunk.withUnsafeBufferPointer { analyzer.append($0) }
 
-            if duration > 0 {
-                let fraction = min((presentation.seconds) / duration, 1)
-                if fraction - lastReported >= 0.01 {
-                    lastReported = fraction
-                    progress(fraction)
+            let analyzer = OnsetAnalyzer()
+            var originSamples: Int64?
+            var lastReported = -1.0
+            var chunk: [Float] = []
+
+            while let sample = output.copyNextSampleBuffer() {
+                if isCancelled() {
+                    reader.cancelReading()
+                    throw CancellationError()
+                }
+                let presentation = CMSampleBufferGetPresentationTimeStamp(sample)
+                if originSamples == nil, presentation.isNumeric {
+                    originSamples = Int64((presentation.seconds * sampleRate).rounded())
+                }
+                guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
+                let length = CMBlockBufferGetDataLength(block)
+                chunk = [Float](repeating: 0, count: length / MemoryLayout<Float>.size)
+                let status = chunk.withUnsafeMutableBytes {
+                    CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!)
+                }
+                guard status == kCMBlockBufferNoErr else { continue }
+                chunk.withUnsafeBufferPointer { analyzer.append($0) }
+
+                if duration > 0 {
+                    let fraction = min((presentation.seconds) / duration, 1)
+                    if fraction - lastReported >= 0.01 {
+                        lastReported = fraction
+                        progress(fraction)
+                    }
                 }
             }
-        }
 
-        if reader.status == .failed {
-            throw DetectionError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
-        }
-        progress(1)
+            if reader.status == .failed {
+                throw DetectionError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
+            }
+            progress(1)
 
-        let origin = originSamples ?? 0
-        guard let beats = BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) else {
-            return .none(timescale: Int32(sampleRate))
+            let origin = originSamples ?? 0
+            guard let beats = BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) else {
+                return .none(timescale: Int32(sampleRate))
+            }
+            return BeatTrack(
+                timescale: Int32(sampleRate),
+                times: beats.frames.map { origin + OnsetAnalyzer.centerSample(ofFrame: $0) },
+                beatsPerMinute: beats.beatsPerMinute
+            )
         }
-        return BeatTrack(
-            timescale: Int32(sampleRate),
-            times: beats.frames.map { origin + OnsetAnalyzer.centerSample(ofFrame: $0) },
-            beatsPerMinute: beats.beatsPerMinute
-        )
     }
 }
 

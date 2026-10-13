@@ -38,7 +38,7 @@ enum FrameScorer {
         }
     }
 
-    private static func scoreFrames(url: URL, progress: @Sendable (Double) -> Void) async throws -> ChangeScoreTrack {
+    private static func scoreFrames(url: URL, progress: @escaping @Sendable (Double) -> Void) async throws -> ChangeScoreTrack {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             throw ScoringError.noVideoTrack
@@ -46,56 +46,60 @@ enum FrameScorer {
         let duration = try await asset.load(.duration).seconds
         let timescale = max(try await track.load(.naturalTimeScale), 600)
 
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-            kCVPixelBufferWidthKey as String: sampleWidth,
-            kCVPixelBufferHeightKey as String: sampleHeight,
-        ])
-        output.alwaysCopiesSampleData = false
-        guard reader.canAdd(output) else { throw ScoringError.readerFailed("unsupported video format") }
-        reader.add(output)
-        guard reader.startReading() else {
-            throw ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
-        }
-
-        var times: [Int64] = []
-        var scores: [UInt8] = []
-        var previous: [UInt8] = []
-        var current: [UInt8] = []
-        var lastReported = -1.0
-
-        while let sample = output.copyNextSampleBuffer() {
-            if Task.isCancelled {
-                reader.cancelReading()
-                throw CancellationError()
+        let handedOver = HandedOver(value: track)
+        return try await SampleReading.run { isCancelled in
+            let track = handedOver.value
+            let reader = try AVAssetReader(asset: asset)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                kCVPixelBufferWidthKey as String: sampleWidth,
+                kCVPixelBufferHeightKey as String: sampleHeight,
+            ])
+            output.alwaysCopiesSampleData = false
+            guard reader.canAdd(output) else { throw ScoringError.readerFailed("unsupported video format") }
+            reader.add(output)
+            guard reader.startReading() else {
+                throw ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
             }
-            guard let pixels = CMSampleBufferGetImageBuffer(sample) else { continue }
-            let time = CMTimeConvertScale(
-                CMSampleBufferGetPresentationTimeStamp(sample),
-                timescale: timescale,
-                method: .roundHalfAwayFromZero
-            )
-            copyLuma(from: pixels, into: &current)
 
-            scores.append(previous.isEmpty ? 0 : meanAbsoluteDifference(previous, current))
-            times.append(time.value)
-            swap(&previous, &current)
+            var times: [Int64] = []
+            var scores: [UInt8] = []
+            var previous: [UInt8] = []
+            var current: [UInt8] = []
+            var lastReported = -1.0
 
-            if duration > 0 {
-                let fraction = min(time.seconds / duration, 1)
-                if fraction - lastReported >= 0.01 {
-                    lastReported = fraction
-                    progress(fraction)
+            while let sample = output.copyNextSampleBuffer() {
+                if isCancelled() {
+                    reader.cancelReading()
+                    throw CancellationError()
+                }
+                guard let pixels = CMSampleBufferGetImageBuffer(sample) else { continue }
+                let time = CMTimeConvertScale(
+                    CMSampleBufferGetPresentationTimeStamp(sample),
+                    timescale: timescale,
+                    method: .roundHalfAwayFromZero
+                )
+                copyLuma(from: pixels, into: &current)
+
+                scores.append(previous.isEmpty ? 0 : meanAbsoluteDifference(previous, current))
+                times.append(time.value)
+                swap(&previous, &current)
+
+                if duration > 0 {
+                    let fraction = min(time.seconds / duration, 1)
+                    if fraction - lastReported >= 0.01 {
+                        lastReported = fraction
+                        progress(fraction)
+                    }
                 }
             }
-        }
 
-        if reader.status == .failed {
-            throw ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
+            if reader.status == .failed {
+                throw ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
+            }
+            progress(1)
+            return ChangeScoreTrack(timescale: timescale, times: times, scores: scores)
         }
-        progress(1)
-        return ChangeScoreTrack(timescale: timescale, times: times, scores: scores)
     }
 
     /// Copies the luma plane without row padding.

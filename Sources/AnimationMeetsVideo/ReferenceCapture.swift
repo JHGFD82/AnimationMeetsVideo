@@ -84,81 +84,85 @@ enum ReferenceCapture {
 
     /// Loudness over time of all the file's audio mixed together; nil if the
     /// file has no audio.
-    static func audioEnvelope(url: URL, progress: @Sendable (Double) -> Void = { _ in }) async throws -> AudioEnvelope? {
+    static func audioEnvelope(url: URL, progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> AudioEnvelope? {
         let asset = AVURLAsset(url: url)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard !tracks.isEmpty else { return nil }
         let duration = try await asset.load(.duration).seconds
 
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: sampleRate,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleaved: false,
-        ])
-        guard reader.canAdd(output) else { throw FrameScorer.ScoringError.readerFailed("unsupported audio format") }
-        reader.add(output)
-        guard reader.startReading() else {
-            throw FrameScorer.ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
-        }
-
-        let perWindow = sampleRate / AudioEnvelope.windowsPerSecond
-        var levels: [UInt8] = []
-        var startWindow: Int64?
-        var energy = 0.0
-        var inWindow = 0
-        var lastReported = -1.0
-        var samples: [Int16] = []
-
-        while let buffer = output.copyNextSampleBuffer() {
-            if Task.isCancelled {
-                reader.cancelReading()
-                throw CancellationError()
+        let handedOver = HandedOver(value: tracks)
+        return try await SampleReading.run { isCancelled in
+            let tracks = handedOver.value
+            let reader = try AVAssetReader(asset: asset)
+            let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: sampleRate,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: false,
+            ])
+            guard reader.canAdd(output) else { throw FrameScorer.ScoringError.readerFailed("unsupported audio format") }
+            reader.add(output)
+            guard reader.startReading() else {
+                throw FrameScorer.ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
             }
-            let presentation = CMSampleBufferGetPresentationTimeStamp(buffer)
-            if startWindow == nil {
-                let firstSample = Int64((presentation.seconds * Double(sampleRate)).rounded())
-                startWindow = firstSample / Int64(perWindow)
-                inWindow = Int(firstSample - (startWindow ?? 0) * Int64(perWindow))
-            }
-            guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
-            let count = CMBlockBufferGetDataLength(block) / MemoryLayout<Int16>.size
-            if samples.count < count { samples = [Int16](repeating: 0, count: count) }
-            let status = samples.withUnsafeMutableBytes {
-                CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: count * MemoryLayout<Int16>.size, destination: $0.baseAddress!)
-            }
-            guard status == kCMBlockBufferNoErr else { continue }
 
-            for index in 0..<count {
-                let value = Double(samples[index]) / 32768
-                energy += value * value
-                inWindow += 1
-                if inWindow == perWindow {
-                    levels.append(AudioEnvelope.level(forRMS: (energy / Double(perWindow)).squareRoot()))
-                    energy = 0
-                    inWindow = 0
+            let perWindow = sampleRate / AudioEnvelope.windowsPerSecond
+            var levels: [UInt8] = []
+            var startWindow: Int64?
+            var energy = 0.0
+            var inWindow = 0
+            var lastReported = -1.0
+            var samples: [Int16] = []
+
+            while let buffer = output.copyNextSampleBuffer() {
+                if isCancelled() {
+                    reader.cancelReading()
+                    throw CancellationError()
+                }
+                let presentation = CMSampleBufferGetPresentationTimeStamp(buffer)
+                if startWindow == nil {
+                    let firstSample = Int64((presentation.seconds * Double(sampleRate)).rounded())
+                    startWindow = firstSample / Int64(perWindow)
+                    inWindow = Int(firstSample - (startWindow ?? 0) * Int64(perWindow))
+                }
+                guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
+                let count = CMBlockBufferGetDataLength(block) / MemoryLayout<Int16>.size
+                if samples.count < count { samples = [Int16](repeating: 0, count: count) }
+                let status = samples.withUnsafeMutableBytes {
+                    CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: count * MemoryLayout<Int16>.size, destination: $0.baseAddress!)
+                }
+                guard status == kCMBlockBufferNoErr else { continue }
+
+                for index in 0..<count {
+                    let value = Double(samples[index]) / 32768
+                    energy += value * value
+                    inWindow += 1
+                    if inWindow == perWindow {
+                        levels.append(AudioEnvelope.level(forRMS: (energy / Double(perWindow)).squareRoot()))
+                        energy = 0
+                        inWindow = 0
+                    }
+                }
+
+                if duration > 0 {
+                    let fraction = min(presentation.seconds / duration, 1)
+                    if fraction - lastReported >= 0.01 {
+                        lastReported = fraction
+                        progress(fraction)
+                    }
                 }
             }
-
-            if duration > 0 {
-                let fraction = min(presentation.seconds / duration, 1)
-                if fraction - lastReported >= 0.01 {
-                    lastReported = fraction
-                    progress(fraction)
-                }
+            if reader.status == .failed {
+                throw FrameScorer.ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
             }
+            if inWindow > 0 {
+                levels.append(AudioEnvelope.level(forRMS: (energy / Double(perWindow)).squareRoot()))
+            }
+            progress(1)
+            return AudioEnvelope(startWindow: startWindow ?? 0, levels: levels)
         }
-        if reader.status == .failed {
-            throw FrameScorer.ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
-        }
-        if inWindow > 0 {
-            levels.append(AudioEnvelope.level(forRMS: (energy / Double(perWindow)).squareRoot()))
-        }
-        progress(1)
-        return AudioEnvelope(startWindow: startWindow ?? 0, levels: levels)
     }
 }
