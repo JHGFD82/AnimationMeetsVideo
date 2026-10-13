@@ -128,11 +128,29 @@ trim play underneath on a track of their own, so a dissolve blends the two
 clips. Without spare frames the transition plays over the layers below.
 Only media neighbors are extended, not nested timelines.
 
-Kinds: cross dissolve, wipe left/right/up/down, slide left/right and zoom.
-All are drawn with the built-in compositor's opacity, transform and crop
-(`EdgeTransitions` in `ClipTransition.swift`, applied per frame with the
-layer's keyframes), so preview and export match. A wipe or slide acts in the
-frame of the timeline the clip is on, after the layer's transform.
+Kinds: cross dissolve, film dissolve, wipe left/right/up/down, slide
+left/right and zoom. A wipe or slide acts in the frame of the timeline the
+clip is on, after the layer's transform.
+
+The **film dissolve** shows the following picture brightest parts first:
+it appears wherever it is brighter than a threshold that falls from white
+to black over the transition, with a soft edge (`LumaReveal`). On a way in
+the following picture is the clip itself; on a way out it is what is under
+the clip. Brightness is the encoded Rec. 709 luma, so it follows how the
+picture looks.
+
+### Rendering
+
+Everything but the film dissolve is drawn with the built-in compositor's
+opacity, transform and crop (`EdgeTransitions` in `ClipTransition.swift`,
+applied per frame with the layer's keyframes). Keying on brightness needs
+our own compositor, so a timeline with a film dissolve anywhere is drawn by
+`LayeredCompositor` (Core Image) for its whole length, in preview and
+export alike. It stacks the same layers with the same crops, transforms and
+opacities, without color management just like the built-in one, and a test
+checks the two draw the same picture. On a nested timeline the key applies
+to each of its layers separately rather than to its composite, as opacity
+already does.
 
 ### Curves
 

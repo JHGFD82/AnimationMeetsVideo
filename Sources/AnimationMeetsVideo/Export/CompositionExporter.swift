@@ -149,6 +149,19 @@ struct PlacementAnimation {
         })
     }
 
+    /// Whether a film dissolve plays, which only `LayeredCompositor` can draw.
+    var hasLumaReveal: Bool {
+        stages.contains { $0.edges?.hasLumaReveal == true }
+    }
+
+    /// The film dissolve playing at `time`, innermost first, if any.
+    func lumaReveal(at time: CMTime) -> LumaReveal? {
+        for stage in stages {
+            if let reveal = stage.edges?.effect(at: CMTimeSubtract(time, stage.shift)).lumaReveal { return reveal }
+        }
+        return nil
+    }
+
     /// Whether a wipe ever crops the media, so a crop must be set.
     var hasCrop: Bool {
         stages.contains { $0.edges?.hasWipe == true }
@@ -298,7 +311,8 @@ enum CompositionExporter {
             layers: videoLayers,
             overallDuration: composition.duration,
             renderSize: timeline.frameSize,
-            frameRate: timeline.frameRate
+            frameRate: timeline.frameRate,
+            colorSpace: timeline.colorSpace
         )
         return ComposedTimeline(composition: composition, videoComposition: videoComposition)
     }
@@ -467,7 +481,8 @@ enum CompositionExporter {
         layers: [VideoLayer],
         overallDuration: CMTime,
         renderSize: CGSize,
-        frameRate: Double
+        frameRate: Double,
+        colorSpace: ProjectColorSpace
     ) -> AVMutableVideoComposition? {
         guard !layers.isEmpty else { return nil }
 
@@ -484,6 +499,29 @@ enum CompositionExporter {
         breakpoints.append(overallDuration)
 
         let frame = frameDuration(for: frameRate)
+        let videoComposition = AVMutableVideoComposition()
+        videoComposition.renderSize = renderSize
+        videoComposition.frameDuration = frame
+
+        // The built-in compositor draws everything else exactly; only a film
+        // dissolve needs ours, so it is used just for timelines with one.
+        if layers.contains(where: { $0.segments.contains { $0.animation.hasLumaReveal } }) {
+            var instructions: [LayeredInstruction] = []
+            for index in 0..<(breakpoints.count - 1) {
+                let range = CMTimeRange(start: breakpoints[index], end: breakpoints[index + 1])
+                guard range.duration > .zero else { continue }
+                let shown = layers.compactMap { layer -> LayeredInstruction.Layer? in
+                    guard let segment = layer.segments.first(where: { $0.timeRange.start <= range.start && $0.timeRange.end >= range.end }) else {
+                        return nil
+                    }
+                    return LayeredInstruction.Layer(trackID: layer.track.trackID, animation: segment.animation)
+                }
+                instructions.append(LayeredInstruction(timeRange: range, layers: shown, renderSize: renderSize, colorSpace: colorSpace))
+            }
+            videoComposition.customVideoCompositorClass = LayeredCompositor.self
+            videoComposition.instructions = instructions
+            return videoComposition
+        }
 
         var instructions: [AVMutableVideoCompositionInstruction] = []
         for index in 0..<(breakpoints.count - 1) {
@@ -504,9 +542,6 @@ enum CompositionExporter {
             instructions.append(instruction)
         }
 
-        let videoComposition = AVMutableVideoComposition()
-        videoComposition.renderSize = renderSize
-        videoComposition.frameDuration = frame
         videoComposition.instructions = instructions
         return videoComposition
     }

@@ -7,10 +7,14 @@ import Foundation
 /// whatever is showing underneath it: lower layers, or the outgoing clip's
 /// extra frames when two clips on the same layer meet at a cut.
 ///
-/// Every kind is drawn with the built-in compositor's opacity, transform
-/// and crop, so the preview and the export match exactly.
+/// Every kind but the film dissolve is drawn with the built-in compositor's
+/// opacity, transform and crop. The film dissolve keys on brightness, which
+/// that compositor can't do, so a timeline using one is drawn by
+/// `LayeredCompositor` instead. Preview and export use the same path, so
+/// they match.
 enum TransitionKind: String, CaseIterable, Identifiable {
     case crossDissolve
+    case filmDissolve
     case wipeLeft
     case wipeRight
     case wipeUp
@@ -24,6 +28,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     var name: String {
         switch self {
         case .crossDissolve: "Cross Dissolve"
+        case .filmDissolve: "Film Dissolve"
         case .wipeLeft: "Wipe Left"
         case .wipeRight: "Wipe Right"
         case .wipeUp: "Wipe Up"
@@ -46,6 +51,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .crossDissolve: "circle.lefthalf.filled"
+        case .filmDissolve: "sun.max"
         case .wipeLeft: "arrow.left.to.line"
         case .wipeRight: "arrow.right.to.line"
         case .wipeUp: "arrow.up.to.line"
@@ -206,10 +212,15 @@ struct EdgeTransitions {
         var opacity: Double = 1
         var transform: CGAffineTransform = .identity
         var visibleRect: CGRect?
+        var lumaReveal: LumaReveal?
     }
 
     var hasWipe: Bool {
         [leading?.kind, trailing?.kind].contains { $0?.isWipe == true }
+    }
+
+    var hasLumaReveal: Bool {
+        leading?.kind == .filmDissolve || trailing?.kind == .filmDissolve
     }
 
     /// Each transition's curve maps the fraction of its length that has
@@ -254,6 +265,12 @@ struct EdgeTransitions {
         switch kind {
         case .crossDissolve:
             effect.opacity *= v
+        case .filmDissolve:
+            // What comes next shows through brightest first: the clip itself
+            // on the way in, whatever is under it on the way out.
+            effect.lumaReveal = entering
+                ? LumaReveal(progress: v, keysIncoming: true)
+                : LumaReveal(progress: 1 - v, keysIncoming: false)
         case .wipeLeft, .wipeRight, .wipeUp, .wipeDown:
             // The wipe's edge moves in the named direction both ways: it
             // uncovers the clip as it comes in and covers it as it leaves.
@@ -283,6 +300,27 @@ struct EdgeTransitions {
             )
             effect.opacity *= v
         }
+    }
+}
+
+/// A film dissolve at one moment: the following picture shows wherever it
+/// is brighter than a threshold that falls from white to black as
+/// `progress` goes from 0 to 1, with a soft edge.
+struct LumaReveal: Equatable, Sendable {
+    var progress: Double
+    /// True when the clip itself is the following picture (its way in);
+    /// false when what is under it is (its way out).
+    var keysIncoming: Bool
+
+    /// Width of the soft edge, in brightness.
+    static let softness = 0.1
+
+    /// The mask is `clamp(gain * luma + bias)`: nothing at progress 0 and
+    /// everything at 1, even for pure white and pure black.
+    var gainAndBias: (gain: Double, bias: Double) {
+        let s = Self.softness
+        let threshold = (1 + s) - min(max(progress, 0), 1) * (1 + 2 * s)
+        return (1 / (2 * s), (s - threshold) / (2 * s))
     }
 }
 
