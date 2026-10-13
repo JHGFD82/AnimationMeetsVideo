@@ -135,7 +135,17 @@ runs. A file that no longer matches is flagged once, with a message naming
 it, and the caches that might hold its old contents are dropped. The clip's
 context menu then offers **File Changed — Check Sync…**, which runs the same
 analysis on the file already in place and stores the result as the new
-accepted state. A file that matches again, or is missing, is not flagged.
+accepted state. A file that matches again is unflagged.
+
+A file that goes missing or can't be read is reported once, and its clip's
+context menu says **File Is Missing**. It is not flagged as changed, since
+there is nothing to check sync against; when it comes back it is compared
+as usual. **Replace Media…** points the asset at another file.
+
+The file reads run off the main thread, so a slow or sleeping network volume
+does not stall the editor. Their result is applied to the project as it is
+when they finish, and a reading of a path the asset no longer uses is
+ignored.
 
 Until the change is reviewed, playback and export keep using the file as it
 is on disk, at the old offset. Accepting is an ordinary edit, so undoing it

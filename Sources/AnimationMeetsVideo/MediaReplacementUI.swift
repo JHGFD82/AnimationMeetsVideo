@@ -73,6 +73,8 @@ final class MediaReplacementController {
     var notice: Notice?
     /// Assets whose file was swapped outside the app and still needs a sync check.
     private(set) var changedMedia: Set<UUID> = []
+    /// Assets whose file has gone missing or can't be read since it was opened.
+    private(set) var missingMedia: Set<UUID> = []
 
     @ObservationIgnored private var queue: [Request] = []
     @ObservationIgnored private var context: Context?
@@ -90,33 +92,79 @@ final class MediaReplacementController {
         changedMedia.formUnion(ids)
     }
 
+    /// One asset's file as found on disk; a nil stamp means it is missing
+    /// or can't be read.
+    struct FileReading: Sendable {
+        var path: String
+        var stamp: FileStamp?
+    }
+
+    /// Reads the stamp of every asset's file. It runs away from the main
+    /// thread, since each read can block for seconds on a network volume
+    /// that is asleep or gone.
+    nonisolated static func readFiles(of project: EditingProject) async -> [UUID: FileReading] {
+        let files = project.clips.compactMap { clip in clip.url.map { (clip.id, $0) } }
+        return await Task.detached(priority: .utility) {
+            var readings: [UUID: FileReading] = [:]
+            for (id, url) in files {
+                readings[id] = FileReading(path: url.path, stamp: FileStamp(url: url))
+            }
+            return readings
+        }.value
+    }
+
+    /// Reads the files and applies the result to `project` as it is then.
+    func checkForChanges(in project: () -> EditingProject) async {
+        let readings = await Self.readFiles(of: project())
+        apply(readings, to: project())
+    }
+
     /// Flags assets whose file no longer matches what was last accepted for
     /// them, and unflags those that match again. A newly changed file also
-    /// leaves the caches, so nothing keeps reading the old contents.
-    func checkForChanges(in project: EditingProject) {
+    /// leaves the caches, so nothing keeps reading the old contents. A file
+    /// that has gone is reported once; it can't be checked for sync, so it
+    /// isn't flagged as changed until it is back. Readings of a path the
+    /// asset no longer uses are ignored.
+    func apply(_ readings: [UUID: FileReading], to project: EditingProject) {
         var newlyChanged: [MediaClip] = []
+        var newlyMissing: [MediaClip] = []
         for clip in project.clips {
-            guard let url = clip.url, let accepted = clip.acceptedStamp, let current = FileStamp(url: url) else { continue }
+            guard let url = clip.url, let reading = readings[clip.id], reading.path == url.path else { continue }
+            guard let current = reading.stamp else {
+                changedMedia.remove(clip.id)
+                if missingMedia.insert(clip.id).inserted { newlyMissing.append(clip) }
+                continue
+            }
+            missingMedia.remove(clip.id)
+            guard let accepted = clip.acceptedStamp else { continue }
             if current == accepted {
                 changedMedia.remove(clip.id)
             } else if changedMedia.insert(clip.id).inserted {
                 newlyChanged.append(clip)
             }
         }
-        guard !newlyChanged.isEmpty else { return }
 
-        let urls = newlyChanged.compactMap(\.url)
-        Task {
-            for url in urls { await CompositionExporter.forgetCachedMedia(at: url) }
-            SceneThumbnailStore.invalidate()
+        if !newlyChanged.isEmpty {
+            let urls = newlyChanged.compactMap(\.url)
+            Task {
+                for url in urls { await CompositionExporter.forgetCachedMedia(at: url) }
+                SceneThumbnailStore.invalidate()
+            }
         }
-        if notice == nil, pendingNotice == nil, session == nil {
+        guard !newlyChanged.isEmpty || !newlyMissing.isEmpty, notice == nil, pendingNotice == nil, session == nil else { return }
+        var parts: [String] = []
+        if !newlyChanged.isEmpty {
             let names = newlyChanged.map(\.name).joined(separator: "\n")
-            post(Notice(
-                title: "Media Changed on Disk",
-                message: "These files changed outside the app:\n\n\(names)\n\nControl-click one in the Clips list and choose \u{201C}File Changed — Check Sync…\u{201D} to line it up."
-            ))
+            parts.append("These files changed outside the app:\n\n\(names)\n\nControl-click one in the Clips list and choose \u{201C}File Changed — Check Sync…\u{201D} to line it up.")
         }
+        if !newlyMissing.isEmpty {
+            let names = newlyMissing.map(\.name).joined(separator: "\n")
+            parts.append("These files are missing or can't be read:\n\n\(names)\n\nPut them back, or Control-click one in the Clips list and choose \u{201C}Replace Media…\u{201D}.")
+        }
+        post(Notice(
+            title: newlyChanged.isEmpty ? "Media Missing" : (newlyMissing.isEmpty ? "Media Changed on Disk" : "Media Changed or Missing"),
+            message: parts.joined(separator: "\n\n")
+        ))
     }
 
     /// Forgets everything, for a different project.
@@ -127,6 +175,7 @@ final class MediaReplacementController {
         queue = []
         context = nil
         changedMedia = []
+        missingMedia = []
         notice = nil
         pendingNotice = nil
     }
@@ -305,6 +354,10 @@ struct ReplaceMediaMenuItems: View {
     }
 
     var body: some View {
+        if controller.missingMedia.contains(clip.id) {
+            Button("File Is Missing") {}
+                .disabled(true)
+        }
         if controller.changedMedia.contains(clip.id) {
             Button("File Changed — Check Sync…") {
                 controller.review(assetID: clip.id, context: makeContext())
@@ -690,11 +743,11 @@ private struct MediaReplacementDialogs: ViewModifier {
             .task {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(5))
-                    controller.checkForChanges(in: project)
+                    await controller.checkForChanges { project }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                controller.checkForChanges(in: project)
+                Task { await controller.checkForChanges { project } }
             }
             // Only the controller closes the sheet. A nil written back here
             // can arrive after the controller has moved on to the next file,

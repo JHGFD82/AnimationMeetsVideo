@@ -23,42 +23,42 @@ import Testing
         return url
     }
 
-    @Test func anUnchangedFileIsNotFlagged() throws {
+    @Test func anUnchangedFileIsNotFlagged() async throws {
         let file = try tempFile("one")
         defer { try? FileManager.default.removeItem(at: file) }
         let (project, _) = makeProject(file: file)
         let controller = MediaReplacementController()
 
-        controller.checkForChanges(in: project)
+        await controller.checkForChanges { project }
 
         #expect(controller.changedMedia.isEmpty)
         #expect(controller.notice == nil)
     }
 
-    @Test func aChangedFileIsFlaggedOnceAndUnflaggedWhenItMatchesAgain() throws {
+    @Test func aChangedFileIsFlaggedOnceAndUnflaggedWhenItMatchesAgain() async throws {
         let file = try tempFile("one")
         defer { try? FileManager.default.removeItem(at: file) }
         let (project, assetID) = makeProject(file: file)
         let controller = MediaReplacementController()
 
         try Data("a longer replacement".utf8).write(to: file)
-        controller.checkForChanges(in: project)
+        await controller.checkForChanges { project }
         #expect(controller.changedMedia == [assetID])
         #expect(controller.notice != nil)
 
         // A second look doesn't announce it again.
         controller.notice = nil
-        controller.checkForChanges(in: project)
+        await controller.checkForChanges { project }
         #expect(controller.notice == nil)
 
         try Data("one".utf8).write(to: file)
         var restored = project
         restored.setAcceptedStamp(FileStamp(url: file), forAsset: assetID)
-        controller.checkForChanges(in: restored)
+        await controller.checkForChanges { restored }
         #expect(controller.changedMedia.isEmpty)
     }
 
-    @Test func aNoticeWaitsUntilTheSheetHasClosed() throws {
+    @Test func aNoticeWaitsUntilTheSheetHasClosed() async throws {
         let file = try tempFile("one")
         defer { try? FileManager.default.removeItem(at: file) }
         let (project, _) = makeProject(file: file)
@@ -66,22 +66,50 @@ import Testing
 
         controller.sheetDidAppear()
         try Data("a longer replacement".utf8).write(to: file)
-        controller.checkForChanges(in: project)
+        await controller.checkForChanges { project }
         #expect(controller.notice == nil)
 
         controller.sheetDidDismiss()
         #expect(controller.notice != nil)
     }
 
-    @Test func aMissingFileIsLeftAlone() throws {
+    @Test func aMissingFileIsReportedOnceAndNotFlaggedAsChanged() async throws {
         let file = try tempFile("one")
-        let (project, _) = makeProject(file: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let (project, assetID) = makeProject(file: file)
+        let controller = MediaReplacementController()
+        try Data("a longer replacement".utf8).write(to: file)
+        await controller.checkForChanges { project }
+        controller.notice = nil
+
         try FileManager.default.removeItem(at: file)
+        await controller.checkForChanges { project }
+        #expect(controller.changedMedia.isEmpty)
+        #expect(controller.missingMedia == [assetID])
+        #expect(controller.notice?.title == "Media Missing")
+
+        controller.notice = nil
+        await controller.checkForChanges { project }
+        #expect(controller.notice == nil)
+
+        try Data("one".utf8).write(to: file)
+        var restored = project
+        restored.setAcceptedStamp(FileStamp(url: file), forAsset: assetID)
+        await controller.checkForChanges { restored }
+        #expect(controller.missingMedia.isEmpty)
+        #expect(controller.changedMedia.isEmpty)
+    }
+
+    @Test func readingsOfAPathTheAssetNoLongerUsesAreIgnored() async throws {
+        let file = try tempFile("one")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let (project, assetID) = makeProject(file: file)
         let controller = MediaReplacementController()
 
-        controller.checkForChanges(in: project)
+        controller.apply([assetID: .init(path: "/somewhere/else.mov", stamp: nil)], to: project)
 
-        #expect(controller.changedMedia.isEmpty)
+        #expect(controller.missingMedia.isEmpty)
+        #expect(controller.notice == nil)
     }
 }
 
