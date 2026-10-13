@@ -121,7 +121,10 @@ struct AnimationMeetsVideoApp: App {
                 projectURL = url
                 projectLock = lock
                 fileMonitor.track(package: url)
-                analysis.reset(tracks: result.changeScores, references: result.references, thumbnailed: result.assetsWithThumbnails)
+                analysis.reset(
+                    tracks: result.changeScores, references: result.references,
+                    thumbnailed: result.assetsWithThumbnails, beats: result.beats
+                )
                 analysis.analyzeMissing(in: result.project)
                 replacement.reset()
                 replacement.markChanged(result.changedMedia)
@@ -171,13 +174,16 @@ struct AnimationMeetsVideoApp: App {
                 let scoresToSave = analysis.unsavedTracks
                 let referencesToSave = analysis.unsavedReferences
                 let thumbnailsToSave = analysis.unsavedThumbnails
+                let beatsToSave = analysis.unsavedBeats
                 let saved = try await ProjectStore.save(
                     snapshot, to: url, copying: copying,
-                    changeScores: scoresToSave, references: referencesToSave, thumbnails: thumbnailsToSave
+                    changeScores: scoresToSave, references: referencesToSave,
+                    thumbnails: thumbnailsToSave, beats: beatsToSave
                 )
                 analysis.markSaved(scoresToSave.keys)
                 analysis.markReferencesSaved(referencesToSave.keys)
                 analysis.markThumbnailsSaved(thumbnailsToSave.keys)
+                analysis.markBeatsSaved(beatsToSave.keys)
                 // Edits made while saving stay; only the media locations change.
                 history.adopt { $0.applyMediaLocations(from: saved) }
                 project.applyMediaLocations(from: saved)
@@ -223,7 +229,7 @@ struct AnimationMeetsVideoApp: App {
                 fileMonitor.acknowledge(change)
                 analysis.reset(
                     tracks: result.changeScores, references: result.references,
-                    thumbnailed: result.assetsWithThumbnails
+                    thumbnailed: result.assetsWithThumbnails, beats: result.beats
                 )
                 analysis.analyzeMissing(in: result.project)
                 replacement.reset()

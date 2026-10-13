@@ -19,6 +19,10 @@ final class AssetAnalysis {
     private(set) var referenceFailures: [UUID: String] = [:]
     /// Assets whose reference pictures are captured, in memory or on disk.
     private(set) var thumbnailed: Set<UUID> = []
+    /// Beats found in each asset's audio, in the asset's own time. An empty
+    /// track means the audio was analyzed and no steady beat was found.
+    private(set) var beats: [UUID: BeatTrack] = [:]
+    private(set) var beatFailures: [UUID: String] = [:]
 
     private struct Job {
         var id: UUID
@@ -26,8 +30,10 @@ final class AssetAnalysis {
         var wantsScores: Bool
         var wantsReference: Bool
         var wantsThumbnails: Bool
+        var wantsBeats: Bool
     }
 
+    @ObservationIgnored private var unsavedBeatIDs: Set<UUID> = []
     @ObservationIgnored private var unsaved: Set<UUID> = []
     @ObservationIgnored private var unsavedReferenceIDs: Set<UUID> = []
     /// Pictures captured since the last save; dropped once saved, since they
@@ -44,7 +50,8 @@ final class AssetAnalysis {
     func reset(
         tracks: [UUID: ChangeScoreTrack] = [:],
         references: [UUID: AssetReference] = [:],
-        thumbnailed: Set<UUID> = []
+        thumbnailed: Set<UUID> = [],
+        beats: [UUID: BeatTrack] = [:]
     ) {
         worker?.cancel()
         worker = nil
@@ -57,6 +64,9 @@ final class AssetAnalysis {
         unsavedPictures = [:]
         thumbnailFailures = []
         referenceFailures = [:]
+        beatFailures = [:]
+        unsavedBeatIDs = []
+        self.beats = beats
         self.thumbnailed = thumbnailed
         self.tracks = tracks
         self.references = references
@@ -72,11 +82,13 @@ final class AssetAnalysis {
             // Pictures are chosen from the scores, so they need scores to exist or be coming.
             let wantsThumbnails = clip.kind == .video && !clip.referenceForgotten && !thumbnailed.contains(clip.id)
                 && !thumbnailFailures.contains(clip.id) && (wantsScores || tracks[clip.id] != nil)
-            guard wantsScores || wantsReference || wantsThumbnails else { continue }
+            let wantsBeats = clip.hasAudio && beats[clip.id] == nil && beatFailures[clip.id] == nil
+            guard wantsScores || wantsReference || wantsThumbnails || wantsBeats else { continue }
             progress[clip.id] = 0
             waiting.append(Job(
                 id: clip.id, url: url,
-                wantsScores: wantsScores, wantsReference: wantsReference, wantsThumbnails: wantsThumbnails
+                wantsScores: wantsScores, wantsReference: wantsReference,
+                wantsThumbnails: wantsThumbnails, wantsBeats: wantsBeats
             ))
         }
         startWorkerIfNeeded()
@@ -102,6 +114,15 @@ final class AssetAnalysis {
 
     func markSaved(_ ids: some Collection<UUID>) {
         unsaved.subtract(ids)
+    }
+
+    /// Beats found since the last save.
+    var unsavedBeats: [UUID: BeatTrack] {
+        beats.filter { unsavedBeatIDs.contains($0.key) }
+    }
+
+    func markBeatsSaved(_ ids: some Collection<UUID>) {
+        unsavedBeatIDs.subtract(ids)
     }
 
     /// Reference pictures captured since the last save.
@@ -190,6 +211,25 @@ final class AssetAnalysis {
             } catch {
                 guard generation == expected else { return }
                 thumbnailFailures.insert(id)
+            }
+        }
+
+        if job.wantsBeats {
+            do {
+                let track = try await BeatDetector.detect(url: job.url) { [weak self] fraction in
+                    Task { @MainActor in
+                        guard let self, self.generation == expected, self.progress[id] != nil else { return }
+                        self.progress[id] = fraction
+                    }
+                }
+                guard generation == expected else { return }
+                beats[id] = track
+                unsavedBeatIDs.insert(id)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard generation == expected else { return }
+                beatFailures[id] = error.localizedDescription
             }
         }
         progress[id] = nil
