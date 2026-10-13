@@ -177,6 +177,7 @@ struct TimelineView: View {
                                         LayerClipRow(
                                             layer: layer,
                                             project: project,
+                                            timelineID: timelineID,
                                             selection: selection,
                                             pixelsPerSecond: pixelsPerSecond,
                                             width: contentWidth,

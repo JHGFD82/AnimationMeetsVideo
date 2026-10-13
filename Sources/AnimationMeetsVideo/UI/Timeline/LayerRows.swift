@@ -100,6 +100,7 @@ struct LayerHeaderRow: View {
 struct LayerClipRow: View {
     let layer: TimelineLayer
     let project: EditingProject
+    let timelineID: UUID
     let selection: TimelineSelection?
     let pixelsPerSecond: CGFloat
     let width: CGFloat
@@ -119,6 +120,9 @@ struct LayerClipRow: View {
                     isSelected: isSelected,
                     pixelsPerSecond: pixelsPerSecond,
                     height: height,
+                    resolveMove: { project.resolvedStart(ofMoving: clip.id, in: timelineID, layer: layer.id, to: $0) },
+                    resolveTrimStart: { project.resolvedTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
+                    resolveTrimEnd: { project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
                     onSelect: { onSelectClip(clip) },
                     onMove: { newStart in onMoveClip(clip.id, newStart) },
                     onTrimStart: { newTrimStart in onTrimClipStart(clip.id, newTrimStart) },
@@ -156,35 +160,40 @@ private func clipTypeColor(for info: ResolvedClipInfo?) -> Color {
 /// A single clip block, positioned by absolute offset (not sequential flow)
 /// so a clip's on-screen position always matches its `startOffset`.
 /// Draggable in its middle to move it in time, and draggable at either edge
-/// to non-destructively trim `trimStart`/`trimEnd` — while trimming, a
-/// translucent, outlined ghost in the layer's type color shows the full
-/// before/after extent so the trimmed-away sliver stays visible until
-/// release.
+/// to non-destructively trim `trimStart`/`trimEnd`. While dragging, the
+/// block shows where the drop will land (on a frame, clear of its
+/// neighbors) rather than following the pointer freely, and trimming adds
+/// a translucent, outlined ghost of the clip's extent before the trim.
 struct ClipBlockView: View {
     let clip: TimelineClip
     let info: ResolvedClipInfo?
     let isSelected: Bool
     let pixelsPerSecond: CGFloat
     let height: CGFloat
+    let resolveMove: (CMTime) -> CMTime?
+    let resolveTrimStart: (CMTime) -> TimelineClip?
+    let resolveTrimEnd: (CMTime) -> TimelineClip?
     let onSelect: () -> Void
     let onMove: (CMTime) -> Void
     let onTrimStart: (CMTime) -> Void
     let onTrimEnd: (CMTime) -> Void
 
-    @GestureState private var moveTranslation: CGFloat = 0
-    @GestureState private var leftTrimTranslation: CGFloat = 0
-    @GestureState private var rightTrimTranslation: CGFloat = 0
+    /// The clip as it will be if the current drag ends now. Plain state,
+    /// not gesture state: it is cleared in the same update that commits
+    /// the drop, so the block never shows its old place for a frame.
+    @State private var preview: TimelineClip?
+    @State private var isTrimming = false
 
     private let handleWidth: CGFloat = 8
 
     private var typeColor: Color { clipTypeColor(for: info) }
 
     var body: some View {
+        let shown = preview ?? clip
         let baseX = clip.startOffset.seconds * pixelsPerSecond
         let baseWidth = max(2, clip.trimmedDuration.seconds * pixelsPerSecond)
-        let liveX = baseX + moveTranslation + leftTrimTranslation
-        let liveWidth = max(4, baseWidth - leftTrimTranslation + rightTrimTranslation)
-        let isTrimming = leftTrimTranslation != 0 || rightTrimTranslation != 0
+        let liveX = shown.startOffset.seconds * pixelsPerSecond
+        let liveWidth = max(2, shown.trimmedDuration.seconds * pixelsPerSecond)
         let unionMinX = min(baseX, liveX)
         let unionMaxX = max(baseX + baseWidth, liveX + liveWidth)
 
@@ -208,29 +217,32 @@ struct ClipBlockView: View {
                         .font(.caption)
                         .lineLimit(1)
                 }
-                Text(clip.trimmedDuration.formatted)
+                Text(shown.trimmedDuration.formatted)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             .padding(.leading, 4)
             .frame(width: liveWidth, height: height, alignment: .leading)
+            .clipped()
             .background(typeColor.opacity(isSelected ? 0.6 : 0.35))
             .overlay(Rectangle().strokeBorder(isSelected ? Color.white.opacity(0.9) : typeColor.opacity(0.8), lineWidth: isSelected ? 1.5 : 0.75))
             .offset(x: liveX)
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .updating($moveTranslation) { value, state, _ in
-                        state = value.translation.width
+                    .onChanged { value in
+                        guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
+                        let start = resolveMove(CMTimeAdd(clip.startOffset, timeDelta(value.translation.width)))
+                        var moved = clip
+                        moved.startOffset = start ?? clip.startOffset
+                        preview = moved
                     }
                     .onEnded { value in
-                        let distance = hypot(value.translation.width, value.translation.height)
-                        if distance < 3 {
+                        if let preview, preview.startOffset != clip.startOffset {
+                            onMove(preview.startOffset)
+                        } else if hypot(value.translation.width, value.translation.height) < 3 {
                             onSelect()
-                        } else {
-                            let deltaSeconds = Double(value.translation.width / pixelsPerSecond)
-                            let newStart = CMTimeAdd(clip.startOffset, CMTime(seconds: deltaSeconds, preferredTimescale: 600))
-                            onMove(newStart)
                         }
+                        preview = nil
                     }
             )
 
@@ -246,6 +258,10 @@ struct ClipBlockView: View {
 
     private enum Edge { case leading, trailing }
 
+    private func timeDelta(_ translation: CGFloat) -> CMTime {
+        CMTime(seconds: Double(translation / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
+    }
+
     private func trimHandle(edge: Edge, liveX: CGFloat, liveWidth: CGFloat) -> some View {
         let handleX = edge == .leading ? liveX - handleWidth / 2 : liveX + liveWidth - handleWidth / 2
         return Rectangle()
@@ -255,23 +271,26 @@ struct ClipBlockView: View {
             .offset(x: handleX)
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .updating(edge == .leading ? $leftTrimTranslation : $rightTrimTranslation) { value, state, _ in
-                        state = value.translation.width
+                    .onChanged { value in
+                        guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
+                        isTrimming = true
+                        let delta = timeDelta(value.translation.width)
+                        preview = switch edge {
+                        case .leading: resolveTrimStart(CMTimeAdd(clip.trimStart, delta)) ?? clip
+                        case .trailing: resolveTrimEnd(CMTimeAdd(clip.trimEnd, delta)) ?? clip
+                        }
                     }
-                    .onEnded { value in
-                        let distance = hypot(value.translation.width, value.translation.height)
-                        if distance < 3 {
+                    .onEnded { _ in
+                        if let preview, preview != clip {
+                            switch edge {
+                            case .leading: onTrimStart(preview.trimStart)
+                            case .trailing: onTrimEnd(preview.trimEnd)
+                            }
+                        } else if !isTrimming {
                             onSelect()
-                            return
                         }
-                        let deltaSeconds = Double(value.translation.width / pixelsPerSecond)
-                        let delta = CMTime(seconds: deltaSeconds, preferredTimescale: 600)
-                        switch edge {
-                        case .leading:
-                            onTrimStart(CMTimeAdd(clip.trimStart, delta))
-                        case .trailing:
-                            onTrimEnd(CMTimeAdd(clip.trimEnd, delta))
-                        }
+                        preview = nil
+                        isTrimming = false
                     }
             )
             .pointerStyle(.columnResize)
