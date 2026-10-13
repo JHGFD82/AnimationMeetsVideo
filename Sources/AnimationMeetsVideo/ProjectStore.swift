@@ -113,6 +113,12 @@ private struct ProjectFile: Codable {
         var path: String
         /// Absent when the person hasn't edited the scene list.
         var sceneEdits: SceneEditsEntry?
+        /// Absent when the file is aligned with the original.
+        var alignmentOffset: TimeEntry?
+        /// Absent when the asset has never been replaced.
+        var previousPaths: [String]?
+        /// Absent in files written before replacement existed.
+        var fileStamp: FileStamp?
     }
 
     var formatVersion: Int
@@ -134,6 +140,9 @@ struct ProjectLoadResult {
     /// Media files referenced by the project that couldn't be opened; clips
     /// using them were dropped from the timelines.
     var missingMedia: [URL]
+    /// Assets whose file differs from the one the project last accepted, so
+    /// it was swapped outside the app and needs a sync check.
+    var changedMedia: [UUID] = []
     /// Saved change scores found in `Reference/`, by asset ID. Assets with no
     /// entry haven't been analyzed yet.
     var changeScores: [UUID: ChangeScoreTrack] = [:]
@@ -400,6 +409,7 @@ enum ProjectStore {
             let destination = uniqueDestination(for: source.lastPathComponent, in: mediaFolder)
             try FileManager.default.copyItem(at: source, to: destination)
             project.clips[index].url = destination
+            project.clips[index].acceptedStamp = FileStamp(url: destination)
         }
 
         for (assetID, track) in changeScores where project.mediaClip(id: assetID) != nil {
@@ -521,7 +531,10 @@ enum ProjectStore {
                     id: clip.id,
                     name: clip.name,
                     path: relativePath(for: clip.url!),
-                    sceneEdits: clip.sceneEdits == SceneEdits() ? nil : ProjectFile.SceneEditsEntry(clip.sceneEdits)
+                    sceneEdits: clip.sceneEdits == SceneEdits() ? nil : ProjectFile.SceneEditsEntry(clip.sceneEdits),
+                    alignmentOffset: clip.alignmentOffset == .zero ? nil : ProjectFile.TimeEntry(clip.alignmentOffset),
+                    previousPaths: clip.previousPaths.isEmpty ? nil : clip.previousPaths,
+                    fileStamp: clip.acceptedStamp
                 )
             },
             timelines: timelines
@@ -552,6 +565,7 @@ enum ProjectStore {
         var importedClips: [UUID: MediaClip] = [:]
         var orderedIDs: [UUID] = []
         var missingMedia: [URL] = []
+        var changedMedia: [UUID] = []
         for asset in file.assets {
             let url = asset.path.hasPrefix("/")
                 ? URL(fileURLWithPath: asset.path)
@@ -561,6 +575,10 @@ enum ProjectStore {
                 clip.id = asset.id
                 clip.name = asset.name
                 clip.sceneEdits = asset.sceneEdits?.edits ?? SceneEdits()
+                clip.alignmentOffset = asset.alignmentOffset?.time ?? .zero
+                clip.previousPaths = asset.previousPaths ?? []
+                clip.acceptedStamp = asset.fileStamp ?? FileStamp(url: url)
+                if let saved = asset.fileStamp, saved != FileStamp(url: url) { changedMedia.append(asset.id) }
                 importedClips[asset.id] = clip
                 orderedIDs.append(asset.id)
             } catch {
@@ -627,7 +645,7 @@ enum ProjectStore {
             scores[id] = readChangeScores(for: id, in: packageURL)
             references[id] = readReference(for: id, in: packageURL)
         }
-        return ProjectLoadResult(project: project, missingMedia: missingMedia, changeScores: scores, beats: beats, references: references, assetsWithThumbnails: thumbnailed)
+        return ProjectLoadResult(project: project, missingMedia: missingMedia, changedMedia: changedMedia, changeScores: scores, beats: beats, references: references, assetsWithThumbnails: thumbnailed)
     }
 }
 

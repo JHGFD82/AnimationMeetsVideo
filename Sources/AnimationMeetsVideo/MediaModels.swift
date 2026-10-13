@@ -30,6 +30,7 @@ struct EditingProject: Identifiable, Equatable {
         for clip in other.clips {
             if let index = clips.firstIndex(where: { $0.id == clip.id }) {
                 clips[index].url = clip.url
+                clips[index].acceptedStamp = clip.acceptedStamp
             }
         }
     }
@@ -439,6 +440,21 @@ struct MediaClip: Identifiable, Equatable {
     /// Hand-made changes to this asset's scene list. Detected cuts are not
     /// stored; they are recomputed from the saved change scores.
     var sceneEdits = SceneEdits()
+    /// How much later a moment is in the current file than in the original:
+    /// original time `t` is at `t + alignmentOffset` in the file. Trims,
+    /// scenes and cuts stay in original time; this is added when reading.
+    var alignmentOffset = CMTime.zero
+    /// Files this asset used to point at, newest last. Only paths are kept,
+    /// so a person can point the asset back at an earlier file.
+    var previousPaths: [String] = []
+    /// Size and modification time of the file when the project last accepted
+    /// it. A different stamp on opening means it was swapped outside the app.
+    var acceptedStamp: FileStamp?
+
+    /// Where original time `time` is in the current file.
+    func fileTime(forSourceTime time: CMTime) -> CMTime {
+        CMTimeAdd(time, alignmentOffset)
+    }
 
     var formatSummary: String {
         "\(kind.rawValue) · \(codecName) · \(colorSpace.rawValue)"

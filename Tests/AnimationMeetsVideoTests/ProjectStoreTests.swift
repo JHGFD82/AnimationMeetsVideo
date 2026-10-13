@@ -568,3 +568,72 @@ private struct Sandbox {
         #expect(ProjectStore.thumbnailTime(fromFileName: "1_0.jpg") == nil)
     }
 }
+
+@Suite struct MediaReplacementPersistenceTests {
+    @Test func alignmentAndPreviousPathsRoundTrip() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, assetID) = sandbox.makeProject()
+        project.clips[0].alignmentOffset = CMTime(value: -1001, timescale: 24000)
+        project.clips[0].previousPaths = ["/Volumes/Cards/proxy.mov", "Media/older.mov"]
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        let clip = try #require(loaded.project.mediaClip(id: assetID))
+        #expect(clip.alignmentOffset == CMTime(value: -1001, timescale: 24000))
+        #expect(clip.previousPaths == ["/Volumes/Cards/proxy.mov", "Media/older.mov"])
+    }
+
+    @Test func untouchedAssetsWriteNoReplacementFields() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let text = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+
+        #expect(!text.contains("alignmentOffset"))
+        #expect(!text.contains("previousPaths"))
+    }
+
+    @Test func aSwappedFileIsReportedOnLoad() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, assetID) = sandbox.makeProject()
+        project.clips[0].acceptedStamp = FileStamp(url: sandbox.mediaURL)
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+
+        let unchanged = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(unchanged.changedMedia.isEmpty)
+
+        try Data("a different, longer file".utf8).write(to: sandbox.mediaURL)
+        let changed = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(changed.changedMedia == [assetID])
+    }
+
+    @Test func projectsWithoutAStampAreNotReportedAsChanged() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        #expect(loaded.changedMedia.isEmpty)
+        #expect(loaded.project.clips[0].acceptedStamp != nil)
+    }
+
+    @Test func copyingIntoThePackageStampsTheCopy() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+
+        let saved = try await ProjectStore.save(project, to: sandbox.packageURL, copying: [assetID])
+        let copy = try #require(saved.mediaClip(id: assetID)?.url)
+
+        #expect(saved.mediaClip(id: assetID)?.acceptedStamp == FileStamp(url: copy))
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.changedMedia.isEmpty)
+    }
+}

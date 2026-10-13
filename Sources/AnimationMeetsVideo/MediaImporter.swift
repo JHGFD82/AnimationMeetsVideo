@@ -49,7 +49,8 @@ enum MediaImporter {
             frameRate: frameRate,
             colorSpace: colorSpace,
             codecName: codecName,
-            hasAudio: !audioTracks.isEmpty
+            hasAudio: !audioTracks.isEmpty,
+            acceptedStamp: FileStamp(url: url)
         )
     }
 

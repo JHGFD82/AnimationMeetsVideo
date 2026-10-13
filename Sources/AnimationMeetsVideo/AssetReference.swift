@@ -39,7 +39,7 @@ struct AssetMetadataSnapshot: Codable, Equatable, Sendable {
 }
 
 /// Size and modification time of a file on disk.
-struct FileStamp: Equatable, Sendable {
+struct FileStamp: Codable, Equatable, Sendable {
     var byteCount: Int64
     var modified: Double?
 
