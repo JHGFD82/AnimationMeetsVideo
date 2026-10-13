@@ -10,15 +10,6 @@ struct TimelineRuler: View {
     let frameRate: Double
     let viewport: TimelineViewport
 
-    private var pixelsPerSecond: CGFloat { viewport.pixelsPerSecond }
-
-    // Needs real room for "NNf" text (~20pt), not just a tick mark —
-    // 6pt was wide enough for a bare mark but produced an illegible smear
-    // of overlapping frame-number labels once actually rendered.
-    private var showsFrameTicks: Bool {
-        pixelsPerSecond / max(frameRate, 1) >= 20
-    }
-
     var body: some View {
         Canvas { context, size in
             let endX = viewport.x(atSeconds: duration.seconds)
@@ -28,81 +19,90 @@ struct TimelineRuler: View {
                     with: .color(.primary.opacity(0.06))
                 )
             }
-            var context = context
-            context.translateBy(x: -viewport.scrollX, y: 0)
-            let visible = viewport.visibleSeconds
-            let range = max(0, visible.lowerBound - 1)...min(viewport.contentSeconds, visible.upperBound + 1)
-            if showsFrameTicks {
-                drawFrameTicks(context: context, visibleSeconds: range)
-            } else {
-                drawSecondTicks(context: context, visibleSeconds: range)
-            }
+            drawTicks(context: context)
         }
         .frame(width: viewport.width)
         .clipped()
     }
 
-    private func drawFrameTicks(context: GraphicsContext, visibleSeconds: ClosedRange<Double>) {
-        let framesPerSecond = max(1, Int(frameRate.rounded()))
-        let firstFrame = max(0, Int((visibleSeconds.lowerBound * frameRate).rounded(.down)))
-        let lastFrame = Int((visibleSeconds.upperBound * frameRate).rounded(.up))
-        guard firstFrame <= lastFrame else { return }
-        for frame in firstFrame...lastFrame {
-            let seconds = Double(frame) / frameRate
-            let x = CGFloat(seconds) * pixelsPerSecond
-            let isSecondBoundary = frame % framesPerSecond == 0
-            var path = Path()
-            path.move(to: CGPoint(x: x, y: 0))
-            path.addLine(to: CGPoint(x: x, y: isSecondBoundary ? 11 : 5))
-            context.stroke(path, with: .color(.secondary.opacity(isSecondBoundary ? 0.8 : 0.4)), lineWidth: 1)
-
-            if isSecondBoundary {
-                let time = CMTime(seconds: seconds, preferredTimescale: 600)
+    private func drawTicks(context: GraphicsContext) {
+        let frameDuration = Timeline.frameDuration(for: frameRate)
+        let frameSeconds = frameDuration.seconds
+        let ticks = RulerTicks(frameRate: frameRate, pixelsPerFrame: viewport.pixelsPerSecond * CGFloat(frameSeconds))
+        let visible = viewport.visibleSeconds
+        let step = ticks.framesPerTick
+        // Start a label's width early, so one whose tick is just off the
+        // left edge still shows the part of it that is on screen.
+        let firstFrame = max(0, Int(((visible.lowerBound - Double(RulerTicks.minimumLabelSpacing / viewport.pixelsPerSecond)) / frameSeconds).rounded(.down)))
+        let lastFrame = Int((min(visible.upperBound, viewport.contentSeconds) / frameSeconds).rounded(.up))
+        var frame = firstFrame / step * step
+        var major = Path(), mid = Path(), minor = Path()
+        while frame <= lastFrame {
+            let x = viewport.x(atSeconds: Double(frame) * frameSeconds)
+            switch ticks.level(ofFrame: frame) {
+            case .label:
+                major.move(to: CGPoint(x: x, y: 0))
+                major.addLine(to: CGPoint(x: x, y: 12))
+                let time = CMTimeMultiply(frameDuration, multiplier: Int32(clamping: frame))
                 context.draw(
-                    Text(time.compactTimecode(frameRate: frameRate)).font(.caption2).foregroundStyle(.secondary),
-                    at: CGPoint(x: x + 2, y: 19),
+                    Text(time.compactTimecode(frameRate: frameRate)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary),
+                    at: CGPoint(x: x + 3, y: 18),
                     anchor: .leading
                 )
-            } else {
-                context.draw(
-                    Text("\(frame % framesPerSecond)f").font(.system(size: 8)).foregroundStyle(.secondary),
-                    at: CGPoint(x: x + 1, y: 18),
-                    anchor: .leading
-                )
+            case .mid:
+                mid.move(to: CGPoint(x: x, y: 0))
+                mid.addLine(to: CGPoint(x: x, y: 8))
+            case .minor:
+                minor.move(to: CGPoint(x: x, y: 0))
+                minor.addLine(to: CGPoint(x: x, y: 4))
             }
+            frame += step
         }
+        context.stroke(minor, with: .color(.secondary.opacity(0.4)), lineWidth: 1)
+        context.stroke(mid, with: .color(.secondary.opacity(0.6)), lineWidth: 1)
+        context.stroke(major, with: .color(.secondary.opacity(0.85)), lineWidth: 1)
+    }
+}
+
+/// How the ruler groups frames at a given zoom. Every step is a whole
+/// number of frames that splits a second evenly — for 24 fps: 1, 2, 4, 6
+/// (a quarter second), 8, 12 (a half) — and above a second, the usual 1, 2,
+/// 5, 10, 15, 30 seconds and up. Labels go on the smallest step that leaves
+/// room for them, with a mid tick halfway and minor ticks on the smallest
+/// step that still leaves visible gaps.
+struct RulerTicks: Equatable {
+    enum Level { case label, mid, minor }
+
+    let framesPerLabel: Int
+    let framesPerMidTick: Int?
+    let framesPerTick: Int
+
+    static let minimumLabelSpacing: CGFloat = 80
+    static let minimumTickSpacing: CGFloat = 6
+
+    init(frameRate: Double, pixelsPerFrame: CGFloat) {
+        let steps = Self.steps(framesPerSecond: max(1, Int(frameRate.rounded())))
+        let label = steps.first { CGFloat($0) * pixelsPerFrame >= Self.minimumLabelSpacing } ?? steps[steps.count - 1]
+        let tick = steps.first { label % $0 == 0 && CGFloat($0) * pixelsPerFrame >= Self.minimumTickSpacing } ?? label
+        framesPerLabel = label
+        framesPerTick = tick
+        let half = label / 2
+        framesPerMidTick = label % 2 == 0 && half > tick && half % tick == 0 ? half : nil
     }
 
-    private func drawSecondTicks(context: GraphicsContext, visibleSeconds: ClosedRange<Double>) {
-        let interval = tickInterval(pixelsPerSecond: pixelsPerSecond)
-        let firstIndex = max(0, Int((visibleSeconds.lowerBound / interval).rounded(.down)))
-        let endIndex = Int((visibleSeconds.upperBound / interval).rounded(.up))
-        guard firstIndex <= endIndex else { return }
-        for index in firstIndex...endIndex {
-            let seconds = Double(index) * interval
-            let x = CGFloat(seconds) * pixelsPerSecond
-            var path = Path()
-            path.move(to: CGPoint(x: x, y: 0))
-            path.addLine(to: CGPoint(x: x, y: 8))
-            context.stroke(path, with: .color(.secondary.opacity(0.6)), lineWidth: 1)
-            let time = CMTime(seconds: seconds, preferredTimescale: 600)
-            context.draw(
-                Text(time.compactTimecode(frameRate: frameRate)).font(.caption2).foregroundStyle(.secondary),
-                at: CGPoint(x: x + 2, y: 19),
-                anchor: .leading
-            )
+    /// Every step, in frames, smallest first.
+    static func steps(framesPerSecond fps: Int) -> [Int] {
+        let withinSecond = (1..<fps).filter { divisor in
+            fps % divisor == 0 && (divisor <= 2 || (2...6).contains(fps / divisor))
         }
+        let seconds = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 18_000, 36_000]
+        return withinSecond + seconds.map { $0 * fps }
     }
 
-    // Picks the smallest "nice" interval wide enough to fit a full
-    // hh:mm:ss:ff label without overlapping its neighbor — depends on the
-    // current zoom (pixelsPerSecond), not just total duration, so ticks
-    // stay legible at any zoom level rather than just for long timelines.
-    private func tickInterval(pixelsPerSecond: CGFloat) -> Double {
-        let minimumLabelWidth: CGFloat = 76
-        let minimumIntervalSeconds = Double(minimumLabelWidth / max(pixelsPerSecond, 0.01))
-        let niceIntervals: [Double] = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600]
-        return niceIntervals.first(where: { $0 >= minimumIntervalSeconds }) ?? 3600
+    func level(ofFrame frame: Int) -> Level {
+        if frame % framesPerLabel == 0 { return .label }
+        if let framesPerMidTick, frame % framesPerMidTick == 0 { return .mid }
+        return .minor
     }
 }
 
