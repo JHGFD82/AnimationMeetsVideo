@@ -21,6 +21,7 @@ struct AnimationMeetsVideoApp: App {
     @State private var project: EditingProject
     @State private var history: ProjectHistory
     @State private var projectURL: URL?
+    @State private var projectLock: ProjectLock?
 
     init() {
         let initial = EditingProject.empty
@@ -66,6 +67,7 @@ struct AnimationMeetsVideoApp: App {
         project = EditingProject.empty
         history.reset(to: project)
         projectURL = nil
+        projectLock = nil
     }
 
     private func openProject() {
@@ -81,10 +83,13 @@ struct AnimationMeetsVideoApp: App {
 
         Task {
             do {
+                try ProjectStore.validatePackage(at: url)
+                let lock = try lockForProject(at: url)
                 let result = try await ProjectStore.load(from: url)
                 project = result.project
                 history.reset(to: result.project)
                 projectURL = url
+                projectLock = lock
                 if !result.missingMedia.isEmpty {
                     let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
                     showAlert(
@@ -117,15 +122,29 @@ struct AnimationMeetsVideoApp: App {
         Task {
             do {
                 try ProjectStore.preparePackage(at: url)
+                let lock = try lockForProject(at: url)
                 guard let copying = chooseMediaToCopy(for: project, into: url) else { return }
                 let saved = try await ProjectStore.save(project, to: url, copying: copying)
                 history.adopt(saved)
                 project = saved
                 projectURL = url
+                projectLock = lock
             } catch {
                 showAlert(title: "Couldn't Save Project", message: error.localizedDescription)
             }
         }
+    }
+
+    /// The lock for `url`: the one already held if it's the current project,
+    /// otherwise a new one (throws if another instance has the project open).
+    /// A new lock replaces the old one only when the caller assigns it.
+    private func lockForProject(at url: URL) throws -> ProjectLock {
+        if let projectLock,
+           projectLock.packageURL.standardizedFileURL.resolvingSymlinksInPath()
+            == url.standardizedFileURL.resolvingSymlinksInPath() {
+            return projectLock
+        }
+        return try ProjectLock.acquire(at: url)
     }
 
     /// Picks which media to copy into the package. Same-volume copies are

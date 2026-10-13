@@ -119,11 +119,20 @@ enum ProjectStore {
     static let referenceFolderName = "Reference"
     static let cacheFolderName = "Cache"
     static let backupsFolderName = "Backups"
+    static let lockFileName = ".lock"
 
     /// Resolves what the user picked to the package directory: either the
     /// package itself or the `project.json` inside it.
     static func packageURL(forSelection url: URL) -> URL {
         url.lastPathComponent == projectFileName ? url.deletingLastPathComponent() : url
+    }
+
+    /// Throws `notAProject` unless the folder contains a project file.
+    static func validatePackage(at packageURL: URL) throws {
+        let fileURL = packageURL.appending(path: projectFileName)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            throw ProjectStoreError.notAProject(packageURL.lastPathComponent)
+        }
     }
 
     // MARK: Package layout
@@ -147,7 +156,7 @@ enum ProjectStore {
 
         let ignoreURL = packageURL.appending(path: ".gitignore")
         if !fileManager.fileExists(atPath: ignoreURL.path) {
-            try "\(cacheFolderName)/\n\(backupsFolderName)/\n".write(to: ignoreURL, atomically: true, encoding: .utf8)
+            try "\(cacheFolderName)/\n\(backupsFolderName)/\n\(lockFileName)\n".write(to: ignoreURL, atomically: true, encoding: .utf8)
         }
     }
 
@@ -296,10 +305,8 @@ enum ProjectStore {
         from packageURL: URL,
         importMedia: @Sendable (URL) async throws -> MediaClip = { try await MediaImporter.importClip(at: $0) }
     ) async throws -> ProjectLoadResult {
+        try validatePackage(at: packageURL)
         let fileURL = packageURL.appending(path: projectFileName)
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            throw ProjectStoreError.notAProject(packageURL.lastPathComponent)
-        }
         let data = try Data(contentsOf: fileURL)
 
         let version = try JSONDecoder().decode(ProjectFileHeader.self, from: data).formatVersion
@@ -386,6 +393,7 @@ enum ProjectStoreError: LocalizedError {
     case notAProject(String)
     case unsupportedVersion(Int?)
     case invalidTime(String)
+    case locked(String?)
 
     var errorDescription: String? {
         switch self {
@@ -398,6 +406,12 @@ enum ProjectStoreError: LocalizedError {
                 "This project was saved by a newer version of the app (format version \(version))."
             } else {
                 "This project file has no supported format version."
+            }
+        case .locked(let holder):
+            if let holder {
+                "This project is already open in \(holder). Close it there first."
+            } else {
+                "This project is already open in another window or app. Close it there first."
             }
         case .invalidTime(let text):
             "“\(text)” isn't a valid time. Use a rational number of seconds such as 1001/24000s or 5s."
