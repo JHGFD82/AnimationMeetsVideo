@@ -80,6 +80,11 @@ struct SceneDragPayload: Transferable {
 enum SceneThumbnailStore {
     private static let cache = NSCache<NSString, NSImage>()
 
+    /// Forgets every picture, for when a file was swapped under the same path.
+    static func invalidate() {
+        cache.removeAllObjects()
+    }
+
     static func image(url: URL, time: CMTime) async -> NSImage? {
         let key = "\(url.path)|\(time.value)/\(time.timescale)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
@@ -101,7 +106,9 @@ enum SceneThumbnailStore {
 
 struct SceneThumbnail: View {
     let url: URL?
+    /// Time in the original; `offset` converts it to a time in the file.
     let time: CMTime
+    var offset: CMTime = .zero
     @State private var image: NSImage?
 
     var body: some View {
@@ -113,9 +120,9 @@ struct SceneThumbnail: View {
         }
         .frame(width: 64, height: 36)
         .clipShape(RoundedRectangle(cornerRadius: 3))
-        .task(id: "\(time.value)/\(time.timescale)") {
+        .task(id: "\(time.value)/\(time.timescale)|\(offset.value)/\(offset.timescale)|\(url?.path ?? "")") {
             guard let url else { return }
-            image = await SceneThumbnailStore.image(url: url, time: time)
+            image = await SceneThumbnailStore.image(url: url, time: CMTimeAdd(time, offset))
         }
     }
 }
@@ -127,7 +134,7 @@ struct SceneRowView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            SceneThumbnail(url: clip.url, time: scene.start)
+            SceneThumbnail(url: clip.url, time: scene.start, offset: clip.alignmentOffset)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text("Scene \(number)")
@@ -154,23 +161,27 @@ final class ScenePreviewModel {
     let player = AVPlayer()
     let start: CMTime
     let end: CMTime
+    /// Added to a time in the original to get a time in the file.
+    let offset: CMTime
     private(set) var position: Double
     private(set) var isPlaying = false
     @ObservationIgnored private var observer: Any?
 
-    init(url: URL, start: CMTime, end: CMTime) {
+    init(url: URL, start: CMTime, end: CMTime, offset: CMTime = .zero) {
         self.start = start
         self.end = end
+        self.offset = offset
         position = start.seconds
         let item = AVPlayerItem(url: url)
-        item.forwardPlaybackEndTime = end
+        item.forwardPlaybackEndTime = CMTimeAdd(end, offset)
         player.replaceCurrentItem(with: item)
-        player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero)
+        player.seek(to: CMTimeAdd(start, offset), toleranceBefore: .zero, toleranceAfter: .zero)
         observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.position = time.seconds
-                if self.isPlaying, CMTimeCompare(time, self.end) >= 0 || self.player.rate == 0 {
+                let original = CMTimeSubtract(time, self.offset)
+                self.position = original.seconds
+                if self.isPlaying, CMTimeCompare(original, self.end) >= 0 || self.player.rate == 0 {
                     self.isPlaying = false
                 }
             }
@@ -191,7 +202,7 @@ final class ScenePreviewModel {
     func seek(to seconds: Double) {
         let clamped = min(max(seconds, start.seconds), end.seconds)
         position = clamped
-        player.seek(to: CMTime(seconds: clamped, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        player.seek(to: CMTimeAdd(CMTime(seconds: clamped, preferredTimescale: 600), offset), toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
     func stop() {
@@ -221,7 +232,8 @@ struct ScenePreviewSheet: View {
         _project = project
         self.target = target
         self.track = track
-        _model = State(initialValue: ScenePreviewModel(url: target.url, start: target.scene.start, end: target.scene.end))
+        let offset = project.wrappedValue.mediaClip(id: target.assetID)?.alignmentOffset ?? .zero
+        _model = State(initialValue: ScenePreviewModel(url: target.url, start: target.scene.start, end: target.scene.end, offset: offset))
     }
 
     private var frameRate: Double { project.mediaClip(id: target.assetID)?.frameRate ?? 24 }

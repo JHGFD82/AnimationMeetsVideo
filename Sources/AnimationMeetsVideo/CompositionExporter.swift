@@ -60,6 +60,10 @@ private actor MediaTrackCache {
     static let shared = MediaTrackCache()
     private var entries: [URL: MediaTrackInfo] = [:]
 
+    func forget(_ url: URL) {
+        entries[url] = nil
+    }
+
     func info(for url: URL) async throws -> MediaTrackInfo {
         if let cached = entries[url] { return cached }
 
@@ -123,6 +127,12 @@ private struct VideoLayer {
 }
 
 enum CompositionExporter {
+    /// Drops what was read from the file at `url`, for when it was replaced
+    /// or changed on disk.
+    static func forgetCachedMedia(at url: URL) async {
+        await MediaTrackCache.shared.forget(url)
+    }
+
     static func buildComposedTimeline(for project: EditingProject, timelineID: UUID) async throws -> ComposedTimeline {
         guard let timeline = project.timeline(id: timelineID), !timeline.layers.isEmpty else {
             throw CompositionError.emptyTimeline
@@ -224,7 +234,7 @@ enum CompositionExporter {
                 case .media(let mediaID):
                     guard let media = project.mediaClip(id: mediaID), let url = media.url else { continue }
                     let info = try await MediaTrackCache.shared.info(for: url)
-                    let wanted = CMTimeRange(start: CMTimeAdd(clip.trimStart, intoClip), duration: visible.duration)
+                    let wanted = CMTimeRange(start: media.fileTime(forSourceTime: CMTimeAdd(clip.trimStart, intoClip)), duration: visible.duration)
                     let transform = info.orientedTransform
                         .concatenating(fitTransform(from: info.orientedSize, to: timeline.frameSize))
                         .concatenating(fit)
