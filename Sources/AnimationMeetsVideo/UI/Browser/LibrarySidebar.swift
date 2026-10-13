@@ -16,6 +16,33 @@ struct LibrarySidebar: View {
     @State private var previewTarget: ScenePreviewTarget?
 
     var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Library")
+                    .font(.headline)
+                Spacer()
+                Button(action: importMedia) {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.borderless)
+                .help("Import media")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            Divider()
+            list
+        }
+        .alert(
+            "Import Failed",
+            isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(importError ?? "")
+        }
+    }
+
+    private var list: some View {
         List(selection: $selectedScenes) {
             Section("Clips") {
                 ForEach(project.clips) { clip in
@@ -72,23 +99,7 @@ struct LibrarySidebar: View {
         .sheet(item: $previewTarget) { target in
             ScenePreviewSheet(project: $project, target: target, track: analysis.tracks[target.assetID])
         }
-        .navigationTitle("Library")
-        .toolbar {
-            ToolbarItem {
-                Button(action: importMedia) {
-                    Image(systemName: "plus")
-                }
-                .help("Import media")
-            }
-        }
-        .alert(
-            "Import Failed",
-            isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(importError ?? "")
-        }
+        .listStyle(.sidebar)
     }
 
     private func assetLabel(_ clip: MediaClip) -> some View {

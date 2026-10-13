@@ -4,12 +4,15 @@ import SwiftUI
 
 /// The viewer + inspector + timeline for a single timeline within a project.
 /// Reused by both the main window and the external display's independent mode.
-struct TimelineEditorSurface: View {
+/// The main window puts its library to the left of the viewer, so the
+/// timeline below runs the full width of the window.
+struct TimelineEditorSurface<Library: View>: View {
     @Binding var project: EditingProject
     @Binding var timelineID: UUID
     @Binding var selection: TimelineSelection?
     let playback: PlaybackModel
     let analysis: AssetAnalysis
+    @ViewBuilder let library: () -> Library
 
     @State private var playheadTime: CMTime = .zero
     @State private var buildTask: Task<Void, Never>?
@@ -49,6 +52,7 @@ struct TimelineEditorSurface: View {
                 Divider()
 
                 HStack(spacing: 0) {
+                    library()
                     ViewerPanel(
                         playback: playback,
                         hasContent: !(timeline?.layers.isEmpty ?? true),
@@ -192,6 +196,20 @@ struct TimelineEditorSurface: View {
                     buildError = error.localizedDescription
                 }
             }
+        }
+    }
+}
+
+extension TimelineEditorSurface where Library == EmptyView {
+    init(
+        project: Binding<EditingProject>,
+        timelineID: Binding<UUID>,
+        selection: Binding<TimelineSelection?>,
+        playback: PlaybackModel,
+        analysis: AssetAnalysis
+    ) {
+        self.init(project: project, timelineID: timelineID, selection: selection, playback: playback, analysis: analysis) {
+            EmptyView()
         }
     }
 }

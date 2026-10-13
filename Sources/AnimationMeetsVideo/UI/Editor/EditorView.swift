@@ -36,25 +36,28 @@ struct EditorView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            LibrarySidebar(
-                project: $project, activeTimelineID: $activeTimelineID, selection: $selection,
-                analysis: analysis, replacement: replacement, packageURL: packageURL
+        // No split view: the library sits beside the viewer inside the
+        // surface, so the timeline under them spans the whole window.
+        VStack(spacing: 0) {
+            EditorToolbar(
+                project: $project,
+                activeTimelineID: $activeTimelineID,
+                selection: $selection,
+                playback: playback,
+                annotations: annotations,
+                externalDisplay: externalDisplay,
+                analysis: analysis
             )
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260)
-        } detail: {
-            VStack(spacing: 0) {
-                EditorToolbar(
-                    project: $project,
-                    activeTimelineID: $activeTimelineID,
-                    selection: $selection,
-                    playback: playback,
-                    annotations: annotations,
-                    externalDisplay: externalDisplay,
-                    analysis: analysis
-                )
-                Divider()
-                TimelineEditorSurface(project: $project, timelineID: $activeTimelineID, selection: $selection, playback: playback, analysis: analysis)
+            Divider()
+            TimelineEditorSurface(project: $project, timelineID: $activeTimelineID, selection: $selection, playback: playback, analysis: analysis) {
+                HStack(spacing: 0) {
+                    LibrarySidebar(
+                        project: $project, activeTimelineID: $activeTimelineID, selection: $selection,
+                        analysis: analysis, replacement: replacement, packageURL: packageURL
+                    )
+                    .frame(width: 260)
+                    Divider()
+                }
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))

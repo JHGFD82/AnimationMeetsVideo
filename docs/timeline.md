@@ -7,9 +7,10 @@ itself has been checked in offscreen renders, not yet driven on screen
 with a trackpad. What is not built is listed under
 [Not implemented yet](#not-implemented-yet).
 
-The timeline sits under the viewer: a label column on the left (layer
-number and name, and transform property rows when shown), and the track
-area on the right with the ruler across its top.
+The timeline sits under the library, viewer and inspector and spans the
+full width of the window: a label column on the left (layer number and
+name, and transform property rows when shown), and the track area on the
+right with the ruler across its top.
 
 Importing a file only adds it to the library. It reaches a timeline when
 dragged there (a whole asset, or scenes of it), or from **Add to Timeline**
