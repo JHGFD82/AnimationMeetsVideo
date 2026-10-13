@@ -58,6 +58,21 @@ import Testing
         #expect(controller.changedMedia.isEmpty)
     }
 
+    @Test func aNoticeWaitsUntilTheSheetHasClosed() throws {
+        let file = try tempFile("one")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let (project, _) = makeProject(file: file)
+        let controller = MediaReplacementController()
+
+        controller.sheetDidAppear()
+        try Data("a longer replacement".utf8).write(to: file)
+        controller.checkForChanges(in: project)
+        #expect(controller.notice == nil)
+
+        controller.sheetDidDismiss()
+        #expect(controller.notice != nil)
+    }
+
     @Test func aMissingFileIsLeftAlone() throws {
         let file = try tempFile("one")
         let (project, _) = makeProject(file: file)

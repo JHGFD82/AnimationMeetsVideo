@@ -80,6 +80,11 @@ final class MediaReplacementController {
     @ObservationIgnored private var requested = 0
     @ObservationIgnored private var replaced = 0
     @ObservationIgnored private var skipped: [String] = []
+    /// True from when the sheet appears until it has finished closing.
+    @ObservationIgnored private var isSheetShown = false
+    /// A notice held back until the sheet has closed: macOS drops an alert
+    /// presented while a sheet on the same window is still closing.
+    @ObservationIgnored private var pendingNotice: Notice?
 
     func markChanged(_ ids: [UUID]) {
         changedMedia.formUnion(ids)
@@ -105,12 +110,12 @@ final class MediaReplacementController {
             for url in urls { await CompositionExporter.forgetCachedMedia(at: url) }
             SceneThumbnailStore.invalidate()
         }
-        if notice == nil, session == nil {
+        if notice == nil, pendingNotice == nil, session == nil {
             let names = newlyChanged.map(\.name).joined(separator: "\n")
-            notice = Notice(
+            post(Notice(
                 title: "Media Changed on Disk",
                 message: "These files changed outside the app:\n\n\(names)\n\nControl-click one in the Clips list and choose \u{201C}File Changed — Check Sync…\u{201D} to line it up."
-            )
+            ))
         }
     }
 
@@ -123,6 +128,28 @@ final class MediaReplacementController {
         context = nil
         changedMedia = []
         notice = nil
+        pendingNotice = nil
+    }
+
+    func sheetDidAppear() {
+        isSheetShown = true
+    }
+
+    /// Shows a notice that was waiting for the sheet to close.
+    func sheetDidDismiss() {
+        isSheetShown = false
+        if let pendingNotice {
+            notice = pendingNotice
+            self.pendingNotice = nil
+        }
+    }
+
+    private func post(_ notice: Notice) {
+        if isSheetShown {
+            pendingNotice = notice
+        } else {
+            self.notice = notice
+        }
     }
 
     /// Compares each file with its asset and replaces those that need no
@@ -255,7 +282,7 @@ final class MediaReplacementController {
         if !skipped.isEmpty {
             message += "\n\nNot replaced:\n" + skipped.joined(separator: "\n")
         }
-        notice = Notice(title: "Media Replaced", message: message)
+        post(Notice(title: "Media Replaced", message: message))
     }
 }
 
@@ -676,9 +703,10 @@ private struct MediaReplacementDialogs: ViewModifier {
             .sheet(item: Binding(
                 get: { controller.session },
                 set: { _ in }
-            )) { session in
+            ), onDismiss: { controller.sheetDidDismiss() }) { session in
                 ReplaceMediaSheet(session: session, controller: controller)
                     .interactiveDismissDisabled()
+                    .onAppear { controller.sheetDidAppear() }
                     .onDisappear { controller.cancel(session) }
             }
             .alert(
