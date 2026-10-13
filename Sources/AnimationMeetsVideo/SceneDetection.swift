@@ -92,8 +92,9 @@ enum ChangeScoreTrackError: LocalizedError {
 // MARK: - Sensitivity
 
 /// A sensitivity applied to one stretch of an asset, set by the person
-/// selecting scenes and moving the slider. It applies from `start` up to but
-/// not including `end`; later regions win where they overlap.
+/// selecting scenes and moving the slider. It applies strictly between
+/// `start` and `end`, so the cuts at the two edges keep the sensitivity they
+/// had; later regions win where they overlap.
 struct SensitivityRegion: Identifiable, Equatable, Sendable {
     var id = UUID()
     var start: CMTime
@@ -166,7 +167,7 @@ enum SceneDetector {
 
             let time = track.time(at: i)
             let sensitivity = edits.regions.last { region in
-                CMTimeCompare(time, region.start) >= 0 && CMTimeCompare(time, region.end) < 0
+                CMTimeCompare(time, region.start) > 0 && CMTimeCompare(time, region.end) < 0
             }?.value ?? base
             guard Double(score) / 255 >= threshold(forSensitivity: sensitivity) else { continue }
 

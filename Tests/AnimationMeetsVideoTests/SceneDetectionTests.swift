@@ -98,10 +98,14 @@ private func frames(_ cuts: [CMTime]) -> [Int64] { cuts.map(\.value) }
         #expect(frames(cuts) == [200])
     }
 
-    @Test func regionEndIsExclusive() {
+    @Test func theCutsAtBothEdgesOfARegionKeepTheirSensitivity() {
         var edits = SceneEdits()
         edits.regions = [region(100, 120, 1)]
         #expect(!frames(SceneDetector.autoCuts(in: track, defaultSensitivity: 0.5, edits: edits)).contains(120))
+
+        let strongEdges = makeTrack(frames: 300, spikes: [100: 200, 150: 60, 200: 200])
+        edits.regions = [region(100, 200, 0)]
+        #expect(frames(SceneDetector.autoCuts(in: strongEdges, defaultSensitivity: 0.5, edits: edits)) == [100, 200])
     }
 
     @Test func laterRegionsWinWhereTheyOverlap() {
