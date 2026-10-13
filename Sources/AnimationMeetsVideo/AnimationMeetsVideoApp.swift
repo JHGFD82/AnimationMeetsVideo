@@ -25,6 +25,7 @@ struct AnimationMeetsVideoApp: App {
     /// The project as last saved or opened, to tell whether there are unsaved changes.
     @State private var savedProject: EditingProject
     @State private var lastAutosaved: EditingProject?
+    @State private var analysis = AssetAnalysis()
 
     private static let autosaveInterval: Duration = .seconds(60)
 
@@ -39,7 +40,7 @@ struct AnimationMeetsVideoApp: App {
 
     var body: some Scene {
         WindowGroup("Animation Meets Video") {
-            EditorView(project: $project, history: history)
+            EditorView(project: $project, history: history, analysis: analysis)
                 .frame(minWidth: 1_100, minHeight: 700)
                 .task {
                     while !Task.isCancelled {
@@ -84,6 +85,7 @@ struct AnimationMeetsVideoApp: App {
         lastAutosaved = nil
         projectURL = nil
         projectLock = nil
+        analysis.reset()
     }
 
     private func openProject() {
@@ -108,6 +110,8 @@ struct AnimationMeetsVideoApp: App {
                 lastAutosaved = nil
                 projectURL = url
                 projectLock = lock
+                analysis.reset(tracks: result.changeScores)
+                analysis.analyzeMissing(in: result.project)
                 if !result.missingMedia.isEmpty {
                     let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
                     showAlert(
@@ -143,7 +147,9 @@ struct AnimationMeetsVideoApp: App {
                 let lock = try lockForProject(at: url)
                 guard let copying = chooseMediaToCopy(for: project, into: url) else { return }
                 let snapshot = project
-                let saved = try await ProjectStore.save(snapshot, to: url, copying: copying)
+                let scoresToSave = analysis.unsavedTracks
+                let saved = try await ProjectStore.save(snapshot, to: url, copying: copying, changeScores: scoresToSave)
+                analysis.markSaved(scoresToSave.keys)
                 // Edits made while saving stay; only the media locations change.
                 history.adopt { $0.applyMediaLocations(from: saved) }
                 project.applyMediaLocations(from: saved)

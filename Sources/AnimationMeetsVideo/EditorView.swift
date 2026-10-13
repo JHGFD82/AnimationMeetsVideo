@@ -13,6 +13,7 @@ struct TimelineSelection: Equatable {
 struct EditorView: View {
     @Binding var project: EditingProject
     let history: ProjectHistory
+    let analysis: AssetAnalysis
     @Environment(\.undoManager) private var undoManager
     @State private var activeTimelineID: UUID
     @State private var selection: TimelineSelection?
@@ -20,9 +21,10 @@ struct EditorView: View {
     @State private var annotations = AnnotationModel()
     @State private var externalDisplay = ExternalDisplayController()
 
-    init(project: Binding<EditingProject>, history: ProjectHistory) {
+    init(project: Binding<EditingProject>, history: ProjectHistory, analysis: AssetAnalysis) {
         self._project = project
         self.history = history
+        self.analysis = analysis
         self._activeTimelineID = State(initialValue: project.wrappedValue.rootTimelineID)
     }
 
@@ -53,7 +55,11 @@ struct EditorView: View {
             history.projectDidChange(newValue)
             keepViewStateValid(for: newValue)
         }
-        .onAppear { connectHistory() }
+        .onChange(of: project.clips.map(\.id)) { _, _ in analysis.analyzeMissing(in: project) }
+        .onAppear {
+            connectHistory()
+            analysis.analyzeMissing(in: project)
+        }
         .onChange(of: undoManager) { _, _ in connectHistory() }
     }
 
