@@ -59,6 +59,32 @@ Detection results are cached. They are only recomputed if the file's
 metadata snapshot (size, modification date, duration) no longer matches, or
 if the person asks for a re-detect.
 
+### Adjusting sensitivity for a selection
+
+The default sensitivity is balanced, but one setting rarely fits a whole
+long-form file. A person can select **a range of scenes, or a single scene**
+that did not cut enough (or cut too much), and adjust the sensitivity for
+just that selection:
+
+- Open it from the right-click menu on the selection ("Adjust Cut
+  Sensitivity…"), which shows a slider. A popover or modal is fine; the
+  important part is that it acts on the selection only.
+- Only the time span covered by the selected scenes is re-evaluated. The
+  outer edges of the selection stay fixed, and every scene and boundary
+  outside the span is left exactly as it was.
+- Dragging the slider updates the preview of the new boundaries live. This is
+  instant because detection saves its per-frame change score (a small series
+  of numbers, quantized to one byte per frame) in the asset's reference data,
+  so changing sensitivity only re-applies a threshold; the video is not
+  decoded again.
+- Boundaries inside the span that the person made or adjusted by hand
+  (`manual`) are kept. Only `auto` boundaries are replaced.
+- The chosen sensitivity is saved with the span as a **sensitivity region**
+  (a range and a value), so a later full re-detect does not overwrite it.
+- Applying the slider to a single scene is how to split it further. Applying
+  it to a range is how to merge over-split scenes (lower sensitivity) or
+  find more cuts (higher sensitivity).
+
 ## What is saved for each asset
 
 The same pass that finds cuts also saves the small amount of data that the
@@ -71,7 +97,7 @@ the project package's `Reference/` folder, one subfolder per asset:
 | Thumbnails at each cut | The last frame before and the first frame after every cut, at low resolution (for example 160 px wide). Shown in the browser, and used for frame-accurate comparison when media is replaced. |
 | Interval thumbnails | A sparse fixed-interval strip so scenes and long shots can be scrubbed visually. |
 | Dense frames near used ranges | Extra low-resolution frames around the in and out points of ranges used on the timeline. |
-| Signatures | A tiny frame-luma signature and an audio envelope, used to suggest an alignment automatically. |
+| Signatures | The per-frame change score from detection (one byte per frame), a tiny frame-luma signature, and an audio envelope. The change score makes sensitivity adjustment instant; the rest is used to suggest an alignment automatically. |
 | Metadata snapshot | Resolution, frame rate, duration, color tags, and start timecode as they were at capture time. |
 
 This data is **not part of the evictable render cache.** It can be the only
@@ -114,8 +140,9 @@ Editing the scene list:
 
 ## Decisions
 
-- **Sensitivity** is a project-wide default with a per-asset override, so one
-  stubborn file can be re-detected without touching the others.
+- **Sensitivity** has three levels: a project-wide default (balanced), a
+  per-asset override, and a per-selection adjustment made with the slider
+  described above, which applies only to the selected scenes' span.
 - **Dropping several scenes** places them back to back, in source order, on
   a single layer with no gaps.
 - **Reference density** defaults to "balanced": thumbnails before and after
