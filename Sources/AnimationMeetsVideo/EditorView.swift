@@ -70,7 +70,7 @@ struct EditorView: View {
             history.projectDidChange(newValue)
             keepViewStateValid(for: newValue)
         }
-        .onChange(of: project.clips.map(\.id)) { _, _ in analysis.analyzeMissing(in: project) }
+        .onChange(of: AssetAnalysis.inputs(of: project)) { _, _ in analysis.analyzeMissing(in: project) }
         .onAppear {
             connectHistory()
             analysis.analyzeMissing(in: project)

@@ -42,6 +42,12 @@ twice, needs no re-detection.
 
 Beats are found in the asset's current file, so for a replaced asset they
 are in that file's time, while trims stay in the original's time.
+`AssetAnalysis` remembers which file (path and accepted file stamp) each
+result came from. When the asset points at another file, including through
+undo, or its accepted file changes, or it loses its sound, the beats are
+dropped at once and found again from the new file. Beats read from the
+package are taken to belong to the file the asset has when the project
+opens.
 
 Where beats fall on the timeline is **derived**, never stored:
 `EditingProject.beatMarkers(in:tracks:)` takes each clip on a layer, maps its
@@ -78,7 +84,9 @@ the layers, under the playhead and ignoring the mouse.
 | beat times | Int64 each |
 
 All integers are little endian. `AssetAnalysis` holds results in memory,
-remembers which are unsaved, and `ProjectStore.save` writes only those. A
+remembers which are unsaved, and `ProjectStore.save` writes only those.
+Saved beats that were dropped because the file changed are deleted at the
+next save, so a reopened project never shows beats from an earlier file. A
 missing file means "not analyzed yet"; a damaged one is treated the same,
 since beats can be recomputed. The file is recomputable, so a project
 without it still opens.

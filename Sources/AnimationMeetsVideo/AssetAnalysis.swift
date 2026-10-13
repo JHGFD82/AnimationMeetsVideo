@@ -24,9 +24,33 @@ final class AssetAnalysis {
     private(set) var beats: [UUID: BeatTrack] = [:]
     private(set) var beatFailures: [UUID: String] = [:]
 
+    /// What `analyzeMissing` looks at for each asset, so views can call it
+    /// again when any of it changes.
+    struct Input: Equatable {
+        var id: UUID
+        var file: AnalyzedFile?
+        var hasAudio: Bool
+    }
+
+    /// The file a result was computed from. Beats are in the time of the
+    /// file they were found in, so they are found again when it changes.
+    struct AnalyzedFile: Equatable {
+        var path: String
+        var stamp: FileStamp?
+    }
+
+    static func inputs(of project: EditingProject) -> [Input] {
+        project.clips.map { Input(id: $0.id, file: analyzedFile(of: $0), hasAudio: $0.hasAudio) }
+    }
+
+    private static func analyzedFile(of clip: MediaClip) -> AnalyzedFile? {
+        clip.url.map { AnalyzedFile(path: $0.path, stamp: clip.acceptedStamp) }
+    }
+
     private struct Job {
         var id: UUID
         var url: URL
+        var file: AnalyzedFile
         var wantsScores: Bool
         var wantsReference: Bool
         var wantsThumbnails: Bool
@@ -34,6 +58,16 @@ final class AssetAnalysis {
     }
 
     @ObservationIgnored private var unsavedBeatIDs: Set<UUID> = []
+    /// Which file each asset's beats, or beat failure, came from. Beats read
+    /// from the package are taken to match the file the asset has when it
+    /// is first analyzed.
+    @ObservationIgnored private var beatFiles: [UUID: AnalyzedFile] = [:]
+    /// Assets whose saved beats no longer match their file, for the next
+    /// save to delete.
+    @ObservationIgnored private(set) var discardedBeats: Set<UUID> = []
+    /// The project last analyzed, checked again once the queue drains in
+    /// case a file changed while its job was running.
+    @ObservationIgnored private var latestProject: EditingProject?
     @ObservationIgnored private var unsaved: Set<UUID> = []
     @ObservationIgnored private var unsavedReferenceIDs: Set<UUID> = []
     /// Pictures captured since the last save; dropped once saved, since they
@@ -66,6 +100,9 @@ final class AssetAnalysis {
         referenceFailures = [:]
         beatFailures = [:]
         unsavedBeatIDs = []
+        beatFiles = [:]
+        discardedBeats = []
+        latestProject = nil
         self.beats = beats
         self.thumbnailed = thumbnailed
         self.tracks = tracks
@@ -75,8 +112,12 @@ final class AssetAnalysis {
     /// Queues every asset that lacks reference data, and every video asset
     /// that lacks scores or reference pictures, unless already queued or failed.
     func analyzeMissing(in project: EditingProject) {
+        latestProject = project
         for clip in project.clips {
-            guard let url = clip.url, progress[clip.id] == nil else { continue }
+            guard let url = clip.url, let file = Self.analyzedFile(of: clip) else { continue }
+            // Even while a job runs, so outdated beats stop showing at once.
+            discardStaleBeats(of: clip, file: file)
+            guard progress[clip.id] == nil else { continue }
             let wantsScores = clip.kind == .video && tracks[clip.id] == nil && failures[clip.id] == nil
             // Reference data describes the original, so it is never taken
             // from a file that replaced it.
@@ -89,12 +130,41 @@ final class AssetAnalysis {
             guard wantsScores || wantsReference || wantsThumbnails || wantsBeats else { continue }
             progress[clip.id] = 0
             waiting.append(Job(
-                id: clip.id, url: url,
+                id: clip.id, url: url, file: file,
                 wantsScores: wantsScores, wantsReference: wantsReference,
                 wantsThumbnails: wantsThumbnails, wantsBeats: wantsBeats
             ))
         }
         startWorkerIfNeeded()
+    }
+
+    /// Drops beats found in a file the asset no longer uses, or in one that
+    /// has lost its sound, so they are not shown and are found again.
+    private func discardStaleBeats(of clip: MediaClip, file: AnalyzedFile) {
+        let id = clip.id
+        guard beats[id] != nil || beatFailures[id] != nil else { return }
+        guard let analyzed = beatFiles[id] else {
+            if clip.hasAudio {
+                beatFiles[id] = file
+                return
+            }
+            discardBeats(of: id)
+            return
+        }
+        if analyzed != file || !clip.hasAudio { discardBeats(of: id) }
+    }
+
+    private func discardBeats(of id: UUID) {
+        beats[id] = nil
+        beatFailures[id] = nil
+        beatFiles[id] = nil
+        unsavedBeatIDs.remove(id)
+        discardedBeats.insert(id)
+    }
+
+    /// Records that a save deleted these assets' outdated beats.
+    func markBeatsDiscarded(_ ids: some Collection<UUID>) {
+        discardedBeats.subtract(ids)
     }
 
     /// Drops a stored result and analyzes again, for a person's explicit "re-detect".
@@ -161,7 +231,9 @@ final class AssetAnalysis {
                 let next = self.waiting.removeFirst()
                 await self.run(next, generation: expected)
             }
-            if let self, self.generation == expected { self.worker = nil }
+            guard let self, self.generation == expected else { return }
+            self.worker = nil
+            if let project = self.latestProject { self.analyzeMissing(in: project) }
         }
     }
 
@@ -231,12 +303,15 @@ final class AssetAnalysis {
                 }
                 guard generation == expected else { return }
                 beats[id] = track
+                beatFiles[id] = job.file
+                discardedBeats.remove(id)
                 unsavedBeatIDs.insert(id)
             } catch is CancellationError {
                 return
             } catch {
                 guard generation == expected else { return }
                 beatFailures[id] = error.localizedDescription
+                beatFiles[id] = job.file
             }
         }
         progress[id] = nil

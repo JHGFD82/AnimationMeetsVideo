@@ -303,6 +303,46 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         #expect(analysis.beats[id] == BeatTrack.none())
         #expect(analysis.unsavedBeats.isEmpty)
     }
+
+    @Test func beatsAreFoundAgainWhenTheAssetPointsAtAnotherFile() async throws {
+        // Missing files keep this cheap: what matters is that the new file is tried.
+        let folder = FileManager.default.temporaryDirectory
+        var project = project(url: folder.appending(path: "amv-old-\(UUID().uuidString).wav"), hasAudio: true)
+        project.clips[0].referenceForgotten = true
+        let id = project.clips[0].id
+        let analysis = AssetAnalysis()
+        analysis.reset(beats: [id: .none()])
+        analysis.analyzeMissing(in: project)
+        #expect(analysis.beats[id] == BeatTrack.none())
+        #expect(analysis.progress.isEmpty)
+
+        project.clips[0].url = folder.appending(path: "amv-new-\(UUID().uuidString).wav")
+        analysis.analyzeMissing(in: project)
+
+        #expect(analysis.beats[id] == nil)
+        #expect(analysis.discardedBeats == [id])
+        #expect(analysis.progress[id] != nil)
+        try await waitForBeats(analysis)
+        #expect(analysis.beatFailures[id] != nil)
+    }
+
+    @Test func beatsAreDroppedWhenTheFileLosesItsSound() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "amv-silent-\(UUID().uuidString).wav")
+        var project = project(url: url, hasAudio: true)
+        project.clips[0].referenceForgotten = true
+        let id = project.clips[0].id
+        let analysis = AssetAnalysis()
+        analysis.reset(beats: [id: .none()])
+        analysis.analyzeMissing(in: project)
+
+        project.clips[0].hasAudio = false
+        analysis.analyzeMissing(in: project)
+
+        #expect(analysis.beats[id] == nil)
+        #expect(analysis.discardedBeats == [id])
+        analysis.markBeatsDiscarded([id])
+        #expect(analysis.discardedBeats.isEmpty)
+    }
 }
 
 @Suite struct BeatStorageTests {
@@ -350,6 +390,16 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
 
         let loaded = try await ProjectStore.load(from: package, importMedia: stubImporter)
         #expect(try #require(loaded.beats[assetID]).isEmpty)
+    }
+
+    @Test func discardedBeatsAreDeletedWhenSaving() async throws {
+        let (root, package, project, assetID) = try makePackage()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try await ProjectStore.save(project, to: package, beats: [assetID: .none()])
+
+        try await ProjectStore.save(project, to: package, discardingBeats: [assetID])
+
+        #expect(ProjectStore.readBeats(for: assetID, in: package) == nil)
     }
 
     @Test func beatsForUnknownAssetsAreNotWritten() async throws {

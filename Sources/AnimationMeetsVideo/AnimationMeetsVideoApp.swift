@@ -176,16 +176,18 @@ struct AnimationMeetsVideoApp: App {
                 let referencesToSave = analysis.unsavedReferences
                 let thumbnailsToSave = analysis.unsavedThumbnails
                 let beatsToSave = analysis.unsavedBeats
+                let beatsToDiscard = analysis.discardedBeats
                 let saved = try await ProjectStore.save(
                     snapshot, to: url, copying: copying,
                     changeScores: scoresToSave, references: referencesToSave,
                     thumbnails: thumbnailsToSave, beats: beatsToSave,
-                    previousPackageURL: projectURL
+                    discardingBeats: beatsToDiscard, previousPackageURL: projectURL
                 )
                 analysis.markSaved(scoresToSave.keys)
                 analysis.markReferencesSaved(referencesToSave.keys)
                 analysis.markThumbnailsSaved(thumbnailsToSave.keys)
                 analysis.markBeatsSaved(beatsToSave.keys)
+                analysis.markBeatsDiscarded(beatsToDiscard)
                 analysis.dropForgottenReferences(in: saved)
                 // Edits made while saving stay; only the media locations change.
                 history.adopt { $0.applyMediaLocations(from: saved) }

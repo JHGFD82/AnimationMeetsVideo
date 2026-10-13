@@ -428,7 +428,8 @@ enum ProjectStore {
     /// The reference data of assets marked `referenceForgotten` is deleted
     /// rather than written. For Save As, `previousPackageURL` is where the
     /// project was saved before: what it holds in `Reference/` is copied
-    /// first, since only unsaved results are passed in.
+    /// first, since only unsaved results are passed in. `discardedBeats`
+    /// are assets whose saved beats came from a file they no longer use.
     @discardableResult
     static func save(
         _ project: EditingProject,
@@ -438,6 +439,7 @@ enum ProjectStore {
         references: [UUID: AssetReference] = [:],
         thumbnails: [UUID: ReferenceThumbnails] = [:],
         beats: [UUID: BeatTrack] = [:],
+        discardingBeats discardedBeats: Set<UUID> = [],
         previousPackageURL: URL? = nil
     ) async throws -> EditingProject {
         try preparePackage(at: packageURL)
@@ -461,6 +463,10 @@ enum ProjectStore {
 
         for (assetID, track) in changeScores where project.mediaClip(id: assetID) != nil {
             try writeChangeScores(track, for: assetID, in: packageURL)
+        }
+        for assetID in discardedBeats where beats[assetID] == nil {
+            let url = referenceFolder(for: assetID, in: packageURL).appending(path: beatFileName)
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
         }
         for (assetID, track) in beats where project.mediaClip(id: assetID) != nil {
             try writeBeats(track, for: assetID, in: packageURL)
