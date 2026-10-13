@@ -13,6 +13,11 @@ name, and transform property rows when shown), and the track area on the
 right with the ruler across its top. The transitions panel, opened with the
 button in the timeline's header, takes its place at the right end.
 
+The timeline is never taller than its layers need: under the last layer is
+only the scrollbar (shown only while zoomed in), and the viewer gets the
+rest of the window. The resize handle above it sets the most it may take;
+with more layers than fit, the layers scroll.
+
 Importing a file only adds it to the library. It reaches a timeline when
 dragged there (a whole asset, or scenes of it), or from **Add to Timeline**
 in its menu; each placement gets a new layer at the top.

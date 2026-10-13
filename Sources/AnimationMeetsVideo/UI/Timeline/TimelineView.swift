@@ -15,6 +15,9 @@ struct TimelineView: View {
     let onRenameLayer: (UUID, String?) -> Void
     let onMoveLayer: (UUID, Int) -> Void
     let onMoveClip: (UUID, UUID, CMTime) -> Void
+    /// The height the timeline needs to show every layer without empty
+    /// space under them, so the window can give the rest to the viewer.
+    let onIdealHeightChange: (CGFloat) -> Void
     let onTrimClipStart: (UUID, UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, UUID, CMTime) -> Void
     let onEditTransform: (UUID, (inout LayerTransform) -> Void) -> Void
@@ -46,11 +49,33 @@ struct TimelineView: View {
     /// depend on changes. The view's body runs on every playback tick and
     /// scroll, and a long song has thousands of beats to collect and sort.
     @State private var beatMarkers: [CMTime] = []
+    @State private var headerBarHeight: CGFloat = 32
     @AppStorage("clickOnBeats") private var clickOnBeats = false
     @AppStorage("beatClickFrequency") private var beatClickFrequency = 1000.0
 
     private let rulerHeight: CGFloat = 28
     private let propertyRowHeight: CGFloat = 22
+    private let separatorHeight: CGFloat = 1
+    private let topPadding: CGFloat = 6
+
+    /// Everything one layer shows, top to bottom. The header column and the
+    /// track area lay out the same rows, so this is each layer's height in
+    /// both.
+    private func blockHeight(of layer: TimelineLayer) -> CGFloat {
+        layerHeight
+            + (showsLinkedAudio(of: layer) ? audioLaneHeight : 0)
+            + CGFloat(shownProperties(of: layer).count) * propertyRowHeight
+            + separatorHeight
+    }
+
+    private var contentHeight: CGFloat {
+        timeline.layers.reduce(0) { $0 + blockHeight(of: $1) }
+    }
+
+    private var idealHeight: CGFloat {
+        let scrollbar = currentViewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
+        return topPadding + headerBarHeight + rulerHeight + separatorHeight + contentHeight + scrollbar
+    }
 
     private var audioLaneHeight: CGFloat { max(22, (layerHeight * 0.6).rounded()) }
 
@@ -152,10 +177,13 @@ struct TimelineView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerBarHeight = $0 }
 
             GeometryReader { geometry in
                 let viewport = viewport(width: geometry.size.width - labelColumnWidth)
-                let trackHeight = max(0, geometry.size.height - TimelineScrollbar.height)
+                let scrollbarHeight = viewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
+                let layersHeight = min(contentHeight, max(0, geometry.size.height - rulerHeight - separatorHeight - scrollbarHeight))
+                let trackHeight = rulerHeight + separatorHeight + layersHeight
                 let frameTime = timeline.snappedToFrame(playheadTime)
                 let playheadX = viewport.x(atSeconds: playheadTime.seconds)
                 let playheadVisible = (-1...(viewport.width + 1)).contains(playheadX)
@@ -180,21 +208,26 @@ struct TimelineView: View {
                                 .frame(width: viewport.width, alignment: .topLeading)
                                 .clipped()
                         }
-                        .frame(minHeight: max(0, trackHeight - rulerHeight - 1), alignment: .top)
                         .background(alignment: .topTrailing) {
-                            // Empty space under the layers scrubs too.
+                            // Empty space under the clips scrubs too.
                             Color.clear
                                 .frame(width: viewport.width)
                                 .contentShape(Rectangle())
                                 .gesture(scrubGesture(in: viewport))
                         }
                     }
+                    .frame(height: layersHeight)
 
-                    HStack(spacing: 0) {
-                        Color.clear.frame(width: labelColumnWidth)
-                        TimelineScrollbar(viewport: viewport) { scrollX = $0 }
+                    // Right under the layers, and only while there is
+                    // something to scroll to.
+                    if scrollbarHeight > 0 {
+                        HStack(spacing: 0) {
+                            Color.clear.frame(width: labelColumnWidth)
+                            TimelineScrollbar(viewport: viewport) { scrollX = $0 }
+                        }
                     }
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
                 .overlay(alignment: .topLeading) {
                     ZStack(alignment: .topLeading) {
                         if !beatMarkers.isEmpty {
@@ -230,8 +263,9 @@ struct TimelineView: View {
                 .onChange(of: viewport.width, initial: true) { _, width in trackAreaWidth = width }
             }
         }
-        .padding(.vertical, 12)
+        .padding(.top, topPadding)
         .background(KeyPressMonitor(handler: handleKey))
+        .onChange(of: idealHeight, initial: true) { _, height in onIdealHeightChange(height) }
         .onChange(of: beatMarkerInputs, initial: true) { _, inputs in
             beatMarkers = inputs.layer.map { project.beatMarkers(in: $0, tracks: inputs.tracks) } ?? []
         }
@@ -285,10 +319,18 @@ struct TimelineView: View {
                     .padding(.trailing, 8)
                     .frame(height: propertyRowHeight)
                 }
-                Divider()
+                separator
             }
         }
         .background(.background)
+    }
+
+    /// A fixed-height line between layers, so the two columns line up and
+    /// the timeline's height can be worked out exactly.
+    private var separator: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(height: separatorHeight)
     }
 
     /// Every layer's clips and keyframe lanes, laid out across the whole
@@ -347,7 +389,7 @@ struct TimelineView: View {
                             }
                         )
                     }
-                    Divider()
+                    separator
                 }
             }
         }

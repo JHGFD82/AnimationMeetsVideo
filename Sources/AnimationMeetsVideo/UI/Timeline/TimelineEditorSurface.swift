@@ -18,6 +18,10 @@ struct TimelineEditorSurface<Library: View>: View {
     @State private var buildTask: Task<Void, Never>?
     @State private var buildError: String?
     @State private var timelineHeight: CGFloat = 280
+    /// What the timeline needs to show all its layers. It is never drawn
+    /// taller, so there is no empty space under the layers; the viewer
+    /// gets the rest.
+    @State private var timelineIdealHeight: CGFloat = .infinity
     @AppStorage("showsTransitionsPanel") private var showsTransitions = false
 
     private let minTimelineHeight: CGFloat = 140
@@ -46,7 +50,9 @@ struct TimelineEditorSurface<Library: View>: View {
     var body: some View {
         GeometryReader { geometry in
             let maxTimelineHeight = max(minTimelineHeight, geometry.size.height - minTopAreaHeight)
-            let resolvedTimelineHeight = min(max(timelineHeight, minTimelineHeight), maxTimelineHeight)
+            // The transitions panel needs room for its tiles.
+            let neededHeight = showsTransitions ? max(timelineIdealHeight, 240) : timelineIdealHeight
+            let resolvedTimelineHeight = min(min(max(timelineHeight, minTimelineHeight), maxTimelineHeight), neededHeight)
 
             VStack(spacing: 0) {
                 TimelineHeaderBar(project: $project, timelineID: $timelineID)
@@ -75,7 +81,11 @@ struct TimelineEditorSurface<Library: View>: View {
                 }
                 .frame(maxHeight: .infinity)
 
-                TimelineResizeHandle(height: $timelineHeight, minHeight: minTimelineHeight, maxHeight: maxTimelineHeight)
+                TimelineResizeHandle(
+                    height: Binding(get: { resolvedTimelineHeight }, set: { timelineHeight = $0 }),
+                    minHeight: min(minTimelineHeight, resolvedTimelineHeight),
+                    maxHeight: maxTimelineHeight
+                )
 
                 HStack(spacing: 0) {
                     timelineView
@@ -134,6 +144,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 onMoveClip: { layerID, clipID, newStart in
                     project.moveClip(clipID, in: timelineID, layer: layerID, to: newStart)
                 },
+                onIdealHeightChange: { timelineIdealHeight = $0 },
                 onTrimClipStart: { layerID, clipID, newTrimStart in
                     project.trimClipStart(clipID, in: timelineID, layer: layerID, to: newTrimStart)
                 },
