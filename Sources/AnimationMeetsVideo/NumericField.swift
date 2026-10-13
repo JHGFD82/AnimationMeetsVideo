@@ -1,0 +1,103 @@
+import AppKit
+import SwiftUI
+
+extension NumericExpression {
+    /// A number as it is written back into a field: no grouping, "." for
+    /// the decimal point (what `evaluate` reads), and no trailing zeros.
+    static func format(_ value: Double, maxFractionDigits: Int = 3) -> String {
+        value.formatted(
+            .number
+                .locale(Locale(identifier: "en_US_POSIX"))
+                .grouping(.never)
+                .precision(.fractionLength(0...maxFractionDigits))
+        )
+    }
+}
+
+/// A number shown as text that turns into a field when clicked, After
+/// Effects-style. Return or clicking away enters what was typed, which may
+/// be arithmetic ("100+25"); Escape cancels. Text that isn't a number beeps
+/// and leaves the value alone.
+struct NumericField: View {
+    let value: Double
+    var unit = ""
+    var fractionDigits = 1
+    let onCommit: (Double) -> Void
+
+    @State private var isEditing = false
+    @State private var draft = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        if isEditing {
+            TextField("", text: $draft)
+                .textFieldStyle(.plain)
+                .font(.caption.monospacedDigit())
+                .padding(.horizontal, 2)
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 3))
+                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Color.accentColor, lineWidth: 1))
+                .frame(minWidth: 44, maxWidth: 70)
+                .focused($isFocused)
+                .onAppear { isFocused = true }
+                .onSubmit { commit() }
+                .onExitCommand { isEditing = false }
+                .onChange(of: isFocused) { _, focused in
+                    if !focused { commit() }
+                }
+        } else {
+            Text(NumericExpression.format(value, maxFractionDigits: fractionDigits) + unit)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(Color.accentColor)
+                .lineLimit(1)
+                .fixedSize()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    draft = NumericExpression.format(value, maxFractionDigits: 3)
+                    isEditing = true
+                }
+                .help("Click to type a value. Arithmetic such as 100+25 works.")
+        }
+    }
+
+    private func commit() {
+        guard isEditing else { return }
+        isEditing = false
+        guard let result = NumericExpression.evaluate(draft) else {
+            if !draft.trimmingCharacters(in: .whitespaces).isEmpty { NSSound.beep() }
+            return
+        }
+        onCommit(result)
+    }
+}
+
+/// Lets a text field that holds a number take arithmetic: on Return or when
+/// focus leaves, "100+25" is replaced by "125". Text that isn't arithmetic
+/// is left as typed, for the form's own validation to flag.
+private struct ArithmeticFieldModifier: ViewModifier {
+    @Binding var text: String
+    @FocusState private var isFocused: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .focused($isFocused)
+            .onSubmit(evaluate)
+            .onChange(of: isFocused) { _, focused in
+                if !focused { evaluate() }
+            }
+    }
+
+    private func evaluate() {
+        if let value = NumericExpression.evaluate(text) {
+            text = NumericExpression.format(value)
+        }
+    }
+}
+
+extension View {
+    /// See `ArithmeticFieldModifier`. Read the value with
+    /// `NumericExpression.evaluate` too, so a field that still holds
+    /// unevaluated text (the form was submitted without leaving it) counts.
+    func evaluatesArithmetic(_ text: Binding<String>) -> some View {
+        modifier(ArithmeticFieldModifier(text: text))
+    }
+}

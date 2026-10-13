@@ -392,10 +392,13 @@ private struct TimelineSettingsSheet: View {
             TextField("Name", text: $name)
             HStack {
                 TextField("Width", text: $widthText)
+                    .evaluatesArithmetic($widthText)
                 Text("×")
                 TextField("Height", text: $heightText)
+                    .evaluatesArithmetic($heightText)
             }
             TextField("Frame rate", text: $frameRateText)
+                .evaluatesArithmetic($frameRateText)
             Picker("Color space", selection: $colorSpace) {
                 ForEach(ProjectColorSpace.allCases) { space in
                     Text(space.rawValue).tag(space)
@@ -419,7 +422,10 @@ private struct TimelineSettingsSheet: View {
     // tabbing out of the last field would lose that field's edit. Plain
     // string fields parsed at save time commit immediately like Name does.
     private var isValid: Bool {
-        guard let width = Double(widthText), let height = Double(heightText), let frameRate = Double(frameRateText) else {
+        guard let width = NumericExpression.evaluate(widthText),
+              let height = NumericExpression.evaluate(heightText),
+              let frameRate = NumericExpression.evaluate(frameRateText)
+        else {
             return false
         }
         return (16...16_384).contains(width) && (16...16_384).contains(height)
@@ -444,7 +450,13 @@ private struct TimelineSettingsSheet: View {
     }
 
     private func save() {
-        guard isValid, let width = Double(widthText), let height = Double(heightText), let frameRate = Double(frameRateText) else { return }
+        guard isValid,
+              let width = NumericExpression.evaluate(widthText),
+              let height = NumericExpression.evaluate(heightText),
+              let frameRate = NumericExpression.evaluate(frameRateText)
+        else {
+            return
+        }
         let size = CGSize(width: width.rounded(), height: height.rounded())
         switch mode {
         case .create:
