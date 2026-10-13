@@ -745,14 +745,6 @@ private struct InspectorPanel: View {
                     .keyboardShortcut(.delete, modifiers: .command)
                 }
             }
-
-            Section("Non-destructive controls") {
-                // Auto-matte is temporarily disabled pending a working
-                // live-preview capture pipeline — see AutoMattePreviewView.swift.
-                Toggle("Auto matte (disabled)", isOn: .constant(false)).disabled(true)
-                Toggle("Vector source", isOn: .constant(false))
-                Button("Add text effect") {}
-            }
         }
         .formStyle(.grouped)
         .disabled(info == nil)
