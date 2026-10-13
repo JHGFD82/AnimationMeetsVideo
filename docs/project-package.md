@@ -3,8 +3,11 @@
 Status: **steps 1 and 2 implemented**: package layout, `formatVersion` 1,
 stable IDs, rational times, deterministic output, media copy on save, undo
 and redo, the single-writer `.lock`, unsaved-change tracking, and autosave
-into `Backups/`. Not yet implemented: `Reference/` contents, the render
-cache, live reload, a restore-from-backup screen (copy a backup over
+into `Backups/`. Step 3 is partly implemented: `Reference/<asset id>/
+signature.bin` holds each video's change scores and `project.json` holds
+scene edits (see [scene-cuts.md](scene-cuts.md)). Not yet implemented: the
+rest of the `Reference/` contents (thumbnails, signatures, metadata
+snapshot), the render cache, live reload, a restore-from-backup screen (copy a backup over
 `project.json` by hand for now), and a Finder-visible package type (that
 needs an app bundle that declares the `.amv` type).
 
@@ -138,7 +141,10 @@ Foundation first, because the other features depend on it:
    interact with undo. **Done**, except the reload interaction, which belongs
    with live reload.
 3. Scene detection and the browser ([scene-cuts.md](scene-cuts.md)),
-   including the reference data capture.
+   including the reference data capture. **Mostly done**: detection, saved
+   scores and edits, and the browser. Remaining: capturing the rest of the
+   reference data (thumbnails, signatures, metadata snapshot), which step 4
+   depends on.
 4. Media replacement and the sync dialog
    ([media-replacement.md](media-replacement.md)).
 5. Live reload.

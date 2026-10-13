@@ -3,10 +3,12 @@
 Design notes for AnimationMeetsVideo. Each document says whether it
 describes something that exists today or a planned design. Unless a
 document says otherwise, treat it as **planned, not implemented**.
+Currently: the package format and the scene-cut browser are implemented
+(each document lists what remains); media replacement is planned only.
 
 | Document | Covers |
 | --- | --- |
-| [scene-cuts.md](scene-cuts.md) | Detecting scene cuts in a media file and treating each scene as a virtual clip in the browser, without touching the file. |
+| [scene-cuts.md](scene-cuts.md) | Implemented (core). Detecting scene cuts in a media file and treating each scene as a virtual clip in the browser, without touching the file. |
 | [media-replacement.md](media-replacement.md) | Replacing a file with a different version ("bait and switch"), the reference data that makes it safe, and how mismatches are handled. |
 | [project-package.md](project-package.md) | The on-disk project format: a package folder with a JSON project file, assets, reference data, and a render cache. |
 
