@@ -225,3 +225,19 @@ private struct Fixture {
         #expect(CMTime.invalid.formatted == "--:--")
     }
 }
+
+@Suite struct LayerOrderTests {
+    @Test func movesLayerAndIgnoresOutOfRange() {
+        var f = Fixture()
+        let media = MediaClip(name: "B", kind: .video, url: nil, duration: seconds(3), frameRate: 24, colorSpace: .rec709, codecName: "H.264")
+        let second = f.project.importClip(media, intoTimeline: f.timelineID)!
+        // Newest import is on top (index 0).
+        #expect(f.project.timeline(id: f.timelineID)!.layers.first?.id == second.layerID)
+
+        f.project.moveLayer(second.layerID, in: f.timelineID, by: -1)
+        #expect(f.project.timeline(id: f.timelineID)!.layers.first?.id == second.layerID)
+
+        f.project.moveLayer(second.layerID, in: f.timelineID, by: 1)
+        #expect(f.project.timeline(id: f.timelineID)!.layers.last?.id == second.layerID)
+    }
+}

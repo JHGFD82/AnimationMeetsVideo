@@ -141,6 +141,7 @@ struct TimelineEditorSurface: View {
                             selection = TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clip.id)
                         },
                         onRenameLayer: { layerID, name in project.renameLayer(layerID, in: timelineID, to: name) },
+                        onMoveLayer: { layerID, offset in project.moveLayer(layerID, in: timelineID, by: offset) },
                         onMoveClip: { layerID, clipID, newStart in
                             project.moveClip(clipID, in: timelineID, layer: layerID, to: newStart)
                         },
@@ -800,6 +801,7 @@ private struct TimelineView: View {
     let onScrub: (CMTime) -> Void
     let onSelectClip: (UUID, TimelineClip) -> Void
     let onRenameLayer: (UUID, String?) -> Void
+    let onMoveLayer: (UUID, Int) -> Void
     let onMoveClip: (UUID, UUID, CMTime) -> Void
     let onTrimClipStart: (UUID, UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, UUID, CMTime) -> Void
@@ -862,7 +864,10 @@ private struct TimelineView: View {
                                     layer: layer,
                                     project: project,
                                     height: layerHeight,
-                                    onRename: { name in onRenameLayer(layer.id, name) }
+                                    canMoveUp: index > 0,
+                                    canMoveDown: index < timeline.layers.count - 1,
+                                    onRename: { name in onRenameLayer(layer.id, name) },
+                                    onMove: { offset in onMoveLayer(layer.id, offset) }
                                 )
                                 Divider()
                             }
@@ -1108,7 +1113,10 @@ private struct LayerHeaderRow: View {
     let layer: TimelineLayer
     let project: EditingProject
     let height: CGFloat
+    let canMoveUp: Bool
+    let canMoveDown: Bool
     let onRename: (String?) -> Void
+    let onMove: (Int) -> Void
 
     @State private var isEditingName = false
     @State private var draftName: String = ""
@@ -1153,6 +1161,12 @@ private struct LayerHeaderRow: View {
         }
         .padding(.horizontal, 8)
         .frame(height: height, alignment: .leading)
+        .contextMenu {
+            Button("Move Layer Up") { onMove(-1) }
+                .disabled(!canMoveUp)
+            Button("Move Layer Down") { onMove(1) }
+                .disabled(!canMoveDown)
+        }
     }
 
     private func commitRename() {
