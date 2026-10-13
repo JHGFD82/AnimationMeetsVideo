@@ -4,14 +4,15 @@ Design notes for AnimationMeetsVideo. Each document says whether it
 describes something that exists today or a planned design. Unless a
 document says otherwise, treat it as **planned, not implemented**.
 Currently: the package format, the scene-cut browser, media replacement,
-beat detection, and layer transforms are implemented (each document lists
-what remains).
+beat detection, layer transforms and the timeline view are implemented (each
+document lists what remains).
 
 | Document | Covers |
 | --- | --- |
 | [scene-cuts.md](scene-cuts.md) | Implemented (core). Detecting scene cuts in a media file and treating each scene as a virtual clip in the browser, without touching the file. |
 | [beat-detection.md](beat-detection.md) | Implemented. Finding the beats of audio tracks, and showing one audio layer's beats as timeline markers chosen from the view options. |
 | [layer-transforms.md](layer-transforms.md) | Implemented (core). Position, scale, rotation and opacity per layer, keyframed in the timeline (P, S, R, T) and inspector, and arithmetic in numeric fields. |
+| [timeline.md](timeline.md) | Implemented. Zooming and scrolling the timeline, the ruler's tick grouping, the playhead, and frame-locked moving and trimming of clips. |
 | [media-replacement.md](media-replacement.md) | Implemented (core). Replacing a file with a different version ("bait and switch"), the reference data that makes it safe, and how mismatches are handled. |
 | [project-package.md](project-package.md) | The on-disk project format: a package folder with a JSON project file, assets, reference data, and a render cache. |
 

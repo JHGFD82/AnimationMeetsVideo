@@ -84,7 +84,10 @@ markers disappear**, with no cleanup step. The choice is view state and is
 not saved with the project.
 
 Markers are drawn as orange ticks in the ruler with faint lines down through
-the layers, under the playhead and ignoring the mouse.
+the layers, under the playhead and ignoring the mouse. When zoomed out so
+far that they would be closer than 10 points, only every 2nd, 4th, 8th…
+beat is drawn, counted from the track's first beat (see
+[timeline.md](timeline.md)).
 
 ## Saving
 
