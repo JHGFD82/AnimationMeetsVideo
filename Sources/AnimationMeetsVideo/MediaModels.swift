@@ -299,7 +299,7 @@ struct EditingProject: Identifiable {
 /// A named sequence of numbered layers, After Effects-style. Timelines can
 /// embed one another (nested/compound-clip style) via `ClipSource.timeline`.
 struct Timeline: Identifiable, Equatable {
-    let id = UUID()
+    var id = UUID()
     var name: String
     /// Index 0 is the topmost layer — matches After Effects' convention
     /// where newer/higher layers composite over lower ones.
@@ -329,7 +329,7 @@ struct Timeline: Identifiable, Equatable {
 }
 
 struct TimelineLayer: Identifiable, Equatable {
-    let id = UUID()
+    var id = UUID()
     /// User-assigned name, if any. Falls back to the footage/nested
     /// timeline's own name when nil.
     var customName: String?
@@ -350,7 +350,7 @@ enum ClipSource: Equatable {
 /// position in time — clips are not forced to be back-to-back or to start
 /// at the timeline's t=0.
 struct TimelineClip: Identifiable, Equatable {
-    let id = UUID()
+    var id = UUID()
     var source: ClipSource
     var startOffset: CMTime
     var trimStart: CMTime
@@ -411,7 +411,7 @@ enum ResolvedClipInfo {
 }
 
 struct MediaClip: Identifiable {
-    let id = UUID()
+    var id = UUID()
     var name: String
     var kind: MediaKind
     var url: URL?
