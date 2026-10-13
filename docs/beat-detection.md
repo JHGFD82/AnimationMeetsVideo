@@ -99,7 +99,9 @@ without it still opens.
 scores for video and reference pictures, then beats) on its serial
 background queue. Beats are queued for assets whose `MediaClip.hasAudio` is
 set, which the importer fills in from the file's audio tracks. The browser
-row shows progress and, once done, the tempo.
+row names the stage running (reading the original, finding scenes, saving
+pictures, finding beats) with that stage's progress, starting from zero for
+each, and once done shows the tempo.
 
 ## Not implemented yet
 

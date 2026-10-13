@@ -10,8 +10,24 @@ import Observation
 @Observable
 final class AssetAnalysis {
     private(set) var tracks: [UUID: ChangeScoreTrack] = [:]
-    /// 0...1 for assets being analyzed right now or waiting their turn.
+    /// 0...1 for assets being analyzed right now or waiting their turn,
+    /// within the current stage.
     private(set) var progress: [UUID: Double] = [:]
+    /// What is being done to each asset in `progress`; absent while waiting.
+    private(set) var stages: [UUID: Stage] = [:]
+
+    enum Stage {
+        case reference, scenes, pictures, beats
+
+        var label: String {
+            switch self {
+            case .reference: "Reading the original…"
+            case .scenes: "Finding scenes…"
+            case .pictures: "Saving pictures…"
+            case .beats: "Finding beats…"
+            }
+        }
+    }
     private(set) var failures: [UUID: String] = [:]
     /// Reference data captured at import. Never re-captured for an asset that
     /// has it, so it keeps describing the original after the file is replaced.
@@ -92,6 +108,7 @@ final class AssetAnalysis {
         generation += 1
         waiting = []
         progress = [:]
+        stages = [:]
         failures = [:]
         unsaved = []
         unsavedReferenceIDs = []
@@ -240,8 +257,11 @@ final class AssetAnalysis {
     private func run(_ job: Job, generation expected: Int) async {
         let id = job.id
         if job.wantsReference {
+            begin(.reference, for: id)
             do {
-                let reference = try await ReferenceCapture.capture(url: job.url)
+                let reference = try await ReferenceCapture.capture(
+                    url: job.url, progress: reporter(for: id, stage: .reference, generation: expected)
+                )
                 guard generation == expected else { return }
                 references[id] = reference
                 unsavedReferenceIDs.insert(id)
@@ -253,13 +273,11 @@ final class AssetAnalysis {
             }
         }
         if job.wantsScores {
+            begin(.scenes, for: id)
             do {
-                let track = try await FrameScorer.score(url: job.url) { [weak self] fraction in
-                    Task { @MainActor in
-                        guard let self, self.generation == expected, self.progress[id] != nil else { return }
-                        self.progress[id] = fraction
-                    }
-                }
+                let track = try await FrameScorer.score(
+                    url: job.url, progress: reporter(for: id, stage: .scenes, generation: expected)
+                )
                 guard generation == expected else { return }
                 tracks[id] = track
                 unsaved.insert(id)
@@ -272,16 +290,12 @@ final class AssetAnalysis {
         }
 
         if job.wantsThumbnails, let track = tracks[id] {
-            progress[id] = 0
+            begin(.pictures, for: id)
             do {
                 let pictures = try await ReferenceThumbnailCapture.capture(
-                    url: job.url, times: ReferenceThumbnailCapture.times(for: track)
-                ) { [weak self] fraction in
-                    Task { @MainActor in
-                        guard let self, self.generation == expected, self.progress[id] != nil else { return }
-                        self.progress[id] = fraction
-                    }
-                }
+                    url: job.url, times: ReferenceThumbnailCapture.times(for: track),
+                    progress: reporter(for: id, stage: .pictures, generation: expected)
+                )
                 guard generation == expected else { return }
                 unsavedPictures[id] = pictures
                 thumbnailed.insert(id)
@@ -294,13 +308,11 @@ final class AssetAnalysis {
         }
 
         if job.wantsBeats {
+            begin(.beats, for: id)
             do {
-                let track = try await BeatDetector.detect(url: job.url) { [weak self] fraction in
-                    Task { @MainActor in
-                        guard let self, self.generation == expected, self.progress[id] != nil else { return }
-                        self.progress[id] = fraction
-                    }
-                }
+                let track = try await BeatDetector.detect(
+                    url: job.url, progress: reporter(for: id, stage: .beats, generation: expected)
+                )
                 guard generation == expected else { return }
                 beats[id] = track
                 beatFiles[id] = job.file
@@ -315,5 +327,24 @@ final class AssetAnalysis {
             }
         }
         progress[id] = nil
+        stages[id] = nil
+    }
+
+    /// Starts a stage's progress from zero, so the bar doesn't sit full or
+    /// jump back when the next stage begins.
+    private func begin(_ stage: Stage, for id: UUID) {
+        stages[id] = stage
+        progress[id] = 0
+    }
+
+    /// Reports a stage's progress. Updates arrive on the main actor later,
+    /// so one from a stage that has ended is dropped.
+    private func reporter(for id: UUID, stage: Stage, generation expected: Int) -> @Sendable (Double) -> Void {
+        { [weak self] fraction in
+            Task { @MainActor in
+                guard let self, self.generation == expected, self.stages[id] == stage else { return }
+                self.progress[id] = fraction
+            }
+        }
     }
 }

@@ -571,7 +571,7 @@ private struct LibrarySidebar: View {
         if let fraction = analysis.progress[clip.id] {
             HStack(spacing: 6) {
                 ProgressView(value: fraction).frame(width: 60)
-                Text(clip.kind == .video ? "Analyzing…" : "Finding beats…").font(.caption).foregroundStyle(.secondary)
+                Text(analysis.stages[clip.id]?.label ?? "Waiting…").font(.caption).foregroundStyle(.secondary)
             }
         } else if let failure = analysis.failures[clip.id] {
             Text("Scene detection failed")

@@ -324,6 +324,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         #expect(analysis.progress[id] != nil)
         try await waitForBeats(analysis)
         #expect(analysis.beatFailures[id] != nil)
+        #expect(analysis.stages.isEmpty)
     }
 
     @Test func beatsAreDroppedWhenTheFileLosesItsSound() throws {
