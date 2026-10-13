@@ -1,3 +1,4 @@
+import CoreMedia
 import Testing
 @testable import AnimationMeetsVideo
 
@@ -29,5 +30,20 @@ import Testing
         #expect(far.framesPerLabel == 60 * 24)
         #expect(far.framesPerLabel % far.framesPerTick == 0)
         #expect(far.level(ofFrame: 0) == .label)
+    }
+}
+
+@Suite struct BeatThinningTests {
+    private let beats = (0..<240).map { CMTime(value: Int64($0), timescale: 2) }
+
+    @Test func showsEveryBeatWhenThereIsRoom() {
+        // Half a second apart at 40 points a second: 20 points.
+        #expect(BeatMarkerOverlay.beatsPerMarker(beats, pixelsPerSecond: 40) == 1)
+    }
+
+    @Test func thinsByPowersOfTwo() {
+        // 2.5 points apart: every 4th beat is 10 points apart.
+        #expect(BeatMarkerOverlay.beatsPerMarker(beats, pixelsPerSecond: 5) == 4)
+        #expect(BeatMarkerOverlay.beatsPerMarker(beats, pixelsPerSecond: 4.9) == 8)
     }
 }

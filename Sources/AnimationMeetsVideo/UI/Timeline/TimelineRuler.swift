@@ -153,22 +153,41 @@ struct PlayheadLine: View {
 }
 
 /// Beat ticks in the ruler and faint lines down through the layers, for the
-/// beats of the one layer chosen in the view options.
+/// beats of the one layer chosen in the view options. Like the ruler's
+/// ticks, beats are grouped when zoomed out: only every 2nd, 4th, 8th…
+/// beat is drawn once they would crowd closer than `minimumSpacing`.
 struct BeatMarkerOverlay: View {
     let markers: [CMTime]
     let viewport: TimelineViewport
     let rulerHeight: CGFloat
     let height: CGFloat
 
+    static let minimumSpacing: CGFloat = 10
+
+    /// How many beats each drawn one stands for: a power of two, counted
+    /// from the first beat of the track so the same beats stay drawn while
+    /// scrolling. Uses the average beat length, so a changing tempo thins
+    /// evenly rather than by its fastest stretch.
+    static func beatsPerMarker(_ markers: [CMTime], pixelsPerSecond: CGFloat) -> Int {
+        guard markers.count > 1, let first = markers.first, let last = markers.last else { return 1 }
+        let averageSpacing = CGFloat((last.seconds - first.seconds) / Double(markers.count - 1)) * pixelsPerSecond
+        guard averageSpacing > 0 else { return 1 }
+        var stride = 1
+        while CGFloat(stride) * averageSpacing < minimumSpacing, stride < markers.count {
+            stride *= 2
+        }
+        return stride
+    }
+
     var body: some View {
         let visible = viewport.visibleSeconds
+        let stride = Self.beatsPerMarker(markers, pixelsPerSecond: viewport.pixelsPerSecond)
         let first = markers.lowerBound(of: visible.lowerBound - 1) { $0.seconds }
         let last = markers.lowerBound(of: visible.upperBound + 1) { $0.seconds }
         Canvas { context, _ in
-            guard first < last else { return }
             var ticks = Path()
             var lines = Path()
-            for index in first..<last {
+            for index in Swift.stride(from: (first + stride - 1) / stride * stride, to: last, by: stride) {
                 let x = viewport.x(atSeconds: markers[index].seconds)
                 ticks.move(to: CGPoint(x: x, y: rulerHeight - 9))
                 ticks.addLine(to: CGPoint(x: x, y: rulerHeight))
