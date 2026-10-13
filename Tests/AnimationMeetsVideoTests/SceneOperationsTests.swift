@@ -198,3 +198,48 @@ private func frames(_ times: [CMTime]) -> [Int64] { times.map { $0.value * 24 / 
         #expect(project.timelines[0].layers.isEmpty)
     }
 }
+
+@Suite struct SceneSelectionTests {
+    @Test func spanCoversTheEarliestStartToTheLatestEnd() throws {
+        let scenes = [
+            SceneRange(start: t(50), end: t(80), origin: .auto),
+            SceneRange(start: t(10), end: t(50), origin: .auto),
+            SceneRange(start: t(120), end: t(150), origin: .manual),
+        ]
+        let span = try #require(scenes.span)
+        #expect(span.start == t(10))
+        #expect(span.end == t(150))
+        #expect([SceneRange]().span == nil)
+    }
+
+    @Test func previewShowsTheSpanWithoutChangingTheProject() {
+        var project = EditingProject.empty
+        let asset = MediaClip(name: "A", kind: .video, url: nil, duration: t(300), frameRate: 24, colorSpace: .rec709, codecName: "Test")
+        project.clips = [asset]
+        let track = spikeTrack(frames: 300, spikes: [50: 200, 120: 20, 180: 20, 250: 200])
+        let before = project
+
+        let preview = project.scenesPreviewing(
+            ofAsset: asset.id, track: track,
+            applying: { $0.applySensitivity(0.9, from: t(50), to: t(250)) },
+            within: (t(50), t(250))
+        )
+
+        #expect(preview.map(\.start) == [t(50), t(120), t(180)])
+        #expect(preview.last?.end == t(250))
+        #expect(project == before)
+        #expect(project.scenes(ofAsset: asset.id, track: track).count == 3)
+    }
+}
+
+@Suite struct EffectiveSensitivityTests {
+    @Test func regionBeatsAssetOverrideBeatsProjectDefault() {
+        var edits = SceneEdits()
+        #expect(SceneDetector.sensitivity(at: t(60), defaultSensitivity: 0.5, edits: edits) == 0.5)
+        edits.sensitivity = 0.7
+        #expect(SceneDetector.sensitivity(at: t(60), defaultSensitivity: 0.5, edits: edits) == 0.7)
+        edits.applySensitivity(0.2, from: t(50), to: t(100))
+        #expect(SceneDetector.sensitivity(at: t(60), defaultSensitivity: 0.5, edits: edits) == 0.2)
+        #expect(SceneDetector.sensitivity(at: t(50), defaultSensitivity: 0.5, edits: edits) == 0.7)
+    }
+}

@@ -95,3 +95,34 @@ extension EditingProject {
         return (layer.id, added.map(\.id))
     }
 }
+
+extension Array where Element == SceneRange {
+    /// The time covered from the earliest start to the latest end, or nil when empty.
+    var span: (start: CMTime, end: CMTime)? {
+        guard let first else { return nil }
+        var start = first.start, end = first.end
+        for scene in self {
+            if CMTimeCompare(scene.start, start) < 0 { start = scene.start }
+            if CMTimeCompare(scene.end, end) > 0 { end = scene.end }
+        }
+        return (start, end)
+    }
+}
+
+extension EditingProject {
+    /// The scenes that would exist if `change` were applied to the asset's
+    /// edits, limited to `span` when given, without changing the project.
+    /// Drives the live preview while a slider moves.
+    func scenesPreviewing(
+        ofAsset assetID: UUID,
+        track: ChangeScoreTrack?,
+        applying change: (inout SceneEdits) -> Void,
+        within span: (start: CMTime, end: CMTime)? = nil
+    ) -> [SceneRange] {
+        var preview = self
+        preview.editScenes(ofAsset: assetID, change)
+        let scenes = preview.scenes(ofAsset: assetID, track: track)
+        guard let span else { return scenes }
+        return scenes.filter { CMTimeCompare($0.start, span.start) >= 0 && CMTimeCompare($0.end, span.end) <= 0 }
+    }
+}

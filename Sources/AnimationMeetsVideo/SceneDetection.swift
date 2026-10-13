@@ -150,12 +150,19 @@ enum SceneDetector {
         return strict * exp(log(loose / strict) * s)
     }
 
+    /// The sensitivity in effect at `time`: the latest region around it, else
+    /// the asset's override, else the project default.
+    static func sensitivity(at time: CMTime, defaultSensitivity: Double, edits: SceneEdits) -> Double {
+        edits.regions.last { region in
+            CMTimeCompare(time, region.start) > 0 && CMTimeCompare(time, region.end) < 0
+        }?.value ?? edits.sensitivity ?? defaultSensitivity
+    }
+
     /// Cuts found by applying a sensitivity to the saved change scores.
     /// A cut is a frame whose change is over the threshold and is a local
     /// peak, so a slow dissolve or a camera move isn't split in the middle.
     static func autoCuts(in track: ChangeScoreTrack, defaultSensitivity: Double, edits: SceneEdits = SceneEdits()) -> [CMTime] {
         guard track.frameCount > 2 else { return [] }
-        let base = edits.sensitivity ?? defaultSensitivity
         let scores = track.scores
         let minimumGap = Int64((minimumSceneSeconds * Double(track.timescale)).rounded())
 
@@ -166,9 +173,7 @@ enum SceneDetector {
             guard isPeak else { continue }
 
             let time = track.time(at: i)
-            let sensitivity = edits.regions.last { region in
-                CMTimeCompare(time, region.start) > 0 && CMTimeCompare(time, region.end) < 0
-            }?.value ?? base
+            let sensitivity = sensitivity(at: time, defaultSensitivity: defaultSensitivity, edits: edits)
             guard Double(score) / 255 >= threshold(forSensitivity: sensitivity) else { continue }
 
             if let last = kept.last, track.times[i] - track.times[last.index] < minimumGap {
