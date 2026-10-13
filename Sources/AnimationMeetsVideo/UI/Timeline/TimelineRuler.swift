@@ -1,16 +1,16 @@
 import CoreMedia
 import SwiftUI
 
+/// Time ticks and labels across the top of the track area. Only the visible
+/// slice is drawn, so a long timeline zoomed far in doesn't need a huge
+/// canvas or thousands of tick labels. Time past the timeline's end (room
+/// to drag clips into) is shaded.
 struct TimelineRuler: View {
     let duration: CMTime
     let frameRate: Double
-    let pixelsPerSecond: CGFloat
-    /// The slice of the ruler (in its own x coordinates) currently on screen.
-    /// Only this slice is drawn, so a long timeline zoomed far in doesn't
-    /// need a huge canvas or thousands of tick labels.
-    let visibleX: ClosedRange<CGFloat>
+    let viewport: TimelineViewport
 
-    private let margin: CGFloat = 100
+    private var pixelsPerSecond: CGFloat { viewport.pixelsPerSecond }
 
     // Needs real room for "NNf" text (~20pt), not just a tick mark —
     // 6pt was wide enough for a bare mark but produced an illegible smear
@@ -20,31 +20,32 @@ struct TimelineRuler: View {
     }
 
     var body: some View {
-        let totalSeconds = max(duration.seconds, 1.0 / max(frameRate, 1))
-        let totalWidth = max(1, CGFloat(totalSeconds) * pixelsPerSecond)
-        let lower = min(max(0, visibleX.lowerBound - margin), totalWidth)
-        let upper = min(max(lower, visibleX.upperBound + margin), totalWidth)
-        Canvas { context, _ in
+        Canvas { context, size in
+            let endX = viewport.x(atSeconds: duration.seconds)
+            if endX < size.width {
+                context.fill(
+                    Path(CGRect(x: max(0, endX), y: 0, width: size.width - max(0, endX), height: size.height)),
+                    with: .color(.primary.opacity(0.06))
+                )
+            }
             var context = context
-            context.translateBy(x: -lower, y: 0)
-            let seconds = Double(max(pixelsPerSecond, 0.01))
-            let range = Double(lower) / seconds...Double(upper) / seconds
+            context.translateBy(x: -viewport.scrollX, y: 0)
+            let visible = viewport.visibleSeconds
+            let range = max(0, visible.lowerBound - 1)...min(viewport.contentSeconds, visible.upperBound + 1)
             if showsFrameTicks {
-                drawFrameTicks(context: context, totalSeconds: totalSeconds, visibleSeconds: range)
+                drawFrameTicks(context: context, visibleSeconds: range)
             } else {
-                drawSecondTicks(context: context, totalSeconds: totalSeconds, visibleSeconds: range)
+                drawSecondTicks(context: context, visibleSeconds: range)
             }
         }
-        .frame(width: max(1, upper - lower))
-        .offset(x: lower)
-        .frame(width: totalWidth, alignment: .leading)
+        .frame(width: viewport.width)
+        .clipped()
     }
 
-    private func drawFrameTicks(context: GraphicsContext, totalSeconds: Double, visibleSeconds: ClosedRange<Double>) {
+    private func drawFrameTicks(context: GraphicsContext, visibleSeconds: ClosedRange<Double>) {
         let framesPerSecond = max(1, Int(frameRate.rounded()))
-        let totalFrames = max(Int((totalSeconds * frameRate).rounded(.up)), 1)
         let firstFrame = max(0, Int((visibleSeconds.lowerBound * frameRate).rounded(.down)))
-        let lastFrame = min(totalFrames, Int((visibleSeconds.upperBound * frameRate).rounded(.up)))
+        let lastFrame = Int((visibleSeconds.upperBound * frameRate).rounded(.up))
         guard firstFrame <= lastFrame else { return }
         for frame in firstFrame...lastFrame {
             let seconds = Double(frame) / frameRate
@@ -72,11 +73,10 @@ struct TimelineRuler: View {
         }
     }
 
-    private func drawSecondTicks(context: GraphicsContext, totalSeconds: Double, visibleSeconds: ClosedRange<Double>) {
+    private func drawSecondTicks(context: GraphicsContext, visibleSeconds: ClosedRange<Double>) {
         let interval = tickInterval(pixelsPerSecond: pixelsPerSecond)
-        let lastIndex = Int(totalSeconds / interval) + 1
         let firstIndex = max(0, Int((visibleSeconds.lowerBound / interval).rounded(.down)))
-        let endIndex = min(lastIndex, Int((visibleSeconds.upperBound / interval).rounded(.up)))
+        let endIndex = Int((visibleSeconds.upperBound / interval).rounded(.up))
         guard firstIndex <= endIndex else { return }
         for index in firstIndex...endIndex {
             let seconds = Double(index) * interval
@@ -106,16 +106,48 @@ struct TimelineRuler: View {
     }
 }
 
+/// The handle at the top of the playhead, in the ruler: something clearly
+/// grabbable for dragging through time.
+struct PlayheadHead: View {
+    let x: CGFloat
+
+    static let width: CGFloat = 13
+    static let height: CGFloat = 14
+
+    var body: some View {
+        PlayheadHeadShape()
+            .fill(Color.red)
+            .overlay(PlayheadHeadShape().stroke(Color.black.opacity(0.25), lineWidth: 0.5))
+            .frame(width: Self.width, height: Self.height)
+            .offset(x: x - Self.width / 2)
+            .allowsHitTesting(false)
+    }
+}
+
+/// A downward-pointing tab: square shoulders over a point at the playhead.
+private struct PlayheadHeadShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let shoulder = rect.height * 0.55
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: shoulder))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: shoulder))
+        path.closeSubpath()
+        return path
+    }
+}
+
 struct PlayheadLine: View {
-    let time: CMTime
-    let pixelsPerSecond: CGFloat
+    let x: CGFloat
     let height: CGFloat
 
     var body: some View {
         Rectangle()
             .fill(Color.red)
             .frame(width: 1.5, height: height)
-            .offset(x: CGFloat(time.seconds) * pixelsPerSecond)
+            .offset(x: x - 0.75)
             .allowsHitTesting(false)
     }
 }
@@ -124,26 +156,20 @@ struct PlayheadLine: View {
 /// beats of the one layer chosen in the view options.
 struct BeatMarkerOverlay: View {
     let markers: [CMTime]
-    let pixelsPerSecond: CGFloat
+    let viewport: TimelineViewport
     let rulerHeight: CGFloat
     let height: CGFloat
-    let visibleX: ClosedRange<CGFloat>
-
-    private let margin: CGFloat = 100
 
     var body: some View {
-        let lower = max(0, visibleX.lowerBound - margin)
-        let upper = max(lower + 1, visibleX.upperBound + margin)
-        let first = markers.lowerBound(of: Double(lower / max(pixelsPerSecond, 0.01))) { $0.seconds }
-        let last = markers.lowerBound(of: Double(upper / max(pixelsPerSecond, 0.01))) { $0.seconds }
+        let visible = viewport.visibleSeconds
+        let first = markers.lowerBound(of: visible.lowerBound - 1) { $0.seconds }
+        let last = markers.lowerBound(of: visible.upperBound + 1) { $0.seconds }
         Canvas { context, _ in
-            var context = context
-            context.translateBy(x: -lower, y: 0)
             guard first < last else { return }
             var ticks = Path()
             var lines = Path()
             for index in first..<last {
-                let x = CGFloat(markers[index].seconds) * pixelsPerSecond
+                let x = viewport.x(atSeconds: markers[index].seconds)
                 ticks.move(to: CGPoint(x: x, y: rulerHeight - 9))
                 ticks.addLine(to: CGPoint(x: x, y: rulerHeight))
                 lines.move(to: CGPoint(x: x, y: rulerHeight))
@@ -152,8 +178,8 @@ struct BeatMarkerOverlay: View {
             context.stroke(lines, with: .color(.orange.opacity(0.22)), lineWidth: 1)
             context.stroke(ticks, with: .color(.orange), lineWidth: 1.5)
         }
-        .frame(width: upper - lower, height: height)
-        .offset(x: lower)
+        .frame(width: viewport.width, height: height)
+        .clipped()
         .allowsHitTesting(false)
     }
 }

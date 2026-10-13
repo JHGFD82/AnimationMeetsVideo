@@ -1,7 +1,9 @@
 import SwiftUI
 
 struct ViewOptionsPopover: View {
-    @Binding var zoomScale: CGFloat
+    /// 0 fits the whole timeline; 1 is the closest zoom.
+    @Binding var zoomFraction: Double
+    let onFit: () -> Void
     @Binding var layerHeight: CGFloat
     /// Layers with beats, as (layer ID, name), in timeline order.
     let beatLayers: [(id: UUID, name: String)]
@@ -10,8 +12,8 @@ struct ViewOptionsPopover: View {
     var body: some View {
         Form {
             Section("Horizontal Zoom") {
-                Slider(value: $zoomScale, in: 1...30)
-                Button("Fit to Window") { zoomScale = 1 }
+                Slider(value: $zoomFraction, in: 0...1)
+                Button("Fit to Window (\\)", action: onFit)
             }
             Section("Layer Height") {
                 Slider(value: $layerHeight, in: 32...120)

@@ -105,6 +105,8 @@ struct LayerClipRow: View {
     let pixelsPerSecond: CGFloat
     let width: CGFloat
     let height: CGFloat
+    /// The on-screen part of the row, in its own x coordinates.
+    let visibleX: ClosedRange<CGFloat>
     let onSelectClip: (TimelineClip) -> Void
     let onMoveClip: (UUID, CMTime) -> Void
     let onTrimClipStart: (UUID, CMTime) -> Void
@@ -120,6 +122,7 @@ struct LayerClipRow: View {
                     isSelected: isSelected,
                     pixelsPerSecond: pixelsPerSecond,
                     height: height,
+                    visibleX: visibleX,
                     resolveMove: { project.resolvedStart(ofMoving: clip.id, in: timelineID, layer: layer.id, to: $0) },
                     resolveTrimStart: { project.resolvedTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
                     resolveTrimEnd: { project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
@@ -170,6 +173,7 @@ struct ClipBlockView: View {
     let isSelected: Bool
     let pixelsPerSecond: CGFloat
     let height: CGFloat
+    let visibleX: ClosedRange<CGFloat>
     let resolveMove: (CMTime) -> CMTime?
     let resolveTrimStart: (CMTime) -> TimelineClip?
     let resolveTrimEnd: (CMTime) -> TimelineClip?
@@ -196,6 +200,13 @@ struct ClipBlockView: View {
         let liveWidth = max(2, shown.trimmedDuration.seconds * pixelsPerSecond)
         let unionMinX = min(baseX, liveX)
         let unionMaxX = max(baseX + baseWidth, liveX + liveWidth)
+        // Only the on-screen part of the block is drawn (with a little
+        // spare so its clipped ends stay off-screen): zoomed far in, a clip
+        // can be millions of points wide, and its name stays in view.
+        let drawnMinX = max(liveX, visibleX.lowerBound - 4)
+        let drawnMaxX = min(liveX + liveWidth, visibleX.upperBound + 4)
+        let drawnX = drawnMaxX > drawnMinX ? drawnMinX : liveX
+        let drawnWidth = drawnMaxX > drawnMinX ? drawnMaxX - drawnMinX : liveWidth
 
         ZStack(alignment: .topLeading) {
             if isTrimming {
@@ -221,12 +232,12 @@ struct ClipBlockView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            .padding(.leading, 4)
-            .frame(width: liveWidth, height: height, alignment: .leading)
+            .padding(.leading, drawnX > liveX ? 8 : 4)
+            .frame(width: drawnWidth, height: height, alignment: .leading)
             .clipped()
             .background(typeColor.opacity(isSelected ? 0.6 : 0.35))
             .overlay(Rectangle().strokeBorder(isSelected ? Color.white.opacity(0.9) : typeColor.opacity(0.8), lineWidth: isSelected ? 1.5 : 0.75))
-            .offset(x: liveX)
+            .offset(x: drawnX)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
