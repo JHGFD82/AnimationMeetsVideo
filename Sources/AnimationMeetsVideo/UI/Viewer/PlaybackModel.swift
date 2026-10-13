@@ -9,7 +9,9 @@ import SwiftUI
 @MainActor
 @Observable
 final class PlaybackModel {
-    let player = AVPlayer()
+    let player: AVPlayer
+    /// Blips on the timeline's beat markers during playback.
+    let beatClicks: BeatClickPlayer
     private(set) var currentTime: CMTime = .zero
     private(set) var isPlaying = false
 
@@ -17,7 +19,9 @@ final class PlaybackModel {
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
 
     init() {
-        let player = self.player
+        let player = AVPlayer()
+        self.player = player
+        beatClicks = BeatClickPlayer(player: player)
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(value: 1, timescale: 30),
             queue: .main

@@ -1,0 +1,192 @@
+import AVFoundation
+import CoreMedia
+import Foundation
+
+/// Plays a short tone on each beat marker while the player plays, so the
+/// markers can be checked by ear against the music.
+///
+/// Blips are scheduled ahead on an `AVAudioPlayerNode` at host times taken
+/// from the player item's timebase, rather than fired from a time observer,
+/// so they land on the beat instead of whenever the main thread gets to
+/// them. Anything that moves the timebase (play, pause, seek, a rebuilt
+/// item) throws away what was scheduled and starts again from now.
+@MainActor
+final class BeatClickPlayer {
+    /// Beat times on the timeline, sorted.
+    var beats: [CMTime] = [] {
+        didSet { if beats != oldValue { restart() } }
+    }
+
+    var isEnabled = false {
+        didSet {
+            guard isEnabled != oldValue else { return }
+            if isEnabled { startEngine() } else { stopEngine() }
+            restart()
+        }
+    }
+
+    /// The tone's pitch, in hertz.
+    var frequency: Double = 1000 {
+        didSet {
+            guard frequency != oldValue else { return }
+            blip = nil
+            restart()
+        }
+    }
+
+    nonisolated static let frequencyRange: ClosedRange<Double> = 200...2000
+
+    private let player: AVPlayer
+    private let engine = AVAudioEngine()
+    private let clickNode = AVAudioPlayerNode()
+    private let previewNode = AVAudioPlayerNode()
+    private var blip: AVAudioPCMBuffer?
+    /// Item time up to which beats are scheduled, or nil when none are.
+    private var scheduledThrough: CMTime?
+    private var timer: Timer?
+    private var observations: [NSKeyValueObservation] = []
+    private var notificationTokens: [NSObjectProtocol] = []
+
+    /// How far ahead beats are scheduled, and how often more are added.
+    private let lookahead = 1.0
+    private let refreshInterval = 0.25
+
+    init(player: AVPlayer) {
+        self.player = player
+        engine.attach(clickNode)
+        engine.attach(previewNode)
+        connectNodes()
+
+        let restartOnMain: @Sendable () -> Void = { [weak self] in
+            Task { @MainActor in self?.restart() }
+        }
+        observations = [
+            player.observe(\.timeControlStatus) { _, _ in restartOnMain() },
+            player.observe(\.currentItem) { _, _ in restartOnMain() },
+        ]
+        let center = NotificationCenter.default
+        notificationTokens = [
+            center.addObserver(forName: AVPlayer.rateDidChangeNotification, object: player, queue: .main) { _ in
+                restartOnMain()
+            },
+            center.addObserver(forName: AVPlayerItem.timeJumpedNotification, object: nil, queue: .main) { [weak player] note in
+                guard let item = note.object as? AVPlayerItem, item === player?.currentItem else { return }
+                restartOnMain()
+            },
+            center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+                // A changed output device stops the engine and may change
+                // its sample rate.
+                Task { @MainActor in self?.handleConfigurationChange() }
+            },
+        ]
+    }
+
+    /// Plays one blip now, at the current pitch.
+    func preview() {
+        startEngine()
+        guard engine.isRunning, let blip = currentBlip() else { return }
+        previewNode.scheduleBuffer(blip, at: nil, options: .interrupts)
+        previewNode.play()
+    }
+
+    // MARK: - Scheduling
+
+    private func restart() {
+        clickNode.stop()
+        scheduledThrough = nil
+        timer?.invalidate()
+        timer = nil
+        guard isEnabled, !beats.isEmpty, engine.isRunning,
+              let timebase = player.currentItem?.timebase, CMTimebaseGetRate(timebase) > 0
+        else { return }
+        clickNode.play()
+        scheduleAhead()
+        timer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleAhead() }
+        }
+    }
+
+    /// Schedules the beats between where scheduling left off and a little
+    /// past now.
+    private func scheduleAhead() {
+        guard let timebase = player.currentItem?.timebase, CMTimebaseGetRate(timebase) > 0,
+              let blip = currentBlip()
+        else { return }
+        let now = CMTimebaseGetTime(timebase)
+        let from = scheduledThrough.map { CMTimeMaximum($0, now) } ?? now
+        let to = CMTimeAdd(now, CMTime(seconds: lookahead, preferredTimescale: 600))
+        guard CMTimeCompare(from, to) < 0 else { return }
+        // AVPlayer delays its picture to match the audio device's latency;
+        // the blips are scheduled for when they are heard, the same way.
+        let latency = engine.outputNode.presentationLatency
+        let hostClock = CMClockGetHostTimeClock()
+        let start = beats.lowerBound(of: from.seconds) { $0.seconds }
+        for beat in beats[start...] {
+            guard CMTimeCompare(beat, to) < 0 else { break }
+            let hostTime = CMSyncConvertTime(beat, from: timebase, to: hostClock)
+            let ticks = AVAudioTime.hostTime(forSeconds: max(0, hostTime.seconds - latency))
+            clickNode.scheduleBuffer(blip, at: AVAudioTime(hostTime: ticks))
+        }
+        scheduledThrough = to
+    }
+
+    // MARK: - Engine
+
+    private func connectNodes() {
+        let sampleRate = engine.outputNode.outputFormat(forBus: 0).sampleRate
+        guard sampleRate > 0, let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
+            return
+        }
+        engine.connect(clickNode, to: engine.mainMixerNode, format: format)
+        engine.connect(previewNode, to: engine.mainMixerNode, format: format)
+        blip = nil
+    }
+
+    private func startEngine() {
+        guard !engine.isRunning else { return }
+        engine.prepare()
+        try? engine.start()
+    }
+
+    private func stopEngine() {
+        clickNode.stop()
+        previewNode.stop()
+        engine.stop()
+    }
+
+    private func handleConfigurationChange() {
+        engine.stop()
+        connectNodes()
+        if isEnabled { startEngine() }
+        restart()
+    }
+
+    private func currentBlip() -> AVAudioPCMBuffer? {
+        if let blip { return blip }
+        let format = clickNode.outputFormat(forBus: 0)
+        blip = Self.makeBlip(frequency: frequency, format: format)
+        return blip
+    }
+
+    /// A 50 ms sine tone with a quick fade in and an exponential decay, so
+    /// it reads as a click with a pitch rather than a beep.
+    nonisolated static func makeBlip(frequency: Double, format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let sampleRate = format.sampleRate
+        let frameCount = AVAudioFrameCount(sampleRate * 0.05)
+        guard frameCount > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let channels = buffer.floatChannelData
+        else { return nil }
+        buffer.frameLength = frameCount
+        let attack = 0.002
+        let decay = 0.012
+        for frame in 0..<Int(frameCount) {
+            let t = Double(frame) / sampleRate
+            let envelope = min(1, t / attack) * exp(-t / decay)
+            let sample = Float(0.5 * envelope * sin(2 * .pi * frequency * t))
+            for channel in 0..<Int(format.channelCount) {
+                channels[channel][frame] = sample
+            }
+        }
+        return buffer
+    }
+}

@@ -8,6 +8,7 @@ struct TimelineView: View {
     let timelineID: UUID
     let selection: TimelineSelection?
     let beatTracks: [UUID: BeatTrack]
+    let beatClicks: BeatClickPlayer
     @Binding var playheadTime: CMTime
     let onScrub: (CMTime) -> Void
     let onSelectClip: (UUID, TimelineClip) -> Void
@@ -35,6 +36,8 @@ struct TimelineView: View {
     /// depend on changes. The view's body runs on every playback tick and
     /// scroll, and a long song has thousands of beats to collect and sort.
     @State private var beatMarkers: [CMTime] = []
+    @AppStorage("clickOnBeats") private var clickOnBeats = false
+    @AppStorage("beatClickFrequency") private var beatClickFrequency = 1000.0
 
     private let rulerHeight: CGFloat = 28
     private let propertyRowHeight: CGFloat = 22
@@ -120,7 +123,9 @@ struct TimelineView: View {
                 .popover(isPresented: $showingViewOptions) {
                     ViewOptionsPopover(
                         zoomFraction: zoomFractionBinding, onFit: fitToWindow, layerHeight: $layerHeight,
-                        beatLayers: beatLayerChoices, beatLayerID: beatLayerSelection
+                        beatLayers: beatLayerChoices, beatLayerID: beatLayerSelection,
+                        clickOnBeats: $clickOnBeats, clickFrequency: $beatClickFrequency,
+                        onPreviewClick: beatClicks.preview
                     )
                 }
             }
@@ -209,6 +214,9 @@ struct TimelineView: View {
         .onChange(of: beatMarkerInputs, initial: true) { _, inputs in
             beatMarkers = inputs.layer.map { project.beatMarkers(in: $0, tracks: inputs.tracks) } ?? []
         }
+        .onChange(of: beatMarkers, initial: true) { _, markers in beatClicks.beats = markers }
+        .onChange(of: clickOnBeats, initial: true) { _, on in beatClicks.isEnabled = on }
+        .onChange(of: beatClickFrequency, initial: true) { _, hertz in beatClicks.frequency = hertz }
         .onChange(of: timelineID) { _, _ in
             zoomedPixelsPerSecond = nil
             scrollX = 0

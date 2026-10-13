@@ -8,6 +8,10 @@ struct ViewOptionsPopover: View {
     /// Layers with beats, as (layer ID, name), in timeline order.
     let beatLayers: [(id: UUID, name: String)]
     @Binding var beatLayerID: UUID?
+    @Binding var clickOnBeats: Bool
+    /// The click's pitch, in hertz.
+    @Binding var clickFrequency: Double
+    let onPreviewClick: () -> Void
 
     var body: some View {
         Form {
@@ -30,10 +34,29 @@ struct ViewOptionsPopover: View {
                             Text(layer.name).tag(UUID?.some(layer.id))
                         }
                     }
+                    Toggle("Click on beats", isOn: $clickOnBeats)
+                        .disabled(beatLayerID == nil)
+                    if clickOnBeats {
+                        LabeledContent("Pitch") {
+                            HStack(spacing: 6) {
+                                Slider(value: $clickFrequency, in: BeatClickPlayer.frequencyRange, step: 10) { editing in
+                                    if !editing { onPreviewClick() }
+                                }
+                                Text("\(Int(clickFrequency)) Hz")
+                                    .font(.caption.monospacedDigit())
+                                    .frame(width: 52, alignment: .trailing)
+                                Button(action: onPreviewClick) {
+                                    Image(systemName: "speaker.wave.2")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Preview the click")
+                            }
+                        }
+                    }
                 }
             }
         }
         .padding()
-        .frame(width: 260)
+        .frame(width: 300)
     }
 }

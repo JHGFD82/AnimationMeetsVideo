@@ -1,8 +1,9 @@
 # Beat detection
 
 Status: **implemented**: detection, saving, and showing the beats of one
-audio layer as markers on the timeline. It is unit tested; the timeline
-picker and markers are compile-checked but have not been exercised on screen.
+audio layer as markers on the timeline, with an optional click on each
+beat during playback. It is unit tested; the timeline picker, markers and
+clicks are compile-checked but have not been exercised on screen.
 What is not built is listed under [Not implemented yet](#not-implemented-yet).
 
 Any media file that has an audio track (an audio file, or a video with
@@ -88,6 +89,28 @@ the layers, under the playhead and ignoring the mouse. When zoomed out so
 far that they would be closer than 10 points, only every 2nd, 4th, 8th…
 beat is drawn, counted from the track's first beat (see
 [timeline.md](timeline.md)).
+
+## Hearing the beats
+
+Below the picker, **Click on beats** plays a short tone on each marker of
+the chosen layer while the timeline plays, so the markers can be checked
+by ear. It is off, and can't be turned on, while the picker is at None.
+When on, a **Pitch** slider (200–2000 Hz, 1000 by default) sets the tone;
+letting go of the slider, or the speaker button beside it, plays one tone
+as a preview. Both settings are remembered across launches in user
+defaults, not saved with the project.
+
+`BeatClickPlayer`, owned by `PlaybackModel` next to the shared `AVPlayer`,
+does the playing. It does not fire tones from a time observer, which would
+land wherever the main thread got to them. Instead it schedules them a
+second ahead on an `AVAudioPlayerNode`, at host times converted from the
+player item's timebase and moved earlier by the output device's latency
+(AVPlayer delays its picture by the same amount). Every 0.25 s it adds the
+next stretch. Play, pause, a seek, a rate change, a rebuilt player item or
+new markers throw away everything scheduled and start again from now. The
+tone is 50 ms of sine with a 2 ms fade in and a fast exponential decay, so
+it sounds like a click with a pitch. Clicks play only during playback, not
+while scrubbing, and are not part of the export.
 
 ## Saving
 

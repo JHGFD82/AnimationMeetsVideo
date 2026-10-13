@@ -79,6 +79,7 @@ struct TimelineEditorSurface: View {
                         timelineID: timelineID,
                         selection: selection,
                         beatTracks: analysis.beats,
+                        beatClicks: playback.beatClicks,
                         playheadTime: $playheadTime,
                         onScrub: { time in scrub(to: time) },
                         onSelectClip: { layerID, clip in
