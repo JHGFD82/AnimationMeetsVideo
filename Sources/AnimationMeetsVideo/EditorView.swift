@@ -59,6 +59,7 @@ struct TimelineEditorSurface: View {
 
     @State private var playheadTime: CMTime = .zero
     @State private var buildTask: Task<Void, Never>?
+    @State private var buildError: String?
     @State private var timelineHeight: CGFloat = 280
 
     private let minTimelineHeight: CGFloat = 140
@@ -66,6 +67,20 @@ struct TimelineEditorSurface: View {
 
     private var timeline: Timeline? {
         project.timeline(id: timelineID)
+    }
+
+    /// Everything that affects the rendered composition — layer renames and
+    /// timeline names are stripped so they don't trigger a rebuild (which
+    /// would swap the player item and interrupt playback).
+    private var compositionKey: [Timeline] {
+        project.timelines.map { timeline in
+            var copy = timeline
+            copy.name = ""
+            for index in copy.layers.indices {
+                copy.layers[index].customName = nil
+            }
+            return copy
+        }
     }
 
     private var selectedTimelineClip: TimelineClip? {
@@ -92,13 +107,21 @@ struct TimelineEditorSurface: View {
                 Divider()
 
                 HStack(spacing: 0) {
-                    ViewerPanel(playback: playback, hasContent: !(timeline?.layers.isEmpty ?? true))
+                    ViewerPanel(
+                        playback: playback,
+                        hasContent: !(timeline?.layers.isEmpty ?? true),
+                        frameSize: timeline?.frameSize ?? CGSize(width: 16, height: 9),
+                        frameRate: timeline?.frameRate ?? 24,
+                        buildError: buildError
+                    )
                     InspectorPanel(
                         project: $project,
                         timelineID: timelineID,
                         selection: selection,
                         info: selectedInfo,
-                        timelineClip: selectedTimelineClip
+                        timelineClip: selectedTimelineClip,
+                        playheadTime: playheadTime,
+                        onDeleteSelection: { selection = nil }
                     )
                     .frame(width: 280)
                 }
@@ -139,14 +162,20 @@ struct TimelineEditorSurface: View {
             if selection?.timelineID != newValue {
                 selection = nil
             }
+            playback.player.pause()
             playheadTime = .zero
+            rebuildPlayerItem(resetPosition: true)
+        }
+        .onChange(of: compositionKey) { _, _ in
             rebuildPlayerItem()
         }
-        .onChange(of: timeline) { _, _ in
-            rebuildPlayerItem()
+        .onChange(of: playback.currentTime) { _, newValue in
+            if playback.isPlaying {
+                playheadTime = newValue
+            }
         }
         .onAppear {
-            rebuildPlayerItem()
+            rebuildPlayerItem(resetPosition: true)
         }
     }
 
@@ -158,29 +187,44 @@ struct TimelineEditorSurface: View {
     /// translation is needed here.
     private func scrub(to time: CMTime) {
         playheadTime = time
-        let player = playback.player
-        Task { _ = await player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) }
+        playback.seek(to: time)
     }
 
-    private func rebuildPlayerItem() {
+    /// Rebuilds the player item from the current project. Keeps the
+    /// position and play state the player has when the build *finishes*,
+    /// not when it started, so edits made during playback don't jump back.
+    private func rebuildPlayerItem(resetPosition: Bool = false) {
         buildTask?.cancel()
         guard let timeline, !timeline.layers.isEmpty else {
             playback.player.replaceCurrentItem(with: nil)
+            buildError = nil
             return
         }
         let project = self.project
         let tID = timelineID
         let player = playback.player
-        let time = playheadTime
         buildTask = Task {
-            guard let composed = try? await CompositionExporter.buildComposedTimeline(for: project, timelineID: tID) else {
-                return
+            do {
+                let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: tID)
+                guard !Task.isCancelled else { return }
+                let wasPlaying = player.timeControlStatus != .paused
+                let resumeTime = resetPosition ? playheadTime : player.currentTime()
+                let item = AVPlayerItem(asset: composed.composition)
+                item.videoComposition = composed.videoComposition
+                player.replaceCurrentItem(with: item)
+                _ = await player.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                if wasPlaying { player.play() }
+                buildError = nil
+            } catch is CancellationError {
+            } catch {
+                guard !Task.isCancelled else { return }
+                if let compositionError = error as? CompositionError, case .emptyTimeline = compositionError {
+                    player.replaceCurrentItem(with: nil)
+                    buildError = nil
+                } else {
+                    buildError = error.localizedDescription
+                }
             }
-            guard !Task.isCancelled else { return }
-            let item = AVPlayerItem(asset: composed.composition)
-            item.videoComposition = composed.videoComposition
-            player.replaceCurrentItem(with: item)
-            _ = await player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
         }
     }
 }
@@ -558,27 +602,63 @@ private struct EditorToolbar: View {
 private struct ViewerPanel: View {
     let playback: PlaybackModel
     let hasContent: Bool
+    let frameSize: CGSize
+    let frameRate: Double
+    let buildError: String?
 
     // Deliberately darker than the surrounding window chrome and distinct
     // from pure black, so the composition's actual frame boundary stays
     // visible even when the video content itself is black.
     private let backdropColor = Color(white: 0.06)
 
+    private var aspectRatio: CGFloat {
+        frameSize.width > 0 && frameSize.height > 0 ? frameSize.width / frameSize.height : 16.0 / 9.0
+    }
+
     var body: some View {
-        ZStack {
-            backdropColor
-            if hasContent {
-                PlayerLayerView(player: playback.player)
-                    .aspectRatio(16 / 9, contentMode: .fit)
-                    .padding(36)
-            } else {
-                MetalPreviewView()
-                    .aspectRatio(16 / 9, contentMode: .fit)
-                    .padding(36)
-                ContentUnavailableView("No Clips", systemImage: "film")
+        VStack(spacing: 0) {
+            ZStack {
+                backdropColor
+                if hasContent {
+                    PlayerLayerView(player: playback.player)
+                        .aspectRatio(aspectRatio, contentMode: .fit)
+                        .padding(36)
+                } else {
+                    MetalPreviewView()
+                        .aspectRatio(aspectRatio, contentMode: .fit)
+                        .padding(36)
+                    ContentUnavailableView("No Clips", systemImage: "film")
+                }
+                if let buildError {
+                    Label(buildError, systemImage: "exclamationmark.triangle.fill")
+                        .padding(10)
+                        .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
+                        .foregroundStyle(.white)
+                        .padding(48)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            HStack(spacing: 12) {
+                Button {
+                    playback.togglePlayback()
+                } label: {
+                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                        .frame(width: 20)
+                }
+                .keyboardShortcut(.space, modifiers: [])
+                .help("Play/Pause (Space)")
+                .disabled(!hasContent)
+
+                Text(playback.currentTime.timecode(frameRate: frameRate))
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(Color(nsColor: .windowBackgroundColor))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -588,6 +668,8 @@ private struct InspectorPanel: View {
     var selection: TimelineSelection?
     let info: ResolvedClipInfo?
     let timelineClip: TimelineClip?
+    let playheadTime: CMTime
+    let onDeleteSelection: () -> Void
 
     private var maxDurationSeconds: Double? {
         switch info {
@@ -649,11 +731,15 @@ private struct InspectorPanel: View {
                 }
 
                 Section("Arrange") {
-                    Button("Split at Midpoint") {
-                        let half = CMTimeMultiplyByRatio(timelineClip.trimmedDuration, multiplier: 1, divisor: 2)
-                        let midpoint = CMTimeAdd(timelineClip.trimStart, half)
-                        project.split(selection.timelineClipID, in: timelineID, layer: selection.layerID, at: midpoint)
+                    Button("Split at Playhead") {
+                        project.split(selection.timelineClipID, in: timelineID, layer: selection.layerID, atTimelineTime: playheadTime)
                     }
+                    .disabled(!(playheadTime > timelineClip.startOffset && playheadTime < timelineClip.endOffset))
+                    Button("Delete Clip", role: .destructive) {
+                        project.deleteClip(selection.timelineClipID, in: timelineID, layer: selection.layerID)
+                        onDeleteSelection()
+                    }
+                    .keyboardShortcut(.delete, modifiers: .command)
                 }
             }
 
@@ -670,25 +756,21 @@ private struct InspectorPanel: View {
     }
 
     private func setTrimStart(_ seconds: Double, selection: TimelineSelection) {
-        update(selection: selection) { clip in
-            clip.trimStart = CMTime(seconds: seconds, preferredTimescale: 600)
-        }
+        project.trimClipStart(
+            selection.timelineClipID,
+            in: timelineID,
+            layer: selection.layerID,
+            to: CMTime(seconds: seconds, preferredTimescale: 600)
+        )
     }
 
     private func setTrimEnd(_ seconds: Double, selection: TimelineSelection) {
-        update(selection: selection) { clip in
-            clip.trimEnd = CMTime(seconds: seconds, preferredTimescale: 600)
-        }
-    }
-
-    private func update(selection: TimelineSelection, _ mutate: (inout TimelineClip) -> Void) {
-        guard let timelineIndex = project.timelines.firstIndex(where: { $0.id == timelineID }),
-              let layerIndex = project.timelines[timelineIndex].layers.firstIndex(where: { $0.id == selection.layerID }),
-              let clipIndex = project.timelines[timelineIndex].layers[layerIndex].clips.firstIndex(where: { $0.id == selection.timelineClipID })
-        else {
-            return
-        }
-        mutate(&project.timelines[timelineIndex].layers[layerIndex].clips[clipIndex])
+        project.trimClipEnd(
+            selection.timelineClipID,
+            in: timelineID,
+            layer: selection.layerID,
+            to: CMTime(seconds: seconds, preferredTimescale: 600)
+        )
     }
 }
 

@@ -30,6 +30,28 @@ final class PlaybackModel {
         }
     }
 
+    @ObservationIgnored private var isSeeking = false
+    @ObservationIgnored private var pendingSeek: CMTime?
+
+    /// Scrub-friendly seek: only one seek is ever in flight, and a newer
+    /// target replaces any that was queued behind it, so dragging the
+    /// playhead doesn't pile up zero-tolerance seeks.
+    func seek(to time: CMTime) {
+        currentTime = time
+        pendingSeek = time
+        guard !isSeeking else { return }
+        isSeeking = true
+        Task { await drainSeeks() }
+    }
+
+    private func drainSeeks() async {
+        while let target = pendingSeek {
+            pendingSeek = nil
+            _ = await player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+        isSeeking = false
+    }
+
     func togglePlayback() {
         if isPlaying {
             player.pause()
