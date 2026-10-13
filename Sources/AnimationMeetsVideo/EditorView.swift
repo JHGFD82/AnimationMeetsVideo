@@ -788,6 +788,7 @@ private struct TimelineView: View {
     @State private var layerHeight: CGFloat = 56
     @State private var showingViewOptions = false
     @GestureState private var magnifyBy: CGFloat = 1
+    @State private var scrollMetrics = TimelineScrollMetrics()
 
     private let rulerHeight: CGFloat = 26
     private let columnHeaderHeight: CGFloat = 20
@@ -847,11 +848,19 @@ private struct TimelineView: View {
                             }
                         }
                         .frame(width: labelColumnWidth, alignment: .leading)
+                        .background(.background)
+                        .offset(x: scrollMetrics.offsetX)
+                        .zIndex(1)
 
                         ZStack(alignment: .topLeading) {
                             VStack(alignment: .leading, spacing: 0) {
-                                TimelineRuler(duration: timeline.duration, frameRate: timeline.frameRate, pixelsPerSecond: pixelsPerSecond)
-                                    .frame(height: rulerHeight, alignment: .leading)
+                                TimelineRuler(
+                                    duration: timeline.duration,
+                                    frameRate: timeline.frameRate,
+                                    pixelsPerSecond: pixelsPerSecond,
+                                    visibleX: (scrollMetrics.offsetX - labelColumnWidth)...(scrollMetrics.offsetX + scrollMetrics.viewportWidth - labelColumnWidth)
+                                )
+                                .frame(height: rulerHeight, alignment: .leading)
                                 Color.clear.frame(height: columnHeaderHeight)
                                 Divider()
                                 ForEach(timeline.layers) { layer in
@@ -890,6 +899,11 @@ private struct TimelineView: View {
                         )
                     }
                 }
+                .onScrollGeometryChange(for: TimelineScrollMetrics.self) { geometry in
+                    TimelineScrollMetrics(offsetX: max(0, geometry.contentOffset.x), viewportWidth: geometry.containerSize.width)
+                } action: { _, metrics in
+                    scrollMetrics = metrics
+                }
             }
         }
         .padding(.vertical, 12)
@@ -904,6 +918,11 @@ private struct TimelineView: View {
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         onScrub(time)
     }
+}
+
+private struct TimelineScrollMetrics: Equatable {
+    var offsetX: CGFloat = 0
+    var viewportWidth: CGFloat = 1_200
 }
 
 /// A sub-header beneath the ruler labeling the per-layer columns — currently
@@ -949,6 +968,12 @@ private struct TimelineRuler: View {
     let duration: CMTime
     let frameRate: Double
     let pixelsPerSecond: CGFloat
+    /// The slice of the ruler (in its own x coordinates) currently on screen.
+    /// Only this slice is drawn, so a long timeline zoomed far in doesn't
+    /// need a huge canvas or thousands of tick labels.
+    let visibleX: ClosedRange<CGFloat>
+
+    private let margin: CGFloat = 100
 
     // Needs real room for "NNf" text (~20pt), not just a tick mark —
     // 6pt was wide enough for a bare mark but produced an illegible smear
@@ -959,20 +984,32 @@ private struct TimelineRuler: View {
 
     var body: some View {
         let totalSeconds = max(duration.seconds, 1.0 / max(frameRate, 1))
+        let totalWidth = max(1, CGFloat(totalSeconds) * pixelsPerSecond)
+        let lower = min(max(0, visibleX.lowerBound - margin), totalWidth)
+        let upper = min(max(lower, visibleX.upperBound + margin), totalWidth)
         Canvas { context, _ in
+            var context = context
+            context.translateBy(x: -lower, y: 0)
+            let seconds = Double(max(pixelsPerSecond, 0.01))
+            let range = Double(lower) / seconds...Double(upper) / seconds
             if showsFrameTicks {
-                drawFrameTicks(context: context, totalSeconds: totalSeconds)
+                drawFrameTicks(context: context, totalSeconds: totalSeconds, visibleSeconds: range)
             } else {
-                drawSecondTicks(context: context, totalSeconds: totalSeconds)
+                drawSecondTicks(context: context, totalSeconds: totalSeconds, visibleSeconds: range)
             }
         }
-        .frame(width: max(1, CGFloat(totalSeconds) * pixelsPerSecond), alignment: .leading)
+        .frame(width: max(1, upper - lower))
+        .offset(x: lower)
+        .frame(width: totalWidth, alignment: .leading)
     }
 
-    private func drawFrameTicks(context: GraphicsContext, totalSeconds: Double) {
+    private func drawFrameTicks(context: GraphicsContext, totalSeconds: Double, visibleSeconds: ClosedRange<Double>) {
         let framesPerSecond = max(1, Int(frameRate.rounded()))
-        let totalFrames = Int((totalSeconds * frameRate).rounded(.up))
-        for frame in 0...max(totalFrames, 1) {
+        let totalFrames = max(Int((totalSeconds * frameRate).rounded(.up)), 1)
+        let firstFrame = max(0, Int((visibleSeconds.lowerBound * frameRate).rounded(.down)))
+        let lastFrame = min(totalFrames, Int((visibleSeconds.upperBound * frameRate).rounded(.up)))
+        guard firstFrame <= lastFrame else { return }
+        for frame in firstFrame...lastFrame {
             let seconds = Double(frame) / frameRate
             let x = CGFloat(seconds) * pixelsPerSecond
             let isSecondBoundary = frame % framesPerSecond == 0
@@ -998,10 +1035,13 @@ private struct TimelineRuler: View {
         }
     }
 
-    private func drawSecondTicks(context: GraphicsContext, totalSeconds: Double) {
+    private func drawSecondTicks(context: GraphicsContext, totalSeconds: Double, visibleSeconds: ClosedRange<Double>) {
         let interval = tickInterval(pixelsPerSecond: pixelsPerSecond)
-        let tickCount = Int(totalSeconds / interval) + 1
-        for index in 0...tickCount {
+        let lastIndex = Int(totalSeconds / interval) + 1
+        let firstIndex = max(0, Int((visibleSeconds.lowerBound / interval).rounded(.down)))
+        let endIndex = min(lastIndex, Int((visibleSeconds.upperBound / interval).rounded(.up)))
+        guard firstIndex <= endIndex else { return }
+        for index in firstIndex...endIndex {
             let seconds = Double(index) * interval
             let x = CGFloat(seconds) * pixelsPerSecond
             var path = Path()
