@@ -349,6 +349,9 @@ struct TimelineLayer: Identifiable, Equatable {
     /// timeline's own name when nil.
     var customName: String?
     var clips: [TimelineClip]
+    /// Position, scale, rotation and opacity, keyframed in this timeline's
+    /// time. Ignored for layers with no pictures.
+    var transform = LayerTransform.identity
 
     var duration: CMTime {
         clips.map(\.endOffset).max(by: { $0.seconds < $1.seconds }) ?? .zero

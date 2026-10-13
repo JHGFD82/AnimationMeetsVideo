@@ -59,10 +59,77 @@ private struct ProjectFile: Codable {
         var autoMatteEnabled: Bool
     }
 
+    /// One keyframe. Vector values are written as `[x, y]`.
+    struct KeyframeEntry<Value: Codable>: Codable {
+        var time: TimeEntry
+        var value: Value
+    }
+
+    /// A property's value, or its keyframes when animated.
+    struct PropertyEntry<Value: Codable>: Codable {
+        var value: Value?
+        var keyframes: [KeyframeEntry<Value>]?
+
+        init<V: Interpolatable>(_ property: AnimatedValue<V>, encode: (V) -> Value) {
+            if property.isAnimated {
+                keyframes = property.keyframes.map { KeyframeEntry(time: TimeEntry($0.time), value: encode($0.value)) }
+            } else {
+                value = encode(property.value)
+            }
+        }
+
+        func property<V: Interpolatable>(default fallback: V, decode: (Value) -> V?) -> AnimatedValue<V> {
+            let frames = (keyframes ?? []).compactMap { entry in
+                decode(entry.value).map { Keyframe(time: entry.time.time, value: $0) }
+            }
+            return AnimatedValue(value.flatMap(decode) ?? frames.first?.value ?? fallback, keyframes: frames)
+        }
+    }
+
+    /// Each property is absent while it has its default value.
+    struct TransformEntry: Codable {
+        /// Offset of the layer's center from the frame's center, in pixels.
+        var position: PropertyEntry<[Double]>?
+        /// Percent.
+        var scale: PropertyEntry<[Double]>?
+        /// Degrees clockwise.
+        var rotation: PropertyEntry<Double>?
+        /// Percent.
+        var opacity: PropertyEntry<Double>?
+        /// Absent while linked.
+        var scaleLinked: Bool?
+
+        init?(_ transform: LayerTransform) {
+            guard transform != .identity else { return nil }
+            let identity = LayerTransform.identity
+            let vector: (Vector2) -> [Double] = { [$0.x, $0.y] }
+            position = transform.position == identity.position ? nil : PropertyEntry(transform.position, encode: vector)
+            scale = transform.scale == identity.scale ? nil : PropertyEntry(transform.scale, encode: vector)
+            rotation = transform.rotation == identity.rotation ? nil : PropertyEntry(transform.rotation) { $0 }
+            opacity = transform.opacity == identity.opacity ? nil : PropertyEntry(transform.opacity) { $0 }
+            scaleLinked = transform.scaleLinked ? nil : false
+        }
+
+        var transform: LayerTransform {
+            let identity = LayerTransform.identity
+            let vector: ([Double]) -> Vector2? = { $0.count == 2 ? Vector2(x: $0[0], y: $0[1]) : nil }
+            let number: (Double) -> Double? = { $0 }
+            return LayerTransform(
+                position: position?.property(default: identity.position.value, decode: vector) ?? identity.position,
+                scale: scale?.property(default: identity.scale.value, decode: vector) ?? identity.scale,
+                rotation: rotation?.property(default: identity.rotation.value, decode: number) ?? identity.rotation,
+                opacity: opacity?.property(default: identity.opacity.value, decode: number) ?? identity.opacity,
+                scaleLinked: scaleLinked ?? true
+            )
+        }
+    }
+
     struct LayerEntry: Codable {
         var id: UUID
         var customName: String?
         var clips: [ClipEntry]
+        /// Absent while the layer is untransformed.
+        var transform: TransformEntry?
     }
 
     struct TimelineEntry: Codable {
@@ -573,7 +640,8 @@ enum ProjectStore {
                                 trimEnd: ProjectFile.TimeEntry(clip.trimEnd),
                                 autoMatteEnabled: clip.autoMatteEnabled
                             )
-                        }
+                        },
+                        transform: ProjectFile.TransformEntry(layer.transform)
                     )
                 }
             )
@@ -674,7 +742,8 @@ enum ProjectStore {
                                 trimEnd: clipEntry.trimEnd.time,
                                 autoMatteEnabled: clipEntry.autoMatteEnabled
                             )
-                        }
+                        },
+                        transform: layerEntry.transform?.transform ?? .identity
                     )
                 },
                 frameSize: CGSize(width: entry.width, height: entry.height),

@@ -63,6 +63,39 @@ private struct Sandbox {
 }
 
 @Suite struct ProjectStoreTests {
+    @Test func roundTripKeepsLayerTransformsAndKeyframes() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+        let timelineID = project.rootTimelineID
+        let layerID = try #require(project.timeline(id: timelineID)?.layers.first?.id)
+        project.editTransform(of: layerID, in: timelineID) { transform in
+            transform.position.setAnimated(true, at: .zero)
+            transform.position.set(Vector2(x: -200, y: 35.5), at: CMTime(value: 1001, timescale: 24000))
+            transform.scale.set(Vector2(x: 50, y: 75), at: .zero)
+            transform.scaleLinked = false
+            transform.rotation.set(-30, at: .zero)
+        }
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(!json.contains("opacity"))
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        let saved = try #require(project.timeline(id: timelineID)?.layers.first?.transform)
+        let restored = try #require(loaded.project.timeline(id: timelineID)?.layers.first?.transform)
+        #expect(restored == saved)
+    }
+
+    @Test func untransformedLayersWriteNoTransform() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(!json.contains("transform"))
+    }
+
     @Test func roundTripKeepsStableIDsAndExactTimes() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }

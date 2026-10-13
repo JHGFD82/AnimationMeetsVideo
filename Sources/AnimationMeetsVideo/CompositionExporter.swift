@@ -101,13 +101,65 @@ private actor MediaTrackCache {
     }
 }
 
+/// A layer's transform as seen from the root timeline: one nesting level of
+/// a placement's animation.
+struct TransformStage {
+    var transform: LayerTransform
+    /// Center of the frame of the timeline the layer is in.
+    var center: CGPoint
+    /// Root time minus that timeline's time.
+    var shift: CMTime
+    /// Fits that timeline's frame into the frame of the next stage out
+    /// (identity at the root).
+    var toOuter: CGAffineTransform
+}
+
+/// Where a placement is drawn and how opaque it is at each root time: its
+/// own fit, then each enclosing layer's transform from innermost out.
+struct PlacementAnimation {
+    /// Orients and fits the media into the frame of its own timeline.
+    var base: CGAffineTransform
+    var stages: [TransformStage]
+
+    func transform(at time: CMTime) -> CGAffineTransform {
+        stages.reduce(base) { result, stage in
+            result
+                .concatenating(stage.transform.affineTransform(at: CMTimeSubtract(time, stage.shift), center: stage.center))
+                .concatenating(stage.toOuter)
+        }
+    }
+
+    func opacity(at time: CMTime) -> Float {
+        Float(stages.reduce(1.0) { $0 * $1.transform.opacityFraction(at: CMTimeSubtract(time, $1.shift)) })
+    }
+
+    /// Root-time ranges where some stage is between keyframes, in order and
+    /// not overlapping. Outside them the transform and opacity are constant.
+    var animatedRanges: [CMTimeRange] {
+        let ranges = stages.flatMap { stage in
+            stage.transform.animatedRanges.map { range in
+                CMTimeRange(start: CMTimeAdd(range.lowerBound, stage.shift), end: CMTimeAdd(range.upperBound, stage.shift))
+            }
+        }
+        var merged: [CMTimeRange] = []
+        for range in ranges.sorted(by: { $0.start < $1.start }) {
+            if let last = merged.last, range.start <= last.end {
+                merged[merged.count - 1] = CMTimeRange(start: last.start, end: CMTimeMaximum(last.end, range.end))
+            } else {
+                merged.append(range)
+            }
+        }
+        return merged
+    }
+}
+
 /// One piece of media placed at an absolute time in the root timeline, with
-/// the transform that fits it into the root's render space.
+/// the animation that places it in the root's render space.
 private struct Placement {
     let info: MediaTrackInfo
     let sourceRange: CMTimeRange
     let start: CMTime
-    let transform: CGAffineTransform
+    let animation: PlacementAnimation
 }
 
 /// An ordered run of non-overlapping placements that share composition
@@ -118,7 +170,7 @@ private struct FlatLayer {
 
 private struct VideoSegment {
     let timeRange: CMTimeRange
-    let transform: CGAffineTransform
+    let animation: PlacementAnimation
 }
 
 private struct VideoLayer {
@@ -145,7 +197,8 @@ enum CompositionExporter {
             visiting: [],
             window: window,
             offset: .zero,
-            fit: .identity
+            outer: [],
+            toOuter: .identity
         )
 
         let composition = AVMutableComposition()
@@ -166,7 +219,7 @@ enum CompositionExporter {
                         }
                         let at = CMTimeAdd(placement.start, CMTimeSubtract(range.start, placement.sourceRange.start))
                         try videoTrack?.insertTimeRange(range, of: sourceVideo, at: at)
-                        segments.append(VideoSegment(timeRange: CMTimeRange(start: at, duration: range.duration), transform: placement.transform))
+                        segments.append(VideoSegment(timeRange: CMTimeRange(start: at, duration: range.duration), animation: placement.animation))
                     }
                 }
                 if let sourceAudio = info.audio {
@@ -202,15 +255,18 @@ enum CompositionExporter {
     /// Resolves a timeline (recursively expanding nested timelines) into flat
     /// layers of media placements at absolute root-timeline times, top layer
     /// first. `window` is the visible range in this timeline's own time,
-    /// `offset` maps this timeline's time to root time, and `fit` maps this
-    /// timeline's render space into the root's.
+    /// `offset` maps this timeline's time to root time, `outer` holds the
+    /// transforms of the layers this timeline is nested in (innermost
+    /// first), and `toOuter` fits this timeline's frame into the frame of
+    /// the innermost of them.
     private static func flatten(
         project: EditingProject,
         timelineID: UUID,
         visiting: Set<UUID>,
         window: CMTimeRange,
         offset: CMTime,
-        fit: CGAffineTransform
+        outer: [TransformStage],
+        toOuter: CGAffineTransform
     ) async throws -> [FlatLayer] {
         guard !visiting.contains(timelineID) else {
             throw CompositionError.cyclicTimeline
@@ -219,8 +275,10 @@ enum CompositionExporter {
         var visiting = visiting
         visiting.insert(timelineID)
 
+        let center = CGPoint(x: timeline.frameSize.width / 2, y: timeline.frameSize.height / 2)
         var result: [FlatLayer] = []
         for layer in timeline.layers {
+            let stages = [TransformStage(transform: layer.transform, center: center, shift: offset, toOuter: toOuter)] + outer
             var own = FlatLayer()
             var nestedLayers: [FlatLayer] = []
 
@@ -235,28 +293,27 @@ enum CompositionExporter {
                     guard let media = project.mediaClip(id: mediaID), let url = media.url else { continue }
                     let info = try await MediaTrackCache.shared.info(for: url)
                     let wanted = CMTimeRange(start: media.fileTime(forSourceTime: CMTimeAdd(clip.trimStart, intoClip)), duration: visible.duration)
-                    let transform = info.orientedTransform
+                    let base = info.orientedTransform
                         .concatenating(fitTransform(from: info.orientedSize, to: timeline.frameSize))
-                        .concatenating(fit)
                     own.placements.append(Placement(
                         info: info,
                         sourceRange: wanted,
                         start: CMTimeAdd(visible.start, offset),
-                        transform: transform
+                        animation: PlacementAnimation(base: base, stages: stages)
                     ))
                 case .timeline(let nestedID):
                     guard let nested = project.timeline(id: nestedID) else { continue }
                     // Nested time = this timeline's time - clip.startOffset + clip.trimStart.
                     let shift = CMTimeSubtract(clip.startOffset, clip.trimStart)
                     let nestedWindow = CMTimeRange(start: CMTimeSubtract(visible.start, shift), duration: visible.duration)
-                    let childFit = fitTransform(from: nested.frameSize, to: timeline.frameSize).concatenating(fit)
                     nestedLayers += try await flatten(
                         project: project,
                         timelineID: nestedID,
                         visiting: visiting,
                         window: nestedWindow,
                         offset: CMTimeAdd(offset, shift),
-                        fit: childFit
+                        outer: stages,
+                        toOuter: fitTransform(from: nested.frameSize, to: timeline.frameSize)
                     )
                 }
             }
@@ -301,6 +358,7 @@ enum CompositionExporter {
         breakpoints.sort()
         breakpoints.append(overallDuration)
 
+        let frame = frameDuration(for: frameRate)
         var instructions: [AVMutableVideoCompositionInstruction] = []
         for index in 0..<(breakpoints.count - 1) {
             let start = breakpoints[index]
@@ -314,7 +372,7 @@ enum CompositionExporter {
                     return nil
                 }
                 let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: layer.track)
-                layerInstruction.setTransform(segment.transform, at: start)
+                applyAnimation(segment.animation, to: layerInstruction, in: CMTimeRange(start: start, end: end), frame: frame)
                 return layerInstruction
             }
             instructions.append(instruction)
@@ -322,20 +380,56 @@ enum CompositionExporter {
 
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = renderSize
-        videoComposition.frameDuration = frameDuration(for: frameRate)
+        videoComposition.frameDuration = frame
         videoComposition.instructions = instructions
         return videoComposition
     }
 
-    /// Exact frame durations for the NTSC-family rates (23.976, 29.97, 59.94)
-    /// rather than rounding them to 24/30/60.
     private static func frameDuration(for frameRate: Double) -> CMTime {
-        let clamped = min(max(frameRate, 1), 1000)
-        let rounded = clamped.rounded()
-        if abs(clamped - rounded * 1000 / 1001) < 0.01 {
-            return CMTime(value: 1001, timescale: Int32(rounded) * 1000)
+        Timeline.frameDuration(for: frameRate)
+    }
+
+    /// Sets the transform and opacity at the start of `range`, then again on
+    /// every frame where a keyframed stage is changing. The built-in
+    /// compositor holds each value until the next one, so the result is
+    /// exact at every rendered frame. Matrix ramps aren't used because they
+    /// blend matrix entries, which shrinks a layer midway through a turn.
+    static func applyAnimation(
+        _ animation: PlacementAnimation,
+        to instruction: AVMutableVideoCompositionLayerInstruction,
+        in range: CMTimeRange,
+        frame: CMTime
+    ) {
+        var lastTransform = animation.transform(at: range.start)
+        var lastOpacity = animation.opacity(at: range.start)
+        instruction.setTransform(lastTransform, at: range.start)
+        instruction.setOpacity(lastOpacity, at: range.start)
+        guard frame.seconds > 0 else { return }
+
+        var lastSet = range.start
+        for animated in animation.animatedRanges {
+            // One frame past the last keyframe, so the final value lands.
+            let span = CMTimeRange(start: animated.start, end: CMTimeAdd(animated.end, frame)).intersection(range)
+            guard span.isValid, span.duration > .zero else { continue }
+            var index = Int64((span.start.seconds / frame.seconds).rounded(.up))
+            while true {
+                let time = CMTime(value: index * frame.value, timescale: frame.timescale)
+                guard time < span.end else { break }
+                index += 1
+                guard time > lastSet else { continue }
+                lastSet = time
+                let transform = animation.transform(at: time)
+                let opacity = animation.opacity(at: time)
+                if transform != lastTransform {
+                    instruction.setTransform(transform, at: time)
+                    lastTransform = transform
+                }
+                if opacity != lastOpacity {
+                    instruction.setOpacity(opacity, at: time)
+                    lastOpacity = opacity
+                }
+            }
         }
-        return CMTime(value: 1, timescale: Int32(rounded))
     }
 
     /// Cancelling the calling task cancels the export, deletes the partial

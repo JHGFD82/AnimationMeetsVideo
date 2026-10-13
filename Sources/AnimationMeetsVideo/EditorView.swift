@@ -158,6 +158,7 @@ struct TimelineEditorSurface: View {
                         info: selectedInfo,
                         timelineClip: selectedTimelineClip,
                         playheadTime: playheadTime,
+                        onSeek: { time in scrub(to: time) },
                         onDeleteSelection: { selection = nil }
                     )
                     .frame(width: 280)
@@ -188,6 +189,9 @@ struct TimelineEditorSurface: View {
                         },
                         onTrimClipEnd: { layerID, clipID, newTrimEnd in
                             project.trimClipEnd(clipID, in: timelineID, layer: layerID, to: newTrimEnd)
+                        },
+                        onEditTransform: { layerID, change in
+                            project.editTransform(of: layerID, in: timelineID, change)
                         }
                     )
                     .frame(height: resolvedTimelineHeight)
@@ -967,6 +971,7 @@ private struct InspectorPanel: View {
     let info: ResolvedClipInfo?
     let timelineClip: TimelineClip?
     let playheadTime: CMTime
+    let onSeek: (CMTime) -> Void
     let onDeleteSelection: () -> Void
 
     private var maxDurationSeconds: Double? {
@@ -1028,6 +1033,20 @@ private struct InspectorPanel: View {
                     )
                 }
 
+                if let timeline = project.timeline(id: timelineID),
+                   let layer = timeline.layer(id: selection.layerID),
+                   layer.isVisual(in: project) {
+                    Section("Layer Transform") {
+                        TransformInspectorSection(
+                            transform: layer.transform,
+                            time: timeline.snappedToFrame(playheadTime),
+                            frameSize: timeline.frameSize,
+                            onEdit: { change in project.editTransform(of: layer.id, in: timelineID, change) },
+                            onSeek: onSeek
+                        )
+                    }
+                }
+
                 Section("Arrange") {
                     Button("Split at Playhead") {
                         project.split(selection.timelineClipID, in: timelineID, layer: selection.layerID, atTimelineTime: playheadTime)
@@ -1080,8 +1099,11 @@ private struct TimelineView: View {
     let onMoveClip: (UUID, UUID, CMTime) -> Void
     let onTrimClipStart: (UUID, UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, UUID, CMTime) -> Void
+    let onEditTransform: (UUID, (inout LayerTransform) -> Void) -> Void
 
     @State private var zoomScale: CGFloat = 1
+    /// The transform properties shown under each layer, by layer ID.
+    @State private var revealed: [UUID: Set<TransformProperty>] = [:]
     @State private var layerHeight: CGFloat = 56
     @State private var showingViewOptions = false
     /// The layer whose beats are shown. Only layers that still have beats are
@@ -1096,7 +1118,18 @@ private struct TimelineView: View {
 
     private let rulerHeight: CGFloat = 26
     private let columnHeaderHeight: CGFloat = 20
-    private let labelColumnWidth: CGFloat = 150
+    private let propertyRowHeight: CGFloat = 22
+
+    /// Wider while property rows are showing, to fit their values.
+    private var labelColumnWidth: CGFloat {
+        timeline.layers.contains { !shownProperties(of: $0).isEmpty } ? 300 : 150
+    }
+
+    /// The layer's shown properties, in standard order. Audio layers have none.
+    private func shownProperties(of layer: TimelineLayer) -> [TransformProperty] {
+        guard let set = revealed[layer.id], !set.isEmpty else { return [] }
+        return TransformProperty.allCases.filter(set.contains)
+    }
 
     private var beatLayerChoices: [(id: UUID, name: String)] {
         timeline.layers.enumerated()
@@ -1165,8 +1198,11 @@ private struct TimelineView: View {
                 let effectiveZoom = max(1, zoomScale * magnifyBy)
                 let pixelsPerSecond = fitPixelsPerSecond * effectiveZoom
                 let contentWidth = max(availableWidth, CGFloat(timeline.duration.seconds) * pixelsPerSecond)
+                let propertyRowCount = timeline.layers.reduce(0) { $0 + shownProperties(of: $1).count }
                 let contentHeight = rulerHeight + columnHeaderHeight + CGFloat(timeline.layers.count) * layerHeight
+                    + CGFloat(propertyRowCount) * propertyRowHeight
                 let markers = beatMarkers
+                let frameTime = timeline.snappedToFrame(playheadTime)
 
                 ScrollView([.horizontal, .vertical]) {
                     HStack(alignment: .top, spacing: 0) {
@@ -1182,9 +1218,24 @@ private struct TimelineView: View {
                                     height: layerHeight,
                                     canMoveUp: index > 0,
                                     canMoveDown: index < timeline.layers.count - 1,
+                                    isExpanded: layer.isVisual(in: project) ? !shownProperties(of: layer).isEmpty : nil,
+                                    onToggleExpanded: { toggleExpanded(layer) },
                                     onRename: { name in onRenameLayer(layer.id, name) },
                                     onMove: { offset in onMoveLayer(layer.id, offset) }
                                 )
+                                ForEach(shownProperties(of: layer)) { property in
+                                    TransformPropertyRow(
+                                        property: property,
+                                        transform: layer.transform,
+                                        time: frameTime,
+                                        frameSize: timeline.frameSize,
+                                        onEdit: { change in onEditTransform(layer.id, change) },
+                                        onSeek: onScrub
+                                    )
+                                    .padding(.leading, 30)
+                                    .padding(.trailing, 8)
+                                    .frame(height: propertyRowHeight)
+                                }
                                 Divider()
                             }
                         }
@@ -1218,6 +1269,23 @@ private struct TimelineView: View {
                                             onTrimClipStart: { clipID, newStart in onTrimClipStart(layer.id, clipID, newStart) },
                                             onTrimClipEnd: { clipID, newEnd in onTrimClipEnd(layer.id, clipID, newEnd) }
                                         )
+                                        ForEach(shownProperties(of: layer)) { property in
+                                            KeyframeLane(
+                                                times: layer.transform.keyframeTimes(property),
+                                                currentTime: frameTime,
+                                                pixelsPerSecond: pixelsPerSecond,
+                                                width: contentWidth,
+                                                height: propertyRowHeight,
+                                                snap: { timeline.snappedToFrame($0) },
+                                                onSeek: onScrub,
+                                                onMove: { from, to in
+                                                    onEditTransform(layer.id) { $0.moveKeyframe(property, at: from, to: to) }
+                                                },
+                                                onDelete: { time in
+                                                    onEditTransform(layer.id) { $0.removeKeyframe(property, at: time) }
+                                                }
+                                            )
+                                        }
                                         Divider()
                                     }
                                 }
@@ -1257,9 +1325,46 @@ private struct TimelineView: View {
             }
         }
         .padding(.vertical, 12)
+        .background(KeyPressMonitor(handler: handleKey))
         .onChange(of: beatMarkerInputs, initial: true) { _, inputs in
             beatMarkers = inputs.layer.map { project.beatMarkers(in: $0, tracks: inputs.tracks) } ?? []
         }
+    }
+
+    /// The disclosure arrow shows all four properties, or hides them all.
+    private func toggleExpanded(_ layer: TimelineLayer) {
+        revealed[layer.id] = shownProperties(of: layer).isEmpty ? Set(TransformProperty.allCases) : []
+    }
+
+    /// P, S, R and T show only position, scale, rotation or opacity (pressing
+    /// the key again hides it); with Shift they add or remove that property
+    /// and keep the others. They act on the selected clip's layer, or on
+    /// every visual layer when nothing is selected.
+    private func handleKey(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.isDisjoint(with: [.command, .control, .option]),
+              let key = event.charactersIgnoringModifiers?.lowercased().first,
+              let property = TransformProperty(shortcutKey: key)
+        else {
+            return false
+        }
+        let targets: [TimelineLayer]
+        if let selection, selection.timelineID == timelineID, let layer = timeline.layer(id: selection.layerID) {
+            targets = layer.isVisual(in: project) ? [layer] : []
+        } else {
+            targets = timeline.layers.filter { $0.isVisual(in: project) }
+        }
+        guard !targets.isEmpty else { return false }
+        for layer in targets {
+            var shown = revealed[layer.id] ?? []
+            if flags.contains(.shift) {
+                if shown.contains(property) { shown.remove(property) } else { shown.insert(property) }
+            } else {
+                shown = shown == [property] ? [] : [property]
+            }
+            revealed[layer.id] = shown
+        }
+        return true
     }
 
     /// Only moves the playhead — per-clip selection and repositioning are
@@ -1286,6 +1391,7 @@ private struct TimelineColumnHeaderRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            Color.clear.frame(width: 12)
             Text("#")
                 .frame(width: 18, alignment: .trailing)
             Text("Name")
@@ -1508,6 +1614,9 @@ private struct LayerHeaderRow: View {
     let height: CGFloat
     let canMoveUp: Bool
     let canMoveDown: Bool
+    /// Nil for layers without transform properties (audio), which get no arrow.
+    let isExpanded: Bool?
+    let onToggleExpanded: () -> Void
     let onRename: (String?) -> Void
     let onMove: (Int) -> Void
 
@@ -1521,6 +1630,23 @@ private struct LayerHeaderRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            Group {
+                if let isExpanded {
+                    Button(action: onToggleExpanded) {
+                        Image(systemName: "chevron.right")
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .frame(width: 12, height: 12)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(isExpanded ? "Hide transform properties" : "Show transform properties (P, S, R, T)")
+                } else {
+                    Color.clear
+                }
+            }
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 12)
             Text("\(number)")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)

@@ -104,6 +104,9 @@ Requirements for the file:
 - **Deterministic output**: sorted keys and fixed formatting so that two saves
   of the same project are byte-identical and diffs show only real changes.
 - **Rational times** such as `"1001/24000s"`, never floating-point seconds.
+- **Defaults are left out**, so untouched data adds nothing to a diff. For
+  example a layer's `transform` (see [layer-transforms.md](layer-transforms.md))
+  is written only once the layer is moved, scaled, turned, faded or animated.
 - Written atomically so a crash cannot leave a half-written file.
 
 ## Retention
