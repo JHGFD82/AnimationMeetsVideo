@@ -129,6 +129,15 @@ struct LayerHeaderRow: View {
     }
 }
 
+/// Where a clip being dragged will land when it moves to another layer.
+struct ClipMovePreview: Equatable {
+    var start: CMTime
+    /// Nil when it stays on its own layer.
+    var layerID: UUID?
+    /// How far the target layer's row is below the clip's own.
+    var offsetY: CGFloat
+}
+
 struct LayerClipRow: View {
     let layer: TimelineLayer
     let project: EditingProject
@@ -140,7 +149,13 @@ struct LayerClipRow: View {
     /// The on-screen part of the row, in its own x coordinates.
     let visibleX: ClosedRange<CGFloat>
     let onSelectClip: (TimelineClip) -> Void
-    let onMoveClip: (UUID, CMTime) -> Void
+    /// Where a clip dragged by `dy` points and asked to start at a time
+    /// lands: on another layer when dragged onto one with room, else nil.
+    let resolveMove: (TimelineClip, CGFloat, CMTime) -> ClipMovePreview?
+    /// Moves a clip to a start time, and to another layer when given.
+    let onMoveClip: (UUID, UUID?, CMTime) -> Void
+    let onDraggingClip: (Bool) -> Void
+    let onDropScenes: ([SceneDragPayload], CMTime) -> Bool
     let onTrimClipStart: (UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, CMTime) -> Void
     let onSetTransition: (UUID, TransitionKind, TransitionEdge) -> Void
@@ -165,11 +180,12 @@ struct LayerClipRow: View {
                     pixelsPerSecond: pixelsPerSecond,
                     height: height,
                     visibleX: visibleX,
-                    resolveMove: { project.resolvedStart(ofMoving: clip.id, in: timelineID, layer: layer.id, to: $0) },
+                    resolveMove: { start, dy in resolveMove(clip, dy, start) },
                     resolveTrimStart: { project.resolvedTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
                     resolveTrimEnd: { project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
                     onSelect: { onSelectClip(clip) },
-                    onMove: { newStart in onMoveClip(clip.id, newStart) },
+                    onMove: { newStart, targetLayerID in onMoveClip(clip.id, targetLayerID, newStart) },
+                    onDragging: onDraggingClip,
                     onTrimStart: { newTrimStart in onTrimClipStart(clip.id, newTrimStart) },
                     onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) },
                     onSetTransition: { kind, edge in onSetTransition(clip.id, kind, edge) },
@@ -186,6 +202,11 @@ struct LayerClipRow: View {
         // the full timeline — leaving every clip's absolute x-position
         // anchored to the wrong origin instead of true timeline time 0.
         .frame(width: width, height: height, alignment: .topLeading)
+        .contentShape(Rectangle())
+        // Scenes dropped on a layer go onto it where they were dropped.
+        .dropDestination(for: SceneDragPayload.self) { payloads, location in
+            onDropScenes(payloads, CMTime(seconds: max(0, Double(location.x / pixelsPerSecond)), preferredTimescale: 600))
+        }
     }
 }
 
@@ -230,11 +251,12 @@ struct ClipBlockView: View {
     let pixelsPerSecond: CGFloat
     let height: CGFloat
     let visibleX: ClosedRange<CGFloat>
-    let resolveMove: (CMTime) -> CMTime?
+    let resolveMove: (CMTime, CGFloat) -> ClipMovePreview?
     let resolveTrimStart: (CMTime) -> TimelineClip?
     let resolveTrimEnd: (CMTime) -> TimelineClip?
     let onSelect: () -> Void
-    let onMove: (CMTime) -> Void
+    let onMove: (CMTime, UUID?) -> Void
+    let onDragging: (Bool) -> Void
     let onTrimStart: (CMTime) -> Void
     let onTrimEnd: (CMTime) -> Void
     let onSetTransition: (TransitionKind, TransitionEdge) -> Void
@@ -249,6 +271,9 @@ struct ClipBlockView: View {
     /// which can take a display frame longer than this view's own state,
     /// and clearing it at once showed the clip's old place for that frame.
     @State private var preview: TimelineClip?
+    /// While moving: the layer the clip will land on, if not its own, and
+    /// how far down that layer is.
+    @State private var previewTarget: ClipMovePreview?
     /// Counts drops, so a timeout from an earlier one can't clear a later
     /// one's preview; nil when no drop is waiting for its edit.
     @State private var pendingDrop: Int?
@@ -342,14 +367,18 @@ struct ClipBlockView: View {
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
                         guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
-                        let start = resolveMove(CMTimeAdd(clip.startOffset, timeDelta(value.translation.width)))
+                        if preview == nil { onDragging(true) }
+                        let target = resolveMove(CMTimeAdd(clip.startOffset, timeDelta(value.translation.width)), value.translation.height)
                         var moved = clip
-                        moved.startOffset = start ?? clip.startOffset
+                        moved.startOffset = target?.start ?? clip.startOffset
                         showPreview(moved)
+                        previewTarget = target?.layerID == nil ? nil : target
                     }
                     .onEnded { _ in
-                        if let preview, preview.startOffset != clip.startOffset {
-                            commitDrop { onMove(preview.startOffset) }
+                        onDragging(false)
+                        let targetLayer = previewTarget?.layerID
+                        if let preview, preview.startOffset != clip.startOffset || targetLayer != nil {
+                            commitDrop { onMove(preview.startOffset, targetLayer) }
                         } else {
                             endDrop()
                         }
@@ -372,6 +401,7 @@ struct ClipBlockView: View {
             trimHandle(edge: .trailing, liveX: liveX, liveWidth: liveWidth)
         }
         .frame(height: height, alignment: .topLeading)
+        .offset(y: previewTarget?.offsetY ?? 0)
         .coordinateSpace(.named(space))
         .onChange(of: clip) { _, _ in
             if pendingDrop != nil { endDrop() }
@@ -489,6 +519,7 @@ struct ClipBlockView: View {
     private func endDrop() {
         pendingDrop = nil
         preview = nil
+        previewTarget = nil
     }
 
     private func timeDelta(_ translation: CGFloat) -> CMTime {

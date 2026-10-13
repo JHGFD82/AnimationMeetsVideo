@@ -71,12 +71,17 @@ extension EditingProject {
     /// gaps in the order given, on one new layer at the top. The media is not
     /// touched; each clip is the asset trimmed to the scene's range.
     @discardableResult
-    mutating func addScenes(_ scenes: [SceneRange], ofAsset assetID: UUID, intoTimeline timelineID: UUID) -> (layerID: UUID, clipIDs: [UUID])? {
+    mutating func addScenes(
+        _ scenes: [SceneRange],
+        ofAsset assetID: UUID,
+        intoTimeline timelineID: UUID,
+        at start: CMTime = .zero
+    ) -> (layerID: UUID, clipIDs: [UUID])? {
         guard !scenes.isEmpty, mediaClip(id: assetID) != nil,
               let index = timelines.firstIndex(where: { $0.id == timelineID })
         else { return nil }
 
-        var offset = CMTime.zero
+        var offset = start
         var added: [TimelineClip] = []
         for scene in scenes {
             let clip = TimelineClip(source: .media(assetID), startOffset: offset, trimStart: scene.start, trimEnd: scene.end)
@@ -86,6 +91,40 @@ extension EditingProject {
         let layer = TimelineLayer(customName: nil, clips: added)
         timelines[index].layers.insert(layer, at: 0)
         return (layer.id, added.map(\.id))
+    }
+}
+
+extension EditingProject {
+    /// Puts scenes on an existing layer, back to back from near `start`,
+    /// each moved to the nearest gap it fits in. Nothing is added unless
+    /// every scene fits; returns the new clips' IDs.
+    @discardableResult
+    mutating func addScenes(
+        _ scenes: [SceneRange],
+        ofAsset assetID: UUID,
+        intoLayer layerID: UUID,
+        in timelineID: UUID,
+        at start: CMTime
+    ) -> [UUID]? {
+        guard !scenes.isEmpty, mediaClip(id: assetID) != nil,
+              let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        else { return nil }
+
+        let timeline = timelines[tIndex]
+        var clips = timeline.layers[lIndex].clips
+        var cursor = CMTimeMaximum(.zero, start)
+        var added: [UUID] = []
+        for scene in scenes {
+            var clip = TimelineClip(source: .media(assetID), startOffset: .zero, trimStart: scene.start, trimEnd: scene.end)
+            guard let placed = freeStart(for: clip, among: clips, in: timeline, near: cursor) else { return nil }
+            clip.startOffset = placed
+            clips.append(clip)
+            added.append(clip.id)
+            cursor = clip.endOffset
+        }
+        timelines[tIndex].layers[lIndex].clips = clips.sorted { $0.startOffset < $1.startOffset }
+        return added
     }
 }
 

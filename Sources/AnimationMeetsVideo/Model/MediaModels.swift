@@ -140,12 +140,26 @@ struct EditingProject: Identifiable, Equatable {
     /// time — the drag-to-move interaction in the timeline UI. Where it
     /// lands is `resolvedStart(ofMoving:in:layer:to:)`; a move onto a layer
     /// with no gap big enough is rejected.
-    mutating func moveClip(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to newStart: CMTime) {
-        guard let start = resolvedStart(ofMoving: id, in: timelineID, layer: layerID, to: newStart),
+    ///
+    /// With `targetLayerID` the clip moves to that layer instead, so several
+    /// clips can share a layer; a layer left empty by the move is removed.
+    mutating func moveClip(_ id: UUID, in timelineID: UUID, layer layerID: UUID, onto targetLayerID: UUID? = nil, to newStart: CMTime) {
+        guard let start = resolvedStart(ofMoving: id, in: timelineID, layer: layerID, onto: targetLayerID, to: newStart),
               let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
               let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id })
         else {
+            return
+        }
+        if let targetLayerID, targetLayerID != layerID,
+           let targetIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == targetLayerID }) {
+            var clip = timelines[tIndex].layers[lIndex].clips.remove(at: cIndex)
+            clip.startOffset = start
+            timelines[tIndex].layers[targetIndex].clips.append(clip)
+            timelines[tIndex].layers[targetIndex].clips.sort { $0.startOffset < $1.startOffset }
+            if timelines[tIndex].layers[lIndex].clips.isEmpty {
+                timelines[tIndex].layers.remove(at: lIndex)
+            }
             return
         }
         timelines[tIndex].layers[lIndex].clips[cIndex].startOffset = start

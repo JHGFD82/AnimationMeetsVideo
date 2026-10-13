@@ -120,7 +120,7 @@ struct TimelineEditorSurface<Library: View>: View {
             rebuildPlayerItem(resetPosition: true)
         }
         .dropDestination(for: SceneDragPayload.self) { payloads, _ in
-            dropScenes(payloads)
+            dropScenes(payloads, onLayer: nil, at: .zero)
         }
     }
 
@@ -142,9 +142,14 @@ struct TimelineEditorSurface<Library: View>: View {
                 onRenameLayer: { layerID, name in project.renameLayer(layerID, in: timelineID, to: name) },
                 onMoveLayer: { layerID, offset in project.moveLayer(layerID, in: timelineID, by: offset) },
                 onMoveLayerTo: { layerID, index in project.moveLayer(layerID, in: timelineID, toIndex: index) },
-                onMoveClip: { layerID, clipID, newStart in
-                    project.moveClip(clipID, in: timelineID, layer: layerID, to: newStart)
+                onMoveClip: { layerID, clipID, targetLayerID, newStart in
+                    project.moveClip(clipID, in: timelineID, layer: layerID, onto: targetLayerID, to: newStart)
+                    if let targetLayerID, selection?.timelineClipID == clipID,
+                       project.timeline(id: timelineID)?.layer(id: targetLayerID)?.clips.contains(where: { $0.id == clipID }) == true {
+                        selection?.layerID = targetLayerID
+                    }
                 },
+                onDropScenes: { payloads, layerID, time in dropScenes(payloads, onLayer: layerID, at: time) },
                 onIdealHeightChange: { timelineIdealHeight = $0 },
                 onTrimClipStart: { layerID, clipID, newTrimStart in
                     project.trimClipStart(clipID, in: timelineID, layer: layerID, to: newTrimStart)
@@ -177,13 +182,17 @@ struct TimelineEditorSurface<Library: View>: View {
         }
     }
 
-    /// Scenes dragged from the browser become ordinary clips, back to back on
-    /// a new layer.
-    private func dropScenes(_ payloads: [SceneDragPayload]) -> Bool {
+    /// Scenes dragged from the browser become ordinary clips, back to back.
+    /// Dropped on a layer they go onto it at the drop time, if they fit;
+    /// otherwise, or dropped elsewhere, onto a new layer.
+    private func dropScenes(_ payloads: [SceneDragPayload], onLayer layerID: UUID?, at time: CMTime) -> Bool {
         var firstClip: (layerID: UUID, clipID: UUID)?
         for payload in payloads {
-            if let result = project.addScenes(payload.scenes, ofAsset: payload.assetID, intoTimeline: timelineID),
-               firstClip == nil, let clipID = result.clipIDs.first {
+            if let layerID,
+               let added = project.addScenes(payload.scenes, ofAsset: payload.assetID, intoLayer: layerID, in: timelineID, at: time) {
+                if firstClip == nil, let clipID = added.first { firstClip = (layerID, clipID) }
+            } else if let result = project.addScenes(payload.scenes, ofAsset: payload.assetID, intoTimeline: timelineID, at: time),
+                      firstClip == nil, let clipID = result.clipIDs.first {
                 firstClip = (result.layerID, clipID)
             }
         }

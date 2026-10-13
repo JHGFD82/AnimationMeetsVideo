@@ -16,7 +16,10 @@ struct TimelineView: View {
     let onMoveLayer: (UUID, Int) -> Void
     /// Moves a layer to an index in the stack, after dragging its header.
     let onMoveLayerTo: (UUID, Int) -> Void
-    let onMoveClip: (UUID, UUID, CMTime) -> Void
+    /// Layer, clip, the layer it moves to if another, and its new start.
+    let onMoveClip: (UUID, UUID, UUID?, CMTime) -> Void
+    /// Scenes dropped on a layer (or, with nil, below the layers) at a time.
+    let onDropScenes: ([SceneDragPayload], UUID?, CMTime) -> Bool
     /// The height the timeline needs to show every layer without empty
     /// space under them, so the window can give the rest to the viewer.
     let onIdealHeightChange: (CGFloat) -> Void
@@ -53,6 +56,9 @@ struct TimelineView: View {
     @State private var beatMarkers: [CMTime] = []
     /// The layer whose header is being dragged, and how far.
     @State private var layerDrag: (id: UUID, dy: CGFloat)?
+    /// The layer of a clip being dragged, drawn above the others so the
+    /// clip stays visible over the layer it is moving to.
+    @State private var draggingClipLayerID: UUID?
     @State private var headerBarHeight: CGFloat = 32
     @AppStorage("clickOnBeats") private var clickOnBeats = false
     @AppStorage("beatClickFrequency") private var beatClickFrequency = 1000.0
@@ -60,6 +66,8 @@ struct TimelineView: View {
     private let rulerHeight: CGFloat = 28
     private let propertyRowHeight: CGFloat = 22
     private let separatorHeight: CGFloat = 1
+    /// A slim row under the layers that takes drops as a new layer.
+    private let newLayerRowHeight: CGFloat = 22
     private let topPadding: CGFloat = 6
 
     /// Everything one layer shows, top to bottom. The header column and the
@@ -83,7 +91,7 @@ struct TimelineView: View {
     }
 
     private var contentHeight: CGFloat {
-        timeline.layers.reduce(0) { $0 + blockHeight(of: $1) }
+        timeline.layers.reduce(0) { $0 + blockHeight(of: $1) } + newLayerRowHeight
     }
 
     private var idealHeight: CGFloat {
@@ -222,13 +230,6 @@ struct TimelineView: View {
                                 .frame(width: viewport.width, alignment: .topLeading)
                                 .clipped()
                         }
-                        .background(alignment: .topTrailing) {
-                            // Empty space under the clips scrubs too.
-                            Color.clear
-                                .frame(width: viewport.width)
-                                .contentShape(Rectangle())
-                                .gesture(scrubGesture(in: viewport))
-                        }
                         .overlay(alignment: .topLeading) { layerDropIndicator }
                     }
                     .frame(height: layersHeight)
@@ -331,6 +332,22 @@ struct TimelineView: View {
         layerDrag = nil
     }
 
+    /// Where a clip dragged by `dy` from its layer and asked to start at
+    /// `start` lands: on the layer under the pointer when that layer has
+    /// room for it, otherwise on its own layer.
+    private func resolveMove(_ clip: TimelineClip, from layerID: UUID, dy: CGFloat, to start: CMTime) -> ClipMovePreview? {
+        let tops = layerTops
+        guard let from = timeline.layers.firstIndex(where: { $0.id == layerID }) else { return nil }
+        let y = tops[from] + layerHeight / 2 + dy
+        if let target = timeline.layers.indices.last(where: { tops[$0] <= y }),
+           target != from, y < tops[target] + blockHeight(of: timeline.layers[target]),
+           let landed = project.resolvedStart(ofMoving: clip.id, in: timelineID, layer: layerID, onto: timeline.layers[target].id, to: start) {
+            return ClipMovePreview(start: landed, layerID: timeline.layers[target].id, offsetY: tops[target] - tops[from])
+        }
+        return project.resolvedStart(ofMoving: clip.id, in: timelineID, layer: layerID, to: start)
+            .map { ClipMovePreview(start: $0, layerID: nil, offsetY: 0) }
+    }
+
     private func layerHeaders(frameTime: CMTime) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(timeline.layers.enumerated()), id: \.element.id) { index, layer in
@@ -384,6 +401,7 @@ struct TimelineView: View {
                 .offset(y: isDragged ? layerDrag?.dy ?? 0 : 0)
                 .zIndex(isDragged ? 1 : 0)
             }
+            Color.clear.frame(height: newLayerRowHeight)
         }
         .background(.background)
     }
@@ -414,7 +432,10 @@ struct TimelineView: View {
                         height: layerHeight,
                         visibleX: viewport.visibleContentX,
                         onSelectClip: { clip in onSelectClip(layer.id, clip) },
-                        onMoveClip: { clipID, newStart in onMoveClip(layer.id, clipID, newStart) },
+                        resolveMove: { clip, dy, start in resolveMove(clip, from: layer.id, dy: dy, to: start) },
+                        onMoveClip: { clipID, target, newStart in onMoveClip(layer.id, clipID, target, newStart) },
+                        onDraggingClip: { dragging in draggingClipLayerID = dragging ? layer.id : nil },
+                        onDropScenes: { payloads, time in onDropScenes(payloads, layer.id, time) },
                         onTrimClipStart: { clipID, newStart in onTrimClipStart(layer.id, clipID, newStart) },
                         onTrimClipEnd: { clipID, newEnd in onTrimClipEnd(layer.id, clipID, newEnd) },
                         onSetTransition: { clipID, kind, edge in onSetTransition(layer.id, clipID, kind, edge) },
@@ -423,6 +444,8 @@ struct TimelineView: View {
                         onSetTransitionCurve: { clipID, edge, curve in onSetTransitionCurve(layer.id, clipID, edge, curve) },
                         onDetachAudio: { clipID in onDetachAudio(layer.id, [clipID]) }
                     )
+                    // Empty space on a layer scrubs; clips claim their own clicks.
+                    .gesture(contentScrubGesture(in: viewport))
                     if showsLinkedAudio(of: layer) {
                         LinkedAudioLane(
                             layer: layer,
@@ -454,7 +477,12 @@ struct TimelineView: View {
                     }
                     separator
                 }
+                .zIndex(draggingClipLayerID == layer.id ? 1 : 0)
             }
+            NewLayerDropRow(height: newLayerRowHeight) { payloads, x in
+                onDropScenes(payloads, nil, CMTime(seconds: max(0, Double(x / pixelsPerSecond)), preferredTimescale: 600))
+            }
+            .gesture(contentScrubGesture(in: viewport))
         }
         .frame(width: contentWidth, alignment: .topLeading)
     }
@@ -507,6 +535,14 @@ struct TimelineView: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in scrub(atX: value.location.x, in: viewport) }
             .onEnded { value in scrub(atX: value.location.x, in: viewport) }
+    }
+
+    /// The same for views laid out across the whole span, whose x is in
+    /// unscrolled content coordinates.
+    private func contentScrubGesture(in viewport: TimelineViewport) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in scrub(atX: value.location.x - viewport.scrollX, in: viewport) }
+            .onEnded { value in scrub(atX: value.location.x - viewport.scrollX, in: viewport) }
     }
 
     private func scrub(atX x: CGFloat, in viewport: TimelineViewport) {
@@ -581,5 +617,27 @@ struct TimelineColumnHeaderRow: View {
         .padding(.horizontal, 8)
         .padding(.bottom, 4)
         .frame(height: height, alignment: .bottomLeading)
+    }
+}
+
+/// The slim row under the layers: scenes dropped here go on a new layer at
+/// the drop time. It says so while something is dragged over it, and is
+/// otherwise empty space that scrubs like the rest of the track area.
+private struct NewLayerDropRow: View {
+    let height: CGFloat
+    let onDrop: ([SceneDragPayload], CGFloat) -> Bool
+
+    @State private var isTargeted = false
+
+    var body: some View {
+        Text(isTargeted ? "Drop for a new layer" : "")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
+            .background(isTargeted ? Color.accentColor.opacity(0.12) : .clear)
+            .contentShape(Rectangle())
+            .dropDestination(for: SceneDragPayload.self) { payloads, location in
+                onDrop(payloads, location.x)
+            } isTargeted: { isTargeted = $0 }
     }
 }

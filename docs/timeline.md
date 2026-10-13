@@ -14,13 +14,18 @@ right with the ruler across its top. The transitions panel, opened with the
 button in the timeline's header, takes its place at the right end.
 
 The timeline is never taller than its layers need: under the last layer is
-only the scrollbar (shown only while zoomed in), and the viewer gets the
-rest of the window. The resize handle above it sets the most it may take;
-with more layers than fit, the layers scroll.
+only a slim row for dropping onto a new layer, then the scrollbar (shown
+only while zoomed in), and the viewer gets the rest of the window. The
+resize handle above it sets the most it may take; with more layers than fit,
+the layers scroll.
 
 Importing a file only adds it to the library. It reaches a timeline when
 dragged there (a whole asset, or scenes of it), or from **Add to Timeline**
-in its menu; each placement gets a new layer at the top.
+in its menu. Dropped on a layer it goes onto that layer at the drop time,
+in the nearest gap it fits (`addScenes(_:ofAsset:intoLayer:in:at:)`);
+dropped on the row under the layers, anywhere else, or where it doesn't
+fit, it gets a new layer at the top. **Add to Timeline** always makes a new
+layer.
 
 ## Layers
 
@@ -100,6 +105,9 @@ a clip may go are in `ClipPlacement.swift`:
   neighbor goes to the nearest free side of it, rounded off the neighbor
   onto a frame for video. A move onto a layer with no gap big enough is
   refused.
+- **A layer holds any number of clips.** Dragging a clip up or down onto
+  another layer moves it there, under the same rules, when that layer has
+  room; otherwise it stays on its own layer. A layer left empty is removed.
 - Trimming the start keeps the clip's end fixed. A trim can't reveal media
   before the source's start or after its end, can't cross a neighbor, and
   can't make a clip shorter than one frame (a twentieth of a second for
@@ -199,4 +207,3 @@ A drag is saved when it ends, as one undo step.
 - A larger graph editor for curves on short transitions.
 - **Snapping** to other clips' edges, the playhead or beat markers.
 - Scrolling to follow the playhead during playback.
-- Moving a clip to another layer by dragging it up or down.

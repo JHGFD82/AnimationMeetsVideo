@@ -80,11 +80,31 @@ extension EditingProject {
 
     /// Where a clip asked to start at `proposedStart` actually lands: never
     /// before zero, on a frame if it has pictures, and never overlapping
-    /// another clip on its layer. A drop onto a neighbor goes to the nearest
-    /// free edge; nil means the layer has no gap big enough. The timeline
-    /// shows this while dragging, so the drop lands where the clip was shown.
-    func resolvedStart(ofMoving id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedStart: CMTime) -> CMTime? {
-        guard let (timeline, moving, others) = placementContext(id, in: timelineID, layer: layerID) else { return nil }
+    /// another clip on its layer — or on `targetLayerID` when it is moving
+    /// to another layer. A drop onto a neighbor goes to the nearest free
+    /// edge; nil means the layer has no gap big enough. The timeline shows
+    /// this while dragging, so the drop lands where the clip was shown.
+    func resolvedStart(
+        ofMoving id: UUID,
+        in timelineID: UUID,
+        layer layerID: UUID,
+        onto targetLayerID: UUID? = nil,
+        to proposedStart: CMTime
+    ) -> CMTime? {
+        guard let (timeline, moving, sameLayer) = placementContext(id, in: timelineID, layer: layerID) else { return nil }
+        let others: [TimelineClip]
+        if let targetLayerID, targetLayerID != layerID {
+            guard let target = timeline.layer(id: targetLayerID) else { return nil }
+            others = target.clips
+        } else {
+            others = sameLayer
+        }
+        return freeStart(for: moving, among: others, in: timeline, near: proposedStart)
+    }
+
+    /// The nearest start to `proposedStart` where `clip` fits among `others`
+    /// on the timeline's grid, or nil if there is no gap big enough.
+    func freeStart(for moving: TimelineClip, among others: [TimelineClip], in timeline: Timeline, near proposedStart: CMTime) -> CMTime? {
         let locked = isFrameLocked(moving)
         let length = moving.trimmedDuration
         var candidate = timeline.placementTime(CMTimeMaximum(.zero, proposedStart), .nearest, frameLocked: locked)
