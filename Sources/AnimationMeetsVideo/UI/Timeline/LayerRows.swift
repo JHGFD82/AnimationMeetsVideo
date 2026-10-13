@@ -182,10 +182,16 @@ struct ClipBlockView: View {
     let onTrimStart: (CMTime) -> Void
     let onTrimEnd: (CMTime) -> Void
 
-    /// The clip as it will be if the current drag ends now. Plain state,
-    /// not gesture state: it is cleared in the same update that commits
-    /// the drop, so the block never shows its old place for a frame.
+    /// The clip as it will be if the current drag ends now. After a drop
+    /// it stays up until the edited clip comes back down from the project:
+    /// the edit travels up to the app's state and back through the window,
+    /// which can take a display frame longer than this view's own state,
+    /// and clearing it at once showed the clip's old place for that frame.
     @State private var preview: TimelineClip?
+    /// Counts drops, so a timeout from an earlier one can't clear a later
+    /// one's preview; nil when no drop is waiting for its edit.
+    @State private var pendingDrop: Int?
+    @State private var dropCount = 0
     @State private var isTrimming = false
 
     private let handleWidth: CGFloat = 8
@@ -249,15 +255,15 @@ struct ClipBlockView: View {
                         let start = resolveMove(CMTimeAdd(clip.startOffset, timeDelta(value.translation.width)))
                         var moved = clip
                         moved.startOffset = start ?? clip.startOffset
-                        preview = moved
+                        showPreview(moved)
                     }
                     .onEnded { value in
                         if let preview, preview.startOffset != clip.startOffset {
-                            onMove(preview.startOffset)
-                        } else if hypot(value.translation.width, value.translation.height) < 3 {
-                            onSelect()
+                            commitDrop { onMove(preview.startOffset) }
+                        } else {
+                            if hypot(value.translation.width, value.translation.height) < 3 { onSelect() }
+                            endDrop()
                         }
-                        preview = nil
                     }
             )
 
@@ -269,9 +275,37 @@ struct ClipBlockView: View {
             trimHandle(edge: .trailing, liveX: liveX, liveWidth: liveWidth)
         }
         .frame(height: height, alignment: .topLeading)
+        .onChange(of: clip) { _, _ in
+            if pendingDrop != nil { endDrop() }
+        }
     }
 
     private enum Edge { case leading, trailing }
+
+    /// Sets the preview for a drag in progress.
+    private func showPreview(_ clip: TimelineClip) {
+        pendingDrop = nil
+        preview = clip
+    }
+
+    /// Commits a drop and keeps showing the preview until the edited clip
+    /// arrives. If it never does (the edit was refused), the preview goes
+    /// after a moment.
+    private func commitDrop(_ commit: () -> Void) {
+        dropCount += 1
+        let drop = dropCount
+        pendingDrop = drop
+        commit()
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            if pendingDrop == drop { endDrop() }
+        }
+    }
+
+    private func endDrop() {
+        pendingDrop = nil
+        preview = nil
+    }
 
     private func timeDelta(_ translation: CGFloat) -> CMTime {
         CMTime(seconds: Double(translation / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
@@ -290,21 +324,24 @@ struct ClipBlockView: View {
                         guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
                         isTrimming = true
                         let delta = timeDelta(value.translation.width)
-                        preview = switch edge {
+                        let trimmed = switch edge {
                         case .leading: resolveTrimStart(CMTimeAdd(clip.trimStart, delta)) ?? clip
                         case .trailing: resolveTrimEnd(CMTimeAdd(clip.trimEnd, delta)) ?? clip
                         }
+                        showPreview(trimmed)
                     }
                     .onEnded { _ in
                         if let preview, preview != clip {
-                            switch edge {
-                            case .leading: onTrimStart(preview.trimStart)
-                            case .trailing: onTrimEnd(preview.trimEnd)
+                            commitDrop {
+                                switch edge {
+                                case .leading: onTrimStart(preview.trimStart)
+                                case .trailing: onTrimEnd(preview.trimEnd)
+                                }
                             }
-                        } else if !isTrimming {
-                            onSelect()
+                        } else {
+                            if !isTrimming { onSelect() }
+                            endDrop()
                         }
-                        preview = nil
                         isTrimming = false
                     }
             )

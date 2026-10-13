@@ -45,7 +45,10 @@ private struct KeyframeDiamond: View {
     let onMove: (CMTime, CMTime) -> Void
     let onDelete: (CMTime) -> Void
 
-    @GestureState private var dragX: CGFloat = 0
+    /// Where the diamond is dragged to, on its snapped frame. After a drop
+    /// it stays there until the moved keyframe comes back from the project
+    /// and replaces this diamond, so the old place never shows for a frame.
+    @State private var dragX: CGFloat = 0
 
     private let size: CGFloat = 9
 
@@ -60,13 +63,23 @@ private struct KeyframeDiamond: View {
             .offset(x: x - (size + 6) / 2)
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                    .updating($dragX) { value, state, _ in state = value.translation.width }
+                    .onChanged { value in
+                        guard abs(value.translation.width) >= 3 else { return }
+                        dragX = CGFloat(CMTimeSubtract(target(value.translation.width), time).seconds) * pixelsPerSecond
+                    }
                     .onEnded { value in
-                        if abs(value.translation.width) < 3 {
-                            onSeek(time)
+                        let target = target(value.translation.width)
+                        if abs(value.translation.width) < 3 || target == time {
+                            dragX = 0
+                            if abs(value.translation.width) < 3 { onSeek(time) }
                         } else {
-                            let delta = CMTime(seconds: Double(value.translation.width / pixelsPerSecond), preferredTimescale: 600)
-                            onMove(time, snap(CMTimeAdd(time, delta)))
+                            onMove(time, target)
+                            Task { @MainActor in
+                                // In case the move was refused and this
+                                // diamond stays.
+                                try? await Task.sleep(for: .milliseconds(500))
+                                dragX = 0
+                            }
                         }
                     }
             )
@@ -74,5 +87,9 @@ private struct KeyframeDiamond: View {
                 Button("Delete Keyframe", role: .destructive) { onDelete(time) }
             }
             .help(time.formatted)
+    }
+
+    private func target(_ translation: CGFloat) -> CMTime {
+        snap(CMTimeAdd(time, CMTime(seconds: Double(translation / pixelsPerSecond), preferredTimescale: 48_000)))
     }
 }
