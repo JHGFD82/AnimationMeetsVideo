@@ -47,3 +47,20 @@ import Testing
         #expect(BeatMarkerOverlay.beatsPerMarker(beats, pixelsPerSecond: 4.9) == 8)
     }
 }
+
+@Suite struct RulerLandmarkTests {
+    @Test func roundUnitsStandOutOnlyWhenLabelsAreFiner() {
+        // Labels every 4 frames: whole seconds, minutes and hours stand out.
+        let frames = RulerTicks(frameRate: 24, pixelsPerFrame: 20)
+        #expect(frames.landmark(ofFrame: 4) == .none)
+        #expect(frames.landmark(ofFrame: 24) == .second)
+        #expect(frames.landmark(ofFrame: 24 * 60) == .minute)
+        #expect(frames.landmark(ofFrame: 24 * 3600) == .hour)
+
+        // Labels every 5 seconds: seconds are ordinary, minutes stand out.
+        let seconds = RulerTicks(frameRate: 24, pixelsPerFrame: 16.0 / 24)
+        #expect(seconds.framesPerLabel == 5 * 24)
+        #expect(seconds.landmark(ofFrame: 10 * 24) == .none)
+        #expect(seconds.landmark(ofFrame: 120 * 24) == .minute)
+    }
+}

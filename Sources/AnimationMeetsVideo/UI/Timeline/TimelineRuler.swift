@@ -19,13 +19,13 @@ struct TimelineRuler: View {
                     with: .color(.primary.opacity(0.06))
                 )
             }
-            drawTicks(context: context)
+            drawTicks(context: context, height: size.height)
         }
         .frame(width: viewport.width)
         .clipped()
     }
 
-    private func drawTicks(context: GraphicsContext) {
+    private func drawTicks(context: GraphicsContext, height: CGFloat) {
         let frameDuration = Timeline.frameDuration(for: frameRate)
         let frameSeconds = frameDuration.seconds
         let ticks = RulerTicks(frameRate: frameRate, pixelsPerFrame: viewport.pixelsPerSecond * CGFloat(frameSeconds))
@@ -36,19 +36,24 @@ struct TimelineRuler: View {
         let firstFrame = max(0, Int(((visible.lowerBound - Double(RulerTicks.minimumLabelSpacing / viewport.pixelsPerSecond)) / frameSeconds).rounded(.down)))
         let lastFrame = Int((min(visible.upperBound, viewport.contentSeconds) / frameSeconds).rounded(.up))
         var frame = firstFrame / step * step
-        var major = Path(), mid = Path(), minor = Path()
+        var landmarks = Path(), major = Path(), mid = Path(), minor = Path()
         while frame <= lastFrame {
             let x = viewport.x(atSeconds: Double(frame) * frameSeconds)
             switch ticks.level(ofFrame: frame) {
             case .label:
-                major.move(to: CGPoint(x: x, y: 0))
-                major.addLine(to: CGPoint(x: x, y: 12))
+                let landmark = ticks.landmark(ofFrame: frame)
+                if landmark == .none {
+                    major.move(to: CGPoint(x: x, y: 0))
+                    major.addLine(to: CGPoint(x: x, y: 12))
+                } else {
+                    landmarks.move(to: CGPoint(x: x, y: 0))
+                    landmarks.addLine(to: CGPoint(x: x, y: height))
+                }
                 let time = CMTimeMultiply(frameDuration, multiplier: Int32(clamping: frame))
-                context.draw(
-                    Text(time.compactTimecode(frameRate: frameRate)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary),
-                    at: CGPoint(x: x + 3, y: 18),
-                    anchor: .leading
-                )
+                let label = Text(time.compactTimecode(frameRate: frameRate))
+                    .font(.caption2.monospacedDigit().weight(landmark.weight))
+                    .foregroundStyle(landmark == .none ? Color.secondary : Color.primary)
+                context.draw(label, at: CGPoint(x: x + 3, y: 18), anchor: .leading)
             case .mid:
                 mid.move(to: CGPoint(x: x, y: 0))
                 mid.addLine(to: CGPoint(x: x, y: 8))
@@ -61,6 +66,7 @@ struct TimelineRuler: View {
         context.stroke(minor, with: .color(.secondary.opacity(0.4)), lineWidth: 1)
         context.stroke(mid, with: .color(.secondary.opacity(0.6)), lineWidth: 1)
         context.stroke(major, with: .color(.secondary.opacity(0.85)), lineWidth: 1)
+        context.stroke(landmarks, with: .color(.primary.opacity(0.8)), lineWidth: 1)
     }
 }
 
@@ -70,18 +76,40 @@ struct TimelineRuler: View {
 /// 5, 10, 15, 30 seconds and up. Labels go on the smallest step that leaves
 /// room for them, with a mid tick halfway and minor ticks on the smallest
 /// step that still leaves visible gaps.
+///
+/// When labels are closer than a second, a minute or an hour, the labels on
+/// whole seconds, minutes or hours are landmarks: drawn brighter, heavier
+/// and with a full-height tick, so the round numbers stand out among the
+/// frames, seconds or minutes between them.
 struct RulerTicks: Equatable {
     enum Level { case label, mid, minor }
+
+    enum Landmark: Int, Comparable {
+        case none, second, minute, hour
+
+        static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+
+        var weight: Font.Weight {
+            switch self {
+            case .none: .regular
+            case .second: .medium
+            case .minute: .semibold
+            case .hour: .bold
+            }
+        }
+    }
 
     let framesPerLabel: Int
     let framesPerMidTick: Int?
     let framesPerTick: Int
+    private let framesPerSecond: Int
 
     static let minimumLabelSpacing: CGFloat = 80
     static let minimumTickSpacing: CGFloat = 6
 
     init(frameRate: Double, pixelsPerFrame: CGFloat) {
-        let steps = Self.steps(framesPerSecond: max(1, Int(frameRate.rounded())))
+        framesPerSecond = max(1, Int(frameRate.rounded()))
+        let steps = Self.steps(framesPerSecond: framesPerSecond)
         let label = steps.first { CGFloat($0) * pixelsPerFrame >= Self.minimumLabelSpacing } ?? steps[steps.count - 1]
         let tick = steps.first { label % $0 == 0 && CGFloat($0) * pixelsPerFrame >= Self.minimumTickSpacing } ?? label
         framesPerLabel = label
@@ -97,6 +125,17 @@ struct RulerTicks: Equatable {
         }
         let seconds = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 18_000, 36_000]
         return withinSecond + seconds.map { $0 * fps }
+    }
+
+    /// The largest round unit a labeled frame starts, if labels are finer
+    /// than that unit. Counted in nominal frames, like the timecode.
+    func landmark(ofFrame frame: Int) -> Landmark {
+        let units: [(Landmark, Int)] = [(.hour, 3600), (.minute, 60), (.second, 1)]
+        for (landmark, seconds) in units {
+            let frames = seconds * framesPerSecond
+            if framesPerLabel < frames, frame % frames == 0 { return landmark }
+        }
+        return .none
     }
 
     func level(ofFrame frame: Int) -> Level {

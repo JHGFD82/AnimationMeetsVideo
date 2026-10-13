@@ -50,7 +50,10 @@ number of frames, or is a round number of seconds:
 Above a second the steps are 1, 2, 5, 10, 15 and 30 seconds, then minutes.
 Labels go on the smallest step that is at least 80 points wide, with a
 taller tick halfway and short ticks on the smallest step that divides the
-label step and is at least 6 points wide. Labels are compact timecode
+label step and is at least 6 points wide. When labels are closer together
+than a second, a minute or an hour, the labels on whole seconds, minutes
+or hours stand out: brighter, heavier for each larger unit, and with a tick
+the full height of the ruler. Labels are compact timecode
 (`seconds:frames`, with minutes and hours added when needed), counted in
 whole frames so NTSC rates line up with the timecode readout.
 
