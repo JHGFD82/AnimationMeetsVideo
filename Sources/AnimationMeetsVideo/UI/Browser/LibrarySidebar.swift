@@ -23,7 +23,10 @@ struct LibrarySidebar: View {
                         videoRow(clip)
                     } else {
                         assetLabel(clip)
+                            .draggable(wholeAssetPayload(clip))
                             .contextMenu {
+                                Button("Add to Timeline") { place(clip) }
+                                Divider()
                                 ReplaceMediaMenuItems(
                                     clip: clip, project: $project, analysis: analysis,
                                     controller: replacement, packageURL: packageURL
@@ -151,7 +154,10 @@ struct LibrarySidebar: View {
             }
         } label: {
             assetLabel(clip)
+                .draggable(wholeAssetPayload(clip))
                 .contextMenu {
+                    Button("Add to Timeline") { place(clip) }
+                    Divider()
                     Button("Cut Sensitivity…") {
                         sensitivityTarget = SensitivityTarget(assetID: clip.id, scope: .asset)
                     }
@@ -197,6 +203,17 @@ struct LibrarySidebar: View {
             if !items.isEmpty { groups.append(PickedScenes(clip: clip, items: items)) }
         }
         return groups
+    }
+
+    /// Dragging an asset itself carries the whole file as one scene.
+    private func wholeAssetPayload(_ clip: MediaClip) -> SceneDragPayload {
+        SceneDragPayload(assetID: clip.id, scenes: [SceneRange(start: .zero, end: clip.duration, origin: .auto)])
+    }
+
+    private func place(_ clip: MediaClip) {
+        if let result = project.placeAsset(clip.id, intoTimeline: activeTimelineID) {
+            selection = TimelineSelection(timelineID: activeTimelineID, layerID: result.layerID, timelineClipID: result.clipID)
+        }
     }
 
     private func dragPayload(for key: SceneKey) -> SceneDragPayload {
@@ -280,6 +297,8 @@ struct LibrarySidebar: View {
         }
     }
 
+    /// Imported files go into the library only; they reach a timeline when
+    /// dragged there or added from their menu.
     private func importMedia() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.movie, .audio]
@@ -292,11 +311,7 @@ struct LibrarySidebar: View {
             for url in urls {
                 do {
                     let clip = try await MediaImporter.importClip(at: url)
-                    if let result = project.importClip(clip, intoTimeline: activeTimelineID) {
-                        if selection == nil {
-                            selection = TimelineSelection(timelineID: activeTimelineID, layerID: result.layerID, timelineClipID: result.clipID)
-                        }
-                    }
+                    project.addMedia(clip)
                 } catch {
                     importError = "\(url.lastPathComponent): \(error.localizedDescription)"
                 }

@@ -54,17 +54,35 @@ struct EditingProject: Identifiable, Equatable {
         }
     }
 
-    /// Adds an imported clip to the media pool and creates a new layer for
-    /// it at the top of the stack, After Effects-style — each new piece of
-    /// footage gets its own layer rather than merging into a shared track.
-    @discardableResult
-    mutating func importClip(_ clip: MediaClip, intoTimeline timelineID: UUID) -> (layerID: UUID, clipID: UUID)? {
+    /// Adds an imported file to the media pool. It stays in the library
+    /// until the person puts it on a timeline.
+    mutating func addMedia(_ clip: MediaClip) {
         clips.append(clip)
-        guard let index = timelines.firstIndex(where: { $0.id == timelineID }) else { return nil }
+    }
+
+    /// Puts a whole asset on a new layer at the top of the stack, After
+    /// Effects-style — each placed piece of footage gets its own layer
+    /// rather than merging into a shared track.
+    @discardableResult
+    mutating func placeAsset(_ assetID: UUID, intoTimeline timelineID: UUID) -> (layerID: UUID, clipID: UUID)? {
+        guard let clip = mediaClip(id: assetID),
+              let index = timelines.firstIndex(where: { $0.id == timelineID })
+        else {
+            return nil
+        }
         let timelineClip = TimelineClip(source: .media(clip.id), startOffset: .zero, trimStart: .zero, trimEnd: clip.duration)
         let layer = TimelineLayer(customName: nil, clips: [timelineClip])
         timelines[index].layers.insert(layer, at: 0)
         return (layer.id, timelineClip.id)
+    }
+
+    /// Adds a file to the media pool and places it on a timeline in one
+    /// step. Importing in the app only adds to the pool; this is for setting
+    /// up projects in code, such as in tests.
+    @discardableResult
+    mutating func importClip(_ clip: MediaClip, intoTimeline timelineID: UUID) -> (layerID: UUID, clipID: UUID)? {
+        addMedia(clip)
+        return placeAsset(clip.id, intoTimeline: timelineID)
     }
 
     @discardableResult

@@ -11,6 +11,10 @@ The timeline sits under the viewer: a label column on the left (layer
 number and name, and transform property rows when shown), and the track
 area on the right with the ruler across its top.
 
+Importing a file only adds it to the library. It reaches a timeline when
+dragged there (a whole asset, or scenes of it), or from **Add to Timeline**
+in its menu; each placement gets a new layer at the top.
+
 ## Zoom and scroll
 
 The track area scrolls itself sideways instead of sitting in a horizontal
