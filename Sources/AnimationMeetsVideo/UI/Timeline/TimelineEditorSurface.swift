@@ -1,0 +1,228 @@
+import AVFoundation
+import CoreMedia
+import SwiftUI
+
+/// The viewer + inspector + timeline for a single timeline within a project.
+/// Reused by both the main window and the external display's independent mode.
+struct TimelineEditorSurface: View {
+    @Binding var project: EditingProject
+    @Binding var timelineID: UUID
+    @Binding var selection: TimelineSelection?
+    let playback: PlaybackModel
+    let analysis: AssetAnalysis
+
+    @State private var playheadTime: CMTime = .zero
+    @State private var buildTask: Task<Void, Never>?
+    @State private var buildError: String?
+    @State private var timelineHeight: CGFloat = 280
+
+    private let minTimelineHeight: CGFloat = 140
+    private let minTopAreaHeight: CGFloat = 220
+
+    private var timeline: Timeline? {
+        project.timeline(id: timelineID)
+    }
+
+    private var compositionKey: CompositionKey { CompositionKey(project: project) }
+
+    private var selectedTimelineClip: TimelineClip? {
+        guard let selection, selection.timelineID == timelineID, let timeline,
+              let layer = timeline.layer(id: selection.layerID)
+        else {
+            return nil
+        }
+        return layer.clips.first { $0.id == selection.timelineClipID }
+    }
+
+    private var selectedInfo: ResolvedClipInfo? {
+        guard let selectedTimelineClip else { return nil }
+        return project.resolvedInfo(for: selectedTimelineClip.source)
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let maxTimelineHeight = max(minTimelineHeight, geometry.size.height - minTopAreaHeight)
+            let resolvedTimelineHeight = min(max(timelineHeight, minTimelineHeight), maxTimelineHeight)
+
+            VStack(spacing: 0) {
+                TimelineHeaderBar(project: $project, timelineID: $timelineID)
+                Divider()
+
+                HStack(spacing: 0) {
+                    ViewerPanel(
+                        playback: playback,
+                        hasContent: !(timeline?.layers.isEmpty ?? true),
+                        frameSize: timeline?.frameSize ?? CGSize(width: 16, height: 9),
+                        frameRate: timeline?.frameRate ?? 24,
+                        buildError: buildError
+                    )
+                    InspectorPanel(
+                        project: $project,
+                        timelineID: timelineID,
+                        selection: selection,
+                        info: selectedInfo,
+                        timelineClip: selectedTimelineClip,
+                        playheadTime: playheadTime,
+                        onSeek: { time in scrub(to: time) },
+                        onDeleteSelection: { selection = nil }
+                    )
+                    .frame(width: 280)
+                }
+                .frame(maxHeight: .infinity)
+
+                TimelineResizeHandle(height: $timelineHeight, minHeight: minTimelineHeight, maxHeight: maxTimelineHeight)
+
+                if let timeline {
+                    TimelineView(
+                        project: project,
+                        timeline: timeline,
+                        timelineID: timelineID,
+                        selection: selection,
+                        beatTracks: analysis.beats,
+                        playheadTime: $playheadTime,
+                        onScrub: { time in scrub(to: time) },
+                        onSelectClip: { layerID, clip in
+                            selection = TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clip.id)
+                        },
+                        onRenameLayer: { layerID, name in project.renameLayer(layerID, in: timelineID, to: name) },
+                        onMoveLayer: { layerID, offset in project.moveLayer(layerID, in: timelineID, by: offset) },
+                        onMoveClip: { layerID, clipID, newStart in
+                            project.moveClip(clipID, in: timelineID, layer: layerID, to: newStart)
+                        },
+                        onTrimClipStart: { layerID, clipID, newTrimStart in
+                            project.trimClipStart(clipID, in: timelineID, layer: layerID, to: newTrimStart)
+                        },
+                        onTrimClipEnd: { layerID, clipID, newTrimEnd in
+                            project.trimClipEnd(clipID, in: timelineID, layer: layerID, to: newTrimEnd)
+                        },
+                        onEditTransform: { layerID, change in
+                            project.editTransform(of: layerID, in: timelineID, change)
+                        }
+                    )
+                    .frame(height: resolvedTimelineHeight)
+                } else {
+                    ContentUnavailableView("No Timeline Selected", systemImage: "timeline.selection")
+                        .frame(height: resolvedTimelineHeight)
+                }
+            }
+        }
+        .onChange(of: timelineID) { _, newValue in
+            if selection?.timelineID != newValue {
+                selection = nil
+            }
+            playback.player.pause()
+            playheadTime = .zero
+            rebuildPlayerItem(resetPosition: true)
+        }
+        .onChange(of: compositionKey) { _, _ in
+            rebuildPlayerItem()
+        }
+        .onChange(of: playback.currentTime) { _, newValue in
+            if playback.isPlaying {
+                playheadTime = newValue
+            }
+        }
+        .onAppear {
+            rebuildPlayerItem(resetPosition: true)
+        }
+        .dropDestination(for: SceneDragPayload.self) { payloads, _ in
+            dropScenes(payloads)
+        }
+    }
+
+    /// Scenes dragged from the browser become ordinary clips, back to back on
+    /// a new layer.
+    private func dropScenes(_ payloads: [SceneDragPayload]) -> Bool {
+        var firstClip: (layerID: UUID, clipID: UUID)?
+        for payload in payloads {
+            if let result = project.addScenes(payload.scenes, ofAsset: payload.assetID, intoTimeline: timelineID),
+               firstClip == nil, let clipID = result.clipIDs.first {
+                firstClip = (result.layerID, clipID)
+            }
+        }
+        guard let firstClip else { return false }
+        selection = TimelineSelection(timelineID: timelineID, layerID: firstClip.layerID, timelineClipID: firstClip.clipID)
+        return true
+    }
+
+    // MARK: -
+
+    /// Scrubbing moves the shared playhead and seeks the player directly —
+    /// the player always shows the whole composited timeline (every layer
+    /// stacked together), not just one selected clip, so no per-clip time
+    /// translation is needed here.
+    private func scrub(to time: CMTime) {
+        playheadTime = time
+        playback.seek(to: time)
+    }
+
+    /// Rebuilds the player item from the current project. Keeps the
+    /// position and play state the player has when the build *finishes*,
+    /// not when it started, so edits made during playback don't jump back.
+    private func rebuildPlayerItem(resetPosition: Bool = false) {
+        buildTask?.cancel()
+        guard let timeline, !timeline.layers.isEmpty else {
+            playback.player.replaceCurrentItem(with: nil)
+            buildError = nil
+            return
+        }
+        let project = self.project
+        let tID = timelineID
+        let player = playback.player
+        buildTask = Task {
+            do {
+                let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: tID)
+                guard !Task.isCancelled else { return }
+                let wasPlaying = player.timeControlStatus != .paused
+                let resumeTime = resetPosition ? playheadTime : player.currentTime()
+                let item = AVPlayerItem(asset: composed.composition)
+                item.videoComposition = composed.videoComposition
+                player.replaceCurrentItem(with: item)
+                _ = await player.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                if wasPlaying { player.play() }
+                buildError = nil
+            } catch is CancellationError {
+            } catch {
+                guard !Task.isCancelled else { return }
+                if let compositionError = error as? CompositionError, case .emptyTimeline = compositionError {
+                    player.replaceCurrentItem(with: nil)
+                    buildError = nil
+                } else {
+                    buildError = error.localizedDescription
+                }
+            }
+        }
+    }
+}
+
+/// A draggable divider that lets the timeline's height be resized relative
+/// to the viewer/inspector area above it — previously fixed, splitting the
+/// window roughly in half regardless of how much space the timeline needed.
+struct TimelineResizeHandle: View {
+    @Binding var height: CGFloat
+    let minHeight: CGFloat
+    let maxHeight: CGFloat
+
+    @State private var dragStartHeight: CGFloat?
+
+    var body: some View {
+        ZStack {
+            Divider()
+            Color.clear
+        }
+        .frame(height: 7)
+        .contentShape(Rectangle())
+        .pointerStyle(.rowResize)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    let start = dragStartHeight ?? height
+                    if dragStartHeight == nil { dragStartHeight = height }
+                    height = min(maxHeight, max(minHeight, start - value.translation.height))
+                }
+                .onEnded { _ in
+                    dragStartHeight = nil
+                }
+        )
+    }
+}
