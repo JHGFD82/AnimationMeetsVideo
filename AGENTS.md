@@ -27,5 +27,7 @@ Follow Google's change-description conventions for every commit.
 ## Project notes
 
 - SwiftPM macOS app (`Package.swift`), sources in `Sources/AnimationMeetsVideo`.
+- Design docs live in `docs/` (start at `docs/README.md`). Each states whether
+  it describes existing or planned behavior; keep them in sync with the code.
 - Building requires full Xcode (SwiftUI macro plugins are missing from the
   standalone Command Line Tools).
