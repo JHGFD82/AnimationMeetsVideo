@@ -450,6 +450,9 @@ struct MediaClip: Identifiable, Equatable {
     /// Size and modification time of the file when the project last accepted
     /// it. A different stamp on opening means it was swapped outside the app.
     var acceptedStamp: FileStamp?
+    /// True once the person chose to forget the original. Its reference data
+    /// is deleted and not captured again from whatever file is there now.
+    var referenceForgotten = false
 
     /// Where original time `time` is in the current file.
     func fileTime(forSourceTime time: CMTime) -> CMTime {

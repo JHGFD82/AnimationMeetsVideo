@@ -119,6 +119,8 @@ private struct ProjectFile: Codable {
         var previousPaths: [String]?
         /// Absent in files written before replacement existed.
         var fileStamp: FileStamp?
+        /// Absent unless the original was forgotten.
+        var referenceForgotten: Bool?
     }
 
     var formatVersion: Int
@@ -248,6 +250,18 @@ enum ProjectStore {
         try encoder.encode(reference.metadata).write(to: folder.appending(path: referenceMetadataFileName), options: .atomic)
         if let envelope = reference.audioEnvelope {
             try envelope.encoded().write(to: folder.appending(path: audioEnvelopeFileName), options: .atomic)
+        }
+    }
+
+    /// Deletes what was captured of the original: its metadata, audio
+    /// envelope and pictures. The change scores stay, since scene detection
+    /// uses them. This can't be undone.
+    static func forgetReference(for assetID: UUID, in packageURL: URL) throws {
+        let folder = referenceFolder(for: assetID, in: packageURL)
+        let fileManager = FileManager.default
+        for name in [referenceMetadataFileName, audioEnvelopeFileName, thumbnailFolderName] {
+            let url = folder.appending(path: name)
+            if fileManager.fileExists(atPath: url.path) { try fileManager.removeItem(at: url) }
         }
     }
 
@@ -534,7 +548,8 @@ enum ProjectStore {
                     sceneEdits: clip.sceneEdits == SceneEdits() ? nil : ProjectFile.SceneEditsEntry(clip.sceneEdits),
                     alignmentOffset: clip.alignmentOffset == .zero ? nil : ProjectFile.TimeEntry(clip.alignmentOffset),
                     previousPaths: clip.previousPaths.isEmpty ? nil : clip.previousPaths,
-                    fileStamp: clip.acceptedStamp
+                    fileStamp: clip.acceptedStamp,
+                    referenceForgotten: clip.referenceForgotten ? true : nil
                 )
             },
             timelines: timelines
@@ -577,6 +592,7 @@ enum ProjectStore {
                 clip.sceneEdits = asset.sceneEdits?.edits ?? SceneEdits()
                 clip.alignmentOffset = asset.alignmentOffset?.time ?? .zero
                 clip.previousPaths = asset.previousPaths ?? []
+                clip.referenceForgotten = asset.referenceForgotten ?? false
                 clip.acceptedStamp = asset.fileStamp ?? FileStamp(url: url)
                 if let saved = asset.fileStamp, saved != FileStamp(url: url) { changedMedia.append(asset.id) }
                 importedClips[asset.id] = clip

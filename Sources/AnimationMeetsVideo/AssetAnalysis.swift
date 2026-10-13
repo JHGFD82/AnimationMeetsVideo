@@ -68,9 +68,9 @@ final class AssetAnalysis {
         for clip in project.clips {
             guard let url = clip.url, progress[clip.id] == nil else { continue }
             let wantsScores = clip.kind == .video && tracks[clip.id] == nil && failures[clip.id] == nil
-            let wantsReference = references[clip.id] == nil && referenceFailures[clip.id] == nil
+            let wantsReference = !clip.referenceForgotten && references[clip.id] == nil && referenceFailures[clip.id] == nil
             // Pictures are chosen from the scores, so they need scores to exist or be coming.
-            let wantsThumbnails = clip.kind == .video && !thumbnailed.contains(clip.id)
+            let wantsThumbnails = clip.kind == .video && !clip.referenceForgotten && !thumbnailed.contains(clip.id)
                 && !thumbnailFailures.contains(clip.id) && (wantsScores || tracks[clip.id] != nil)
             guard wantsScores || wantsReference || wantsThumbnails else { continue }
             progress[clip.id] = 0
@@ -113,6 +113,16 @@ final class AssetAnalysis {
 
     func markThumbnailsSaved(_ ids: some Collection<UUID>) {
         for id in ids { unsavedPictures[id] = nil }
+    }
+
+    /// Drops the original's reference data from memory. The clip's
+    /// `referenceForgotten` flag keeps it from being captured again.
+    func forgetReference(for id: UUID) {
+        references[id] = nil
+        referenceFailures[id] = nil
+        unsavedReferenceIDs.remove(id)
+        unsavedPictures[id] = nil
+        thumbnailed.remove(id)
     }
 
     private func startWorkerIfNeeded() {

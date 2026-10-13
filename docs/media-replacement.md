@@ -2,8 +2,8 @@
 
 Status: **implemented, apart from the items under "Not yet implemented"
 at the end.** Replacement, the comparison tiers, the alignment suggestion,
-the sync dialog, folder replacement and the offset applied at playback and
-export all work.
+the sync dialog, folder replacement, the offset applied at playback and
+export, and forgetting the original all work.
 
 Editors often cut with one version of a file and finish with another, for
 example a lower-quality copy for speed and the full-quality original for the
@@ -144,10 +144,21 @@ flags the file again.
 Checking is by polling rather than by file-system events, so that a file
 replaced by renaming over it is noticed too.
 
+## Forgetting the original
+
+**Forget Original…** in the clip's context menu deletes what was captured of
+the original file: its metadata snapshot, audio envelope and reference
+pictures. It asks for confirmation first, since it can't be undone. Without
+that data a replacement can no longer be compared with the original or
+aligned automatically. The change scores stay, because scene detection uses
+them, and clips and trims are untouched.
+
+The asset is marked `referenceForgotten` in `project.json`, so the reference
+is not captured again from whatever file is there now. The deletion happens
+immediately, not at the next save, and is not part of undo.
+
 ## Not yet implemented
 
-- **Forget original** (with its confirmation), including remembering that the
-  reference was forgotten so it isn't captured again.
 - A per-asset color override and actual SDR/HDR conversion.
 - Dense reference frames near cuts and used ranges, which would allow
   frame-exact matching on the original's side.

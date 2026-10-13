@@ -297,6 +297,8 @@ struct ReplaceMediaMenuItems: View {
         }
         Button("Replace Media…") { replaceOne() }
         Button("Replace Media from Folder…") { replaceFromFolder() }
+        Button("Forget Original…") { forgetOriginal() }
+            .disabled(clip.referenceForgotten)
         if !clip.previousPaths.isEmpty {
             Menu("Use Earlier File") {
                 ForEach(Array(clip.previousPaths.reversed()), id: \.self) { path in
@@ -307,6 +309,27 @@ struct ReplaceMediaMenuItems: View {
                 }
             }
         }
+    }
+
+    private func forgetOriginal() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Forget the original of \u{201C}\(clip.name)\u{201D}?"
+        alert.informativeText = "This deletes the saved pictures, sound and details of the original file. Without them the app can no longer compare a replacement with the original or suggest how to line it up, and it can't be brought back. Clips and trims are not affected."
+        alert.addButton(withTitle: "Forget Original")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        if let packageURL {
+            do {
+                try ProjectStore.forgetReference(for: clip.id, in: packageURL)
+            } catch {
+                controller.notice = .init(title: "Couldn't Forget the Original", message: error.localizedDescription)
+                return
+            }
+        }
+        analysis.forgetReference(for: clip.id)
+        project.markReferenceForgotten(forAsset: clip.id)
     }
 
     private func replaceOne() {

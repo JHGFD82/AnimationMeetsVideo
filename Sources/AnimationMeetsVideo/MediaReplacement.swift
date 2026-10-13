@@ -41,6 +41,13 @@ extension EditingProject {
         clips[index].alignmentOffset = offset
     }
 
+    /// Records that the original was forgotten. The reference data itself is
+    /// deleted separately, by `ProjectStore` and `AssetAnalysis`.
+    mutating func markReferenceForgotten(forAsset assetID: UUID) {
+        guard let index = clips.firstIndex(where: { $0.id == assetID }) else { return }
+        clips[index].referenceForgotten = true
+    }
+
     /// Changes only the alignment, for when the person re-syncs the file
     /// already in place.
     mutating func setAlignmentOffset(_ offset: CMTime, forAsset assetID: UUID) {

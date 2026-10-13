@@ -637,3 +637,63 @@ private struct Sandbox {
         #expect(loaded.changedMedia.isEmpty)
     }
 }
+
+@Suite struct ForgetOriginalTests {
+    private func reference() -> AssetReference {
+        AssetReference(
+            metadata: AssetMetadataSnapshot(
+                fileName: "footage.mov", originalPath: "/tmp/footage.mov", byteCount: 1, modified: 1,
+                isVideo: true, durationValue: 10, durationTimescale: 1, frameRate: 24, width: 1920, height: 1080,
+                codecName: "H.264", colorPrimaries: nil, colorTransfer: nil, colorMatrix: nil,
+                audioSampleRate: 48000, capturedAt: 1
+            ),
+            audioEnvelope: AudioEnvelope(startWindow: 0, levels: [1, 2, 3])
+        )
+    }
+
+    @Test func theFlagSurvivesSaveAndLoadAndIsOmittedWhenFalse() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, assetID) = sandbox.makeProject()
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let text = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(!text.contains("referenceForgotten"))
+
+        project.markReferenceForgotten(forAsset: assetID)
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.project.mediaClip(id: assetID)?.referenceForgotten == true)
+    }
+
+    @Test func forgettingDeletesTheReferenceButKeepsTheScores() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        let track = ChangeScoreTrack(timescale: 600, times: [0, 25], scores: [0, 200])
+        try await ProjectStore.save(
+            project, to: sandbox.packageURL,
+            changeScores: [assetID: track], references: [assetID: reference()]
+        )
+        let folder = ProjectStore.referenceFolder(for: assetID, in: sandbox.packageURL)
+        let thumbs = folder.appending(path: ProjectStore.thumbnailFolderName, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: thumbs, withIntermediateDirectories: true)
+        try Data([1]).write(to: thumbs.appending(path: "0.jpg"))
+
+        try ProjectStore.forgetReference(for: assetID, in: sandbox.packageURL)
+
+        let fileManager = FileManager.default
+        #expect(!fileManager.fileExists(atPath: folder.appending(path: ProjectStore.referenceMetadataFileName).path))
+        #expect(!fileManager.fileExists(atPath: folder.appending(path: ProjectStore.audioEnvelopeFileName).path))
+        #expect(!fileManager.fileExists(atPath: thumbs.path))
+        #expect(ProjectStore.readReference(for: assetID, in: sandbox.packageURL) == nil)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.changeScores[assetID] == track)
+    }
+
+    @Test func forgettingWhenNothingWasSavedIsHarmless() throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        try ProjectStore.forgetReference(for: UUID(), in: sandbox.packageURL)
+    }
+}

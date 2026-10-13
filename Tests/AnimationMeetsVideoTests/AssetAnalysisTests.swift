@@ -171,6 +171,24 @@ import Testing
         #expect(analysis.unsavedReferences.isEmpty)
     }
 
+    @Test func aForgottenOriginalIsNotCapturedAgain() async throws {
+        let movie = try await makeMovie(frames: 24)
+        defer { try? FileManager.default.removeItem(at: movie) }
+        var video = project(with: [movie])
+        let id = video.clips[0].id
+        let analysis = AssetAnalysis()
+        analysis.analyzeMissing(in: video)
+        try await waitForReferences(analysis, expecting: 1)
+
+        analysis.forgetReference(for: id)
+        video.markReferenceForgotten(forAsset: id)
+        #expect(analysis.references[id] == nil)
+        #expect(analysis.unsavedReferences[id] == nil)
+
+        analysis.analyzeMissing(in: video)
+        #expect(analysis.references[id] == nil)
+    }
+
     @Test func anUnreadableFileIsReportedAndNotRetried() async throws {
         let bad = FileManager.default.temporaryDirectory.appending(path: "amv-bad-\(UUID().uuidString).mov")
         try Data("nope".utf8).write(to: bad)
