@@ -62,15 +62,22 @@ final class ProjectFileMonitor {
 extension View {
     /// Calls `check` every couple of seconds and whenever the app becomes active.
     func onExternalProjectChange(perform check: @escaping @MainActor () -> Void) -> some View {
+        onPeriodicCheck(every: .seconds(2), perform: check)
+    }
+
+    /// Calls `check` every `interval` while the view is shown, and whenever
+    /// the app becomes active, since files are most likely to have been
+    /// changed while it was in the background.
+    func onPeriodicCheck(every interval: Duration, perform check: @escaping @MainActor () async -> Void) -> some View {
         self
             .task {
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(2))
-                    check()
+                    try? await Task.sleep(for: interval)
+                    await check()
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                check()
+                Task { await check() }
             }
     }
 }

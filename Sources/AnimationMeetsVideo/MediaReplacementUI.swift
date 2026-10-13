@@ -740,14 +740,8 @@ private struct MediaReplacementDialogs: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(5))
-                    await controller.checkForChanges { project }
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                Task { await controller.checkForChanges { project } }
+            .onPeriodicCheck(every: .seconds(5)) {
+                await controller.checkForChanges { project }
             }
             // Only the controller closes the sheet. A nil written back here
             // can arrive after the controller has moved on to the next file,
