@@ -33,8 +33,16 @@ MyProject.amv/
 ```
 
 Media may be copied into `Media/` or referenced from elsewhere, chosen per
-asset. References from `project.json` use paths relative to the package
-where possible, so the project can be moved or archived.
+asset. **Copying into the package is the default.** To avoid duplicating
+large footage, the copy is an APFS clone (copy-on-write) whenever the source
+is on the same volume, which uses no extra disk space until a file changes.
+If the source is on a different volume, the app shows the size and warns
+before making a real copy. References from `project.json` use paths relative
+to the package where possible, so the project can be moved or archived.
+
+The package is a macOS package folder (`.amv`) rather than a plain visible
+folder: it appears as one file in Finder and "Show Package Contents" gives
+the plain folder.
 
 ## project.json
 
@@ -89,8 +97,16 @@ A diff engine is not needed for this. Stable IDs and deterministic output
 make a structural comparison cheap. A visual diff is only useful later for a
 "compare versions" screen when both sides have changes.
 
-## Related work that has to happen first
+## Build order
 
-- Persist stable IDs in the model and the file.
-- Add undo and redo, and define how reloads interact with it.
-- Single-writer lock and autosave.
+Foundation first, because the other features depend on it:
+
+1. Persist stable IDs in the model and the file, add `formatVersion`, and
+   write the package layout.
+2. Undo and redo, single-writer lock, and autosave, and define how reloads
+   interact with undo.
+3. Scene detection and the browser ([scene-cuts.md](scene-cuts.md)),
+   including the reference data capture.
+4. Media replacement and the sync dialog
+   ([media-replacement.md](media-replacement.md)).
+5. Live reload.

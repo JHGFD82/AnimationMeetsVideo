@@ -76,8 +76,8 @@ the new file on the other, each with its own timeline.
 2. The person can accept it, or navigate each side to the same scene change
    and mark them as the same moment. Reference frames are dense around cuts
    and used ranges, so those points can be matched to the exact frame.
-3. The result is stored as an **alignment on the asset**: a time offset, and
-   a rate if the files differ in speed.
+3. The result is stored as an **alignment on the asset**: a single time
+   offset. Differences in speed between versions are not corrected.
 
 Alignment is stored on the asset, not by rewriting timeline clips or
 keyframes. Trims, scenes, and future keyframes all stay in the original
@@ -98,14 +98,16 @@ is "point everything at the full-quality folder".
 
 Exports render from whatever each asset currently points at. If an asset
 points at a file the person knowingly chose as a lower-quality stand-in, that
-is their responsibility. The app should make the current file for each asset
-visible before export.
+is their responsibility, and the app does not check or warn before exporting.
 
-## Open questions
+## Decisions
 
-- Whether a "forget original" action (which deletes the reference record and
-  disables the sync dialog for that asset) should require confirmation.
-- Whether the rate part of alignment is needed in practice, or an offset is
-  enough.
-- How much of the color handling can wait until the project's color space is
-  actually applied when rendering. Today it is only a label.
+- **Alignment is an offset only.** No rate is stored.
+- **"Forget original" requires confirmation.** It deletes the asset's
+  reference data and disables the sync dialog for that asset, and it cannot
+  be undone, so the app explains this and asks first.
+- **Color handling starts with detect and flag.** The first version reads
+  color tags, flags SDR-to-HDR and untagged mismatches, and offers a
+  per-asset override. Actual conversion waits until the project's color
+  space is applied when rendering (today it is only a label).
+- **No pre-export check** of which file each asset points at.

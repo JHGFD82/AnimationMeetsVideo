@@ -112,12 +112,19 @@ Editing the scene list:
   level, so scenes and timeline clips stay valid without being edited. See
   [media-replacement.md](media-replacement.md).
 
+## Decisions
+
+- **Sensitivity** is a project-wide default with a per-asset override, so one
+  stubborn file can be re-detected without touching the others.
+- **Dropping several scenes** places them back to back, in source order, on
+  a single layer with no gaps.
+- **Reference density** defaults to "balanced": thumbnails before and after
+  every cut, a frame every 2 seconds, and dense frames near used ranges.
+  Sparse and dense presets can come later.
+- **Detection is picture-based** in the first version. Audio-based cut
+  detection is deferred. (Audio is still used for sync alignment, see
+  [media-replacement.md](media-replacement.md).)
+
 ## Open questions
 
-- Default sensitivity, and whether it should be per project or per asset.
-- Thumbnail size and interval defaults, and how they trade off against
-  project size.
-- Whether dropping several scenes should keep gaps between them or place
-  them back to back by default.
-- Whether to offer audio-based cut detection for footage whose picture
-  changes are subtle.
+- Default sensitivity value, and the exact thumbnail size.
