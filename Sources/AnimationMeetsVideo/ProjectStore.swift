@@ -36,6 +36,13 @@ private struct ProjectFile: Codable {
     var rootTimelineIndex: Int
 }
 
+struct ProjectLoadResult {
+    var project: EditingProject
+    /// Media files referenced by the project that couldn't be opened; clips
+    /// using them were dropped from the timelines.
+    var missingMedia: [URL]
+}
+
 enum ProjectStore {
     static func save(_ project: EditingProject, to url: URL) throws {
         let urlClips = project.clips.filter { $0.url != nil }
@@ -89,13 +96,19 @@ enum ProjectStore {
         try data.write(to: url, options: .atomic)
     }
 
-    static func load(from url: URL) async throws -> EditingProject {
+    static func load(from url: URL) async throws -> ProjectLoadResult {
         let data = try Data(contentsOf: url)
         let file = try JSONDecoder().decode(ProjectFile.self, from: data)
 
         var importedClips: [MediaClip?] = []
+        var missingMedia: [URL] = []
         for clipURL in file.clipURLs {
-            importedClips.append(try? await MediaImporter.importClip(at: clipURL))
+            do {
+                importedClips.append(try await MediaImporter.importClip(at: clipURL))
+            } catch {
+                importedClips.append(nil)
+                missingMedia.append(clipURL)
+            }
         }
 
         // Pass 1: create timelines with empty layers so their (fresh) ids
@@ -141,16 +154,30 @@ enum ProjectStore {
             }
         }
 
+        guard !timelineIDs.isEmpty else {
+            throw ProjectStoreError.noTimelines
+        }
         let rootID = timelineIDs.indices.contains(file.rootTimelineIndex)
             ? timelineIDs[file.rootTimelineIndex]
-            : (timelineIDs.first ?? UUID())
+            : timelineIDs[0]
 
-        return EditingProject(
+        let project = EditingProject(
             id: UUID(),
             name: file.name,
             clips: importedClips.compactMap { $0 },
             timelines: timelines,
             rootTimelineID: rootID
         )
+        return ProjectLoadResult(project: project, missingMedia: missingMedia)
+    }
+}
+
+enum ProjectStoreError: LocalizedError {
+    case noTimelines
+
+    var errorDescription: String? {
+        switch self {
+        case .noTimelines: "The project file doesn't contain any timelines."
+        }
     }
 }
