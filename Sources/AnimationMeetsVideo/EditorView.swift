@@ -246,13 +246,7 @@ private struct TimelineResizeHandle: View {
         }
         .frame(height: 7)
         .contentShape(Rectangle())
-        .onHover { hovering in
-            if hovering {
-                NSCursor.resizeUpDown.push()
-            } else {
-                NSCursor.pop()
-            }
-        }
+        .pointerStyle(.rowResize)
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
@@ -368,7 +362,12 @@ private struct TimelineSettingsSheet: View {
     // tabbing out of the last field would lose that field's edit. Plain
     // string fields parsed at save time commit immediately like Name does.
     private var isValid: Bool {
-        Double(widthText) != nil && Double(heightText) != nil && Double(frameRateText) != nil
+        guard let width = Double(widthText), let height = Double(heightText), let frameRate = Double(frameRateText) else {
+            return false
+        }
+        return (16...16_384).contains(width) && (16...16_384).contains(height)
+            && (1...240).contains(frameRate)
+            && !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private var saveTitle: String {
@@ -388,12 +387,13 @@ private struct TimelineSettingsSheet: View {
     }
 
     private func save() {
-        guard let width = Double(widthText), let height = Double(heightText), let frameRate = Double(frameRateText) else { return }
+        guard isValid, let width = Double(widthText), let height = Double(heightText), let frameRate = Double(frameRateText) else { return }
+        let size = CGSize(width: width.rounded(), height: height.rounded())
         switch mode {
         case .create:
             let newID = project.addTimeline(
                 name: name,
-                frameSize: CGSize(width: width, height: height),
+                frameSize: size,
                 frameRate: frameRate,
                 colorSpace: colorSpace
             )
@@ -402,7 +402,7 @@ private struct TimelineSettingsSheet: View {
             project.updateTimelineSettings(
                 id,
                 name: name,
-                frameSize: CGSize(width: width, height: height),
+                frameSize: size,
                 frameRate: frameRate,
                 colorSpace: colorSpace
             )
@@ -522,7 +522,10 @@ private struct EditorToolbar: View {
     @State private var exportError: String?
 
     private var externalScreens: [NSScreen] {
-        NSScreen.screens
+        // Exclude the screen the editor window is on; covering it with the
+        // borderless viewer window would hide the editor itself.
+        let editorScreen = NSApp.windows.first { $0.isMainWindow || $0.isKeyWindow }?.screen ?? NSScreen.main
+        return NSScreen.screens.filter { $0 != editorScreen }
     }
 
     var body: some View {
@@ -1284,12 +1287,6 @@ private struct ClipBlockView: View {
                         }
                     }
             )
-            .onHover { hovering in
-                if hovering {
-                    NSCursor.resizeLeftRight.push()
-                } else {
-                    NSCursor.pop()
-                }
-            }
+            .pointerStyle(.columnResize)
     }
 }
