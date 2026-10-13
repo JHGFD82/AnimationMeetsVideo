@@ -511,3 +511,60 @@ private struct Sandbox {
         #expect(!FileManager.default.fileExists(atPath: ProjectStore.referenceFolder(for: stray, in: sandbox.packageURL).path))
     }
 }
+
+@Suite struct ReferenceThumbnailPersistenceTests {
+    private func sample() -> ReferenceThumbnails {
+        ReferenceThumbnails(frames: [
+            ReferenceFrame(time: CMTime(value: 0, timescale: 600), jpeg: Data([1, 2, 3])),
+            ReferenceFrame(time: CMTime(value: 1001, timescale: 24000), jpeg: Data([4, 5])),
+            ReferenceFrame(time: CMTime(value: 7, timescale: 1), jpeg: Data([6])),
+        ])
+    }
+
+    @Test func picturesRoundTripInTimeOrder() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+
+        try await ProjectStore.save(project, to: sandbox.packageURL, thumbnails: [assetID: sample()])
+
+        #expect(ProjectStore.readThumbnails(for: assetID, in: sandbox.packageURL) == sample())
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.assetsWithThumbnails == [assetID])
+    }
+
+    @Test func aLeftoverPartialFolderCountsAsNotCaptured() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let partial = ProjectStore.referenceFolder(for: assetID, in: sandbox.packageURL)
+            .appending(path: "thumbs.partial", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: partial, withIntermediateDirectories: true)
+        try Data([1]).write(to: partial.appending(path: "0_600.jpg"))
+
+        #expect(!ProjectStore.hasThumbnails(for: assetID, in: sandbox.packageURL))
+        try await ProjectStore.save(project, to: sandbox.packageURL, thumbnails: [assetID: sample()])
+        #expect(ProjectStore.readThumbnails(for: assetID, in: sandbox.packageURL) == sample())
+    }
+
+    @Test func savedPicturesAreNeverOverwritten() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL, thumbnails: [assetID: sample()])
+
+        let other = ReferenceThumbnails(frames: [ReferenceFrame(time: .zero, jpeg: Data([9]))])
+        try await ProjectStore.save(project, to: sandbox.packageURL, thumbnails: [assetID: other])
+
+        #expect(ProjectStore.readThumbnails(for: assetID, in: sandbox.packageURL) == sample())
+    }
+
+    @Test func fileNamesCarryTheExactTime() {
+        let time = CMTime(value: 1001, timescale: 24000)
+        #expect(ProjectStore.thumbnailFileName(for: time) == "1001_24000.jpg")
+        #expect(ProjectStore.thumbnailTime(fromFileName: "1001_24000.jpg") == time)
+        #expect(ProjectStore.thumbnailTime(fromFileName: "notes.txt") == nil)
+        #expect(ProjectStore.thumbnailTime(fromFileName: "1_0.jpg") == nil)
+    }
+}

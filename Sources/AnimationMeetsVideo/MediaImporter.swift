@@ -48,7 +48,8 @@ enum MediaImporter {
             duration: duration,
             frameRate: frameRate,
             colorSpace: colorSpace,
-            codecName: codecName
+            codecName: codecName,
+            hasAudio: !audioTracks.isEmpty
         )
     }
 

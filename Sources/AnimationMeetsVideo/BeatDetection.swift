@@ -274,8 +274,8 @@ final class OnsetAnalyzer {
     private var realPart: [Float]
     private var imaginaryPart: [Float]
     private var magnitudes: [Float]
+    private var scaled: [Float]
     private var compressed: [Float]
-    private var growth: [Float]
 
     init() {
         let bins = Self.windowSize / 2
@@ -288,8 +288,8 @@ final class OnsetAnalyzer {
         realPart = [Float](repeating: 0, count: bins)
         imaginaryPart = [Float](repeating: 0, count: bins)
         magnitudes = [Float](repeating: 0, count: bins)
+        scaled = [Float](repeating: 0, count: bins)
         compressed = [Float](repeating: 0, count: bins)
-        growth = [Float](repeating: 0, count: bins)
     }
 
     deinit {
@@ -327,21 +327,18 @@ final class OnsetAnalyzer {
 
         // Log compression so a quiet hi-hat counts as much as a loud kick.
         var scale = 1000 / Float(Self.windowSize)
-        vDSP_vsmul(magnitudes, 1, &scale, &compressed, 1, vDSP_Length(bins))
+        vDSP_vsmul(magnitudes, 1, &scale, &scaled, 1, vDSP_Length(bins))
         var count = Int32(bins)
-        vvlog1pf(&compressed, compressed, &count)
+        vvlog1pf(&compressed, scaled, &count)
 
+        var flux: Float = 0
         if hasPrevious {
-            vDSP_vsub(previous, 1, compressed, 1, &growth, 1, vDSP_Length(bins))
-            var floor: Float = 0
-            vDSP_vthres(growth, 1, &floor, &growth, 1, vDSP_Length(bins))
-            var flux: Float = 0
-            vDSP_sve(growth, 1, &flux, vDSP_Length(bins))
-            envelope.append(flux)
-        } else {
-            envelope.append(0)
-            hasPrevious = true
+            for bin in 0..<bins {
+                flux += max(0, compressed[bin] - previous[bin])
+            }
         }
+        envelope.append(flux)
+        hasPrevious = true
         swap(&previous, &compressed)
     }
 }
@@ -398,9 +395,7 @@ enum BeatTracker {
         vDSP_svesq(onsets, 1, &sumOfSquares, vDSP_Length(onsets.count))
         let spread = (sumOfSquares / Float(onsets.count)).squareRoot()
         guard spread > 1e-6 else { return nil }
-        var divisor = spread
-        vDSP_vsdiv(onsets, 1, &divisor, &onsets, 1, vDSP_Length(onsets.count))
-        return onsets
+        return onsets.map { $0 / spread }
     }
 
     /// The beat period in frames (fractional), from the autocorrelation of

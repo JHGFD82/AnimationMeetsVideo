@@ -433,6 +433,9 @@ struct MediaClip: Identifiable, Equatable {
     var frameRate: Double
     var colorSpace: ProjectColorSpace
     var codecName: String
+    /// Whether the file has an audio track, which is what beat detection reads.
+    /// True for audio files and for videos with sound.
+    var hasAudio = false
     /// Hand-made changes to this asset's scene list. Detected cuts are not
     /// stored; they are recomputed from the saved change scores.
     var sceneEdits = SceneEdits()

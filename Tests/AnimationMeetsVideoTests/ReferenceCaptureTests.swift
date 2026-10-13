@@ -1,4 +1,5 @@
 import AVFoundation
+import ImageIO
 import Foundation
 import Testing
 @testable import AnimationMeetsVideo
@@ -114,5 +115,91 @@ func writeTone(to url: URL, segments: [(amplitude: Float, seconds: Double)], sam
         try Data("nope".utf8).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         await #expect(throws: (any Error).self) { try await ReferenceCapture.capture(url: url) }
+    }
+}
+
+@Suite struct ReferenceThumbnailTimeTests {
+    private func track(frames: Int, spikes: [Int: UInt8]) -> ChangeScoreTrack {
+        ChangeScoreTrack(
+            timescale: 24,
+            times: (0..<frames).map(Int64.init),
+            scores: (0..<frames).map { $0 == 0 ? 0 : (spikes[$0] ?? 3) }
+        )
+    }
+
+    @Test func includesBothEndsAndBothSidesOfEachCut() {
+        let times = ReferenceThumbnailCapture.times(for: track(frames: 100, spikes: [30: 200, 70: 200])).map(\.value)
+        #expect(times == [0, 29, 30, 69, 70, 99])
+    }
+
+    @Test func addsFramesAtRegularIntervals() {
+        let times = ReferenceThumbnailCapture.times(for: track(frames: 24 * 35, spikes: [:])).map(\.value)
+        #expect(times == [0, 240, 480, 720, 24 * 35 - 1])
+    }
+
+    @Test func listIsSortedAndFreeOfDuplicates() {
+        let times = ReferenceThumbnailCapture.times(for: track(frames: 600, spikes: [239: 200, 240: 200, 300: 200])).map(\.value)
+        #expect(times == times.sorted())
+        #expect(Set(times).count == times.count)
+        #expect(times.contains(240) && times.contains(299) && times.contains(300))
+    }
+
+    @Test func strongestCutsWinWhenThereAreTooMany() {
+        let frames = 24 * 3000
+        var spikes: [Int: UInt8] = [:]
+        for index in 0..<(ReferenceThumbnailCapture.maximumCuts + 50) {
+            spikes[24 * (index + 1) * 2] = index < 50 ? 120 : 250
+        }
+        let t = track(frames: frames, spikes: spikes)
+        let times = Set(ReferenceThumbnailCapture.times(for: t).map(\.value))
+        #expect(times.contains(Int64(24 * (ReferenceThumbnailCapture.maximumCuts + 50) * 2)))
+        #expect(!times.contains(47))
+    }
+
+    @Test func emptyTrackHasNoFrames() {
+        #expect(ReferenceThumbnailCapture.times(for: ChangeScoreTrack(timescale: 24, times: [], scores: [])).isEmpty)
+    }
+
+    @Test func nearestIndexPicksTheClosestFrame() {
+        let t = ChangeScoreTrack(timescale: 100, times: [0, 40, 100, 130], scores: [0, 0, 0, 0])
+        #expect(t.index(nearestTo: 55) == 1)
+        #expect(t.index(nearestTo: 75) == 2)
+        #expect(t.index(nearestTo: 9_999) == 3)
+        #expect(t.index(ofFrameAt: CMTime(value: 130, timescale: 100)) == 3)
+        #expect(t.index(ofFrameAt: CMTime(value: 131, timescale: 100)) == nil)
+    }
+}
+
+@Suite struct ReferenceThumbnailCaptureTests {
+    @Test func capturesJPEGFramesAtTheRequestedTimes() async throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "amv-thumbs-\(UUID().uuidString).mov")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try await writeMovie(to: url, segments: [(0, 24), (255, 24)])
+        let times = [CMTime(value: 23, timescale: 24), CMTime(value: 24, timescale: 24)]
+
+        let pictures = try await ReferenceThumbnailCapture.capture(url: url, times: times)
+
+        #expect(pictures.frames.map(\.time) == times)
+        func brightness(_ frame: ReferenceFrame) throws -> Double {
+            let source = try #require(CGImageSourceCreateWithData(frame.jpeg as CFData, nil))
+            let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+            #expect(image.width <= ReferenceThumbnailCapture.width && image.height <= ReferenceThumbnailCapture.height)
+            let data = try #require(image.dataProvider?.data)
+            return Double(CFDataGetBytePtr(data)[0])
+        }
+        #expect(try brightness(pictures.frames[0]) < 40)
+        #expect(try brightness(pictures.frames[1]) > 215)
+    }
+
+    @Test func framesThatCannotBeReadAreSkipped() async throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "amv-thumbs-\(UUID().uuidString).mov")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try await writeMovie(to: url, segments: [(100, 24)])
+
+        let pictures = try await ReferenceThumbnailCapture.capture(
+            url: url, times: [CMTime(value: 5, timescale: 24), CMTime(value: 500, timescale: 1)]
+        )
+
+        #expect(pictures.frames.count == 1)
     }
 }

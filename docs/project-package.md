@@ -7,7 +7,7 @@ into `Backups/`. Step 3 is partly implemented: `Reference/<asset id>/
 signature.bin` holds each video's change scores, `reference.json` and
 `audio.bin` hold the metadata snapshot and audio envelope captured at import,
 and `project.json` holds scene edits (see [scene-cuts.md](scene-cuts.md)).
-Not yet implemented: reference thumbnails, the render cache, live reload, a restore-from-backup screen (copy a backup over
+`thumbs/` holds reference pictures. Not yet implemented: dense reference frames, the render cache, live reload, a restore-from-backup screen (copy a backup over
 `project.json` by hand for now), and a Finder-visible package type (that
 needs an app bundle that declares the `.amv` type).
 
@@ -34,7 +34,7 @@ MyProject.amv/
       reference.json      metadata snapshot of the original file
       audio.bin           audio envelope
       signature.bin       per-frame picture change scores
-      thumbs/ ...         (planned)
+      thumbs/ ...         pictures of the original at cuts and intervals
   Cache/              render cache (disposable, size-capped)
   Backups/            autosaves
   .lock               single-writer lock (an flock held while the project is open)
@@ -144,7 +144,8 @@ Foundation first, because the other features depend on it:
 3. Scene detection and the browser ([scene-cuts.md](scene-cuts.md)),
    including the reference data capture. **Mostly done**: detection, saved
    scores and edits, and the browser. Reference capture
-   (metadata snapshot, audio envelope) is done; reference thumbnails remain.
+   (metadata snapshot, audio envelope, thumbnails at cuts and intervals) is
+   done.
 4. Media replacement and the sync dialog
    ([media-replacement.md](media-replacement.md)).
 5. Live reload.

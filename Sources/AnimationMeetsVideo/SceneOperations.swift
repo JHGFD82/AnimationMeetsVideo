@@ -6,14 +6,7 @@ extension ChangeScoreTrack {
     /// real frame. Returns `time` unchanged when there are no frames.
     func nearestFrameTime(to time: CMTime) -> CMTime {
         guard !times.isEmpty else { return time }
-        let target = time.convertScale(timescale, method: .default).value
-        var low = 0, high = times.count - 1
-        while low < high {
-            let mid = (low + high) / 2
-            if times[mid] < target { low = mid + 1 } else { high = mid }
-        }
-        if low > 0, target - times[low - 1] <= times[low] - target { low -= 1 }
-        return self.time(at: low)
+        return self.time(at: index(nearestTo: time.convertScale(timescale, method: .default).value))
     }
 }
 

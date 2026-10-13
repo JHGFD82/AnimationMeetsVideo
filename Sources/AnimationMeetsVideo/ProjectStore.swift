@@ -137,8 +137,13 @@ struct ProjectLoadResult {
     /// Saved change scores found in `Reference/`, by asset ID. Assets with no
     /// entry haven't been analyzed yet.
     var changeScores: [UUID: ChangeScoreTrack] = [:]
+    /// Saved beats found in `Reference/`, by asset ID, likewise.
+    var beats: [UUID: BeatTrack] = [:]
     /// Saved reference data of each asset's original file, by asset ID.
     var references: [UUID: AssetReference] = [:]
+    /// Assets whose reference thumbnails are saved. The pictures themselves
+    /// are read with `readThumbnails` when needed.
+    var assetsWithThumbnails: Set<UUID> = []
 }
 
 /// A media file that saving would copy into the project package.
@@ -251,6 +256,76 @@ enum ProjectStore {
         return AssetReference(metadata: metadata, audioEnvelope: envelope)
     }
 
+    static let beatFileName = "beats.bin"
+
+    static func writeBeats(_ track: BeatTrack, for assetID: UUID, in packageURL: URL) throws {
+        let folder = referenceFolder(for: assetID, in: packageURL)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try track.encoded().write(to: folder.appending(path: beatFileName), options: .atomic)
+    }
+
+    /// Nil when the asset's audio was never analyzed or the file can't be
+    /// read; beats are recomputable, so a damaged file just means analyzing again.
+    static func readBeats(for assetID: UUID, in packageURL: URL) -> BeatTrack? {
+        let url = referenceFolder(for: assetID, in: packageURL).appending(path: beatFileName)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? BeatTrack(decoding: data)
+    }
+
+    static let thumbnailFolderName = "thumbs"
+
+    /// Writes the pictures to a scratch folder and renames it into place, so
+    /// a folder that exists is always complete.
+    static func writeThumbnails(_ thumbnails: ReferenceThumbnails, for assetID: UUID, in packageURL: URL) throws {
+        let fileManager = FileManager.default
+        let folder = referenceFolder(for: assetID, in: packageURL)
+        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        let final = folder.appending(path: thumbnailFolderName, directoryHint: .isDirectory)
+        guard !fileManager.fileExists(atPath: final.path) else { return }
+
+        let scratch = folder.appending(path: "\(thumbnailFolderName).partial", directoryHint: .isDirectory)
+        try? fileManager.removeItem(at: scratch)
+        try fileManager.createDirectory(at: scratch, withIntermediateDirectories: true)
+        for frame in thumbnails.frames {
+            try frame.jpeg.write(to: scratch.appending(path: thumbnailFileName(for: frame.time)))
+        }
+        try fileManager.moveItem(at: scratch, to: final)
+    }
+
+    static func hasThumbnails(for assetID: UUID, in packageURL: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        let path = referenceFolder(for: assetID, in: packageURL).appending(path: thumbnailFolderName).path
+        return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
+    /// The saved pictures, in time order. Empty if none were saved.
+    static func readThumbnails(for assetID: UUID, in packageURL: URL) -> ReferenceThumbnails {
+        let folder = referenceFolder(for: assetID, in: packageURL).appending(path: thumbnailFolderName)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        var frames: [ReferenceFrame] = []
+        for name in names {
+            guard let time = thumbnailTime(fromFileName: name),
+                  let data = try? Data(contentsOf: folder.appending(path: name))
+            else {
+                continue
+            }
+            frames.append(ReferenceFrame(time: time, jpeg: data))
+        }
+        frames.sort { CMTimeCompare($0.time, $1.time) < 0 }
+        return ReferenceThumbnails(frames: frames)
+    }
+
+    static func thumbnailFileName(for time: CMTime) -> String {
+        "\(time.value)_\(time.timescale).jpg"
+    }
+
+    static func thumbnailTime(fromFileName name: String) -> CMTime? {
+        guard name.hasSuffix(".jpg") else { return nil }
+        let parts = name.dropLast(4).split(separator: "_")
+        guard parts.count == 2, let value = Int64(parts[0]), let scale = Int32(parts[1]), scale > 0 else { return nil }
+        return CMTime(value: value, timescale: scale)
+    }
+
     // MARK: Media consolidation
 
     /// Media that saving into `packageURL` would copy in: anything with a file
@@ -304,14 +379,16 @@ enum ProjectStore {
     /// pointing at its new location. `copying` lists the media IDs to copy
     /// into `Media/`; on APFS a same-volume copy is a clone and costs no
     /// extra space. `changeScores` are written to `Reference/`; pass only the
-    /// ones that aren't saved yet, and so are `references`.
+    /// ones that aren't saved yet, and so are `references` and `thumbnails`.
     @discardableResult
     static func save(
         _ project: EditingProject,
         to packageURL: URL,
         copying: Set<UUID> = [],
         changeScores: [UUID: ChangeScoreTrack] = [:],
-        references: [UUID: AssetReference] = [:]
+        references: [UUID: AssetReference] = [:],
+        thumbnails: [UUID: ReferenceThumbnails] = [:],
+        beats: [UUID: BeatTrack] = [:]
     ) async throws -> EditingProject {
         try preparePackage(at: packageURL)
 
@@ -328,8 +405,14 @@ enum ProjectStore {
         for (assetID, track) in changeScores where project.mediaClip(id: assetID) != nil {
             try writeChangeScores(track, for: assetID, in: packageURL)
         }
+        for (assetID, track) in beats where project.mediaClip(id: assetID) != nil {
+            try writeBeats(track, for: assetID, in: packageURL)
+        }
         for (assetID, reference) in references where project.mediaClip(id: assetID) != nil {
             try writeReference(reference, for: assetID, in: packageURL)
+        }
+        for (assetID, pictures) in thumbnails where project.mediaClip(id: assetID) != nil {
+            try writeThumbnails(pictures, for: assetID, in: packageURL)
         }
 
         try encode(project, packageURL: packageURL)
@@ -536,11 +619,15 @@ enum ProjectStore {
         )
         var scores: [UUID: ChangeScoreTrack] = [:]
         var references: [UUID: AssetReference] = [:]
+        var beats: [UUID: BeatTrack] = [:]
+        var thumbnailed: Set<UUID> = []
         for id in orderedIDs {
+            beats[id] = readBeats(for: id, in: packageURL)
+            if hasThumbnails(for: id, in: packageURL) { thumbnailed.insert(id) }
             scores[id] = readChangeScores(for: id, in: packageURL)
             references[id] = readReference(for: id, in: packageURL)
         }
-        return ProjectLoadResult(project: project, missingMedia: missingMedia, changeScores: scores, references: references)
+        return ProjectLoadResult(project: project, missingMedia: missingMedia, changeScores: scores, beats: beats, references: references, assetsWithThumbnails: thumbnailed)
     }
 }
 

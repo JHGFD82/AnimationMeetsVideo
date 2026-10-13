@@ -132,7 +132,8 @@ In the package's `Reference/<asset id>/` folder:
 | Item | Status |
 | --- | --- |
 | `signature.bin`: the per-frame change scores (magic `AMVS`, version 1, little endian: timescale, frame count, an Int64 time per frame, one score byte per frame; about 9 bytes per frame). | Implemented. A damaged file reads as "not analyzed" and is recomputed. |
-| Thumbnails at each cut, interval thumbnails, dense frames near used ranges | Not implemented. Today the browser makes thumbnails on demand and keeps them in memory only. |
+| `thumbs/<value>_<timescale>.jpg`: pictures of the original (256x144 JPEG, quality 0.7) at the first and last frame, just before and at each cut found at a loose sensitivity (strongest 600 cuts at most), and every 10 seconds. | Implemented. Captured once, after scoring, into a scratch folder that is renamed into place, so a `thumbs/` folder that exists is complete. |
+| Dense frames near used ranges | Not implemented. The sync dialog will have to match by cuts and intervals. |
 | `reference.json`: metadata snapshot of the original file (name and path, size and modification time, duration as a rational, frame rate, displayed size, codec, color tags, audio sample rate, capture time). | Implemented. Captured once, in the background, before scoring. A damaged file reads as "no reference". |
 | `audio.bin`: audio envelope, 100 loudness values a second (magic `AMVE`, version 1, little endian: windows per second, start window, count, one byte per window; 0 is silence, 255 full scale). Absent for files without audio. | Implemented. A damaged file only loses the audio match. |
 | Frame-luma signature | The change-score track in `signature.bin` serves as the picture signature, since cut times and picture activity are what two versions of a file share. There is no separate absolute-luma file. |
@@ -183,7 +184,7 @@ changes like any other.
 - Moving a boundary by dragging, and splitting at the timeline playhead.
 - The original whole file as a separate item next to its scenes.
 - A screen for the project default sensitivity.
-- Persisting thumbnails (at cuts, at intervals, and near used ranges).
+- Dense reference frames near the ranges the project uses.
 - Dropping onto a specific layer or time; a drop always creates a new layer.
 
 ## How it fits the existing model

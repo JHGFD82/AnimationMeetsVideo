@@ -98,13 +98,51 @@ import Testing
         let reference = try await ReferenceCapture.capture(url: movie)
         let analysis = AssetAnalysis()
 
-        analysis.reset(tracks: [id: saved], references: [id: reference])
+        analysis.reset(tracks: [id: saved], references: [id: reference], thumbnailed: [id])
         analysis.analyzeMissing(in: video)
 
         #expect(analysis.progress.isEmpty)
         #expect(analysis.tracks[id] == saved)
         #expect(analysis.unsavedTracks.isEmpty)
         #expect(analysis.unsavedReferences.isEmpty)
+    }
+
+    @Test func capturesReferencePicturesForVideoOnce() async throws {
+        let movie = try await makeMovie(frames: 48)
+        defer { try? FileManager.default.removeItem(at: movie) }
+        let video = project(with: [movie])
+        let id = video.clips[0].id
+        let analysis = AssetAnalysis()
+
+        analysis.analyzeMissing(in: video)
+        try await waitUntilIdle(analysis, expecting: 1)
+
+        let pictures = try #require(analysis.unsavedThumbnails[id])
+        #expect(pictures.frames.count >= 3)
+        #expect(analysis.thumbnailed == [id])
+
+        analysis.markThumbnailsSaved([id])
+        #expect(analysis.unsavedThumbnails.isEmpty)
+        #expect(analysis.thumbnailed == [id])
+        analysis.analyzeMissing(in: video)
+        #expect(analysis.progress.isEmpty)
+    }
+
+    @Test func assetsWithSavedPicturesAreNotCapturedAgain() async throws {
+        let movie = try await makeMovie(frames: 24)
+        defer { try? FileManager.default.removeItem(at: movie) }
+        let video = project(with: [movie])
+        let id = video.clips[0].id
+        let analysis = AssetAnalysis()
+        analysis.reset(
+            tracks: [id: ChangeScoreTrack(timescale: 600, times: [0], scores: [0])],
+            references: [id: try await ReferenceCapture.capture(url: movie)],
+            thumbnailed: [id]
+        )
+
+        analysis.analyzeMissing(in: video)
+
+        #expect(analysis.progress.isEmpty)
     }
 
     @Test func capturesReferenceDataOnceAndKeepsItWhenTheFileChanges() async throws {

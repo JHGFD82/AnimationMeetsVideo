@@ -110,7 +110,7 @@ struct AnimationMeetsVideoApp: App {
                 lastAutosaved = nil
                 projectURL = url
                 projectLock = lock
-                analysis.reset(tracks: result.changeScores, references: result.references)
+                analysis.reset(tracks: result.changeScores, references: result.references, thumbnailed: result.assetsWithThumbnails)
                 analysis.analyzeMissing(in: result.project)
                 if !result.missingMedia.isEmpty {
                     let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
@@ -149,12 +149,14 @@ struct AnimationMeetsVideoApp: App {
                 let snapshot = project
                 let scoresToSave = analysis.unsavedTracks
                 let referencesToSave = analysis.unsavedReferences
+                let thumbnailsToSave = analysis.unsavedThumbnails
                 let saved = try await ProjectStore.save(
                     snapshot, to: url, copying: copying,
-                    changeScores: scoresToSave, references: referencesToSave
+                    changeScores: scoresToSave, references: referencesToSave, thumbnails: thumbnailsToSave
                 )
                 analysis.markSaved(scoresToSave.keys)
                 analysis.markReferencesSaved(referencesToSave.keys)
+                analysis.markThumbnailsSaved(thumbnailsToSave.keys)
                 // Edits made while saving stay; only the media locations change.
                 history.adopt { $0.applyMediaLocations(from: saved) }
                 project.applyMediaLocations(from: saved)

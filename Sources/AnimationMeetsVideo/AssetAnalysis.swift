@@ -17,16 +17,23 @@ final class AssetAnalysis {
     /// has it, so it keeps describing the original after the file is replaced.
     private(set) var references: [UUID: AssetReference] = [:]
     private(set) var referenceFailures: [UUID: String] = [:]
+    /// Assets whose reference pictures are captured, in memory or on disk.
+    private(set) var thumbnailed: Set<UUID> = []
 
     private struct Job {
         var id: UUID
         var url: URL
         var wantsScores: Bool
         var wantsReference: Bool
+        var wantsThumbnails: Bool
     }
 
     @ObservationIgnored private var unsaved: Set<UUID> = []
     @ObservationIgnored private var unsavedReferenceIDs: Set<UUID> = []
+    /// Pictures captured since the last save; dropped once saved, since they
+    /// are read back from the package when needed.
+    @ObservationIgnored private var unsavedPictures: [UUID: ReferenceThumbnails] = [:]
+    @ObservationIgnored private var thumbnailFailures: Set<UUID> = []
     @ObservationIgnored private var waiting: [Job] = []
     @ObservationIgnored private var worker: Task<Void, Never>?
     /// Bumped by `reset` so a result that arrives after the project was
@@ -34,7 +41,11 @@ final class AssetAnalysis {
     @ObservationIgnored private var generation = 0
 
     /// Starts over for a different project, with whatever scores it had saved.
-    func reset(tracks: [UUID: ChangeScoreTrack] = [:], references: [UUID: AssetReference] = [:]) {
+    func reset(
+        tracks: [UUID: ChangeScoreTrack] = [:],
+        references: [UUID: AssetReference] = [:],
+        thumbnailed: Set<UUID> = []
+    ) {
         worker?.cancel()
         worker = nil
         generation += 1
@@ -43,21 +54,30 @@ final class AssetAnalysis {
         failures = [:]
         unsaved = []
         unsavedReferenceIDs = []
+        unsavedPictures = [:]
+        thumbnailFailures = []
         referenceFailures = [:]
+        self.thumbnailed = thumbnailed
         self.tracks = tracks
         self.references = references
     }
 
     /// Queues every asset that lacks reference data, and every video asset
-    /// that has no scores, unless already queued or failed.
+    /// that lacks scores or reference pictures, unless already queued or failed.
     func analyzeMissing(in project: EditingProject) {
         for clip in project.clips {
             guard let url = clip.url, progress[clip.id] == nil else { continue }
             let wantsScores = clip.kind == .video && tracks[clip.id] == nil && failures[clip.id] == nil
             let wantsReference = references[clip.id] == nil && referenceFailures[clip.id] == nil
-            guard wantsScores || wantsReference else { continue }
+            // Pictures are chosen from the scores, so they need scores to exist or be coming.
+            let wantsThumbnails = clip.kind == .video && !thumbnailed.contains(clip.id)
+                && !thumbnailFailures.contains(clip.id) && (wantsScores || tracks[clip.id] != nil)
+            guard wantsScores || wantsReference || wantsThumbnails else { continue }
             progress[clip.id] = 0
-            waiting.append(Job(id: clip.id, url: url, wantsScores: wantsScores, wantsReference: wantsReference))
+            waiting.append(Job(
+                id: clip.id, url: url,
+                wantsScores: wantsScores, wantsReference: wantsReference, wantsThumbnails: wantsThumbnails
+            ))
         }
         startWorkerIfNeeded()
     }
@@ -84,8 +104,15 @@ final class AssetAnalysis {
         unsaved.subtract(ids)
     }
 
+    /// Reference pictures captured since the last save.
+    var unsavedThumbnails: [UUID: ReferenceThumbnails] { unsavedPictures }
+
     func markReferencesSaved(_ ids: some Collection<UUID>) {
         unsavedReferenceIDs.subtract(ids)
+    }
+
+    func markThumbnailsSaved(_ ids: some Collection<UUID>) {
+        for id in ids { unsavedPictures[id] = nil }
     }
 
     private func startWorkerIfNeeded() {
@@ -115,27 +142,46 @@ final class AssetAnalysis {
                 referenceFailures[id] = error.localizedDescription
             }
         }
-        guard job.wantsScores else {
-            progress[id] = nil
-            return
-        }
-        do {
-            let track = try await FrameScorer.score(url: job.url) { [weak self] fraction in
-                Task { @MainActor in
-                    guard let self, self.generation == expected, self.progress[id] != nil else { return }
-                    self.progress[id] = fraction
+        if job.wantsScores {
+            do {
+                let track = try await FrameScorer.score(url: job.url) { [weak self] fraction in
+                    Task { @MainActor in
+                        guard let self, self.generation == expected, self.progress[id] != nil else { return }
+                        self.progress[id] = fraction
+                    }
                 }
+                guard generation == expected else { return }
+                tracks[id] = track
+                unsaved.insert(id)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard generation == expected else { return }
+                failures[id] = error.localizedDescription
             }
-            guard generation == expected else { return }
-            tracks[id] = track
-            unsaved.insert(id)
-            progress[id] = nil
-        } catch is CancellationError {
-            return
-        } catch {
-            guard generation == expected else { return }
-            failures[id] = error.localizedDescription
-            progress[id] = nil
         }
+
+        if job.wantsThumbnails, let track = tracks[id] {
+            progress[id] = 0
+            do {
+                let pictures = try await ReferenceThumbnailCapture.capture(
+                    url: job.url, times: ReferenceThumbnailCapture.times(for: track)
+                ) { [weak self] fraction in
+                    Task { @MainActor in
+                        guard let self, self.generation == expected, self.progress[id] != nil else { return }
+                        self.progress[id] = fraction
+                    }
+                }
+                guard generation == expected else { return }
+                unsavedPictures[id] = pictures
+                thumbnailed.insert(id)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard generation == expected else { return }
+                thumbnailFailures.insert(id)
+            }
+        }
+        progress[id] = nil
     }
 }
