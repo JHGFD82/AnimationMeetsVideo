@@ -148,14 +148,23 @@ replaced by renaming over it is noticed too.
 
 **Forget Original…** in the clip's context menu deletes what was captured of
 the original file: its metadata snapshot, audio envelope and reference
-pictures. It asks for confirmation first, since it can't be undone. Without
-that data a replacement can no longer be compared with the original or
-aligned automatically. The change scores stay, because scene detection uses
-them, and clips and trims are untouched.
+pictures. It asks for confirmation first. Without that data a replacement can
+no longer be compared with the original or aligned automatically. The change
+scores stay, because scene detection uses them, and clips and trims are
+untouched.
 
-The asset is marked `referenceForgotten` in `project.json`, so the reference
-is not captured again from whatever file is there now. The deletion happens
-immediately, not at the next save, and is not part of undo.
+Forgetting marks the asset `referenceForgotten`, an ordinary edit that undo
+reverses. The data is deleted from `Reference/` when the project is next
+saved with the mark set, and dropped from memory then; until that save the
+app just stops using it. A capture still running when the original is
+forgotten can't write it back, because saving never writes reference data
+for a forgotten asset.
+
+Reference data is never captured from a file that replaced the original
+(an asset with earlier paths or a non-zero offset). So undoing a forget after
+the save, or opening a project whose reference data is missing, leaves the
+asset without a reference rather than describing the replacement as the
+original.
 
 ## Not yet implemented
 

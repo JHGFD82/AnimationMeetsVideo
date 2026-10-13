@@ -451,8 +451,13 @@ struct MediaClip: Identifiable, Equatable {
     /// it. A different stamp on opening means it was swapped outside the app.
     var acceptedStamp: FileStamp?
     /// True once the person chose to forget the original. Its reference data
-    /// is deleted and not captured again from whatever file is there now.
+    /// is deleted at the next save and not captured again from whatever file
+    /// is there now.
     var referenceForgotten = false
+
+    /// True once the asset points at a file other than the one it was
+    /// imported with, or at the same file realigned after it changed.
+    var wasReplaced: Bool { !previousPaths.isEmpty || alignmentOffset != .zero }
 
     /// Where original time `time` is in the current file.
     func fileTime(forSourceTime time: CMTime) -> CMTime {

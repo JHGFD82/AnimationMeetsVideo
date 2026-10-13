@@ -180,13 +180,31 @@ import Testing
         analysis.analyzeMissing(in: video)
         try await waitForReferences(analysis, expecting: 1)
 
-        analysis.forgetReference(for: id)
         video.markReferenceForgotten(forAsset: id)
+        // Kept until a save deletes it, so undoing the forget loses nothing.
+        #expect(analysis.references[id] != nil)
+
+        analysis.dropForgottenReferences(in: video)
         #expect(analysis.references[id] == nil)
         #expect(analysis.unsavedReferences[id] == nil)
 
         analysis.analyzeMissing(in: video)
         #expect(analysis.references[id] == nil)
+        #expect(analysis.progress.isEmpty)
+    }
+
+    @Test func aReplacedFileIsNeverCapturedAsTheOriginal() async throws {
+        let movie = try await makeMovie(frames: 24)
+        defer { try? FileManager.default.removeItem(at: movie) }
+        var video = project(with: [movie])
+        video.clips[0].previousPaths = ["/elsewhere/original.mov"]
+        let analysis = AssetAnalysis()
+        analysis.reset(tracks: [video.clips[0].id: ChangeScoreTrack(timescale: 600, times: [0], scores: [0])])
+
+        analysis.analyzeMissing(in: video)
+
+        #expect(analysis.progress.isEmpty)
+        #expect(analysis.references.isEmpty)
     }
 
     @Test func anUnreadableFileIsReportedAndNotRetried() async throws {

@@ -194,7 +194,9 @@ final class MediaReplacementController {
         let session = ReplacementSession(asset: asset, candidate: request.url, isReview: isReview)
         self.session = session
         let packageURL = context.packageURL
-        let reference = context.analysis.references[asset.id]
+        // A forgotten original's data stays until the next save, but is no longer used.
+        let forgotten = asset.referenceForgotten
+        let reference = forgotten ? nil : context.analysis.references[asset.id]
             ?? packageURL.flatMap { ProjectStore.readReference(for: asset.id, in: $0) }
         let scores = context.analysis.tracks[asset.id]
         let used = context.project.wrappedValue.usedRanges(ofMedia: asset.id)
@@ -218,7 +220,9 @@ final class MediaReplacementController {
 
                 session.offset = analysis.proposedOffset
                 session.probeSeconds = used.map(\.start.seconds).min() ?? 0
-                if let packageURL {
+                if forgotten {
+                    session.pictures = nil
+                } else if let packageURL {
                     let saved = context.analysis.unsavedThumbnails[asset.id]
                         ?? ProjectStore.readThumbnails(for: asset.id, in: packageURL)
                     session.pictures = saved.frames.isEmpty ? nil : saved
@@ -302,20 +306,10 @@ struct ReplaceMediaMenuItems: View {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Forget the original of \u{201C}\(clip.name)\u{201D}?"
-        alert.informativeText = "This deletes the saved pictures, sound and details of the original file. Without them the app can no longer compare a replacement with the original or suggest how to line it up, and it can't be brought back. Clips and trims are not affected."
+        alert.informativeText = "When you next save the project, this deletes the saved pictures, sound and details of the original file. Without them the app can no longer compare a replacement with the original or suggest how to line it up, and once saved they can't be brought back. Clips and trims are not affected."
         alert.addButton(withTitle: "Forget Original")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-
-        if let packageURL {
-            do {
-                try ProjectStore.forgetReference(for: clip.id, in: packageURL)
-            } catch {
-                controller.notice = .init(title: "Couldn't Forget the Original", message: error.localizedDescription)
-                return
-            }
-        }
-        analysis.forgetReference(for: clip.id)
         project.markReferenceForgotten(forAsset: clip.id)
     }
 
@@ -350,7 +344,9 @@ struct ReplaceMediaMenuItems: View {
         let assets = allClips.compactMap { asset -> (id: UUID, fileNames: [String])? in
             var names: [String] = []
             if let current = asset.url?.lastPathComponent { names.append(current) }
-            if let original = references[asset.id]?.metadata.fileName, !names.contains(original) { names.append(original) }
+            if !asset.referenceForgotten, let original = references[asset.id]?.metadata.fileName, !names.contains(original) {
+                names.append(original)
+            }
             return names.isEmpty ? nil : (asset.id, names)
         }
         let currentPaths = Set(allClips.compactMap { $0.url?.path })

@@ -78,9 +78,12 @@ final class AssetAnalysis {
         for clip in project.clips {
             guard let url = clip.url, progress[clip.id] == nil else { continue }
             let wantsScores = clip.kind == .video && tracks[clip.id] == nil && failures[clip.id] == nil
-            let wantsReference = !clip.referenceForgotten && references[clip.id] == nil && referenceFailures[clip.id] == nil
+            // Reference data describes the original, so it is never taken
+            // from a file that replaced it.
+            let canCapture = !clip.referenceForgotten && !clip.wasReplaced
+            let wantsReference = canCapture && references[clip.id] == nil && referenceFailures[clip.id] == nil
             // Pictures are chosen from the scores, so they need scores to exist or be coming.
-            let wantsThumbnails = clip.kind == .video && !clip.referenceForgotten && !thumbnailed.contains(clip.id)
+            let wantsThumbnails = clip.kind == .video && canCapture && !thumbnailed.contains(clip.id)
                 && !thumbnailFailures.contains(clip.id) && (wantsScores || tracks[clip.id] != nil)
             let wantsBeats = clip.hasAudio && beats[clip.id] == nil && beatFailures[clip.id] == nil
             guard wantsScores || wantsReference || wantsThumbnails || wantsBeats else { continue }
@@ -136,14 +139,18 @@ final class AssetAnalysis {
         for id in ids { unsavedPictures[id] = nil }
     }
 
-    /// Drops the original's reference data from memory. The clip's
-    /// `referenceForgotten` flag keeps it from being captured again.
-    func forgetReference(for id: UUID) {
-        references[id] = nil
-        referenceFailures[id] = nil
-        unsavedReferenceIDs.remove(id)
-        unsavedPictures[id] = nil
-        thumbnailed.remove(id)
+    /// Drops the reference data of originals that `saved` marks forgotten,
+    /// once that save has deleted it from the package. Until then it is
+    /// kept, so undoing Forget Original brings it back.
+    func dropForgottenReferences(in saved: EditingProject) {
+        for clip in saved.clips where clip.referenceForgotten {
+            let id = clip.id
+            references[id] = nil
+            referenceFailures[id] = nil
+            unsavedReferenceIDs.remove(id)
+            unsavedPictures[id] = nil
+            thumbnailed.remove(id)
+        }
     }
 
     private func startWorkerIfNeeded() {

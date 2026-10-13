@@ -42,7 +42,7 @@ extension EditingProject {
     }
 
     /// Records that the original was forgotten. The reference data itself is
-    /// deleted separately, by `ProjectStore` and `AssetAnalysis`.
+    /// deleted when the project is next saved, so this can be undone until then.
     mutating func markReferenceForgotten(forAsset assetID: UUID) {
         guard let index = clips.firstIndex(where: { $0.id == assetID }) else { return }
         clips[index].referenceForgotten = true

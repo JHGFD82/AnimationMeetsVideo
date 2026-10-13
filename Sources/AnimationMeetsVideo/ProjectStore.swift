@@ -255,7 +255,8 @@ enum ProjectStore {
 
     /// Deletes what was captured of the original: its metadata, audio
     /// envelope and pictures. The change scores stay, since scene detection
-    /// uses them. This can't be undone.
+    /// uses them. This can't be undone; `save` calls it for every asset
+    /// marked `referenceForgotten`.
     static func forgetReference(for assetID: UUID, in packageURL: URL) throws {
         let folder = referenceFolder(for: assetID, in: packageURL)
         let fileManager = FileManager.default
@@ -403,6 +404,8 @@ enum ProjectStore {
     /// into `Media/`; on APFS a same-volume copy is a clone and costs no
     /// extra space. `changeScores` are written to `Reference/`; pass only the
     /// ones that aren't saved yet, and so are `references` and `thumbnails`.
+    /// The reference data of assets marked `referenceForgotten` is deleted
+    /// rather than written.
     @discardableResult
     static func save(
         _ project: EditingProject,
@@ -432,10 +435,16 @@ enum ProjectStore {
         for (assetID, track) in beats where project.mediaClip(id: assetID) != nil {
             try writeBeats(track, for: assetID, in: packageURL)
         }
-        for (assetID, reference) in references where project.mediaClip(id: assetID) != nil {
+        // A forgotten original's data is deleted only now, so that undoing
+        // Forget Original before saving loses nothing.
+        let forgotten = Set(project.clips.filter(\.referenceForgotten).map(\.id))
+        for assetID in forgotten {
+            try forgetReference(for: assetID, in: packageURL)
+        }
+        for (assetID, reference) in references where project.mediaClip(id: assetID) != nil && !forgotten.contains(assetID) {
             try writeReference(reference, for: assetID, in: packageURL)
         }
-        for (assetID, pictures) in thumbnails where project.mediaClip(id: assetID) != nil {
+        for (assetID, pictures) in thumbnails where project.mediaClip(id: assetID) != nil && !forgotten.contains(assetID) {
             try writeThumbnails(pictures, for: assetID, in: packageURL)
         }
 
@@ -657,8 +666,10 @@ enum ProjectStore {
         var thumbnailed: Set<UUID> = []
         for id in orderedIDs {
             beats[id] = readBeats(for: id, in: packageURL)
-            if hasThumbnails(for: id, in: packageURL) { thumbnailed.insert(id) }
             scores[id] = readChangeScores(for: id, in: packageURL)
+            // Left behind only if saving stopped partway; it is deleted at the next save.
+            guard importedClips[id]?.referenceForgotten != true else { continue }
+            if hasThumbnails(for: id, in: packageURL) { thumbnailed.insert(id) }
             references[id] = readReference(for: id, in: packageURL)
         }
         return ProjectLoadResult(project: project, missingMedia: missingMedia, changedMedia: changedMedia, changeScores: scores, beats: beats, references: references, assetsWithThumbnails: thumbnailed)

@@ -185,6 +185,7 @@ struct AnimationMeetsVideoApp: App {
                 analysis.markReferencesSaved(referencesToSave.keys)
                 analysis.markThumbnailsSaved(thumbnailsToSave.keys)
                 analysis.markBeatsSaved(beatsToSave.keys)
+                analysis.dropForgottenReferences(in: saved)
                 // Edits made while saving stay; only the media locations change.
                 history.adopt { $0.applyMediaLocations(from: saved) }
                 project.applyMediaLocations(from: saved)

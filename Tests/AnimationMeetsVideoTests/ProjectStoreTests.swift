@@ -691,6 +691,26 @@ private struct Sandbox {
         #expect(loaded.changeScores[assetID] == track)
     }
 
+    @Test func savingAForgottenOriginalDeletesItsDataAndWritesNoNewData() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, assetID) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL, references: [assetID: reference()])
+        #expect(ProjectStore.readReference(for: assetID, in: sandbox.packageURL) != nil)
+
+        project.markReferenceForgotten(forAsset: assetID)
+        let pictures = ReferenceThumbnails(frames: [ReferenceFrame(time: .zero, jpeg: Data([1]))])
+        try await ProjectStore.save(
+            project, to: sandbox.packageURL,
+            references: [assetID: reference()], thumbnails: [assetID: pictures]
+        )
+
+        #expect(ProjectStore.readReference(for: assetID, in: sandbox.packageURL) == nil)
+        #expect(!ProjectStore.hasThumbnails(for: assetID, in: sandbox.packageURL))
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.references[assetID] == nil)
+    }
+
     @Test func forgettingWhenNothingWasSavedIsHarmless() throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
