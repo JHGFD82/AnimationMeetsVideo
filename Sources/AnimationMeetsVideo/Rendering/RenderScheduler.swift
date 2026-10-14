@@ -6,7 +6,7 @@ import QuartzCore
 /// Renders the viewed timeline's segments into the render cache in the
 /// background, one at a time, only while the timeline is idle: any edit,
 /// scrub, playback or export stops the render in progress, and rendering resumes
-/// after `idleSeconds` (two) of quiet. It also waits while the Mac is hot or in
+/// after `idleSeconds` (two) of quiet, starting at the playhead. It also waits while the Mac is hot or in
 /// Low Power Mode. A finished render bumps `finishedCount`, so the viewer
 /// rebuilds and plays it.
 @MainActor
@@ -92,13 +92,19 @@ final class RenderScheduler {
         noteActivity()
     }
 
-    /// Segments still to render, in timeline order, each key once.
+    /// Where the playhead is parked; rendering starts from there.
+    @ObservationIgnored var playhead: CMTime = .zero
+
+    /// Segments still to render, each key once: from the playhead to the
+    /// end first, since that is what plays next, then the rest in order.
     var pending: [RenderSegment] {
         var seen: Set<String> = []
-        return segments.filter { segment in
+        let waiting = segments.filter { segment in
             segment.needsRender && !rendered.contains(segment.key) && !failed.contains(segment.key)
                 && seen.insert(segment.key).inserted
         }
+        let ahead = waiting.filter { $0.range.end > playhead }
+        return ahead + waiting.filter { $0.range.end <= playhead }
     }
 
     func state(of segment: RenderSegment) -> State? {

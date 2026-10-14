@@ -234,4 +234,18 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         let key = try #require(composed.segments.first(where: \.needsRender)?.key)
         #expect(scheduler.cache?.file(for: key) != nil)
     }
+
+    @Test func pendingRendersStartAtThePlayhead() {
+        let scheduler = RenderScheduler()
+        func segment(_ start: Int64, _ key: String) -> RenderSegment {
+            RenderSegment(
+                range: CMTimeRange(start: CMTime(value: start, timescale: 1), duration: CMTime(value: 1, timescale: 1)),
+                key: key, needsRender: true, clipIDs: []
+            )
+        }
+        scheduler.update(project: .empty, timelineID: UUID(), segments: [segment(0, "a"), segment(1, "b"), segment(2, "c"), segment(3, "d")])
+        scheduler.playhead = CMTime(value: 2, timescale: 1)
+
+        #expect(scheduler.pending.map(\.key) == ["c", "d", "a", "b"])
+    }
 }

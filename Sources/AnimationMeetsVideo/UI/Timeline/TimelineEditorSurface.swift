@@ -114,6 +114,10 @@ struct TimelineEditorSurface<Library: View>: View {
             renderer?.noteActivity()
             rebuildPlayerItem()
         }
+        // Wherever it stops, playing or scrubbing, is where rendering starts.
+        .onChange(of: playheadTime) { _, time in
+            renderer?.playhead = time
+        }
         .onChange(of: playback.isPlaying) { _, playing in
             renderer?.setPlaying(playing)
         }

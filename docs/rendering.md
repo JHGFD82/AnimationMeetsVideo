@@ -72,7 +72,8 @@ Limits:
   Renders play through the same compositor at the viewer's quality, which
   is cheap since there is one layer to draw.
 - **Background rendering only when idle.** `RenderScheduler` renders one
-  piece at a time, in timeline order. Any edit, scrub or playback stops the
+  piece at a time, starting at the playhead and running to the end, then
+  the pieces before it. Any edit, scrub or playback stops the
   render in progress (it starts over later); rendering resumes after two
   seconds of quiet. It also waits while the Mac is hot (serious or
   critical thermal state) or in Low Power Mode. A piece that fails to
