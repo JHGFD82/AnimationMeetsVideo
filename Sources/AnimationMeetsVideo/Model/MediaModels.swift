@@ -11,6 +11,9 @@ struct EditingProject: Identifiable, Equatable {
     /// Cut sensitivity for assets that don't override it, from 0 (only
     /// obvious cuts) to 1 (small changes count).
     var defaultSensitivity = SceneDetector.balancedSensitivity
+    /// Whether imported media is copied into the package's `Media/` folder
+    /// (the default) or referenced where it is.
+    var copiesMediaOnImport = true
 
     static var empty: EditingProject {
         let main = Timeline(

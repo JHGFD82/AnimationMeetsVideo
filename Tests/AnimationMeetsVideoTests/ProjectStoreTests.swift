@@ -703,6 +703,54 @@ private struct Sandbox {
         let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
         #expect(loaded.changedMedia.isEmpty)
     }
+
+    @Test func copyOnImportIsOmittedWhileOnAndRoundTripsWhenOff() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        #expect(!(try String(contentsOf: sandbox.projectJSON, encoding: .utf8)).contains("copiesMediaOnImport"))
+        #expect(try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter).project.copiesMediaOnImport)
+
+        project.copiesMediaOnImport = false
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(!loaded.project.copiesMediaOnImport)
+    }
+
+    @Test func importCopiesLandInMediaWithoutOverwriting() throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        try ProjectStore.preparePackage(at: sandbox.packageURL)
+
+        let first = try ProjectStore.copyIntoPackage(sandbox.mediaURL, packageURL: sandbox.packageURL)
+        let second = try ProjectStore.copyIntoPackage(sandbox.mediaURL, packageURL: sandbox.packageURL)
+
+        #expect(first.deletingLastPathComponent().lastPathComponent == "Media")
+        #expect(first.lastPathComponent == "footage.mov")
+        #expect(second.lastPathComponent == "footage 2.mov")
+        #expect(try ProjectStore.copyIntoPackage(first, packageURL: sandbox.packageURL) == first)
+        #expect(FileManager.default.fileExists(atPath: sandbox.mediaURL.path))
+    }
+
+    @Test func saveAsCopiesOnlyMediaFromThePreviousPackage() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, assetID) = sandbox.makeProject()
+        try ProjectStore.preparePackage(at: sandbox.packageURL)
+        let inside = try ProjectStore.copyIntoPackage(sandbox.mediaURL, packageURL: sandbox.packageURL)
+        var other = project.clips[0]
+        other.id = UUID()
+        project.addMedia(other)
+        project.clips[0].url = inside
+
+        let newPackage = sandbox.root.appending(path: "Copy.amv", directoryHint: .isDirectory)
+        try ProjectStore.preparePackage(at: newPackage)
+        let candidates = ProjectStore.mediaToCopy(in: project, into: newPackage, from: sandbox.packageURL)
+
+        #expect(candidates.map(\.clipID) == [assetID])
+    }
 }
 
 @Suite struct ForgetOriginalTests {

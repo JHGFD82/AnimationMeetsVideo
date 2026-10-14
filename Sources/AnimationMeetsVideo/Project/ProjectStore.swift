@@ -255,6 +255,8 @@ private struct ProjectFile: Codable {
     var rootTimelineID: UUID
     /// Absent in files written before scene detection; reads as balanced.
     var defaultSensitivity: Double?
+    /// Absent while imports are copied into the package (the default).
+    var copiesMediaOnImport: Bool?
     var assets: [AssetEntry]
     var timelines: [TimelineEntry]
 }
@@ -500,23 +502,48 @@ enum ProjectStore {
     // MARK: Media consolidation
 
     /// Media that saving into `packageURL` would copy in: anything with a file
-    /// outside the package. `preparePackage` must have run first so the
+    /// outside the package, or with `sourcePackageURL` (Save As) only what is
+    /// inside that package. `preparePackage` must have run first so the
     /// package's volume can be compared.
-    static func mediaToCopy(in project: EditingProject, into packageURL: URL) -> [MediaCopyCandidate] {
-        let packageVolume = volumeInfo(for: packageURL)
-        return project.clips.compactMap { clip in
+    static func mediaToCopy(in project: EditingProject, into packageURL: URL, from sourcePackageURL: URL? = nil) -> [MediaCopyCandidate] {
+        project.clips.compactMap { clip in
             guard let url = clip.url, !isInside(url, package: packageURL),
+                  sourcePackageURL.map({ isInside(url, package: $0) }) ?? true,
                   FileManager.default.fileExists(atPath: url.path)
             else {
                 return nil
             }
-            let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-            let sourceVolume = volumeInfo(for: url)
-            let isClone = packageVolume.supportsCloning
-                && sourceVolume.identifier != nil
-                && sourceVolume.identifier?.isEqual(packageVolume.identifier) == true
-            return MediaCopyCandidate(clipID: clip.id, sourceURL: url, byteCount: size, isClone: isClone)
+            return MediaCopyCandidate(
+                clipID: clip.id, sourceURL: url, byteCount: fileSize(of: url),
+                isClone: copyIsClone(of: url, into: packageURL)
+            )
         }
+    }
+
+    static func fileSize(of url: URL) -> Int64 {
+        Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+    }
+
+    /// True when copying `url` into the package makes an APFS clone, which
+    /// is instant and uses no extra disk space.
+    static func copyIsClone(of url: URL, into packageURL: URL) -> Bool {
+        let packageVolume = volumeInfo(for: packageURL)
+        let sourceVolume = volumeInfo(for: url)
+        return packageVolume.supportsCloning
+            && sourceVolume.identifier != nil
+            && sourceVolume.identifier?.isEqual(packageVolume.identifier) == true
+    }
+
+    /// Copies a file into the package's `Media/` folder, next to any file of
+    /// the same name rather than over it, and returns the copy. A file
+    /// already inside the package is returned as it is.
+    static func copyIntoPackage(_ url: URL, packageURL: URL) throws -> URL {
+        guard !isInside(url, package: packageURL) else { return url }
+        let mediaFolder = packageURL.appending(path: mediaFolderName, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: mediaFolder, withIntermediateDirectories: true)
+        let destination = uniqueDestination(for: url.lastPathComponent, in: mediaFolder)
+        try FileManager.default.copyItem(at: url, to: destination)
+        return destination
     }
 
     private static func volumeInfo(for url: URL) -> (identifier: (any NSObjectProtocol)?, supportsCloning: Bool) {
@@ -577,12 +604,10 @@ enum ProjectStore {
         }
 
         var project = project
-        let mediaFolder = packageURL.appending(path: mediaFolderName, directoryHint: .isDirectory)
         for index in project.clips.indices {
             let clip = project.clips[index]
             guard copying.contains(clip.id), let source = clip.url, !isInside(source, package: packageURL) else { continue }
-            let destination = uniqueDestination(for: source.lastPathComponent, in: mediaFolder)
-            try FileManager.default.copyItem(at: source, to: destination)
+            let destination = try copyIntoPackage(source, packageURL: packageURL)
             project.clips[index].url = destination
             project.clips[index].acceptedStamp = FileStamp(url: destination)
         }
@@ -715,6 +740,7 @@ enum ProjectStore {
             name: project.name,
             rootTimelineID: project.rootTimelineID,
             defaultSensitivity: project.defaultSensitivity == SceneDetector.balancedSensitivity ? nil : project.defaultSensitivity,
+            copiesMediaOnImport: project.copiesMediaOnImport ? nil : false,
             assets: urlClips.map { clip in
                 ProjectFile.AssetEntry(
                     id: clip.id,
@@ -828,7 +854,8 @@ enum ProjectStore {
             clips: orderedIDs.compactMap { importedClips[$0] },
             timelines: timelines,
             rootTimelineID: rootID,
-            defaultSensitivity: file.defaultSensitivity ?? SceneDetector.balancedSensitivity
+            defaultSensitivity: file.defaultSensitivity ?? SceneDetector.balancedSensitivity,
+            copiesMediaOnImport: file.copiesMediaOnImport ?? true
         )
         var scores: [UUID: ChangeScoreTrack] = [:]
         var references: [UUID: AssetReference] = [:]
