@@ -87,9 +87,9 @@ the same spirit: once they would be closer than 10 points, only every 2nd,
 ## Playhead
 
 The playhead is a red line through the track area with a red tab at its
-top, in the ruler. Clicking or dragging anywhere in the ruler, or in empty
-track space, moves it there. It lands on frames and stays within the
-timeline.
+top, in the ruler. Only clicking or dragging in the ruler moves it, so
+drags on the layers are free for the tools. It lands on frames and stays
+within the timeline.
 
 ## Tools
 
@@ -107,7 +107,9 @@ is being edited.
   (`rippleTrimStart` / `rippleTrimEnd` in `MediaModels.swift`). Trimming
   the start keeps the clip in place and changes which frame it begins on.
   The trim stops where the footage runs out (or at a one-frame clip) and
-  goes no further. Later clips follow on screen during the drag, and the
+  goes no further. Dragging anywhere on a clip trims its nearer edge, so
+  the edge doesn't have to be hit exactly. Later clips follow on screen
+  during the drag, and the
   viewer shows the clip's first and last frames side by side with their
   source timecodes, so it's clear exactly which footage it will play.
   Clips can't be moved with it. Ripple doesn't move other layers, the

@@ -374,6 +374,8 @@ struct ClipBlockView: View {
     @State private var isTransitionTarget = false
     /// Where the blade would cut, in the row's coordinates, while hovering.
     @State private var bladeX: CGFloat?
+    /// The edge a ripple drag on the clip's body trims: the nearer one.
+    @State private var rippleEdge: Edge?
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
 
     private let handleWidth: CGFloat = 8
@@ -493,6 +495,21 @@ struct ClipBlockView: View {
                     },
                 // Only the arrow moves clips.
                 including: tool == .arrow ? .all : .none
+            )
+            // With the ripple tool, dragging anywhere on the clip trims the
+            // nearer edge, so it doesn't take aiming at the edge.
+            .gesture(
+                DragGesture(minimumDistance: 3, coordinateSpace: .named(space))
+                    .onChanged { value in
+                        let edge = rippleEdge ?? (value.startLocation.x < liveX + liveWidth / 2 ? .leading : .trailing)
+                        rippleEdge = edge
+                        trimChanged(edge, translation: value.translation.width)
+                    }
+                    .onEnded { _ in
+                        if let rippleEdge { trimEnded(rippleEdge) }
+                        rippleEdge = nil
+                    },
+                including: tool == .ripple ? .all : .none
             )
             // A click selects the clip, or the transition under it.
             .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(space)).onEnded { value in
@@ -653,6 +670,35 @@ struct ClipBlockView: View {
         CMTime(seconds: Double(translation / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
     }
 
+    /// A trim drag of `edge` moved by `translation` points: previews it.
+    private func trimChanged(_ edge: Edge, translation: CGFloat) {
+        isTrimming = true
+        let delta = timeDelta(translation)
+        let trimmed = switch edge {
+        case .leading: resolveTrimStart(CMTimeAdd(clip.trimStart, delta)) ?? clip
+        case .trailing: resolveTrimEnd(CMTimeAdd(clip.trimEnd, delta)) ?? clip
+        }
+        showPreview(trimmed)
+        onTrimDraft?(trimmed, false)
+    }
+
+    /// A trim drag ended: commits it, or selects the clip when it was a click.
+    private func trimEnded(_ edge: Edge) {
+        onTrimDraft?(nil, preview.map { $0 != clip } ?? false)
+        if let preview, preview != clip {
+            commitDrop {
+                switch edge {
+                case .leading: onTrimStart(preview.trimStart)
+                case .trailing: onTrimEnd(preview.trimEnd)
+                }
+            }
+        } else {
+            if !isTrimming { onSelect() }
+            endDrop()
+        }
+        isTrimming = false
+    }
+
     private func trimHandle(edge: Edge, liveX: CGFloat, liveWidth: CGFloat) -> some View {
         let handleX = edge == .leading ? liveX - handleWidth / 2 : liveX + liveWidth - handleWidth / 2
         return Rectangle()
@@ -664,30 +710,9 @@ struct ClipBlockView: View {
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
                         guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
-                        isTrimming = true
-                        let delta = timeDelta(value.translation.width)
-                        let trimmed = switch edge {
-                        case .leading: resolveTrimStart(CMTimeAdd(clip.trimStart, delta)) ?? clip
-                        case .trailing: resolveTrimEnd(CMTimeAdd(clip.trimEnd, delta)) ?? clip
-                        }
-                        showPreview(trimmed)
-                        onTrimDraft?(trimmed, false)
+                        trimChanged(edge, translation: value.translation.width)
                     }
-                    .onEnded { _ in
-                        onTrimDraft?(nil, preview.map { $0 != clip } ?? false)
-                        if let preview, preview != clip {
-                            commitDrop {
-                                switch edge {
-                                case .leading: onTrimStart(preview.trimStart)
-                                case .trailing: onTrimEnd(preview.trimEnd)
-                                }
-                            }
-                        } else {
-                            if !isTrimming { onSelect() }
-                            endDrop()
-                        }
-                        isTrimming = false
-                    }
+                    .onEnded { _ in trimEnded(edge) }
             )
             .pointerStyle(.columnResize)
     }

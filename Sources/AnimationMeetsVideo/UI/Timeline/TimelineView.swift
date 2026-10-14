@@ -515,8 +515,6 @@ struct TimelineView: View {
                         onRippleTrimEnd: { clipID, trimEnd in onRippleTrimEnd(layer.id, clipID, trimEnd) },
                         onTrimPreview: onTrimPreview
                     )
-                    // Empty space on a layer scrubs; clips claim their own clicks.
-                    .gesture(contentScrubGesture(in: viewport))
                     if let joint = shownJoint(in: layer) {
                         TransitionFootageLane(
                             joint: joint,
@@ -572,7 +570,6 @@ struct TimelineView: View {
             NewLayerDropRow(height: newLayerRowHeight) { payloads, x in
                 onDropScenes(payloads, nil, CMTime(seconds: max(0, Double(x / pixelsPerSecond)), preferredTimescale: 600))
             }
-            .gesture(contentScrubGesture(in: viewport))
         }
         .frame(width: contentWidth, alignment: .topLeading)
     }
@@ -629,12 +626,6 @@ struct TimelineView: View {
 
     /// The same for views laid out across the whole span, whose x is in
     /// unscrolled content coordinates.
-    private func contentScrubGesture(in viewport: TimelineViewport) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in scrub(atX: value.location.x - viewport.scrollX, in: viewport) }
-            .onEnded { value in scrub(atX: value.location.x - viewport.scrollX, in: viewport) }
-    }
-
     private func scrub(atX x: CGFloat, in viewport: TimelineViewport) {
         let seconds = max(0, min(timeline.duration.seconds, viewport.seconds(atX: x)))
         onScrub(timeline.snappedToFrame(CMTime(seconds: seconds, preferredTimescale: 600)))
