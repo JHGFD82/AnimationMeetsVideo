@@ -147,30 +147,36 @@ struct EditingProject: Identifiable, Equatable {
 
     /// Repositions a clip within its layer by setting its absolute start
     /// time — the drag-to-move interaction in the timeline UI. Where it
-    /// lands is `resolvedStart(ofMoving:in:layer:to:)`; a move onto a layer
-    /// with no gap big enough is rejected.
+    /// lands, and which clips move right to make room for it, is
+    /// `resolvedMove(ofMoving:in:layer:onto:to:)`.
     ///
     /// With `targetLayerID` the clip moves to that layer instead, so several
     /// clips can share a layer. A layer left empty stays, so clips can be
     /// moved back into it; `deleteLayer` removes it.
     mutating func moveClip(_ id: UUID, in timelineID: UUID, layer layerID: UUID, onto targetLayerID: UUID? = nil, to newStart: CMTime) {
-        guard let start = resolvedStart(ofMoving: id, in: timelineID, layer: layerID, onto: targetLayerID, to: newStart),
+        guard let move = resolvedMove(ofMoving: id, in: timelineID, layer: layerID, onto: targetLayerID, to: newStart),
               let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
               let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id })
         else {
             return
         }
-        if let targetLayerID, targetLayerID != layerID,
-           let targetIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == targetLayerID }) {
-            var clip = timelines[tIndex].layers[lIndex].clips.remove(at: cIndex)
-            clip.startOffset = start
-            timelines[tIndex].layers[targetIndex].clips.append(clip)
-            timelines[tIndex].layers[targetIndex].clips.sort { $0.startOffset < $1.startOffset }
-            return
+        var clip = timelines[tIndex].layers[lIndex].clips.remove(at: cIndex)
+        clip.startOffset = move.start
+        var targetIndex = lIndex
+        if let targetLayerID, let index = timelines[tIndex].layers.firstIndex(where: { $0.id == targetLayerID }) {
+            targetIndex = index
         }
-        timelines[tIndex].layers[lIndex].clips[cIndex].startOffset = start
-        timelines[tIndex].layers[lIndex].clips.sort { $0.startOffset < $1.startOffset }
+        if move.push > .zero {
+            for c in timelines[tIndex].layers[targetIndex].clips.indices
+            where timelines[tIndex].layers[targetIndex].clips[c].startOffset >= move.pushFrom {
+                timelines[tIndex].layers[targetIndex].clips[c].startOffset = CMTimeAdd(
+                    timelines[tIndex].layers[targetIndex].clips[c].startOffset, move.push
+                )
+            }
+        }
+        timelines[tIndex].layers[targetIndex].clips.append(clip)
+        timelines[tIndex].layers[targetIndex].clips.sort { $0.startOffset < $1.startOffset }
     }
 
     /// Splits the clip at a timeline-space time (e.g. the playhead). The time

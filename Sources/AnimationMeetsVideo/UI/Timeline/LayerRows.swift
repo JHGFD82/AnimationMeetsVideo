@@ -146,13 +146,21 @@ struct LayerHeaderRow: View {
     }
 }
 
-/// Where a clip being dragged will land when it moves to another layer.
+/// Where a clip being dragged will land, and what moves aside for it.
 struct ClipMovePreview: Equatable {
     var start: CMTime
     /// Nil when it stays on its own layer.
     var layerID: UUID?
     /// How far the target layer's row is below the clip's own.
     var offsetY: CGFloat
+    /// The clips on the target layer moving right to make room, by id.
+    var pushed: [UUID: PushedClip] = [:]
+}
+
+/// A clip moving right to make room for one dragged in front of it.
+struct PushedClip: Equatable {
+    var from: CMTime
+    var to: CMTime
 }
 
 struct LayerClipRow: View {
@@ -172,6 +180,11 @@ struct LayerClipRow: View {
     /// Moves a clip to a start time, and to another layer when given.
     let onMoveClip: (UUID, UUID?, CMTime) -> Void
     let onDraggingClip: (Bool) -> Void
+    /// Clips on this layer moving aside for a clip being dragged, drawn
+    /// where they will go until the move lands.
+    let pushed: [UUID: PushedClip]
+    /// Hears what a drag in progress pushes, and empty when it ends.
+    let onPushPreview: ([UUID: PushedClip]) -> Void
     let onDropScenes: ([SceneDragPayload], CMTime) -> Bool
     let onEditJoint: (UUID) -> Void
     let onTrimClipStart: (UUID, CMTime) -> Void
@@ -206,8 +219,16 @@ struct LayerClipRow: View {
     }
 
     @State private var followerShift: FollowerShift?
+    /// The clip lifted by a move drag, drawn above its neighbors.
+    @State private var liftedClipID: UUID?
 
     private func shiftX(of clip: TimelineClip) -> CGFloat {
+        // A push applies only while the clip is still where it was: once
+        // the move lands it is already there, and shifting it again would
+        // show it twice as far for a frame.
+        if let push = pushed[clip.id], clip.startOffset == push.from {
+            return CMTimeSubtract(push.to, push.from).seconds * pixelsPerSecond
+        }
         guard let followerShift, clip.id != followerShift.clipID, clip.startOffset >= followerShift.after else { return 0 }
         return followerShift.shift.seconds * pixelsPerSecond
     }
@@ -248,7 +269,11 @@ struct LayerClipRow: View {
                     resolveTrimEnd: { project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
                     onSelect: { onSelectClip(clip) },
                     onMove: { newStart, targetLayerID in onMoveClip(clip.id, targetLayerID, newStart) },
-                    onDragging: onDraggingClip,
+                    onDragging: { dragging in
+                        liftedClipID = dragging ? clip.id : nil
+                        onDraggingClip(dragging)
+                    },
+                    onMovePreview: { onPushPreview($0?.pushed ?? [:]) },
                     onTrimStart: { newTrimStart in onTrimClipStart(clip.id, newTrimStart) },
                     onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) },
                     onSetTransition: { kind, edge in onSetTransition(clip.id, kind, edge) },
@@ -270,6 +295,10 @@ struct LayerClipRow: View {
                     onSetTransitionDuration: { edge, duration in onSetTransitionDuration(clip.id, edge, duration) }
                 )
                 .offset(x: shiftX(of: clip))
+                // Clips slide aside as a drag makes room, but not when the
+                // move lands: then the shift and the new start cancel out.
+                .animation(liftedClipID == nil ? nil : Design.Motion.respecting(Design.Motion.panel), value: shiftX(of: clip))
+                .zIndex(liftedClipID == clip.id ? 1 : 0)
             }
             // Transitions joining two clips sit over the cut, on top of both.
             ForEach(layer.clips) { clip in
@@ -348,6 +377,8 @@ struct ClipBlockView: View {
     let onSelect: () -> Void
     let onMove: (CMTime, UUID?) -> Void
     let onDragging: (Bool) -> Void
+    /// Hears where a move drag will land, and nil when it ends.
+    let onMovePreview: (ClipMovePreview?) -> Void
     let onTrimStart: (CMTime) -> Void
     let onTrimEnd: (CMTime) -> Void
     let onSetTransition: (TransitionKind, TransitionEdge) -> Void
@@ -390,6 +421,8 @@ struct ClipBlockView: View {
     @State private var pendingDrop: Int?
     @State private var dropCount = 0
     @State private var isTrimming = false
+    /// Whether a move drag is under way.
+    @State private var isLifted = false
     @State private var isTransitionTarget = false
     /// Where the blade would cut, in the row's coordinates, while hovering.
     @State private var bladeX: CGFloat?
@@ -535,7 +568,10 @@ struct ClipBlockView: View {
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
                         guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
-                        if preview == nil { onDragging(true) }
+                        if !isLifted {
+                            isLifted = true
+                            onDragging(true)
+                        }
                         var proposed = CMTimeAdd(clip.startOffset, timeDelta(value.translation.width))
                         let snapped = snapSpan(proposed, clip.trimmedDuration)
                         if let snapped { proposed = snapped.start }
@@ -545,8 +581,10 @@ struct ClipBlockView: View {
                         moved.startOffset = target?.start ?? clip.startOffset
                         showPreview(moved)
                         previewTarget = target?.layerID == nil ? nil : target
+                        onMovePreview(target)
                     }
                     .onEnded { _ in
+                        isLifted = false
                         onDragging(false)
                         onSnapIndicator(nil)
                         let targetLayer = previewTarget?.layerID
@@ -762,6 +800,7 @@ struct ClipBlockView: View {
         pendingDrop = nil
         preview = nil
         previewTarget = nil
+        onMovePreview(nil)
     }
 
     private func timeDelta(_ translation: CGFloat) -> CMTime {

@@ -74,6 +74,8 @@ struct TimelineView: View {
     /// The layer of a clip being dragged, drawn above the others so the
     /// clip stays visible over the layer it is moving to.
     @State private var draggingClipLayerID: UUID?
+    /// Clips moving aside for the clip being dragged, by layer.
+    @State private var pushedClips: (layerID: UUID, clips: [UUID: PushedClip])?
     /// The incoming clip of the joining transition whose footage is open.
     @State private var expandedJoint: UUID?
     @State private var headerBarHeight: CGFloat = 32
@@ -432,11 +434,26 @@ struct TimelineView: View {
         let y = tops[from] + layerHeight / 2 + dy
         if let target = timeline.layers.indices.last(where: { tops[$0] <= y }),
            target != from, y < tops[target] + blockHeight(of: timeline.layers[target]),
-           let landed = project.resolvedStart(ofMoving: clip.id, in: timelineID, layer: layerID, onto: timeline.layers[target].id, to: start) {
-            return ClipMovePreview(start: landed, layerID: timeline.layers[target].id, offsetY: tops[target] - tops[from])
+           let landed = project.resolvedMove(ofMoving: clip.id, in: timelineID, layer: layerID, onto: timeline.layers[target].id, to: start) {
+            let targetLayer = timeline.layers[target]
+            return ClipMovePreview(
+                start: landed.start, layerID: targetLayer.id, offsetY: tops[target] - tops[from],
+                pushed: pushed(on: targetLayer, by: landed, excluding: clip.id)
+            )
         }
-        return project.resolvedStart(ofMoving: clip.id, in: timelineID, layer: layerID, to: start)
-            .map { ClipMovePreview(start: $0, layerID: nil, offsetY: 0) }
+        return project.resolvedMove(ofMoving: clip.id, in: timelineID, layer: layerID, to: start).map {
+            ClipMovePreview(start: $0.start, layerID: nil, offsetY: 0, pushed: pushed(on: timeline.layers[from], by: $0, excluding: clip.id))
+        }
+    }
+
+    /// The clips on `layer` that `move` pushes right, and where to.
+    private func pushed(on layer: TimelineLayer, by move: ClipMove, excluding movingID: UUID) -> [UUID: PushedClip] {
+        guard move.push > .zero else { return [:] }
+        var pushed: [UUID: PushedClip] = [:]
+        for clip in layer.clips where clip.id != movingID && clip.startOffset >= move.pushFrom {
+            pushed[clip.id] = PushedClip(from: clip.startOffset, to: CMTimeAdd(clip.startOffset, move.push))
+        }
+        return pushed
     }
 
     private func layerHeaders(frameTime: CMTime) -> some View {
@@ -550,6 +567,18 @@ struct TimelineView: View {
                         resolveMove: { clip, dy, start in resolveMove(clip, from: layer.id, dy: dy, to: start) },
                         onMoveClip: { clipID, target, newStart in onMoveClip(layer.id, clipID, target, newStart) },
                         onDraggingClip: { dragging in draggingClipLayerID = dragging ? layer.id : nil },
+                        pushed: pushedClips.flatMap { $0.layerID == layer.id ? $0.clips : nil } ?? [:],
+                        onPushPreview: { clips in
+                            // A push lands on the layer under the pointer,
+                            // which the pushed clips themselves are on.
+                            let target = clips.isEmpty ? nil : timeline.layers.first { l in
+                                l.clips.contains { clips[$0.id] != nil }
+                            }
+                            let next = target.map { (layerID: $0.id, clips: clips) }
+                            if next?.layerID != pushedClips?.layerID || next?.clips != pushedClips?.clips {
+                                pushedClips = next
+                            }
+                        },
                         onDropScenes: { payloads, time in onDropScenes(payloads, layer.id, time) },
                         onEditJoint: { clipID in
                             expandedJoint = clipID

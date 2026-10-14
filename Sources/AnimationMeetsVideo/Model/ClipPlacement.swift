@@ -104,19 +104,22 @@ extension EditingProject {
         return (timeline, clip, layer.clips.filter { $0.id != id })
     }
 
-    /// Where a clip asked to start at `proposedStart` actually lands: never
-    /// before zero, on a frame if it has pictures, and never overlapping
-    /// another clip on its layer — or on `targetLayerID` when it is moving
-    /// to another layer. A drop onto a neighbor goes to the nearest free
-    /// edge; nil means the layer has no gap big enough. The timeline shows
-    /// this while dragging, so the drop lands where the clip was shown.
-    func resolvedStart(
+    /// Where a clip asked to start at `proposedStart` lands, on its own
+    /// layer or on `targetLayerID`, and what moves aside for it. It lands
+    /// where it was dropped: never before zero, on a frame if it has
+    /// pictures, and dropped inside another clip it goes to that clip's
+    /// nearer edge, so a clip can go between two others or before the
+    /// first. When it doesn't fit there, everything on the layer from the
+    /// landing point on moves right just far enough to make room, keeping
+    /// the gaps between those clips. The timeline shows this while
+    /// dragging, so the drop lands where the clip was shown.
+    func resolvedMove(
         ofMoving id: UUID,
         in timelineID: UUID,
         layer layerID: UUID,
         onto targetLayerID: UUID? = nil,
         to proposedStart: CMTime
-    ) -> CMTime? {
+    ) -> ClipMove? {
         guard let (timeline, moving, sameLayer) = placementContext(id, in: timelineID, layer: layerID) else { return nil }
         let others: [TimelineClip]
         if let targetLayerID, targetLayerID != layerID {
@@ -125,7 +128,36 @@ extension EditingProject {
         } else {
             others = sameLayer
         }
-        return freeStart(for: moving, among: others, in: timeline, near: proposedStart)
+        let locked = isFrameLocked(moving)
+        var start = timeline.placementTime(CMTimeMaximum(.zero, proposedStart), .nearest, frameLocked: locked)
+        if let under = others.first(where: { $0.startOffset < start && start < $0.endOffset }) {
+            let toStart = CMTimeSubtract(start, under.startOffset)
+            let toEnd = CMTimeSubtract(under.endOffset, start)
+            start = toStart < toEnd
+                ? under.startOffset
+                : timeline.placementTime(under.endOffset, .up, frameLocked: locked)
+        }
+        let followers = others.filter { $0.startOffset >= start }
+        guard let next = followers.map(\.startOffset).min() else {
+            return ClipMove(start: start, pushFrom: start, push: .zero)
+        }
+        var push = CMTimeMaximum(.zero, CMTimeSubtract(CMTimeAdd(start, moving.trimmedDuration), next))
+        // Pushed clips with pictures must stay on frames.
+        if push > .zero, followers.contains(where: isFrameLocked) {
+            push = timeline.frameAligned(push, .up)
+        }
+        return ClipMove(start: start, pushFrom: start, push: push)
+    }
+
+    /// Where a moved clip lands; see `resolvedMove`.
+    func resolvedStart(
+        ofMoving id: UUID,
+        in timelineID: UUID,
+        layer layerID: UUID,
+        onto targetLayerID: UUID? = nil,
+        to proposedStart: CMTime
+    ) -> CMTime? {
+        resolvedMove(ofMoving: id, in: timelineID, layer: layerID, onto: targetLayerID, to: proposedStart)?.start
     }
 
     /// The nearest start to `proposedStart` where `clip` fits among `others`
@@ -253,4 +285,12 @@ extension EditingProject {
         case nil: nil
         }
     }
+}
+
+/// How a clip move resolves: where the clip starts, and how far the clips
+/// on its new layer starting at or after `pushFrom` move right for it.
+struct ClipMove: Equatable {
+    var start: CMTime
+    var pushFrom: CMTime
+    var push: CMTime
 }

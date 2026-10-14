@@ -35,10 +35,10 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         let secondPlaced = project.importClip(video(duration: 4), intoTimeline: t)
         let first = try #require(firstPlaced), second = try #require(secondPlaced)
 
-        // Straight onto the clip already there: it goes to the nearest free side.
-        let preview = project.resolvedStart(ofMoving: second.clipID, in: t, layer: second.layerID, onto: first.layerID, to: seconds(1))
+        // Onto the second half of the clip already there: it goes after it.
+        let preview = project.resolvedStart(ofMoving: second.clipID, in: t, layer: second.layerID, onto: first.layerID, to: seconds(3))
         #expect(preview == seconds(4))
-        project.moveClip(second.clipID, in: t, layer: second.layerID, onto: first.layerID, to: seconds(1))
+        project.moveClip(second.clipID, in: t, layer: second.layerID, onto: first.layerID, to: seconds(3))
 
         let target = try #require(layers(project).first { $0.id == first.layerID })
         #expect(target.clips.map(\.id) == [first.clipID, second.clipID])
@@ -46,6 +46,19 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         // The emptied layer stays so clips can be moved back into it.
         #expect(Set(layers(project).map(\.id)) == [first.layerID, second.layerID])
         #expect(layers(project).first { $0.id == second.layerID }?.clips.isEmpty == true)
+    }
+
+    @Test func aClipMovedOntoAnotherLayerCanGoBeforeItsClips() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let firstPlaced = project.importClip(video(duration: 4), intoTimeline: t)
+        let secondPlaced = project.importClip(video(duration: 4), intoTimeline: t)
+        let first = try #require(firstPlaced), second = try #require(secondPlaced)
+
+        project.moveClip(second.clipID, in: t, layer: second.layerID, onto: first.layerID, to: seconds(1))
+        let target = try #require(layers(project).first { $0.id == first.layerID })
+        #expect(target.clips.map(\.id) == [second.clipID, first.clipID])
+        #expect(target.clips.map(\.startOffset) == [.zero, seconds(4)])
     }
 
     @Test func scenesDroppedOnALayerGoIntoItsGaps() throws {

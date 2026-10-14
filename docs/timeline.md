@@ -190,14 +190,17 @@ a clip may go are in `ClipPlacement.swift`:
   before this. Otherwise its end falls between frames and no neighbor
   can meet it to make a cut.
 - **Audio moves freely**, to 1/48000 of a second.
-- Clips never start before zero and never overlap on a layer. A move onto a
-  neighbor goes to the nearest free side of it, rounded off the neighbor
-  onto a frame for video. A move onto a layer with no gap big enough is
-  refused.
+- Clips never start before zero and never overlap on a layer. A moved
+  clip lands where it is dropped. Dropped inside another clip, it goes to
+  that clip's nearer edge, which is how a clip goes before the first clip
+  or between two that meet. If it doesn't fit there, every clip on the
+  layer from that point on moves right by just enough to make room,
+  keeping the gaps between them (rounded up to a whole frame when any of
+  them has pictures). Only that layer moves: other layers, keyframes and
+  sections stay put.
 - **A layer holds any number of clips.** Dragging a clip up or down onto
-  another layer moves it there, under the same rules, when that layer has
-  room; otherwise it stays on its own layer. A layer left empty stays, so
-  other clips can be moved into it.
+  another layer moves it there under the same rules. A layer left empty
+  stays, so other clips can be moved into it.
 - **Deleting.** Selecting a clip and pressing Delete removes it from the
   timeline (or, with one of its transitions selected, just that
   transition); its layer stays. Clicking a layer's name area selects the
@@ -209,8 +212,11 @@ a clip may go are in `ClipPlacement.swift`:
   audio).
 
 While dragging, the clip is drawn where it will land under these rules,
-not under the pointer, so it does not jump on release. The functions that
-work this out (`resolvedStart(ofMoving:…)`, `resolvedTrimStart(of:…)`,
+not under the pointer, so it does not jump on release. A clip being moved
+is drawn picked up: slightly larger, raised and shadowed, with a dashed
+outline left in the slot it came from. Clips it pushes slide aside as the
+drag makes room. The functions that work this out
+(`resolvedMove(ofMoving:…)`, `resolvedTrimStart(of:…)`,
 `resolvedTrimEnd(of:…)`) do not change the project, and the editing
 functions commit what they return.
 

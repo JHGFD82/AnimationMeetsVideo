@@ -104,13 +104,44 @@ private struct Fixture {
         #expect(f.clip.startOffset == .zero)
     }
 
-    @Test func snapsToNearestFreeEdgeWhenOverlapping() {
+    @Test func pushesTheClipsAfterItWhenThereIsNoRoom() {
         var f = Fixture(duration: 2)
         let neighbor = f.addNeighbor(start: 10, length: 4)
-        // 2s clip dropped at 9 would overlap [10, 14); nearest free edge is 8.
+        let later = f.addNeighbor(start: 16, length: 1)
+        // 2s clip dropped at 9 would overlap [10, 14) by a second: it stays
+        // at 9 and what follows moves right by that second, gaps kept.
         f.project.moveClip(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(9))
-        #expect(f.clip.startOffset == seconds(8))
+        #expect(f.clip.startOffset == seconds(9))
+        #expect(f.clips.first { $0.id == neighbor }!.startOffset == seconds(11))
+        #expect(f.clips.first { $0.id == later }!.startOffset == seconds(17))
+    }
+
+    @Test func pushesNothingWhenItFits() {
+        var f = Fixture(duration: 2)
+        let neighbor = f.addNeighbor(start: 10, length: 4)
+        f.project.moveClip(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(7))
+        #expect(f.clip.startOffset == seconds(7))
         #expect(f.clips.first { $0.id == neighbor }!.startOffset == seconds(10))
+    }
+
+    @Test func goesBeforeAClipWhenDroppedOnItsFirstHalf() {
+        var f = Fixture(duration: 2)
+        let first = f.addNeighbor(start: 20, length: 4)
+        let second = f.addNeighbor(start: 24, length: 4)
+        f.project.moveClip(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(21))
+        #expect(f.clip.startOffset == seconds(20))
+        #expect(f.clips.first { $0.id == first }!.startOffset == seconds(22))
+        #expect(f.clips.first { $0.id == second }!.startOffset == seconds(26))
+    }
+
+    @Test func goesBetweenTwoClipsThatMeet() {
+        var f = Fixture(duration: 2)
+        let first = f.addNeighbor(start: 20, length: 4)
+        let second = f.addNeighbor(start: 24, length: 4)
+        f.project.moveClip(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(23))
+        #expect(f.clips.first { $0.id == first }!.startOffset == seconds(20))
+        #expect(f.clip.startOffset == seconds(24))
+        #expect(f.clips.first { $0.id == second }!.startOffset == seconds(26))
     }
 
     @Test func snapsAfterNeighborWhenCloserToItsEnd() {
@@ -234,10 +265,13 @@ private struct Fixture {
     @Test func previewMatchesTheCommittedMove() {
         var f = Fixture(duration: 2)
         _ = f.addNeighbor(start: 10, length: 4)
-        let preview = f.project.resolvedStart(ofMoving: f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(9.2))
+        let preview = f.project.resolvedMove(ofMoving: f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(9.2))
         f.project.moveClip(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(9.2))
-        #expect(preview == f.clip.startOffset)
-        #expect(f.clip.startOffset == seconds(8))
+        #expect(preview?.start == f.clip.startOffset)
+        #expect(f.clip.startOffset == frames(221))
+        let pushed = f.clips.first { $0.id != f.clipID }!.startOffset
+        #expect(pushed == CMTimeAdd(seconds(10), preview!.push))
+        #expect(pushed == f.clip.endOffset)
     }
 
     @Test func alignmentIsExactAtNTSCRates() {
