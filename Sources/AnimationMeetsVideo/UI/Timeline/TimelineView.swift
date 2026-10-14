@@ -19,6 +19,8 @@ struct TimelineView: View {
     let onMoveLayerTo: (UUID, Int) -> Void
     /// Layer, clip, the layer it moves to if another, and its new start.
     let onMoveClip: (UUID, UUID, UUID?, CMTime) -> Void
+    /// Layer, clip and the kind of new layer, at the top, to move it onto.
+    let onMoveClipToNewLayer: (UUID, UUID, LayerKind) -> Void
     /// Scenes dropped on a layer at a time, or with no layer, onto a new
     /// layer of the given kind (the asset's default kind when nil).
     let onDropScenes: ([SceneDragPayload], UUID?, CMTime, LayerKind?) -> Bool
@@ -65,6 +67,9 @@ struct TimelineView: View {
     /// Area heights when a drag of the boundary between two areas began.
     @State private var boundaryDragStart: [LayerKind: CGFloat]?
     @State private var geometryStore = TimelineGeometryStore()
+    /// What the layer names column offers while a clip or media is dragged
+    /// over it; nil otherwise.
+    @State private var newLayerHover: NewLayerHover?
     @State private var showingViewOptions = false
     /// The layer whose beats are shown. Only layers that still have beats are
     /// offered, so a deleted layer simply stops matching and markers vanish.
@@ -328,6 +333,18 @@ struct TimelineView: View {
                         }
                     }
                     .frame(maxHeight: .infinity, alignment: .top)
+                    .overlay(alignment: .topLeading) {
+                        if let newLayerHover {
+                            NewLayerZone(hover: newLayerHover)
+                                .frame(width: labelColumnWidth)
+                                .frame(maxHeight: .infinity)
+                        }
+                    }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                        var column = frame
+                        column.size.width = labelColumnWidth
+                        geometryStore.namesColumn = column
+                    }
                     .overlay {
                         if shownAreas.isEmpty {
                             Text("Every area is hidden. Show one in View Options.")
@@ -419,6 +436,18 @@ struct TimelineView: View {
                     .frame(width: labelColumnWidth, alignment: .topLeading)
                     .frame(minHeight: height, alignment: .top)
                     .grooved(.trailing)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                        geometryStore.headerColumns[kind] = frame
+                    }
+                    // Media from the library dropped on the names goes on
+                    // a new layer of the kind under the pointer.
+                    .onDrop(of: [.text], delegate: NewLayerDropDelegate(
+                        column: { geometryStore.namesColumn },
+                        viewFrame: { geometryStore.headerColumns[kind] ?? .zero },
+                        isAudio: { project.mediaClip(id: $0)?.kind == .audio },
+                        onHover: { hover in if hover != newLayerHover { newLayerHover = hover } },
+                        onDrop: { payloads, kind in _ = onDropScenes(payloads, nil, playheadTime, kind) }
+                    ))
                 layerTracks(kind, viewport: viewport, frameTime: frameTime)
                     .offset(x: -viewport.scrollX)
                     .frame(width: viewport.width, alignment: .topLeading)
@@ -485,6 +514,12 @@ struct TimelineView: View {
     private func resolveMove(_ clip: TimelineClip, from layerID: UUID, pointer: CGPoint, to start: CMTime) -> ClipMovePreview? {
         let rows = geometryStore.layerRows
         guard let fromRow = rows[layerID], let fromLayer = timeline.layer(id: layerID) else { return nil }
+        // Over the layer names: onto a new layer, keeping its time.
+        let column = geometryStore.namesColumn
+        if column.contains(pointer) {
+            let hover = NewLayerHover(audio: project.isAudioOnly(clip), pointerY: pointer.y, in: column)
+            return ClipMovePreview(start: clip.startOffset, layerID: nil, offsetY: 0, newLayer: hover.hovered)
+        }
         let target = timeline.layers.first { layer in
             guard layer.id != layerID, let row = rows[layer.id],
                   // A row scrolled out of its area's view isn't under the pointer.
@@ -508,6 +543,8 @@ struct TimelineView: View {
 
     /// Shows what a clip drag from `layerID` will do, or stops with nil.
     private func showMovePreview(_ preview: ClipMovePreview?, from layerID: UUID) {
+        let hover = preview?.newLayer.map(NewLayerHover.init(hovering:))
+        if hover != newLayerHover { newLayerHover = hover }
         let next = preview.flatMap { preview in
             preview.pushed.isEmpty ? nil : (layerID: preview.layerID ?? layerID, clips: preview.pushed)
         }
@@ -637,6 +674,10 @@ struct TimelineView: View {
                         onSelectClip: { clip in onSelectClip(layer.id, clip) },
                         resolveMove: { clip, pointer, start in resolveMove(clip, from: layer.id, pointer: pointer, to: start) },
                         onMoveClip: { clipID, target, newStart in onMoveClip(layer.id, clipID, target, newStart) },
+                        onMoveClipToNewLayer: { clipID, kind in
+                            newLayerHover = nil
+                            onMoveClipToNewLayer(layer.id, clipID, kind)
+                        },
                         onDraggingClip: { dragging in draggingClipLayerID = dragging ? layer.id : nil },
                         pushed: pushedClips.flatMap { $0.layerID == layer.id ? $0.clips : nil } ?? [:],
                         onMovePreview: { preview in showMovePreview(preview, from: layer.id) },

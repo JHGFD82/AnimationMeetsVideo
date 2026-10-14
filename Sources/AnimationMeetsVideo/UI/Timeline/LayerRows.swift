@@ -149,6 +149,9 @@ struct ClipMovePreview: Equatable {
     var offsetY: CGFloat
     /// The clips on the target layer moving right to make room, by id.
     var pushed: [UUID: PushedClip] = [:]
+    /// Set while the pointer is over the layer names: the clip goes onto a
+    /// new layer of this kind, keeping its time.
+    var newLayer: LayerKind?
 }
 
 /// A clip moving right to make room for one dragged in front of it.
@@ -173,6 +176,8 @@ struct LayerClipRow: View {
     let resolveMove: (TimelineClip, CGPoint, CMTime) -> ClipMovePreview?
     /// Moves a clip to a start time, and to another layer when given.
     let onMoveClip: (UUID, UUID?, CMTime) -> Void
+    /// Moves a clip onto a new layer of a kind, at the top.
+    let onMoveClipToNewLayer: (UUID, LayerKind) -> Void
     let onDraggingClip: (Bool) -> Void
     /// Clips on this layer moving aside for a clip being dragged, drawn
     /// where they will go until the move lands.
@@ -263,6 +268,7 @@ struct LayerClipRow: View {
                     resolveTrimEnd: { project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
                     onSelect: { onSelectClip(clip) },
                     onMove: { newStart, targetLayerID in onMoveClip(clip.id, targetLayerID, newStart) },
+                    onMoveToNewLayer: { kind in onMoveClipToNewLayer(clip.id, kind) },
                     onDragging: { dragging in
                         liftedClipID = dragging ? clip.id : nil
                         onDraggingClip(dragging)
@@ -370,6 +376,7 @@ struct ClipBlockView: View {
     let resolveTrimEnd: (CMTime) -> TimelineClip?
     let onSelect: () -> Void
     let onMove: (CMTime, UUID?) -> Void
+    let onMoveToNewLayer: (LayerKind) -> Void
     let onDragging: (Bool) -> Void
     /// Hears where a move drag will land, and nil when it ends.
     let onMovePreview: (ClipMovePreview?) -> Void
@@ -596,7 +603,7 @@ struct ClipBlockView: View {
                         var moved = clip
                         moved.startOffset = target?.start ?? clip.startOffset
                         showPreview(moved)
-                        previewTarget = target?.layerID == nil ? nil : target
+                        previewTarget = target?.layerID == nil && target?.newLayer == nil ? nil : target
                         onMovePreview(target)
                     }
                     .onEnded { _ in
@@ -604,7 +611,9 @@ struct ClipBlockView: View {
                         onDragging(false)
                         onSnapIndicator(nil)
                         let targetLayer = previewTarget?.layerID
-                        if let preview, preview.startOffset != clip.startOffset || targetLayer != nil {
+                        if let kind = previewTarget?.newLayer {
+                            commitDrop { onMoveToNewLayer(kind) }
+                        } else if let preview, preview.startOffset != clip.startOffset || targetLayer != nil {
                             commitDrop { onMove(preview.startOffset, targetLayer) }
                         } else {
                             endDrop()

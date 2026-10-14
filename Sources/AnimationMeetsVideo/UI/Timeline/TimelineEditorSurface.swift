@@ -164,6 +164,12 @@ struct TimelineEditorSurface<Library: View>: View {
                         selection?.layerID = targetLayerID
                     }
                 },
+                onMoveClipToNewLayer: { layerID, clipID, kind in
+                    if let newLayer = project.moveClipToNewLayer(clipID, in: timelineID, layer: layerID, kind: kind),
+                       selection?.timelineClipID == clipID {
+                        selection?.layerID = newLayer
+                    }
+                },
                 onDropScenes: { payloads, layerID, time, kind in dropScenes(payloads, onLayer: layerID, at: time, kind: kind) },
                 onApplyJointEdit: { layerID, clipID, edit in
                     project.applyJointEdit(edit, at: clipID, in: timelineID, layer: layerID)

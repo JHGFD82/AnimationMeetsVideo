@@ -29,6 +29,18 @@ struct SceneDragPayload: Transferable {
 
     private static let prefix = "amv-scenes:"
 
+    /// The asset of the drag in progress, set as a drag begins. A drop
+    /// target can't read the payload until it is dropped, and the timeline
+    /// needs to know sooner whether it is sound, to offer the right kind of
+    /// new layer. Left set after the drag; only read during one.
+    @MainActor static var draggedAssetID: UUID?
+
+    /// The payload for a drag starting now, noting its asset.
+    @MainActor static func beginDrag(assetID: UUID, scenes: [SceneRange]) -> SceneDragPayload {
+        draggedAssetID = assetID
+        return SceneDragPayload(assetID: assetID, scenes: scenes)
+    }
+
     var assetID: UUID
     var entries: [Entry]
 

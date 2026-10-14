@@ -231,8 +231,9 @@ struct LibrarySidebar: View {
     }
 
     /// Dragging an asset itself carries the whole file as one scene.
+    /// `.draggable` builds this as the drag begins.
     private func wholeAssetPayload(_ clip: MediaClip) -> SceneDragPayload {
-        SceneDragPayload(assetID: clip.id, scenes: [SceneRange(start: .zero, end: clip.duration, origin: .auto)])
+        SceneDragPayload.beginDrag(assetID: clip.id, scenes: [SceneRange(start: .zero, end: clip.duration, origin: .auto)])
     }
 
     private func place(_ clip: MediaClip) {
@@ -244,7 +245,7 @@ struct LibrarySidebar: View {
     private func dragPayload(for key: SceneKey) -> SceneDragPayload {
         let keys = selectedScenes.contains(key) ? selectedScenes : [key]
         let group = pickedScenes(keys).first { $0.clip.id == key.assetID }
-        return SceneDragPayload(assetID: key.assetID, scenes: group?.scenes ?? [])
+        return SceneDragPayload.beginDrag(assetID: key.assetID, scenes: group?.scenes ?? [])
     }
 
     @ViewBuilder

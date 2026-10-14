@@ -45,6 +45,16 @@ wrong kind, it gets a new layer of its own default kind. New layers always
 go at the top of the stack, which is the top of their area. **Add to
 Timeline** always makes a new layer.
 
+Dragged over the layer names, media from the library or a clip already on
+the timeline lights up a translucent zone in the area's hue saying what a
+drop there makes: **New Video Layer** for pictures, or for sound the column
+split into **New Sound Layer** above **New Music Layer**, the half under
+the pointer lit brighter. Media dropped there goes on the new layer at the
+playhead. A clip dropped there keeps its time (`moveClipToNewLayer`). The
+library notes which asset a drag carries as it begins
+(`SceneDragPayload.draggedAssetID`), since the drop target can't read the
+payload until the drop.
+
 ## Layers
 
 Every layer has a kind (`TimelineLayer.kind`, saved as `kind`), which is

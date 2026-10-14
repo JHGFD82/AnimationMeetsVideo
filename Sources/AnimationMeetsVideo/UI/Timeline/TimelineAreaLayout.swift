@@ -111,4 +111,7 @@ final class TimelineGeometryStore {
     var namesColumn: CGRect = .zero
     /// Each shown area's visible part, in window coordinates.
     var areas: [LayerKind: CGRect] = [:]
+    /// Each area's names column, as laid out inside its scrolling, in
+    /// window coordinates.
+    var headerColumns: [LayerKind: CGRect] = [:]
 }

@@ -141,4 +141,13 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         project.moveLayer(videoA, in: t, toPositionInKind: 0)
         #expect(layers(project).map(\.id) == [music, videoA, videoC])
     }
+
+    @Test func theNewLayerZoneSplitsSoundAboveMusic() {
+        let column = CGRect(x: 0, y: 100, width: 150, height: 200)
+        #expect(NewLayerHover(audio: false, pointerY: 120, in: column) == NewLayerHover(hovering: .video))
+        let top = NewLayerHover(audio: true, pointerY: 150, in: column)
+        let bottom = NewLayerHover(audio: true, pointerY: 250, in: column)
+        #expect(top.kinds == [.sound, .music] && top.hovered == .sound)
+        #expect(bottom.hovered == .music)
+    }
 }
