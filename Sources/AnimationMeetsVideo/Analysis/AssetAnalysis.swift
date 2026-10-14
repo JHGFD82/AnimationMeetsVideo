@@ -92,6 +92,8 @@ final class AssetAnalysis {
     /// are read back from the package when needed.
     @ObservationIgnored private var unsavedPictures: [UUID: ReferenceThumbnails] = [:]
     @ObservationIgnored private var thumbnailFailures: Set<UUID> = []
+    /// Assets whose saved results were looked for in the package already.
+    @ObservationIgnored private var checkedPackage: Set<UUID> = []
     @ObservationIgnored private var waiting: [Job] = []
     @ObservationIgnored private var worker: Task<Void, Never>?
     /// Bumped by `reset` so a result that arrives after the project was
@@ -120,6 +122,7 @@ final class AssetAnalysis {
         unsavedReferenceIDs = []
         unsavedPictures = [:]
         thumbnailFailures = []
+        checkedPackage = []
         referenceFailures = [:]
         beatFailures = [:]
         unsavedBeatIDs = []
@@ -139,6 +142,9 @@ final class AssetAnalysis {
         latestProject = project
         for clip in project.clips {
             guard let url = clip.url, let file = Self.analyzedFile(of: clip) else { continue }
+            if let packageURL, checkedPackage.insert(clip.id).inserted {
+                loadSaved(for: clip, from: packageURL)
+            }
             // Even while a job runs, so outdated beats stop showing at once.
             discardStaleBeats(of: clip, file: file)
             guard progress[clip.id] == nil else { continue }
@@ -160,6 +166,18 @@ final class AssetAnalysis {
             ))
         }
         startWorkerIfNeeded()
+    }
+
+    /// Takes whatever the package already holds for an asset that has
+    /// nothing in memory, as for one imported again under the ID it had
+    /// before, so it isn't analyzed twice.
+    private func loadSaved(for clip: MediaClip, from packageURL: URL) {
+        let id = clip.id
+        if tracks[id] == nil, let saved = ProjectStore.readChangeScores(for: id, in: packageURL) { tracks[id] = saved }
+        if beats[id] == nil, let saved = ProjectStore.readBeats(for: id, in: packageURL) { beats[id] = saved }
+        guard !clip.referenceForgotten else { return }
+        if references[id] == nil, let saved = ProjectStore.readReference(for: id, in: packageURL) { references[id] = saved }
+        if ProjectStore.hasThumbnails(for: id, in: packageURL) { thumbnailed.insert(id) }
     }
 
     /// Drops beats found in a file the asset no longer uses, or in one that

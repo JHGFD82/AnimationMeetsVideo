@@ -377,6 +377,32 @@ private struct Sandbox {
         #expect(FileManager.default.fileExists(atPath: backup.path))
     }
 
+    @Test func aReimportedFileFindsItsEarlierAnalysisAndCopy() throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        try ProjectStore.preparePackage(at: sandbox.packageURL)
+        let copy = try ProjectStore.copyIntoPackage(sandbox.mediaURL, packageURL: sandbox.packageURL)
+        let stamp = try #require(FileStamp(url: copy))
+        let id = UUID()
+        let reference = AssetReference(
+            metadata: AssetMetadataSnapshot(
+                fileName: copy.lastPathComponent, originalPath: copy.path, byteCount: stamp.byteCount, modified: stamp.modified,
+                isVideo: true, durationValue: 10, durationTimescale: 1, frameRate: 24, width: 1920, height: 1080,
+                codecName: "H.264", colorPrimaries: nil, colorTransfer: nil, colorMatrix: nil,
+                audioSampleRate: nil, capturedAt: 1
+            ),
+            audioEnvelope: nil
+        )
+        try ProjectStore.writeReference(reference, for: id, in: sandbox.packageURL)
+
+        // The copy keeps the original's size and date, so either matches.
+        #expect(ProjectStore.reusableAssetID(for: sandbox.mediaURL, in: sandbox.packageURL, excluding: []) == id)
+        #expect(ProjectStore.reusableAssetID(for: sandbox.mediaURL, in: sandbox.packageURL, excluding: [id]) == nil)
+        #expect(ProjectStore.existingCopy(of: sandbox.mediaURL, in: sandbox.packageURL, excluding: []) == copy)
+        let used = copy.standardizedFileURL.resolvingSymlinksInPath().path
+        #expect(ProjectStore.existingCopy(of: sandbox.mediaURL, in: sandbox.packageURL, excluding: [used]) == nil)
+    }
+
     @Test func oldestBackupsArePrunedBeyondTheLimit() throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }

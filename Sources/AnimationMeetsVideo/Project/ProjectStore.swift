@@ -534,6 +534,43 @@ enum ProjectStore {
             && sourceVolume.identifier?.isEqual(packageVolume.identifier) == true
     }
 
+    /// An asset ID whose reference data in the package describes a file like
+    /// `url` (same size and modification date) and that no asset in `inUse`
+    /// has: one imported before and then removed, or never saved into
+    /// `project.json`. Importing the file under that ID reuses its analysis.
+    static func reusableAssetID(for url: URL, in packageURL: URL, excluding inUse: Set<UUID>) -> UUID? {
+        guard let stamp = FileStamp(url: url) else { return nil }
+        let folder = packageURL.appending(path: referenceFolderName, directoryHint: .isDirectory)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        for name in names.sorted() {
+            guard let id = UUID(uuidString: name), !inUse.contains(id),
+                  let metadata = readReference(for: id, in: packageURL)?.metadata,
+                  metadata.byteCount == stamp.byteCount,
+                  let captured = metadata.modified, let modified = stamp.modified, abs(captured - modified) < 0.001
+            else {
+                continue
+            }
+            return id
+        }
+        return nil
+    }
+
+    /// A file in `Media/` that is a copy of `url` (same size and modification
+    /// date, which copying keeps) and whose path isn't in `usedPaths`, so it
+    /// can be imported again instead of copying the file once more.
+    static func existingCopy(of url: URL, in packageURL: URL, excluding usedPaths: Set<String>) -> URL? {
+        guard let stamp = FileStamp(url: url) else { return nil }
+        let folder = packageURL.appending(path: mediaFolderName, directoryHint: .isDirectory)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        for name in names.sorted() {
+            let candidate = folder.appending(path: name)
+            let path = candidate.standardizedFileURL.resolvingSymlinksInPath().path
+            guard !usedPaths.contains(path), FileStamp(url: candidate) == stamp else { continue }
+            return candidate
+        }
+        return nil
+    }
+
     /// Copies a file into the package's `Media/` folder, next to any file of
     /// the same name rather than over it, and returns the copy. A file
     /// already inside the package is returned as it is.

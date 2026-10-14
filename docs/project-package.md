@@ -124,6 +124,15 @@ in place. Save As copies what the old package holds in `Media/` and
 `Reference/` into the new one; media referenced from elsewhere stays where
 it is.
 
+**Importing a file again reuses what was made from it.** When an imported
+file matches an asset's reference data in `Reference/` by size and
+modification date, and no asset in the project uses that ID, the new asset
+takes the old ID, so its scores, pictures and beats are loaded instead of
+computed again (the analysis loads whatever the package holds for an
+asset before analyzing it). Likewise an unused file in `Media/` with the
+same size and date is imported instead of making another copy. Copies keep
+the original's modification date, so a copy and its original match.
+
 An asset imported and then removed without saving leaves its copy in
 `Media/` and its folder in `Reference/`. They are kept: an autosave in
 `Backups/` may still list the asset, and the app never deletes reference

@@ -98,6 +98,29 @@ import Testing
         #expect(ProjectStore.hasThumbnails(for: id, in: package))
     }
 
+    @Test func whatThePackageAlreadyHoldsIsLoadedNotAnalyzedAgain() async throws {
+        let movie = try await makeMovie(frames: 48)
+        let package = FileManager.default.temporaryDirectory.appending(path: "amv-analysis-\(UUID().uuidString).amv")
+        defer { try? FileManager.default.removeItem(at: movie); try? FileManager.default.removeItem(at: package) }
+        try ProjectStore.preparePackage(at: package)
+        let video = project(with: [movie])
+        let id = video.clips[0].id
+        let first = AssetAnalysis()
+        first.reset(packageURL: package)
+        first.analyzeMissing(in: video)
+        try await waitUntilIdle(first, expecting: 1)
+
+        // As when the same file is imported again under its earlier ID.
+        let again = AssetAnalysis()
+        again.reset(packageURL: package)
+        again.analyzeMissing(in: video)
+
+        #expect(again.progress.isEmpty)
+        #expect(again.tracks[id] == first.tracks[id])
+        #expect(again.references[id] != nil)
+        #expect(again.thumbnailed == [id])
+    }
+
     @Test func audioAssetsGetReferenceDataButNoScores() async throws {
         let movie = try await makeMovie(frames: 24)
         defer { try? FileManager.default.removeItem(at: movie) }

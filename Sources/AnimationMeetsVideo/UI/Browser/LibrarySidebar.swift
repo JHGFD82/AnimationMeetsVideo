@@ -323,20 +323,36 @@ struct LibrarySidebar: View {
         let packageURL = packageURL
 
         Task {
+            // A file imported before (and since removed, or never saved)
+            // comes back under its old ID, so its analysis is reused, and
+            // its earlier copy in Media/ is used instead of copying again.
+            var claimedIDs = Set(project.clips.map(\.id))
+            var usedPaths = Set(project.clips.compactMap { $0.url?.standardizedFileURL.resolvingSymlinksInPath().path })
             for url in urls {
-                var copy: URL?
+                var madeCopy: URL?
                 do {
+                    var source = url
                     if copying.contains(url), let packageURL {
-                        copy = try await Task.detached(priority: .userInitiated) {
-                            try ProjectStore.copyIntoPackage(url, packageURL: packageURL)
-                        }.value
+                        if let existing = ProjectStore.existingCopy(of: url, in: packageURL, excluding: usedPaths) {
+                            source = existing
+                        } else {
+                            madeCopy = try await Task.detached(priority: .userInitiated) {
+                                try ProjectStore.copyIntoPackage(url, packageURL: packageURL)
+                            }.value
+                            source = madeCopy ?? url
+                        }
                     }
-                    var clip = try await MediaImporter.importClip(at: copy ?? url)
+                    var clip = try await MediaImporter.importClip(at: source)
                     // A copy may be numbered to avoid a name already in Media/.
                     clip.name = url.deletingPathExtension().lastPathComponent
+                    if let packageURL, let earlier = ProjectStore.reusableAssetID(for: source, in: packageURL, excluding: claimedIDs) {
+                        clip.id = earlier
+                    }
+                    claimedIDs.insert(clip.id)
+                    usedPaths.insert(source.standardizedFileURL.resolvingSymlinksInPath().path)
                     project.addMedia(clip)
                 } catch {
-                    if let copy, copy != url { try? FileManager.default.removeItem(at: copy) }
+                    if let madeCopy { try? FileManager.default.removeItem(at: madeCopy) }
                     importError = "\(url.lastPathComponent): \(error.localizedDescription)"
                 }
             }
