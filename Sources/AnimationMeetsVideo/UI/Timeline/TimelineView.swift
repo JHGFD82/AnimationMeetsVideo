@@ -14,16 +14,15 @@ struct TimelineView: View {
     let onSelectClip: (UUID, TimelineClip) -> Void
     let onRenameLayer: (UUID, String?) -> Void
     let onMoveLayer: (UUID, Int) -> Void
-    /// Moves a layer to an index in the stack, after dragging its header.
+    /// Moves a layer to a place among the layers of its kind, after
+    /// dragging its header.
     let onMoveLayerTo: (UUID, Int) -> Void
     /// Layer, clip, the layer it moves to if another, and its new start.
     let onMoveClip: (UUID, UUID, UUID?, CMTime) -> Void
-    /// Scenes dropped on a layer (or, with nil, below the layers) at a time.
-    let onDropScenes: ([SceneDragPayload], UUID?, CMTime) -> Bool
+    /// Scenes dropped on a layer at a time, or with no layer, onto a new
+    /// layer of the given kind (the asset's default kind when nil).
+    let onDropScenes: ([SceneDragPayload], UUID?, CMTime, LayerKind?) -> Bool
     let onApplyJointEdit: (UUID, UUID, JointEdit) -> Void
-    /// The height the timeline needs to show every layer without empty
-    /// space under them, so the window can give the rest to the viewer.
-    let onIdealHeightChange: (CGFloat) -> Void
     let onTrimClipStart: (UUID, UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, UUID, CMTime) -> Void
     let onEditTransform: (UUID, (inout LayerTransform) -> Void) -> Void
@@ -60,7 +59,12 @@ struct TimelineView: View {
     @State private var revealed: [UUID: Set<TransformProperty>] = [:]
     /// Layers showing their video clips' linked audio.
     @State private var audioRevealed: Set<UUID> = []
-    @State private var layerHeight: CGFloat = 56
+    /// Which areas show, how they share the height, and each one's layer
+    /// height (its vertical zoom).
+    @AppStorage("timelineAreaLayout") private var areaLayout = TimelineAreaLayout()
+    /// Area heights when a drag of the boundary between two areas began.
+    @State private var boundaryDragStart: [LayerKind: CGFloat]?
+    @State private var geometryStore = TimelineGeometryStore()
     @State private var showingViewOptions = false
     /// The layer whose beats are shown. Only layers that still have beats are
     /// offered, so a deleted layer simply stops matching and markers vanish.
@@ -115,33 +119,31 @@ struct TimelineView: View {
     /// track area lay out the same rows, so this is each layer's height in
     /// both.
     private func blockHeight(of layer: TimelineLayer) -> CGFloat {
-        layerHeight
+        areaLayout.layerHeight(layer.kind)
             + (shownJoint(in: layer) != nil ? TransitionFootageLane.height : 0)
             + (showsLinkedAudio(of: layer) ? audioLaneHeight : 0)
             + CGFloat(shownProperties(of: layer).count) * propertyRowHeight
             + separatorHeight
     }
 
-    private var layerTops: [CGFloat] {
+    /// The layers an area shows, top to bottom.
+    private func areaLayers(_ kind: LayerKind) -> [TimelineLayer] {
+        timeline.layers.filter { $0.kind == kind }
+    }
+
+    /// Where each of `layers` starts, from the top of its area.
+    private func tops(of layers: [TimelineLayer]) -> [CGFloat] {
         var tops: [CGFloat] = []
         var y: CGFloat = 0
-        for layer in timeline.layers {
+        for layer in layers {
             tops.append(y)
             y += blockHeight(of: layer)
         }
         return tops
     }
 
-    private var contentHeight: CGFloat {
-        timeline.layers.reduce(0) { $0 + blockHeight(of: $1) } + newLayerRowHeight
-    }
-
-    private var idealHeight: CGFloat {
-        let scrollbar = currentViewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
-        return topPadding + headerBarHeight + rulerHeight + SectionLane.height + separatorHeight + contentHeight + scrollbar
-    }
-
-    private var audioLaneHeight: CGFloat { max(22, (layerHeight * 0.6).rounded()) }
+    /// Linked audio is shown under video, at a little over half its height.
+    private var audioLaneHeight: CGFloat { max(22, (areaLayout.layerHeight(.video) * 0.6).rounded()) }
 
     private func showsLinkedAudio(of layer: TimelineLayer) -> Bool {
         audioRevealed.contains(layer.id) && project.layerHasLinkedAudio(layer)
@@ -239,7 +241,7 @@ struct TimelineView: View {
                 .help("View options")
                 .popover(isPresented: $showingViewOptions) {
                     ViewOptionsPopover(
-                        zoomFraction: zoomFractionBinding, onFit: fitToWindow, layerHeight: $layerHeight,
+                        zoomFraction: zoomFractionBinding, onFit: fitToWindow, areaLayout: $areaLayout,
                         beatLayers: beatLayerChoices, beatLayerID: beatLayerSelection,
                         clickOnBeats: $clickOnBeats, clickFrequency: $beatClickFrequency,
                         onPreviewClick: beatClicks.preview
@@ -264,8 +266,15 @@ struct TimelineView: View {
             GeometryReader { geometry in
                 let viewport = viewport(width: geometry.size.width - labelColumnWidth)
                 let scrollbarHeight = viewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
-                let layersHeight = min(contentHeight, max(0, geometry.size.height - rulerHeight - SectionLane.height - separatorHeight - scrollbarHeight))
-                let trackHeight = rulerHeight + SectionLane.height + separatorHeight + layersHeight
+                let shownAreas = areaLayout.shown
+                let railHeight = rulerHeight + SectionLane.height + separatorHeight
+                // Whatever height the timeline is given goes to the areas,
+                // split by their shares: a taller timeline shows more
+                // layers, it doesn't make them taller.
+                let areasAvailable = max(0, geometry.size.height - railHeight - scrollbarHeight
+                    - CGFloat(shownAreas.count) * AreaTitleBar.height)
+                let areaHeights = areaLayout.heights(splitting: areasAvailable)
+                let trackHeight = max(railHeight, geometry.size.height - scrollbarHeight)
                 let frameTime = timeline.snappedToFrame(playheadTime)
                 let playheadX = viewport.x(atSeconds: playheadTime.seconds)
                 let playheadVisible = (-1...(viewport.width + 1)).contains(playheadX)
@@ -298,20 +307,34 @@ struct TimelineView: View {
                     .overlay(alignment: .top) { Design.bevelLight.frame(height: 1) }
                     Groove()
 
-                    ScrollView(.vertical) {
-                        HStack(alignment: .top, spacing: 0) {
-                            layerHeaders(frameTime: frameTime)
-                                .frame(width: labelColumnWidth, alignment: .leading)
-                                .grooved(.trailing)
-                            layerTracks(viewport: viewport, frameTime: frameTime)
-                                .offset(x: -viewport.scrollX)
-                                .frame(width: viewport.width, alignment: .topLeading)
-                                .clipped()
+                    // Video, sound and music, top to bottom, each with its
+                    // own title bar (which resizes it against the area
+                    // above) and its own vertical scrolling.
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(shownAreas) { kind in
+                            AreaTitleBar(
+                                kind: kind,
+                                layerCount: areaLayers(kind).count,
+                                labelColumnWidth: labelColumnWidth,
+                                isResizable: kind != shownAreas.first,
+                                onResize: { dy in
+                                    let start = boundaryDragStart ?? areaHeights
+                                    boundaryDragStart = start
+                                    areaLayout.moveBoundary(above: kind, by: dy, from: start, available: areasAvailable)
+                                },
+                                onResizeEnded: { boundaryDragStart = nil }
+                            )
+                            area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, frameTime: frameTime)
                         }
-                        .overlay(alignment: .topLeading) { layerDropIndicator }
                     }
-                    .frame(height: layersHeight)
-                    .sunken(.sunken)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .overlay {
+                        if shownAreas.isEmpty {
+                            Text("Every area is hidden. Show one in View Options.")
+                                .font(Design.Typeface.label)
+                                .foregroundStyle(Design.textTertiary)
+                        }
+                    }
 
                     // Right under the layers, and only while there is
                     // something to scroll to.
@@ -372,7 +395,6 @@ struct TimelineView: View {
                 selectedSectionID = nil
             }
         }
-        .onChange(of: idealHeight, initial: true) { _, height in onIdealHeightChange(height) }
         .onChange(of: beatMarkerInputs, initial: true) { _, inputs in
             beatMarkers = inputs.layer.map { project.beatMarkers(in: $0, tracks: inputs.tracks) } ?? []
         }
@@ -386,28 +408,57 @@ struct TimelineView: View {
         }
     }
 
+    // MARK: - Areas
+
+    /// One area: its layers' names beside their tracks, scrolling up and
+    /// down on its own.
+    private func area(_ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, frameTime: CMTime) -> some View {
+        ScrollView(.vertical) {
+            HStack(alignment: .top, spacing: 0) {
+                layerHeaders(kind, frameTime: frameTime)
+                    .frame(width: labelColumnWidth, alignment: .topLeading)
+                    .frame(minHeight: height, alignment: .top)
+                    .grooved(.trailing)
+                layerTracks(kind, viewport: viewport, frameTime: frameTime)
+                    .offset(x: -viewport.scrollX)
+                    .frame(width: viewport.width, alignment: .topLeading)
+                    .clipped()
+            }
+            .overlay(alignment: .topLeading) { layerDropIndicator(kind) }
+        }
+        .frame(height: height)
+        .sunken(.sunken)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+            geometryStore.areas[kind] = frame
+        }
+    }
+
     // MARK: - Layer and clip dragging
 
-    /// Where a layer dragged by `dy` would go: the number of other layers
-    /// whose middle is above its middle.
-    private func dropIndex(forLayer id: UUID, dy: CGFloat) -> Int? {
-        let tops = layerTops
-        guard let from = timeline.layers.firstIndex(where: { $0.id == id }) else { return nil }
-        let middle = tops[from] + blockHeight(of: timeline.layers[from]) / 2 + dy
-        return timeline.layers.indices.filter { index in
-            index != from && tops[index] + blockHeight(of: timeline.layers[index]) / 2 < middle
+    /// Where a layer dragged by `dy` would go among the layers of its
+    /// area: the number of others whose middle is above its middle.
+    private func dropPosition(forLayer id: UUID, dy: CGFloat) -> Int? {
+        guard let kind = timeline.layer(id: id)?.kind else { return nil }
+        let layers = areaLayers(kind)
+        let tops = tops(of: layers)
+        guard let from = layers.firstIndex(where: { $0.id == id }) else { return nil }
+        let middle = tops[from] + blockHeight(of: layers[from]) / 2 + dy
+        return layers.indices.filter { index in
+            index != from && tops[index] + blockHeight(of: layers[index]) / 2 < middle
         }.count
     }
 
-    /// A line where a dragged layer will land.
+    /// A line where a layer dragged in this area will land.
     @ViewBuilder
-    private var layerDropIndicator: some View {
-        if let drag = layerDrag, let index = dropIndex(forLayer: drag.id, dy: drag.dy) {
-            let others = timeline.layers.indices.filter { timeline.layers[$0].id != drag.id }
-            let tops = layerTops
-            let y = index < others.count
-                ? tops[others[index]]
-                : tops.last.map { $0 + blockHeight(of: timeline.layers[timeline.layers.count - 1]) } ?? 0
+    private func layerDropIndicator(_ kind: LayerKind) -> some View {
+        if let drag = layerDrag, timeline.layer(id: drag.id)?.kind == kind,
+           let position = dropPosition(forLayer: drag.id, dy: drag.dy) {
+            let layers = areaLayers(kind)
+            let tops = tops(of: layers)
+            let others = layers.indices.filter { layers[$0].id != drag.id }
+            let y = position < others.count
+                ? tops[others[position]]
+                : tops.last.map { $0 + blockHeight(of: layers[layers.count - 1]) } ?? 0
             Rectangle()
                 .fill(Design.accent)
                 .frame(height: 2)
@@ -418,31 +469,50 @@ struct TimelineView: View {
     }
 
     private func endLayerDrag(_ id: UUID, dy: CGFloat) {
-        if let index = dropIndex(forLayer: id, dy: dy),
-           index != timeline.layers.firstIndex(where: { $0.id == id }) {
-            onMoveLayerTo(id, index)
+        if let kind = timeline.layer(id: id)?.kind,
+           let position = dropPosition(forLayer: id, dy: dy),
+           position != areaLayers(kind).firstIndex(where: { $0.id == id }) {
+            onMoveLayerTo(id, position)
         }
         layerDrag = nil
     }
 
-    /// Where a clip dragged by `dy` from its layer and asked to start at
-    /// `start` lands: on the layer under the pointer when that layer has
-    /// room for it, otherwise on its own layer.
-    private func resolveMove(_ clip: TimelineClip, from layerID: UUID, dy: CGFloat, to start: CMTime) -> ClipMovePreview? {
-        let tops = layerTops
-        guard let from = timeline.layers.firstIndex(where: { $0.id == layerID }) else { return nil }
-        let y = tops[from] + layerHeight / 2 + dy
-        if let target = timeline.layers.indices.last(where: { tops[$0] <= y }),
-           target != from, y < tops[target] + blockHeight(of: timeline.layers[target]),
-           let landed = project.resolvedMove(ofMoving: clip.id, in: timelineID, layer: layerID, onto: timeline.layers[target].id, to: start) {
-            let targetLayer = timeline.layers[target]
+    /// Where a clip dragged with the pointer at `pointer` (window
+    /// coordinates) and asked to start at `start` lands: on the layer
+    /// under the pointer when that layer can take it, otherwise on its own
+    /// layer. Layers are found by where they are on screen, since each
+    /// area scrolls on its own.
+    private func resolveMove(_ clip: TimelineClip, from layerID: UUID, pointer: CGPoint, to start: CMTime) -> ClipMovePreview? {
+        let rows = geometryStore.layerRows
+        guard let fromRow = rows[layerID], let fromLayer = timeline.layer(id: layerID) else { return nil }
+        let target = timeline.layers.first { layer in
+            guard layer.id != layerID, let row = rows[layer.id],
+                  // A row scrolled out of its area's view isn't under the pointer.
+                  geometryStore.areas[layer.kind]?.contains(pointer) == true
+            else {
+                return false
+            }
+            return pointer.y >= row.minY && pointer.y < row.maxY
+        }
+        if let target, let landed = project.resolvedMove(ofMoving: clip.id, in: timelineID, layer: layerID, onto: target.id, to: start),
+           let targetRow = rows[target.id] {
             return ClipMovePreview(
-                start: landed.start, layerID: targetLayer.id, offsetY: tops[target] - tops[from],
-                pushed: pushed(on: targetLayer, by: landed, excluding: clip.id)
+                start: landed.start, layerID: target.id, offsetY: targetRow.minY - fromRow.minY,
+                pushed: pushed(on: target, by: landed, excluding: clip.id)
             )
         }
         return project.resolvedMove(ofMoving: clip.id, in: timelineID, layer: layerID, to: start).map {
-            ClipMovePreview(start: $0.start, layerID: nil, offsetY: 0, pushed: pushed(on: timeline.layers[from], by: $0, excluding: clip.id))
+            ClipMovePreview(start: $0.start, layerID: nil, offsetY: 0, pushed: pushed(on: fromLayer, by: $0, excluding: clip.id))
+        }
+    }
+
+    /// Shows what a clip drag from `layerID` will do, or stops with nil.
+    private func showMovePreview(_ preview: ClipMovePreview?, from layerID: UUID) {
+        let next = preview.flatMap { preview in
+            preview.pushed.isEmpty ? nil : (layerID: preview.layerID ?? layerID, clips: preview.pushed)
+        }
+        if next?.layerID != pushedClips?.layerID || next?.clips != pushedClips?.clips {
+            pushedClips = next
         }
     }
 
@@ -456,18 +526,19 @@ struct TimelineView: View {
         return pushed
     }
 
-    private func layerHeaders(frameTime: CMTime) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(timeline.layers.enumerated()), id: \.element.id) { index, layer in
+    private func layerHeaders(_ kind: LayerKind, frameTime: CMTime) -> some View {
+        let layers = areaLayers(kind)
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
                 let isDragged = layerDrag?.id == layer.id
                 VStack(alignment: .leading, spacing: 0) {
                     LayerHeaderRow(
                         number: index + 1,
                         layer: layer,
                         displayName: project.displayName(of: layer, in: timeline),
-                        height: layerHeight,
+                        height: areaLayout.layerHeight(kind),
                         canMoveUp: index > 0,
-                        canMoveDown: index < timeline.layers.count - 1,
+                        canMoveDown: index < layers.count - 1,
                         isExpanded: layer.isVisual(in: project) ? !shownProperties(of: layer).isEmpty : nil,
                         onToggleExpanded: { toggleExpanded(layer) },
                         isAudioExpanded: project.layerHasLinkedAudio(layer) ? showsLinkedAudio(of: layer) : nil,
@@ -546,13 +617,13 @@ struct TimelineView: View {
 
     /// Every layer's clips and keyframe lanes, laid out across the whole
     /// span in unscrolled coordinates; the caller shifts them into view.
-    private func layerTracks(viewport: TimelineViewport, frameTime: CMTime) -> some View {
+    private func layerTracks(_ kind: LayerKind, viewport: TimelineViewport, frameTime: CMTime) -> some View {
         let pixelsPerSecond = viewport.pixelsPerSecond
         let contentWidth = viewport.contentWidth
         let snapTargets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: drawnBeats(viewport)) : nil
         let snapTolerance = snapTolerance(viewport)
         return VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(timeline.layers.enumerated()), id: \.element.id) { index, layer in
+            ForEach(Array(areaLayers(kind).enumerated()), id: \.element.id) { index, layer in
                 VStack(spacing: 0) {
                     LayerClipRow(
                         layer: layer,
@@ -561,25 +632,15 @@ struct TimelineView: View {
                         selection: selection,
                         pixelsPerSecond: pixelsPerSecond,
                         width: contentWidth,
-                        height: layerHeight,
+                        height: areaLayout.layerHeight(kind),
                         visibleX: viewport.visibleContentX,
                         onSelectClip: { clip in onSelectClip(layer.id, clip) },
-                        resolveMove: { clip, dy, start in resolveMove(clip, from: layer.id, dy: dy, to: start) },
+                        resolveMove: { clip, pointer, start in resolveMove(clip, from: layer.id, pointer: pointer, to: start) },
                         onMoveClip: { clipID, target, newStart in onMoveClip(layer.id, clipID, target, newStart) },
                         onDraggingClip: { dragging in draggingClipLayerID = dragging ? layer.id : nil },
                         pushed: pushedClips.flatMap { $0.layerID == layer.id ? $0.clips : nil } ?? [:],
-                        onPushPreview: { clips in
-                            // A push lands on the layer under the pointer,
-                            // which the pushed clips themselves are on.
-                            let target = clips.isEmpty ? nil : timeline.layers.first { l in
-                                l.clips.contains { clips[$0.id] != nil }
-                            }
-                            let next = target.map { (layerID: $0.id, clips: clips) }
-                            if next?.layerID != pushedClips?.layerID || next?.clips != pushedClips?.clips {
-                                pushedClips = next
-                            }
-                        },
-                        onDropScenes: { payloads, time in onDropScenes(payloads, layer.id, time) },
+                        onMovePreview: { preview in showMovePreview(preview, from: layer.id) },
+                        onDropScenes: { payloads, time in onDropScenes(payloads, layer.id, time, nil) },
                         onEditJoint: { clipID in
                             expandedJoint = clipID
                             if let clip = layer.clips.first(where: { $0.id == clipID }) {
@@ -604,6 +665,11 @@ struct TimelineView: View {
                         onApplyJointEdit: { clipID, edit in onApplyJointEdit(layer.id, clipID, edit) },
                         onSetTransitionDuration: { clipID, edge, duration in onSetTransitionDuration(layer.id, clipID, edge, duration) }
                     )
+                    // Recorded for drags that cross areas; see
+                    // `TimelineGeometryStore`.
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                        geometryStore.layerRows[layer.id] = frame
+                    }
                     if let joint = shownJoint(in: layer) {
                         TransitionFootageLane(
                             joint: joint,
@@ -659,8 +725,8 @@ struct TimelineView: View {
                 .background(index.isMultiple(of: 2) ? Color.clear : Color.white.opacity(0.018))
                 .zIndex(draggingClipLayerID == layer.id ? 1 : 0)
             }
-            NewLayerDropRow(height: newLayerRowHeight) { payloads, x in
-                onDropScenes(payloads, nil, CMTime(seconds: max(0, Double(x / pixelsPerSecond)), preferredTimescale: 600))
+            NewLayerDropRow(height: newLayerRowHeight, kind: kind) { payloads, x in
+                onDropScenes(payloads, nil, CMTime(seconds: max(0, Double(x / pixelsPerSecond)), preferredTimescale: 600), kind)
             }
         }
         .frame(width: contentWidth, alignment: .topLeading)
@@ -875,17 +941,18 @@ struct TimelineColumnHeaderRow: View {
     }
 }
 
-/// The slim row under the layers: scenes dropped here go on a new layer at
-/// the drop time. It says so while something is dragged over it, and is
-/// otherwise empty space that scrubs like the rest of the track area.
+/// The slim row under an area's layers: scenes dropped here go on a new
+/// layer of the area's kind at the drop time. It says so while something
+/// is dragged over it, and is otherwise empty space.
 private struct NewLayerDropRow: View {
     let height: CGFloat
+    let kind: LayerKind
     let onDrop: ([SceneDragPayload], CGFloat) -> Bool
 
     @State private var isTargeted = false
 
     var body: some View {
-        Text(isTargeted ? "Drop here to start a new layer" : "")
+        Text(isTargeted ? "Drop here for a new \(kind.name.lowercased()) layer" : "")
             .font(Design.Typeface.micro)
             .foregroundStyle(Design.accent)
             .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)

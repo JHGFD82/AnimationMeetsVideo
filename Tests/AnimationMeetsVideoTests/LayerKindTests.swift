@@ -122,4 +122,23 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         let timeline = try #require(project.timeline(id: t))
         #expect(timeline.layers.map { project.displayName(of: $0, in: timeline) } == ["Video 1", "Music 1", "Video 2"])
     }
+
+    @Test func layersMoveAmongTheirOwnKind() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        // Top to bottom: video C, music B, video A.
+        for asset in [video(), song(), video()] { _ = project.importClip(asset, intoTimeline: t) }
+        let ids = layers(project).map(\.id)
+        let (videoC, music, videoA) = (ids[0], ids[1], ids[2])
+
+        project.moveLayer(videoA, in: t, by: -1)
+        #expect(layers(project).map(\.id) == [videoA, music, videoC])
+        project.moveLayer(videoA, in: t, by: -1)
+        #expect(layers(project).map(\.id) == [videoA, music, videoC])
+
+        project.moveLayer(videoA, in: t, toPositionInKind: 1)
+        #expect(layers(project).map(\.id) == [music, videoC, videoA])
+        project.moveLayer(videoA, in: t, toPositionInKind: 0)
+        #expect(layers(project).map(\.id) == [music, videoA, videoC])
+    }
 }

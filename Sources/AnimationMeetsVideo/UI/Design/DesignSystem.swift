@@ -88,13 +88,16 @@ enum Design {
     /// Clip fills, at matched perceptual lightness and chroma so a timeline
     /// of mixed types reads as one material in three tints.
     enum ClipTone {
-        case video, nested, audio, unknown
+        /// `audio` is sound; `music` is audio on a music layer, a greener
+        /// neighbour of it so the two audio areas tell apart at a glance.
+        case video, nested, audio, music, unknown
 
         var color: Color {
             switch self {
             case .video: Design.hex(0x7C6BD6)
             case .nested: Design.hex(0x5B7BD5)
             case .audio: Design.hex(0x3F9E9A)
+            case .music: Design.hex(0x5E9E4C)
             case .unknown: Design.hex(0x6A7280)
             }
         }

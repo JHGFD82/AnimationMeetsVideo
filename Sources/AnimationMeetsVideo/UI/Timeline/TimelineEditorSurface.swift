@@ -20,11 +20,9 @@ struct TimelineEditorSurface<Library: View>: View {
     @State private var trimPreview = TrimPreviewModel()
     @State private var buildTask: Task<Void, Never>?
     @State private var buildError: String?
-    @State private var timelineHeight: CGFloat = 280
-    /// What the timeline needs to show all its layers. It is never drawn
-    /// taller, so there is no empty space under the layers; the viewer
-    /// gets the rest.
-    @State private var timelineIdealHeight: CGFloat = .infinity
+    /// As tall as the person makes it, not as tall as its layers need: its
+    /// areas share whatever height it has and scroll the rest.
+    @AppStorage("timelineHeight") private var timelineHeight: Double = 280
     @AppStorage("showsTransitionsPanel") private var showsTransitions = false
 
     private let minTimelineHeight: CGFloat = 140
@@ -53,9 +51,7 @@ struct TimelineEditorSurface<Library: View>: View {
     var body: some View {
         GeometryReader { geometry in
             let maxTimelineHeight = max(minTimelineHeight, geometry.size.height - minTopAreaHeight)
-            // The transitions panel needs room for its tiles.
-            let neededHeight = showsTransitions ? max(timelineIdealHeight, 240) : timelineIdealHeight
-            let resolvedTimelineHeight = min(min(max(timelineHeight, minTimelineHeight), maxTimelineHeight), neededHeight)
+            let resolvedTimelineHeight = min(max(CGFloat(timelineHeight), minTimelineHeight), maxTimelineHeight)
 
             VStack(spacing: 0) {
                 TimelineHeaderBar(project: $project, timelineID: $timelineID)
@@ -86,8 +82,8 @@ struct TimelineEditorSurface<Library: View>: View {
                 .frame(maxHeight: .infinity)
 
                 TimelineResizeHandle(
-                    height: Binding(get: { resolvedTimelineHeight }, set: { timelineHeight = $0 }),
-                    minHeight: min(minTimelineHeight, resolvedTimelineHeight),
+                    height: Binding(get: { resolvedTimelineHeight }, set: { timelineHeight = Double($0) }),
+                    minHeight: minTimelineHeight,
                     maxHeight: maxTimelineHeight
                 )
 
@@ -160,7 +156,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 },
                 onRenameLayer: { layerID, name in project.renameLayer(layerID, in: timelineID, to: name) },
                 onMoveLayer: { layerID, offset in project.moveLayer(layerID, in: timelineID, by: offset) },
-                onMoveLayerTo: { layerID, index in project.moveLayer(layerID, in: timelineID, toIndex: index) },
+                onMoveLayerTo: { layerID, position in project.moveLayer(layerID, in: timelineID, toPositionInKind: position) },
                 onMoveClip: { layerID, clipID, targetLayerID, newStart in
                     project.moveClip(clipID, in: timelineID, layer: layerID, onto: targetLayerID, to: newStart)
                     if let targetLayerID, selection?.timelineClipID == clipID,
@@ -168,11 +164,10 @@ struct TimelineEditorSurface<Library: View>: View {
                         selection?.layerID = targetLayerID
                     }
                 },
-                onDropScenes: { payloads, layerID, time in dropScenes(payloads, onLayer: layerID, at: time) },
+                onDropScenes: { payloads, layerID, time, kind in dropScenes(payloads, onLayer: layerID, at: time, kind: kind) },
                 onApplyJointEdit: { layerID, clipID, edit in
                     project.applyJointEdit(edit, at: clipID, in: timelineID, layer: layerID)
                 },
-                onIdealHeightChange: { timelineIdealHeight = $0 },
                 onTrimClipStart: { layerID, clipID, newTrimStart in
                     project.trimClipStart(clipID, in: timelineID, layer: layerID, to: newTrimStart)
                 },
@@ -225,15 +220,16 @@ struct TimelineEditorSurface<Library: View>: View {
     }
 
     /// Scenes dragged from the browser become ordinary clips, back to back.
-    /// Dropped on a layer they go onto it at the drop time, if they fit;
-    /// otherwise, or dropped elsewhere, onto a new layer.
-    private func dropScenes(_ payloads: [SceneDragPayload], onLayer layerID: UUID?, at time: CMTime) -> Bool {
+    /// Dropped on a layer they go onto it at the drop time, if they fit and
+    /// it is the right kind; otherwise, or dropped elsewhere, onto a new
+    /// layer at the top, of `kind` or the asset's default kind.
+    private func dropScenes(_ payloads: [SceneDragPayload], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind? = nil) -> Bool {
         var firstClip: (layerID: UUID, clipID: UUID)?
         for payload in payloads {
             if let layerID,
                let added = project.addScenes(payload.scenes, ofAsset: payload.assetID, intoLayer: layerID, in: timelineID, at: time) {
                 if firstClip == nil, let clipID = added.first { firstClip = (layerID, clipID) }
-            } else if let result = project.addScenes(payload.scenes, ofAsset: payload.assetID, intoTimeline: timelineID, at: time),
+            } else if let result = project.addScenes(payload.scenes, ofAsset: payload.assetID, intoTimeline: timelineID, at: time, kind: kind),
                       firstClip == nil, let clipID = result.clipIDs.first {
                 firstClip = (result.layerID, clipID)
             }

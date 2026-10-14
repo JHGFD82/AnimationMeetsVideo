@@ -238,15 +238,41 @@ struct EditingProject: Identifiable, Equatable {
         timelines[tIndex].layers.insert(layer, at: min(max(index, 0), timelines[tIndex].layers.count))
     }
 
+    /// Moves a layer `offset` places up (negative) or down among the layers
+    /// of its own kind, which are all its area of the timeline shows.
+    /// Layers of other kinds keep their places.
     mutating func moveLayer(_ layerID: UUID, in timelineID: UUID, by offset: Int) {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let index = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
         else {
             return
         }
-        let newIndex = index + offset
-        guard timelines[tIndex].layers.indices.contains(newIndex) else { return }
-        timelines[tIndex].layers.swapAt(index, newIndex)
+        let kind = timelines[tIndex].layers[index].kind
+        let sameKind = timelines[tIndex].layers.indices.filter { timelines[tIndex].layers[$0].kind == kind }
+        guard let position = sameKind.firstIndex(of: index), sameKind.indices.contains(position + offset) else { return }
+        timelines[tIndex].layers.swapAt(index, sameKind[position + offset])
+    }
+
+    /// Moves a layer to `position` among the layers of its own kind (0 is
+    /// the top of its area), as when its header is dragged. Layers of other
+    /// kinds keep their places.
+    mutating func moveLayer(_ layerID: UUID, in timelineID: UUID, toPositionInKind position: Int) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let from = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        else {
+            return
+        }
+        let layer = timelines[tIndex].layers.remove(at: from)
+        let sameKind = timelines[tIndex].layers.indices.filter { timelines[tIndex].layers[$0].kind == layer.kind }
+        let index: Int
+        if sameKind.indices.contains(position) {
+            index = sameKind[max(0, position)]
+        } else if let last = sameKind.last {
+            index = last + 1
+        } else {
+            index = from
+        }
+        timelines[tIndex].layers.insert(layer, at: min(index, timelines[tIndex].layers.count))
     }
 
     mutating func setAutoMatteEnabled(_ enabled: Bool, for id: UUID, in timelineID: UUID, layer layerID: UUID) {

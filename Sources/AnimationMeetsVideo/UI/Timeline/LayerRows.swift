@@ -168,17 +168,17 @@ struct LayerClipRow: View {
     /// The on-screen part of the row, in its own x coordinates.
     let visibleX: ClosedRange<CGFloat>
     let onSelectClip: (TimelineClip) -> Void
-    /// Where a clip dragged by `dy` points and asked to start at a time
-    /// lands: on another layer when dragged onto one with room, else nil.
-    let resolveMove: (TimelineClip, CGFloat, CMTime) -> ClipMovePreview?
+    /// Where a clip dragged with the pointer at a point in window
+    /// coordinates, and asked to start at a time, lands.
+    let resolveMove: (TimelineClip, CGPoint, CMTime) -> ClipMovePreview?
     /// Moves a clip to a start time, and to another layer when given.
     let onMoveClip: (UUID, UUID?, CMTime) -> Void
     let onDraggingClip: (Bool) -> Void
     /// Clips on this layer moving aside for a clip being dragged, drawn
     /// where they will go until the move lands.
     let pushed: [UUID: PushedClip]
-    /// Hears what a drag in progress pushes, and empty when it ends.
-    let onPushPreview: ([UUID: PushedClip]) -> Void
+    /// Hears where a drag in progress will land, and nil when it ends.
+    let onMovePreview: (ClipMovePreview?) -> Void
     let onDropScenes: ([SceneDragPayload], CMTime) -> Bool
     let onEditJoint: (UUID) -> Void
     let onTrimClipStart: (UUID, CMTime) -> Void
@@ -249,7 +249,7 @@ struct LayerClipRow: View {
                 ClipBlockView(
                     clip: clip,
                     info: info,
-                    typeColor: Design.ClipTone.of(info, streams: clip.streams).color,
+                    typeColor: layer.kind == .music ? Design.ClipTone.music.color : Design.ClipTone.of(info, streams: clip.streams).color,
                     hasLinkedAudio: project.hasLinkedAudio(clip),
                     acceptsTransitions: project.playsVideo(clip),
                     joinedLead: joinedLead,
@@ -258,7 +258,7 @@ struct LayerClipRow: View {
                     pixelsPerSecond: pixelsPerSecond,
                     height: height,
                     visibleX: visibleX,
-                    resolveMove: { start, dy in resolveMove(clip, dy, start) },
+                    resolveMove: { start, pointer in resolveMove(clip, pointer, start) },
                     resolveTrimStart: { project.resolvedTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
                     resolveTrimEnd: { project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
                     onSelect: { onSelectClip(clip) },
@@ -267,7 +267,7 @@ struct LayerClipRow: View {
                         liftedClipID = dragging ? clip.id : nil
                         onDraggingClip(dragging)
                     },
-                    onMovePreview: { onPushPreview($0?.pushed ?? [:]) },
+                    onMovePreview: onMovePreview,
                     onTrimStart: { newTrimStart in onTrimClipStart(clip.id, newTrimStart) },
                     onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) },
                     onSetTransition: { kind, edge in onSetTransition(clip.id, kind, edge) },
@@ -365,7 +365,7 @@ struct ClipBlockView: View {
     let pixelsPerSecond: CGFloat
     let height: CGFloat
     let visibleX: ClosedRange<CGFloat>
-    let resolveMove: (CMTime, CGFloat) -> ClipMovePreview?
+    let resolveMove: (CMTime, CGPoint) -> ClipMovePreview?
     let resolveTrimStart: (CMTime) -> TimelineClip?
     let resolveTrimEnd: (CMTime) -> TimelineClip?
     let onSelect: () -> Void
@@ -592,7 +592,7 @@ struct ClipBlockView: View {
                         let snapped = snapSpan(proposed, clip.trimmedDuration)
                         if let snapped { proposed = snapped.start }
                         onSnapIndicator(snapped?.target)
-                        let target = resolveMove(proposed, value.translation.height)
+                        let target = resolveMove(proposed, value.location)
                         var moved = clip
                         moved.startOffset = target?.start ?? clip.startOffset
                         showPreview(moved)

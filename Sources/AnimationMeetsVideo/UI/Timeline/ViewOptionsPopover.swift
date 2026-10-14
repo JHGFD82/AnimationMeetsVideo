@@ -4,7 +4,8 @@ struct ViewOptionsPopover: View {
     /// 0 fits the whole timeline; 1 is the closest zoom.
     @Binding var zoomFraction: Double
     let onFit: () -> Void
-    @Binding var layerHeight: CGFloat
+    /// Which areas show, and each one's layer height.
+    @Binding var areaLayout: TimelineAreaLayout
     /// Layers with beats, as (layer ID, name), in timeline order.
     let beatLayers: [(id: UUID, name: String)]
     @Binding var beatLayerID: UUID?
@@ -23,8 +24,28 @@ struct ViewOptionsPopover: View {
 
             Groove()
 
-            SheetSection("Layer height") {
-                Slider(value: $layerHeight, in: 32...120)
+            SheetSection("Areas") {
+                ForEach(TimelineAreaLayout.order) { kind in
+                    HStack(spacing: Design.Space.step) {
+                        Toggle(kind.name, isOn: Binding(
+                            get: { areaLayout.isShown(kind) },
+                            set: { areaLayout.setShown(kind, $0) }
+                        ))
+                        .toggleStyle(.checkbox)
+                        .frame(width: 72, alignment: .leading)
+                        // Layer height: the same as pinching vertically
+                        // over the area.
+                        Slider(
+                            value: Binding(
+                                get: { areaLayout.layerHeight(kind) },
+                                set: { areaLayout.setLayerHeight(kind, $0) }
+                            ),
+                            in: TimelineAreaLayout.layerHeightRange
+                        )
+                        .disabled(!areaLayout.isShown(kind))
+                        .help("Layer height in the \(kind.name.lowercased()) area; pinch up and down over it to change it too")
+                    }
+                }
             }
 
             Groove()

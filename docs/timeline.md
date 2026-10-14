@@ -13,31 +13,60 @@ name, and transform property rows when shown), and the track area on the
 right with the ruler across its top. The transitions panel, opened with the
 button in the timeline's header, takes its place at the right end.
 
-The timeline is never taller than its layers need: under the last layer is
-only a slim row for dropping onto a new layer, then the scrollbar (shown
-only while zoomed in), and the viewer gets the rest of the window. The
-resize handle above it sets the most it may take; with more layers than fit,
-the layers scroll.
+The timeline is as tall as the person makes it with the grip between it and
+the viewer, whatever its layers need; it remembers that height. Under the
+ruler it is split into three **areas**, top to bottom:
+
+- **Video**: layers with pictures (`LayerKind.video`).
+- **Sound**: dialogue and effects (`.sound`), including sound detached from
+  video.
+- **Music**: the score (`.music`). Audio files go here unless dropped
+  elsewhere.
+
+Each area has a title bar with its name and layer count, and scrolls its
+layers on its own. Dragging the title bar of the sound or music area moves
+its boundary with the area above, trading height between the two. The grip
+above the timeline resizes every area in proportion. Neither changes how
+tall a layer is: a bigger area shows more layers. Layer height is each
+area's own vertical zoom (see [Zoom and scroll](#zoom-and-scroll)).
+**View Options** has a checkbox per area that hides or shows it, and a
+layer height slider for each. The layout (`TimelineAreaLayout`) is kept in
+the app's defaults. Under each area's layers is a slim row for dropping
+onto a new layer of that kind, then under the areas the scrollbar (shown
+only while zoomed in).
 
 Importing a file only adds it to the library. It reaches a timeline when
 dragged there (a whole asset, or scenes of it), or from **Add to Timeline**
 in its menu. Dropped on a layer it goes onto that layer at the drop time,
 in the nearest gap it fits (`addScenes(_:ofAsset:intoLayer:in:at:)`);
-dropped on the row under the layers, anywhere else, or where it doesn't
-fit, it gets a new layer at the top. **Add to Timeline** always makes a new
-layer.
+dropped on the row under an area's layers it gets a new layer of that
+area's kind; anywhere else, where it doesn't fit, or on a layer of the
+wrong kind, it gets a new layer of its own default kind. New layers always
+go at the top of the stack, which is the top of their area. **Add to
+Timeline** always makes a new layer.
 
 ## Layers
 
-A layer is named "Video N" or "Audio N" (audio-only layers), numbered
-among layers of its kind from the top, so the names follow the stack as it
-is reordered. Double-click the name to give it a custom one, which is saved
-as the layer's `customName`; clearing it brings the default back.
+Every layer has a kind (`TimelineLayer.kind`, saved as `kind`), which is
+the area it sits in. Clips with pictures only go on video layers, and clips
+of sound alone (audio files and detached sound) only on sound or music
+layers; moves and drops onto the wrong kind are refused. Projects saved
+before layers had kinds get one from their clips when opened
+(`inferredKind(of:)`): video if any clip has pictures or the layer is
+empty, sound if it holds sound detached from video, music otherwise.
+Audio clips on music layers are drawn in a greener tone than sound.
+
+A layer is named after its kind and numbered among layers of that kind
+from the top ("Video 2", "Music 1"), so the names follow the stack as it is
+reordered. Double-click the name to give it a custom one, which is saved as
+the layer's `customName`; clearing it brings the default back.
 
 Dragging a layer's header (its number and name) up or down reorders the
-stack; a line shows where it will land, and it goes there on release
-(`moveLayer(_:in:toIndex:)`). **Move Layer Up/Down** in the header's menu
-step it one place.
+layers of its area; a line shows where it will land, and it goes there on
+release (`moveLayer(_:in:toPositionInKind:)`). **Move Layer Up/Down** in
+the header's menu step it one place among its kind. Layers of other kinds
+keep their places in the stack, which still sets the order video layers
+are composited in.
 
 ## Zoom and scroll
 
@@ -60,7 +89,8 @@ drop that makes the timeline longer does not rescale the clips on screen.
   **\\** (or **Fit to Window**) fits the timeline again.
 - Sideways trackpad scrolling, Shift-scroll on a mouse wheel and the
   scrollbar under the tracks scroll in time. Plain vertical scrolling moves
-  through the layers. The ruler stays at the top.
+  through the layers of the area under the pointer. The ruler stays at the
+  top.
 - Zoom and scroll are view state: they reset when switching timelines and
   are not saved.
 
@@ -228,7 +258,7 @@ audio** lane under the clips, one block under each clip that carries sound.
 **Detach Audio** (on a clip, on a linked audio block, on the layer header or
 in the inspector) splits them: the clips keep only their picture
 (`streams = .video`), and copies with the same timing and trims, playing
-only the sound (`streams = .audio`), go onto a new layer just below. From
+only the sound (`streams = .audio`), go onto a new sound layer. From
 then on the two are ordinary clips: the sound is colored as audio, moves
 freely off the frame grid, carries the beats, and takes no transitions.
 
