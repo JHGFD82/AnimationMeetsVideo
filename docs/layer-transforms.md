@@ -116,12 +116,23 @@ the frame, volume in dB), one line per component (position's X in red and
 Y in green, a single property in yellow), the playhead in red, and each
 keyframe a mark on each line, pinched where eased.
 
-- **Click a keyframe** to select it. Its bezier handles appear on either
-  side, drawn against the component that changes most over that segment.
+- **Click a keyframe** to select it. The handles of its eased sides
+  appear, drawn against the component that changes most over that
+  segment. A linear side has no handle.
 - **Drag a handle** to shape that side's ease: across sets its influence,
   up and down its speed. A handle can't leave its segment in time; it can
   overshoot in value. Over a segment whose value doesn't change only its
   influence can be set, since the curve is flat whatever the speed.
+- **The two handles stay in line.** While one is dragged, the keyframe's
+  other handle (if that side is eased) swings to stay on one straight line
+  through the keyframe with it, keeping its own length on screen. Hold
+  **Option** to move the dragged handle alone; letting go of Option
+  mid-drag brings the other back into line.
+- **Drag a handle onto its keyframe** (within 6 points) and it goes: that
+  side turns linear and the keyframe is eased on one side only. Dragged
+  back out before letting go, it returns.
+- **Option-drag a keyframe** to pull a handle out of a linear side: drag
+  right for the outgoing side, left for the incoming one. It moves alone.
 - **Drag a keyframe** to move it in time (on frames, never past a
   neighbor) and in that component's value; Shift keeps the drag to
   whichever direction it moves most.
@@ -252,9 +263,8 @@ ignore it, and drop the transforms if it saved the project.
 - **Hold keyframes**, spatial (curved) motion paths for position, and
   separate easing per component.
 - In the graph editor: zooming and scrolling the graph, a speed graph,
-  selecting several keyframes, handles that stay continuous across a
-  keyframe, and keeping linked scale's aspect when dragging one
-  component.
+  selecting several keyframes, and keeping linked scale's aspect when
+  dragging one component.
 - **Image layers.** Still images can't be imported yet. When they can, they
   are visual layers and get the same transform.
 - **Anchor point**, and **3D** (see [Only 2D for now](#only-2d-for-now)).

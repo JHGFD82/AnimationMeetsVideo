@@ -86,8 +86,12 @@ struct KeyframeGraphLayout: Equatable {
 /// One parameter's keyframes as a value graph, for its HUD panel: a line
 /// per component over time, each keyframe a point on it. Drag a point to
 /// move the keyframe in time (on frames) and value; Shift keeps it to one
-/// direction. Click a point to select it and show its bezier handles, and
-/// drag a handle to shape the ease on that side. Click elsewhere to move
+/// direction. Click a point to select it and show the bezier handles of
+/// its eased sides. Dragging a handle shapes that side's ease and swings
+/// the other side's handle to stay in line with it, at its own length;
+/// with Option it moves alone. A handle dragged onto its keyframe goes,
+/// leaving that side linear, and Option-dragging a keyframe pulls a handle
+/// out of a linear side, the side the drag heads to. Click elsewhere to move
 /// the playhead there; double-click to add a keyframe. The buttons and the
 /// right-click menu apply ease presets to the selected keyframe, or to the
 /// one at the playhead.
@@ -107,8 +111,15 @@ struct KeyframeGraphView: View {
     private enum Target: Equatable {
         case keyframe(CMTime, component: Int)
         case handle(segment: Int, outgoing: Bool)
+        /// Option-dragging a keyframe: pulls a handle out of the side the
+        /// drag heads to.
+        case pull(CMTime)
         case scrub
     }
+
+    /// Closer than this on screen, a dragged handle goes and its side turns
+    /// linear.
+    private static let collapseDistance: CGFloat = 6
 
     private struct Drag {
         var target: Target
@@ -297,23 +308,62 @@ struct KeyframeGraphView: View {
         return deltas.indices.max { deltas[$0] < deltas[$1] } ?? 0
     }
 
-    /// The handles on either side of the selected keyframe.
+    /// Where a side's handle and its keyframe are drawn, against the
+    /// segment's reference component; a linear side's at its implied place.
+    private func handle(segment index: Int, outgoing: Bool, of value: AnimatedValue<ComponentValue>, offset: [Double], layout: KeyframeGraphLayout) -> Handle? {
+        let segments = KeyframeGraphLayout.segments(of: value)
+        guard segments.indices.contains(index) else { return nil }
+        let segment = segments[index]
+        let component = referenceComponent(from: segment.from, to: segment.to, layout: layout)
+        let a = segment.from.value.values[component] + offset[component]
+        let b = segment.to.value.values[component] + offset[component]
+        let unit = outgoing ? KeyframeEase.outgoingHandle(segment.from.easeOut) : KeyframeEase.incomingHandle(segment.to.easeIn)
+        let t0 = segment.from.time.seconds, t1 = segment.to.time.seconds
+        let point = CGPoint(x: layout.x(t0 + Double(unit.x) * (t1 - t0)), y: layout.y(a + Double(unit.y) * (b - a)))
+        let anchor = outgoing ? CGPoint(x: layout.x(t0), y: layout.y(a)) : CGPoint(x: layout.x(t1), y: layout.y(b))
+        return Handle(segment: index, outgoing: outgoing, anchor: anchor, point: point)
+    }
+
+    /// The handles of the selected keyframe's eased sides. A linear side
+    /// has none to show.
     private func handles(of value: AnimatedValue<ComponentValue>, offset: [Double], layout: KeyframeGraphLayout) -> [Handle] {
         guard let selected else { return [] }
         var result: [Handle] = []
         for (index, segment) in KeyframeGraphLayout.segments(of: value).enumerated() {
-            let outgoing = segment.from.time == selected
-            guard outgoing || segment.to.time == selected else { continue }
-            let component = referenceComponent(from: segment.from, to: segment.to, layout: layout)
-            let a = segment.from.value.values[component] + offset[component]
-            let b = segment.to.value.values[component] + offset[component]
-            let unit = outgoing ? KeyframeEase.outgoingHandle(segment.from.easeOut) : KeyframeEase.incomingHandle(segment.to.easeIn)
-            let t0 = segment.from.time.seconds, t1 = segment.to.time.seconds
-            let point = CGPoint(x: layout.x(t0 + Double(unit.x) * (t1 - t0)), y: layout.y(a + Double(unit.y) * (b - a)))
-            let anchor = outgoing ? CGPoint(x: layout.x(t0), y: layout.y(a)) : CGPoint(x: layout.x(t1), y: layout.y(b))
-            result.append(Handle(segment: index, outgoing: outgoing, anchor: anchor, point: point))
+            if segment.from.time == selected, segment.from.easeOut != nil,
+               let handle = handle(segment: index, outgoing: true, of: value, offset: offset, layout: layout) {
+                result.append(handle)
+            }
+            if segment.to.time == selected, segment.to.easeIn != nil,
+               let handle = handle(segment: index, outgoing: false, of: value, offset: offset, layout: layout) {
+                result.append(handle)
+            }
         }
         return result
+    }
+
+    /// The ease a side's handle drawn at `point` makes, measured against
+    /// its segment. Over a flat segment there is no slope to read, so the
+    /// speed it had is kept.
+    private func ease(handleAt point: CGPoint, segment index: Int, outgoing: Bool, of value: AnimatedValue<ComponentValue>, offset: [Double], layout: KeyframeGraphLayout) -> KeyframeEase? {
+        let segments = KeyframeGraphLayout.segments(of: value)
+        guard segments.indices.contains(index) else { return nil }
+        let (from, to) = segments[index]
+        let component = referenceComponent(from: from, to: to, layout: layout)
+        let a = from.value.values[component] + offset[component]
+        let b = to.value.values[component] + offset[component]
+        let t0 = from.time.seconds, t1 = to.time.seconds
+        let flat = abs(b - a) < 1e-9
+        let unit = CGPoint(
+            x: (layout.seconds(atX: point.x) - t0) / (t1 - t0),
+            y: flat ? 0 : (layout.value(atY: point.y) - a) / (b - a)
+        )
+        var ease = outgoing ? KeyframeEase.outgoing(handleAt: unit) : KeyframeEase.incoming(handleAt: unit)
+        if flat {
+            let previous = outgoing ? from.easeOut : to.easeIn
+            ease = KeyframeEase(influence: ease.influence, speed: previous?.speed ?? 1)
+        }
+        return ease
     }
 
     // MARK: - Dragging
@@ -335,6 +385,9 @@ struct KeyframeGraphView: View {
                 }
             }
         }
+        if case .keyframe(let time, _) = nearest?.target, NSEvent.modifierFlags.contains(.option) {
+            return .pull(time)
+        }
         return nearest?.target ?? .scrub
     }
 
@@ -345,6 +398,7 @@ struct KeyframeGraphView: View {
                     let target = target(at: gesture.startLocation, value: value, offset: offset, layout: layout)
                     drag = Drag(target: target, layout: layout, original: value)
                     if case .keyframe(let time, _) = target { selected = time }
+                    if case .pull(let time) = target { selected = time }
                     if case .scrub = target { selected = nil }
                 }
                 guard let drag else { return }
@@ -355,7 +409,17 @@ struct KeyframeGraphView: View {
                     guard abs(gesture.translation.width) >= 2 || abs(gesture.translation.height) >= 2 else { return }
                     draft = movedKeyframe(time, component: component, by: gesture.translation, drag: drag, offset: offset, timeline: timeline)
                 case .handle(let segment, let outgoing):
-                    draft = movedHandle(segment, outgoing: outgoing, to: gesture.location, drag: drag, offset: offset)
+                    let alone = NSEvent.modifierFlags.contains(.option)
+                    draft = movedHandle(segment, outgoing: outgoing, to: gesture.location, alone: alone, drag: drag, offset: offset)
+                case .pull(let time):
+                    // The side the drag heads to; nothing until it heads somewhere.
+                    guard abs(gesture.translation.width) >= 1 else { return }
+                    let outgoing = gesture.translation.width > 0
+                    let keyframes = drag.original.keyframes
+                    guard let index = keyframes.firstIndex(where: { $0.time == time }) else { return }
+                    let segment = outgoing ? index : index - 1
+                    guard segment >= 0, segment < keyframes.count - 1 else { return }
+                    draft = movedHandle(segment, outgoing: outgoing, to: gesture.location, alone: true, drag: drag, offset: offset)
                 }
             }
             .onEnded { _ in
@@ -398,31 +462,38 @@ struct KeyframeGraphView: View {
     }
 
     /// The keyframes with one side's ease set from a handle dragged to
-    /// `location`, measured against the segment it belongs to.
-    private func movedHandle(_ segment: Int, outgoing: Bool, to location: CGPoint, drag: Drag, offset: [Double]) -> AnimatedValue<ComponentValue> {
+    /// `location`. Unless `alone`, the keyframe's other handle, if that
+    /// side is eased, swings to stay on one line through the keyframe with
+    /// the dragged one, keeping its own length on screen. Dragged onto the
+    /// keyframe, the handle goes and its side turns linear.
+    private func movedHandle(_ segment: Int, outgoing: Bool, to location: CGPoint, alone: Bool, drag: Drag, offset: [Double]) -> AnimatedValue<ComponentValue> {
         var result = drag.original
-        let segments = KeyframeGraphLayout.segments(of: result)
-        guard segments.indices.contains(segment) else { return result }
-        let (from, to) = segments[segment]
         let layout = drag.layout
-        let component = referenceComponent(from: from, to: to, layout: layout)
-        let a = from.value.values[component] + offset[component]
-        let b = to.value.values[component] + offset[component]
-        let t0 = from.time.seconds, t1 = to.time.seconds
-        let unitX = (layout.seconds(atX: location.x) - t0) / (t1 - t0)
-        let flat = abs(b - a) < 1e-9
-        let unitY = flat ? 0 : (layout.value(atY: location.y) - a) / (b - a)
-        let point = CGPoint(x: unitX, y: unitY)
-        if outgoing {
-            var ease = KeyframeEase.outgoing(handleAt: point)
-            // A flat segment has no slope to read; keep the speed.
-            if flat { ease = KeyframeEase(influence: ease.influence, speed: from.easeOut?.speed ?? 1) }
-            result.setEase(at: from.time, in: from.easeIn, out: ease)
-        } else {
-            var ease = KeyframeEase.incoming(handleAt: point)
-            if flat { ease = KeyframeEase(influence: ease.influence, speed: to.easeIn?.speed ?? 1) }
-            result.setEase(at: to.time, in: ease, out: to.easeOut)
+        let segments = KeyframeGraphLayout.segments(of: result)
+        guard segments.indices.contains(segment),
+              let dragged = handle(segment: segment, outgoing: outgoing, of: result, offset: offset, layout: layout)
+        else { return result }
+        let keyframe = outgoing ? segments[segment].from : segments[segment].to
+        let collapsed = distance(location, dragged.anchor) < Self.collapseDistance
+        var easeIn = keyframe.easeIn, easeOut = keyframe.easeOut
+        let newEase = collapsed ? nil : ease(handleAt: location, segment: segment, outgoing: outgoing, of: result, offset: offset, layout: layout)
+        if outgoing { easeOut = newEase } else { easeIn = newEase }
+
+        // The other side's handle, on the segment across the keyframe.
+        let otherSegment = outgoing ? segment - 1 : segment + 1
+        let otherEase = outgoing ? keyframe.easeIn : keyframe.easeOut
+        if !alone, !collapsed, otherEase != nil,
+           let other = handle(segment: otherSegment, outgoing: !outgoing, of: result, offset: offset, layout: layout) {
+            let length = distance(other.point, other.anchor)
+            let dx = location.x - dragged.anchor.x, dy = location.y - dragged.anchor.y
+            let reach = hypot(dx, dy)
+            if reach > 0 {
+                let point = CGPoint(x: other.anchor.x - dx / reach * length, y: other.anchor.y - dy / reach * length)
+                let swung = ease(handleAt: point, segment: otherSegment, outgoing: !outgoing, of: result, offset: offset, layout: layout)
+                if outgoing { easeIn = swung } else { easeOut = swung }
+            }
         }
+        result.setEase(at: keyframe.time, in: easeIn, out: easeOut)
         return result
     }
 
