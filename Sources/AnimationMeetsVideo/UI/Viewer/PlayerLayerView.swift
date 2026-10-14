@@ -39,13 +39,16 @@ final class PlayerContainerView: NSView {
     private let stillLayer = CALayer()
     private var readyObservation: NSKeyValueObservation?
 
-    /// The longest a frame is held, in case the new item never shows one.
+    /// How long a frame is held before the new item is nudged to draw.
     /// A paused player holds back a new item's first picture until its
     /// sound is ready, about half a second for a clip with sound and
-    /// longer on some audio devices, so this is generous: an uncovered
-    /// layer shows nothing at all, and after a render the held frame is
-    /// the same picture anyway.
+    /// longer on some audio devices (prerolling usually gets it there at
+    /// once), so this is generous: an uncovered layer shows nothing at
+    /// all, and after a render the held frame is the same picture anyway.
     private static let maxHold: CFTimeInterval = 5
+    /// Whether the new item has been nudged; if it still hasn't drawn by
+    /// the next timeout, the frame is let go.
+    private var nudged = false
 
     var player: AVPlayer? {
         get { playerLayer.player }
@@ -132,6 +135,7 @@ final class PlayerContainerView: NSView {
         else { return }
         heldBuffer = buffer
         heldSince = CACurrentMediaTime()
+        nudged = false
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         heldFrame.contents = surface
@@ -149,15 +153,35 @@ final class PlayerContainerView: NSView {
     }
 
     /// Uncovers the video once it shows a frame other than the held one,
-    /// or playback starts, or there is no item to wait for, or the hold
-    /// has gone on too long.
+    /// or playback starts, or there is no item to wait for. A new item
+    /// that hasn't drawn by `maxHold` is seeked to where it is and
+    /// prerolled, which makes a paused player draw; uncovering it instead
+    /// would show black until the next play or scrub. Only if that fails
+    /// too is the frame let go.
     private func releaseFrameIfReplaced() {
         guard let heldBuffer else { return }
         let playing = (playerLayer.player?.rate ?? 0) != 0
         let shown = playerLayer.displayedPixelBuffer()
-        if playing || playerLayer.player?.currentItem == nil
-            || CACurrentMediaTime() - heldSince > Self.maxHold
-            || (shown != nil && shown !== heldBuffer) {
+        if playing || playerLayer.player?.currentItem == nil || (shown != nil && shown !== heldBuffer) {
+            releaseFrame()
+            return
+        }
+        guard CACurrentMediaTime() - heldSince > Self.maxHold else { return }
+        if !nudged, let item = playerLayer.player?.currentItem {
+            NSLog("Viewer: a swapped-in item hadn't drawn after \(Self.maxHold) s; seeking it to redraw")
+            nudged = true
+            heldSince = CACurrentMediaTime()
+            item.seek(to: item.currentTime(), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                guard finished else { return }
+                Task { @MainActor in
+                    guard let player = self?.playerLayer.player, player.currentItem === item, player.rate == 0,
+                          player.status == .readyToPlay, item.status == .readyToPlay
+                    else { return }
+                    player.preroll(atRate: 1)
+                }
+            }
+        } else {
+            NSLog("Viewer: a swapped-in item never drew; showing the player as it is")
             releaseFrame()
         }
     }

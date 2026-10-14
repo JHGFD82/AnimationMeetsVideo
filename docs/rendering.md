@@ -102,8 +102,12 @@ Limits:
   playhead before it is swapped in, and the viewer keeps showing the old
   item's frame until the new one draws, so the picture doesn't blink.
   That can take half a second or more, since a paused player holds back
-  a new item's first picture until its sound is ready; the old frame is
-  held for up to five seconds. A render that finishes just as play is
+  a new item's first picture until its sound is ready. The player is
+  prerolled as soon as the new item is ready, which usually makes it draw
+  at once. If it still hasn't drawn after five seconds it is seeked to
+  where it is and prerolled again, and only if that fails too is the old
+  frame let go (both are logged), since an uncovered layer shows black
+  until the next play or scrub. A render that finishes just as play is
   pressed waits for the next pause, since swapping the item mid-play
   freezes the picture.
 - **Export.** A ProRes 422 export plays every stretch that has a render
