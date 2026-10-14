@@ -64,7 +64,7 @@ struct TimelineEditorSurface<Library: View>: View {
                     library()
                     ViewerPanel(
                         playback: playback,
-                        hasContent: !(timeline?.layers.isEmpty ?? true),
+                        hasContent: timeline?.layers.contains { !$0.clips.isEmpty } ?? false,
                         frameSize: timeline?.frameSize ?? CGSize(width: 16, height: 9),
                         frameRate: timeline?.frameRate ?? 24,
                         buildError: buildError
@@ -195,6 +195,15 @@ struct TimelineEditorSurface<Library: View>: View {
                 onDetachAudio: { layerID, clipIDs in
                     project.detachAudio(of: clipIDs, in: timelineID, layer: layerID)
                 },
+                onSelectLayer: { selection = nil },
+                onDeleteClip: { layerID, clipID in
+                    project.deleteClip(clipID, in: timelineID, layer: layerID)
+                    selection = nil
+                },
+                onDeleteLayer: { layerID in
+                    project.deleteLayer(layerID, in: timelineID)
+                    if selection?.layerID == layerID { selection = nil }
+                },
                 showsTransitions: $showsTransitions
             )
         } else {
@@ -238,7 +247,7 @@ struct TimelineEditorSurface<Library: View>: View {
     /// not when it started, so edits made during playback don't jump back.
     private func rebuildPlayerItem(resetPosition: Bool = false) {
         buildTask?.cancel()
-        guard let timeline, !timeline.layers.isEmpty else {
+        guard let timeline, timeline.layers.contains(where: { !$0.clips.isEmpty }) else {
             playback.player.replaceCurrentItem(with: nil)
             buildError = nil
             renderer?.update(project: project, timelineID: timelineID, segments: [])

@@ -31,6 +31,10 @@ struct LayerHeaderRow: View {
     /// vertical distance dragged.
     let onDragChanged: (CGFloat) -> Void
     let onDragEnded: (CGFloat) -> Void
+    /// Selected by clicking the header; Delete then removes the layer.
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onDelete: () -> Void
 
     @State private var isEditingName = false
     @State private var draftName: String = ""
@@ -102,13 +106,15 @@ struct LayerHeaderRow: View {
         }
         .padding(.horizontal, 8)
         .frame(height: height, alignment: .leading)
+        .background(isSelected ? Color.accentColor.opacity(0.25) : Color.clear)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 4, coordinateSpace: .global)
                 .onChanged { value in onDragChanged(value.translation.height) }
                 .onEnded { value in onDragEnded(value.translation.height) }
         )
-        .help("Drag to reorder layers")
+        .simultaneousGesture(TapGesture().onEnded { onSelect() })
+        .help("Click to select, then Delete to remove the layer. Drag to reorder layers.")
         .contextMenu {
             Button("Move Layer Up") { onMove(-1) }
                 .disabled(!canMoveUp)
@@ -119,6 +125,8 @@ struct LayerHeaderRow: View {
                 Button(isAudioExpanded ? "Hide Linked Audio" : "Show Linked Audio", action: onToggleAudio)
                 Button("Detach Audio", action: onDetachAudio)
             }
+            Divider()
+            Button("Delete Layer", role: .destructive, action: onDelete)
         }
     }
 

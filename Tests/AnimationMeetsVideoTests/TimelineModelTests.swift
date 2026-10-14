@@ -76,9 +76,16 @@ private struct Fixture {
 }
 
 @Suite struct DeleteTests {
-    @Test func deletingLastClipRemovesLayer() {
+    @Test func deletingLastClipKeepsTheEmptyLayer() {
         var f = Fixture()
         f.project.deleteClip(f.clipID, in: f.timelineID, layer: f.layerID)
+        #expect(f.project.timeline(id: f.timelineID)!.layers.map(\.id) == [f.layerID])
+        #expect(f.clips.isEmpty)
+    }
+
+    @Test func deletingALayerTakesItsClips() {
+        var f = Fixture()
+        f.project.deleteLayer(f.layerID, in: f.timelineID)
         #expect(f.project.timeline(id: f.timelineID)!.layers.isEmpty)
     }
 

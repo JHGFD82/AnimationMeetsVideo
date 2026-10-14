@@ -34,6 +34,10 @@ struct TimelineView: View {
     /// Detaches the sound of the given clips on a layer, or of all its
     /// linked clips when nil.
     let onDetachAudio: (UUID, Set<UUID>?) -> Void
+    /// A layer was selected, which clears any clip selection.
+    let onSelectLayer: () -> Void
+    let onDeleteClip: (UUID, UUID) -> Void
+    let onDeleteLayer: (UUID) -> Void
     @Binding var showsTransitions: Bool
 
     /// The chosen zoom, or nil while the whole timeline is fitted to the
@@ -63,6 +67,8 @@ struct TimelineView: View {
     /// The incoming clip of the joining transition whose footage is open.
     @State private var expandedJoint: UUID?
     @State private var headerBarHeight: CGFloat = 32
+    /// The layer selected by its header, for Delete. Selecting a clip clears it.
+    @State private var selectedLayerID: UUID?
     @AppStorage("clickOnBeats") private var clickOnBeats = false
     @AppStorage("beatClickFrequency") private var beatClickFrequency = 1000.0
 
@@ -292,6 +298,9 @@ struct TimelineView: View {
         }
         .padding(.top, topPadding)
         .background(KeyPressMonitor(handler: handleKey))
+        .onChange(of: selection) { _, newValue in
+            if newValue != nil { selectedLayerID = nil }
+        }
         .onChange(of: idealHeight, initial: true) { _, height in onIdealHeightChange(height) }
         .onChange(of: beatMarkerInputs, initial: true) { _, inputs in
             beatMarkers = inputs.layer.map { project.beatMarkers(in: $0, tracks: inputs.tracks) } ?? []
@@ -380,7 +389,13 @@ struct TimelineView: View {
                         onRename: { name in onRenameLayer(layer.id, name) },
                         onMove: { offset in onMoveLayer(layer.id, offset) },
                         onDragChanged: { dy in layerDrag = (layer.id, dy) },
-                        onDragEnded: { dy in endLayerDrag(layer.id, dy: dy) }
+                        onDragEnded: { dy in endLayerDrag(layer.id, dy: dy) },
+                        isSelected: selectedLayerID == layer.id,
+                        onSelect: {
+                            selectedLayerID = layer.id
+                            onSelectLayer()
+                        },
+                        onDelete: { deleteLayer(layer.id) }
                     )
                     if shownJoint(in: layer) != nil {
                         HStack {
@@ -611,8 +626,33 @@ struct TimelineView: View {
     /// the key again hides it); with Shift they add or remove that property
     /// and keep the others. They act on the selected clip's layer, or on
     /// every visual layer when nothing is selected.
+    private func deleteLayer(_ id: UUID) {
+        if selectedLayerID == id { selectedLayerID = nil }
+        onDeleteLayer(id)
+    }
+
+    /// Delete removes the selected layer, else the selected transition,
+    /// else the selected clip.
+    private func deleteSelection() -> Bool {
+        if let selectedLayerID, timeline.layer(id: selectedLayerID) != nil {
+            deleteLayer(selectedLayerID)
+            return true
+        }
+        guard let selection, selection.timelineID == timelineID else { return false }
+        if let edge = selection.transitionEdge {
+            onRemoveTransition(selection.layerID, selection.timelineClipID, edge)
+        } else {
+            onDeleteClip(selection.layerID, selection.timelineClipID)
+        }
+        return true
+    }
+
     private func handleKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        // Delete and Forward Delete, without modifiers.
+        if [51, 117].contains(event.keyCode), flags.isDisjoint(with: [.command, .control, .option, .shift]) {
+            return deleteSelection()
+        }
         guard flags.isDisjoint(with: [.command, .control, .option]),
               let key = event.charactersIgnoringModifiers?.lowercased().first
         else {

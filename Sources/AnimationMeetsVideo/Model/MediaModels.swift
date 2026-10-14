@@ -151,7 +151,8 @@ struct EditingProject: Identifiable, Equatable {
     /// with no gap big enough is rejected.
     ///
     /// With `targetLayerID` the clip moves to that layer instead, so several
-    /// clips can share a layer; a layer left empty by the move is removed.
+    /// clips can share a layer. A layer left empty stays, so clips can be
+    /// moved back into it; `deleteLayer` removes it.
     mutating func moveClip(_ id: UUID, in timelineID: UUID, layer layerID: UUID, onto targetLayerID: UUID? = nil, to newStart: CMTime) {
         guard let start = resolvedStart(ofMoving: id, in: timelineID, layer: layerID, onto: targetLayerID, to: newStart),
               let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
@@ -166,9 +167,6 @@ struct EditingProject: Identifiable, Equatable {
             clip.startOffset = start
             timelines[tIndex].layers[targetIndex].clips.append(clip)
             timelines[tIndex].layers[targetIndex].clips.sort { $0.startOffset < $1.startOffset }
-            if timelines[tIndex].layers[lIndex].clips.isEmpty {
-                timelines[tIndex].layers.remove(at: lIndex)
-            }
             return
         }
         timelines[tIndex].layers[lIndex].clips[cIndex].startOffset = start
@@ -188,6 +186,7 @@ struct EditingProject: Identifiable, Equatable {
         Self.split(&timelines[tIndex].layers[lIndex].clips, id: id, at: sourceTime)
     }
 
+    /// Removes a clip from its layer. The layer stays, even when empty.
     mutating func deleteClip(_ id: UUID, in timelineID: UUID, layer layerID: UUID) {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
@@ -195,9 +194,12 @@ struct EditingProject: Identifiable, Equatable {
             return
         }
         timelines[tIndex].layers[lIndex].clips.removeAll { $0.id == id }
-        if timelines[tIndex].layers[lIndex].clips.isEmpty {
-            timelines[tIndex].layers.remove(at: lIndex)
-        }
+    }
+
+    /// Removes a layer and every clip on it.
+    mutating func deleteLayer(_ layerID: UUID, in timelineID: UUID) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return }
+        timelines[tIndex].layers.removeAll { $0.id == layerID }
     }
 
     mutating func split(_ id: UUID, in timelineID: UUID, layer layerID: UUID, at time: CMTime) {

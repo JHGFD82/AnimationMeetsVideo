@@ -28,7 +28,7 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         #expect(layers(project).map(\.id) == ids)
     }
 
-    @Test func aClipMovesOntoAnotherLayerAndLeavesNoEmptyLayer() throws {
+    @Test func aClipMovesOntoAnotherLayerAndLeavesItsLayerEmpty() throws {
         var project = EditingProject.empty
         let t = project.rootTimelineID
         let firstPlaced = project.importClip(video(duration: 4), intoTimeline: t)
@@ -40,9 +40,12 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         #expect(preview == seconds(4))
         project.moveClip(second.clipID, in: t, layer: second.layerID, onto: first.layerID, to: seconds(1))
 
-        #expect(layers(project).map(\.id) == [first.layerID])
-        #expect(layers(project)[0].clips.map(\.id) == [first.clipID, second.clipID])
-        #expect(layers(project)[0].clips[1].startOffset == seconds(4))
+        let target = try #require(layers(project).first { $0.id == first.layerID })
+        #expect(target.clips.map(\.id) == [first.clipID, second.clipID])
+        #expect(target.clips[1].startOffset == seconds(4))
+        // The emptied layer stays so clips can be moved back into it.
+        #expect(Set(layers(project).map(\.id)) == [first.layerID, second.layerID])
+        #expect(layers(project).first { $0.id == second.layerID }?.clips.isEmpty == true)
     }
 
     @Test func scenesDroppedOnALayerGoIntoItsGaps() throws {
@@ -74,7 +77,7 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
 
         // Dropped onto the first clip, it goes to its end, with no gap.
         project.moveClip(second.clipID, in: t, layer: second.layerID, onto: first.layerID, to: seconds(3))
-        let clips = layers(project)[0].clips
+        let clips = try #require(layers(project).first { $0.id == first.layerID }).clips
         #expect(clips.map(\.id) == [first.clipID, second.clipID])
         #expect(clips[1].startOffset == clips[0].endOffset)
         #expect(project.predecessor(joining: clips[1], among: clips)?.id == first.clipID)

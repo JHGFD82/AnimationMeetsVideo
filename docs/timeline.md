@@ -112,7 +112,13 @@ a clip may go are in `ClipPlacement.swift`:
   refused.
 - **A layer holds any number of clips.** Dragging a clip up or down onto
   another layer moves it there, under the same rules, when that layer has
-  room; otherwise it stays on its own layer. A layer left empty is removed.
+  room; otherwise it stays on its own layer. A layer left empty stays, so
+  other clips can be moved into it.
+- **Deleting.** Selecting a clip and pressing Delete removes it from the
+  timeline (or, with one of its transitions selected, just that
+  transition); its layer stays. Clicking a layer's name area selects the
+  layer, and Delete then removes it with all its clips. Both can be
+  undone.
 - Trimming the start keeps the clip's end fixed. A trim can't reveal media
   before the source's start or after its end, can't cross a neighbor, and
   can't make a clip shorter than one frame (a twentieth of a second for
