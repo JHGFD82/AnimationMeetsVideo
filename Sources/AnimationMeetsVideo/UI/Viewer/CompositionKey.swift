@@ -1,8 +1,8 @@
 import CoreMedia
 import SwiftUI
 
-/// Everything that affects the rendered composition. Layer renames and
-/// timeline names are stripped so they don't swap the player item and
+/// Everything that affects the rendered composition. Layer renames, section
+/// names and timeline names are stripped so they don't swap the player item and
 /// interrupt playback; a replaced file or a new alignment is included so
 /// they do.
 struct CompositionKey: Equatable {
@@ -22,6 +22,9 @@ struct CompositionKey: Equatable {
             copy.name = ""
             for index in copy.layers.indices {
                 copy.layers[index].customName = nil
+            }
+            for index in copy.sections.indices {
+                copy.sections[index].name = ""
             }
             return copy
         }

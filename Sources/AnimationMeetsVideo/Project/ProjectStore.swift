@@ -199,6 +199,15 @@ private struct ProjectFile: Codable {
         var frameRate: Double
         var colorSpace: String
         var layers: [LayerEntry]
+        /// Absent while the timeline has no sections.
+        var sections: [SectionEntry]?
+    }
+
+    struct SectionEntry: Codable {
+        var id: UUID
+        var name: String
+        var start: TimeEntry
+        var end: TimeEntry
     }
 
     struct RegionEntry: Codable {
@@ -814,6 +823,12 @@ enum ProjectStore {
                         },
                         transform: ProjectFile.TransformEntry(layer.transform)
                     )
+                },
+                sections: timeline.sections.isEmpty ? nil : timeline.sections.map { section in
+                    ProjectFile.SectionEntry(
+                        id: section.id, name: section.name,
+                        start: ProjectFile.TimeEntry(section.start), end: ProjectFile.TimeEntry(section.end)
+                    )
                 }
             )
         }
@@ -926,7 +941,11 @@ enum ProjectStore {
                 },
                 frameSize: CGSize(width: entry.width, height: entry.height),
                 frameRate: entry.frameRate,
-                colorSpace: ProjectColorSpace(rawValue: entry.colorSpace) ?? .rec709
+                colorSpace: ProjectColorSpace(rawValue: entry.colorSpace) ?? .rec709,
+                sections: (entry.sections ?? [])
+                    .map { TimelineSection(id: $0.id, name: $0.name, start: $0.start.time, end: $0.end.time) }
+                    .filter { $0.end > $0.start }
+                    .sorted { $0.start < $1.start }
             )
         }
 

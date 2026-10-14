@@ -317,6 +317,8 @@ enum CompositionExporter {
 
         let composition = AVMutableComposition()
         var videoLayers: [VideoLayer] = []
+        /// A stretch of some source's picture, to fill time after the last clip.
+        var filler: (track: AVAssetTrack, range: CMTimeRange)?
 
         for flat in flatLayers {
             var videoTrack: AVMutableCompositionTrack?
@@ -333,6 +335,7 @@ enum CompositionExporter {
                         }
                         let at = CMTimeAdd(placement.start, CMTimeSubtract(range.start, placement.sourceRange.start))
                         try videoTrack?.insertTimeRange(range, of: sourceVideo, at: at)
+                        if filler == nil { filler = (sourceVideo, range) }
                         segments.append(VideoSegment(
                             timeRange: CMTimeRange(start: at, duration: range.duration), animation: placement.animation,
                             sourceURL: info.asset.url, sourceStart: range.start, owner: placement.owner
@@ -358,6 +361,17 @@ enum CompositionExporter {
 
         guard composition.duration > .zero else {
             throw CompositionError.emptyTimeline
+        }
+        // Sections can run past the last clip. A composition ends with its
+        // last media (an empty edit at the end doesn't count), so a frame of
+        // some source is stretched over the rest on a track of its own. No
+        // instruction shows that track, so the stretch plays as black.
+        if composition.duration < timeline.duration, let filler,
+           let track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            let gap = CMTimeRange(start: composition.duration, end: timeline.duration)
+            let piece = CMTimeRange(start: filler.range.start, duration: CMTimeMinimum(filler.range.duration, frameDuration(for: timeline.frameRate)))
+            try track.insertTimeRange(piece, of: filler.track, at: gap.start)
+            track.scaleTimeRange(CMTimeRange(start: gap.start, duration: piece.duration), toDuration: gap.duration)
         }
 
         var plan = planRanges(

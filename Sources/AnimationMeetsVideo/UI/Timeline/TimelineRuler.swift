@@ -201,7 +201,7 @@ struct BeatMarkerOverlay: View {
     let rulerHeight: CGFloat
     let height: CGFloat
 
-    static let minimumSpacing: CGFloat = 10
+    nonisolated static let minimumSpacing: CGFloat = 10
 
     /// How many beats each drawn one stands for: a power of two, counted
     /// from the first beat of the track so the same beats stay drawn while

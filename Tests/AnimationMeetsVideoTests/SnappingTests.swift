@@ -13,11 +13,11 @@ private func seconds(_ value: Double) -> CMTime {
 
     private var targets: SnapTargets {
         SnapTargets(targets: [
-            .init(time: .zero, clipID: nil),
-            .init(time: seconds(2), clipID: clipA),
-            .init(time: seconds(5), clipID: clipA),
-            .init(time: seconds(8), clipID: clipB),
-            .init(time: seconds(6), clipID: nil),
+            .init(time: .zero, ownerID: nil),
+            .init(time: seconds(2), ownerID: clipA),
+            .init(time: seconds(5), ownerID: clipA),
+            .init(time: seconds(8), ownerID: clipB),
+            .init(time: seconds(6), ownerID: nil),
         ])
     }
 

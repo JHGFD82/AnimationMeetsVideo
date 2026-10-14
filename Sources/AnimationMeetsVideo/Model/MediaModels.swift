@@ -342,9 +342,12 @@ struct Timeline: Identifiable, Equatable {
     var frameSize: CGSize
     var frameRate: Double
     var colorSpace: ProjectColorSpace
+    /// Named stretches of time, in order, not overlapping.
+    var sections: [TimelineSection] = []
 
+    /// Up to the end of the last clip or section, whichever is later.
     var duration: CMTime {
-        layers.map(\.duration).max(by: { $0.seconds < $1.seconds }) ?? .zero
+        (layers.map(\.duration) + sections.map(\.end)).max(by: { $0.seconds < $1.seconds }) ?? .zero
     }
 
     var timebaseSummary: String {
