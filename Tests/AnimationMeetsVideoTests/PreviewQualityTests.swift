@@ -62,7 +62,7 @@ import Testing
         #expect(governor.level == .half)
     }
 
-    @Test func stepsUpOnlyAfterKeepingUpWithRoomToSpare() {
+    @Test func stepsUpOnlyAfterKeepingUpWithRoomToSpareAndOnlyOnPause() {
         var governor = PreviewGovernor()
         governor.startPlaying(at: 0)
         _ = governor.record(sample(1, fps: 10), frameRate: 24)
@@ -76,8 +76,27 @@ import Testing
         let changed4 = governor.record(sample(3, fps: 24, render: 0.001), frameRate: 24)
         #expect(!changed4)
         let changed5 = governor.record(sample(8.5, fps: 24, render: 0.001), frameRate: 24)
-        #expect(changed5)
+        #expect(!changed5)
+        #expect(governor.level == .half)
+        #expect(governor.stepUpOnPause == .full)
+
+        governor.stopPlaying()
         #expect(governor.level == .full)
+    }
+
+    @Test func fallingBehindCancelsAStepUpWaitingForAPause() {
+        var governor = PreviewGovernor()
+        governor.startPlaying(at: 0)
+        _ = governor.record(sample(1, fps: 10), frameRate: 24)
+        _ = governor.record(sample(1.5, fps: 10), frameRate: 24)
+        _ = governor.record(sample(7, fps: 24, render: 0.001), frameRate: 24)
+        #expect(governor.stepUpOnPause == .full)
+
+        _ = governor.record(sample(8, fps: 10), frameRate: 24)
+        _ = governor.record(sample(8.5, fps: 10), frameRate: 24)
+        #expect(governor.level == .quarter)
+        governor.stopPlaying()
+        #expect(governor.level == .quarter)
     }
 
     @Test func samplesWhilePausedAreIgnored() {

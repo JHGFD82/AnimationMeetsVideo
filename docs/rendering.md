@@ -30,7 +30,10 @@ per project:
   measurements in a row under 90% of the frame rate step down a level.
   Stepping back up waits until playback has kept up for five seconds and
   drawing a frame takes so little time that four times the pixels would
-  still fit in under 40% of a frame. The player stays at the level it
+  still fit in under 40% of a frame, and then happens at the next pause:
+  changing size during playback freezes the picture for 350–600 ms on the
+  test project, which only a step down (after a stutter anyway) is worth.
+  The player stays at the level it
   settled on when paused, so pressing play doesn't swap the composition
   and throw away what the player had buffered. Instead, once a paused
   player has settled on a frame, that frame is drawn at full size
@@ -57,8 +60,8 @@ Limits:
   of 4K sources can still stutter at quarter size; renders fix that.
 - The external display shows the same player, so it drops size too.
 - Changing size during playback swaps the composition, which can cause a
-  brief hitch. Auto changes rarely for that reason, and never on play or
-  pause.
+  brief hitch. Auto changes size during playback only to step down, and
+  never on play.
 
 ## Render cache (implemented)
 

@@ -57,8 +57,9 @@ enum PreviewLevel: Int, Comparable {
 
 /// Chooses the level for Auto while playing. Playback that falls behind
 /// steps down a level at once; stepping back up waits until rendering has
-/// clearly had room for a while, so the picture doesn't flicker between
-/// sizes. The level stays put while paused, so pressing play never swaps
+/// clearly had room for a while, and then until the next pause, since
+/// changing size swaps the composition and freezes the picture for a
+/// moment. Stepping down already follows a stutter, so it can't wait. The level stays put while paused, so pressing play never swaps
 /// the player's composition (which would throw away what it buffered);
 /// the viewer covers paused frames with a full-size still instead.
 struct PreviewGovernor {
@@ -71,6 +72,8 @@ struct PreviewGovernor {
     }
 
     private(set) var level: PreviewLevel = .full
+    /// A larger level playback has earned, taken at the next pause.
+    private(set) var stepUpOnPause: PreviewLevel?
     private var isPlaying = false
     private var lastChange = -Double.infinity
     private var behindSamples = 0
@@ -89,9 +92,12 @@ struct PreviewGovernor {
 
     mutating func stopPlaying() {
         isPlaying = false
+        if let stepUpOnPause { level = stepUpOnPause }
+        stepUpOnPause = nil
     }
 
-    /// Takes a measurement of playback and returns whether the level changed.
+    /// Takes a measurement of playback and returns whether the level changed
+    /// now.
     mutating func record(_ sample: Sample, frameRate: Double) -> Bool {
         guard isPlaying, frameRate > 0, sample.time - lastChange >= Self.settleSeconds else { return false }
 
@@ -107,19 +113,20 @@ struct PreviewGovernor {
         // A level up draws four times the pixels. Decoding costs the same at
         // every level, and playback is keeping up, so only drawing matters.
         let frameSeconds = 1 / frameRate
-        guard let larger = level.larger,
+        guard stepUpOnPause == nil, let larger = level.larger,
               sample.time - lastChange >= Self.stepUpAfterSeconds,
               sample.framesPerSecond >= frameRate * 0.97,
               sample.renderSeconds * 4 < frameSeconds * 0.4
         else {
             return false
         }
-        change(to: larger, at: sample.time)
-        return true
+        stepUpOnPause = larger
+        return false
     }
 
     private mutating func change(to newLevel: PreviewLevel, at time: Double) {
         level = newLevel
+        stepUpOnPause = nil
         lastChange = time
         behindSamples = 0
     }
