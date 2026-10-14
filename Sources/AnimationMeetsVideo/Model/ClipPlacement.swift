@@ -66,6 +66,32 @@ extension EditingProject {
         isFrameLocked(clip) ? timeline.frameDuration : CMTime(value: 1, timescale: 20)
     }
 
+    /// `clip` with its end trimmed back to cover a whole number of the
+    /// timeline's frames, if it has pictures. Sources rarely last a whole
+    /// number of frames at the timeline's rate, and a clip that doesn't
+    /// ends between two frames, where no neighbor can meet it: placement
+    /// rounds the neighbor onto the next frame, leaving a sliver of gap
+    /// and no cut to join with a transition. Under a frame it is left alone.
+    func coveringWholeFrames(_ clip: TimelineClip, in timeline: Timeline) -> TimelineClip {
+        guard isFrameLocked(clip) else { return clip }
+        let length = timeline.frameAligned(clip.trimmedDuration, .down)
+        guard length > .zero, length != clip.trimmedDuration else { return clip }
+        var aligned = clip
+        aligned.trimEnd = CMTimeAdd(clip.trimStart, length)
+        return aligned
+    }
+
+    /// Trims every clip with pictures to whole frames, for projects saved
+    /// before clips were created that way. See `coveringWholeFrames`.
+    mutating func alignClipLengthsToFrames() {
+        for t in timelines.indices {
+            let timeline = timelines[t]
+            for l in timeline.layers.indices {
+                timelines[t].layers[l].clips = timeline.layers[l].clips.map { coveringWholeFrames($0, in: timeline) }
+            }
+        }
+    }
+
     private func placementContext(_ id: UUID, in timelineID: UUID, layer layerID: UUID)
         -> (timeline: Timeline, clip: TimelineClip, others: [TimelineClip])?
     {

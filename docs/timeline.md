@@ -99,7 +99,12 @@ a clip may go are in `ClipPlacement.swift`:
 
 - **Video and nested timelines lock to frames.** Their start and end land
   on whole frames of the timeline's rate, never between two. This uses
-  exact frame counts, so it holds at 23.976 and 29.97.
+  exact frame counts, so it holds at 23.976 and 29.97. A source rarely
+  lasts a whole number of frames, so a clip put on a timeline (a whole
+  asset, a scene or a nested timeline) is trimmed back to whole frames at
+  the end (`coveringWholeFrames`), and so are clips in projects saved
+  before this. Otherwise its end falls between frames and no neighbor
+  can meet it to make a cut.
 - **Audio moves freely**, to 1/48000 of a second.
 - Clips never start before zero and never overlap on a layer. A move onto a
   neighbor goes to the nearest free side of it, rounded off the neighbor

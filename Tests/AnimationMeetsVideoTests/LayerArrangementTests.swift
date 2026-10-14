@@ -60,4 +60,23 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         #expect(clips.map(\.startOffset) == [.zero, seconds(2), seconds(3)])
         #expect(layers(project).count == 1)
     }
+
+    @Test func clipsWhoseSourcesEndBetweenFramesCanMeet() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        // 4.01 s is not a whole number of frames at 24 fps.
+        let firstPlaced = project.importClip(video(duration: 4.01), intoTimeline: t)
+        let secondPlaced = project.importClip(video(duration: 4.01), intoTimeline: t)
+        let first = try #require(firstPlaced), second = try #require(secondPlaced)
+        let frame = try #require(project.timeline(id: t)).frameDuration
+        let length = layers(project)[1].clips[0].trimmedDuration
+        #expect(CMTimeMultiply(frame, multiplier: Int32(length.seconds / frame.seconds)) == length)
+
+        // Dropped onto the first clip, it goes to its end, with no gap.
+        project.moveClip(second.clipID, in: t, layer: second.layerID, onto: first.layerID, to: seconds(3))
+        let clips = layers(project)[0].clips
+        #expect(clips.map(\.id) == [first.clipID, second.clipID])
+        #expect(clips[1].startOffset == clips[0].endOffset)
+        #expect(project.predecessor(joining: clips[1], among: clips)?.id == first.clipID)
+    }
 }

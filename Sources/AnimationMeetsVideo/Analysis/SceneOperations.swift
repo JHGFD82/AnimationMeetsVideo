@@ -81,10 +81,15 @@ extension EditingProject {
               let index = timelines.firstIndex(where: { $0.id == timelineID })
         else { return nil }
 
+        let timeline = timelines[index]
         var offset = start
         var added: [TimelineClip] = []
         for scene in scenes {
-            let clip = TimelineClip(source: .media(assetID), startOffset: offset, trimStart: scene.start, trimEnd: scene.end)
+            var clip = coveringWholeFrames(
+                TimelineClip(source: .media(assetID), startOffset: .zero, trimStart: scene.start, trimEnd: scene.end),
+                in: timeline
+            )
+            clip.startOffset = timeline.placementTime(CMTimeMaximum(.zero, offset), .nearest, frameLocked: isFrameLocked(clip))
             added.append(clip)
             offset = clip.endOffset
         }
@@ -116,7 +121,10 @@ extension EditingProject {
         var cursor = CMTimeMaximum(.zero, start)
         var added: [UUID] = []
         for scene in scenes {
-            var clip = TimelineClip(source: .media(assetID), startOffset: .zero, trimStart: scene.start, trimEnd: scene.end)
+            var clip = coveringWholeFrames(
+                TimelineClip(source: .media(assetID), startOffset: .zero, trimStart: scene.start, trimEnd: scene.end),
+                in: timeline
+            )
             guard let placed = freeStart(for: clip, among: clips, in: timeline, near: cursor) else { return nil }
             clip.startOffset = placed
             clips.append(clip)

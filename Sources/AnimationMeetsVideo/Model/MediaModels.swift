@@ -73,7 +73,10 @@ struct EditingProject: Identifiable, Equatable {
         else {
             return nil
         }
-        let timelineClip = TimelineClip(source: .media(clip.id), startOffset: .zero, trimStart: .zero, trimEnd: clip.duration)
+        let timelineClip = coveringWholeFrames(
+            TimelineClip(source: .media(clip.id), startOffset: .zero, trimStart: .zero, trimEnd: clip.duration),
+            in: timelines[index]
+        )
         let layer = TimelineLayer(customName: nil, clips: [timelineClip])
         timelines[index].layers.insert(layer, at: 0)
         return (layer.id, timelineClip.id)
@@ -133,7 +136,10 @@ struct EditingProject: Identifiable, Equatable {
         else {
             return nil
         }
-        let timelineClip = TimelineClip(source: .timeline(timelineID), startOffset: .zero, trimStart: .zero, trimEnd: nested.duration)
+        let timelineClip = coveringWholeFrames(
+            TimelineClip(source: .timeline(timelineID), startOffset: .zero, trimStart: .zero, trimEnd: nested.duration),
+            in: timelines[index]
+        )
         let layer = TimelineLayer(customName: nil, clips: [timelineClip])
         timelines[index].layers.insert(layer, at: 0)
         return (layer.id, timelineClip.id)

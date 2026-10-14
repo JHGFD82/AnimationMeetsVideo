@@ -848,7 +848,7 @@ enum ProjectStore {
         }
         let rootID = timelineIDs.contains(file.rootTimelineID) ? file.rootTimelineID : first.id
 
-        let project = EditingProject(
+        var project = EditingProject(
             id: file.id,
             name: file.name,
             clips: orderedIDs.compactMap { importedClips[$0] },
@@ -857,6 +857,7 @@ enum ProjectStore {
             defaultSensitivity: file.defaultSensitivity ?? SceneDetector.balancedSensitivity,
             copiesMediaOnImport: file.copiesMediaOnImport ?? true
         )
+        project.alignClipLengthsToFrames()
         var scores: [UUID: ChangeScoreTrack] = [:]
         var references: [UUID: AssetReference] = [:]
         var beats: [UUID: BeatTrack] = [:]
