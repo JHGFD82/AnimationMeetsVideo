@@ -216,6 +216,9 @@ struct TimelineEditorSurface<Library: View>: View {
                     project.rippleTrimEnd(clipID, in: timelineID, layer: layerID, to: trimEnd)
                 },
                 onTrimPreview: { clip in showTrimPreview(of: clip) },
+                onSetTransitionDuration: { layerID, clipID, edge, duration in
+                    project.setTransitionDuration(duration, at: edge, of: clipID, in: timelineID, layer: layerID)
+                },
                 showsTransitions: $showsTransitions
             )
         } else {

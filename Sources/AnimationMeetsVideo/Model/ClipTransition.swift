@@ -245,6 +245,9 @@ enum JointEdit: Equatable {
     case roll(CMTime)
     /// Sets the transition's length and how much of it plays before the cut.
     case place(duration: CMTime, lead: CMTime)
+    /// Lengthens the transition by twice a distance (shortens it, when
+    /// negative), half on each side, so its center stays where it is.
+    case widen(CMTime)
     /// Ripple-trims the outgoing clip's end by a distance: the incoming clip
     /// and everything after it move with the cut.
     case rippleOut(CMTime)
@@ -342,6 +345,18 @@ extension EditingProject {
         switch edit {
         case .place(let duration, let lead):
             guard let fit = fittedJoint(duration: duration, lead: lead, outgoing: joint.outgoing, incoming: joint.incoming, in: timeline) else { return }
+            var transition = joint.transition
+            transition.duration = fit.duration
+            transition.lead = fit.lead
+            updateClip(incomingID, in: timelineID, layer: layerID) { $0.setTransition(transition, at: .leading) }
+        case .widen(let delta):
+            let duration = CMTimeAdd(joint.transition.duration, CMTimeMultiply(delta, multiplier: 2))
+            let lead = CMTimeAdd(joint.lead, delta)
+            guard duration > .zero,
+                  let fit = fittedJoint(duration: duration, lead: lead, outgoing: joint.outgoing, incoming: joint.incoming, in: timeline)
+            else {
+                return
+            }
             var transition = joint.transition
             transition.duration = fit.duration
             transition.lead = fit.lead

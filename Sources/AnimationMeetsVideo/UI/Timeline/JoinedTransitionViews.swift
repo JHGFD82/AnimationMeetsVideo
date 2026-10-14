@@ -15,14 +15,21 @@ struct JoinedTransitionBridge: View {
     let onSetKind: (TransitionKind) -> Void
     let onSetCurve: (TransitionCurve) -> Void
     let onRemove: () -> Void
+    /// The joint after widening by a distance on each side, for the drag.
+    let previewWiden: (CMTime) -> TransitionJoint?
+    /// Widens it by a distance on each side (narrows when negative).
+    let onWiden: (CMTime) -> Void
 
     @State private var isDropTarget = false
+    /// The joint as a side drag in progress leaves it.
+    @State private var draft: (widen: CMTime, joint: TransitionJoint)?
 
     /// As for transitions on one clip, how wide it must be drawn before its
     /// curve can be edited in place.
     private let curveEditingWidth: CGFloat = 80
 
     var body: some View {
+        let joint = draft?.joint ?? self.joint
         let transition = joint.transition
         let x = joint.start.seconds * pixelsPerSecond
         let width = max(6, transition.duration.seconds * pixelsPerSecond)
@@ -43,6 +50,8 @@ struct JoinedTransitionBridge: View {
             if isSelected, width >= curveEditingWidth, height >= 30 {
                 TransitionCurveEditor(curve: transition.curve, edge: .leading, size: CGSize(width: width, height: height), onChange: onSetCurve)
             }
+            sideHandle(atX: 0, outward: -1)
+            sideHandle(atX: width, outward: 1)
         }
         .frame(width: width, height: height, alignment: .topLeading)
         .overlay(
@@ -73,8 +82,30 @@ struct JoinedTransitionBridge: View {
             onSetKind(payload.kind)
             return true
         } isTargeted: { isDropTarget = $0 }
-        .help("\(transition.kind.name) joining two clips: double-click to adjust its footage")
+        .help("\(transition.kind.name) joining two clips: drag a side to resize it about its center, double-click to adjust its footage")
         .offset(x: x)
+    }
+
+    /// A side of the transition: dragging it outward lengthens the
+    /// transition by as much on the other side, keeping its center.
+    private func sideHandle(atX x: CGFloat, outward: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(width: 6, height: height)
+            .contentShape(Rectangle())
+            .offset(x: x - 3)
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        let widen = CMTime(seconds: Double(value.translation.width * outward / pixelsPerSecond), preferredTimescale: 600)
+                        if let joint = previewWiden(widen) { draft = (widen, joint) }
+                    }
+                    .onEnded { _ in
+                        if let draft { onWiden(draft.widen) }
+                        draft = nil
+                    }
+            )
+            .pointerStyle(.columnResize)
     }
 }
 
@@ -82,7 +113,7 @@ struct JoinedTransitionBridge: View {
 /// double-clicking the transition. The top row is the outgoing clip, the
 /// bottom the incoming one; the faint parts are their spare footage past
 /// the trims, which the transition plays. Drag the transition to move it
-/// across the cut, its edges to lengthen or shorten it, and the cut line
+/// across the cut, either edge to resize it about its center, and the cut line
 /// to roll the cut (trimming one clip as the other grows). Edits keep to
 /// the spare footage and are committed when a drag ends.
 struct TransitionFootageLane: View {
@@ -136,12 +167,9 @@ struct TransitionFootageLane: View {
                 .offset(x: startX, y: 4)
                 .gesture(drag { delta in .place(duration: self.joint.transition.duration, lead: CMTimeSubtract(self.joint.lead, delta)) })
                 .help("Drag to move the transition across the cut")
-            edgeHandle(atX: startX) { delta in
-                .place(duration: CMTimeSubtract(self.joint.transition.duration, delta), lead: CMTimeSubtract(self.joint.lead, delta))
-            }
-            edgeHandle(atX: endX) { delta in
-                .place(duration: CMTimeAdd(self.joint.transition.duration, delta), lead: self.joint.lead)
-            }
+            // Either side resizes it about its center.
+            edgeHandle(atX: startX) { delta in .widen(CMTimeSubtract(.zero, delta)) }
+            edgeHandle(atX: endX) { delta in .widen(delta) }
 
             if tool == .ripple {
                 rippleHandle(atX: cutX, y: 0, edit: { .rippleOut($0) })
@@ -222,7 +250,7 @@ struct TransitionFootageLane: View {
             .offset(x: x - handleWidth / 2)
             .gesture(drag(edit))
             .pointerStyle(.columnResize)
-            .help("Drag to change the transition's length")
+            .help("Drag to change the transition's length, about its center")
     }
 
     /// A drag measured in time, previewed through the project's rules and
@@ -237,7 +265,7 @@ struct TransitionFootageLane: View {
                 switch change {
                 case .rippleOut: onTrimPreview(joint.outgoing)
                 case .rippleIn: onTrimPreview(joint.incoming)
-                case .roll, .place: break
+                case .roll, .place, .widen: break
                 }
             }
             .onEnded { _ in

@@ -86,6 +86,23 @@ private func video(url: URL? = nil, duration: Double = 10) -> MediaClip {
         #expect(f.clipB.trimmedDuration == CMTime(value: 1, timescale: 24))
     }
 
+    @Test func wideningKeepsTheTransitionsCenter() throws {
+        var f = Fixture()
+        f.project.setTransition(.crossDissolve, at: .leading, of: f.b, in: f.t, layer: f.layer)
+        let before = try #require(f.joint)
+        let center = CMTimeAdd(before.start, CMTimeMultiplyByRatio(before.transition.duration, multiplier: 1, divisor: 2))
+
+        f.project.applyJointEdit(.widen(seconds(0.5)), at: f.b, in: f.t, layer: f.layer)
+        let wider = try #require(f.joint)
+        #expect(wider.transition.duration == seconds(2))
+        #expect(CMTimeAdd(wider.start, seconds(1)) == center)
+
+        f.project.applyJointEdit(.widen(seconds(-0.75)), at: f.b, in: f.t, layer: f.layer)
+        let narrower = try #require(f.joint)
+        #expect(narrower.transition.duration == seconds(0.5))
+        #expect(CMTimeAdd(narrower.start, seconds(0.25)) == center)
+    }
+
     @Test func rippleEditsAtACutMoveWhatFollows() throws {
         var f = Fixture()
         f.project.setTransition(.crossDissolve, at: .leading, of: f.b, in: f.t, layer: f.layer)

@@ -179,6 +179,9 @@ struct LayerClipRow: View {
     let onRippleTrimStart: (UUID, CMTime) -> Void
     let onRippleTrimEnd: (UUID, CMTime) -> Void
     let onTrimPreview: (TimelineClip?) -> Void
+    /// An edit of the joint at the start of a clip.
+    let onApplyJointEdit: (UUID, JointEdit) -> Void
+    let onSetTransitionDuration: (UUID, TransitionEdge, CMTime) -> Void
 
     /// While a clip's edge is rippled: how far the clips after it move.
     private struct RippleShift: Equatable {
@@ -252,7 +255,8 @@ struct LayerClipRow: View {
                     tool: tool,
                     snap: snap,
                     onBlade: { time in onBlade(clip.id, time) },
-                    onTrimDraft: tool == .ripple ? { draft, committing in rippleDraft(of: clip, draft, committing: committing) } : nil
+                    onTrimDraft: tool == .ripple ? { draft, committing in rippleDraft(of: clip, draft, committing: committing) } : nil,
+                    onSetTransitionDuration: { edge, duration in onSetTransitionDuration(clip.id, edge, duration) }
                 )
                 .offset(x: shiftX(of: clip))
             }
@@ -270,7 +274,13 @@ struct LayerClipRow: View {
                         onEdit: { onEditJoint(clip.id) },
                         onSetKind: { kind in onSetTransition(clip.id, kind, .leading) },
                         onSetCurve: { curve in onSetTransitionCurve(clip.id, .leading, curve) },
-                        onRemove: { onRemoveTransition(clip.id, .leading) }
+                        onRemove: { onRemoveTransition(clip.id, .leading) },
+                        previewWiden: { widen in
+                            var copy = project
+                            copy.applyJointEdit(.widen(widen), at: clip.id, in: timelineID, layer: layer.id)
+                            return copy.joint(at: clip.id, in: timelineID, layer: layer.id)
+                        },
+                        onWiden: { widen in onApplyJointEdit(clip.id, .widen(widen)) }
                     )
                     .offset(x: shiftX(of: clip))
                 }
@@ -356,6 +366,8 @@ struct ClipBlockView: View {
     /// Hears each trim draft, then nil when the drag ends (with whether
     /// the trim is being committed). Set for ripple trims.
     let onTrimDraft: ((TimelineClip?, Bool) -> Void)?
+    /// Sets a transition's length, from dragging its inner side.
+    let onSetTransitionDuration: (TransitionEdge, CMTime) -> Void
 
     /// The clip as it will be if the current drag ends now. After a drop
     /// it stays up until the edited clip comes back down from the project:
@@ -376,6 +388,8 @@ struct ClipBlockView: View {
     @State private var bladeX: CGFloat?
     /// The edge a ripple drag on the clip's body trims: the nearer one.
     @State private var rippleEdge: Edge?
+    /// A transition's length while its inner side is dragged.
+    @State private var transitionDraft: (edge: TransitionEdge, duration: CMTime)?
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
 
     private let handleWidth: CGFloat = 8
@@ -384,8 +398,18 @@ struct ClipBlockView: View {
     /// on the clip; zoom in to get there.
     private let curveEditingWidth: CGFloat = 80
 
+    /// The clip as drawn: the drag preview, with any transition being resized.
+    private var shownClip: TimelineClip {
+        var shown = preview ?? clip
+        if let transitionDraft, var transition = shown.transition(at: transitionDraft.edge) {
+            transition.duration = transitionDraft.duration
+            shown.setTransition(transition, at: transitionDraft.edge)
+        }
+        return shown
+    }
+
     var body: some View {
-        let shown = preview ?? clip
+        let shown = shownClip
         let baseX = clip.startOffset.seconds * pixelsPerSecond
         let baseWidth = max(2, clip.trimmedDuration.seconds * pixelsPerSecond)
         let liveX = shown.startOffset.seconds * pixelsPerSecond
@@ -531,6 +555,9 @@ struct ClipBlockView: View {
                 trimHandle(edge: .leading, liveX: liveX, liveWidth: liveWidth)
                 trimHandle(edge: .trailing, liveX: liveX, liveWidth: liveWidth)
             }
+            if tool == .arrow {
+                transitionSideHandles(of: shown, liveX: liveX)
+            }
             if tool == .blade, let bladeX {
                 Rectangle()
                     .fill(Color.red)
@@ -668,6 +695,44 @@ struct ClipBlockView: View {
 
     private func timeDelta(_ translation: CGFloat) -> CMTime {
         CMTime(seconds: Double(translation / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
+    }
+
+    /// The inner side of each transition on the clip's own ends (not one
+    /// joining the clip before): dragging it changes the length, the outer
+    /// side staying at the clip's end.
+    @ViewBuilder
+    private func transitionSideHandles(of shown: TimelineClip, liveX: CGFloat) -> some View {
+        let durations = shown.effectiveTransitionDurations(lead: joinedLead ?? .zero)
+        let liveEnd = liveX + shown.trimmedDuration.seconds * pixelsPerSecond
+        if let transition = clip.transitionIn, joinedLead == nil, durations.leading > .zero {
+            transitionSideHandle(.leading, transition: transition, atX: liveX + durations.leading.seconds * pixelsPerSecond)
+        }
+        if let transition = clip.transitionOut, durations.trailing > .zero {
+            transitionSideHandle(.trailing, transition: transition, atX: liveEnd - durations.trailing.seconds * pixelsPerSecond)
+        }
+    }
+
+    private func transitionSideHandle(_ edge: TransitionEdge, transition: ClipTransition, atX x: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(width: 6, height: height)
+            .contentShape(Rectangle())
+            .offset(x: x - 3)
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        // Inward is longer for a way in, shorter for a way out.
+                        let delta = timeDelta(edge == .leading ? value.translation.width : -value.translation.width)
+                        let duration = snap(CMTimeAdd(transition.duration, delta))
+                        if duration > .zero { transitionDraft = (edge, duration) }
+                    }
+                    .onEnded { _ in
+                        if let transitionDraft { onSetTransitionDuration(edge, transitionDraft.duration) }
+                        transitionDraft = nil
+                    }
+            )
+            .pointerStyle(.columnResize)
+            .help("Drag to change the transition's length")
     }
 
     /// A trim drag of `edge` moved by `translation` points: previews it.

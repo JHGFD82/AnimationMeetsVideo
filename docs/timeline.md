@@ -176,7 +176,12 @@ freely off the frame grid, carries the beats, and takes no transitions.
 Transitions are dragged from the panel onto a clip with pictures; the
 nearer end of the clip gets it. Each end holds at most one, a second long
 by default (shorter to fit beside the other end), and dropping another kind
-on the same end keeps its length. The inspector sets the length in frames
+on the same end keeps its length. With the arrow tool, dragging a
+transition's side on the timeline changes its length: a transition joining
+two clips grows or shrinks about its center (`JointEdit.widen`), the
+other side moving as much the other way; one on a clip's free end keeps
+its outer side at the clip's end and the inner side follows the drag.
+The inspector sets the length in frames
 and removes it; so does the clip's menu. A shaded wedge on the clip shows
 where it plays. Splitting a clip keeps the way in on the first half and the
 way out on the second. Detached sound is not affected.
@@ -202,8 +207,9 @@ Double-clicking the box (or **Edit Footage…** in its menu) opens the
 the incoming one below, each with its spare footage drawn faintly, the
 transition across both and the cut as a white line.
 
-- Drag the transition to move it across the cut, and its edges to change
-  its length. It can't need more footage than there is.
+- Drag the transition to move it across the cut, and either edge to change
+  its length about its center (the other edge moves as much the other
+  way). It can't need more footage than there is.
 - Drag the cut to roll it: the outgoing clip's out point and the incoming
   clip's in point move together, so the clips still meet, nothing else
   moves, and the transition draws on different footage

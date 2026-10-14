@@ -45,6 +45,7 @@ struct TimelineView: View {
     /// The clip as a ripple drag would leave it, for the viewer to show its
     /// first and last frames; nil when the drag ends.
     let onTrimPreview: (TimelineClip?) -> Void
+    let onSetTransitionDuration: (UUID, UUID, TransitionEdge, CMTime) -> Void
     @Binding var showsTransitions: Bool
 
     /// The chosen zoom, or nil while the whole timeline is fitted to the
@@ -513,7 +514,9 @@ struct TimelineView: View {
                         onBlade: { clipID, time in onBladeClip(layer.id, clipID, time) },
                         onRippleTrimStart: { clipID, trimStart in onRippleTrimStart(layer.id, clipID, trimStart) },
                         onRippleTrimEnd: { clipID, trimEnd in onRippleTrimEnd(layer.id, clipID, trimEnd) },
-                        onTrimPreview: onTrimPreview
+                        onTrimPreview: onTrimPreview,
+                        onApplyJointEdit: { clipID, edit in onApplyJointEdit(layer.id, clipID, edit) },
+                        onSetTransitionDuration: { clipID, edge, duration in onSetTransitionDuration(layer.id, clipID, edge, duration) }
                     )
                     if let joint = shownJoint(in: layer) {
                         TransitionFootageLane(
