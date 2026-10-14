@@ -26,8 +26,14 @@ struct SectionLane: View {
 
     static let height: CGFloat = 20
 
-    /// A move or resize in progress.
+    /// A move or resize in progress. After a drop it stays up until the
+    /// edited section comes back down from the project, so the section
+    /// doesn't flash back to where it was for a frame.
     @State private var draft: TimelineSection?
+    /// Counts drops, so a timeout from an earlier one can't clear a later
+    /// one's draft; nil when no drop is waiting for its edit.
+    @State private var pendingDrop: Int?
+    @State private var dropCount = 0
     /// A section being drawn across empty space.
     @State private var creating: (start: CMTime, end: CMTime)?
     @State private var editingID: UUID?
@@ -47,7 +53,7 @@ struct SectionLane: View {
                     if let id = onCreate(start, CMTimeAdd(start, EditingProject.defaultSectionLength)) { beginRename(id, name: "") }
                 })
             ForEach(sections) { section in
-                sectionView(draft?.id == section.id ? draft ?? section : section)
+                sectionView(section, shown: draft?.id == section.id ? draft ?? section : section)
             }
             if let creating {
                 let minX = viewport.x(atSeconds: creating.start.seconds)
@@ -62,12 +68,21 @@ struct SectionLane: View {
         .frame(width: viewport.width, height: Self.height, alignment: .topLeading)
         .clipped()
         .coordinateSpace(.named(space))
+        .onChange(of: sections) { _, _ in
+            if pendingDrop != nil { endDrop() }
+        }
         .help("Sections: drag across empty space to add one, double-click one to rename it")
     }
 
-    private func sectionView(_ section: TimelineSection) -> some View {
-        let minX = viewport.x(atSeconds: section.start.seconds)
-        let maxX = viewport.x(atSeconds: section.end.seconds)
+    /// `section` as the project has it, drawn as `shown` (the draft while
+    /// dragging). The gestures measure from `section`: measuring from the
+    /// draft would add each drag step to the last one's result, so the
+    /// section ran away from the pointer and its drop was never saved.
+    private func sectionView(_ section: TimelineSection, shown: TimelineSection) -> some View {
+        let minX = viewport.x(atSeconds: shown.start.seconds)
+        let maxX = viewport.x(atSeconds: shown.end.seconds)
+        // Narrow sections keep a middle to grab for moving.
+        let handle = min(handleWidth, max(2, (maxX - minX) / 3))
         let isSelected = selectedID == section.id
         return ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
@@ -95,14 +110,18 @@ struct SectionLane: View {
                     .lineLimit(1)
                     .padding(.horizontal, Design.Space.tight)
             }
-            edgeHandle(section, edge: .start, atX: 0)
-            edgeHandle(section, edge: .end, atX: maxX - minX)
+            edgeHandle(section, edge: .start, atX: 0, width: handle)
+            edgeHandle(section, edge: .end, atX: maxX - minX, width: handle)
         }
         .frame(width: max(2, maxX - minX), height: Self.height - 4, alignment: .leading)
         .contentShape(Rectangle())
-        .gesture(TapGesture(count: 2).onEnded { beginRename(section.id, name: section.name) }
+        // The move is the section's own gesture, so an edge handle's resize
+        // (on a view inside it) takes precedence instead of both running:
+        // as a simultaneous gesture, grabbing an edge also moved the
+        // section, and the two fought over the draft.
+        .gesture(moveGesture(section))
+        .simultaneousGesture(TapGesture(count: 2).onEnded { beginRename(section.id, name: section.name) }
             .exclusively(before: TapGesture().onEnded { onSelect(section.id) }))
-        .simultaneousGesture(moveGesture(section))
         .contextMenu {
             Button("Rename…") { beginRename(section.id, name: section.name) }
             Button("Delete Section", role: .destructive) { onDelete(section.id) }
@@ -110,12 +129,12 @@ struct SectionLane: View {
         .offset(x: minX, y: 2)
     }
 
-    private func edgeHandle(_ section: TimelineSection, edge: SectionEdge, atX x: CGFloat) -> some View {
+    private func edgeHandle(_ section: TimelineSection, edge: SectionEdge, atX x: CGFloat, width: CGFloat) -> some View {
         Rectangle()
             .fill(Color.clear)
-            .frame(width: handleWidth, height: Self.height - 4)
+            .frame(width: width, height: Self.height - 4)
             .contentShape(Rectangle())
-            .offset(x: x - handleWidth / 2)
+            .offset(x: x - width / 2)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .named(space))
                     .onChanged { value in
@@ -123,14 +142,15 @@ struct SectionLane: View {
                         let proposed = CMTimeAdd(original, delta(value.translation.width))
                         let target = snap(proposed, section.id)
                         onSnapIndicator(target)
-                        draft = resolveEdge(section.id, edge, target ?? proposed)
+                        showDraft(resolveEdge(section.id, edge, target ?? proposed))
                     }
                     .onEnded { _ in
                         onSnapIndicator(nil)
-                        if let draft {
-                            onSetEdge(section.id, edge, edge == .start ? draft.start : draft.end)
+                        if let draft, draft != section {
+                            commitDrop { onSetEdge(section.id, edge, edge == .start ? draft.start : draft.end) }
+                        } else {
+                            endDrop()
                         }
-                        draft = nil
                     }
             )
             .pointerStyle(.columnResize)
@@ -155,12 +175,15 @@ struct SectionLane: View {
                 } else {
                     onSnapIndicator(nil)
                 }
-                draft = resolveMove(section.id, start)
+                showDraft(resolveMove(section.id, start))
             }
             .onEnded { _ in
                 onSnapIndicator(nil)
-                if let draft, draft.start != section.start { onMove(section.id, draft.start) }
-                draft = nil
+                if let draft, draft.start != section.start {
+                    commitDrop { onMove(section.id, draft.start) }
+                } else {
+                    endDrop()
+                }
             }
     }
 
@@ -180,6 +203,30 @@ struct SectionLane: View {
                 }
                 creating = nil
             }
+    }
+
+    private func showDraft(_ section: TimelineSection?) {
+        pendingDrop = nil
+        draft = section
+    }
+
+    /// Commits a drop and keeps showing the draft until the edited section
+    /// arrives. If it never does (the edit was refused), the draft goes
+    /// after a moment.
+    private func commitDrop(_ commit: () -> Void) {
+        dropCount += 1
+        let drop = dropCount
+        pendingDrop = drop
+        commit()
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            if pendingDrop == drop { endDrop() }
+        }
+    }
+
+    private func endDrop() {
+        pendingDrop = nil
+        draft = nil
     }
 
     private func beginRename(_ id: UUID, name: String) {
