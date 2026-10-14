@@ -6,7 +6,7 @@ struct ViewerPanel: View {
     let frameSize: CGSize
     let frameRate: Double
     let buildError: String?
-    /// A rippled clip's first and last frames, shown over the picture.
+    /// A slipped clip's first and last frames, shown over the picture.
     let trimPreview: TrimPreviewModel
 
     // Deliberately darker than the surrounding window chrome and distinct

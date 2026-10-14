@@ -6,9 +6,9 @@ enum TimelineTool: String, CaseIterable, Identifiable {
     case arrow
     /// Click a clip to split it there.
     case blade
-    /// Drag a clip's edge to trim it and move everything after it on its
-    /// layer by as much.
-    case ripple
+    /// Drag a clip to change which part of its footage it plays; its edges
+    /// stay put unless the file runs out.
+    case slip
 
     var id: Self { self }
 
@@ -16,7 +16,7 @@ enum TimelineTool: String, CaseIterable, Identifiable {
         switch self {
         case .arrow: "Arrow"
         case .blade: "Blade"
-        case .ripple: "Ripple"
+        case .slip: "Slip"
         }
     }
 
@@ -24,16 +24,16 @@ enum TimelineTool: String, CaseIterable, Identifiable {
         switch self {
         case .arrow: "cursorarrow"
         case .blade: "scissors"
-        case .ripple: "arrow.left.and.line.vertical.and.arrow.right"
+        case .slip: "film"
         }
     }
 
-    /// P, S, R and T show transform properties, so ripple is E.
+    /// P, S, R and T show transform properties, so slip is Y, as in Premiere.
     var shortcutKey: Character {
         switch self {
         case .arrow: "a"
         case .blade: "b"
-        case .ripple: "e"
+        case .slip: "y"
         }
     }
 
@@ -41,7 +41,7 @@ enum TimelineTool: String, CaseIterable, Identifiable {
         switch self {
         case .arrow: "Arrow (A): select, move and trim clips"
         case .blade: "Blade (B): click a clip to split it"
-        case .ripple: "Ripple (E): drag a clip's edge to trim it and move everything after it"
+        case .slip: "Slip (Y): drag a clip to change which part of its footage it plays"
         }
     }
 

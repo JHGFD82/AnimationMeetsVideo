@@ -209,11 +209,8 @@ struct TimelineEditorSurface<Library: View>: View {
                 onBladeClip: { layerID, clipID, time in
                     project.split(clipID, in: timelineID, layer: layerID, atTimelineTime: time)
                 },
-                onRippleTrimStart: { layerID, clipID, trimStart in
-                    project.rippleTrimStart(clipID, in: timelineID, layer: layerID, to: trimStart)
-                },
-                onRippleTrimEnd: { layerID, clipID, trimEnd in
-                    project.rippleTrimEnd(clipID, in: timelineID, layer: layerID, to: trimEnd)
+                onSlipClip: { layerID, clipID, delta in
+                    project.slipClip(clipID, in: timelineID, layer: layerID, by: delta)
                 },
                 onTrimPreview: { clip in showTrimPreview(of: clip) },
                 onSetTransitionDuration: { layerID, clipID, edge, duration in
@@ -247,7 +244,7 @@ struct TimelineEditorSurface<Library: View>: View {
 
     // MARK: -
 
-    /// Shows a rippled clip's first and last frames over the viewer, or
+    /// Shows a slipped clip's first and last frames over the viewer, or
     /// stops with nil. Only clips with pictures from a file have frames.
     private func showTrimPreview(of clip: TimelineClip?) {
         guard let clip, let timeline, case .media(let mediaID) = clip.source,

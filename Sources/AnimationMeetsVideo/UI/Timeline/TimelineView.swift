@@ -40,9 +40,9 @@ struct TimelineView: View {
     let onDeleteLayer: (UUID) -> Void
     /// Layer, clip and the timeline time to split it at, from the blade.
     let onBladeClip: (UUID, UUID, CMTime) -> Void
-    let onRippleTrimStart: (UUID, UUID, CMTime) -> Void
-    let onRippleTrimEnd: (UUID, UUID, CMTime) -> Void
-    /// The clip as a ripple drag would leave it, for the viewer to show its
+    /// Layer, clip and how far to slip its footage (positive plays later footage).
+    let onSlipClip: (UUID, UUID, CMTime) -> Void
+    /// The clip as a slip drag would leave it, for the viewer to show its
     /// first and last frames; nil when the drag ends.
     let onTrimPreview: (TimelineClip?) -> Void
     let onSetTransitionDuration: (UUID, UUID, TransitionEdge, CMTime) -> Void
@@ -512,8 +512,7 @@ struct TimelineView: View {
                         tool: tool,
                         snap: { timeline.snappedToFrame($0) },
                         onBlade: { clipID, time in onBladeClip(layer.id, clipID, time) },
-                        onRippleTrimStart: { clipID, trimStart in onRippleTrimStart(layer.id, clipID, trimStart) },
-                        onRippleTrimEnd: { clipID, trimEnd in onRippleTrimEnd(layer.id, clipID, trimEnd) },
+                        onSlip: { clipID, delta in onSlipClip(layer.id, clipID, delta) },
                         onTrimPreview: onTrimPreview,
                         onApplyJointEdit: { clipID, edit in onApplyJointEdit(layer.id, clipID, edit) },
                         onSetTransitionDuration: { clipID, edge, duration in onSetTransitionDuration(layer.id, clipID, edge, duration) }

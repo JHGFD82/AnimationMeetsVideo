@@ -176,36 +176,37 @@ struct LayerClipRow: View {
     /// Rounds a time onto the timeline's frames.
     let snap: (CMTime) -> CMTime
     let onBlade: (UUID, CMTime) -> Void
-    let onRippleTrimStart: (UUID, CMTime) -> Void
-    let onRippleTrimEnd: (UUID, CMTime) -> Void
+    /// Slips a clip's footage by a time (positive plays later footage).
+    let onSlip: (UUID, CMTime) -> Void
     let onTrimPreview: (TimelineClip?) -> Void
     /// An edit of the joint at the start of a clip.
     let onApplyJointEdit: (UUID, JointEdit) -> Void
     let onSetTransitionDuration: (UUID, TransitionEdge, CMTime) -> Void
 
-    /// While a clip's edge is rippled: how far the clips after it move.
-    private struct RippleShift: Equatable {
+    /// While a slip shortens a clip: how far the clips after it move in.
+    private struct FollowerShift: Equatable {
         var clipID: UUID
         var after: CMTime
         var shift: CMTime
     }
 
-    @State private var rippleShift: RippleShift?
+    @State private var followerShift: FollowerShift?
 
     private func shiftX(of clip: TimelineClip) -> CGFloat {
-        guard let rippleShift, clip.id != rippleShift.clipID, clip.startOffset >= rippleShift.after else { return 0 }
-        return rippleShift.shift.seconds * pixelsPerSecond
+        guard let followerShift, clip.id != followerShift.clipID, clip.startOffset >= followerShift.after else { return 0 }
+        return followerShift.shift.seconds * pixelsPerSecond
     }
 
-    /// A ripple drag's draft: the clips after it follow on screen until
-    /// the edit arrives, and the viewer shows its first and last frames.
-    private func rippleDraft(of clip: TimelineClip, _ draft: TimelineClip?, committing: Bool) {
+    /// A slip drag's draft: the viewer shows its first and last frames, and
+    /// when it shortens the clip the clips after it follow on screen until
+    /// the edit arrives.
+    private func slipDraft(of clip: TimelineClip, _ draft: TimelineClip?, committing: Bool) {
         if let draft {
-            rippleShift = RippleShift(clipID: clip.id, after: clip.endOffset, shift: CMTimeSubtract(draft.endOffset, clip.endOffset))
+            followerShift = FollowerShift(clipID: clip.id, after: clip.endOffset, shift: CMTimeSubtract(draft.endOffset, clip.endOffset))
             onTrimPreview(draft)
         } else {
             onTrimPreview(nil)
-            if !committing { rippleShift = nil }
+            if !committing { followerShift = nil }
         }
     }
 
@@ -228,25 +229,13 @@ struct LayerClipRow: View {
                     height: height,
                     visibleX: visibleX,
                     resolveMove: { start, dy in resolveMove(clip, dy, start) },
-                    resolveTrimStart: { trimStart in
-                        tool == .ripple
-                            ? project.resolvedRippleTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: trimStart)
-                            : project.resolvedTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: trimStart)
-                    },
-                    resolveTrimEnd: { trimEnd in
-                        tool == .ripple
-                            ? project.resolvedRippleTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: trimEnd)
-                            : project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: trimEnd)
-                    },
+                    resolveTrimStart: { project.resolvedTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
+                    resolveTrimEnd: { project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
                     onSelect: { onSelectClip(clip) },
                     onMove: { newStart, targetLayerID in onMoveClip(clip.id, targetLayerID, newStart) },
                     onDragging: onDraggingClip,
-                    onTrimStart: { newTrimStart in
-                        if tool == .ripple { onRippleTrimStart(clip.id, newTrimStart) } else { onTrimClipStart(clip.id, newTrimStart) }
-                    },
-                    onTrimEnd: { newTrimEnd in
-                        if tool == .ripple { onRippleTrimEnd(clip.id, newTrimEnd) } else { onTrimClipEnd(clip.id, newTrimEnd) }
-                    },
+                    onTrimStart: { newTrimStart in onTrimClipStart(clip.id, newTrimStart) },
+                    onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) },
                     onSetTransition: { kind, edge in onSetTransition(clip.id, kind, edge) },
                     onRemoveTransition: { edge in onRemoveTransition(clip.id, edge) },
                     onSelectTransition: { edge in onSelectTransition(clip, edge) },
@@ -255,7 +244,9 @@ struct LayerClipRow: View {
                     tool: tool,
                     snap: snap,
                     onBlade: { time in onBlade(clip.id, time) },
-                    onTrimDraft: tool == .ripple ? { draft, committing in rippleDraft(of: clip, draft, committing: committing) } : nil,
+                    resolveSlip: { project.resolvedSlip(of: clip.id, in: timelineID, layer: layer.id, by: $0) },
+                    onSlip: { delta in onSlip(clip.id, delta) },
+                    onSlipDraft: { draft, committing in slipDraft(of: clip, draft, committing: committing) },
                     onSetTransitionDuration: { edge, duration in onSetTransitionDuration(clip.id, edge, duration) }
                 )
                 .offset(x: shiftX(of: clip))
@@ -286,7 +277,7 @@ struct LayerClipRow: View {
                 }
             }
         }
-        .onChange(of: layer.clips) { _, _ in rippleShift = nil }
+        .onChange(of: layer.clips) { _, _ in followerShift = nil }
         // offset() shifts rendering without changing the size a view reports
         // to its parent, so without an explicit width here the row would
         // size itself to its (un-offset) widest clip rather than spanning
@@ -358,14 +349,18 @@ struct ClipBlockView: View {
     let onSelectTransition: (TransitionEdge) -> Void
     let onSetTransitionCurve: (TransitionEdge, TransitionCurve) -> Void
     let onDetachAudio: () -> Void
-    /// Arrow moves and trims, blade splits where clicked, ripple only trims.
+    /// Arrow moves and trims, blade splits where clicked, slip changes the
+    /// footage a clip plays.
     let tool: TimelineTool
     let snap: (CMTime) -> CMTime
     /// Splits the clip at a timeline time, from the blade.
     let onBlade: (CMTime) -> Void
-    /// Hears each trim draft, then nil when the drag ends (with whether
-    /// the trim is being committed). Set for ripple trims.
-    let onTrimDraft: ((TimelineClip?, Bool) -> Void)?
+    /// The clip after slipping by a time (positive plays later footage).
+    let resolveSlip: (CMTime) -> TimelineClip?
+    let onSlip: (CMTime) -> Void
+    /// Hears each slip draft, then nil when the drag ends (with whether the
+    /// slip is being committed).
+    let onSlipDraft: (TimelineClip?, Bool) -> Void
     /// Sets a transition's length, from dragging its inner side.
     let onSetTransitionDuration: (TransitionEdge, CMTime) -> Void
 
@@ -386,8 +381,8 @@ struct ClipBlockView: View {
     @State private var isTransitionTarget = false
     /// Where the blade would cut, in the row's coordinates, while hovering.
     @State private var bladeX: CGFloat?
-    /// The edge a ripple drag on the clip's body trims: the nearer one.
-    @State private var rippleEdge: Edge?
+    /// How far a slip drag in progress moves the footage.
+    @State private var slipDelta: CMTime?
     /// A transition's length while its inner side is dragged.
     @State private var transitionDraft: (edge: TransitionEdge, duration: CMTime)?
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
@@ -520,20 +515,28 @@ struct ClipBlockView: View {
                 // Only the arrow moves clips.
                 including: tool == .arrow ? .all : .none
             )
-            // With the ripple tool, dragging anywhere on the clip trims the
-            // nearer edge, so it doesn't take aiming at the edge.
+            // With the slip tool, dragging the clip slides its footage under
+            // it, like film under a window: right brings earlier frames in.
             .gesture(
-                DragGesture(minimumDistance: 3, coordinateSpace: .named(space))
+                DragGesture(minimumDistance: 3, coordinateSpace: .global)
                     .onChanged { value in
-                        let edge = rippleEdge ?? (value.startLocation.x < liveX + liveWidth / 2 ? .leading : .trailing)
-                        rippleEdge = edge
-                        trimChanged(edge, translation: value.translation.width)
+                        let delta = timeDelta(-value.translation.width)
+                        let slipped = resolveSlip(delta) ?? clip
+                        slipDelta = delta
+                        showPreview(slipped)
+                        onSlipDraft(slipped, false)
                     }
                     .onEnded { _ in
-                        if let rippleEdge { trimEnded(rippleEdge) }
-                        rippleEdge = nil
+                        let changed = preview.map { $0 != clip } ?? false
+                        onSlipDraft(nil, changed)
+                        if changed, let slipDelta {
+                            commitDrop { onSlip(slipDelta) }
+                        } else {
+                            endDrop()
+                        }
+                        slipDelta = nil
                     },
-                including: tool == .ripple ? .all : .none
+                including: tool == .slip ? .all : .none
             )
             // A click selects the clip, or the transition under it.
             .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(space)).onEnded { value in
@@ -551,7 +554,7 @@ struct ClipBlockView: View {
             // points of either side trims that edge instead of moving the
             // whole clip (SwiftUI resolves overlapping gestures to the
             // topmost hit-testable view at the touch point).
-            if tool != .blade {
+            if tool == .arrow {
                 trimHandle(edge: .leading, liveX: liveX, liveWidth: liveWidth)
                 trimHandle(edge: .trailing, liveX: liveX, liveWidth: liveWidth)
             }
@@ -744,12 +747,10 @@ struct ClipBlockView: View {
         case .trailing: resolveTrimEnd(CMTimeAdd(clip.trimEnd, delta)) ?? clip
         }
         showPreview(trimmed)
-        onTrimDraft?(trimmed, false)
     }
 
     /// A trim drag ended: commits it, or selects the clip when it was a click.
     private func trimEnded(_ edge: Edge) {
-        onTrimDraft?(nil, preview.map { $0 != clip } ?? false)
         if let preview, preview != clip {
             commitDrop {
                 switch edge {

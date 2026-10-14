@@ -103,19 +103,17 @@ private func video(url: URL? = nil, duration: Double = 10) -> MediaClip {
         #expect(CMTimeAdd(narrower.start, seconds(0.25)) == center)
     }
 
-    @Test func rippleEditsAtACutMoveWhatFollows() throws {
+    @Test func slippingEitherClipAtACutKeepsTheCut() throws {
         var f = Fixture()
         f.project.setTransition(.crossDissolve, at: .leading, of: f.b, in: f.t, layer: f.layer)
 
-        // The outgoing clip grows by a second; the incoming one follows the cut.
-        f.project.applyJointEdit(.rippleOut(seconds(1)), at: f.b, in: f.t, layer: f.layer)
-        #expect(f.clipA.endOffset == seconds(5))
-        #expect(f.clipB.startOffset == seconds(5) && f.clipB.trimStart == seconds(6))
+        f.project.applyJointEdit(.slipOut(seconds(1)), at: f.b, in: f.t, layer: f.layer)
+        #expect(f.clipA.trimStart == seconds(1) && f.clipA.trimEnd == seconds(5))
+        #expect(f.clipA.endOffset == seconds(4))
 
-        // The incoming clip loses its first second; the cut stays.
-        f.project.applyJointEdit(.rippleIn(seconds(1)), at: f.b, in: f.t, layer: f.layer)
-        #expect(f.clipB.startOffset == seconds(5) && f.clipB.trimStart == seconds(7))
-        #expect(f.clipB.endOffset == seconds(7))
+        f.project.applyJointEdit(.slipIn(seconds(-1)), at: f.b, in: f.t, layer: f.layer)
+        #expect(f.clipB.trimStart == seconds(5) && f.clipB.trimEnd == seconds(8))
+        #expect(f.clipB.startOffset == seconds(4))
         #expect(f.joint != nil)
     }
 

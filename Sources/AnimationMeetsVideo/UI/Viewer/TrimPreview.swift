@@ -3,7 +3,7 @@ import CoreMedia
 import Observation
 import SwiftUI
 
-/// The first and last frames of a clip while its edge is being rippled,
+/// The first and last frames of a clip while its footage is being slipped,
 /// shown side by side over the viewer so the person sees exactly which
 /// part of the footage the clip will play.
 @MainActor

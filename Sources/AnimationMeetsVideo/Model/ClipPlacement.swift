@@ -203,49 +203,47 @@ extension EditingProject {
         return trimmed
     }
 
-    /// The clip after a ripple trim of its leading edge toward
-    /// `proposedTrimStart`. Its start stays where it is and its end moves by
-    /// as much as its length changed; `rippleTrimStart` moves every later
-    /// clip on the layer by the same amount. It can't reveal frames before
-    /// the source's start or get shorter than the minimum length: past
-    /// either it stops where it is.
-    func resolvedRippleTrimStart(of id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime) -> TimelineClip? {
-        guard let (timeline, clip, _) = placementContext(id, in: timelineID, layer: layerID) else { return nil }
-        // Worked out as where the end lands, so it falls where placement puts ends.
-        let proposedEnd = CMTimeAdd(clip.startOffset, CMTimeSubtract(clip.trimEnd, proposedTrimStart))
-        let longest = CMTimeAdd(clip.startOffset, clip.trimEnd)
-        guard let end = rippledEnd(of: clip, toward: proposedEnd, longest: longest, in: timeline) else { return nil }
-        var trimmed = clip
-        trimmed.trimStart = CMTimeSubtract(clip.trimEnd, CMTimeSubtract(end, clip.startOffset))
-        return trimmed
-    }
-
-    /// The clip after a ripple trim of its trailing edge toward
-    /// `proposedTrimEnd`: as `resolvedRippleTrimStart`, but the source's
-    /// end is the limit.
-    func resolvedRippleTrimEnd(of id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimEnd: CMTime) -> TimelineClip? {
+    /// The clip after slipping its footage by `proposedDelta` (positive plays
+    /// later footage): its start and end stay where they are and the part
+    /// of the source it plays moves. Where the file runs out the footage
+    /// stops at the file's start or end and the clip gets shorter from its
+    /// end instead, down to the minimum length; `slipClip` then moves the
+    /// clips after it in by as much. Video slips by whole frames.
+    func resolvedSlip(of id: UUID, in timelineID: UUID, layer layerID: UUID, by proposedDelta: CMTime) -> TimelineClip? {
         guard let (timeline, clip, _) = placementContext(id, in: timelineID, layer: layerID),
               let sourceDuration = sourceDuration(for: clip.source)
         else {
             return nil
         }
-        let proposedEnd = CMTimeAdd(clip.startOffset, CMTimeSubtract(proposedTrimEnd, clip.trimStart))
-        let longest = CMTimeAdd(clip.startOffset, CMTimeSubtract(sourceDuration, clip.trimStart))
-        guard let end = rippledEnd(of: clip, toward: proposedEnd, longest: longest, in: timeline) else { return nil }
-        var trimmed = clip
-        trimmed.trimEnd = CMTimeAdd(clip.trimStart, CMTimeSubtract(end, clip.startOffset))
-        return trimmed
-    }
-
-    /// Where a rippled clip's end lands: on a frame for video, at least the
-    /// minimum length after its start and no later than `longest`.
-    private func rippledEnd(of clip: TimelineClip, toward proposedEnd: CMTime, longest: CMTime, in timeline: Timeline) -> CMTime? {
         let locked = isFrameLocked(clip)
-        let lower = timeline.placementTime(CMTimeAdd(clip.startOffset, minimumDuration(of: clip, in: timeline)), .up, frameLocked: locked)
-        let upper = timeline.placementTime(longest, .down, frameLocked: locked)
-        guard upper >= lower else { return nil }
-        let end = timeline.placementTime(proposedEnd, .nearest, frameLocked: locked)
-        return CMTimeMinimum(CMTimeMaximum(end, lower), upper)
+        let delta = locked ? timeline.frameAligned(proposedDelta, .nearest) : proposedDelta
+        let minimum = minimumDuration(of: clip, in: timeline)
+        var start = CMTimeAdd(clip.trimStart, delta)
+        var end = CMTimeAdd(clip.trimEnd, delta)
+        if start < .zero { start = .zero }
+        if end > sourceDuration { end = sourceDuration }
+        // Out of footage on both sides at once only when the slip runs
+        // past the minimum length: keep the minimum against the file edge.
+        if CMTimeSubtract(end, start) < minimum {
+            if delta > .zero {
+                start = CMTimeMaximum(.zero, CMTimeSubtract(sourceDuration, minimum))
+                end = CMTimeAdd(start, minimum)
+            } else {
+                start = .zero
+                end = CMTimeMinimum(sourceDuration, minimum)
+            }
+        }
+        // A shortened clip stays a whole number of frames, kept against the
+        // file edge it ran into.
+        var length = CMTimeSubtract(end, start)
+        if locked, length != clip.trimmedDuration {
+            length = CMTimeMaximum(minimum, timeline.frameAligned(length, .down))
+            if start == .zero { end = CMTimeAdd(start, length) } else { start = CMTimeSubtract(end, length) }
+        }
+        var slipped = clip
+        slipped.trimStart = start
+        slipped.trimEnd = end
+        return slipped
     }
 
     func sourceDuration(for source: ClipSource) -> CMTime? {

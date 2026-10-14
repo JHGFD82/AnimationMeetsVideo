@@ -102,23 +102,22 @@ is being edited.
   it would cut at; clicking splits the clip there (`split(…atTimelineTime:)`).
   Clips can't be moved or trimmed with it. The inspector no longer has a
   Split button.
-- **Ripple (E)**: dragging a clip's edge trims it and moves every later
-  clip on its layer by as much as its end moved, so the gaps after it stay
-  (`rippleTrimStart` / `rippleTrimEnd` in `MediaModels.swift`). Trimming
-  the start keeps the clip in place and changes which frame it begins on.
-  The trim stops where the footage runs out (or at a one-frame clip) and
-  goes no further. Dragging anywhere on a clip trims its nearer edge, so
-  the edge doesn't have to be hit exactly. Later clips follow on screen
-  during the drag, and the
-  viewer shows the clip's first and last frames side by side with their
-  source timecodes, so it's clear exactly which footage it will play.
-  Clips can't be moved with it. Ripple doesn't move other layers, the
-  layer's keyframes, or detached sound on other layers. In a transition's
-  footage lane the cut line turns yellow and splits in two: its top half
-  ripples the outgoing clip's end (the incoming clip and everything after
-  follow the cut), its bottom half the incoming clip's start (the cut stays).
+- **Slip (Y)**: dragging a clip changes which part of its footage it
+  plays while its start and end stay where they are, like moving film
+  under a window: dragging right brings earlier frames in, left later ones
+  (`slipClip` / `resolvedSlip`). Video slips by whole frames. When the
+  footage runs out at the file's start or end, it stops there and the clip
+  gets shorter from its end instead (never below a frame), and every later
+  clip on its layer moves in by as much, so no gap opens. Those clips
+  follow on screen during the drag, and the viewer shows the clip's first
+  and last frames side by side with their source timecodes. Clips can't be
+  moved or trimmed with it. In a transition's footage lane the cut line
+  turns yellow and splits in two: its top half slips the outgoing clip,
+  its bottom half the incoming one; the cut stays and the transition gets
+  different footage to blend.
 
-P, S, R and T show transform properties, which is why ripple is E.
+P, S, R and T show transform properties, which is why slip is Y, as in
+Premiere.
 
 ## Moving and trimming clips
 

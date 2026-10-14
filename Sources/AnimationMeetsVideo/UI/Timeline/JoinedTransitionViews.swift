@@ -126,10 +126,10 @@ struct TransitionFootageLane: View {
     let visibleX: ClosedRange<CGFloat>
     let preview: (JointEdit) -> TransitionJoint?
     let onCommit: (JointEdit) -> Void
-    /// With the ripple tool the cut line ripples instead of rolling: its top
-    /// half the outgoing clip's end, its bottom half the incoming clip's start.
+    /// With the slip tool the cut line slips instead of rolling: its top
+    /// half the outgoing clip's footage, its bottom half the incoming clip's.
     let tool: TimelineTool
-    /// The clip a ripple drag is changing, for the viewer; nil when it ends.
+    /// The clip a slip drag is changing, for the viewer; nil when it ends.
     let onTrimPreview: (TimelineClip?) -> Void
 
     static let height: CGFloat = 68
@@ -171,11 +171,12 @@ struct TransitionFootageLane: View {
             edgeHandle(atX: startX) { delta in .widen(CMTimeSubtract(.zero, delta)) }
             edgeHandle(atX: endX) { delta in .widen(delta) }
 
-            if tool == .ripple {
-                rippleHandle(atX: cutX, y: 0, edit: { .rippleOut($0) })
-                    .help("Drag to ripple the outgoing clip's end: everything after it moves")
-                rippleHandle(atX: cutX, y: Self.height / 2, edit: { .rippleIn($0) })
-                    .help("Drag to ripple the incoming clip's start: everything after it moves")
+            // Like film under a window: dragging right brings earlier frames in.
+            if tool == .slip {
+                slipHandle(atX: cutX, y: 0, edit: { .slipOut(CMTimeSubtract(.zero, $0)) })
+                    .help("Drag to slip the outgoing clip: the cut stays, its footage moves")
+                slipHandle(atX: cutX, y: Self.height / 2, edit: { .slipIn(CMTimeSubtract(.zero, $0)) })
+                    .help("Drag to slip the incoming clip: the cut stays, its footage moves")
             } else {
                 cutHandle(atX: cutX)
             }
@@ -202,8 +203,8 @@ struct TransitionFootageLane: View {
             .help("Drag to roll the cut: the transition draws on different footage")
     }
 
-    /// Half of the cut line, for one clip's row, that ripples that clip.
-    private func rippleHandle(atX cutX: CGFloat, y: CGFloat, edit: @escaping (CMTime) -> JointEdit) -> some View {
+    /// Half of the cut line, for one clip's row, that slips that clip.
+    private func slipHandle(atX cutX: CGFloat, y: CGFloat, edit: @escaping (CMTime) -> JointEdit) -> some View {
         ZStack {
             Rectangle()
                 .fill(Color.yellow)
@@ -263,8 +264,8 @@ struct TransitionFootageLane: View {
                 guard let joint = preview(change) else { return }
                 draft = (change, joint)
                 switch change {
-                case .rippleOut: onTrimPreview(joint.outgoing)
-                case .rippleIn: onTrimPreview(joint.incoming)
+                case .slipOut: onTrimPreview(joint.outgoing)
+                case .slipIn: onTrimPreview(joint.incoming)
                 case .roll, .place, .widen: break
                 }
             }

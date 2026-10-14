@@ -248,12 +248,12 @@ enum JointEdit: Equatable {
     /// Lengthens the transition by twice a distance (shortens it, when
     /// negative), half on each side, so its center stays where it is.
     case widen(CMTime)
-    /// Ripple-trims the outgoing clip's end by a distance: the incoming clip
-    /// and everything after it move with the cut.
-    case rippleOut(CMTime)
-    /// Ripple-trims the incoming clip's start by a distance: the cut stays,
-    /// and everything after the incoming clip moves.
-    case rippleIn(CMTime)
+    /// Slips the outgoing clip's footage (positive plays later footage),
+    /// which changes what the transition has after the cut.
+    case slipOut(CMTime)
+    /// Slips the incoming clip's footage, which changes what the transition
+    /// has before the cut.
+    case slipIn(CMTime)
 }
 
 extension EditingProject {
@@ -363,10 +363,10 @@ extension EditingProject {
             updateClip(incomingID, in: timelineID, layer: layerID) { $0.setTransition(transition, at: .leading) }
         case .roll(let delta):
             rollCut(joint, by: delta, in: timeline)
-        case .rippleOut(let delta):
-            rippleTrimEnd(joint.outgoing.id, in: timelineID, layer: layerID, to: CMTimeAdd(joint.outgoing.trimEnd, delta))
-        case .rippleIn(let delta):
-            rippleTrimStart(joint.incoming.id, in: timelineID, layer: layerID, to: CMTimeAdd(joint.incoming.trimStart, delta))
+        case .slipOut(let delta):
+            slipClip(joint.outgoing.id, in: timelineID, layer: layerID, by: delta)
+        case .slipIn(let delta):
+            slipClip(joint.incoming.id, in: timelineID, layer: layerID, by: delta)
         }
     }
 

@@ -314,53 +314,61 @@ private struct Fixture {
     }
 }
 
-@Suite struct RippleTrimTests {
-    @Test func shorteningTheEndPullsLaterClipsInKeepingTheirGaps() {
+@Suite struct SlipTests {
+    /// The fixture's clip playing `start`–`end` of its ten-second source,
+    /// from the timeline's start, with a clip after it at 8 s.
+    private func slippable(start: Double, end: Double) -> (Fixture, UUID) {
         var f = Fixture()
-        let neighbor = f.addNeighbor(start: 12, length: 2)
-        f.project.rippleTrimEnd(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(6))
+        let t = f.project.timelines.firstIndex { $0.id == f.timelineID }!
+        let l = f.project.timelines[t].layers.firstIndex { $0.id == f.layerID }!
+        f.project.timelines[t].layers[l].clips[0].trimStart = seconds(start)
+        f.project.timelines[t].layers[l].clips[0].trimEnd = seconds(end)
+        let neighbor = f.addNeighbor(start: 8, length: 2)
+        return (f, neighbor)
+    }
 
-        #expect(f.clip.startOffset == .zero && f.clip.endOffset == seconds(6))
+    @Test func slippingPlaysOtherFootageWithTheEdgesInPlace() {
+        var (f, neighbor) = slippable(start: 2, end: 6)
+        f.project.slipClip(f.clipID, in: f.timelineID, layer: f.layerID, by: seconds(1))
+
+        #expect(f.clip.trimStart == seconds(3) && f.clip.trimEnd == seconds(7))
+        #expect(f.clip.startOffset == .zero && f.clip.endOffset == seconds(4))
         #expect(f.clips.first { $0.id == neighbor }?.startOffset == seconds(8))
     }
 
-    @Test func theEndStopsWhereTheFootageRunsOut() {
-        var f = Fixture()
-        let neighbor = f.addNeighbor(start: 12, length: 2)
-        f.project.rippleTrimEnd(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(6))
-        f.project.rippleTrimEnd(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(14))
+    @Test func pastTheFilesEndTheClipShortensAndLaterClipsCloseTheGap() {
+        var (f, neighbor) = slippable(start: 2, end: 6)
+        f.project.slipClip(f.clipID, in: f.timelineID, layer: f.layerID, by: seconds(6))
 
-        #expect(f.clip.trimEnd == seconds(10))
-        #expect(f.clips.first { $0.id == neighbor }?.startOffset == seconds(12))
+        #expect(f.clip.trimStart == seconds(8) && f.clip.trimEnd == seconds(10))
+        #expect(f.clip.startOffset == .zero && f.clip.endOffset == seconds(2))
+        #expect(f.clips.first { $0.id == neighbor }?.startOffset == seconds(6))
     }
 
-    @Test func trimmingTheStartKeepsItsPlaceAndMovesLaterClips() {
-        var f = Fixture()
-        let neighbor = f.addNeighbor(start: 12, length: 2)
-        f.project.rippleTrimStart(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(3))
+    @Test func pastTheFilesStartTheClipShortensToo() {
+        var (f, neighbor) = slippable(start: 2, end: 6)
+        f.project.slipClip(f.clipID, in: f.timelineID, layer: f.layerID, by: seconds(-3))
 
+        #expect(f.clip.trimStart == .zero && f.clip.trimEnd == seconds(3))
         #expect(f.clip.startOffset == .zero)
-        #expect(f.clip.trimStart == seconds(3) && f.clip.trimEnd == seconds(10))
-        #expect(f.clips.first { $0.id == neighbor }?.startOffset == seconds(9))
+        #expect(f.clips.first { $0.id == neighbor }?.startOffset == seconds(7))
     }
 
-    @Test func theStartCantRevealFramesBeforeTheSource() {
-        var f = Fixture()
-        let neighbor = f.addNeighbor(start: 12, length: 2)
-        f.project.rippleTrimStart(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(3))
-        f.project.rippleTrimStart(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(-2))
+    @Test func aClipNeverSlipsShorterThanAFrame() {
+        var (f, _) = slippable(start: 2, end: 6)
+        f.project.slipClip(f.clipID, in: f.timelineID, layer: f.layerID, by: seconds(30))
 
-        #expect(f.clip.trimStart == .zero)
-        #expect(f.clips.first { $0.id == neighbor }?.startOffset == seconds(12))
+        #expect(f.clip.trimmedDuration == CMTime(value: 1, timescale: 24))
+        #expect(f.clip.trimEnd == seconds(10))
     }
 
     @Test func earlierClipsDontMove() {
         var f = Fixture()
         f.project.moveClip(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(5))
         let earlier = f.addNeighbor(start: 0, length: 2)
-        f.project.rippleTrimEnd(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(4))
+        f.project.slipClip(f.clipID, in: f.timelineID, layer: f.layerID, by: seconds(4))
 
         #expect(f.clips.first { $0.id == earlier }?.startOffset == .zero)
+        #expect(f.clip.startOffset == seconds(5))
     }
 }
-

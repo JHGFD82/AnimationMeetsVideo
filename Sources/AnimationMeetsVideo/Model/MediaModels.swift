@@ -268,20 +268,16 @@ struct EditingProject: Identifiable, Equatable {
         replaceClip(trimmed, in: timelineID, layer: layerID)
     }
 
-    /// Ripple-trims a clip's start (see `resolvedRippleTrimStart`) and moves
-    /// every later clip on its layer by as much as its end moved, so the
-    /// gaps after it stay as they were.
-    mutating func rippleTrimStart(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime) {
-        guard let trimmed = resolvedRippleTrimStart(of: id, in: timelineID, layer: layerID, to: proposedTrimStart) else { return }
-        applyRipple(trimmed, in: timelineID, layer: layerID)
+    /// Slips a clip's footage (see `resolvedSlip`). When that shortens the
+    /// clip, every later clip on its layer moves in by as much, so no gap
+    /// opens after it.
+    mutating func slipClip(_ id: UUID, in timelineID: UUID, layer layerID: UUID, by delta: CMTime) {
+        guard let slipped = resolvedSlip(of: id, in: timelineID, layer: layerID, by: delta) else { return }
+        applyRipple(slipped, in: timelineID, layer: layerID)
     }
 
-    /// Ripple-trims a clip's end, moving every later clip on its layer with it.
-    mutating func rippleTrimEnd(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimEnd: CMTime) {
-        guard let trimmed = resolvedRippleTrimEnd(of: id, in: timelineID, layer: layerID, to: proposedTrimEnd) else { return }
-        applyRipple(trimmed, in: timelineID, layer: layerID)
-    }
-
+    /// Replaces a clip and moves every clip after it on the layer by as
+    /// much as its end moved.
     private mutating func applyRipple(_ trimmed: TimelineClip, in timelineID: UUID, layer layerID: UUID) {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
