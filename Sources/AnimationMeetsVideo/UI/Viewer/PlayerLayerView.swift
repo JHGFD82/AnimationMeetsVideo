@@ -34,7 +34,12 @@ final class PlayerContainerView: NSView {
     private var readyObservation: NSKeyValueObservation?
 
     /// The longest a frame is held, in case the new item never shows one.
-    private static let maxHold: CFTimeInterval = 1
+    /// A paused player holds back a new item's first picture until its
+    /// sound is ready, about half a second for a clip with sound and
+    /// longer on some audio devices, so this is generous: an uncovered
+    /// layer shows nothing at all, and after a render the held frame is
+    /// the same picture anyway.
+    private static let maxHold: CFTimeInterval = 5
 
     var player: AVPlayer? {
         get { playerLayer.player }
@@ -120,12 +125,13 @@ final class PlayerContainerView: NSView {
     }
 
     /// Uncovers the video once it shows a frame other than the held one,
-    /// or playback starts, or the hold has gone on too long.
+    /// or playback starts, or there is no item to wait for, or the hold
+    /// has gone on too long.
     private func releaseFrameIfReplaced() {
         guard let heldBuffer else { return }
         let playing = (playerLayer.player?.rate ?? 0) != 0
         let shown = playerLayer.displayedPixelBuffer()
-        if playing || playerLayer.player == nil
+        if playing || playerLayer.player?.currentItem == nil
             || CACurrentMediaTime() - heldSince > Self.maxHold
             || (shown != nil && shown !== heldBuffer) {
             releaseFrame()
