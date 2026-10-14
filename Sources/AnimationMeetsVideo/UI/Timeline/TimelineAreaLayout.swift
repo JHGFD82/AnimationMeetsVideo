@@ -72,6 +72,30 @@ struct TimelineAreaLayout: Equatable, Codable {
     private func share(_ kind: LayerKind) -> CGFloat {
         shares[kind] ?? 1.0 / 3
     }
+
+    // Written out rather than synthesized: being RawRepresentable as a
+    // String (for @AppStorage) brings the standard library's Codable,
+    // which goes through rawValue, and rawValue encodes with Codable, so
+    // the two would call each other until the stack ran out.
+    private enum CodingKeys: String, CodingKey {
+        case hidden, shares, layerHeights
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hidden = try container.decode(Set<LayerKind>.self, forKey: .hidden)
+        shares = try container.decode([LayerKind: CGFloat].self, forKey: .shares)
+        layerHeights = try container.decode([LayerKind: CGFloat].self, forKey: .layerHeights)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(hidden, forKey: .hidden)
+        try container.encode(shares, forKey: .shares)
+        try container.encode(layerHeights, forKey: .layerHeights)
+    }
 }
 
 extension TimelineAreaLayout: RawRepresentable {
