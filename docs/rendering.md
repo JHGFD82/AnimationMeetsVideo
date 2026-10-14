@@ -78,7 +78,10 @@ Limits:
   seconds of quiet. It also waits while the Mac is hot (serious or
   critical thermal state) or in Low Power Mode. A piece that fails to
   render is not retried until the project is reopened. Each finished piece
-  rebuilds the viewer's composition so it is used at once.
+  rebuilds the viewer's composition so it is used at once. Rendering
+  only happens while paused, so the new player item is seeked to the
+  playhead before it is swapped in, and the viewer keeps showing the old
+  item's frame until the new one draws, so the picture doesn't blink.
 - **Export.** A ProRes 422 export plays every stretch that has a render
   from the cache instead of compositing it again, which is much faster for
   stacked or animated stretches. The render is encoded a second time, which

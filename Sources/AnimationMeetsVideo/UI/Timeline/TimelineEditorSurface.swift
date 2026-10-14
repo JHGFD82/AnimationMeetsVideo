@@ -305,6 +305,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 if player.timeControlStatus == .paused {
                     // Seeked before it's shown, so the swap doesn't flash
                     // the item's first frame, as when a render finishes.
+                    // `PlayerContainerView` covers the gap until it draws.
                     let resumeTime = resetPosition ? playheadTime : player.currentTime()
                     _ = await item.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
                     guard !Task.isCancelled else { return }
