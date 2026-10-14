@@ -45,7 +45,7 @@ struct EditorView: View {
         VStack(spacing: 0) {
             EditorToolbar(
                 project: $project,
-                activeTimelineID: $activeTimelineID,
+                activeTimelineID: activeTimeline,
                 selection: $selection,
                 playback: playback,
                 annotations: annotations,
@@ -53,9 +53,9 @@ struct EditorView: View {
                 analysis: analysis,
                 renderer: renderer
             )
-            TimelineEditorSurface(project: $project, timelineID: $activeTimelineID, selection: $selection, playback: playback, analysis: analysis) {
+            TimelineEditorSurface(project: $project, timelineID: activeTimeline, selection: $selection, playback: playback, analysis: analysis) {
                 LibrarySidebar(
-                    project: $project, activeTimelineID: $activeTimelineID, selection: $selection,
+                    project: $project, activeTimelineID: activeTimeline, selection: $selection,
                     analysis: analysis, replacement: replacement, packageURL: packageURL
                 )
                 .frame(width: 260)
@@ -84,6 +84,20 @@ struct EditorView: View {
             analysis.analyzeMissing(in: project)
         }
         .onChange(of: undoManager) { _, _ in connectHistory() }
+    }
+
+    /// The timeline being edited, read against the current project: the
+    /// stored ID until it names a timeline this project has, else the
+    /// root. The stored ID catches up in `onChange(of: project.id)`, one
+    /// update after a new project arrives. Showing the stale one for that
+    /// update made the library list the root timeline and then remove it
+    /// straight away, while it was still measuring the rows it had just
+    /// inserted, which AppKit warns is a reentrant table update.
+    private var activeTimeline: Binding<UUID> {
+        Binding(
+            get: { project.timeline(id: activeTimelineID) != nil ? activeTimelineID : project.rootTimelineID },
+            set: { activeTimelineID = $0 }
+        )
     }
 
     private func connectHistory() {
