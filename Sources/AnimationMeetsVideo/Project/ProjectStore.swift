@@ -186,6 +186,9 @@ private struct ProjectFile: Codable {
     struct LayerEntry: Codable {
         var id: UUID
         var customName: String?
+        /// `LayerKind`'s raw value. Absent in projects saved before layers
+        /// had kinds, which get one from their clips on load.
+        var kind: String?
         var clips: [ClipEntry]
         /// Absent while the layer is untransformed.
         var transform: TransformEntry?
@@ -807,6 +810,7 @@ enum ProjectStore {
                     ProjectFile.LayerEntry(
                         id: layer.id,
                         customName: layer.customName,
+                        kind: layer.kind.rawValue,
                         clips: layer.clips.compactMap { clip in
                             guard let source = sourceEntry(for: clip.source) else { return nil }
                             return ProjectFile.ClipEntry(
@@ -922,6 +926,7 @@ enum ProjectStore {
                     TimelineLayer(
                         id: layerEntry.id,
                         customName: layerEntry.customName,
+                        kind: layerEntry.kind.flatMap(LayerKind.init(rawValue:)) ?? .video,
                         clips: layerEntry.clips.compactMap { clipEntry in
                             guard let source = resolveSource(clipEntry.source) else { return nil }
                             return TimelineClip(
@@ -964,6 +969,8 @@ enum ProjectStore {
             copiesMediaOnImport: file.copiesMediaOnImport ?? true
         )
         project.alignClipLengthsToFrames()
+        let unkinded = file.timelines.flatMap(\.layers).filter { $0.kind == nil }.map(\.id)
+        project.inferLayerKinds(of: Set(unkinded))
         var scores: [UUID: ChangeScoreTrack] = [:]
         var references: [UUID: AssetReference] = [:]
         var beats: [UUID: BeatTrack] = [:]

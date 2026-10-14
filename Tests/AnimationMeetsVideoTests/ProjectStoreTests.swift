@@ -177,6 +177,33 @@ private struct Sandbox {
         #expect(text.contains("\"formatVersion\" : 1"))
     }
 
+    @Test func roundTripKeepsLayerKinds() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+        project.timelines[0].layers.append(TimelineLayer(customName: nil, kind: .music, clips: []))
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.project.timelines[0].layers.map(\.kind) == [.video, .music])
+    }
+
+    @Test func layersWithoutAKindAreGivenOneOnLoad() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+        project.timelines[0].layers[0].kind = .music
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        let edited = json.replacingOccurrences(of: #""kind"\s*:\s*"music",?"#, with: "", options: .regularExpression)
+        #expect(edited != json)
+        try edited.write(to: sandbox.projectJSON, atomically: true, encoding: .utf8)
+
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.project.timelines[0].layers[0].kind == .video)
+    }
+
     @Test func acceptsHandWrittenWholeSecondTimes() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }

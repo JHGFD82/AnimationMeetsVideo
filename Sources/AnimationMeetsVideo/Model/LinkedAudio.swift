@@ -39,8 +39,8 @@ extension EditingProject {
     /// their picture, and their sound goes onto a new layer just below with
     /// the same timing and trims, so it plays exactly as before but can be
     /// moved, trimmed or deleted on its own. `clipIDs` limits it to those
-    /// clips; nil detaches every linked clip on the layer. Returns the new
-    /// layer, or nil when there was nothing to detach.
+    /// clips; nil detaches every linked clip on the layer. The new layer is
+    /// a sound layer. Returns it, or nil when there was nothing to detach.
     @discardableResult
     mutating func detachAudio(of clipIDs: Set<UUID>? = nil, in timelineID: UUID, layer layerID: UUID) -> UUID? {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
@@ -62,7 +62,7 @@ extension EditingProject {
             audioClips.append(audio)
         }
         guard !audioClips.isEmpty else { return nil }
-        let layer = TimelineLayer(customName: nil, clips: audioClips)
+        let layer = TimelineLayer(customName: nil, kind: .sound, clips: audioClips)
         timelines[tIndex].layers.insert(layer, at: lIndex + 1)
         return layer.id
     }

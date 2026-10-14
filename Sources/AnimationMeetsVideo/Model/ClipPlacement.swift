@@ -105,7 +105,8 @@ extension EditingProject {
     }
 
     /// Where a clip asked to start at `proposedStart` lands, on its own
-    /// layer or on `targetLayerID`, and what moves aside for it. It lands
+    /// layer or on `targetLayerID` (nil if that layer is the wrong kind for
+    /// it), and what moves aside for it. It lands
     /// where it was dropped: never before zero, on a frame if it has
     /// pictures, and dropped inside another clip it goes to that clip's
     /// nearer edge, so a clip can go between two others or before the
@@ -123,7 +124,7 @@ extension EditingProject {
         guard let (timeline, moving, sameLayer) = placementContext(id, in: timelineID, layer: layerID) else { return nil }
         let others: [TimelineClip]
         if let targetLayerID, targetLayerID != layerID {
-            guard let target = timeline.layer(id: targetLayerID) else { return nil }
+            guard let target = timeline.layer(id: targetLayerID), layerKind(target.kind, accepts: moving) else { return nil }
             others = target.clips
         } else {
             others = sameLayer

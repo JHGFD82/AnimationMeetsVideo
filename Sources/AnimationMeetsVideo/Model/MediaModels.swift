@@ -77,7 +77,7 @@ struct EditingProject: Identifiable, Equatable {
             TimelineClip(source: .media(clip.id), startOffset: .zero, trimStart: .zero, trimEnd: clip.duration),
             in: timelines[index]
         )
-        let layer = TimelineLayer(customName: nil, clips: [timelineClip])
+        let layer = TimelineLayer(customName: nil, kind: defaultLayerKind(forAsset: assetID), clips: [timelineClip])
         timelines[index].layers.insert(layer, at: 0)
         return (layer.id, timelineClip.id)
     }
@@ -140,7 +140,7 @@ struct EditingProject: Identifiable, Equatable {
             TimelineClip(source: .timeline(timelineID), startOffset: .zero, trimStart: .zero, trimEnd: nested.duration),
             in: timelines[index]
         )
-        let layer = TimelineLayer(customName: nil, clips: [timelineClip])
+        let layer = TimelineLayer(customName: nil, kind: .video, clips: [timelineClip])
         timelines[index].layers.insert(layer, at: 0)
         return (layer.id, timelineClip.id)
     }
@@ -374,9 +374,12 @@ struct Timeline: Identifiable, Equatable {
 
 struct TimelineLayer: Identifiable, Equatable {
     var id = UUID()
-    /// User-assigned name, if any. Falls back to the footage/nested
-    /// timeline's own name when nil.
+    /// User-assigned name, if any. Without one the timeline shows its kind
+    /// and number, such as "Video 2".
     var customName: String?
+    /// Which area of the timeline the layer sits in, and so which clips it
+    /// takes. See `LayerKind`.
+    var kind: LayerKind = .video
     var clips: [TimelineClip]
     /// Position, scale, rotation and opacity, keyframed in this timeline's
     /// time. Ignored for layers with no pictures.

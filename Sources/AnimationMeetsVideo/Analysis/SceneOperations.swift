@@ -69,17 +69,21 @@ extension EditingProject {
 
     /// Puts scenes on the timeline as ordinary clips, back to back with no
     /// gaps in the order given, on one new layer at the top. The media is not
-    /// touched; each clip is the asset trimmed to the scene's range.
+    /// touched; each clip is the asset trimmed to the scene's range. The
+    /// layer is of `kind`, or the asset's default kind; nil if the asset's
+    /// clips can't go on that kind of layer.
     @discardableResult
     mutating func addScenes(
         _ scenes: [SceneRange],
         ofAsset assetID: UUID,
         intoTimeline timelineID: UUID,
-        at start: CMTime = .zero
+        at start: CMTime = .zero,
+        kind: LayerKind? = nil
     ) -> (layerID: UUID, clipIDs: [UUID])? {
         guard !scenes.isEmpty, mediaClip(id: assetID) != nil,
               let index = timelines.firstIndex(where: { $0.id == timelineID })
         else { return nil }
+        let kind = kind ?? defaultLayerKind(forAsset: assetID)
 
         let timeline = timelines[index]
         var offset = start
@@ -90,10 +94,11 @@ extension EditingProject {
                 in: timeline
             )
             clip.startOffset = timeline.placementTime(CMTimeMaximum(.zero, offset), .nearest, frameLocked: isFrameLocked(clip))
+            guard layerKind(kind, accepts: clip) else { return nil }
             added.append(clip)
             offset = clip.endOffset
         }
-        let layer = TimelineLayer(customName: nil, clips: added)
+        let layer = TimelineLayer(customName: nil, kind: kind, clips: added)
         timelines[index].layers.insert(layer, at: 0)
         return (layer.id, added.map(\.id))
     }
@@ -102,7 +107,8 @@ extension EditingProject {
 extension EditingProject {
     /// Puts scenes on an existing layer, back to back from near `start`,
     /// each moved to the nearest gap it fits in. Nothing is added unless
-    /// every scene fits; returns the new clips' IDs.
+    /// every scene fits, and the layer is the right kind for them; returns
+    /// the new clips' IDs.
     @discardableResult
     mutating func addScenes(
         _ scenes: [SceneRange],
@@ -125,7 +131,9 @@ extension EditingProject {
                 TimelineClip(source: .media(assetID), startOffset: .zero, trimStart: scene.start, trimEnd: scene.end),
                 in: timeline
             )
-            guard let placed = freeStart(for: clip, among: clips, in: timeline, near: cursor) else { return nil }
+            guard layerKind(timeline.layers[lIndex].kind, accepts: clip),
+                  let placed = freeStart(for: clip, among: clips, in: timeline, near: cursor)
+            else { return nil }
             clip.startOffset = placed
             clips.append(clip)
             added.append(clip.id)
