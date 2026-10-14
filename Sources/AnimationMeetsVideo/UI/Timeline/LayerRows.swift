@@ -421,7 +421,8 @@ struct ClipBlockView: View {
     @State private var pendingDrop: Int?
     @State private var dropCount = 0
     @State private var isTrimming = false
-    /// Whether a move drag is under way.
+    /// Picked up by a move drag: drawn raised off the track, with an
+    /// outline left where it came from.
     @State private var isLifted = false
     @State private var isTransitionTarget = false
     /// Where the blade would cut, in the row's coordinates, while hovering.
@@ -486,6 +487,20 @@ struct ClipBlockView: View {
                     .allowsHitTesting(false)
             }
 
+            if isLifted {
+                // The slot the clip was picked up from. It stays on the
+                // clip's own layer while the clip is carried to another.
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .fill(Color.black.opacity(0.22))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                            .strokeBorder(typeColor.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                    }
+                    .frame(width: baseWidth, height: height)
+                    .offset(x: baseX, y: -(previewTarget?.offsetY ?? 0))
+                    .allowsHitTesting(false)
+            }
+
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: Design.Space.tight) {
                     if case .timeline = clip.source {
@@ -538,8 +553,15 @@ struct ClipBlockView: View {
             // timeline that redraws as you scrub, and the look of a stack
             // of cards rather than of blocks set into a track.
             .shadow(color: .black.opacity(isSelected ? 0.55 : 0), radius: isSelected ? 6 : 0, y: 1)
+            // Picked up: a little larger, raised, and casting a longer
+            // shadow on the track, so it reads as held above the other
+            // clips rather than sliding among them.
+            .scaleEffect(isLifted ? 1.04 : 1)
+            .shadow(color: .black.opacity(isLifted ? 0.5 : 0), radius: isLifted ? 10 : 0, y: isLifted ? 7 : 0)
+            .offset(y: isLifted ? -3 : 0)
             .confirmFlash(token: landedCount, color: Design.textOnColor)
             .editorAnimation(Design.Motion.select, value: isSelected)
+            .editorAnimation(Design.Motion.select, value: isLifted)
             .dropDestination(for: TransitionDragPayload.self) { payloads, location in
                 guard acceptsTransitions, let payload = payloads.first else { return false }
                 // The nearer end of the clip gets the transition.
