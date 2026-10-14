@@ -207,7 +207,7 @@ struct BeatMarkerOverlay: View {
     /// from the first beat of the track so the same beats stay drawn while
     /// scrolling. Uses the average beat length, so a changing tempo thins
     /// evenly rather than by its fastest stretch.
-    static func beatsPerMarker(_ markers: [CMTime], pixelsPerSecond: CGFloat) -> Int {
+    nonisolated static func beatsPerMarker(_ markers: [CMTime], pixelsPerSecond: CGFloat) -> Int {
         guard markers.count > 1, let first = markers.first, let last = markers.last else { return 1 }
         let averageSpacing = CGFloat((last.seconds - first.seconds) / Double(markers.count - 1)) * pixelsPerSecond
         guard averageSpacing > 0 else { return 1 }
@@ -221,7 +221,7 @@ struct BeatMarkerOverlay: View {
     /// The markers drawn at this zoom: every `beatsPerMarker`-th, counted
     /// from the first. Snapping uses only these, so it never catches on a
     /// beat that isn't shown.
-    static func drawnMarkers(_ markers: [CMTime], pixelsPerSecond: CGFloat) -> [CMTime] {
+    nonisolated static func drawnMarkers(_ markers: [CMTime], pixelsPerSecond: CGFloat) -> [CMTime] {
         let stride = beatsPerMarker(markers, pixelsPerSecond: pixelsPerSecond)
         guard stride > 1 else { return markers }
         return Swift.stride(from: 0, to: markers.count, by: stride).map { markers[$0] }
