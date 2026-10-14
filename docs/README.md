@@ -14,7 +14,7 @@ document lists what remains).
 | [layer-transforms.md](layer-transforms.md) | Implemented (core). Position, scale, rotation and opacity per layer, keyframed in the timeline (P, S, R, T) and inspector, and arithmetic in numeric fields. |
 | [timeline.md](timeline.md) | Implemented. Zooming and scrolling the timeline, the ruler's tick grouping, the playhead, frame-locked moving and trimming of clips, linked and detached audio, and transitions. |
 | [media-replacement.md](media-replacement.md) | Implemented (core). Replacing a file with a different version ("bait and switch"), the reference data that makes it safe, and how mismatches are handled. |
-| [rendering.md](rendering.md) | Viewer quality implemented; render cache planned. Drawing the viewer at reduced size (Auto, Full, Half, Quarter) and rendering full-size frames in the background when idle. |
+| [rendering.md](rendering.md) | Implemented. Drawing the viewer at reduced size (Auto, Full, Half, Quarter) and rendering full-size frames in the background when idle. |
 | [project-package.md](project-package.md) | The on-disk project format: a package folder with a JSON project file, assets, reference data, and a render cache. |
 
 ## Shared principles

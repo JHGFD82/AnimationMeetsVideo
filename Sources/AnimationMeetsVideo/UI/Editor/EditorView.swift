@@ -22,6 +22,7 @@ struct EditorView: View {
     @State private var playback = PlaybackModel()
     @State private var annotations = AnnotationModel()
     @State private var externalDisplay = ExternalDisplayController()
+    @State private var renderer = RenderScheduler()
 
     init(
         project: Binding<EditingProject>,
@@ -62,6 +63,7 @@ struct EditorView: View {
                     Divider()
                 }
             }
+            .environment(renderer)
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .onChange(of: project.id) { _, _ in
@@ -73,6 +75,7 @@ struct EditorView: View {
             keepViewStateValid(for: newValue)
         }
         .onChange(of: AssetAnalysis.inputs(of: project)) { _, _ in analysis.analyzeMissing(in: project) }
+        .onChange(of: packageURL, initial: true) { _, url in renderer.packageURL = url }
         .onAppear {
             connectHistory()
             analysis.analyzeMissing(in: project)

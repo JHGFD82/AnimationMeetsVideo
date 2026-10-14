@@ -1,6 +1,7 @@
 # Rendering and smooth playback
 
-Status: **viewer quality implemented**; the render cache is **planned**.
+Status: **implemented**: viewer quality and the render cache. Export
+doesn't reuse renders yet.
 
 Transitions, keyframed layer transforms, and soon video effects and
 adjustment layers make some stretches of a timeline too expensive to draw
@@ -42,28 +43,52 @@ Limits:
 - Changing size during playback swaps the composition, which can cause a
   brief hitch. Auto changes rarely for that reason.
 
-## Render cache (planned)
+## Render cache (implemented)
 
-- **Segments, not clips.** The timeline is split where what is drawn
-  changes. A transition spans two clips, and a layer above (or an
-  adjustment layer) changes everything under it, so caching by clip would
-  be wrong. A segment that is one untransformed clip plays straight from
-  its source and is never rendered.
-- **Keyed by content.** Each segment's key hashes everything that affects
-  its frames: source files and their stamps, trims, transforms and
-  keyframes, transitions, effects, frame size, frame rate and color space.
-  An edit invalidates only the segments whose hash changes. Old renders
-  stay until evicted, so undo finds them again.
-- **Format.** ProRes in `Cache/`, the codec export writes, so export can
-  reuse finished segments. The folder is size-capped and evicts least
-  recently used first (see [project-package.md](project-package.md)).
-- **Playback.** A finished segment plays from its cached file instead of
-  being composited live, at full size whatever the viewer quality.
-- **Background rendering only when idle.** Any edit, scrub or playback
-  pauses rendering; it resumes after about two seconds of quiet. A segment
-  whose key changes mid-render is cancelled. Rendering also backs off
-  under thermal pressure or on battery.
-- **Indicators.** A thin strip under the ruler shows each segment as
-  needing a render, rendering, or done. The clip, transition or
-  adjustment layer that causes a render shows a progress bar on its own bar
-  in the timeline.
+- **Segments, not clips.** Every build of the timeline splits it where any
+  layer's footage starts or ends (`RenderSegment`). A transition spans two
+  clips, and a layer above changes everything under it, so caching by clip
+  would be wrong. A stretch with one layer drawn the same way throughout
+  plays straight from its file and is never rendered; one with several
+  layers, or with anything keyframed or transitioning, is. Those are cut
+  into pieces of at most 96 frames, so a render stopped by an edit loses
+  little and finished pieces play as soon as they're done.
+- **Keyed by content.** Each piece's key is a hash of everything that
+  decides its frames: each layer's file, its size and date on disk, the
+  file time it starts at, and the transform, opacity, crop and film-dissolve
+  state on every frame, plus the frame size, rate and color space. Where the
+  piece sits in the timeline is left out, so moving clips keeps their
+  renders, and old renders stay until evicted, so undo finds them again.
+  `RenderSegment.formatVersion` is bumped when drawing changes in a way the
+  key can't see. Effects will add their settings to the key.
+- **Format.** ProRes 422 without sound in `Cache/Renders/<key>.mov`, drawn
+  by the export compositor. A render is written as `<key>.partial.mov` and
+  renamed when done; leftovers are deleted when the project opens. The
+  folder is capped at 20 GB and evicts least recently used first (playing
+  a render counts as using it), never a render the current timeline uses.
+- **Playback.** When the viewer's composition is built, each piece with a
+  render plays it from its own track instead of compositing the layers.
+  Renders play through the same compositor at the viewer's quality, which
+  is cheap since there is one layer to draw.
+- **Background rendering only when idle.** `RenderScheduler` renders one
+  piece at a time, in timeline order. Any edit, scrub or playback stops the
+  render in progress (it starts over later); rendering resumes after two
+  seconds of quiet. It also waits while the Mac is hot (serious or
+  critical thermal state) or in Low Power Mode. A piece that fails to
+  render is not retried until the project is reopened. Each finished piece
+  rebuilds the viewer's composition so it is used at once.
+- **Indicators.** A thin strip along the bottom of the ruler shows each
+  piece as needing a render (orange), rendering (filling in green), or
+  rendered (green); stretches that need no render show nothing. Each clip
+  that takes part in a piece still to render has a progress bar along its
+  bottom edge until all of its pieces are done. Clips inside a nested
+  timeline count toward the nested timeline's clip.
+
+Not yet done:
+
+- Export doesn't reuse renders yet.
+- Only the timeline in the main window is rendered; the external display's
+  own editing mode doesn't render.
+- A render stopped partway starts over rather than resuming.
+- Adjustment layers and effects don't exist yet; their settings will need to
+  join the key, and their progress bar will go on the adjustment layer.

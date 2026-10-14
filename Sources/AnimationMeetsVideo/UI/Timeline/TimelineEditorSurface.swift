@@ -13,6 +13,8 @@ struct TimelineEditorSurface<Library: View>: View {
     let playback: PlaybackModel
     let analysis: AssetAnalysis
     @ViewBuilder let library: () -> Library
+    /// Renders in the background; absent in windows that don't render.
+    @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
 
     @State private var playheadTime: CMTime = .zero
     @State private var buildTask: Task<Void, Never>?
@@ -109,6 +111,17 @@ struct TimelineEditorSurface<Library: View>: View {
             rebuildPlayerItem(resetPosition: true)
         }
         .onChange(of: compositionKey) { _, _ in
+            renderer?.noteActivity()
+            rebuildPlayerItem()
+        }
+        .onChange(of: playback.isPlaying) { _, playing in
+            renderer?.setPlaying(playing)
+        }
+        // A finished render plays once the item is rebuilt with it.
+        .onChange(of: renderer?.finishedCount) { _, _ in
+            rebuildPlayerItem()
+        }
+        .onChange(of: renderer?.packageURL) { _, _ in
             rebuildPlayerItem()
         }
         .onChange(of: playback.currentTime) { _, newValue in
@@ -211,6 +224,7 @@ struct TimelineEditorSurface<Library: View>: View {
     /// stacked together), not just one selected clip, so no per-clip time
     /// translation is needed here.
     private func scrub(to time: CMTime) {
+        renderer?.noteActivity()
         playheadTime = time
         playback.seek(to: time)
     }
@@ -223,6 +237,7 @@ struct TimelineEditorSurface<Library: View>: View {
         guard let timeline, !timeline.layers.isEmpty else {
             playback.player.replaceCurrentItem(with: nil)
             buildError = nil
+            renderer?.update(project: project, timelineID: timelineID, segments: [])
             return
         }
         let project = self.project
@@ -230,12 +245,14 @@ struct TimelineEditorSurface<Library: View>: View {
         let player = playback.player
         let playback = playback
         let frameRate = timeline.frameRate
+        let renderer = renderer
         buildTask = Task {
             do {
                 let composed = try await CompositionExporter.buildComposedTimeline(
-                    for: project, timelineID: tID, forPreview: true, meter: playback.meter
+                    for: project, timelineID: tID, forPreview: true, meter: playback.meter, cache: renderer?.cache
                 )
                 guard !Task.isCancelled else { return }
+                renderer?.update(project: project, timelineID: tID, segments: composed.segments)
                 let wasPlaying = player.timeControlStatus != .paused
                 let resumeTime = resetPosition ? playheadTime : player.currentTime()
                 let item = AVPlayerItem(asset: composed.composition)

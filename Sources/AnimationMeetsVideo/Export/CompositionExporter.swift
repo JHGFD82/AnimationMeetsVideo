@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreMedia
+import CryptoKit
 import Foundation
 
 enum ProResPreset: String, CaseIterable, Identifiable {
@@ -37,9 +38,14 @@ enum CompositionError: LocalizedError {
 /// A composition plus the video-compositing instructions needed to stack
 /// its layers — shared by both the live preview player and file export, so
 /// what you see while editing is exactly what gets rendered out.
-struct ComposedTimeline {
+/// Not mutated once built, so it can be handed to a background render.
+struct ComposedTimeline: @unchecked Sendable {
     var composition: AVMutableComposition
     var videoComposition: AVMutableVideoComposition?
+    /// The timeline split where what is drawn changes, in order.
+    var segments: [RenderSegment] = []
+    /// Keys of the segments drawn from the render cache.
+    var cachedKeys: Set<String> = []
 
     /// The video composition drawn at `scale` of the timeline's frame size,
     /// for the viewer. Only one built for preview can be drawn smaller: its
@@ -240,6 +246,9 @@ private struct Placement {
     /// each play only one.
     let includesVideo: Bool
     let includesAudio: Bool
+    /// The clip in the built timeline it belongs to: the clip itself, or
+    /// the nested timeline's clip it is drawn through.
+    let owner: UUID
 }
 
 /// An ordered run of non-overlapping placements that share composition
@@ -251,6 +260,17 @@ private struct FlatLayer {
 private struct VideoSegment {
     let timeRange: CMTimeRange
     let animation: PlacementAnimation
+    let sourceURL: URL
+    /// The file time drawn at `timeRange.start`.
+    let sourceStart: CMTime
+    let owner: UUID
+}
+
+/// A stretch of the timeline with the layers that show in it, top first.
+private struct PlannedRange {
+    var range: CMTimeRange
+    var shown: [(layer: VideoLayer, segment: VideoSegment)]
+    var segment: RenderSegment
 }
 
 private struct VideoLayer {
@@ -267,12 +287,13 @@ enum CompositionExporter {
 
     /// With `forPreview` every frame is drawn by `LayeredCompositor`, so the
     /// viewer can draw it at a reduced size and `meter` hears how long each
-    /// frame took.
+    /// frame took. Segments already rendered into `cache` play from there.
     static func buildComposedTimeline(
         for project: EditingProject,
         timelineID: UUID,
         forPreview: Bool = false,
-        meter: RenderMeter? = nil
+        meter: RenderMeter? = nil,
+        cache: RenderCache? = nil
     ) async throws -> ComposedTimeline {
         guard let timeline = project.timeline(id: timelineID), !timeline.layers.isEmpty else {
             throw CompositionError.emptyTimeline
@@ -286,7 +307,8 @@ enum CompositionExporter {
             window: window,
             offset: .zero,
             outer: [],
-            toOuter: .identity
+            toOuter: .identity,
+            rootClipID: nil
         )
 
         let composition = AVMutableComposition()
@@ -307,7 +329,10 @@ enum CompositionExporter {
                         }
                         let at = CMTimeAdd(placement.start, CMTimeSubtract(range.start, placement.sourceRange.start))
                         try videoTrack?.insertTimeRange(range, of: sourceVideo, at: at)
-                        segments.append(VideoSegment(timeRange: CMTimeRange(start: at, duration: range.duration), animation: placement.animation))
+                        segments.append(VideoSegment(
+                            timeRange: CMTimeRange(start: at, duration: range.duration), animation: placement.animation,
+                            sourceURL: info.asset.url, sourceStart: range.start, owner: placement.owner
+                        ))
                     }
                 }
                 if let sourceAudio = info.audio, placement.includesAudio {
@@ -331,16 +356,28 @@ enum CompositionExporter {
             throw CompositionError.emptyTimeline
         }
 
+        var plan = planRanges(
+            layers: videoLayers, overallDuration: composition.duration,
+            frameSize: timeline.frameSize, frameRate: timeline.frameRate, colorSpace: timeline.colorSpace
+        )
+        var cachedKeys: Set<String> = []
+        if forPreview, let cache {
+            cachedKeys = try await substituteCachedRanges(&plan, from: cache, into: composition)
+        }
+
         let videoComposition = Self.buildVideoComposition(
-            layers: videoLayers,
-            overallDuration: composition.duration,
+            plan: plan,
+            hasLayers: !videoLayers.isEmpty,
             renderSize: timeline.frameSize,
             frameRate: timeline.frameRate,
             colorSpace: timeline.colorSpace,
             layered: forPreview,
             meter: meter
         )
-        return ComposedTimeline(composition: composition, videoComposition: videoComposition)
+        return ComposedTimeline(
+            composition: composition, videoComposition: videoComposition,
+            segments: plan.map(\.segment), cachedKeys: cachedKeys
+        )
     }
 
     /// Resolves a timeline (recursively expanding nested timelines) into flat
@@ -357,7 +394,8 @@ enum CompositionExporter {
         window: CMTimeRange,
         offset: CMTime,
         outer: [TransformStage],
-        toOuter: CGAffineTransform
+        toOuter: CGAffineTransform,
+        rootClipID: UUID?
     ) async throws -> [FlatLayer] {
         guard !visiting.contains(timelineID) else {
             throw CompositionError.cyclicTimeline
@@ -397,7 +435,7 @@ enum CompositionExporter {
                     if let placement = try await mediaPlacement(
                         of: clip, from: clip.trimStart, at: clip.startOffset, for: clip.trimmedDuration,
                         project: project, frameSize: timeline.frameSize, window: window, offset: offset, stages: stages,
-                        includesVideo: clip.streams != .audio, includesAudio: clip.streams != .video
+                        owner: rootClipID ?? clip.id, includesVideo: clip.streams != .audio, includesAudio: clip.streams != .video
                     ) {
                         own.placements.append(placement)
                     }
@@ -414,7 +452,7 @@ enum CompositionExporter {
                     if lead > .zero, let placement = try await mediaPlacement(
                         of: clip, from: CMTimeSubtract(clip.trimStart, lead), at: CMTimeSubtract(clip.startOffset, lead), for: lead,
                         project: project, frameSize: timeline.frameSize, window: window, offset: offset, stages: stages,
-                        includesVideo: true, includesAudio: false
+                        owner: rootClipID ?? clip.id, includesVideo: true, includesAudio: false
                     ) {
                         overlay.placements.append(placement)
                     }
@@ -422,7 +460,7 @@ enum CompositionExporter {
                        let placement = try await mediaPlacement(
                            of: previous, from: previous.trimEnd, at: clip.startOffset, for: durations.leading,
                            project: project, frameSize: timeline.frameSize, window: window, offset: offset,
-                           stages: neighborStages, includesVideo: true, includesAudio: false
+                           stages: neighborStages, owner: rootClipID ?? clip.id, includesVideo: true, includesAudio: false
                        ) {
                         underlay.placements.append(placement)
                     }
@@ -431,7 +469,7 @@ enum CompositionExporter {
                            of: next, from: CMTimeSubtract(next.trimStart, durations.trailing),
                            at: CMTimeSubtract(clip.endOffset, durations.trailing), for: durations.trailing,
                            project: project, frameSize: timeline.frameSize, window: window, offset: offset,
-                           stages: neighborStages, includesVideo: true, includesAudio: false
+                           stages: neighborStages, owner: rootClipID ?? clip.id, includesVideo: true, includesAudio: false
                        ) {
                         underlay.placements.append(placement)
                     }
@@ -447,7 +485,8 @@ enum CompositionExporter {
                         window: nestedWindow,
                         offset: CMTimeAdd(offset, shift),
                         outer: stages,
-                        toOuter: fitTransform(from: nested.frameSize, to: timeline.frameSize)
+                        toOuter: fitTransform(from: nested.frameSize, to: timeline.frameSize),
+                        rootClipID: rootClipID ?? clip.id
                     )
                 }
             }
@@ -475,6 +514,7 @@ enum CompositionExporter {
         window: CMTimeRange,
         offset: CMTime,
         stages: [TransformStage],
+        owner: UUID,
         includesVideo: Bool,
         includesAudio: Bool
     ) async throws -> Placement? {
@@ -496,7 +536,8 @@ enum CompositionExporter {
             start: CMTimeAdd(visible.start, offset),
             animation: PlacementAnimation(base: base, stages: stages),
             includesVideo: includesVideo,
-            includesAudio: includesAudio
+            includesAudio: includesAudio,
+            owner: owner
         )
     }
 
@@ -510,21 +551,17 @@ enum CompositionExporter {
         ))
     }
 
-    /// Builds the per-time-range layer stacking instructions. Breakpoints come
-    /// from every video segment's start/end across all layers, and a layer
-    /// only contributes to a sub-range that one of its segments fully covers
-    /// (top layer first). Gaps produce empty instructions, which render black.
-    private static func buildVideoComposition(
+    /// Splits the timeline where any layer's segment starts or ends, and a
+    /// layer shows in a stretch only where one of its segments covers all
+    /// of it (top layer first). Stretches that need rendering are cut into
+    /// pieces of at most `RenderSegment.maxFrames` frames.
+    private static func planRanges(
         layers: [VideoLayer],
         overallDuration: CMTime,
-        renderSize: CGSize,
+        frameSize: CGSize,
         frameRate: Double,
-        colorSpace: ProjectColorSpace,
-        layered: Bool,
-        meter: RenderMeter?
-    ) -> AVMutableVideoComposition? {
-        guard !layers.isEmpty else { return nil }
-
+        colorSpace: ProjectColorSpace
+    ) -> [PlannedRange] {
         var breakpoints: [CMTime] = [.zero]
         for layer in layers {
             for segment in layer.segments {
@@ -538,6 +575,136 @@ enum CompositionExporter {
         breakpoints.append(overallDuration)
 
         let frame = frameDuration(for: frameRate)
+        let piece = CMTimeMultiply(frame, multiplier: Int32(RenderSegment.maxFrames))
+        var plan: [PlannedRange] = []
+        for index in 0..<(breakpoints.count - 1) {
+            let whole = CMTimeRange(start: breakpoints[index], end: breakpoints[index + 1])
+            guard whole.duration > .zero else { continue }
+            let shown = layers.compactMap { layer -> (layer: VideoLayer, segment: VideoSegment)? in
+                guard let segment = layer.segments.first(where: { $0.timeRange.start <= whole.start && $0.timeRange.end >= whole.end }) else {
+                    return nil
+                }
+                return (layer, segment)
+            }
+            let owners = Set(shown.map(\.segment.owner))
+            // One layer drawn the same way throughout plays straight from
+            // its file; stacking or anything changing over time is rendered.
+            let needsRender = whole.duration >= frame && (shown.count > 1 || shown.contains { item in
+                item.segment.animation.animatedRanges.contains { animated in
+                    let overlap = animated.intersection(whole)
+                    return overlap.isValid && overlap.duration > .zero
+                }
+            })
+            guard needsRender else {
+                plan.append(PlannedRange(
+                    range: whole, shown: shown,
+                    segment: RenderSegment(range: whole, key: "", needsRender: false, clipIDs: owners)
+                ))
+                continue
+            }
+            var start = whole.start
+            while start < whole.end {
+                let range = CMTimeRange(start: start, end: CMTimeMinimum(CMTimeAdd(start, piece), whole.end))
+                let key = renderKey(
+                    for: range, shown: shown, frame: frame,
+                    frameSize: frameSize, frameRate: frameRate, colorSpace: colorSpace
+                )
+                plan.append(PlannedRange(
+                    range: range, shown: shown,
+                    segment: RenderSegment(range: range, key: key, needsRender: true, clipIDs: owners)
+                ))
+                start = range.end
+            }
+        }
+        return plan
+    }
+
+    /// A hash of everything that decides a stretch's frames: each layer's
+    /// file, its version on disk and the file time it starts at, and how it
+    /// is drawn on every frame. Where the stretch sits in the timeline is
+    /// left out, so moving it keeps its render.
+    private static func renderKey(
+        for range: CMTimeRange,
+        shown: [(layer: VideoLayer, segment: VideoSegment)],
+        frame: CMTime,
+        frameSize: CGSize,
+        frameRate: Double,
+        colorSpace: ProjectColorSpace
+    ) -> String {
+        func number(_ value: Double) -> String { String(format: "%.5f", value) }
+        let frames = Int((range.duration.seconds / frame.seconds).rounded(.up))
+        var text = "v\(RenderSegment.formatVersion) \(number(frameSize.width))x\(number(frameSize.height)) \(number(frameRate)) \(colorSpace.rawValue) \(frames)\n"
+        for (_, segment) in shown {
+            let stamp = FileStamp(url: segment.sourceURL)
+            let fileStart = CMTimeAdd(segment.sourceStart, CMTimeSubtract(range.start, segment.timeRange.start))
+            text += "\(segment.sourceURL.path) \(stamp?.byteCount ?? -1) \(number(stamp?.modified ?? 0)) \(number(fileStart.seconds))\n"
+            let animation = segment.animation
+            for index in 0..<frames {
+                let time = CMTimeAdd(range.start, CMTimeMultiply(frame, multiplier: Int32(index)))
+                let t = animation.transform(at: time)
+                text += [t.a, t.b, t.c, t.d, t.tx, t.ty, Double(animation.opacity(at: time))].map(number).joined(separator: " ")
+                if let crop = animation.cropRectangle(at: time) {
+                    text += " c" + [crop.minX, crop.minY, crop.width, crop.height].map(number).joined(separator: " ")
+                }
+                if let reveal = animation.lumaReveal(at: time) {
+                    text += " r\(number(reveal.progress)) \(reveal.keysIncoming)"
+                }
+                text += "\n"
+            }
+        }
+        return SHA256.hash(data: Data(text.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Puts the cached render of each stretch that has one on a track of
+    /// its own, and has the stretch show only that. Returns the keys used.
+    private static func substituteCachedRanges(
+        _ plan: inout [PlannedRange],
+        from cache: RenderCache,
+        into composition: AVMutableComposition
+    ) async throws -> Set<String> {
+        var used: Set<String> = []
+        var track: AVMutableCompositionTrack?
+        for index in plan.indices where plan[index].segment.needsRender {
+            let segment = plan[index].segment
+            guard let file = cache.file(for: segment.key),
+                  let info = try? await MediaTrackCache.shared.info(for: file),
+                  let video = info.video,
+                  info.videoRange.duration >= segment.range.duration
+            else {
+                continue
+            }
+            if track == nil {
+                track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+            }
+            guard let track else { break }
+            let source = CMTimeRange(start: info.videoRange.start, duration: segment.range.duration)
+            try track.insertTimeRange(source, of: video, at: segment.range.start)
+            let rendered = VideoLayer(track: track, segments: [])
+            let drawn = VideoSegment(
+                timeRange: segment.range, animation: PlacementAnimation(base: .identity, stages: []),
+                sourceURL: file, sourceStart: source.start, owner: UUID()
+            )
+            plan[index].shown = [(rendered, drawn)]
+            cache.markUsed(segment.key)
+            used.insert(segment.key)
+        }
+        return used
+    }
+
+    /// The per-stretch layer stacking instructions. Gaps produce empty
+    /// instructions, which render black.
+    private static func buildVideoComposition(
+        plan: [PlannedRange],
+        hasLayers: Bool,
+        renderSize: CGSize,
+        frameRate: Double,
+        colorSpace: ProjectColorSpace,
+        layered: Bool,
+        meter: RenderMeter?
+    ) -> AVMutableVideoComposition? {
+        guard hasLayers else { return nil }
+
+        let frame = frameDuration(for: frameRate)
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = renderSize
         videoComposition.frameDuration = frame
@@ -545,46 +712,28 @@ enum CompositionExporter {
         // The built-in compositor draws everything else exactly; for export
         // only a film dissolve needs ours, so it is used just for timelines
         // with one.
-        if layered || layers.contains(where: { $0.segments.contains { $0.animation.hasLumaReveal } }) {
-            var instructions: [LayeredInstruction] = []
-            for index in 0..<(breakpoints.count - 1) {
-                let range = CMTimeRange(start: breakpoints[index], end: breakpoints[index + 1])
-                guard range.duration > .zero else { continue }
-                let shown = layers.compactMap { layer -> LayeredInstruction.Layer? in
-                    guard let segment = layer.segments.first(where: { $0.timeRange.start <= range.start && $0.timeRange.end >= range.end }) else {
-                        return nil
-                    }
-                    return LayeredInstruction.Layer(trackID: layer.track.trackID, animation: segment.animation)
-                }
-                instructions.append(LayeredInstruction(
-                    timeRange: range, layers: shown, renderSize: renderSize, colorSpace: colorSpace, meter: meter
-                ))
-            }
+        if layered || plan.contains(where: { $0.shown.contains { $0.segment.animation.hasLumaReveal } }) {
             videoComposition.customVideoCompositorClass = LayeredCompositor.self
-            videoComposition.instructions = instructions
+            videoComposition.instructions = plan.map { planned in
+                LayeredInstruction(
+                    timeRange: planned.range,
+                    layers: planned.shown.map { LayeredInstruction.Layer(trackID: $0.layer.track.trackID, animation: $0.segment.animation) },
+                    renderSize: renderSize, colorSpace: colorSpace, meter: meter
+                )
+            }
             return videoComposition
         }
 
-        var instructions: [AVMutableVideoCompositionInstruction] = []
-        for index in 0..<(breakpoints.count - 1) {
-            let start = breakpoints[index]
-            let end = breakpoints[index + 1]
-            guard end > start else { continue }
-
+        videoComposition.instructions = plan.map { planned in
             let instruction = AVMutableVideoCompositionInstruction()
-            instruction.timeRange = CMTimeRange(start: start, end: end)
-            instruction.layerInstructions = layers.compactMap { layer in
-                guard let segment = layer.segments.first(where: { $0.timeRange.start <= start && $0.timeRange.end >= end }) else {
-                    return nil
-                }
-                let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: layer.track)
-                applyAnimation(segment.animation, to: layerInstruction, in: CMTimeRange(start: start, end: end), frame: frame)
+            instruction.timeRange = planned.range
+            instruction.layerInstructions = planned.shown.map { shown in
+                let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: shown.layer.track)
+                applyAnimation(shown.segment.animation, to: layerInstruction, in: planned.range, frame: frame)
                 return layerInstruction
             }
-            instructions.append(instruction)
+            return instruction
         }
-
-        videoComposition.instructions = instructions
         return videoComposition
     }
 

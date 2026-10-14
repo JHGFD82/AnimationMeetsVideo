@@ -226,6 +226,7 @@ struct TimelineView: View {
                             .frame(width: labelColumnWidth, alignment: .leading)
                         TimelineRuler(duration: timeline.duration, frameRate: timeline.frameRate, viewport: viewport)
                             .frame(width: viewport.width, height: rulerHeight)
+                            .overlay(alignment: .bottom) { RenderStatusStrip(viewport: viewport) }
                             .contentShape(Rectangle())
                             .gesture(scrubGesture(in: viewport))
                     }

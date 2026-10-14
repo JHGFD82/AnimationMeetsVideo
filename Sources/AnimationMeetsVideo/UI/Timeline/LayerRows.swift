@@ -304,6 +304,7 @@ struct ClipBlockView: View {
     @State private var dropCount = 0
     @State private var isTrimming = false
     @State private var isTransitionTarget = false
+    @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
 
     private let handleWidth: CGFloat = 8
     private let space = "clipBlock"
@@ -366,6 +367,11 @@ struct ClipBlockView: View {
             .background(typeColor.opacity(isSelected ? 0.6 : 0.35))
             .overlay(alignment: .topLeading) {
                 transitionMarks(of: shown, liveX: liveX, drawnX: drawnX, drawnWidth: drawnWidth)
+            }
+            .overlay(alignment: .bottomLeading) {
+                if let progress = renderer?.progress(forClip: clip.id) {
+                    RenderProgressBar(progress: progress)
+                }
             }
             .overlay(Rectangle().strokeBorder(
                 isTransitionTarget ? Color.accentColor : isSelected ? Color.white.opacity(0.9) : typeColor.opacity(0.8),
