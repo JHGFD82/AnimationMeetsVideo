@@ -36,9 +36,10 @@ per project:
 Limits:
 
 - A smaller size makes compositing cheaper, not decoding: every source is
-  still decoded at full size and converted to half float. A stack of 4K
-  sources can stutter at quarter size. Decoding SDR timelines to 8-bit
-  would halve that cost and is the next step if it matters.
+  still decoded at full size. To keep that cheap, the viewer decodes SDR
+  (Rec. 709) timelines into 8-bit BGRA (`SDRLayeredCompositor`), half the
+  memory traffic of the half floats HDR timelines and export use. A stack
+  of 4K sources can still stutter at quarter size; renders fix that.
 - The external display shows the same player, so it drops size too.
 - Changing size during playback swaps the composition, which can cause a
   brief hitch. Auto changes rarely for that reason.

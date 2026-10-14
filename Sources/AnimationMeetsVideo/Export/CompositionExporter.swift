@@ -717,7 +717,9 @@ enum CompositionExporter {
         // only a film dissolve needs ours, so it is used just for timelines
         // with one.
         if layered || plan.contains(where: { $0.shown.contains { $0.segment.animation.hasLumaReveal } }) {
-            videoComposition.customVideoCompositorClass = LayeredCompositor.self
+            // The viewer draws SDR timelines in 8 bits, which decodes cheaper.
+            videoComposition.customVideoCompositorClass = layered && colorSpace == .rec709
+                ? SDRLayeredCompositor.self : LayeredCompositor.self
             videoComposition.instructions = plan.map { planned in
                 LayeredInstruction(
                     timeRange: planned.range,

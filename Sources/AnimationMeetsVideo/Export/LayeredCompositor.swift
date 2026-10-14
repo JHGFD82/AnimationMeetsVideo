@@ -48,7 +48,7 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
 /// Like the built-in compositor it works on the frames' encoded values,
 /// without color management, so the two draw the same picture and the
 /// film dissolve keys on brightness as it looks rather than as light.
-final class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
+class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     private let context: CIContext = {
         let options: [CIContextOption: Any] = [
             .cacheIntermediates: false,
@@ -59,15 +59,18 @@ final class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable
     }()
     private let queue = DispatchQueue(label: "LayeredCompositor", qos: .userInitiated)
 
-    // Half floats keep HDR sources and timelines intact.
-    let sourcePixelBufferAttributes: [String: any Sendable]? = [
-        kCVPixelBufferPixelFormatTypeKey as String: [kCVPixelFormatType_64RGBAHalf],
-    ]
-    let requiredPixelBufferAttributesForRenderContext: [String: any Sendable] = [
-        kCVPixelBufferPixelFormatTypeKey as String: [kCVPixelFormatType_64RGBAHalf],
-    ]
-    let supportsWideColorSourceFrames = true
-    let supportsHDRSourceFrames = true
+    /// The format frames are decoded into and drawn in. Half floats keep
+    /// HDR sources and timelines intact.
+    class var pixelFormat: OSType { kCVPixelFormatType_64RGBAHalf }
+
+    var sourcePixelBufferAttributes: [String: any Sendable]? {
+        [kCVPixelBufferPixelFormatTypeKey as String: [Self.pixelFormat]]
+    }
+    var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] {
+        [kCVPixelBufferPixelFormatTypeKey as String: [Self.pixelFormat]]
+    }
+    var supportsWideColorSourceFrames: Bool { Self.pixelFormat == kCVPixelFormatType_64RGBAHalf }
+    var supportsHDRSourceFrames: Bool { Self.pixelFormat == kCVPixelFormatType_64RGBAHalf }
 
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {}
 
@@ -164,6 +167,14 @@ final class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable
                 "inputMaxComponents": CIVector(x: 1, y: 1, z: 1, w: 1),
             ])
     }
+}
+
+/// The viewer's compositor for SDR timelines. Frames are decoded into 8-bit
+/// BGRA, half the size of half floats and with no conversion to float, so
+/// each frame costs less memory traffic; SDR pictures have no more
+/// precision to keep. Export and HDR timelines use `LayeredCompositor`.
+final class SDRLayeredCompositor: LayeredCompositor, @unchecked Sendable {
+    override class var pixelFormat: OSType { kCVPixelFormatType_32BGRA }
 }
 
 private extension ProjectColorSpace {

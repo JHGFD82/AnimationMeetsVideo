@@ -108,7 +108,7 @@ import Testing
         let composed = try await CompositionExporter.buildComposedTimeline(
             for: project, timelineID: project.rootTimelineID, forPreview: true, meter: meter
         )
-        #expect(composed.videoComposition?.customVideoCompositorClass == LayeredCompositor.self)
+        #expect(composed.videoComposition?.customVideoCompositorClass == SDRLayeredCompositor.self)
         let exported = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
         #expect(exported.videoComposition?.customVideoCompositorClass == nil)
 
@@ -131,5 +131,10 @@ import Testing
         context.draw(image, in: CGRect(x: -240, y: -135, width: 480, height: 270))
         #expect(abs(Int(pixels[1]) - 160) < 15)
         #expect(meter.drain().frames > 0)
+
+        // HDR keeps half floats in the viewer.
+        project.timelines[0].colorSpace = .rec2020PQ
+        let hdr = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID, forPreview: true)
+        #expect(hdr.videoComposition?.customVideoCompositorClass == LayeredCompositor.self)
     }
 }
