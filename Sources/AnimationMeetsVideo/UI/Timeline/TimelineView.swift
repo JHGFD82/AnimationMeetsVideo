@@ -386,9 +386,14 @@ struct TimelineView: View {
                 }
                 .background(
                     TimelineInputMonitor(
-                        onMagnify: { factor, x in
-                            guard x >= labelColumnWidth else { return }
-                            zoom(viewport, by: factor, aboutX: x - labelColumnWidth)
+                        onMagnify: { factor, axis, x, pointer in
+                            switch axis {
+                            case .horizontal:
+                                guard x >= labelColumnWidth else { return }
+                                zoom(viewport, by: factor, aboutX: x - labelColumnWidth)
+                            case .vertical:
+                                zoomLayerHeight(by: factor, at: pointer)
+                            }
                         },
                         onScroll: { deltaX, deltaY, flags, x in
                             guard x >= labelColumnWidth else { return false }
@@ -780,6 +785,13 @@ struct TimelineView: View {
         // Pinch events arrive faster than layout; build on the newest state.
         let viewport = viewport(width: laidOut.width)
         apply(viewport.zoomed(to: viewport.pixelsPerSecond * factor, keeping: viewport.seconds(atX: x), atX: x))
+    }
+
+    /// A vertical pinch: the layers of the area under the pointer grow or
+    /// shrink, and no other area's do.
+    private func zoomLayerHeight(by factor: CGFloat, at pointer: CGPoint) {
+        guard let kind = areaLayout.shown.first(where: { geometryStore.areas[$0]?.contains(pointer) == true }) else { return }
+        areaLayout.setLayerHeight(kind, areaLayout.layerHeight(kind) * factor)
     }
 
     /// The zoom buttons, keys and slider zoom about the playhead: it stays

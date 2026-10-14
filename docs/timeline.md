@@ -90,8 +90,14 @@ drop that makes the timeline longer does not rescale the clips on screen.
   at least one second) to drag clips into. The ruler shades that time.
 - Fully zoomed out, that whole span fits the window. Fully zoomed in, one
   frame is 80 points wide.
-- **Pinch** on a trackpad, or **Option-scroll**, zooms about the pointer:
-  the moment under the pointer stays under it.
+- **Pinch** on a trackpad, or **Option-scroll**, zooms time about the
+  pointer: the moment under the pointer stays under it.
+- **Pinch has two axes.** The line between the two fingers as they land
+  decides: side by side zooms time, as above; one above the other zooms
+  **layer height** in the area under the pointer, and only there. The axis
+  holds for the rest of that pinch. When the trackpad doesn't report
+  finger positions, a pinch zooms time and **Shift-pinch** zooms layer
+  height. Layer height is also a slider per area in the view options.
 - The **zoom buttons** in the timeline's header, the **-** and **=** keys
   and the **zoom slider** in the view options zoom about the playhead. The
   playhead stays where it is on screen, or comes to the middle if it was out

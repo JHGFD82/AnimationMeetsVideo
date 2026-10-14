@@ -1,13 +1,26 @@
 import AppKit
 import SwiftUI
 
+/// Which way a pinch zooms: across (time) or up and down (layer height).
+enum PinchAxis {
+    case horizontal, vertical
+}
+
 /// Pinch and scroll-wheel events over the view it backs, with the pointer's
 /// x in that view, so the timeline can zoom about the pointer and scroll
-/// itself sideways. Vertical scrolling is left for the scroll view around
-/// the layers.
+/// itself sideways. Vertical scrolling is left for the scroll views of the
+/// areas.
+///
+/// A pinch zooms along the line between the two fingers as they land:
+/// side by side zooms time, one above the other zooms layer height. The
+/// axis is fixed for the rest of that pinch, so a pinch that drifts doesn't
+/// flip between the two. Without finger positions (some input devices
+/// don't report them) a pinch zooms time, or layer height with Shift.
 struct TimelineInputMonitor: NSViewRepresentable {
-    /// Called with the factor to scale by and the pointer's x.
-    let onMagnify: (CGFloat, CGFloat) -> Void
+    /// Called with the factor to scale by, the axis, the pointer's x in
+    /// this view and the pointer in window coordinates (top-left origin,
+    /// as SwiftUI's global space).
+    let onMagnify: (CGFloat, PinchAxis, CGFloat, CGPoint) -> Void
     /// Called with a sideways distance in points (positive scrolls later in
     /// time). Return true to keep the event from scrolling anything else.
     let onScroll: (_ deltaX: CGFloat, _ deltaY: CGFloat, _ flags: NSEvent.ModifierFlags, _ x: CGFloat) -> Bool
@@ -29,9 +42,20 @@ struct TimelineInputMonitor: NSViewRepresentable {
     }
 
     final class MonitorView: NSView {
-        var onMagnify: ((CGFloat, CGFloat) -> Void)?
+        var onMagnify: ((CGFloat, PinchAxis, CGFloat, CGPoint) -> Void)?
         var onScroll: ((CGFloat, CGFloat, NSEvent.ModifierFlags, CGFloat) -> Bool)?
         private var monitor: Any?
+        /// The axis of the pinch in progress, fixed once its fingers are seen.
+        private var pinchAxis: PinchAxis?
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            // Gesture events then carry the fingers on the trackpad.
+            allowedTouchTypes = [.indirect]
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("not used") }
 
         /// Only watches events; clicks go to the views around it.
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -54,7 +78,13 @@ struct TimelineInputMonitor: NSViewRepresentable {
             guard bounds.contains(point) else { return false }
             switch event.type {
             case .magnify:
-                onMagnify?(1 + event.magnification, point.x)
+                if event.phase == .began || event.phase == .mayBegin { pinchAxis = nil }
+                let axis = pinchAxis ?? axis(of: event)
+                if pinchAxis == nil, fingerSpread(of: event) != nil { pinchAxis = axis }
+                if event.phase == .ended || event.phase == .cancelled { pinchAxis = nil }
+                let height = window.contentView?.bounds.height ?? 0
+                let global = CGPoint(x: event.locationInWindow.x, y: height - event.locationInWindow.y)
+                onMagnify?(1 + event.magnification, axis, point.x, global)
                 return true
             case .scrollWheel:
                 // A mouse wheel reports lines, not points.
@@ -64,6 +94,24 @@ struct TimelineInputMonitor: NSViewRepresentable {
             default:
                 return false
             }
+        }
+
+        /// The axis a pinch's fingers lie along, or by Shift without them.
+        private func axis(of event: NSEvent) -> PinchAxis {
+            if let spread = fingerSpread(of: event) {
+                return abs(spread.width) >= abs(spread.height) ? .horizontal : .vertical
+            }
+            return event.modifierFlags.contains(.shift) ? .vertical : .horizontal
+        }
+
+        /// The distance between the first two fingers on the trackpad, in
+        /// points of the trackpad's own surface; nil without two fingers.
+        private func fingerSpread(of event: NSEvent) -> CGSize? {
+            let touches = Array(event.touches(matching: .touching, in: self))
+            guard touches.count >= 2 else { return nil }
+            let size = touches[0].deviceSize
+            let a = touches[0].normalizedPosition, b = touches[1].normalizedPosition
+            return CGSize(width: (a.x - b.x) * size.width, height: (a.y - b.y) * size.height)
         }
 
         func stopMonitoring() {
