@@ -10,6 +10,8 @@ struct EditorToolbar: View {
     let annotations: AnnotationModel
     let externalDisplay: ExternalDisplayController
     let analysis: AssetAnalysis
+    /// Pauses for an export, whose ProRes 422 output reuses its renders.
+    let renderer: RenderScheduler
     @State private var selectedPreset: ProResPreset = .proRes422
     @State private var exportTask: Task<Void, Never>?
     @State private var exportProgress: Double = 0
@@ -60,6 +62,7 @@ struct EditorToolbar: View {
             }
             .pickerStyle(.menu)
             .frame(width: 150)
+            .help("ProRes 422 exports reuse the stretches already rendered in the background; ProRes 4444 composites everything from the sources.")
             if isExporting {
                 ProgressView(value: exportProgress)
                     .frame(width: 90)
@@ -94,15 +97,21 @@ struct EditorToolbar: View {
         let snapshot = project
         let timelineID = activeTimelineID
         let preset = selectedPreset
+        let cache = renderer.cache
         exportProgress = 0
+        renderer.setExporting(true)
         exportTask = Task {
-            defer { exportTask = nil }
+            defer {
+                exportTask = nil
+                renderer.setExporting(false)
+            }
             do {
                 try await CompositionExporter.export(
                     project: snapshot,
                     timelineID: timelineID,
                     preset: preset,
                     to: url,
+                    cache: cache,
                     progress: { fraction in
                         Task { @MainActor in exportProgress = fraction }
                     }

@@ -5,7 +5,7 @@ import QuartzCore
 
 /// Renders the viewed timeline's segments into the render cache in the
 /// background, one at a time, only while the timeline is idle: any edit,
-/// scrub or playback stops the render in progress, and rendering resumes
+/// scrub, playback or export stops the render in progress, and rendering resumes
 /// after `idleSeconds` (two) of quiet. It also waits while the Mac is hot or in
 /// Low Power Mode. A finished render bumps `finishedCount`, so the viewer
 /// rebuilds and plays it.
@@ -53,6 +53,7 @@ final class RenderScheduler {
     @ObservationIgnored private var exportBuild: (version: Int, composed: ComposedTimeline)?
     @ObservationIgnored private var lastActivity = CACurrentMediaTime()
     @ObservationIgnored private var isPlaying = false
+    @ObservationIgnored private var isExporting = false
     @ObservationIgnored private var worker: Task<Void, Never>?
     @ObservationIgnored private var job: Task<Void, Error>?
     /// Keys that couldn't be rendered, so they aren't tried again and again.
@@ -82,6 +83,12 @@ final class RenderScheduler {
 
     func setPlaying(_ playing: Bool) {
         isPlaying = playing
+        noteActivity()
+    }
+
+    /// An export needs the machine, so rendering waits until it's done.
+    func setExporting(_ exporting: Bool) {
+        isExporting = exporting
         noteActivity()
     }
 
@@ -120,7 +127,7 @@ final class RenderScheduler {
 
     private var isIdle: Bool {
         let thermal = ProcessInfo.processInfo.thermalState
-        return !isPlaying
+        return !isPlaying && !isExporting
             && CACurrentMediaTime() - lastActivity >= idleSeconds
             && thermal != .serious && thermal != .critical
             && !ProcessInfo.processInfo.isLowPowerModeEnabled

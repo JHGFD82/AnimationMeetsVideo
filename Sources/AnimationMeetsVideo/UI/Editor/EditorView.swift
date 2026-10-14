@@ -50,7 +50,8 @@ struct EditorView: View {
                 playback: playback,
                 annotations: annotations,
                 externalDisplay: externalDisplay,
-                analysis: analysis
+                analysis: analysis,
+                renderer: renderer
             )
             Divider()
             TimelineEditorSurface(project: $project, timelineID: $activeTimelineID, selection: $selection, playback: playback, analysis: analysis) {

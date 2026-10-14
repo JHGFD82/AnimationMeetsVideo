@@ -56,8 +56,12 @@ private struct RenderSandbox {
 
 /// The green level at the center of the frame at `time`.
 private func centerGray(of composed: ComposedTimeline, at time: CMTime) async throws -> Int {
-    let generator = AVAssetImageGenerator(asset: composed.composition)
-    generator.videoComposition = composed.videoComposition
+    try await centerGray(of: composed.composition, videoComposition: composed.videoComposition, at: time)
+}
+
+private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition? = nil, at time: CMTime) async throws -> Int {
+    let generator = AVAssetImageGenerator(asset: asset)
+    generator.videoComposition = videoComposition
     generator.requestedTimeToleranceBefore = .zero
     generator.requestedTimeToleranceAfter = .zero
     let image = try await generator.image(at: time).image
@@ -142,6 +146,30 @@ private func centerGray(of composed: ComposedTimeline, at time: CMTime) async th
         let drawn = try await centerGray(of: cached, at: time)
         #expect(expected > 100 && expected < 160)
         #expect(abs(drawn - expected) < 8)
+    }
+
+    @Test func a422ExportReusesRendersAndA4444ExportDoesNot() async throws {
+        let sandbox = try await RenderSandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = try sandbox.stackedProject()
+        let t = project.rootTimelineID
+        let cache = RenderCache(packageURL: sandbox.packageURL)
+        let exported = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
+        let firstRendered = exported.segments.first(where: \.needsRender)
+        try await SegmentRenderer.render(try #require(firstRendered), from: exported, into: cache)
+
+        let fast = sandbox.root.appending(path: "fast.mov")
+        let full = sandbox.root.appending(path: "full.mov")
+        let reused = try await CompositionExporter.export(project: project, timelineID: t, preset: .proRes422, to: fast, cache: cache)
+        let notReused = try await CompositionExporter.export(project: project, timelineID: t, preset: .proRes4444, to: full, cache: cache)
+
+        #expect(reused == 1)
+        #expect(notReused == 0)
+        let live = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
+        let time = CMTime(value: 30, timescale: 24)
+        let expected = try await centerGray(of: live, at: time)
+        let fromRender = try await centerGray(of: AVURLAsset(url: fast), at: time)
+        #expect(abs(fromRender - expected) < 8)
     }
 
     @Test func evictionDropsTheLeastRecentlyUsedFirstAndSparesKeptKeys() throws {

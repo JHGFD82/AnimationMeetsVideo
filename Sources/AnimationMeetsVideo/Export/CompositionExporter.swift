@@ -9,6 +9,10 @@ enum ProResPreset: String, CaseIterable, Identifiable {
 
     var id: Self { self }
 
+    /// Whether exports in this format may use the render cache, whose
+    /// renders are ProRes 422.
+    var reusesRenders: Bool { self == .proRes422 }
+
     var avPresetName: String {
         switch self {
         case .proRes422: AVAssetExportPresetAppleProRes422LPCM
@@ -361,7 +365,7 @@ enum CompositionExporter {
             frameSize: timeline.frameSize, frameRate: timeline.frameRate, colorSpace: timeline.colorSpace
         )
         var cachedKeys: Set<String> = []
-        if forPreview, let cache {
+        if let cache {
             cachedKeys = try await substituteCachedRanges(&plan, from: cache, into: composition)
         }
 
@@ -792,15 +796,23 @@ enum CompositionExporter {
     }
 
     /// Cancelling the calling task cancels the export, deletes the partial
-    /// file, and throws `CancellationError`.
+    /// file, and throws `CancellationError`. A ProRes 422 export plays the
+    /// stretches already rendered into `cache` from there instead of
+    /// compositing them again; renders are ProRes 422 themselves, so a 4444
+    /// export always composites from the sources to keep its extra detail.
+    /// Returns how many rendered segments were reused.
+    @discardableResult
     static func export(
         project: EditingProject,
         timelineID: UUID,
         preset: ProResPreset,
         to url: URL,
+        cache: RenderCache? = nil,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
-    ) async throws {
-        let composed = try await buildComposedTimeline(for: project, timelineID: timelineID)
+    ) async throws -> Int {
+        let composed = try await buildComposedTimeline(
+            for: project, timelineID: timelineID, cache: preset.reusesRenders ? cache : nil
+        )
 
         let isCompatible = await AVAssetExportSession.compatibility(
             ofExportPreset: preset.avPresetName,
@@ -839,5 +851,6 @@ enum CompositionExporter {
             }
             throw CompositionError.exportFailed(error.localizedDescription)
         }
+        return composed.cachedKeys.count
     }
 }

@@ -1,7 +1,7 @@
 # Rendering and smooth playback
 
-Status: **implemented**: viewer quality and the render cache. Export
-doesn't reuse renders yet.
+Status: **implemented**: viewer quality, the render cache, and export
+reusing renders.
 
 Transitions, keyframed layer transforms, and soon video effects and
 adjustment layers make some stretches of a timeline too expensive to draw
@@ -77,6 +77,13 @@ Limits:
   critical thermal state) or in Low Power Mode. A piece that fails to
   render is not retried until the project is reopened. Each finished piece
   rebuilds the viewer's composition so it is used at once.
+- **Export.** A ProRes 422 export plays every stretch that has a render
+  from the cache instead of compositing it again, which is much faster for
+  stacked or animated stretches. The render is encoded a second time, which
+  costs very little with ProRes 422. A ProRes 4444 export always
+  composites from the sources, since a 422 render would lose the extra
+  color detail 4444 is chosen for. Background rendering waits while an
+  export runs.
 - **Indicators.** A thin strip along the bottom of the ruler shows each
   piece as needing a render (orange), rendering (filling in green), or
   rendered (green); stretches that need no render show nothing. Each clip
@@ -86,7 +93,6 @@ Limits:
 
 Not yet done:
 
-- Export doesn't reuse renders yet.
 - Only the timeline in the main window is rendered; the external display's
   own editing mode doesn't render.
 - A render stopped partway starts over rather than resuming.
