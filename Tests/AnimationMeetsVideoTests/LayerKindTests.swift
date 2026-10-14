@@ -167,6 +167,16 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         #expect(Waveform.envelope(of: [0, 0, 0, 0], sampleRate: 400).peaks == [0, 0])
     }
 
+    @Test func stereoKeepsEachChannelScaledTogether() {
+        // Interleaved left, right; 400 samples a second, two frames a window.
+        let samples: [Float] = [0.5, 0.1, -0.2, 0.0, 0.0, -0.25, 0.1, 0.0]
+        let waveform = Waveform.envelope(ofInterleaved: samples, channelCount: 2, sampleRate: 400)
+        #expect(waveform.channels == [[1.0, 0.2], [0.2, 0.5]])
+        #expect(waveform.peaks == [1.0, 0.5])
+        #expect(waveform.peak(from: 0, to: 0.01, channel: 1) == 0.5)
+        #expect(waveform.peak(from: 0, to: 0.01, channel: 2) == 0)
+    }
+
     @Test func itFadesInAsLayersGrowTaller() {
         #expect(ClipWaveform.strength(atHeight: 44) == 0)
         #expect(ClipWaveform.strength(atHeight: 80) == 0.5)

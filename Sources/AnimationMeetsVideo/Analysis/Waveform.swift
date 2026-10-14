@@ -7,38 +7,69 @@ import Observation
 /// sample in each short window, scaled so the file's loudest moment is 1.
 /// Coarse on purpose: a clip is at most a few thousand points wide, and the
 /// whole envelope of a long song stays small enough to keep in memory.
+///
+/// Kept per channel (left and right for stereo; files with more channels
+/// are read mixed down to two), so a layer can show its channels apart.
 struct Waveform: Sendable, Equatable {
     /// Windows per second of the file.
     static let peaksPerSecond = 200.0
 
-    /// One per window, 0...1, from the start of the file.
+    /// One per window, 0...1, from the start of the file: the loudest of
+    /// any channel.
     let peaks: [Float]
+    /// The same for each channel on its own, all scaled together so the
+    /// loudest channel's loudest window is 1.
+    let channels: [[Float]]
 
-    /// The loudest window between two file times, in seconds, or 0 where
-    /// the file has no sound.
-    func peak(from start: Double, to end: Double) -> Float {
+    init(peaks: [Float]) {
+        self.peaks = peaks
+        channels = peaks.isEmpty ? [] : [peaks]
+    }
+
+    init(channels: [[Float]]) {
+        self.channels = channels
+        let count = channels.map(\.count).max() ?? 0
+        peaks = (0..<count).map { index in
+            channels.reduce(Float(0)) { max($0, index < $1.count ? $1[index] : 0) }
+        }
+    }
+
+    /// The loudest window between two file times, in seconds, of one
+    /// channel or (nil) of any; 0 where the file has no sound.
+    func peak(from start: Double, to end: Double, channel: Int? = nil) -> Float {
+        let values = channel.map { channels.indices.contains($0) ? channels[$0] : [] } ?? peaks
         let first = max(0, Int((start * Self.peaksPerSecond).rounded(.down)))
-        let last = min(peaks.count, max(first + 1, Int((end * Self.peaksPerSecond).rounded(.up))))
+        let last = min(values.count, max(first + 1, Int((end * Self.peaksPerSecond).rounded(.up))))
         guard first < last else { return 0 }
-        return peaks[first..<last].max() ?? 0
+        return values[first..<last].max() ?? 0
     }
 
     /// The envelope of mono samples at `sampleRate`, normalized to the
     /// loudest window.
     static func envelope(of samples: [Float], sampleRate: Double) -> Waveform {
+        envelope(ofInterleaved: samples, channelCount: 1, sampleRate: sampleRate)
+    }
+
+    /// The envelope of each channel of interleaved samples, normalized
+    /// together to the loudest window of any channel.
+    static func envelope(ofInterleaved samples: [Float], channelCount: Int, sampleRate: Double) -> Waveform {
+        let channelCount = max(1, channelCount)
         let window = max(1, Int(sampleRate / peaksPerSecond))
-        var peaks: [Float] = []
-        peaks.reserveCapacity(samples.count / window + 1)
-        var index = 0
-        while index < samples.count {
-            let end = min(samples.count, index + window)
-            var loudest: Float = 0
-            for sample in samples[index..<end] { loudest = max(loudest, abs(sample)) }
-            peaks.append(loudest)
-            index = end
+        let frames = samples.count / channelCount
+        var channels = [[Float]](repeating: [], count: channelCount)
+        for channel in channels.indices { channels[channel].reserveCapacity(frames / window + 1) }
+        var frame = 0
+        while frame < frames {
+            let end = min(frames, frame + window)
+            for channel in 0..<channelCount {
+                var loudest: Float = 0
+                for index in frame..<end { loudest = max(loudest, abs(samples[index * channelCount + channel])) }
+                channels[channel].append(loudest)
+            }
+            frame = end
         }
-        let top = peaks.max() ?? 0
-        return Waveform(peaks: top > 0 ? peaks.map { $0 / top } : peaks)
+        let top = channels.flatMap { $0 }.max() ?? 0
+        return Waveform(channels: top > 0 ? channels.map { $0.map { $0 / top } } : channels)
     }
 
     /// Reads the first audio track of a file. Cancelling stops the read.
@@ -46,13 +77,18 @@ struct Waveform: Sendable, Equatable {
         let sampleRate = 8_000.0
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else { return Waveform(peaks: []) }
+        // Two channels at most: more need a channel layout to be read, and
+        // the timeline only tells left from right.
+        let sourceChannels = try await track.load(.formatDescriptions).first
+            .flatMap { CMAudioFormatDescriptionGetStreamBasicDescription($0)?.pointee.mChannelsPerFrame } ?? 1
+        let channelCount = sourceChannels >= 2 ? 2 : 1
         let handedOver = HandedOver(value: track)
         return try await SampleReading.run { isCancelled in
             let reader = try AVAssetReader(asset: asset)
             let output = AVAssetReaderTrackOutput(track: handedOver.value, outputSettings: [
                 AVFormatIDKey: kAudioFormatLinearPCM,
                 AVSampleRateKey: sampleRate,
-                AVNumberOfChannelsKey: 1,
+                AVNumberOfChannelsKey: channelCount,
                 AVLinearPCMBitDepthKey: 32,
                 AVLinearPCMIsFloatKey: true,
                 AVLinearPCMIsBigEndianKey: false,
@@ -76,7 +112,7 @@ struct Waveform: Sendable, Equatable {
                 }
                 if status == kCMBlockBufferNoErr { samples.append(contentsOf: chunk) }
             }
-            return envelope(of: samples, sampleRate: sampleRate)
+            return envelope(ofInterleaved: samples, channelCount: channelCount, sampleRate: sampleRate)
         }
     }
 }

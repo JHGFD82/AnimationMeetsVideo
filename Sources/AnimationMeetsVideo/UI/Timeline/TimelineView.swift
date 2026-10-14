@@ -61,6 +61,9 @@ struct TimelineView: View {
     @State private var revealed: [UUID: Set<TransformProperty>] = [:]
     /// Layers showing their video clips' linked audio.
     @State private var audioRevealed: Set<UUID> = []
+    /// Layers whose sound shows each channel apart: the clips of sound
+    /// layers, or the linked audio lane of video layers.
+    @State private var channelsRevealed: Set<UUID> = []
     /// Which areas show, how they share the height, and each one's layer
     /// height (its vertical zoom).
     @AppStorage("timelineAreaLayout") private var areaLayout = TimelineAreaLayout()
@@ -124,9 +127,9 @@ struct TimelineView: View {
     /// track area lay out the same rows, so this is each layer's height in
     /// both.
     private func blockHeight(of layer: TimelineLayer) -> CGFloat {
-        areaLayout.layerHeight(layer.kind)
+        clipRowHeight(of: layer)
             + (shownJoint(in: layer) != nil ? TransitionFootageLane.height : 0)
-            + (showsLinkedAudio(of: layer) ? audioLaneHeight : 0)
+            + (showsLinkedAudio(of: layer) ? audioLaneHeight(of: layer) : 0)
             + CGFloat(shownProperties(of: layer).count) * propertyRowHeight
             + separatorHeight
     }
@@ -147,11 +150,36 @@ struct TimelineView: View {
         return tops
     }
 
-    /// Linked audio is shown under video, at a little over half its height.
-    private var audioLaneHeight: CGFloat { max(22, (areaLayout.layerHeight(.video) * 0.6).rounded()) }
+    /// Linked audio is shown under video, at a little over half its height,
+    /// or tall enough for two channels when they're shown apart.
+    private func audioLaneHeight(of layer: TimelineLayer) -> CGFloat {
+        let lane = max(22, (areaLayout.layerHeight(.video) * 0.6).rounded())
+        return showsChannels(of: layer) ? max(lane, Self.channelBandHeight) * 2 : lane
+    }
 
     private func showsLinkedAudio(of layer: TimelineLayer) -> Bool {
         audioRevealed.contains(layer.id) && project.layerHasLinkedAudio(layer)
+    }
+
+    /// The shortest band one channel gets when a layer shows them apart.
+    private static let channelBandHeight: CGFloat = 32
+
+    /// Whether the layer's sound has channels to show apart: sound layers
+    /// always, video layers while their linked audio is shown.
+    private func canShowChannels(of layer: TimelineLayer) -> Bool {
+        layer.kind == .video ? showsLinkedAudio(of: layer) : true
+    }
+
+    private func showsChannels(of layer: TimelineLayer) -> Bool {
+        channelsRevealed.contains(layer.id) && canShowChannels(of: layer)
+    }
+
+    /// The clips' row: the area's layer height, doubled (with a floor) on
+    /// sound layers showing their channels, so each gets a band.
+    private func clipRowHeight(of layer: TimelineLayer) -> CGFloat {
+        let height = areaLayout.layerHeight(layer.kind)
+        guard layer.kind != .video, showsChannels(of: layer) else { return height }
+        return max(height, Self.channelBandHeight) * 2
     }
     private let zoomStep: CGFloat = 1.5
 
@@ -585,7 +613,7 @@ struct TimelineView: View {
                         number: index + 1,
                         layer: layer,
                         displayName: project.displayName(of: layer, in: timeline),
-                        height: areaLayout.layerHeight(kind),
+                        height: clipRowHeight(of: layer),
                         canMoveUp: index > 0,
                         canMoveDown: index < layers.count - 1,
                         isExpanded: layer.isVisual(in: project) ? !shownProperties(of: layer).isEmpty : nil,
@@ -593,6 +621,8 @@ struct TimelineView: View {
                         isAudioExpanded: project.layerHasLinkedAudio(layer) ? showsLinkedAudio(of: layer) : nil,
                         onToggleAudio: { toggleLinkedAudio(layer) },
                         onDetachAudio: { onDetachAudio(layer.id, nil) },
+                        isChannelsExpanded: canShowChannels(of: layer) ? showsChannels(of: layer) : nil,
+                        onToggleChannels: { toggleChannels(layer) },
                         onRename: { name in onRenameLayer(layer.id, name) },
                         onMove: { offset in onMoveLayer(layer.id, offset) },
                         onDragChanged: { dy in layerDrag = (layer.id, dy) },
@@ -623,7 +653,7 @@ struct TimelineView: View {
                             .font(Design.Typeface.label)
                             .foregroundStyle(Design.textSecondary)
                             .padding(.leading, 30)
-                            .frame(height: audioLaneHeight, alignment: .leading)
+                            .frame(height: audioLaneHeight(of: layer), alignment: .leading)
                             .contextMenu {
                                 Button("Detach Audio") { onDetachAudio(layer.id, nil) }
                             }
@@ -681,7 +711,8 @@ struct TimelineView: View {
                         selection: selection,
                         pixelsPerSecond: pixelsPerSecond,
                         width: contentWidth,
-                        height: areaLayout.layerHeight(kind),
+                        height: clipRowHeight(of: layer),
+                        showsChannels: layer.kind != .video && showsChannels(of: layer),
                         visibleX: viewport.visibleContentX,
                         onSelectClip: { clip in onSelectClip(layer.id, clip) },
                         resolveMove: { clip, pointer, start in resolveMove(clip, from: layer.id, pointer: pointer, to: start) },
@@ -748,7 +779,8 @@ struct TimelineView: View {
                             project: project,
                             pixelsPerSecond: pixelsPerSecond,
                             width: contentWidth,
-                            height: audioLaneHeight,
+                            height: audioLaneHeight(of: layer),
+                            showsChannels: showsChannels(of: layer),
                             visibleX: viewport.visibleContentX,
                             onSelectClip: { clip in onSelectClip(layer.id, clip) },
                             onDetachAudio: { clipID in onDetachAudio(layer.id, [clipID]) }
@@ -895,6 +927,10 @@ struct TimelineView: View {
 
     private func toggleLinkedAudio(_ layer: TimelineLayer) {
         if audioRevealed.contains(layer.id) { audioRevealed.remove(layer.id) } else { audioRevealed.insert(layer.id) }
+    }
+
+    private func toggleChannels(_ layer: TimelineLayer) {
+        if channelsRevealed.contains(layer.id) { channelsRevealed.remove(layer.id) } else { channelsRevealed.insert(layer.id) }
     }
 
     /// The disclosure arrow shows all four properties, or hides them all.

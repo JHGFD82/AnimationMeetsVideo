@@ -30,6 +30,10 @@ struct LayerHeaderRow: View {
     let isAudioExpanded: Bool?
     let onToggleAudio: () -> Void
     let onDetachAudio: () -> Void
+    /// Whether the layer's sound shows each channel apart; nil for layers
+    /// with no sound to show (or linked audio that is hidden).
+    let isChannelsExpanded: Bool?
+    let onToggleChannels: () -> Void
     let onRename: (String?) -> Void
     let onMove: (Int) -> Void
     /// Dragging the header up or down reorders the layers; these get the
@@ -105,6 +109,17 @@ struct LayerHeaderRow: View {
                 .buttonStyle(.plain)
                 .help(isAudioExpanded ? "Hide linked audio" : "Show linked audio")
             }
+            if let isChannelsExpanded {
+                Button(action: onToggleChannels) {
+                    Image(systemName: "square.split.1x2")
+                        .font(Design.Typeface.label)
+                        .foregroundStyle(isChannelsExpanded ? Design.accent : Design.textTertiary)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(isChannelsExpanded ? "Show the sound as one waveform" : "Show each channel (left and right) apart")
+            }
         }
         .padding(.horizontal, Design.Space.step)
         .frame(height: height, alignment: .leading)
@@ -127,6 +142,10 @@ struct LayerHeaderRow: View {
                 Divider()
                 Button(isAudioExpanded ? "Hide Linked Audio" : "Show Linked Audio", action: onToggleAudio)
                 Button("Detach Audio", action: onDetachAudio)
+            }
+            if let isChannelsExpanded {
+                Divider()
+                Button(isChannelsExpanded ? "Hide Channels" : "Show Channels", action: onToggleChannels)
             }
             Divider()
             Button("Delete Layer", role: .destructive, action: onDelete)
@@ -168,6 +187,8 @@ struct LayerClipRow: View {
     let pixelsPerSecond: CGFloat
     let width: CGFloat
     let height: CGFloat
+    /// Draws each channel of sound clips' waveforms in a band of its own.
+    let showsChannels: Bool
     /// The on-screen part of the row, in its own x coordinates.
     let visibleX: ClosedRange<CGFloat>
     let onSelectClip: (TimelineClip) -> Void
@@ -257,6 +278,7 @@ struct LayerClipRow: View {
                     typeColor: layer.kind == .music ? Design.ClipTone.music.color : Design.ClipTone.of(info, streams: clip.streams).color,
                     hasLinkedAudio: project.hasLinkedAudio(clip),
                     showsWaveform: project.isAudioOnly(clip),
+                    splitsChannels: showsChannels,
                     acceptsTransitions: project.playsVideo(clip),
                     joinedLead: joinedLead,
                     isSelected: isSelected,
@@ -363,6 +385,8 @@ struct ClipBlockView: View {
     /// Draws the clip's sound behind its label when the layer is tall
     /// enough; for clips that are sound alone.
     let showsWaveform: Bool
+    /// Draws the waveform's channels apart, at any height.
+    let splitsChannels: Bool
     /// Clips with pictures take transitions dropped from the panel.
     let acceptsTransitions: Bool
     /// Set when the clip's way in joins it to the clip before: that
@@ -703,7 +727,7 @@ struct ClipBlockView: View {
     /// tall enough to read it.
     @ViewBuilder
     private func waveform(of shown: TimelineClip, drawnX: CGFloat, liveX: CGFloat, width: CGFloat) -> some View {
-        if showsWaveform, ClipWaveform.strength(atHeight: height) > 0,
+        if showsWaveform, splitsChannels || ClipWaveform.strength(atHeight: height) > 0,
            case .media(let media) = info, let url = media.url {
             let sourceStart = CMTimeAdd(shown.trimStart, CMTime(seconds: Double((drawnX - liveX) / pixelsPerSecond), preferredTimescale: 600))
             ClipWaveform(
@@ -711,7 +735,8 @@ struct ClipBlockView: View {
                 fileStart: media.fileTime(forSourceTime: sourceStart).seconds,
                 secondsPerPoint: 1 / Double(pixelsPerSecond),
                 width: width,
-                height: height
+                height: height,
+                splitsChannels: splitsChannels
             )
         }
     }
@@ -993,6 +1018,8 @@ struct LinkedAudioLane: View {
     let pixelsPerSecond: CGFloat
     let width: CGFloat
     let height: CGFloat
+    /// Draws each block's channels apart.
+    let showsChannels: Bool
     let visibleX: ClosedRange<CGFloat>
     let onSelectClip: (TimelineClip) -> Void
     let onDetachAudio: (UUID) -> Void
@@ -1015,6 +1042,7 @@ struct LinkedAudioLane: View {
                     .foregroundStyle(Design.textOnColor.opacity(0.75))
                     .padding(.leading, Design.Space.close)
                     .frame(width: drawnMaxX - drawnMinX, height: height, alignment: .leading)
+                    .background { waveform(of: clip, drawnMinX: drawnMinX, clipX: x, width: drawnMaxX - drawnMinX) }
                     .background(Design.clipFill(tone, selected: false))
                     .clipShape(RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous))
                     .overlay {
@@ -1031,5 +1059,22 @@ struct LinkedAudioLane: View {
             }
         }
         .frame(width: width, height: height, alignment: .topLeading)
+    }
+
+    /// The drawn part of a block's sound, as on a clip of sound alone.
+    @ViewBuilder
+    private func waveform(of clip: TimelineClip, drawnMinX: CGFloat, clipX: CGFloat, width: CGFloat) -> some View {
+        if showsChannels || ClipWaveform.strength(atHeight: height) > 0,
+           case .media(let media) = project.resolvedInfo(for: clip.source), let url = media.url {
+            let sourceStart = CMTimeAdd(clip.trimStart, CMTime(seconds: Double((drawnMinX - clipX) / pixelsPerSecond), preferredTimescale: 600))
+            ClipWaveform(
+                url: url,
+                fileStart: media.fileTime(forSourceTime: sourceStart).seconds,
+                secondsPerPoint: 1 / Double(pixelsPerSecond),
+                width: width,
+                height: height,
+                splitsChannels: showsChannels
+            )
+        }
     }
 }

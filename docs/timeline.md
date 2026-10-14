@@ -285,6 +285,15 @@ a coarse envelope of each file (`Waveform`: the loudest sample in each
 asks for it and kept for the session (`WaveformCache`). Replacing media
 clears it.
 
+The envelope is kept per channel: left and right for stereo, and files
+with more channels are read mixed down to two. The split-square button on
+a sound or music layer's header (or **Show Channels** in its menu) shows
+each channel in a band of its own, left above right and labelled L and R,
+at any layer height; the layer's row doubles in height (each band at least
+32 points). On a video layer the button appears while its linked audio is
+shown, and splits that lane the same way. Which layers show channels is
+view state, not saved.
+
 ## Linked and detached audio
 
 A video clip whose file has sound plays both, linked, and shows a speaker
