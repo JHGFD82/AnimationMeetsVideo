@@ -98,6 +98,9 @@ struct KeyframeGraphView: View {
     /// The keyframes as a drag in progress leaves them, drawn instead of
     /// the project's and saved when the drag ends.
     @State private var draft: AnimatedValue<ComponentValue>?
+    /// A finished drag's keyframes, drawn until the project has them, so
+    /// the old ones don't show for a frame on release.
+    @State private var committed: AnimatedValue<ComponentValue>?
     @State private var drag: Drag?
     @State private var selected: CMTime?
 
@@ -117,7 +120,7 @@ struct KeyframeGraphView: View {
 
     var body: some View {
         if let timeline = hud.project.timeline(id: key.timelineID), let stored = hud.project.components(of: key) {
-            let value = draft ?? stored
+            let value = draft ?? committed ?? stored
             let offset = key.parameter.displayOffset(frameSize: timeline.frameSize)
             VStack(spacing: 0) {
                 toolbar(value, offset: offset, timeline: timeline)
@@ -156,6 +159,7 @@ struct KeyframeGraphView: View {
                 }
             }
             .background(Color.black.opacity(0.2))
+            .onChange(of: stored) { _, _ in committed = nil }
         } else {
             Text("This layer is no longer on the timeline.")
                 .font(Design.Typeface.label)
@@ -356,7 +360,13 @@ struct KeyframeGraphView: View {
             }
             .onEnded { _ in
                 if let draft, draft != drag?.original {
+                    committed = draft
                     edit { $0 = draft }
+                    Task { @MainActor in
+                        // In case the edit didn't land and nothing clears it.
+                        try? await Task.sleep(for: .milliseconds(500))
+                        if committed == draft { committed = nil }
+                    }
                 }
                 draft = nil
                 drag = nil

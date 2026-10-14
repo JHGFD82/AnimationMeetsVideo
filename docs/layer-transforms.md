@@ -135,7 +135,8 @@ The graph is scaled to the keyframes, their curves and their handles
 (`KeyframeGraphLayout`) and keeps that scale while a drag is in progress,
 so nothing moves under the pointer. A drag is drawn as it goes and saved
 when it ends, as one undo step; in-between states don't rebuild the
-player.
+player. After release the graph keeps drawing the drag's result until the
+project has it, so the old curve never shows for a frame.
 
 ## In the timeline
 
