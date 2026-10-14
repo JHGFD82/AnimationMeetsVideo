@@ -91,6 +91,34 @@ top, in the ruler. Only clicking or dragging in the ruler moves it, so
 drags on the layers are free for the tools. It lands on frames and stays
 within the timeline.
 
+## Sections
+
+A slim lane under the ruler holds the timeline's **sections**: named
+stretches of time such as "Intro" or "Epilogue" (`TimelineSection`,
+`TimelineSections.swift`). They're labels for parts of the edit, and they
+also set the timeline's length: it runs to the end of its last clip or
+last section, whichever is later. Past the last clip a section plays and
+exports as black, so a timeline can be made longer than its footage (a
+hidden track holds one frame of a source stretched over that time, since a
+composition otherwise ends with its last media).
+
+- Drag across empty space in the lane to make a section over that range;
+  double-click empty space to make one five seconds long. A new section is
+  named "Section N" and its name opens for typing at once.
+- Double-click a section (or use its right-click menu) to rename it;
+  leaving the name empty keeps the old one.
+- Drag a section to move it and its edges to resize it.
+- Click a section to select it, then Delete removes it (also in its menu).
+  Selecting a section clears any clip or layer selection.
+
+Sections land on frames, are at least a frame long and never overlap:
+moving or resizing one stops at its neighbors, and a new one is cut short
+by the next. With snapping on their edges snap like everything else, and
+other edges snap to them. Section names don't affect the picture, so
+renaming doesn't rebuild playback. They're saved in `project.json` under
+each timeline as `sections` (`id`, `name`, `start`, `end`), left out while a
+timeline has none.
+
 ## Tools
 
 A segmented control in the timeline's header picks what dragging and

@@ -162,7 +162,8 @@ Requirements for the file:
 - **Defaults are left out**, so untouched data adds nothing to a diff. For
   example a layer's `transform` (see [layer-transforms.md](layer-transforms.md))
   is written only once the layer is moved, scaled, turned, faded or animated.
-  Likewise a clip's `streams` (`"video"` or `"audio"`) is written only once
+  A timeline's `sections` are written only once it has one. Likewise a
+  clip's `streams` (`"video"` or `"audio"`) is written only once
   a video's sound has been detached, and `transitionIn` / `transitionOut`
   (`{"kind": "crossDissolve", "duration": "1s"}`) only when the clip has
   one. An unknown transition kind is dropped on load. A transition's

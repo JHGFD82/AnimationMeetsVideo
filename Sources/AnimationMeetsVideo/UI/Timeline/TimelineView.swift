@@ -46,6 +46,8 @@ struct TimelineView: View {
     /// first and last frames; nil when the drag ends.
     let onTrimPreview: (TimelineClip?) -> Void
     let onSetTransitionDuration: (UUID, UUID, TransitionEdge, CMTime) -> Void
+    /// Applies a change to the project, for the section lane.
+    let onEditProject: ((inout EditingProject) -> Void) -> Void
     @Binding var showsTransitions: Bool
 
     /// The chosen zoom, or nil while the whole timeline is fitted to the
@@ -78,6 +80,8 @@ struct TimelineView: View {
     /// The layer selected by its header, for Delete. Selecting a clip clears it.
     @State private var selectedLayerID: UUID?
     @State private var tool: TimelineTool = .arrow
+    /// The section selected in the lane under the ruler, for Delete.
+    @State private var selectedSectionID: UUID?
     @AppStorage("snapping") private var snapping = true
     /// Where a drag in progress snapped, drawn as a line across the layers.
     @State private var snapIndicator: CMTime?
@@ -127,7 +131,7 @@ struct TimelineView: View {
 
     private var idealHeight: CGFloat {
         let scrollbar = currentViewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
-        return topPadding + headerBarHeight + rulerHeight + separatorHeight + contentHeight + scrollbar
+        return topPadding + headerBarHeight + rulerHeight + SectionLane.height + separatorHeight + contentHeight + scrollbar
     }
 
     private var audioLaneHeight: CGFloat { max(22, (layerHeight * 0.6).rounded()) }
@@ -251,8 +255,8 @@ struct TimelineView: View {
             GeometryReader { geometry in
                 let viewport = viewport(width: geometry.size.width - labelColumnWidth)
                 let scrollbarHeight = viewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
-                let layersHeight = min(contentHeight, max(0, geometry.size.height - rulerHeight - separatorHeight - scrollbarHeight))
-                let trackHeight = rulerHeight + separatorHeight + layersHeight
+                let layersHeight = min(contentHeight, max(0, geometry.size.height - rulerHeight - SectionLane.height - separatorHeight - scrollbarHeight))
+                let trackHeight = rulerHeight + SectionLane.height + separatorHeight + layersHeight
                 let frameTime = timeline.snappedToFrame(playheadTime)
                 let playheadX = viewport.x(atSeconds: playheadTime.seconds)
                 let playheadVisible = (-1...(viewport.width + 1)).contains(playheadX)
@@ -266,6 +270,14 @@ struct TimelineView: View {
                             .overlay(alignment: .bottom) { RenderStatusStrip(viewport: viewport) }
                             .contentShape(Rectangle())
                             .gesture(scrubGesture(in: viewport))
+                    }
+                    HStack(spacing: 0) {
+                        Text("Sections")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 8)
+                            .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
+                        sectionLane(viewport: viewport)
                     }
                     Divider()
 
@@ -336,7 +348,10 @@ struct TimelineView: View {
         .padding(.top, topPadding)
         .background(KeyPressMonitor(handler: handleKey))
         .onChange(of: selection) { _, newValue in
-            if newValue != nil { selectedLayerID = nil }
+            if newValue != nil {
+                selectedLayerID = nil
+                selectedSectionID = nil
+            }
         }
         .onChange(of: idealHeight, initial: true) { _, height in onIdealHeightChange(height) }
         .onChange(of: beatMarkerInputs, initial: true) { _, inputs in
@@ -430,6 +445,7 @@ struct TimelineView: View {
                         isSelected: selectedLayerID == layer.id,
                         onSelect: {
                             selectedLayerID = layer.id
+                            selectedSectionID = nil
                             onSelectLayer()
                         },
                         onDelete: { deleteLayer(layer.id) }
@@ -660,6 +676,37 @@ struct TimelineView: View {
         onScrub(timeline.snappedToFrame(snapped ?? time))
     }
 
+    private func sectionLane(viewport: TimelineViewport) -> some View {
+        let targets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: drawnBeats(viewport)) : nil
+        let tolerance = snapTolerance(viewport)
+        return SectionLane(
+            sections: timeline.sections,
+            viewport: viewport,
+            selectedID: selectedSectionID,
+            snap: { time, owner in targets?.nearest(to: time, within: tolerance, excluding: owner) },
+            resolveMove: { id, start in project.resolvedSectionMove(id, in: timelineID, to: start) },
+            resolveEdge: { id, edge, time in project.resolvedSectionEdge(id, edge: edge, in: timelineID, to: time) },
+            onSelect: { id in
+                selectedSectionID = id
+                selectedLayerID = nil
+                onSelectLayer()
+            },
+            onCreate: { start, end in
+                var created: UUID?
+                onEditProject { created = $0.addSection(in: timelineID, from: start, to: end) }
+                return created
+            },
+            onMove: { id, start in onEditProject { $0.moveSection(id, in: timelineID, to: start) } },
+            onSetEdge: { id, edge, time in onEditProject { $0.setSectionEdge(id, edge: edge, in: timelineID, to: time) } },
+            onRename: { id, name in onEditProject { $0.renameSection(id, in: timelineID, to: name) } },
+            onDelete: { id in
+                onEditProject { $0.deleteSection(id, in: timelineID) }
+                if selectedSectionID == id { selectedSectionID = nil }
+            },
+            onSnapIndicator: { snapIndicator = $0 }
+        )
+    }
+
     private func drawnBeats(_ viewport: TimelineViewport) -> [CMTime] {
         BeatMarkerOverlay.drawnMarkers(beatMarkers, pixelsPerSecond: viewport.pixelsPerSecond)
     }
@@ -689,6 +736,11 @@ struct TimelineView: View {
     /// Delete removes the selected layer, else the selected transition,
     /// else the selected clip.
     private func deleteSelection() -> Bool {
+        if let selectedSectionID, timeline.sections.contains(where: { $0.id == selectedSectionID }) {
+            onEditProject { $0.deleteSection(selectedSectionID, in: timelineID) }
+            self.selectedSectionID = nil
+            return true
+        }
         if let selectedLayerID, timeline.layer(id: selectedLayerID) != nil {
             deleteLayer(selectedLayerID)
             return true

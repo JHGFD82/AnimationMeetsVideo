@@ -216,6 +216,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 onSetTransitionDuration: { layerID, clipID, edge, duration in
                     project.setTransitionDuration(duration, at: edge, of: clipID, in: timelineID, layer: layerID)
                 },
+                onEditProject: { change in change(&project) },
                 showsTransitions: $showsTransitions
             )
         } else {
