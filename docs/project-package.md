@@ -48,10 +48,11 @@ MyProject.amv/
 
 Media may be copied into `Media/` or referenced from elsewhere. **Copying
 into the package is the default**, and it happens at import: the file is
-copied first and the copy is what the project imports. The New Project
-dialog has a checkbox to reference imports in place instead, and File >
-Copy Imported Media into Project changes it later; the setting belongs to
-the project (`copiesMediaOnImport`). To avoid duplicating
+copied first and the copy is what the project imports. The project's
+default (`copiesMediaOnImport`) is set by a checkbox in the New Project
+dialog and changed later in File > Project Settings… (⌘J). The import
+dialog has a "Copy into the project" checkbox that starts at the default
+and can be changed for that import. To avoid duplicating
 large footage, the copy is an APFS clone (copy-on-write) whenever the source
 is on the same volume, which uses no extra disk space until a file changes.
 If the source is on a different volume, the app shows the size and warns

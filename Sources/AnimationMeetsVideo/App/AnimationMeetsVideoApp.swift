@@ -60,6 +60,7 @@ struct AnimationMeetsVideoApp: App {
     /// Set once launch has tried to reopen the last project, so the start
     /// sheet doesn't flash up before that.
     @State private var launchChecked = false
+    @State private var showsProjectSettings = false
 
     private static let autosaveInterval: Duration = .seconds(60)
     private static let lastProjectKey = "lastProjectPath"
@@ -87,6 +88,16 @@ struct AnimationMeetsVideoApp: App {
                     ProjectStartView(onNew: newProject, onOpen: openProject)
                 }
                 .background(WindowReopenerRegistration())
+                .background(
+                    Color.clear.sheet(isPresented: $showsProjectSettings) {
+                        ProjectSettingsView(project: project) { name, copies in
+                            var changed = project
+                            changed.name = name
+                            changed.copiesMediaOnImport = copies
+                            if changed != project { project = changed }
+                        }
+                    }
+                )
                 .task {
                     TerminationGuard.shared.shouldTerminate = { confirmQuit() }
                     if !launchChecked {
@@ -126,8 +137,11 @@ struct AnimationMeetsVideoApp: App {
 
                 Divider()
 
-                Toggle("Copy Imported Media into Project", isOn: $project.copiesMediaOnImport)
-                    .disabled(projectURL == nil)
+                Button("Project Settings…") {
+                    showsProjectSettings = true
+                }
+                .keyboardShortcut("j", modifiers: [.command])
+                .disabled(projectURL == nil)
             }
         }
     }

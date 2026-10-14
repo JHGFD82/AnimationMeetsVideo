@@ -317,9 +317,19 @@ struct LibrarySidebar: View {
         panel.allowedContentTypes = [.movie, .audio]
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
+        // Starts as the project's setting, and can differ for one import.
+        let copyOption = NSButton(checkboxWithTitle: "Copy into the project", target: nil, action: nil)
+        copyOption.state = project.copiesMediaOnImport ? .on : .off
+        copyOption.toolTip = "Off: the files stay where they are and the project refers to them there. The default is in File > Project Settings."
+        if packageURL != nil {
+            let accessory = NSStackView(views: [copyOption])
+            accessory.edgeInsets = NSEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+            panel.accessoryView = accessory
+            panel.isAccessoryViewDisclosed = true
+        }
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
-        guard let copying = filesToCopy(urls) else { return }
+        guard let copying = filesToCopy(urls, copy: copyOption.state == .on) else { return }
         let packageURL = packageURL
 
         Task {
@@ -359,11 +369,11 @@ struct LibrarySidebar: View {
         }
     }
 
-    /// Which of `urls` to copy into the package: none when the project
-    /// references imports in place, otherwise all, after asking about any
+    /// Which of `urls` to copy into the package: none when this import
+    /// references them in place, otherwise all, after asking about any
     /// that would use real disk space. Nil to cancel the import.
-    private func filesToCopy(_ urls: [URL]) -> Set<URL>? {
-        guard project.copiesMediaOnImport, let packageURL else { return [] }
+    private func filesToCopy(_ urls: [URL], copy: Bool) -> Set<URL>? {
+        guard copy, let packageURL else { return [] }
         let clones = urls.filter { ProjectStore.copyIsClone(of: $0, into: packageURL) }
         let heavy = urls.filter { !clones.contains($0) }
         guard !heavy.isEmpty else { return Set(urls) }
