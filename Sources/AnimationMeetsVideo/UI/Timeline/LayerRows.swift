@@ -23,7 +23,8 @@ struct LayerHeaderRow: View {
     let height: CGFloat
     let canMoveUp: Bool
     let canMoveDown: Bool
-    /// Nil for layers without transform properties (audio), which get no arrow.
+    /// Nil for layers with no properties to show (no pictures and no
+    /// sound), which get no arrow.
     let isExpanded: Bool?
     let onToggleExpanded: () -> Void
     /// Nil for layers with no video still carrying its sound.
@@ -60,7 +61,7 @@ struct LayerHeaderRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help(isExpanded ? "Hide transform properties" : "Show transform properties (P, S, R, T)")
+                    .help(isExpanded ? "Hide properties" : "Show properties: transform (P, S, R, T) and volume (L)")
                 } else {
                     Color.clear
                 }

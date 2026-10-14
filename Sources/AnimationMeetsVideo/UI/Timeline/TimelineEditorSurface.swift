@@ -115,6 +115,11 @@ struct TimelineEditorSurface<Library: View>: View {
             renderer?.noteActivity()
             rebuildPlayerItem()
         }
+        // Volumes aren't part of the composition: the player's audio taps
+        // read them as they play, so an edit is heard without a rebuild.
+        .onChange(of: VolumeCurves.of(project), initial: true) { _, curves in
+            playback.volumeCurves.replace(with: curves)
+        }
         // Wherever it stops, playing or scrubbing, is where rendering starts.
         .onChange(of: playheadTime) { _, time in
             renderer?.playhead = time
@@ -195,6 +200,9 @@ struct TimelineEditorSurface<Library: View>: View {
                 },
                 onEditTransform: { layerID, change in
                     project.editTransform(of: layerID, in: timelineID, change)
+                },
+                onEditVolume: { layerID, change in
+                    project.editVolume(of: layerID, in: timelineID, change)
                 },
                 onSetTransition: { layerID, clipID, kind, edge in
                     project.setTransition(kind, at: edge, of: clipID, in: timelineID, layer: layerID)

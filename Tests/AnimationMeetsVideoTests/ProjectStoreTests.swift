@@ -87,6 +87,29 @@ private struct Sandbox {
         #expect(restored == saved)
     }
 
+    @Test func roundTripKeepsLayerVolume() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+        let timelineID = project.rootTimelineID
+        let layerID = try #require(project.timeline(id: timelineID)?.layers.first?.id)
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        #expect(!(try String(contentsOf: sandbox.projectJSON, encoding: .utf8)).contains("volume"))
+
+        project.editVolume(of: layerID, in: timelineID) { volume in
+            volume.setAnimated(true, at: .zero)
+            volume.set(AudioLevel.silence, at: CMTime(value: 2, timescale: 1))
+            volume.set(4.5, at: CMTime(value: 1, timescale: 1))
+        }
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        let saved = try #require(project.timeline(id: timelineID)?.layers.first?.volume)
+        let restored = try #require(loaded.project.timeline(id: timelineID)?.layers.first?.volume)
+        #expect(restored == saved)
+        #expect(restored.keyframes.count == 3)
+    }
+
     @Test func untransformedLayersWriteNoTransform() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }

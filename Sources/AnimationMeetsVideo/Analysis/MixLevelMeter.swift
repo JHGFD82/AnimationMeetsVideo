@@ -1,0 +1,114 @@
+import Foundation
+import os
+
+/// How loud every audio track of the playing composition is together, for
+/// the timeline's meter. Each track's tap (`AudioLevelTap`) records the
+/// level of what it lets through, after the layers' volumes, in short
+/// windows of composition time; the meter reads the windows at the
+/// playhead, so it shows what is heard rather than what was decoded ahead.
+///
+/// Tracks are measured apart and combined by power: the mix's level is
+/// estimated as the square root of the sum of the tracks' mean squares
+/// (and peaks the same way), which is exact for unrelated sounds and reads
+/// low for identical ones played together. Taps may see different sample
+/// rates, so their samples can't simply be added.
+final class MixLevelMeter: @unchecked Sendable {
+    static let windowsPerSecond = 50.0
+    /// About twenty seconds of windows: far more than a player decodes ahead.
+    private static let ringSize = 1024
+    /// Tracks past this many aren't measured.
+    static let maximumTracks = 32
+
+    /// Left and right, linear (1 is full scale).
+    struct Reading: Equatable {
+        var rms = SIMD2<Float>.zero
+        var peak = SIMD2<Float>.zero
+
+        static let silent = Reading()
+    }
+
+    /// One track's sound in one window.
+    private struct Entry {
+        var window = Int.min
+        var squares = SIMD2<Float>.zero
+        var count = 0
+        var peak = SIMD2<Float>.zero
+    }
+
+    private let entries = OSAllocatedUnfairLock(
+        initialState: [Entry](repeating: Entry(), count: ringSize * maximumTracks)
+    )
+
+    /// Forgets everything, for a new composition.
+    func reset() {
+        entries.withLock { entries in
+            for index in entries.indices { entries[index] = Entry() }
+        }
+    }
+
+    private static func window(at seconds: Double) -> Int {
+        Int((seconds * windowsPerSecond).rounded(.down))
+    }
+
+    private static func slot(window: Int, track: Int) -> Int {
+        (((window % ringSize) + ringSize) % ringSize) * maximumTracks + track
+    }
+
+    /// Records `frames` samples of a track starting at composition time
+    /// `start`, each channel given as its first sample and the distance
+    /// between samples. A window played again is averaged with itself, so
+    /// replaying doesn't make it louder.
+    func record(
+        left: (UnsafeMutablePointer<Float>, Int), right: (UnsafeMutablePointer<Float>, Int),
+        frames: Int, sampleRate: Double, start: Double, track: Int
+    ) {
+        guard track < Self.maximumTracks, frames > 0, sampleRate > 0 else { return }
+        var frame = 0
+        while frame < frames {
+            let window = Self.window(at: start + Double(frame) / sampleRate)
+            let windowEnd = (Double(window + 1) / Self.windowsPerSecond - start) * sampleRate
+            let end = min(frames, max(frame + 1, Int(windowEnd.rounded(.up))))
+            var squares = SIMD2<Float>.zero
+            var peak = SIMD2<Float>.zero
+            for index in frame..<end {
+                let l = left.0[index * left.1], r = right.0[index * right.1]
+                squares += SIMD2(l * l, r * r)
+                peak = pointwiseMax(peak, SIMD2(abs(l), abs(r)))
+            }
+            let count = end - frame
+            let measured = (squares: squares, peak: peak)
+            entries.withLock { entries in
+                let slot = Self.slot(window: window, track: track)
+                if entries[slot].window == window {
+                    entries[slot].squares += measured.squares
+                    entries[slot].count += count
+                    entries[slot].peak = pointwiseMax(entries[slot].peak, measured.peak)
+                } else {
+                    entries[slot] = Entry(window: window, squares: measured.squares, count: count, peak: measured.peak)
+                }
+            }
+            frame = end
+        }
+    }
+
+    /// The loudest of the `span` windows ending at `seconds`.
+    func reading(at seconds: Double, span: Int = 2) -> Reading {
+        let last = Self.window(at: seconds)
+        return entries.withLock { entries in
+            var reading = Reading()
+            for window in (last - span + 1)...last {
+                var power = SIMD2<Float>.zero
+                var peaks = SIMD2<Float>.zero
+                for track in 0..<Self.maximumTracks {
+                    let entry = entries[Self.slot(window: window, track: track)]
+                    guard entry.window == window, entry.count > 0 else { continue }
+                    power += entry.squares / Float(entry.count)
+                    peaks += entry.peak * entry.peak
+                }
+                reading.rms = pointwiseMax(reading.rms, power.squareRoot())
+                reading.peak = pointwiseMax(reading.peak, peaks.squareRoot())
+            }
+            return reading
+        }
+    }
+}

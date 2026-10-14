@@ -26,6 +26,11 @@ final class PlaybackModel {
     private(set) var level: PreviewLevel = .full
     /// Hears from the compositor how long each frame took.
     let meter = RenderMeter()
+    /// The layers' volumes, which the player's audio taps read as they
+    /// play; the editor replaces them as volumes are edited.
+    let volumeCurves = VolumeCurves()
+    /// How loud the mix is, measured by the same taps, for the meter.
+    let mixMeter = MixLevelMeter()
     /// The paused frame drawn at full size, shown over the player while it
     /// draws smaller. Auto keeps playing's level while paused, so pressing
     /// play doesn't swap the composition; this is what keeps paused frames
@@ -96,6 +101,8 @@ final class PlaybackModel {
         self.composed = composed
         self.frameRate = frameRate
         item.videoComposition = composed.videoComposition(scaledBy: level.scale)
+        item.audioMix = composed.audioMix(curves: volumeCurves, meter: mixMeter)
+        mixMeter.reset()
         // An older still may show what was just edited away.
         clearStill()
         refreshStill()

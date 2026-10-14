@@ -28,6 +28,7 @@ struct TimelineView: View {
     let onTrimClipStart: (UUID, UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, UUID, CMTime) -> Void
     let onEditTransform: (UUID, (inout LayerTransform) -> Void) -> Void
+    let onEditVolume: (UUID, (inout AnimatedValue<Double>) -> Void) -> Void
     let onSetTransition: (UUID, UUID, TransitionKind, TransitionEdge) -> Void
     let onRemoveTransition: (UUID, UUID, TransitionEdge) -> Void
     let onSelectTransition: (UUID, TimelineClip, TransitionEdge) -> Void
@@ -59,6 +60,8 @@ struct TimelineView: View {
     @State private var trackAreaWidth: CGFloat = 800
     /// The transform properties shown under each layer, by layer ID.
     @State private var revealed: [UUID: Set<TransformProperty>] = [:]
+    /// Layers showing their volume under their clips.
+    @State private var volumeRevealed: Set<UUID> = []
     /// Layers showing their video clips' linked audio.
     @State private var audioRevealed: Set<UUID> = []
     /// Layers whose sound shows each channel apart: the clips of sound
@@ -131,6 +134,7 @@ struct TimelineView: View {
             + (shownJoint(in: layer) != nil ? TransitionFootageLane.height : 0)
             + (showsLinkedAudio(of: layer) ? audioLaneHeight(of: layer) : 0)
             + CGFloat(shownProperties(of: layer).count) * propertyRowHeight
+            + (showsVolume(of: layer) ? VolumeLane.height : 0)
             + separatorHeight
     }
 
@@ -185,7 +189,17 @@ struct TimelineView: View {
 
     /// Wider while property rows are showing, to fit their values.
     private var labelColumnWidth: CGFloat {
-        timeline.layers.contains { !shownProperties(of: $0).isEmpty } ? 300 : 150
+        timeline.layers.contains { !shownProperties(of: $0).isEmpty || showsVolume(of: $0) } ? 300 : 150
+    }
+
+    private func showsVolume(of layer: TimelineLayer) -> Bool {
+        volumeRevealed.contains(layer.id) && project.layerPlaysAudio(layer)
+    }
+
+    /// Whether the layer has any property rows to show: transforms on
+    /// layers with pictures, volume on layers with sound.
+    private func hasProperties(_ layer: TimelineLayer) -> Bool {
+        layer.isVisual(in: project) || project.layerPlaysAudio(layer)
     }
 
     /// The layer's shown properties, in standard order. Audio layers have none.
@@ -616,7 +630,7 @@ struct TimelineView: View {
                         height: clipRowHeight(of: layer),
                         canMoveUp: index > 0,
                         canMoveDown: index < layers.count - 1,
-                        isExpanded: layer.isVisual(in: project) ? !shownProperties(of: layer).isEmpty : nil,
+                        isExpanded: hasProperties(layer) ? !shownProperties(of: layer).isEmpty || showsVolume(of: layer) : nil,
                         onToggleExpanded: { toggleExpanded(layer) },
                         isAudioExpanded: project.layerHasLinkedAudio(layer) ? showsLinkedAudio(of: layer) : nil,
                         onToggleAudio: { toggleLinkedAudio(layer) },
@@ -670,6 +684,17 @@ struct TimelineView: View {
                         .padding(.leading, 30)
                         .padding(.trailing, 8)
                         .frame(height: propertyRowHeight)
+                    }
+                    if showsVolume(of: layer) {
+                        VolumePropertyRow(
+                            volume: layer.volume,
+                            time: frameTime,
+                            onEdit: { change in onEditVolume(layer.id, change) },
+                            onSeek: onScrub
+                        )
+                        .padding(.leading, 30)
+                        .padding(.trailing, 8)
+                        .frame(height: VolumeLane.height)
                     }
                     separator
                 }
@@ -803,6 +828,19 @@ struct TimelineView: View {
                             }
                         )
                     }
+                    if showsVolume(of: layer) {
+                        VolumeLane(
+                            volume: layer.volume,
+                            currentTime: frameTime,
+                            pixelsPerSecond: pixelsPerSecond,
+                            width: contentWidth,
+                            visibleX: viewport.visibleContentX,
+                            snap: { timeline.snappedToFrame($0) },
+                            onSeek: onScrub,
+                            onMove: { from, to in onEditVolume(layer.id) { $0.moveKeyframe(at: from, to: to) } },
+                            onDelete: { time in onEditVolume(layer.id) { $0.removeKeyframe(at: time) } }
+                        )
+                    }
                     separator
                 }
                 // The same banding as the header column, so a layer reads
@@ -933,9 +971,17 @@ struct TimelineView: View {
         if channelsRevealed.contains(layer.id) { channelsRevealed.remove(layer.id) } else { channelsRevealed.insert(layer.id) }
     }
 
-    /// The disclosure arrow shows all four properties, or hides them all.
+    /// The disclosure arrow shows every property the layer has (the four
+    /// transform properties if it has pictures, volume if it has sound),
+    /// or hides them all.
     private func toggleExpanded(_ layer: TimelineLayer) {
-        revealed[layer.id] = shownProperties(of: layer).isEmpty ? Set(TransformProperty.allCases) : []
+        let showing = !shownProperties(of: layer).isEmpty || showsVolume(of: layer)
+        revealed[layer.id] = !showing && layer.isVisual(in: project) ? Set(TransformProperty.allCases) : []
+        if !showing && project.layerPlaysAudio(layer) {
+            volumeRevealed.insert(layer.id)
+        } else {
+            volumeRevealed.remove(layer.id)
+        }
     }
 
     /// P, S, R and T show only position, scale, rotation or opacity (pressing
@@ -993,6 +1039,7 @@ struct TimelineView: View {
             tool = chosen
             return true
         }
+        if key == "l" { return toggleVolumeRows(adding: flags.contains(.shift)) }
         guard let property = TransformProperty(shortcutKey: key) else { return false }
         let targets: [TimelineLayer]
         if let selection, selection.timelineID == timelineID, let layer = timeline.layer(id: selection.layerID) {
@@ -1006,9 +1053,34 @@ struct TimelineView: View {
             if flags.contains(.shift) {
                 if shown.contains(property) { shown.remove(property) } else { shown.insert(property) }
             } else {
-                shown = shown == [property] ? [] : [property]
+                shown = shown == [property] && !showsVolume(of: layer) ? [] : [property]
+                volumeRevealed.remove(layer.id)
             }
             revealed[layer.id] = shown
+        }
+        return true
+    }
+
+    /// L shows only volume (pressing it again hides it), as levels in After
+    /// Effects; with Shift it adds or removes volume and keeps the
+    /// transform properties shown. Acts on the selected clip's layer, or on
+    /// every layer with sound when nothing is selected.
+    private func toggleVolumeRows(adding: Bool) -> Bool {
+        let targets: [TimelineLayer]
+        if let selection, selection.timelineID == timelineID, let layer = timeline.layer(id: selection.layerID) {
+            targets = project.layerPlaysAudio(layer) ? [layer] : []
+        } else {
+            targets = timeline.layers.filter { project.layerPlaysAudio($0) }
+        }
+        guard !targets.isEmpty else { return false }
+        for layer in targets {
+            let onlyVolume = showsVolume(of: layer) && shownProperties(of: layer).isEmpty
+            if adding {
+                if showsVolume(of: layer) { volumeRevealed.remove(layer.id) } else { volumeRevealed.insert(layer.id) }
+            } else {
+                revealed[layer.id] = []
+                if onlyVolume { volumeRevealed.remove(layer.id) } else { volumeRevealed.insert(layer.id) }
+            }
         }
         return true
     }

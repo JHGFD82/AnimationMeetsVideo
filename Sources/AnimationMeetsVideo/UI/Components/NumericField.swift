@@ -22,6 +22,9 @@ struct NumericField: View {
     let value: Double
     var unit = ""
     var fractionDigits = 1
+    /// How the value reads while not being edited, in place of the number
+    /// and unit.
+    var label: ((Double) -> String)?
     let onCommit: (Double) -> Void
 
     @State private var isEditing = false
@@ -48,7 +51,7 @@ struct NumericField: View {
                     if !focused { commit() }
                 }
         } else {
-            Text(NumericExpression.format(value, maxFractionDigits: fractionDigits) + unit)
+            Text(label?(value) ?? NumericExpression.format(value, maxFractionDigits: fractionDigits) + unit)
                 .font(Design.Typeface.numericSmall)
                 .foregroundStyle(Design.accent)
                 .lineLimit(1)

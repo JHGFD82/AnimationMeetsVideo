@@ -161,7 +161,8 @@ Requirements for the file:
 - **Rational times** such as `"1001/24000s"`, never floating-point seconds.
 - **Defaults are left out**, so untouched data adds nothing to a diff. For
   example a layer's `transform` (see [layer-transforms.md](layer-transforms.md))
-  is written only once the layer is moved, scaled, turned, faded or animated.
+  is written only once the layer is moved, scaled, turned, faded or animated,
+  and its `volume` (see [audio.md](audio.md)) only once it isn't 0 dB.
   A timeline's `sections` are written only once it has one. Likewise a
   clip's `streams` (`"video"` or `"audio"`) is written only once
   a video's sound has been detached, and `transitionIn` / `transitionOut`

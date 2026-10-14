@@ -192,6 +192,8 @@ private struct ProjectFile: Codable {
         var clips: [ClipEntry]
         /// Absent while the layer is untransformed.
         var transform: TransformEntry?
+        /// Decibels; absent while at 0 and not animated.
+        var volume: PropertyEntry<Double>?
     }
 
     struct TimelineEntry: Codable {
@@ -825,7 +827,8 @@ enum ProjectStore {
                                 transitionOut: clip.transitionOut.map(ProjectFile.TransitionEntry.init)
                             )
                         },
-                        transform: ProjectFile.TransformEntry(layer.transform)
+                        transform: ProjectFile.TransformEntry(layer.transform),
+                        volume: layer.volume == AnimatedValue(0.0) ? nil : ProjectFile.PropertyEntry(layer.volume) { $0 }
                     )
                 },
                 sections: timeline.sections.isEmpty ? nil : timeline.sections.map { section in
@@ -941,7 +944,8 @@ enum ProjectStore {
                                 transitionOut: clipEntry.transitionOut?.transition
                             )
                         },
-                        transform: layerEntry.transform?.transform ?? .identity
+                        transform: layerEntry.transform?.transform ?? .identity,
+                        volume: layerEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0)
                     )
                 },
                 frameSize: CGSize(width: entry.width, height: entry.height),

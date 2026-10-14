@@ -117,6 +117,19 @@ struct InspectorPanel: View {
                     }
                 }
 
+                if let timeline = project.timeline(id: timelineID),
+                   let layer = timeline.layer(id: selection.layerID),
+                   project.layerPlaysAudio(layer) {
+                    InspectorGroup("Layer volume") {
+                        VolumePropertyRow(
+                            volume: layer.volume,
+                            time: timeline.snappedToFrame(playheadTime),
+                            onEdit: { change in project.editVolume(of: layer.id, in: timelineID, change) },
+                            onSeek: onSeek
+                        )
+                    }
+                }
+
                 if timelineClip.transitionIn != nil || timelineClip.transitionOut != nil {
                     InspectorGroup("Transitions") {
                         transitionRow(.leading, of: timelineClip, selection: selection)

@@ -410,6 +410,10 @@ struct TimelineLayer: Identifiable, Equatable {
     /// Position, scale, rotation and opacity, keyframed in this timeline's
     /// time. Ignored for layers with no pictures.
     var transform = LayerTransform.identity
+    /// The volume of everything the layer plays, in decibels (see
+    /// `AudioLevel`), keyframed in this timeline's time. Ignored for layers
+    /// with no sound.
+    var volume = AnimatedValue(0.0)
 
     var duration: CMTime {
         clips.map(\.endOffset).max(by: { $0.seconds < $1.seconds }) ?? .zero

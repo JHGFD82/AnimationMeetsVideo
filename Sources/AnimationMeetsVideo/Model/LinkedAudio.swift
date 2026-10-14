@@ -62,7 +62,8 @@ extension EditingProject {
             audioClips.append(audio)
         }
         guard !audioClips.isEmpty else { return nil }
-        let layer = TimelineLayer(customName: nil, kind: .sound, clips: audioClips)
+        // The sound keeps the volume it played at.
+        let layer = TimelineLayer(customName: nil, kind: .sound, clips: audioClips, volume: timelines[tIndex].layers[lIndex].volume)
         timelines[tIndex].layers.insert(layer, at: lIndex + 1)
         return layer.id
     }

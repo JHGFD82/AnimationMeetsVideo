@@ -50,6 +50,14 @@ struct ComposedTimeline: @unchecked Sendable {
     var segments: [RenderSegment] = []
     /// Keys of the segments drawn from the render cache.
     var cachedKeys: Set<String> = []
+    /// Each audio track, with the layers whose volumes it plays through.
+    var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage])] = []
+
+    /// A mix that plays each audio track at its layers' volumes, read from
+    /// `curves` as it plays, and measures the result into `meter`.
+    func audioMix(curves: VolumeCurves, meter: MixLevelMeter? = nil) -> AVAudioMix? {
+        audioTracks.isEmpty ? nil : AudioLevelTap.audioMix(for: audioTracks, curves: curves, meter: meter)
+    }
 
     /// The video composition drawn at `scale` of the timeline's frame size,
     /// for the viewer. Only one built for preview can be drawn smaller: its
@@ -259,6 +267,9 @@ private struct Placement {
 /// tracks. Nested timelines are flattened into extra layers of the root.
 private struct FlatLayer {
     var placements: [Placement] = []
+    /// The layer it came from, then the layers that timeline is nested
+    /// in, whose volumes all apply to its sound.
+    var volume: [VolumeStage] = []
 }
 
 private struct VideoSegment {
@@ -311,12 +322,14 @@ enum CompositionExporter {
             window: window,
             offset: .zero,
             outer: [],
+            outerVolume: [],
             toOuter: .identity,
             rootClipID: nil
         )
 
         let composition = AVMutableComposition()
         var videoLayers: [VideoLayer] = []
+        var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage])] = []
         /// A stretch of some source's picture, to fill time after the last clip.
         var filler: (track: AVAssetTrack, range: CMTimeRange)?
 
@@ -357,6 +370,9 @@ enum CompositionExporter {
             if let videoTrack {
                 videoLayers.append(VideoLayer(track: videoTrack, segments: segments))
             }
+            if let audioTrack {
+                audioTracks.append((audioTrack, flat.volume))
+            }
         }
 
         guard composition.duration > .zero else {
@@ -394,7 +410,7 @@ enum CompositionExporter {
         )
         return ComposedTimeline(
             composition: composition, videoComposition: videoComposition,
-            segments: plan.map(\.segment), cachedKeys: cachedKeys
+            segments: plan.map(\.segment), cachedKeys: cachedKeys, audioTracks: audioTracks
         )
     }
 
@@ -403,7 +419,7 @@ enum CompositionExporter {
     /// first. `window` is the visible range in this timeline's own time,
     /// `offset` maps this timeline's time to root time, `outer` holds the
     /// transforms of the layers this timeline is nested in (innermost
-    /// first), and `toOuter` fits this timeline's frame into the frame of
+    /// first), `outerVolume` their volumes the same way, and `toOuter` fits this timeline's frame into the frame of
     /// the innermost of them.
     private static func flatten(
         project: EditingProject,
@@ -412,6 +428,7 @@ enum CompositionExporter {
         window: CMTimeRange,
         offset: CMTime,
         outer: [TransformStage],
+        outerVolume: [VolumeStage],
         toOuter: CGAffineTransform,
         rootClipID: UUID?
     ) async throws -> [FlatLayer] {
@@ -426,8 +443,9 @@ enum CompositionExporter {
         var result: [FlatLayer] = []
         for layer in timeline.layers {
             let layerStage = TransformStage(transform: layer.transform, center: center, shift: offset, toOuter: toOuter)
+            let volume = [VolumeStage(layerID: layer.id, shift: offset)] + outerVolume
             let clips = layer.clips.sorted(by: { $0.startOffset < $1.startOffset })
-            var own = FlatLayer()
+            var own = FlatLayer(volume: volume)
             // The incoming clip's frames before a joined cut, on a track of
             // their own above the layer's, so they can overlap the outgoing
             // clip that is still playing there.
@@ -503,6 +521,7 @@ enum CompositionExporter {
                         window: nestedWindow,
                         offset: CMTimeAdd(offset, shift),
                         outer: stages,
+                        outerVolume: volume,
                         toOuter: fitTransform(from: nested.frameSize, to: timeline.frameSize),
                         rootClipID: rootClipID ?? clip.id
                     )
@@ -843,6 +862,7 @@ enum CompositionExporter {
             throw CompositionError.noExportSession
         }
         exportSession.videoComposition = composed.videoComposition
+        exportSession.audioMix = composed.audioMix(curves: VolumeCurves(VolumeCurves.of(project)))
 
         // The save panel already confirmed replacing an existing file, but
         // AVAssetExportSession refuses to write over one.
