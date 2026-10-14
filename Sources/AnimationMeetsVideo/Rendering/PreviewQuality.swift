@@ -58,8 +58,9 @@ enum PreviewLevel: Int, Comparable {
 /// Chooses the level for Auto while playing. Playback that falls behind
 /// steps down a level at once; stepping back up waits until rendering has
 /// clearly had room for a while, so the picture doesn't flicker between
-/// sizes. Paused frames are always drawn at full size, and the next play
-/// starts from the level the last one settled on.
+/// sizes. The level stays put while paused, so pressing play never swaps
+/// the player's composition (which would throw away what it buffered);
+/// the viewer covers paused frames with a full-size still instead.
 struct PreviewGovernor {
     struct Sample {
         /// Seconds on any steady clock.
@@ -70,7 +71,6 @@ struct PreviewGovernor {
     }
 
     private(set) var level: PreviewLevel = .full
-    private(set) var playbackLevel: PreviewLevel = .full
     private var isPlaying = false
     private var lastChange = -Double.infinity
     private var behindSamples = 0
@@ -83,15 +83,12 @@ struct PreviewGovernor {
 
     mutating func startPlaying(at time: Double) {
         isPlaying = true
-        level = playbackLevel
         lastChange = time
         behindSamples = 0
     }
 
     mutating func stopPlaying() {
         isPlaying = false
-        playbackLevel = level
-        level = .full
     }
 
     /// Takes a measurement of playback and returns whether the level changed.

@@ -19,12 +19,18 @@ final class PlaybackModel {
         didSet {
             UserDefaults.standard.set(quality.rawValue, forKey: Self.qualityKey)
             applyLevel()
+            refreshStill()
         }
     }
     /// The size it is drawing at now, which Auto changes while playing.
     private(set) var level: PreviewLevel = .full
     /// Hears from the compositor how long each frame took.
     let meter = RenderMeter()
+    /// The paused frame drawn at full size, shown over the player while it
+    /// draws smaller. Auto keeps playing's level while paused, so pressing
+    /// play doesn't swap the composition; this is what keeps paused frames
+    /// sharp. Nil while playing, scrubbing, or drawing at full size.
+    private(set) var still: CGImage?
 
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
@@ -34,6 +40,7 @@ final class PlaybackModel {
     @ObservationIgnored private var composed: ComposedTimeline?
     @ObservationIgnored private var frameRate: Double = 0
     @ObservationIgnored private var sampling: Task<Void, Never>?
+    @ObservationIgnored private var stillTask: Task<Void, Never>?
 
     private static let qualityKey = "previewQuality"
 
@@ -60,6 +67,9 @@ final class PlaybackModel {
         self.composed = composed
         self.frameRate = frameRate
         item.videoComposition = composed.videoComposition(scaledBy: level.scale)
+        // An older still may show what was just edited away.
+        clearStill()
+        refreshStill()
     }
 
     private func playStateChanged(_ playing: Bool) {
@@ -74,6 +84,7 @@ final class PlaybackModel {
             governor.stopPlaying()
         }
         applyLevel()
+        if playing { clearStill() } else { refreshStill() }
     }
 
     /// While playing, measures twice a second how many frames the compositor
@@ -106,6 +117,38 @@ final class PlaybackModel {
         if let item = player.currentItem, let composed {
             item.videoComposition = composed.videoComposition(scaledBy: wanted.scale)
         }
+        refreshStill()
+    }
+
+    /// Draws the paused frame at full size when Auto is drawing smaller,
+    /// once the player has settled on it.
+    private func refreshStill() {
+        stillTask?.cancel()
+        guard !isPlaying, !isSeeking, quality == .auto, level != .full,
+              let composed, let videoComposition = composed.videoComposition,
+              player.currentItem != nil
+        else {
+            clearStill()
+            return
+        }
+        let time = player.currentTime()
+        stillTask = Task { [weak self] in
+            let generator = AVAssetImageGenerator(asset: composed.composition)
+            generator.videoComposition = videoComposition
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            let image = try? await generator.image(at: time).image
+            guard let self, !Task.isCancelled, !self.isPlaying, !self.isSeeking,
+                  CMTimeCompare(self.player.currentTime(), time) == 0
+            else { return }
+            self.still = image
+        }
+    }
+
+    private func clearStill() {
+        stillTask?.cancel()
+        stillTask = nil
+        if still != nil { still = nil }
     }
 
     @ObservationIgnored private var isSeeking = false
@@ -117,6 +160,7 @@ final class PlaybackModel {
     func seek(to time: CMTime) {
         currentTime = time
         pendingSeek = time
+        clearStill()
         guard !isSeeking else { return }
         isSeeking = true
         Task { await drainSeeks() }
@@ -128,6 +172,7 @@ final class PlaybackModel {
             _ = await player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
         }
         isSeeking = false
+        refreshStill()
     }
 
     func togglePlayback() {

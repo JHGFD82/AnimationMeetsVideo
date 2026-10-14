@@ -25,13 +25,18 @@ The setting is in the viewer's transport bar and remembered per Mac, not
 per project:
 
 - **Full / Half / Quarter** always draw at that size, paused or playing.
-- **Auto** draws paused frames at full size. While playing, it measures
+- **Auto** shows paused frames at full size. While playing, it measures
   twice a second how many frames the compositor finishes. Two
   measurements in a row under 90% of the frame rate step down a level.
   Stepping back up waits until playback has kept up for five seconds and
   drawing a frame takes so little time that four times the pixels would
-  still fit in under 40% of a frame. The next play starts at the level the
-  last one settled on. While Auto is below full, the menu shows ½ or ¼.
+  still fit in under 40% of a frame. The player stays at the level it
+  settled on when paused, so pressing play doesn't swap the composition
+  and throw away what the player had buffered. Instead, once a paused
+  player has settled on a frame, that frame is drawn at full size
+  separately (`AVAssetImageGenerator`) and shown over the video until
+  playback or a scrub starts. Scrubbing shows the smaller size until it
+  stops. While Auto is below full, the menu shows ½ or ¼.
 
 Limits:
 
@@ -42,7 +47,8 @@ Limits:
   of 4K sources can still stutter at quarter size; renders fix that.
 - The external display shows the same player, so it drops size too.
 - Changing size during playback swaps the composition, which can cause a
-  brief hitch. Auto changes rarely for that reason.
+  brief hitch. Auto changes rarely for that reason, and never on play or
+  pause.
 
 ## Render cache (implemented)
 

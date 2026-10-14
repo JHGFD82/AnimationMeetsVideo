@@ -7,15 +7,19 @@ import SwiftUI
 /// against), so playback goes through the public `AVPlayerLayer` API instead.
 struct PlayerLayerView: NSViewRepresentable {
     let player: AVPlayer
+    /// A full-size picture of the paused frame, shown over the video.
+    var still: CGImage?
 
     func makeNSView(context: Context) -> PlayerContainerView {
         let view = PlayerContainerView()
         view.player = player
+        view.still = still
         return view
     }
 
     func updateNSView(_ nsView: PlayerContainerView, context: Context) {
         nsView.player = player
+        nsView.still = still
     }
 }
 
@@ -31,6 +35,8 @@ final class PlayerContainerView: NSView {
     private var heldSince: CFTimeInterval = 0
     private var releaseTimer: Timer?
     private var itemObservation: NSKeyValueObservation?
+    /// Shows `still` above both the video and the held frame.
+    private let stillLayer = CALayer()
     private var readyObservation: NSKeyValueObservation?
 
     /// The longest a frame is held, in case the new item never shows one.
@@ -55,6 +61,17 @@ final class PlayerContainerView: NSView {
                     if change.isPrior { self?.holdFrame() } else { self?.releaseFrameIfReplaced() }
                 }
             }
+        }
+    }
+
+    var still: CGImage? {
+        didSet {
+            guard still !== oldValue else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            stillLayer.contents = still
+            stillLayer.isHidden = still == nil
+            CATransaction.commit()
         }
     }
 
@@ -83,6 +100,12 @@ final class PlayerContainerView: NSView {
         heldFrame.zPosition = 1
         heldFrame.isHidden = true
         playerLayer.addSublayer(heldFrame)
+        stillLayer.contentsGravity = .resizeAspect
+        stillLayer.zPosition = 2
+        // HDR timelines' stills carry values above 1.0, like the video.
+        stillLayer.wantsExtendedDynamicRangeContent = true
+        stillLayer.isHidden = true
+        playerLayer.addSublayer(stillLayer)
         readyObservation = playerLayer.observe(\.isReadyForDisplay) { [weak self] _, _ in
             guard Thread.isMainThread else { return }
             MainActor.assumeIsolated { self?.releaseFrameIfReplaced() }
@@ -95,6 +118,7 @@ final class PlayerContainerView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         heldFrame.frame = playerLayer.bounds
+        stillLayer.frame = playerLayer.bounds
         CATransaction.commit()
     }
 

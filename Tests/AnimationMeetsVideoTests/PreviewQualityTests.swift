@@ -50,14 +50,14 @@ import Testing
         #expect(governor.level == .quarter)
     }
 
-    @Test func pausedFramesAreFullAndTheNextPlayResumesTheSettledLevel() {
+    @Test func pausingKeepsTheSettledLevelSoPlayingDoesNotSwapIt() {
         var governor = PreviewGovernor()
         governor.startPlaying(at: 0)
         _ = governor.record(sample(1, fps: 10), frameRate: 24)
         _ = governor.record(sample(1.5, fps: 10), frameRate: 24)
 
         governor.stopPlaying()
-        #expect(governor.level == .full)
+        #expect(governor.level == .half)
         governor.startPlaying(at: 10)
         #expect(governor.level == .half)
     }
