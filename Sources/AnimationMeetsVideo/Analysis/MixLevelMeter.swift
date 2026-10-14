@@ -112,3 +112,51 @@ final class MixLevelMeter: @unchecked Sendable {
         }
     }
 }
+
+/// How a level meter moves, in dBFS: it jumps up to a louder reading at
+/// once and falls back at a steady rate, a held mark sits at the recent
+/// peak for a moment before falling too, and a clip lamp latches once a
+/// channel reaches full scale until it is reset.
+struct MeterBallistics: Equatable {
+    /// The bottom of the scale; quieter reads as this.
+    static let floor = -60.0
+    /// How fast the bar falls, in decibels a second.
+    static let fallRate = 24.0
+    /// How long the peak mark holds before it falls.
+    static let holdSeconds = 1.5
+
+    /// Left and right, in dBFS.
+    private(set) var level = SIMD2<Double>(repeating: floor)
+    private(set) var held = SIMD2<Double>(repeating: floor)
+    private(set) var clipped = [false, false]
+    private var heldAt = SIMD2<Double>(repeating: -.infinity)
+    private var lastUpdate: Double?
+
+    static func decibels(_ linear: Float) -> Double {
+        linear > 0 ? max(floor, 20 * log10(Double(linear))) : floor
+    }
+
+    /// Moves to `now` (seconds) with a reading of the peaks, linear, or
+    /// with silence when nil.
+    mutating func update(peak: SIMD2<Float>?, at now: Double) {
+        let elapsed = lastUpdate.map { max(0, now - $0) } ?? 0
+        lastUpdate = now
+        let fall = Self.fallRate * elapsed
+        for channel in 0..<2 {
+            let linear = peak?[channel] ?? 0
+            let reading = Self.decibels(linear)
+            if linear >= 0.999 { clipped[channel] = true }
+            level[channel] = max(reading, level[channel] - fall)
+            if reading >= held[channel] {
+                held[channel] = reading
+                heldAt[channel] = now
+            } else if now - heldAt[channel] > Self.holdSeconds {
+                held[channel] = max(level[channel], held[channel] - fall)
+            }
+        }
+    }
+
+    mutating func resetClips() {
+        clipped = [false, false]
+    }
+}

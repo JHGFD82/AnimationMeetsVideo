@@ -1,9 +1,10 @@
 # Audio levels
 
 Status: **implemented**: keyframed layer volume, applied in playback and
-export. The level math, saving, nesting and the mix's gain above unity are
-unit tested (the last by reading a composition through its audio mix). The
-controls have not yet been driven on screen. What is not built is listed
+export, and a meter of the whole mix. The level math, saving, nesting, the
+mix's gain above unity and the meter's measurements and movement are unit
+tested (the mix by reading a composition through its audio mix). The
+controls and the meter have not yet been driven on screen. What is not built is listed
 under [Not implemented yet](#not-implemented-yet).
 
 Showing a layer's channels apart is described with the waveforms in
@@ -61,6 +62,27 @@ editor replaces whenever a volume changes. The taps read it as they play,
 so an edit is heard at once: volume is left out of `CompositionKey` and
 doesn't rebuild the player. Export builds its own store from the project.
 
+## Meter
+
+The bar-chart button in the timeline's header shows a **meter** to the
+right of the timeline (remembered in the app's defaults). It shows every
+audio track together, left and right, in dBFS from −60 to 0: green up to
+−18, yellow to −6, red above. The bar jumps up at once and falls back at
+24 dB a second (`MeterBallistics`); a mark holds the recent peak for a
+second and a half. The lamp over each channel lights once it reaches full
+scale and stays lit until clicked. Mono sound reads the same on both
+sides.
+
+The taps that apply volume also measure what they let through
+(`MixLevelMeter`): each track's mean square and peak per channel, in
+1/50 s windows of timeline time. The meter reads the two windows at the
+playhead, so it follows what is heard rather than what the player decoded
+ahead. Tracks are combined by power, since taps may run at different
+sample rates and their samples can't simply be added: the mix reads as the
+square root of the sum of the tracks' squares. That is exact for unrelated
+sounds and reads up to 3 dB low for the same sound on two tracks. A window
+played again is averaged with itself, so replaying doesn't read louder.
+
 ## Saving
 
 A layer's `volume` is written only when it isn't a steady 0 dB, as a
@@ -74,3 +96,5 @@ are clamped on load.
 - Dragging the level line up and down in the lane; levels are set in the
   field or with the fader.
 - Audio fades under transitions.
+- A meter per layer, and reading the mix while scrubbing or paused.
+- Loudness (LUFS) rather than peak level.

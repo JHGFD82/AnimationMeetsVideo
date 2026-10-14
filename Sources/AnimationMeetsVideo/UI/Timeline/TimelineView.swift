@@ -51,6 +51,7 @@ struct TimelineView: View {
     /// Applies a change to the project, for the section lane.
     let onEditProject: ((inout EditingProject) -> Void) -> Void
     @Binding var showsTransitions: Bool
+    @Binding var showsMeter: Bool
 
     /// The chosen zoom, or nil while the whole timeline is fitted to the
     /// window. Kept in points per second, not relative to the fit, so
@@ -311,6 +312,11 @@ struct TimelineView: View {
                 }
                 .toggleStyle(.button)
                 .help(showsTransitions ? "Hide transitions" : "Show transitions")
+                Toggle(isOn: $showsMeter) {
+                    Image(systemName: "chart.bar.fill")
+                }
+                .toggleStyle(.button)
+                .help(showsMeter ? "Hide the audio meter" : "Show the audio meter: every track together, left and right")
             }
             .padding(.horizontal, Design.Space.rail)
             .padding(.vertical, Design.Space.close)

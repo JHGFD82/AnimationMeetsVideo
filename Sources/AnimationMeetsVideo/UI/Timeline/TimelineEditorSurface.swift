@@ -27,6 +27,7 @@ struct TimelineEditorSurface<Library: View>: View {
     /// areas share whatever height it has and scroll the rest.
     @AppStorage("timelineHeight") private var timelineHeight: Double = 280
     @AppStorage("showsTransitionsPanel") private var showsTransitions = false
+    @AppStorage("showsAudioMeter") private var showsMeter = false
 
     private let minTimelineHeight: CGFloat = 140
     private let minTopAreaHeight: CGFloat = 220
@@ -92,6 +93,12 @@ struct TimelineEditorSurface<Library: View>: View {
 
                 HStack(spacing: 0) {
                     timelineView
+                    if showsMeter {
+                        AudioMeterView(playback: playback)
+                            .frame(width: 52)
+                            .grooved(.leading)
+                            .transition(.move(edge: .trailing))
+                    }
                     if showsTransitions {
                         TransitionsPanel(onClose: { showsTransitions = false })
                             .frame(width: 220)
@@ -101,6 +108,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 }
                 .frame(height: resolvedTimelineHeight)
                 .editorAnimation(Design.Motion.panel, value: showsTransitions)
+                .editorAnimation(Design.Motion.panel, value: showsMeter)
             }
         }
         .onChange(of: timelineID) { _, newValue in
@@ -239,7 +247,8 @@ struct TimelineEditorSurface<Library: View>: View {
                     project.setTransitionDuration(duration, at: edge, of: clipID, in: timelineID, layer: layerID)
                 },
                 onEditProject: { change in change(&project) },
-                showsTransitions: $showsTransitions
+                showsTransitions: $showsTransitions,
+                showsMeter: $showsMeter
             )
         } else {
             ContentUnavailableView("No Timeline Selected", systemImage: "timeline.selection")
