@@ -103,7 +103,9 @@ Limits:
   item's frame until the new one draws, so the picture doesn't blink.
   That can take half a second or more, since a paused player holds back
   a new item's first picture until its sound is ready; the old frame is
-  held for up to five seconds.
+  held for up to five seconds. A render that finishes just as play is
+  pressed waits for the next pause, since swapping the item mid-play
+  freezes the picture.
 - **Export.** A ProRes 422 export plays every stretch that has a render
   from the cache instead of compositing it again, which is much faster for
   stacked or animated stretches. The render is encoded a second time, which

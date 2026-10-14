@@ -20,6 +20,9 @@ struct TimelineEditorSurface<Library: View>: View {
     @State private var trimPreview = TrimPreviewModel()
     @State private var buildTask: Task<Void, Never>?
     @State private var buildError: String?
+    /// A render finished while playing; its rebuild waits for a pause,
+    /// since swapping the item mid-play freezes the picture.
+    @State private var renderRebuildPending = false
     /// As tall as the person makes it, not as tall as its layers need: its
     /// areas share whatever height it has and scroll the rest.
     @AppStorage("timelineHeight") private var timelineHeight: Double = 280
@@ -118,10 +121,20 @@ struct TimelineEditorSurface<Library: View>: View {
         }
         .onChange(of: playback.isPlaying) { _, playing in
             renderer?.setPlaying(playing)
+            if !playing, renderRebuildPending {
+                renderRebuildPending = false
+                rebuildPlayerItem()
+            }
         }
         // A finished render plays once the item is rebuilt with it.
+        // Renders only run while paused, but one can finish just as play
+        // is pressed.
         .onChange(of: renderer?.finishedCount) { _, _ in
-            rebuildPlayerItem()
+            if playback.isPlaying {
+                renderRebuildPending = true
+            } else {
+                rebuildPlayerItem()
+            }
         }
         .onChange(of: renderer?.packageURL) { _, _ in
             rebuildPlayerItem()
