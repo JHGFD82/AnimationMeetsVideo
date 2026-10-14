@@ -36,16 +36,16 @@ struct JoinedTransitionBridge: View {
         let cutX = joint.lead.seconds * pixelsPerSecond
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 3)
-                .fill(Color.black.opacity(0.35))
+                .fill(Color.black.opacity(0.45))
             TransitionWedge(curve: transition.curve, edge: .leading)
                 .fill(Color.white.opacity(isSelected ? 0.32 : 0.22))
             Rectangle()
-                .fill(Color.white.opacity(0.7))
+                .fill(Design.textOnColor.opacity(0.75))
                 .frame(width: 1, height: height)
                 .offset(x: cutX)
             Image(systemName: transition.kind.systemImage)
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.9))
+                .font(Design.Typeface.micro)
+                .foregroundStyle(Design.textOnColor.opacity(0.9))
                 .frame(width: width, height: height)
             if isSelected, width >= curveEditingWidth, height >= 30 {
                 TransitionCurveEditor(curve: transition.curve, edge: .leading, size: CGSize(width: width, height: height), onChange: onSetCurve)
@@ -56,7 +56,7 @@ struct JoinedTransitionBridge: View {
         .frame(width: width, height: height, alignment: .topLeading)
         .overlay(
             RoundedRectangle(cornerRadius: 3)
-                .strokeBorder(isSelected || isDropTarget ? Color.accentColor : Color.white.opacity(0.6), lineWidth: isSelected || isDropTarget ? 1.5 : 1)
+                .strokeBorder(isSelected || isDropTarget ? Design.accent : Design.textOnColor.opacity(0.6), lineWidth: isSelected || isDropTarget ? 1.5 : 1)
         )
         .contentShape(Rectangle())
         .gesture(TapGesture(count: 2).onEnded(onEdit).exclusively(before: TapGesture().onEnded(onSelect)))
@@ -150,18 +150,18 @@ struct TransitionFootageLane: View {
 
         ZStack(alignment: .topLeading) {
             // Outgoing clip, then its spare tail.
-            bar(from: x(joint.outgoing.startOffset), to: cutX, y: topY, color: .purple, opacity: 0.45, label: "Out: \(outgoingName)", alignLabel: .trailing)
-            bar(from: cutX, to: x(CMTimeAdd(joint.cut, joint.spareTail)), y: topY, color: .purple, opacity: 0.15,
+            bar(from: x(joint.outgoing.startOffset), to: cutX, y: topY, color: Design.ClipTone.video.color, opacity: 0.45, label: "Out: \(outgoingName)", alignLabel: .trailing)
+            bar(from: cutX, to: x(CMTimeAdd(joint.cut, joint.spareTail)), y: topY, color: Design.ClipTone.video.color, opacity: 0.15,
                 label: "spare \(joint.spareTail.compactTimecode(frameRate: frameRate))", alignLabel: .leading)
             // Incoming clip's spare head, then the clip.
-            bar(from: x(CMTimeSubtract(joint.cut, joint.spareHead)), to: cutX, y: bottomY, color: .purple, opacity: 0.15,
+            bar(from: x(CMTimeSubtract(joint.cut, joint.spareHead)), to: cutX, y: bottomY, color: Design.ClipTone.video.color, opacity: 0.15,
                 label: "spare \(joint.spareHead.compactTimecode(frameRate: frameRate))", alignLabel: .trailing)
-            bar(from: cutX, to: x(joint.incoming.endOffset), y: bottomY, color: .purple, opacity: 0.45, label: "In: \(incomingName)", alignLabel: .leading)
+            bar(from: cutX, to: x(joint.incoming.endOffset), y: bottomY, color: Design.ClipTone.video.color, opacity: 0.45, label: "In: \(incomingName)", alignLabel: .leading)
 
             // The transition across both rows.
             RoundedRectangle(cornerRadius: 3)
-                .fill(Color.accentColor.opacity(0.18))
-                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Color.accentColor, lineWidth: 1.5))
+                .fill(Design.accent.opacity(0.18))
+                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Design.accent, lineWidth: 1.5))
                 .frame(width: max(4, endX - startX), height: Self.height - 8)
                 .contentShape(Rectangle())
                 .offset(x: startX, y: 4)
@@ -182,7 +182,7 @@ struct TransitionFootageLane: View {
             }
         }
         .frame(width: width, height: Self.height, alignment: .topLeading)
-        .background(Color.black.opacity(0.15))
+        .background(Design.Surface.well.color.opacity(0.7))
     }
 
     /// The cut, which rolls.
@@ -207,10 +207,10 @@ struct TransitionFootageLane: View {
     private func slipHandle(atX cutX: CGFloat, y: CGFloat, edit: @escaping (CMTime) -> JointEdit) -> some View {
         ZStack {
             Rectangle()
-                .fill(Color.yellow)
+                .fill(Design.snap)
                 .frame(width: 2, height: Self.height / 2)
             Capsule()
-                .fill(Color.yellow)
+                .fill(Design.snap)
                 .frame(width: 8, height: 14)
         }
         .frame(width: 12, height: Self.height / 2)
@@ -230,9 +230,9 @@ struct TransitionFootageLane: View {
         let drawnMax = min(maxX, visibleX.upperBound + 4)
         let drawnWidth = max(0, drawnMax - drawnMin)
         return Text(label)
-            .font(.caption2)
+            .font(Design.Typeface.micro)
             .lineLimit(1)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Design.textSecondary)
             .padding(.horizontal, 4)
             .frame(width: drawnWidth, height: rowHeight, alignment: alignLabel)
             .clipped()

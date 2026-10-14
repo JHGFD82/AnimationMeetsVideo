@@ -85,19 +85,21 @@ private struct ExternalViewerContent: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Toggle("Sync with Primary", isOn: $isSynced)
+                Toggle("Sync with primary", isOn: $isSynced)
                     .toggleStyle(.switch)
                 Spacer()
                 if isSynced {
-                    Button("Clear Markup") { annotations.clear() }
+                    Button("Clear markup") { annotations.clear() }
                         .buttonStyle(.bordered)
                 }
                 Button("Close") { onClose() }
                     .buttonStyle(.bordered)
             }
-            .padding()
-            .foregroundStyle(.white)
-            .background(.black)
+            .font(Design.Typeface.body)
+            .foregroundStyle(Design.textPrimary)
+            .padding(.horizontal, Design.Space.rail)
+            .padding(.vertical, Design.Space.group)
+            .rail(.raised)
 
             if isSynced {
                 ZStack {
@@ -120,7 +122,12 @@ private struct ExternalViewerContent: View {
                 )
             }
         }
-        .background(Color.black)
+        // Synced, this window is a projection surface and stays pure
+        // black; independent, it is a second editor, so it takes the same
+        // fixed dark chrome as the main one.
+        .background(isSynced ? Color.black : Design.Surface.base.color)
+        .preferredColorScheme(.dark)
+        .tint(Design.accent)
         .onAppear {
             if independentTimelineID == nil {
                 independentTimelineID = primaryTimelineID

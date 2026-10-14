@@ -22,14 +22,14 @@ struct RenderStatusStrip: View {
                 let rect = CGRect(x: minX, y: 0, width: max(1, maxX - minX), height: size.height)
                 switch state {
                 case .rendered:
-                    context.fill(Path(rect), with: .color(.green.opacity(0.75)))
+                    context.fill(Path(rect), with: .color(Design.statusDone))
                 case .pending:
-                    context.fill(Path(rect), with: .color(.orange.opacity(0.85)))
+                    context.fill(Path(rect), with: .color(Design.statusPending))
                 case .rendering(let progress):
-                    context.fill(Path(rect), with: .color(.orange.opacity(0.85)))
+                    context.fill(Path(rect), with: .color(Design.statusPending))
                     var done = rect
                     done.size.width = rect.width * progress
-                    context.fill(Path(done), with: .color(.green.opacity(0.75)))
+                    context.fill(Path(done), with: .color(Design.statusDone))
                 }
             }
         }

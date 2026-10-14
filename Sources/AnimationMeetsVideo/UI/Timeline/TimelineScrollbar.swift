@@ -26,7 +26,7 @@ struct TimelineScrollbar: View {
                     onScroll(viewport.scrollX + (location.x < thumbX ? -page : page))
                 }
             Capsule()
-                .fill(Color.secondary.opacity(dragStartScrollX == nil ? 0.35 : 0.55))
+                .fill(dragStartScrollX == nil ? Design.textTertiary.opacity(0.5) : Design.textSecondary)
                 .frame(width: thumbWidth, height: 6)
                 .frame(width: thumbWidth, height: Self.height)
                 .contentShape(Rectangle())

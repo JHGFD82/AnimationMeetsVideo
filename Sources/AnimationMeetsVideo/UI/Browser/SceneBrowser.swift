@@ -113,13 +113,17 @@ struct SceneThumbnail: View {
 
     var body: some View {
         ZStack {
-            Rectangle().fill(.quaternary)
+            Rectangle().fill(Design.Surface.well.color)
             if let image {
                 Image(nsImage: image).resizable().scaledToFill()
             }
         }
         .frame(width: 64, height: 36)
-        .clipShape(RoundedRectangle(cornerRadius: 3))
+        .clipShape(RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                .strokeBorder(Design.bevelEdge, lineWidth: 1)
+        }
         .task(id: "\(time.value)/\(time.timescale)|\(offset.value)/\(offset.timescale)|\(url?.path ?? "")") {
             guard let url else { return }
             image = await SceneThumbnailStore.image(url: url, time: CMTimeAdd(time, offset))
@@ -133,21 +137,22 @@ struct SceneRowView: View {
     let number: Int
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Design.Space.step) {
             SceneThumbnail(url: clip.url, time: scene.start, offset: clip.alignmentOffset)
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
+                HStack(spacing: Design.Space.tight) {
                     Text("Scene \(number)")
+                        .font(Design.Typeface.label)
                     if scene.origin == .manual {
                         Image(systemName: "hand.point.up.left")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .font(Design.Typeface.micro)
+                            .foregroundStyle(Design.textTertiary)
                             .help("Boundary set by hand")
                     }
                 }
                 Text("\(scene.start.compactTimecode(frameRate: clip.frameRate)) · \(scene.duration.formatted)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Design.Typeface.numericMicro)
+                    .foregroundStyle(Design.textTertiary)
             }
         }
     }
@@ -248,42 +253,48 @@ struct ScenePreviewSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Scene \(target.number)").font(.headline)
-
+        SheetFrame(
+            title: "Scene \(target.number)",
+            subtitle: "Play through the scene and split it where it should start again.",
+            width: 520
+        ) {
             PlayerLayerView(player: model.player)
                 .frame(width: 480, height: 270)
-                .background(.black)
+                .background(Design.Surface.well.color)
+                .overlay {
+                    Rectangle()
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                }
 
-            HStack(spacing: 10) {
+            HStack(spacing: Design.Space.group) {
                 Button {
                     model.togglePlayback()
                 } label: {
-                    Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").frame(width: 16)
+                    Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
+                        .frame(width: 16)
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 Slider(
                     value: Binding(get: { model.position }, set: { model.seek(to: $0) }),
                     in: target.scene.start.seconds...max(target.scene.end.seconds, target.scene.start.seconds + 0.001)
                 )
                 Text(CMTime(seconds: model.position, preferredTimescale: 600).compactTimecode(frameRate: frameRate))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .font(Design.Typeface.numericSmall)
+                    .foregroundStyle(Design.textPrimary)
             }
-
-            HStack {
-                Button("Split Here") {
-                    let time = splitTime
-                    project.editScenes(ofAsset: target.assetID) { $0.addCut(at: time) }
-                    dismiss()
-                }
-                .disabled(!canSplit)
-                .help("Start a new scene at the frame shown")
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
+        } actions: {
+            Button("Split here") {
+                let time = splitTime
+                project.editScenes(ofAsset: target.assetID) { $0.addCut(at: time) }
+                dismiss()
             }
+            .disabled(!canSplit)
+            .help("Start a new scene at the frame shown")
+            Spacer()
+            Button("Done") { dismiss() }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
         }
-        .padding(20)
         .onDisappear { model.stop() }
     }
 }
@@ -351,59 +362,77 @@ struct SensitivitySheet: View {
 
     var body: some View {
         let preview = previewScenes
-        VStack(alignment: .leading, spacing: 12) {
-            Text(span == nil ? "Cut Sensitivity for This Media" : "Cut Sensitivity for Selected Scenes")
-                .font(.headline)
-            Text(span == nil
-                 ? "Applies to every scene in this media that isn't covered by a more specific setting."
-                 : "Applies only between the selected scenes' outer edges. Scenes outside, and boundaries you placed by hand, are left alone.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack {
-                Text("Fewer cuts").font(.caption).foregroundStyle(.secondary)
-                Slider(value: $draft, in: 0...1)
-                Text("More cuts").font(.caption).foregroundStyle(.secondary)
+        SheetFrame(
+            title: span == nil ? "Cut sensitivity for this media" : "Cut sensitivity for the selected scenes",
+            subtitle: span == nil
+                ? "Applies to every scene in this media that isn't covered by a more specific setting."
+                : "Applies only between the selected scenes' outer edges. Scenes outside, and boundaries you placed by hand, are left alone.",
+            width: Design.SheetWidth.standard
+        ) {
+            SheetSection("Sensitivity") {
+                HStack(spacing: Design.Space.step) {
+                    Text("Fewer cuts")
+                        .font(Design.Typeface.label)
+                        .foregroundStyle(Design.textTertiary)
+                    Slider(value: $draft, in: 0...1)
+                    Text("More cuts")
+                        .font(Design.Typeface.label)
+                        .foregroundStyle(Design.textTertiary)
+                }
+                HStack(spacing: Design.Space.tight) {
+                    Text("\(currentScenes.count)")
+                        .font(Design.Typeface.numeric)
+                        .foregroundStyle(Design.textPrimary)
+                    Text("scene\(currentScenes.count == 1 ? "" : "s") now,")
+                        .font(Design.Typeface.body)
+                        .foregroundStyle(Design.textSecondary)
+                    Text("\(preview.count)")
+                        .font(Design.Typeface.numeric)
+                        .foregroundStyle(Design.accent)
+                    Text("with this setting")
+                        .font(Design.Typeface.body)
+                        .foregroundStyle(Design.textSecondary)
+                }
             }
 
-            Text("\(currentScenes.count) scene\(currentScenes.count == 1 ? "" : "s") now, \(preview.count) with this setting")
-                .font(.callout.monospacedDigit())
-
-            List(Array(preview.enumerated()), id: \.element.id) { _, scene in
-                HStack {
-                    Text(scene.start.compactTimecode(frameRate: frameRate)).monospacedDigit()
-                    Spacer()
-                    Text(scene.duration.formatted).foregroundStyle(.secondary).monospacedDigit()
+            SheetSection("Scenes this would make") {
+                List(Array(preview.enumerated()), id: \.element.id) { _, scene in
+                    HStack {
+                        Text(scene.start.compactTimecode(frameRate: frameRate))
+                            .foregroundStyle(Design.textPrimary)
+                        Spacer()
+                        Text(scene.duration.formatted)
+                            .foregroundStyle(Design.textTertiary)
+                    }
+                    .font(Design.Typeface.numericSmall)
                 }
-                .font(.caption)
+                .frame(height: 160)
+                .scrollContentBackground(.hidden)
+                .background(Design.Surface.sunken.color, in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
             }
-            .frame(height: 160)
-
-            HStack {
-                if span == nil, project.mediaClip(id: target.assetID)?.sceneEdits.sensitivity != nil {
-                    Button("Use Project Default") {
-                        project.editScenes(ofAsset: target.assetID) { $0.sensitivity = nil }
-                        dismiss()
-                    }
-                }
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                Button("Apply") {
-                    let value = draft
-                    let scope = target.scope
-                    project.editScenes(ofAsset: target.assetID) { edits in
-                        switch scope {
-                        case .span(let start, let end): edits.applySensitivity(value, from: start, to: end)
-                        case .asset: edits.sensitivity = value
-                        }
-                    }
+        } actions: {
+            if span == nil, project.mediaClip(id: target.assetID)?.sceneEdits.sensitivity != nil {
+                Button("Use project default") {
+                    project.editScenes(ofAsset: target.assetID) { $0.sensitivity = nil }
                     dismiss()
                 }
-                .keyboardShortcut(.defaultAction)
+                Spacer()
             }
+            Button("Cancel", role: .cancel) { dismiss() }
+                .keyboardShortcut(.cancelAction)
+            Button("Apply") {
+                let value = draft
+                let scope = target.scope
+                project.editScenes(ofAsset: target.assetID) { edits in
+                    switch scope {
+                    case .span(let start, let end): edits.applySensitivity(value, from: start, to: end)
+                    case .asset: edits.sensitivity = value
+                    }
+                }
+                dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
         }
-        .padding(20)
-        .frame(width: 420)
     }
 }

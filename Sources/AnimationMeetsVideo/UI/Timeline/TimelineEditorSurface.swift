@@ -59,7 +59,6 @@ struct TimelineEditorSurface<Library: View>: View {
 
             VStack(spacing: 0) {
                 TimelineHeaderBar(project: $project, timelineID: $timelineID)
-                Divider()
 
                 HStack(spacing: 0) {
                     library()
@@ -82,6 +81,7 @@ struct TimelineEditorSurface<Library: View>: View {
                         onDeleteSelection: { selection = nil }
                     )
                     .frame(width: 280)
+                    .grooved(.leading)
                 }
                 .frame(maxHeight: .infinity)
 
@@ -94,14 +94,14 @@ struct TimelineEditorSurface<Library: View>: View {
                 HStack(spacing: 0) {
                     timelineView
                     if showsTransitions {
-                        Divider()
                         TransitionsPanel(onClose: { showsTransitions = false })
                             .frame(width: 220)
+                            .grooved(.leading)
                             .transition(.move(edge: .trailing))
                     }
                 }
                 .frame(height: resolvedTimelineHeight)
-                .animation(.easeInOut(duration: 0.2), value: showsTransitions)
+                .editorAnimation(Design.Motion.panel, value: showsTransitions)
             }
         }
         .onChange(of: timelineID) { _, newValue in
@@ -351,14 +351,26 @@ struct TimelineResizeHandle: View {
     let maxHeight: CGFloat
 
     @State private var dragStartHeight: CGFloat?
+    @State private var isHovering = false
+
+    private var isActive: Bool { isHovering || dragStartHeight != nil }
 
     var body: some View {
+        // A grip rather than a bare line: the seam between the viewer and
+        // the timeline is the one divider in the window that moves, so it
+        // says so.
         ZStack {
-            Divider()
-            Color.clear
+            Design.Surface.raised.color
+            Capsule()
+                .fill(isActive ? Design.textSecondary : Design.textTertiary.opacity(0.55))
+                .frame(width: isActive ? 44 : 28, height: 3)
         }
-        .frame(height: 7)
+        .frame(height: 9)
+        .overlay(alignment: .top) { Design.hairline.frame(height: 1) }
+        .overlay(alignment: .bottom) { Design.hairline.frame(height: 1) }
         .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .editorAnimation(Design.Motion.select, value: isActive)
         .pointerStyle(.rowResize)
         .gesture(
             DragGesture(minimumDistance: 0, coordinateSpace: .global)

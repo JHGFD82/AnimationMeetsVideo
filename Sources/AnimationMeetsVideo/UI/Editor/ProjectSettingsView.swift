@@ -11,31 +11,35 @@ struct ProjectSettingsView: View {
     @State private var copiesMediaOnImport = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Project Settings")
-                .font(.title3.bold())
-            Form {
-                TextField("Name", text: $name)
-                Toggle("Copy imported media into the project", isOn: $copiesMediaOnImport)
-                Text("The import dialog starts with this choice; it can still be changed for each import. When off, imported files stay where they are and the project refers to them there.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Done") {
-                    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    onApply(trimmed.isEmpty ? project.name : trimmed, copiesMediaOnImport)
-                    dismiss()
+        SheetFrame(
+            title: "Project Settings",
+            subtitle: "These apply to the whole project. Changes are made together when you save them, and can be undone.",
+            width: Design.SheetWidth.standard
+        ) {
+            SheetSection {
+                SheetRow("Name") {
+                    TextField("Name", text: $name)
+                        .labelsHidden()
                 }
-                .keyboardShortcut(.defaultAction)
             }
+
+            SheetSection("Importing") {
+                SheetRow("Media files", alignment: .center) {
+                    Toggle("Copy into the project", isOn: $copiesMediaOnImport)
+                }
+                SheetNote("The import dialog starts with this choice and can still change it for one import. Off, imported files stay where they are and the project refers to them in place.")
+            }
+        } actions: {
+            Button("Cancel", role: .cancel) { dismiss() }
+                .keyboardShortcut(.cancelAction)
+            Button("Save Settings") {
+                let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                onApply(trimmed.isEmpty ? project.name : trimmed, copiesMediaOnImport)
+                dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
         }
-        .padding(20)
-        .frame(width: 420)
         .onAppear {
             name = project.name
             copiesMediaOnImport = project.copiesMediaOnImport

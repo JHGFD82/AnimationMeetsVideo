@@ -53,20 +53,22 @@ struct EditorView: View {
                 analysis: analysis,
                 renderer: renderer
             )
-            Divider()
             TimelineEditorSurface(project: $project, timelineID: $activeTimelineID, selection: $selection, playback: playback, analysis: analysis) {
-                HStack(spacing: 0) {
-                    LibrarySidebar(
-                        project: $project, activeTimelineID: $activeTimelineID, selection: $selection,
-                        analysis: analysis, replacement: replacement, packageURL: packageURL
-                    )
-                    .frame(width: 260)
-                    Divider()
-                }
+                LibrarySidebar(
+                    project: $project, activeTimelineID: $activeTimelineID, selection: $selection,
+                    analysis: analysis, replacement: replacement, packageURL: packageURL
+                )
+                .frame(width: 260)
+                .grooved(.trailing)
             }
             .environment(renderer)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Design.Surface.base.color)
+        // A picture can only be judged against a neutral dim surround, so
+        // the editor is dark whatever the system appearance is. See
+        // `DesignSystem`.
+        .preferredColorScheme(.dark)
+        .tint(Design.accent)
         .onChange(of: project.id) { _, _ in
             activeTimelineID = project.rootTimelineID
             selection = nil

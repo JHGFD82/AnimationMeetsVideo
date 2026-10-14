@@ -64,7 +64,7 @@ struct TransitionCurveEditor: View {
         let frame = frame
         let line = frame.path(of: curve)
         ZStack(alignment: .topLeading) {
-            line.stroke(Color.accentColor, lineWidth: 1.5)
+            line.stroke(Design.accent, lineWidth: 1.5)
                 .allowsHitTesting(false)
 
             // A wide invisible stroke takes clicks on the line.
@@ -110,7 +110,7 @@ struct TransitionCurveEditor: View {
         let center = frame.screen(point.location)
         let isEnd = index == 0 || index == curve.points.count - 1
         return Rectangle()
-            .fill(Color.accentColor)
+            .fill(Design.accent)
             .overlay(Rectangle().strokeBorder(Color.white, lineWidth: 1))
             .frame(width: 8, height: 8)
             .rotationEffect(.degrees(45))
@@ -164,12 +164,12 @@ struct TransitionCurveEditor: View {
                 path.move(to: anchor)
                 path.addLine(to: tip)
             }
-            .stroke(Color.accentColor.opacity(0.8), lineWidth: 1)
+            .stroke(Design.accent.opacity(0.8), lineWidth: 1)
             .allowsHitTesting(false)
 
             Circle()
                 .fill(Color.white)
-                .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: 1.5))
+                .overlay(Circle().strokeBorder(Design.accent, lineWidth: 1.5))
                 .frame(width: 8, height: 8)
                 .frame(width: 14, height: 14)
                 .contentShape(Circle())

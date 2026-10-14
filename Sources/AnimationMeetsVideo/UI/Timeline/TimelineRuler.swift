@@ -12,11 +12,14 @@ struct TimelineRuler: View {
 
     var body: some View {
         Canvas { context, size in
+            // Past the end of the timeline is still droppable, so it is
+            // shaded rather than ruled off: darker, like a recess, not a
+            // disabled area.
             let endX = viewport.x(atSeconds: duration.seconds)
             if endX < size.width {
                 context.fill(
                     Path(CGRect(x: max(0, endX), y: 0, width: size.width - max(0, endX), height: size.height)),
-                    with: .color(.primary.opacity(0.06))
+                    with: .color(.black.opacity(0.22))
                 )
             }
             drawTicks(context: context, height: size.height)
@@ -51,8 +54,8 @@ struct TimelineRuler: View {
                 }
                 let time = CMTimeMultiply(frameDuration, multiplier: Int32(clamping: frame))
                 let label = Text(time.compactTimecode(frameRate: frameRate))
-                    .font(.caption2.monospacedDigit().weight(landmark.weight))
-                    .foregroundStyle(landmark == .none ? Color.secondary : Color.primary)
+                    .font(.system(size: 10, weight: landmark.weight, design: .monospaced))
+                    .foregroundStyle(landmark == .none ? Design.textTertiary : Design.textPrimary)
                 context.draw(label, at: CGPoint(x: x + 3, y: 18), anchor: .leading)
             case .mid:
                 mid.move(to: CGPoint(x: x, y: 0))
@@ -63,10 +66,10 @@ struct TimelineRuler: View {
             }
             frame += step
         }
-        context.stroke(minor, with: .color(.secondary.opacity(0.4)), lineWidth: 1)
-        context.stroke(mid, with: .color(.secondary.opacity(0.6)), lineWidth: 1)
-        context.stroke(major, with: .color(.secondary.opacity(0.85)), lineWidth: 1)
-        context.stroke(landmarks, with: .color(.primary.opacity(0.8)), lineWidth: 1)
+        context.stroke(minor, with: .color(Design.textTertiary.opacity(0.45)), lineWidth: 1)
+        context.stroke(mid, with: .color(Design.textTertiary.opacity(0.7)), lineWidth: 1)
+        context.stroke(major, with: .color(Design.textSecondary), lineWidth: 1)
+        context.stroke(landmarks, with: .color(Design.textPrimary.opacity(0.75)), lineWidth: 1)
     }
 }
 
@@ -145,51 +148,9 @@ struct RulerTicks: Equatable {
     }
 }
 
-/// The handle at the top of the playhead, in the ruler: something clearly
-/// grabbable for dragging through time.
-struct PlayheadHead: View {
-    let x: CGFloat
-
-    static let width: CGFloat = 13
-    static let height: CGFloat = 14
-
-    var body: some View {
-        PlayheadHeadShape()
-            .fill(Color.red)
-            .overlay(PlayheadHeadShape().stroke(Color.black.opacity(0.25), lineWidth: 0.5))
-            .frame(width: Self.width, height: Self.height)
-            .offset(x: x - Self.width / 2)
-            .allowsHitTesting(false)
-    }
-}
-
-/// A downward-pointing tab: square shoulders over a point at the playhead.
-private struct PlayheadHeadShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let shoulder = rect.height * 0.55
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: shoulder))
-        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: shoulder))
-        path.closeSubpath()
-        return path
-    }
-}
-
-struct PlayheadLine: View {
-    let x: CGFloat
-    let height: CGFloat
-
-    var body: some View {
-        Rectangle()
-            .fill(Color.red)
-            .frame(width: 1.5, height: height)
-            .offset(x: x - 0.75)
-            .allowsHitTesting(false)
-    }
-}
+// The playhead's line and head used to be SwiftUI shapes here. They move on
+// every playback tick and every pixel of a drag, so they are Core Animation
+// layers now — see `PlayheadRail`.
 
 /// Beat ticks in the ruler and faint lines down through the layers, for the
 /// beats of the one layer chosen in the view options. Like the ruler's
@@ -242,8 +203,8 @@ struct BeatMarkerOverlay: View {
                 lines.move(to: CGPoint(x: x, y: rulerHeight))
                 lines.addLine(to: CGPoint(x: x, y: height))
             }
-            context.stroke(lines, with: .color(.orange.opacity(0.22)), lineWidth: 1)
-            context.stroke(ticks, with: .color(.orange), lineWidth: 1.5)
+            context.stroke(lines, with: .color(Design.beat.opacity(0.2)), lineWidth: 1)
+            context.stroke(ticks, with: .color(Design.beat), lineWidth: 1.5)
         }
         .frame(width: viewport.width, height: height)
         .clipped()

@@ -16,7 +16,7 @@ struct KeyframeLane: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Color.primary.opacity(0.03)
+            Color.black.opacity(0.18)
                 .allowsHitTesting(false)
             ForEach(times, id: \.self) { time in
                 KeyframeDiamond(
@@ -55,7 +55,11 @@ private struct KeyframeDiamond: View {
     var body: some View {
         let x = CGFloat(time.seconds) * pixelsPerSecond + dragX
         Rectangle()
-            .fill(isAtPlayhead ? Color.yellow : Color.primary.opacity(0.75))
+            .fill(isAtPlayhead ? Design.keyframe : Design.textSecondary)
+            .overlay {
+                Rectangle()
+                    .strokeBorder(Color.black.opacity(0.45), lineWidth: 0.5)
+            }
             .frame(width: size, height: size)
             .rotationEffect(.degrees(45))
             .frame(width: size + 6, height: height)

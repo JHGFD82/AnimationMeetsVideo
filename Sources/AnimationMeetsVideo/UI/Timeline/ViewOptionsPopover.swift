@@ -14,19 +14,27 @@ struct ViewOptionsPopover: View {
     let onPreviewClick: () -> Void
 
     var body: some View {
-        Form {
-            Section("Horizontal Zoom") {
+        VStack(alignment: .leading, spacing: Design.Space.group + 2) {
+            SheetSection("Zoom") {
                 Slider(value: $zoomFraction, in: 0...1)
-                Button("Fit to Window (\\)", action: onFit)
+                Button("Fit to window", action: onFit)
+                    .help("Also on the \\ key")
             }
-            Section("Layer Height") {
+
+            Groove()
+
+            SheetSection("Layer height") {
                 Slider(value: $layerHeight, in: 32...120)
             }
-            Section("Beat Markers") {
+
+            Groove()
+
+            SheetSection("Beat markers") {
                 if beatLayers.isEmpty {
-                    Text("No audio on this timeline has detected beats.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text("No audio on this timeline has detected beats yet.")
+                        .font(Design.Typeface.label)
+                        .foregroundStyle(Design.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Picker("Show beats of", selection: $beatLayerID) {
                         Text("None").tag(UUID?.none)
@@ -37,26 +45,29 @@ struct ViewOptionsPopover: View {
                     Toggle("Click on beats", isOn: $clickOnBeats)
                         .disabled(beatLayerID == nil)
                     if clickOnBeats {
-                        LabeledContent("Pitch") {
-                            HStack(spacing: 6) {
-                                Slider(value: $clickFrequency, in: BeatClickPlayer.frequencyRange, step: 10) { editing in
-                                    if !editing { onPreviewClick() }
-                                }
-                                Text("\(Int(clickFrequency)) Hz")
-                                    .font(.caption.monospacedDigit())
-                                    .frame(width: 52, alignment: .trailing)
-                                Button(action: onPreviewClick) {
-                                    Image(systemName: "speaker.wave.2")
-                                }
-                                .buttonStyle(.borderless)
-                                .help("Preview the click")
+                        HStack(spacing: Design.Space.close) {
+                            Text("Pitch")
+                                .font(Design.Typeface.label)
+                                .foregroundStyle(Design.textSecondary)
+                            Slider(value: $clickFrequency, in: BeatClickPlayer.frequencyRange, step: 10) { editing in
+                                if !editing { onPreviewClick() }
                             }
+                            Text("\(Int(clickFrequency)) Hz")
+                                .font(Design.Typeface.numericSmall)
+                                .foregroundStyle(Design.textPrimary)
+                                .frame(width: 52, alignment: .trailing)
+                            Button(action: onPreviewClick) {
+                                Image(systemName: "speaker.wave.2")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Preview the click")
                         }
                     }
                 }
             }
         }
-        .padding()
+        .padding(Design.Space.rail)
         .frame(width: 300)
+        .background(Design.Surface.overlay.color)
     }
 }

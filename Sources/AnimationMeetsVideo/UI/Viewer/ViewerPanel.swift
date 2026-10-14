@@ -9,11 +9,6 @@ struct ViewerPanel: View {
     /// A slipped clip's first and last frames, shown over the picture.
     let trimPreview: TrimPreviewModel
 
-    // Deliberately darker than the surrounding window chrome and distinct
-    // from pure black, so the composition's actual frame boundary stays
-    // visible even when the video content itself is black.
-    private let backdropColor = Color(white: 0.06)
-
     private var aspectRatio: CGFloat {
         frameSize.width > 0 && frameSize.height > 0 ? frameSize.width / frameSize.height : 16.0 / 9.0
     }
@@ -21,16 +16,16 @@ struct ViewerPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                backdropColor
+                // The well is the darkest surface in the app and the only
+                // one with nothing behind it, so the composition's own
+                // frame edge stays visible even on a black frame.
+                Design.Surface.well.color
                 if hasContent {
-                    PlayerLayerView(player: playback.player)
-                        .aspectRatio(aspectRatio, contentMode: .fit)
-                        .padding(36)
+                    picture { PlayerLayerView(player: playback.player) }
                 } else {
-                    MetalPreviewView()
-                        .aspectRatio(aspectRatio, contentMode: .fit)
-                        .padding(36)
-                    ContentUnavailableView("No Clips", systemImage: "film")
+                    picture { MetalPreviewView() }
+                    ContentUnavailableView("No clips yet", systemImage: "film",
+                                           description: Text("Drag a scene from the library onto the timeline."))
                 }
                 if trimPreview.isActive {
                     TrimPreviewOverlay(model: trimPreview, frameRate: frameRate, aspectRatio: aspectRatio)
@@ -38,35 +33,53 @@ struct ViewerPanel: View {
                 }
                 if let buildError {
                     Label(buildError, systemImage: "exclamationmark.triangle.fill")
-                        .padding(10)
-                        .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
-                        .foregroundStyle(.white)
+                        .font(Design.Typeface.body)
+                        .padding(Design.Space.group)
+                        .background(Design.statusDanger.opacity(0.92), in: RoundedRectangle(cornerRadius: Design.Radius.panel, style: .continuous))
+                        .foregroundStyle(Design.textOnColor)
                         .padding(48)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            HStack(spacing: 12) {
+            HStack(spacing: Design.Space.group) {
                 Button {
                     playback.togglePlayback()
                 } label: {
                     Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
                         .frame(width: 20)
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 .keyboardShortcut(.space, modifiers: [])
                 .help("Play/Pause (Space)")
                 .disabled(!hasContent)
 
+                // The one number meant to be read from across the desk.
                 Text(playback.currentTime.timecode(frameRate: frameRate))
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .font(Design.Typeface.timecode)
+                    .foregroundStyle(Design.textPrimary)
                 Spacer()
                 qualityMenu
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .padding(.horizontal, Design.Space.rail)
+            .padding(.vertical, Design.Space.close)
+            .rail(.raised)
         }
+    }
+
+    /// The composition, inset from the well with a cut edge so the frame
+    /// boundary reads whatever the content is. Deliberately no drop
+    /// shadow: it would force the video surface through an offscreen pass
+    /// on every frame, and the hairline already does the job.
+    private func picture<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .aspectRatio(aspectRatio, contentMode: .fit)
+            .overlay {
+                Rectangle()
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+            .padding(36)
     }
 
     /// Auto shows the size it's drawing at while that isn't full.
@@ -84,8 +97,8 @@ struct ViewerPanel: View {
         .overlay(alignment: .leading) {
             if playback.quality == .auto, playback.level != .full {
                 Text(playback.level.label)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .font(Design.Typeface.numericSmall)
+                    .foregroundStyle(Design.statusWarning)
                     .offset(x: -18)
             }
         }

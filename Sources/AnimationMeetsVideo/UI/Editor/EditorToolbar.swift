@@ -27,10 +27,11 @@ struct EditorToolbar: View {
     }
 
     var body: some View {
-        HStack {
+        HStack(spacing: Design.Space.group) {
             Text(project.name)
-                .font(.headline)
-            Spacer()
+                .font(Design.Typeface.panelTitle)
+                .foregroundStyle(Design.textPrimary)
+            Spacer(minLength: Design.Space.group)
             Menu(externalDisplay.isActive ? "On External Display" : "External Display") {
                 ForEach(externalScreens.indices, id: \.self) { index in
                     let screen = externalScreens[index]
@@ -55,29 +56,44 @@ struct EditorToolbar: View {
             }
             .disabled(externalScreens.isEmpty && !externalDisplay.isActive)
             .frame(width: 170)
-            Picker("ProRes preset", selection: $selectedPreset) {
-                ForEach(ProResPreset.allCases) { preset in
-                    Text(preset.rawValue).tag(preset)
+
+            Groove(axis: .vertical)
+                .frame(height: 18)
+
+            // The preset and the button are one thing — what you are about
+            // to export, and exporting it — so they sit together with no
+            // gap, away from everything else on the rail.
+            HStack(spacing: Design.Space.close) {
+                Picker("ProRes preset", selection: $selectedPreset) {
+                    ForEach(ProResPreset.allCases) { preset in
+                        Text(preset.rawValue).tag(preset)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(width: 130)
+                .help("ProRes 422 exports reuse the stretches already rendered in the background; ProRes 4444 composites everything from the sources.")
+                .disabled(isExporting)
+
+                if isExporting {
+                    ProgressView(value: exportProgress)
+                        .controlSize(.small)
+                        .frame(width: 90)
+                    Button("Cancel") {
+                        exportTask?.cancel()
+                    }
+                } else {
+                    Button("Export") {
+                        exportProject()
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
             }
-            .pickerStyle(.menu)
-            .frame(width: 150)
-            .help("ProRes 422 exports reuse the stretches already rendered in the background; ProRes 4444 composites everything from the sources.")
-            if isExporting {
-                ProgressView(value: exportProgress)
-                    .frame(width: 90)
-                Button("Cancel") {
-                    exportTask?.cancel()
-                }
-            } else {
-                Button("Export") {
-                    exportProject()
-                }
-                .buttonStyle(.borderedProminent)
-            }
+            .editorAnimation(Design.Motion.panel, value: isExporting)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Design.Space.rail)
+        .padding(.vertical, Design.Space.step + 2)
+        .rail(.raised)
         .alert(
             "Export Failed",
             isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })

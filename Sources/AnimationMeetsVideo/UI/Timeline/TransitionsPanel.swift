@@ -41,8 +41,9 @@ struct TransitionsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Label("Transitions", systemImage: "square.on.square.dashed")
-                    .font(.headline)
+                Text("Transitions")
+                    .font(Design.Typeface.panelTitle)
+                    .foregroundStyle(Design.textPrimary)
                 Spacer()
                 Button(action: onClose) {
                     Image(systemName: "xmark")
@@ -50,11 +51,12 @@ struct TransitionsPanel: View {
                 .buttonStyle(.borderless)
                 .help("Close transitions")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, Design.Space.group)
+            .padding(.vertical, Design.Space.step)
+            .rail(.raised)
 
             ScrollView {
-                LazyVGrid(columns: columns, spacing: 8) {
+                LazyVGrid(columns: columns, spacing: Design.Space.step) {
                     ForEach(TransitionKind.allCases) { kind in
                         TransitionTile(kind: kind)
                             .draggable(TransitionDragPayload(kind: kind)) {
@@ -62,34 +64,47 @@ struct TransitionsPanel: View {
                             }
                     }
                 }
-                .padding(12)
+                .padding(Design.Space.group)
             }
+            .sunken(.sunken)
 
-            Text("Drag onto the start or end of a clip.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
+            Text("Drag one onto the start or end of a clip.")
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.textTertiary)
+                .padding(.horizontal, Design.Space.group)
+                .padding(.vertical, Design.Space.step)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Design.Surface.base.color)
+                .overlay(alignment: .top) { Groove() }
         }
-        .padding(.vertical, 12)
-        .background(.background)
+        .panelSurface(.base)
     }
 }
 
 private struct TransitionTile: View {
     let kind: TransitionKind
 
+    @State private var isHovering = false
+
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: Design.Space.close) {
             Image(systemName: kind.systemImage)
-                .font(.title2)
+                .font(.title3)
+                .foregroundStyle(isHovering ? Design.textPrimary : Design.textSecondary)
                 .frame(maxWidth: .infinity, minHeight: 40)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.15)))
+                .beveledChip(
+                    fill: isHovering ? Design.Surface.floating.color : Design.Surface.overlay.color,
+                    radius: Design.Radius.control
+                )
             Text(kind.name)
-                .font(.caption)
+                .font(Design.Typeface.micro)
+                .foregroundStyle(Design.textSecondary)
                 .lineLimit(1)
         }
-        .padding(4)
+        .padding(Design.Space.tight)
         .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .editorAnimation(Design.Motion.select, value: isHovering)
         .help("\(kind.name): drag onto the start or end of a clip")
     }
 }

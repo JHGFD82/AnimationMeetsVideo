@@ -39,7 +39,7 @@ struct SectionLane: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Color.primary.opacity(0.03)
+            Color.black.opacity(0.22)
                 .contentShape(Rectangle())
                 .gesture(createGesture)
                 .simultaneousGesture(SpatialTapGesture(count: 2, coordinateSpace: .named(space)).onEnded { value in
@@ -52,8 +52,8 @@ struct SectionLane: View {
             if let creating {
                 let minX = viewport.x(atSeconds: creating.start.seconds)
                 let maxX = viewport.x(atSeconds: creating.end.seconds)
-                RoundedRectangle(cornerRadius: 3)
-                    .strokeBorder(Color.mint, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .strokeBorder(Design.section, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
                     .frame(width: max(2, maxX - minX), height: Self.height - 4)
                     .offset(x: minX, y: 2)
                     .allowsHitTesting(false)
@@ -70,22 +70,30 @@ struct SectionLane: View {
         let maxX = viewport.x(atSeconds: section.end.seconds)
         let isSelected = selectedID == section.id
         return ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(Color.mint.opacity(isSelected ? 0.55 : 0.3))
-                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(isSelected ? Color.white.opacity(0.9) : Color.mint, lineWidth: isSelected ? 1.5 : 1))
+            RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                .fill(Design.clipFill(Design.section, selected: isSelected))
+                .overlay {
+                    RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                        .strokeBorder(isSelected ? Design.textOnColor.opacity(0.95) : Design.section.opacity(0.85), lineWidth: isSelected ? 1.5 : 1)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                        .strokeBorder(Design.bevelEdge, lineWidth: 1)
+                }
             if editingID == section.id {
                 TextField(section.name, text: $draftName)
                     .textFieldStyle(.plain)
-                    .font(.caption)
-                    .padding(.horizontal, 4)
+                    .font(Design.Typeface.label)
+                    .padding(.horizontal, Design.Space.tight)
                     .focused($isNameFocused)
                     .onSubmit { commitRename() }
                     .onChange(of: isNameFocused) { _, focused in if !focused { commitRename() } }
             } else {
                 Text(section.name)
-                    .font(.caption.weight(.medium))
+                    .font(Design.Typeface.label.weight(.medium))
+                    .foregroundStyle(Design.textOnColor)
                     .lineLimit(1)
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, Design.Space.tight)
             }
             edgeHandle(section, edge: .start, atX: 0)
             edgeHandle(section, edge: .end, atX: maxX - minX)

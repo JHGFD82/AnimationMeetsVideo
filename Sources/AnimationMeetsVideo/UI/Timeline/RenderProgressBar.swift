@@ -8,8 +8,8 @@ struct RenderProgressBar: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                Rectangle().fill(Color.orange.opacity(0.85))
-                Rectangle().fill(Color.green.opacity(0.85))
+                Rectangle().fill(Design.statusPending)
+                Rectangle().fill(Design.statusDone)
                     .frame(width: geometry.size.width * min(max(progress, 0), 1))
             }
         }

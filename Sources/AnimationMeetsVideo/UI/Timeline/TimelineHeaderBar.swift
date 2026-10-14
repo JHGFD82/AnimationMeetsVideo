@@ -11,7 +11,7 @@ struct TimelineHeaderBar: View {
     }
 
     var body: some View {
-        HStack {
+        HStack(spacing: Design.Space.close) {
             Menu(currentTimeline?.name ?? "Timeline") {
                 ForEach(project.timelines) { timeline in
                     Button(timeline.name) { timelineID = timeline.id }
@@ -35,12 +35,13 @@ struct TimelineHeaderBar: View {
             Spacer()
             if let currentTimeline {
                 Text(currentTimeline.timebaseSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Design.Typeface.numericSmall)
+                    .foregroundStyle(Design.textTertiary)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Design.Space.rail)
+        .padding(.vertical, Design.Space.step)
+        .rail(.raised)
         .sheet(isPresented: $showingSettings) {
             TimelineSettingsSheet(mode: .edit(timelineID), project: $project, isPresented: $showingSettings)
         }
@@ -70,33 +71,77 @@ struct TimelineSettingsSheet: View {
     @State private var colorSpace: ProjectColorSpace = .rec709
 
     var body: some View {
-        Form {
-            TextField("Name", text: $name)
-            HStack {
-                TextField("Width", text: $widthText)
-                    .evaluatesArithmetic($widthText)
-                Text("×")
-                TextField("Height", text: $heightText)
-                    .evaluatesArithmetic($heightText)
-            }
-            TextField("Frame rate", text: $frameRateText)
-                .evaluatesArithmetic($frameRateText)
-            Picker("Color space", selection: $colorSpace) {
-                ForEach(ProjectColorSpace.allCases) { space in
-                    Text(space.rawValue).tag(space)
+        SheetFrame(
+            title: isCreating ? "New Timeline" : "Timeline Settings",
+            subtitle: isCreating
+                ? "The frame size and rate everything on this timeline is composited to."
+                : "Clips keep their own footage; changing these re-composites them to the new frame.",
+            width: Design.SheetWidth.standard
+        ) {
+            SheetSection {
+                SheetRow("Name") {
+                    TextField("Name", text: $name)
+                        .labelsHidden()
                 }
             }
-            HStack {
-                Spacer()
-                Button("Cancel") { isPresented = false }
-                Button(saveTitle) { save() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!isValid)
+
+            SheetSection("Frame") {
+                SheetRow("Size") {
+                    HStack(spacing: Design.Space.close) {
+                        TextField("Width", text: $widthText)
+                            .labelsHidden()
+                            .evaluatesArithmetic($widthText)
+                            .frame(width: 72)
+                        Text("×")
+                            .foregroundStyle(Design.textTertiary)
+                        TextField("Height", text: $heightText)
+                            .labelsHidden()
+                            .evaluatesArithmetic($heightText)
+                            .frame(width: 72)
+                        Text("px")
+                            .font(Design.Typeface.label)
+                            .foregroundStyle(Design.textTertiary)
+                    }
+                }
+                SheetRow("Rate") {
+                    HStack(spacing: Design.Space.close) {
+                        TextField("Frame rate", text: $frameRateText)
+                            .labelsHidden()
+                            .evaluatesArithmetic($frameRateText)
+                            .frame(width: 72)
+                        Text("fps")
+                            .font(Design.Typeface.label)
+                            .foregroundStyle(Design.textTertiary)
+                    }
+                }
+                SheetNote("Fields take arithmetic: 1920/2 becomes 960.")
             }
+
+            SheetSection("Colour") {
+                SheetRow("Space") {
+                    Picker("Color space", selection: $colorSpace) {
+                        ForEach(ProjectColorSpace.allCases) { space in
+                            Text(space.rawValue).tag(space)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 180)
+                }
+            }
+        } actions: {
+            Button("Cancel") { isPresented = false }
+                .keyboardShortcut(.cancelAction)
+            Button(isCreating ? "Create Timeline" : "Save Settings") { save() }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!isValid)
         }
-        .padding()
-        .frame(width: 320)
         .onAppear { loadInitialValues() }
+    }
+
+    private var isCreating: Bool {
+        if case .create = mode { return true }
+        return false
     }
 
     // TextField(value:format:) only commits on blur, not per keystroke, so a
@@ -113,13 +158,6 @@ struct TimelineSettingsSheet: View {
         return (16...16_384).contains(width) && (16...16_384).contains(height)
             && (1...240).contains(frameRate)
             && !name.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    private var saveTitle: String {
-        switch mode {
-        case .create: "Create"
-        case .edit: "Save"
-        }
     }
 
     private func loadInitialValues() {

@@ -114,53 +114,45 @@ struct ReplaceMediaSheet: View {
     let controller: MediaReplacementController
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-            switch session.phase {
-            case .analyzing:
-                VStack(alignment: .leading, spacing: 8) {
+        switch session.phase {
+        case .analyzing:
+            SheetFrame(title: title, subtitle: subtitle, width: Design.SheetWidth.wide) {
+                SheetSection {
                     ProgressView(value: session.progress)
                     Text("Reading the new file and comparing it with the original…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Design.Typeface.body)
+                        .foregroundStyle(Design.textSecondary)
                 }
-                HStack {
-                    Spacer()
-                    Button("Cancel") { controller.cancel(session) }
-                        .keyboardShortcut(.cancelAction)
-                }
-            case .failed(let message):
-                Text("The file couldn't be read: \(message)")
-                    .foregroundStyle(.red)
-                HStack {
-                    Spacer()
-                    Button("Close") { controller.cancel(session) }
-                        .keyboardShortcut(.defaultAction)
-                }
-            case .ready(let analysis):
-                ReplaceMediaDetails(session: session, analysis: analysis, controller: controller)
+            } actions: {
+                Button("Cancel") { controller.cancel(session) }
+                    .keyboardShortcut(.cancelAction)
             }
+        case .failed(let message):
+            SheetFrame(title: title, subtitle: subtitle, width: Design.SheetWidth.wide) {
+                SheetCallout(.danger, "The file couldn't be read: \(message)")
+            } actions: {
+                Button("Close") { controller.cancel(session) }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        case .ready(let analysis):
+            ReplaceMediaDetails(
+                session: session, analysis: analysis, controller: controller,
+                title: title, subtitle: subtitle
+            )
         }
-        .padding(20)
-        .frame(width: 560)
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            if session.isReview {
-                Text("\u{201C}\(session.assetName)\u{201D} changed on disk").font(.headline)
-                Text("Check that it still lines up with the original.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Replace \u{201C}\(session.assetName)\u{201D}").font(.headline)
-                Text("with \(session.candidate.lastPathComponent)")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-        }
+    private var title: String {
+        session.isReview
+            ? "\u{201C}\(session.assetName)\u{201D} changed on disk"
+            : "Replace \u{201C}\(session.assetName)\u{201D}"
+    }
+
+    private var subtitle: String {
+        session.isReview
+            ? "Check that it still lines up with the original before the project uses it."
+            : "with \(session.candidate.lastPathComponent)"
     }
 }
 
@@ -168,6 +160,8 @@ private struct ReplaceMediaDetails: View {
     let session: ReplacementSession
     let analysis: ReplacementAnalysis
     let controller: MediaReplacementController
+    let title: String
+    let subtitle: String
 
     @State private var original: NSImage?
     @State private var replacement: NSImage?
@@ -190,66 +184,66 @@ private struct ReplaceMediaDetails: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        SheetFrame(title: title, subtitle: subtitle, width: Design.SheetWidth.wide) {
             if !analysis.hasReference {
-                Label(
-                    "The original's reference data isn't available, so the new file can't be compared with it. Check the alignment yourself.",
-                    systemImage: "exclamationmark.triangle"
-                )
-                .foregroundStyle(.orange)
-                .font(.callout)
+                SheetCallout(.warning, "The original's reference data isn't available, so the new file can't be compared with it. Check the alignment yourself.")
             }
 
             if !analysis.report.adjustments.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
+                SheetSection("Handled for you", spacing: Design.Space.tight) {
                     ForEach(analysis.report.adjustments, id: \.self) { note in
                         Label(note, systemImage: "checkmark.circle")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .font(Design.Typeface.body)
+                            .foregroundStyle(Design.textSecondary)
                     }
                 }
             }
 
-            ForEach(Array(analysis.report.confirmations.enumerated()), id: \.offset) { index, confirmation in
-                Toggle(isOn: Binding(
-                    get: { session.acceptedConfirmations.contains(index) },
-                    set: { if $0 { session.acceptedConfirmations.insert(index) } else { session.acceptedConfirmations.remove(index) } }
-                )) {
-                    Text(Self.describe(confirmation)).font(.callout)
+            if !analysis.report.confirmations.isEmpty || !losses.isEmpty {
+                SheetSection("Confirm before replacing") {
+                    ForEach(Array(analysis.report.confirmations.enumerated()), id: \.offset) { index, confirmation in
+                        Toggle(isOn: Binding(
+                            get: { session.acceptedConfirmations.contains(index) },
+                            set: { if $0 { session.acceptedConfirmations.insert(index) } else { session.acceptedConfirmations.remove(index) } }
+                        )) {
+                            Text(Self.describe(confirmation))
+                                .font(Design.Typeface.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    if !losses.isEmpty {
+                        Toggle(isOn: Bindable(session).acceptedLoss) {
+                            Text(Self.describe(losses))
+                                .font(Design.Typeface.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
             }
 
-            if !losses.isEmpty {
-                Toggle(isOn: Bindable(session).acceptedLoss) {
-                    Text(Self.describe(losses)).font(.callout)
-                }
-            }
-
-            Divider()
+            Groove()
             syncSection
-
-            HStack {
-                Spacer()
-                Button("Cancel") { controller.cancel(session) }
-                    .keyboardShortcut(.cancelAction)
-                Button(session.isReview ? "Accept" : "Replace") { controller.confirm(session) }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canReplace)
-            }
+        } actions: {
+            Button("Cancel") { controller.cancel(session) }
+                .keyboardShortcut(.cancelAction)
+            Button(session.isReview ? "Accept" : "Replace") { controller.confirm(session) }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canReplace)
         }
     }
 
     // MARK: Sync
 
     private var syncSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Alignment").font(.subheadline.weight(.semibold))
+        SheetSection("Alignment") {
             Text(suggestionText)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Design.Typeface.body)
+                .foregroundStyle(Design.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if analysis.replacement.kind == .video {
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: Design.Space.group) {
                     picture(original, caption: originalCaption)
                     picture(replacement, caption: "New file at \(Self.format(session.probeSeconds + session.offset.seconds, signed: false))")
                 }
@@ -259,17 +253,22 @@ private struct ReplaceMediaDetails: View {
                 )
             }
 
-            HStack(spacing: 8) {
-                Text("Offset").font(.callout)
-                Button("\u{2212}1 s") { nudge(seconds: -1) }
-                Button("\u{2212}1 frame") { nudge(by: session.frameDuration, sign: -1) }
-                Text(Self.format(session.offset.seconds, signed: true))
-                    .font(.callout.monospacedDigit())
-                    .frame(minWidth: 80)
-                Button("+1 frame") { nudge(by: session.frameDuration, sign: 1) }
-                Button("+1 s") { nudge(seconds: 1) }
+            // The offset reads as one instrument: coarse and fine nudges
+            // either side of the value they change, then the two ways to
+            // set it outright.
+            HStack(spacing: Design.Space.step) {
+                HStack(spacing: Design.Space.tight) {
+                    Button("\u{2212}1 s") { nudge(seconds: -1) }
+                    Button("\u{2212}1 fr") { nudge(by: session.frameDuration, sign: -1) }
+                    Text(Self.format(session.offset.seconds, signed: true))
+                        .font(Design.Typeface.numeric)
+                        .foregroundStyle(Design.textPrimary)
+                        .frame(minWidth: 84)
+                    Button("+1 fr") { nudge(by: session.frameDuration, sign: 1) }
+                    Button("+1 s") { nudge(seconds: 1) }
+                }
                 Spacer()
-                Button("Use Suggested") {
+                Button("Use suggested") {
                     if let suggestion = analysis.suggestion { session.offset = suggestion.offset }
                 }
                 .disabled(analysis.suggestion == nil)
@@ -277,12 +276,7 @@ private struct ReplaceMediaDetails: View {
             }
 
             if !missing.isEmpty {
-                Label(
-                    "At this offset the new file doesn't cover \(Self.describe(ranges: missing)) that the project uses.",
-                    systemImage: "xmark.octagon"
-                )
-                .font(.callout)
-                .foregroundStyle(.red)
+                SheetCallout(.danger, "At this offset the new file doesn't cover \(Self.describe(ranges: missing)) that the project uses.")
             }
         }
         .task(id: pictureKey) { await loadPictures() }
@@ -313,16 +307,22 @@ private struct ReplaceMediaDetails: View {
     }
 
     private func picture(_ image: NSImage?, caption: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Design.Space.tight) {
             ZStack {
-                Rectangle().fill(.quaternary)
+                Rectangle().fill(Design.Surface.well.color)
                 if let image {
                     Image(nsImage: image).resizable().scaledToFit()
                 }
             }
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            Text(caption).font(.caption).foregroundStyle(.secondary)
+            .clipShape(RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous)
+                    .strokeBorder(Design.bevelEdge, lineWidth: 1)
+            }
+            Text(caption)
+                .font(Design.Typeface.numericMicro)
+                .foregroundStyle(Design.textTertiary)
         }
         .frame(maxWidth: .infinity)
     }

@@ -23,13 +23,13 @@ struct TransformPropertyRow: View {
                 onEdit { $0.setAnimated(property, !isAnimated, at: time) }
             } label: {
                 Image(systemName: isAnimated ? "stopwatch.fill" : "stopwatch")
-                    .foregroundStyle(isAnimated ? Color.accentColor : .secondary)
+                    .foregroundStyle(isAnimated ? Design.accent : Design.textTertiary)
             }
             .buttonStyle(.plain)
             .help(isAnimated ? "Stop animating \(property.rawValue.lowercased()) (keeps the current value)" : "Animate \(property.rawValue.lowercased())")
 
             Text(property.rawValue)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Design.textSecondary)
                 .frame(width: 50, alignment: .leading)
 
             if property == .scale {
@@ -37,7 +37,7 @@ struct TransformPropertyRow: View {
                     onEdit { $0.scaleLinked.toggle() }
                 } label: {
                     Image(systemName: "link")
-                        .foregroundStyle(transform.scaleLinked ? Color.primary : Color.secondary.opacity(0.4))
+                        .foregroundStyle(transform.scaleLinked ? Design.textPrimary : Design.textTertiary.opacity(0.5))
                 }
                 .buttonStyle(.plain)
                 .help(transform.scaleLinked ? "Width and height scale together" : "Width and height scale separately")
@@ -45,7 +45,7 @@ struct TransformPropertyRow: View {
 
             let components = transform.components(property, at: time, frameSize: frameSize)
             ForEach(components.indices, id: \.self) { index in
-                if index > 0 { Text(",").foregroundStyle(.secondary) }
+                if index > 0 { Text(",").foregroundStyle(Design.textTertiary) }
                 NumericField(value: components[index], unit: property.unit) { newValue in
                     onEdit { $0.setComponent(index, of: property, to: newValue, at: time, frameSize: frameSize) }
                 }
@@ -57,7 +57,7 @@ struct TransformPropertyRow: View {
                 keyframeNavigation
             }
         }
-        .font(.caption)
+        .font(Design.Typeface.label)
     }
 
     private var keyframeNavigation: some View {
@@ -76,7 +76,7 @@ struct TransformPropertyRow: View {
                 onEdit { $0.toggleKeyframe(property, at: time) }
             } label: {
                 Image(systemName: hasKeyframe ? "diamond.fill" : "diamond")
-                    .foregroundStyle(hasKeyframe ? Color.yellow : Color.secondary)
+                    .foregroundStyle(hasKeyframe ? Design.keyframe : Design.textTertiary)
             }
             .help(hasKeyframe ? "Remove the keyframe at the playhead" : "Add a keyframe at the playhead")
             Button {
@@ -107,7 +107,7 @@ struct TransformInspectorSection: View {
                 frameSize: frameSize, onEdit: onEdit, onSeek: onSeek
             )
         }
-        Button("Reset Transform") {
+        Button("Reset transform") {
             onEdit { $0 = .identity }
         }
         .disabled(transform == .identity)

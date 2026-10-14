@@ -78,8 +78,13 @@ struct TrimPreviewOverlay: View {
             frame(model.firstFrame, label: "First frame", time: model.firstTime)
             frame(model.lastFrame, label: "Last frame", time: model.lastTime)
         }
-        .padding(16)
-        .background(Color.black.opacity(0.85))
+        .padding(Design.Space.rail)
+        .background(Design.Surface.well.color.opacity(0.94), in: RoundedRectangle(cornerRadius: Design.Radius.panel, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Design.Radius.panel, style: .continuous)
+                .strokeBorder(Design.bevelEdge, lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.5), radius: 16, y: 6)
     }
 
     private func frame(_ image: CGImage?, label: String, time: CMTime) -> some View {
@@ -95,12 +100,13 @@ struct TrimPreviewOverlay: View {
             .aspectRatio(aspectRatio, contentMode: .fit)
             HStack {
                 Text(label)
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textSecondary)
                 Spacer()
                 Text(time.timecode(frameRate: frameRate))
-                    .monospacedDigit()
+                    .font(Design.Typeface.numericSmall)
+                    .foregroundStyle(Design.textPrimary)
             }
-            .font(.caption)
-            .foregroundStyle(.white.opacity(0.85))
         }
     }
 }

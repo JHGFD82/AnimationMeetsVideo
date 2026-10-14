@@ -32,10 +32,13 @@ struct NumericField: View {
         if isEditing {
             TextField("", text: $draft)
                 .textFieldStyle(.plain)
-                .font(.caption.monospacedDigit())
+                .font(Design.Typeface.numericSmall)
                 .padding(.horizontal, 2)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 3))
-                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Color.accentColor, lineWidth: 1))
+                .background(Design.Surface.well.color, in: RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                        .strokeBorder(Design.accent, lineWidth: 1)
+                }
                 .frame(minWidth: 44, maxWidth: 70)
                 .focused($isFocused)
                 .onAppear { isFocused = true }
@@ -46,8 +49,8 @@ struct NumericField: View {
                 }
         } else {
             Text(NumericExpression.format(value, maxFractionDigits: fractionDigits) + unit)
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(Color.accentColor)
+                .font(Design.Typeface.numericSmall)
+                .foregroundStyle(Design.accent)
                 .lineLimit(1)
                 .fixedSize()
                 .contentShape(Rectangle())

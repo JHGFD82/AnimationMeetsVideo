@@ -19,7 +19,8 @@ struct LibrarySidebar: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Library")
-                    .font(.headline)
+                    .font(Design.Typeface.panelTitle)
+                    .foregroundStyle(Design.textPrimary)
                 Spacer()
                 Button(action: importMedia) {
                     Image(systemName: "plus")
@@ -27,11 +28,12 @@ struct LibrarySidebar: View {
                 .buttonStyle(.borderless)
                 .help("Import media")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            Divider()
+            .padding(.horizontal, Design.Space.group)
+            .padding(.vertical, Design.Space.step)
+            .rail(.raised)
             list
         }
+        .panelSurface(.base)
         .alert(
             "Import Failed",
             isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })
@@ -73,12 +75,12 @@ struct LibrarySidebar: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(timeline.name)
                                     Text(timeline.timebaseSummary)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .font(Design.Typeface.numericMicro)
+                                        .foregroundStyle(Design.textTertiary)
                                 }
                             } icon: {
                                 Image(systemName: "rectangle.stack")
-                                    .foregroundStyle(.purple)
+                                    .foregroundStyle(Design.ClipTone.nested.color)
                             }
                         }
                         .buttonStyle(.plain)
@@ -100,6 +102,8 @@ struct LibrarySidebar: View {
             ScenePreviewSheet(project: $project, target: target, track: analysis.tracks[target.assetID])
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .sunken(.sunken)
     }
 
     private func assetLabel(_ clip: MediaClip) -> some View {
@@ -109,8 +113,10 @@ struct LibrarySidebar: View {
                 assetStatus(clip)
             }
         } icon: {
+            // The same hue the clip takes on the timeline, so what you drag
+            // and what lands there are recognisably the same thing.
             Image(systemName: clip.kind.systemImage)
-                .foregroundStyle(.blue)
+                .foregroundStyle(Design.ClipTone.of(.media(clip), streams: .videoAndAudio).color)
         }
     }
 
@@ -125,28 +131,36 @@ struct LibrarySidebar: View {
     @ViewBuilder
     private func assetStatus(_ clip: MediaClip) -> some View {
         if let fraction = analysis.progress[clip.id] {
-            HStack(spacing: 6) {
-                ProgressView(value: fraction).frame(width: 60)
-                Text(analysis.stages[clip.id]?.label ?? "Waiting…").font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: Design.Space.close) {
+                ProgressView(value: fraction)
+                    .controlSize(.small)
+                    .frame(width: 60)
+                Text(analysis.stages[clip.id]?.label ?? "Waiting…")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textTertiary)
             }
         } else if let failure = analysis.failures[clip.id] {
             Text("Scene detection failed")
-                .font(.caption)
-                .foregroundStyle(.orange)
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.statusWarning)
                 .help(failure)
         } else if let failure = analysis.beatFailures[clip.id] {
             Text("Beat detection failed")
-                .font(.caption)
-                .foregroundStyle(.orange)
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.statusWarning)
                 .help(failure)
         } else if let beats = analysis.beats[clip.id], !beats.isEmpty {
-            Text("\(clip.kind.rawValue) · \(Self.tempoText(beats))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack(spacing: Design.Space.tight) {
+                Text(clip.kind.rawValue)
+                    .font(Design.Typeface.label)
+                Text(Self.tempoText(beats))
+                    .font(Design.Typeface.numericMicro)
+            }
+            .foregroundStyle(Design.textTertiary)
         } else {
             Text(clip.kind.rawValue)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.textTertiary)
         }
     }
 

@@ -61,15 +61,15 @@ struct LayerHeaderRow: View {
                 }
             }
             .font(.system(size: 9, weight: .semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Design.textTertiary)
             .frame(width: 12)
             Text("\(number)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .font(Design.Typeface.numericSmall)
+                .foregroundStyle(Design.textTertiary)
                 .frame(width: 18, alignment: .trailing)
             if isEditingName {
                 TextField("Name", text: $draftName)
-                    .font(.caption)
+                    .font(Design.Typeface.label)
                     .textFieldStyle(.plain)
                     .focused($isNameFieldFocused)
                     .onSubmit { commitRename() }
@@ -84,7 +84,8 @@ struct LayerHeaderRow: View {
                     }
             } else {
                 Text(displayName)
-                    .font(.caption)
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textPrimary)
                     .lineLimit(1)
                     .onTapGesture(count: 2) {
                         draftName = layer.customName ?? ""
@@ -95,8 +96,8 @@ struct LayerHeaderRow: View {
             if let isAudioExpanded {
                 Button(action: onToggleAudio) {
                     Image(systemName: "waveform")
-                        .font(.caption)
-                        .foregroundStyle(isAudioExpanded ? Color.accentColor : .secondary)
+                        .font(Design.Typeface.label)
+                        .foregroundStyle(isAudioExpanded ? Design.accent : Design.textTertiary)
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
                 }
@@ -104,9 +105,10 @@ struct LayerHeaderRow: View {
                 .help(isAudioExpanded ? "Hide linked audio" : "Show linked audio")
             }
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, Design.Space.step)
         .frame(height: height, alignment: .leading)
-        .background(isSelected ? Color.accentColor.opacity(0.25) : Color.clear)
+        .selectedRow(isSelected)
+        .editorAnimation(Design.Motion.select, value: isSelected)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 4, coordinateSpace: .global)
@@ -225,7 +227,7 @@ struct LayerClipRow: View {
                 ClipBlockView(
                     clip: clip,
                     info: info,
-                    typeColor: clipTypeColor(for: info, streams: clip.streams),
+                    typeColor: Design.ClipTone.of(info, streams: clip.streams).color,
                     hasLinkedAudio: project.hasLinkedAudio(clip),
                     acceptsTransitions: project.playsVideo(clip),
                     joinedLead: joinedLead,
@@ -303,24 +305,10 @@ struct LayerClipRow: View {
     }
 }
 
-/// Colors a clip by its layer type, After Effects/Premiere-style — video is
-/// purple, audio (including sound detached from a video) gets its own
-/// color, nested timelines (compound clips) get another. Image and text
-/// layers aren't modeled yet, but will slot into this same switch
-/// (green/orange per the design) once they exist.
-private func clipTypeColor(for info: ResolvedClipInfo?, streams: ClipStreams) -> Color {
-    switch info {
-    case .media(let mediaClip):
-        switch mediaClip.kind {
-        case .video: streams == .audio ? .teal : .purple
-        case .audio: .teal
-        }
-    case .timeline:
-        .indigo
-    case nil:
-        .gray
-    }
-}
+// Clips are coloured by what they are — see `Design.ClipTone`, which keeps
+// the three tones at matched lightness so a mixed timeline reads as one
+// material in three tints rather than as three competing colours. Image and
+// text layers will slot into that same enum once they exist.
 
 /// A single clip block, positioned by absolute offset (not sequential flow)
 /// so a clip's on-screen position always matches its `startOffset`.
@@ -402,6 +390,9 @@ struct ClipBlockView: View {
     @State private var slipDelta: CMTime?
     /// A transition's length while its inner side is dragged.
     @State private var transitionDraft: (edge: TransitionEdge, duration: CMTime)?
+    /// Counts edits that have come back down from the project, which is
+    /// what the block flashes to acknowledge. See `ConfirmFlash`.
+    @State private var landedCount = 0
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
 
     private let handleWidth: CGFloat = 8
@@ -435,44 +426,54 @@ struct ClipBlockView: View {
         let drawnMaxX = min(liveX + liveWidth, visibleX.upperBound + 4)
         let drawnX = drawnMaxX > drawnMinX ? drawnMinX : liveX
         let drawnWidth = drawnMaxX > drawnMinX ? drawnMaxX - drawnMinX : liveWidth
+        // Only the ends that are really the clip's ends are rounded: a
+        // clip zoomed wider than the window is drawn as a slice, and a
+        // rounded slice would put a corner in the middle of the clip.
+        let shape = blockShape(drawnX: drawnX, drawnWidth: drawnWidth, liveX: liveX, liveWidth: liveWidth)
 
         ZStack(alignment: .topLeading) {
             if isTrimming {
-                Rectangle()
-                    .fill(typeColor.opacity(0.25))
-                    .overlay(Rectangle().strokeBorder(typeColor, lineWidth: 1))
+                // Where the clip was before this trim: an outline, so the
+                // distance you have taken off is readable as you drag.
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .fill(typeColor.opacity(0.16))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                            .strokeBorder(typeColor.opacity(0.9), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                    }
                     .frame(width: max(2, unionMaxX - unionMinX), height: height)
                     .offset(x: unionMinX)
                     .allowsHitTesting(false)
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
+                HStack(spacing: Design.Space.tight) {
                     if case .timeline = clip.source {
                         Image(systemName: "rectangle.stack")
-                            .font(.caption2)
+                            .font(Design.Typeface.micro)
                     } else if clip.streams == .audio {
                         Image(systemName: "waveform")
-                            .font(.caption2)
+                            .font(Design.Typeface.micro)
                     }
                     Text(info?.name ?? "Unknown")
-                        .font(.caption)
+                        .font(Design.Typeface.label)
                         .lineLimit(1)
                 }
-                HStack(spacing: 4) {
+                .foregroundStyle(Design.textOnColor)
+                HStack(spacing: Design.Space.tight) {
                     Text(shown.trimmedDuration.formatted)
+                        .font(Design.Typeface.numericMicro)
                     if hasLinkedAudio {
                         Image(systemName: "speaker.wave.2.fill")
+                            .font(Design.Typeface.micro)
                             .help("Plays its own sound; show it with the layer's waveform button")
                     }
                 }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Design.textOnColor.opacity(0.7))
             }
-            .padding(.leading, drawnX > liveX ? 8 : 4)
+            .padding(.leading, drawnX > liveX ? Design.Space.step : Design.Space.close)
             .frame(width: drawnWidth, height: height, alignment: .leading)
-            .clipped()
-            .background(typeColor.opacity(isSelected ? 0.6 : 0.35))
+            .background(Design.clipFill(typeColor, selected: isSelected))
             .overlay(alignment: .topLeading) {
                 transitionMarks(of: shown, liveX: liveX, drawnX: drawnX, drawnWidth: drawnWidth)
             }
@@ -481,10 +482,24 @@ struct ClipBlockView: View {
                     RenderProgressBar(progress: progress)
                 }
             }
-            .overlay(Rectangle().strokeBorder(
-                isTransitionTarget ? Color.accentColor : isSelected ? Color.white.opacity(0.9) : typeColor.opacity(0.8),
-                lineWidth: isTransitionTarget ? 2 : isSelected ? 1.5 : 0.75
-            ))
+            .clipShape(shape)
+            .overlay {
+                shape.strokeBorder(
+                    isTransitionTarget ? Design.accent : isSelected ? Design.textOnColor.opacity(0.95) : typeColor.opacity(0.85),
+                    lineWidth: isTransitionTarget ? 2 : isSelected ? 1.5 : 1
+                )
+            }
+            // The bevel: lit along the top, shaded along the bottom, so a
+            // clip reads as a block sitting in the track rather than as a
+            // coloured rectangle painted on it.
+            .overlay { shape.strokeBorder(Design.bevelEdgeStrong, lineWidth: 1) }
+            // Only the selected clip gets a shadow. A shadow under every
+            // block would be both a rasterization pass per clip on a
+            // timeline that redraws as you scrub, and the look of a stack
+            // of cards rather than of blocks set into a track.
+            .shadow(color: .black.opacity(isSelected ? 0.55 : 0), radius: isSelected ? 6 : 0, y: 1)
+            .confirmFlash(token: landedCount, color: Design.textOnColor)
+            .editorAnimation(Design.Motion.select, value: isSelected)
             .dropDestination(for: TransitionDragPayload.self) { payloads, location in
                 guard acceptsTransitions, let payload = payloads.first else { return false }
                 // The nearer end of the clip gets the transition.
@@ -585,8 +600,9 @@ struct ClipBlockView: View {
             }
             if tool == .blade, let bladeX {
                 Rectangle()
-                    .fill(Color.red)
+                    .fill(Design.playhead)
                     .frame(width: 1.5, height: height)
+                    .shadow(color: .black.opacity(0.5), radius: 1.5)
                     .offset(x: bladeX - 0.75)
                     .allowsHitTesting(false)
             }
@@ -595,8 +611,27 @@ struct ClipBlockView: View {
         .offset(y: previewTarget?.offsetY ?? 0)
         .coordinateSpace(.named(space))
         .onChange(of: clip) { _, _ in
-            if pendingDrop != nil { endDrop() }
+            if pendingDrop != nil {
+                endDrop()
+                // The edit you let go of has arrived: acknowledge it.
+                landedCount += 1
+            }
         }
+    }
+
+    /// The block's outline, rounded only at ends that are really the
+    /// clip's ends. See the call site.
+    private func blockShape(drawnX: CGFloat, drawnWidth: CGFloat, liveX: CGFloat, liveWidth: CGFloat) -> UnevenRoundedRectangle {
+        let radius = Design.Radius.chip
+        let startsAtEdge = drawnX <= liveX + 0.5
+        let endsAtEdge = drawnX + drawnWidth >= liveX + liveWidth - 0.5
+        return UnevenRoundedRectangle(
+            topLeadingRadius: startsAtEdge ? radius : 0,
+            bottomLeadingRadius: startsAtEdge ? radius : 0,
+            bottomTrailingRadius: endsAtEdge ? radius : 0,
+            topTrailingRadius: endsAtEdge ? radius : 0,
+            style: .continuous
+        )
     }
 
     /// The timeline time the blade cuts at for `x` in the row: on a frame.
@@ -824,14 +859,14 @@ private struct TransitionMark: View {
     var body: some View {
         ZStack {
             TransitionWedge(curve: curve, edge: edge)
-                .fill(Color.white.opacity(isSelected ? 0.32 : 0.22))
+                .fill(Color.white.opacity(isSelected ? 0.34 : 0.22))
             if isSelected {
                 TransitionWedge(curve: curve, edge: edge)
-                    .stroke(Color.accentColor, lineWidth: 1)
+                    .stroke(Design.accent, lineWidth: 1)
             }
             Image(systemName: kind.systemImage)
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.85))
+                .font(Design.Typeface.micro)
+                .foregroundStyle(Design.textOnColor.opacity(0.85))
         }
         .contentShape(Rectangle())
         .help("\(kind.name): click to select, right-click for curves")
@@ -872,18 +907,22 @@ struct LinkedAudioLane: View {
                 let drawnMinX = max(x, visibleX.lowerBound - 4)
                 let drawnMaxX = min(x + clipWidth, visibleX.upperBound + 4)
                 if drawnMaxX > drawnMinX {
-                    HStack(spacing: 4) {
+                    let tone = Design.ClipTone.audio.color
+                    HStack(spacing: Design.Space.tight) {
                         Image(systemName: "waveform")
                         Text("Linked audio")
                             .lineLimit(1)
                     }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 4)
+                    .font(Design.Typeface.micro)
+                    .foregroundStyle(Design.textOnColor.opacity(0.75))
+                    .padding(.leading, Design.Space.close)
                     .frame(width: drawnMaxX - drawnMinX, height: height, alignment: .leading)
-                    .clipped()
-                    .background(Color.teal.opacity(0.3))
-                    .overlay(Rectangle().strokeBorder(Color.teal.opacity(0.7), lineWidth: 0.75))
+                    .background(Design.clipFill(tone, selected: false))
+                    .clipShape(RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                            .strokeBorder(Design.bevelEdge, lineWidth: 1)
+                    }
                     .contentShape(Rectangle())
                     .onTapGesture { onSelectClip(clip) }
                     .contextMenu {

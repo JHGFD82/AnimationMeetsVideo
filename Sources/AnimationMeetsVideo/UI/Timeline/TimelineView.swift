@@ -93,10 +93,15 @@ struct TimelineView: View {
 
     private let rulerHeight: CGFloat = 28
     private let propertyRowHeight: CGFloat = 22
-    private let separatorHeight: CGFloat = 1
+    /// Two points: the groove between layers is a dark cut with a lit edge
+    /// under it, which needs a row of pixels each. The header column and
+    /// the track area both lay this out, so layer positions stay aligned.
+    private let separatorHeight: CGFloat = 2
     /// A slim row under the layers that takes drops as a new layer.
     private let newLayerRowHeight: CGFloat = 22
-    private let topPadding: CGFloat = 6
+    /// None: the resize grip above sits directly on the timeline's own
+    /// rail, so the two read as one edge rather than a seam with a gap.
+    private let topPadding: CGFloat = 0
 
     /// The joining transition whose footage is open on this layer.
     private func shownJoint(in layer: TimelineLayer) -> TransitionJoint? {
@@ -198,9 +203,10 @@ struct TimelineView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Label("Timeline", systemImage: "timeline.selection")
-                    .font(.headline)
+            HStack(spacing: Design.Space.step) {
+                Text("Timeline")
+                    .font(Design.Typeface.panelTitle)
+                    .foregroundStyle(Design.textPrimary)
                 Picker("Tool", selection: $tool) {
                     ForEach(TimelineTool.allCases) { tool in
                         Image(systemName: tool.systemImage)
@@ -214,8 +220,8 @@ struct TimelineView: View {
                 .help(tool.help)
                 Spacer()
                 Text(playheadTime.timecode(frameRate: timeline.frameRate))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .font(Design.Typeface.numericSmall)
+                    .foregroundStyle(Design.textSecondary)
                 ControlGroup {
                     Button { zoomAroundPlayhead(by: 1 / zoomStep) } label: { Image(systemName: "minus.magnifyingglass") }
                         .help("Zoom out (-)")
@@ -248,8 +254,9 @@ struct TimelineView: View {
                 .toggleStyle(.button)
                 .help(showsTransitions ? "Hide transitions" : "Show transitions")
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
+            .padding(.horizontal, Design.Space.rail)
+            .padding(.vertical, Design.Space.close)
+            .rail(.raised)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerBarHeight = $0 }
 
             GeometryReader { geometry in
@@ -262,29 +269,38 @@ struct TimelineView: View {
                 let playheadVisible = (-1...(viewport.width + 1)).contains(playheadX)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 0) {
-                        TimelineColumnHeaderRow(height: rulerHeight)
-                            .frame(width: labelColumnWidth, alignment: .leading)
-                        TimelineRuler(duration: timeline.duration, frameRate: timeline.frameRate, viewport: viewport)
-                            .frame(width: viewport.width, height: rulerHeight)
-                            .overlay(alignment: .bottom) { RenderStatusStrip(viewport: viewport) }
-                            .contentShape(Rectangle())
-                            .gesture(scrubGesture(in: viewport))
+                    // The time rail: the ruler and the sections under it
+                    // are one raised assembly, lit along its top, and the
+                    // only part of the timeline that stands proud of the
+                    // track area below.
+                    VStack(spacing: 0) {
+                        HStack(spacing: 0) {
+                            TimelineColumnHeaderRow(height: rulerHeight)
+                                .frame(width: labelColumnWidth, alignment: .leading)
+                            TimelineRuler(duration: timeline.duration, frameRate: timeline.frameRate, viewport: viewport)
+                                .frame(width: viewport.width, height: rulerHeight)
+                                .overlay(alignment: .bottom) { RenderStatusStrip(viewport: viewport) }
+                                .contentShape(Rectangle())
+                                .gesture(scrubGesture(in: viewport))
+                        }
+                        HStack(spacing: 0) {
+                            Text("Sections")
+                                .font(Design.Typeface.micro)
+                                .foregroundStyle(Design.textTertiary)
+                                .padding(.leading, Design.Space.step)
+                                .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
+                            sectionLane(viewport: viewport)
+                        }
                     }
-                    HStack(spacing: 0) {
-                        Text("Sections")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.leading, 8)
-                            .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
-                        sectionLane(viewport: viewport)
-                    }
-                    Divider()
+                    .background(Design.Surface.raised.color)
+                    .overlay(alignment: .top) { Design.bevelLight.frame(height: 1) }
+                    Groove()
 
                     ScrollView(.vertical) {
                         HStack(alignment: .top, spacing: 0) {
                             layerHeaders(frameTime: frameTime)
                                 .frame(width: labelColumnWidth, alignment: .leading)
+                                .grooved(.trailing)
                             layerTracks(viewport: viewport, frameTime: frameTime)
                                 .offset(x: -viewport.scrollX)
                                 .frame(width: viewport.width, alignment: .topLeading)
@@ -293,6 +309,7 @@ struct TimelineView: View {
                         .overlay(alignment: .topLeading) { layerDropIndicator }
                     }
                     .frame(height: layersHeight)
+                    .sunken(.sunken)
 
                     // Right under the layers, and only while there is
                     // something to scroll to.
@@ -309,16 +326,16 @@ struct TimelineView: View {
                         if !beatMarkers.isEmpty {
                             BeatMarkerOverlay(markers: beatMarkers, viewport: viewport, rulerHeight: rulerHeight, height: trackHeight)
                         }
-                        if let snapIndicator {
-                            Rectangle()
-                                .fill(Color.yellow)
-                                .frame(width: 1.5, height: trackHeight)
-                                .offset(x: viewport.x(atSeconds: snapIndicator.seconds) - 0.75)
-                        }
-                        if playheadVisible {
-                            PlayheadLine(x: playheadX, height: trackHeight)
-                            PlayheadHead(x: playheadX)
-                        }
+                        // The playhead and the snap line move far more
+                        // often than anything else here, so they are Core
+                        // Animation layers rather than SwiftUI shapes.
+                        PlayheadRail(
+                            playheadX: playheadX,
+                            isPlayheadVisible: playheadVisible,
+                            snapX: snapIndicator.map { viewport.x(atSeconds: $0.seconds) },
+                            height: trackHeight
+                        )
+                        .frame(width: viewport.width, height: trackHeight)
                     }
                     .frame(width: viewport.width, height: trackHeight, alignment: .topLeading)
                     .clipped()
@@ -390,8 +407,9 @@ struct TimelineView: View {
                 ? tops[others[index]]
                 : tops.last.map { $0 + blockHeight(of: timeline.layers[timeline.layers.count - 1]) } ?? 0
             Rectangle()
-                .fill(Color.accentColor)
+                .fill(Design.accent)
                 .frame(height: 2)
+                .shadow(color: Design.accent.opacity(0.7), radius: 4)
                 .offset(y: y - 1)
                 .allowsHitTesting(false)
         }
@@ -452,9 +470,9 @@ struct TimelineView: View {
                     )
                     if shownJoint(in: layer) != nil {
                         HStack {
-                            Label("Transition Footage", systemImage: "square.on.square.dashed")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            Label("Transition footage", systemImage: "square.on.square.dashed")
+                                .font(Design.Typeface.label)
+                                .foregroundStyle(Design.textSecondary)
                             Spacer()
                             Button("Done") { expandedJoint = nil }
                                 .controlSize(.small)
@@ -464,9 +482,9 @@ struct TimelineView: View {
                         .frame(height: TransitionFootageLane.height)
                     }
                     if showsLinkedAudio(of: layer) {
-                        Label("Linked Audio", systemImage: "waveform")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Label("Linked audio", systemImage: "waveform")
+                            .font(Design.Typeface.label)
+                            .foregroundStyle(Design.textSecondary)
                             .padding(.leading, 30)
                             .frame(height: audioLaneHeight, alignment: .leading)
                             .contextMenu {
@@ -488,22 +506,24 @@ struct TimelineView: View {
                     }
                     separator
                 }
-                .background(.background)
-                .background(isDragged ? Color.accentColor.opacity(0.15) : .clear)
-                .shadow(color: .black.opacity(isDragged ? 0.3 : 0), radius: 4)
+                // Alternating tone, faint enough to read as banding rather
+                // than as two kinds of layer. With the grooves it is what
+                // keeps a tall stack of layers legible at a glance.
+                .background(index.isMultiple(of: 2) ? Color.clear : Color.white.opacity(0.018))
+                .background(Design.Surface.base.color)
+                .background(isDragged ? Design.accent.opacity(0.18) : .clear)
+                .shadow(color: .black.opacity(isDragged ? 0.45 : 0), radius: 6, y: 2)
                 .offset(y: isDragged ? layerDrag?.dy ?? 0 : 0)
                 .zIndex(isDragged ? 1 : 0)
             }
             Color.clear.frame(height: newLayerRowHeight)
         }
-        .background(.background)
     }
 
-    /// A fixed-height line between layers, so the two columns line up and
+    /// A fixed-height groove between layers, so the two columns line up and
     /// layer positions can be worked out for dragging.
     private var separator: some View {
-        Rectangle()
-            .fill(Color(nsColor: .separatorColor))
+        Groove(subtle: true)
             .frame(height: separatorHeight)
     }
 
@@ -515,7 +535,7 @@ struct TimelineView: View {
         let snapTargets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: drawnBeats(viewport)) : nil
         let snapTolerance = snapTolerance(viewport)
         return VStack(alignment: .leading, spacing: 0) {
-            ForEach(timeline.layers) { layer in
+            ForEach(Array(timeline.layers.enumerated()), id: \.element.id) { index, layer in
                 VStack(spacing: 0) {
                     LayerClipRow(
                         layer: layer,
@@ -605,6 +625,9 @@ struct TimelineView: View {
                     }
                     separator
                 }
+                // The same banding as the header column, so a layer reads
+                // as one band all the way across the window.
+                .background(index.isMultiple(of: 2) ? Color.clear : Color.white.opacity(0.018))
                 .zIndex(draggingClipLayerID == layer.id ? 1 : 0)
             }
             NewLayerDropRow(height: newLayerRowHeight) { payloads, x in
@@ -808,17 +831,17 @@ struct TimelineColumnHeaderRow: View {
     let height: CGFloat
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Design.Space.close) {
             Color.clear.frame(width: 12)
             Text("#")
                 .frame(width: 18, alignment: .trailing)
             Text("Name")
             Spacer()
         }
-        .font(.caption2.weight(.semibold))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 8)
-        .padding(.bottom, 4)
+        .font(Design.Typeface.micro)
+        .foregroundStyle(Design.textTertiary)
+        .padding(.horizontal, Design.Space.step)
+        .padding(.bottom, Design.Space.tight)
         .frame(height: height, alignment: .bottomLeading)
     }
 }
@@ -833,12 +856,19 @@ private struct NewLayerDropRow: View {
     @State private var isTargeted = false
 
     var body: some View {
-        Text(isTargeted ? "Drop for a new layer" : "")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
+        Text(isTargeted ? "Drop here to start a new layer" : "")
+            .font(Design.Typeface.micro)
+            .foregroundStyle(Design.accent)
             .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
-            .background(isTargeted ? Color.accentColor.opacity(0.12) : .clear)
+            .background(isTargeted ? Design.accent.opacity(0.14) : .clear)
+            .overlay {
+                if isTargeted {
+                    RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                        .strokeBorder(Design.accent, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                }
+            }
             .contentShape(Rectangle())
+            .editorAnimation(Design.Motion.select, value: isTargeted)
             .dropDestination(for: SceneDragPayload.self) { payloads, location in
                 onDrop(payloads, location.x)
             } isTargeted: { isTargeted = $0 }
