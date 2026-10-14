@@ -151,3 +151,25 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         #expect(bottom.hovered == .music)
     }
 }
+
+@Suite struct WaveformTests {
+    @Test func theEnvelopeKeepsEachWindowsLoudestSampleScaledToTheLoudest() {
+        // 400 samples a second: two samples per window.
+        let samples: [Float] = [0.1, -0.4, 0.2, 0.0, -0.8, 0.3]
+        let waveform = Waveform.envelope(of: samples, sampleRate: 400)
+        #expect(waveform.peaks == [0.5, 0.25, 1.0])
+        #expect(waveform.peak(from: 0, to: 0.005) == 0.5)
+        #expect(waveform.peak(from: 0.004, to: 0.015) == 1.0)
+        #expect(waveform.peak(from: 5, to: 6) == 0)
+    }
+
+    @Test func silenceStaysFlat() {
+        #expect(Waveform.envelope(of: [0, 0, 0, 0], sampleRate: 400).peaks == [0, 0])
+    }
+
+    @Test func itFadesInAsLayersGrowTaller() {
+        #expect(ClipWaveform.strength(atHeight: 44) == 0)
+        #expect(ClipWaveform.strength(atHeight: 80) == 0.5)
+        #expect(ClipWaveform.strength(atHeight: 200) == 1)
+    }
+}

@@ -266,6 +266,18 @@ drag makes room. The functions that work this out
 `resolvedTrimEnd(of:…)`) do not change the project, and the editing
 functions commit what they return.
 
+## Waveforms
+
+Clips of sound alone (audio files and detached sound) draw their waveform,
+faded, behind their label once their layer is at least 64 points tall,
+fading in fully over the next 32: vertical zoom (a vertical pinch, or the
+area's layer height slider) is what brings them up. Only the part of the
+clip on screen is drawn, one mirrored bar every two points. The waveform is
+a coarse envelope of each file (`Waveform`: the loudest sample in each
+1/200 s window, scaled to the file's loudest), read the first time a clip
+asks for it and kept for the session (`WaveformCache`). Replacing media
+clears it.
+
 ## Linked and detached audio
 
 A video clip whose file has sound plays both, linked, and shows a speaker

@@ -256,6 +256,7 @@ struct LayerClipRow: View {
                     info: info,
                     typeColor: layer.kind == .music ? Design.ClipTone.music.color : Design.ClipTone.of(info, streams: clip.streams).color,
                     hasLinkedAudio: project.hasLinkedAudio(clip),
+                    showsWaveform: project.isAudioOnly(clip),
                     acceptsTransitions: project.playsVideo(clip),
                     joinedLead: joinedLead,
                     isSelected: isSelected,
@@ -359,6 +360,9 @@ struct ClipBlockView: View {
     let typeColor: Color
     /// Shows a sound badge, and offers to detach the sound.
     let hasLinkedAudio: Bool
+    /// Draws the clip's sound behind its label when the layer is tall
+    /// enough; for clips that are sound alone.
+    let showsWaveform: Bool
     /// Clips with pictures take transitions dropped from the panel.
     let acceptsTransitions: Bool
     /// Set when the clip's way in joins it to the clip before: that
@@ -529,7 +533,10 @@ struct ClipBlockView: View {
             }
             .padding(.leading, drawnX > liveX ? Design.Space.step : Design.Space.close)
             .frame(width: drawnWidth, height: height, alignment: .leading)
-            .background(Design.clipFill(typeColor, selected: isSelected))
+            .background {
+                Design.clipFill(typeColor, selected: isSelected)
+                    .overlay(alignment: .leading) { waveform(of: shown, drawnX: drawnX, liveX: liveX, width: drawnWidth) }
+            }
             .overlay(alignment: .topLeading) {
                 transitionMarks(of: shown, liveX: liveX, drawnX: drawnX, drawnWidth: drawnWidth)
             }
@@ -689,6 +696,23 @@ struct ClipBlockView: View {
                 // The edit you let go of has arrived: acknowledge it.
                 landedCount += 1
             }
+        }
+    }
+
+    /// The sound of the drawn part of the clip, faded, once the layer is
+    /// tall enough to read it.
+    @ViewBuilder
+    private func waveform(of shown: TimelineClip, drawnX: CGFloat, liveX: CGFloat, width: CGFloat) -> some View {
+        if showsWaveform, ClipWaveform.strength(atHeight: height) > 0,
+           case .media(let media) = info, let url = media.url {
+            let sourceStart = CMTimeAdd(shown.trimStart, CMTime(seconds: Double((drawnX - liveX) / pixelsPerSecond), preferredTimescale: 600))
+            ClipWaveform(
+                url: url,
+                fileStart: media.fileTime(forSourceTime: sourceStart).seconds,
+                secondsPerPoint: 1 / Double(pixelsPerSecond),
+                width: width,
+                height: height
+            )
         }
     }
 

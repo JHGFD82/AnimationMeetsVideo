@@ -144,6 +144,7 @@ final class MediaReplacementController {
             Task {
                 for url in urls { await CompositionExporter.forgetCachedMedia(at: url) }
                 SceneThumbnailStore.invalidate()
+                WaveformCache.shared.invalidateAll()
             }
         }
         guard !newlyChanged.isEmpty || !newlyMissing.isEmpty, notice == nil, pendingNotice == nil, session == nil else { return }
@@ -312,6 +313,7 @@ final class MediaReplacementController {
         if let oldURL { await CompositionExporter.forgetCachedMedia(at: oldURL) }
         if let newURL = analysis.replacement.url { await CompositionExporter.forgetCachedMedia(at: newURL) }
         SceneThumbnailStore.invalidate()
+        WaveformCache.shared.invalidateAll()
         context.project.wrappedValue.replaceMedia(id: assetID, with: analysis.replacement, offset: offset)
         changedMedia.remove(assetID)
         replaced += 1
