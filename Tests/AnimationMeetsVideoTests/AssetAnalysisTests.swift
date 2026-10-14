@@ -76,6 +76,28 @@ import Testing
         #expect(Set(analysis.unsavedTracks.keys) == [project.clips[1].id])
     }
 
+    @Test func withAPackageResultsAreWrittenAtOnceAndPicturesLeaveMemory() async throws {
+        let movie = try await makeMovie(frames: 48)
+        let package = FileManager.default.temporaryDirectory.appending(path: "amv-analysis-\(UUID().uuidString).amv")
+        defer { try? FileManager.default.removeItem(at: movie); try? FileManager.default.removeItem(at: package) }
+        try ProjectStore.preparePackage(at: package)
+        let video = project(with: [movie])
+        let id = video.clips[0].id
+        let analysis = AssetAnalysis()
+
+        analysis.reset(packageURL: package)
+        analysis.analyzeMissing(in: video)
+        try await waitUntilIdle(analysis, expecting: 1)
+
+        #expect(analysis.unsavedTracks.isEmpty)
+        #expect(analysis.unsavedReferences.isEmpty)
+        #expect(analysis.unsavedThumbnails.isEmpty)
+        #expect(analysis.thumbnailed == [id])
+        #expect(ProjectStore.readChangeScores(for: id, in: package) == analysis.tracks[id])
+        #expect(ProjectStore.readReference(for: id, in: package) != nil)
+        #expect(ProjectStore.hasThumbnails(for: id, in: package))
+    }
+
     @Test func audioAssetsGetReferenceDataButNoScores() async throws {
         let movie = try await makeMovie(frames: 24)
         defer { try? FileManager.default.removeItem(at: movie) }

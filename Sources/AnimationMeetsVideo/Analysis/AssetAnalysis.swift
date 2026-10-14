@@ -3,9 +3,11 @@ import Observation
 
 /// Runs the background work on a project's assets, one at a time: capturing
 /// each asset's reference data (first, since it can only be read from the
-/// original file) and frame scoring for video. Results are held until the
-/// views need them. They are not part of `EditingProject`: they are large,
-/// mostly recomputable, and have no place in undo.
+/// original file) and frame scoring for video. Each result is written into
+/// the project package as soon as it exists, and pictures are then dropped
+/// from memory. Results only wait for a save when writing fails. They are
+/// not part of `EditingProject`: they are large, mostly recomputable, and
+/// have no place in undo.
 @MainActor
 @Observable
 final class AssetAnalysis {
@@ -95,13 +97,16 @@ final class AssetAnalysis {
     /// Bumped by `reset` so a result that arrives after the project was
     /// replaced is dropped.
     @ObservationIgnored private var generation = 0
+    /// Where results are written as they arrive; nil holds them until a save.
+    @ObservationIgnored private(set) var packageURL: URL?
 
     /// Starts over for a different project, with whatever scores it had saved.
     func reset(
         tracks: [UUID: ChangeScoreTrack] = [:],
         references: [UUID: AssetReference] = [:],
         thumbnailed: Set<UUID> = [],
-        beats: [UUID: BeatTrack] = [:]
+        beats: [UUID: BeatTrack] = [:],
+        packageURL: URL? = nil
     ) {
         worker?.cancel()
         worker = nil
@@ -120,6 +125,7 @@ final class AssetAnalysis {
         beatFiles = [:]
         discardedBeats = []
         latestProject = nil
+        self.packageURL = packageURL
         self.beats = beats
         self.thumbnailed = thumbnailed
         self.tracks = tracks
@@ -176,6 +182,12 @@ final class AssetAnalysis {
         beatFailures[id] = nil
         beatFiles[id] = nil
         unsavedBeatIDs.remove(id)
+        // With a package the outdated file goes now; otherwise the next save deletes it.
+        if let packageURL {
+            let url = ProjectStore.referenceFolder(for: id, in: packageURL).appending(path: ProjectStore.beatFileName)
+            let fileManager = FileManager.default
+            if !fileManager.fileExists(atPath: url.path) || (try? fileManager.removeItem(at: url)) != nil { return }
+        }
         discardedBeats.insert(id)
     }
 
@@ -256,6 +268,7 @@ final class AssetAnalysis {
 
     private func run(_ job: Job, generation expected: Int) async {
         let id = job.id
+        let package = packageURL
         if job.wantsReference {
             begin(.reference, for: id)
             do {
@@ -264,7 +277,9 @@ final class AssetAnalysis {
                 )
                 guard generation == expected else { return }
                 references[id] = reference
-                unsavedReferenceIDs.insert(id)
+                if !(await write(to: package, { try ProjectStore.writeReference(reference, for: id, in: $0) })) {
+                    unsavedReferenceIDs.insert(id)
+                }
             } catch is CancellationError {
                 return
             } catch {
@@ -280,7 +295,9 @@ final class AssetAnalysis {
                 )
                 guard generation == expected else { return }
                 tracks[id] = track
-                unsaved.insert(id)
+                if !(await write(to: package, { try ProjectStore.writeChangeScores(track, for: id, in: $0) })) {
+                    unsaved.insert(id)
+                }
             } catch is CancellationError {
                 return
             } catch {
@@ -297,7 +314,9 @@ final class AssetAnalysis {
                     progress: reporter(for: id, stage: .pictures, generation: expected)
                 )
                 guard generation == expected else { return }
-                unsavedPictures[id] = pictures
+                if !(await write(to: package, { try ProjectStore.writeThumbnails(pictures, for: id, in: $0) })) {
+                    unsavedPictures[id] = pictures
+                }
                 thumbnailed.insert(id)
             } catch is CancellationError {
                 return
@@ -317,7 +336,9 @@ final class AssetAnalysis {
                 beats[id] = track
                 beatFiles[id] = job.file
                 discardedBeats.remove(id)
-                unsavedBeatIDs.insert(id)
+                if !(await write(to: package, { try ProjectStore.writeBeats(track, for: id, in: $0) })) {
+                    unsavedBeatIDs.insert(id)
+                }
             } catch is CancellationError {
                 return
             } catch {
@@ -328,6 +349,20 @@ final class AssetAnalysis {
         }
         progress[id] = nil
         stages[id] = nil
+    }
+
+    /// Writes a result into the package off the main actor. False when
+    /// there is no package or the write failed, so the result is kept for
+    /// the next save instead.
+    private func write(to package: URL?, _ body: @escaping @Sendable (URL) throws -> Void) async -> Bool {
+        guard let package else { return false }
+        do {
+            try await Task.detached(priority: .utility) { try body(package) }.value
+            return true
+        } catch {
+            NSLog("Couldn't write analysis results into the project: \(error.localizedDescription)")
+            return false
+        }
     }
 
     /// Starts a stage's progress from zero, so the bar doesn't sit full or
