@@ -78,6 +78,12 @@ struct TimelineView: View {
     /// The layer selected by its header, for Delete. Selecting a clip clears it.
     @State private var selectedLayerID: UUID?
     @State private var tool: TimelineTool = .arrow
+    @AppStorage("snapping") private var snapping = true
+    /// Where a drag in progress snapped, drawn as a line across the layers.
+    @State private var snapIndicator: CMTime?
+
+    /// How close, on screen, an edge must come to a target to snap to it.
+    private let snapDistance: CGFloat = 8
     @AppStorage("clickOnBeats") private var clickOnBeats = false
     @AppStorage("beatClickFrequency") private var beatClickFrequency = 1000.0
 
@@ -227,6 +233,11 @@ struct TimelineView: View {
                         onPreviewClick: beatClicks.preview
                     )
                 }
+                Toggle(isOn: $snapping) {
+                    Image(systemName: "arrow.right.and.line.vertical.and.arrow.left")
+                }
+                .toggleStyle(.button)
+                .help(snapping ? "Snapping on: edges snap to clips, the playhead and beat markers (N)" : "Snapping off (N)")
                 Toggle(isOn: $showsTransitions) {
                     Image(systemName: "square.on.square.dashed")
                 }
@@ -285,6 +296,12 @@ struct TimelineView: View {
                     ZStack(alignment: .topLeading) {
                         if !beatMarkers.isEmpty {
                             BeatMarkerOverlay(markers: beatMarkers, viewport: viewport, rulerHeight: rulerHeight, height: trackHeight)
+                        }
+                        if let snapIndicator {
+                            Rectangle()
+                                .fill(Color.yellow)
+                                .frame(width: 1.5, height: trackHeight)
+                                .offset(x: viewport.x(atSeconds: snapIndicator.seconds) - 0.75)
                         }
                         if playheadVisible {
                             PlayheadLine(x: playheadX, height: trackHeight)
@@ -479,6 +496,8 @@ struct TimelineView: View {
     private func layerTracks(viewport: TimelineViewport, frameTime: CMTime) -> some View {
         let pixelsPerSecond = viewport.pixelsPerSecond
         let contentWidth = viewport.contentWidth
+        let snapTargets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: beatMarkers) : nil
+        let snapTolerance = snapTolerance(viewport)
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(timeline.layers) { layer in
                 VStack(spacing: 0) {
@@ -513,6 +532,9 @@ struct TimelineView: View {
                         snap: { timeline.snappedToFrame($0) },
                         onBlade: { clipID, time in onBladeClip(layer.id, clipID, time) },
                         onSlip: { clipID, delta in onSlipClip(layer.id, clipID, delta) },
+                        snapTargets: snapTargets,
+                        snapTolerance: snapTolerance,
+                        onSnapIndicator: { snapIndicator = $0 },
                         onTrimPreview: onTrimPreview,
                         onApplyJointEdit: { clipID, edit in onApplyJointEdit(layer.id, clipID, edit) },
                         onSetTransitionDuration: { clipID, edge, duration in onSetTransitionDuration(layer.id, clipID, edge, duration) }
@@ -630,7 +652,16 @@ struct TimelineView: View {
     /// unscrolled content coordinates.
     private func scrub(atX x: CGFloat, in viewport: TimelineViewport) {
         let seconds = max(0, min(timeline.duration.seconds, viewport.seconds(atX: x)))
-        onScrub(timeline.snappedToFrame(CMTime(seconds: seconds, preferredTimescale: 600)))
+        let time = CMTime(seconds: seconds, preferredTimescale: 600)
+        // With snapping on, the playhead snaps to clip edges and beat markers.
+        let snapped = snapping
+            ? project.snapTargets(in: timelineID, playhead: nil, markers: beatMarkers).nearest(to: time, within: snapTolerance(viewport))
+            : nil
+        onScrub(timeline.snappedToFrame(snapped ?? time))
+    }
+
+    private func snapTolerance(_ viewport: TimelineViewport) -> CMTime {
+        CMTime(seconds: Double(snapDistance / max(viewport.pixelsPerSecond, 0.0001)), preferredTimescale: 600_000)
     }
 
     private func toggleLinkedAudio(_ layer: TimelineLayer) {
@@ -683,6 +714,10 @@ struct TimelineView: View {
         case "-": zoomAroundPlayhead(by: 1 / zoomStep); return true
         case "\\": fitToWindow(); return true
         default: break
+        }
+        if key == "n", !flags.contains(.shift) {
+            snapping.toggle()
+            return true
         }
         if let chosen = TimelineTool(shortcutKey: key), !flags.contains(.shift) {
             tool = chosen

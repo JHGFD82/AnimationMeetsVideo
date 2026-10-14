@@ -178,6 +178,12 @@ struct LayerClipRow: View {
     let onBlade: (UUID, CMTime) -> Void
     /// Slips a clip's footage by a time (positive plays later footage).
     let onSlip: (UUID, CMTime) -> Void
+    /// What edges snap to, or nil with snapping off, and how close they
+    /// must come.
+    let snapTargets: SnapTargets?
+    let snapTolerance: CMTime
+    /// Where a drag snapped, to draw; nil when it didn't or ended.
+    let onSnapIndicator: (CMTime?) -> Void
     let onTrimPreview: (TimelineClip?) -> Void
     /// An edit of the joint at the start of a clip.
     let onApplyJointEdit: (UUID, JointEdit) -> Void
@@ -247,6 +253,11 @@ struct LayerClipRow: View {
                     resolveSlip: { project.resolvedSlip(of: clip.id, in: timelineID, layer: layer.id, by: $0) },
                     onSlip: { delta in onSlip(clip.id, delta) },
                     onSlipDraft: { draft, committing in slipDraft(of: clip, draft, committing: committing) },
+                    snapTime: { snapTargets?.nearest(to: $0, within: snapTolerance, excluding: clip.id) },
+                    snapSpan: { start, duration in
+                        snapTargets?.snappedStart(start, duration: duration, within: snapTolerance, excluding: clip.id)
+                    },
+                    onSnapIndicator: onSnapIndicator,
                     onSetTransitionDuration: { edge, duration in onSetTransitionDuration(clip.id, edge, duration) }
                 )
                 .offset(x: shiftX(of: clip))
@@ -361,6 +372,12 @@ struct ClipBlockView: View {
     /// Hears each slip draft, then nil when the drag ends (with whether the
     /// slip is being committed).
     let onSlipDraft: (TimelineClip?, Bool) -> Void
+    /// The snap target near a timeline time, if snapping is on.
+    let snapTime: (CMTime) -> CMTime?
+    /// Where a moved clip starting at a time and lasting a duration snaps
+    /// to, by whichever end is nearer a target, and that target.
+    let snapSpan: (CMTime, CMTime) -> (start: CMTime, target: CMTime)?
+    let onSnapIndicator: (CMTime?) -> Void
     /// Sets a transition's length, from dragging its inner side.
     let onSetTransitionDuration: (TransitionEdge, CMTime) -> Void
 
@@ -497,7 +514,11 @@ struct ClipBlockView: View {
                     .onChanged { value in
                         guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
                         if preview == nil { onDragging(true) }
-                        let target = resolveMove(CMTimeAdd(clip.startOffset, timeDelta(value.translation.width)), value.translation.height)
+                        var proposed = CMTimeAdd(clip.startOffset, timeDelta(value.translation.width))
+                        let snapped = snapSpan(proposed, clip.trimmedDuration)
+                        if let snapped { proposed = snapped.start }
+                        onSnapIndicator(snapped?.target)
+                        let target = resolveMove(proposed, value.translation.height)
                         var moved = clip
                         moved.startOffset = target?.start ?? clip.startOffset
                         showPreview(moved)
@@ -505,6 +526,7 @@ struct ClipBlockView: View {
                     }
                     .onEnded { _ in
                         onDragging(false)
+                        onSnapIndicator(nil)
                         let targetLayer = previewTarget?.layerID
                         if let preview, preview.startOffset != clip.startOffset || targetLayer != nil {
                             commitDrop { onMove(preview.startOffset, targetLayer) }
@@ -579,7 +601,8 @@ struct ClipBlockView: View {
 
     /// The timeline time the blade cuts at for `x` in the row: on a frame.
     private func bladeTime(atX x: CGFloat) -> CMTime {
-        snap(CMTime(seconds: Double(max(0, x) / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale))
+        let time = CMTime(seconds: Double(max(0, x) / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
+        return snap(snapTime(time) ?? time)
     }
 
     /// The end whose transition covers `x` (in the clip's row), if any.
@@ -741,7 +764,11 @@ struct ClipBlockView: View {
     /// A trim drag of `edge` moved by `translation` points: previews it.
     private func trimChanged(_ edge: Edge, translation: CGFloat) {
         isTrimming = true
-        let delta = timeDelta(translation)
+        var delta = timeDelta(translation)
+        let edgeTime = edge == .leading ? clip.startOffset : clip.endOffset
+        let snapped = snapTime(CMTimeAdd(edgeTime, delta))
+        if let snapped { delta = CMTimeSubtract(snapped, edgeTime) }
+        onSnapIndicator(snapped)
         let trimmed = switch edge {
         case .leading: resolveTrimStart(CMTimeAdd(clip.trimStart, delta)) ?? clip
         case .trailing: resolveTrimEnd(CMTimeAdd(clip.trimEnd, delta)) ?? clip
@@ -751,6 +778,7 @@ struct ClipBlockView: View {
 
     /// A trim drag ended: commits it, or selects the clip when it was a click.
     private func trimEnded(_ edge: Edge) {
+        onSnapIndicator(nil)
         if let preview, preview != clip {
             commitDrop {
                 switch edge {

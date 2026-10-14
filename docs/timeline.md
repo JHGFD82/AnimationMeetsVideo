@@ -119,6 +119,28 @@ is being edited.
 P, S, R and T show transform properties, which is why slip is Y, as in
 Premiere.
 
+## Snapping
+
+Snapping is on by default; N or the button with two arrows meeting at a
+line in the header turns it off and on, and the choice is remembered. With
+it on, an edge that comes within 8 points (on screen, at any zoom) of a
+target lands on it (`SnapTargets` in `Snapping.swift`). The targets are the
+timeline's start, the start and end of every clip on every layer, the
+playhead, and the beat markers of the layer chosen in the view options
+(every beat, also those thinned out of the drawing when zoomed out).
+
+- **Moving a clip** snaps by whichever of its ends is nearer a target.
+- **Trimming** with the arrow snaps the edge being dragged.
+- **The blade** cuts at a target near the pointer, so it can cut exactly at
+  the playhead or another clip's edge.
+- **Scrubbing** in the ruler snaps the playhead to clip edges and beats.
+
+A clip never snaps to its own edges. While a drag has snapped, a yellow
+line runs through the layers at the target. The usual placement rules still
+apply after snapping: a snapped position that would overlap another clip
+goes to the nearest free side, and video still lands on frames. Slipping,
+transitions and keyframes don't snap.
+
 ## Moving and trimming clips
 
 Dragging the middle of a clip moves it; dragging within a few points of
@@ -279,5 +301,4 @@ A drag is saved when it ends, as one undo step.
 - Thumbnails of the frames in the transition footage lane.
 - Joining nested timelines, and trimming at a joined cut from the clips
   themselves (the transition box covers the edges; roll the cut instead).
-- **Snapping** to other clips' edges, the playhead or beat markers.
 - Scrolling to follow the playhead during playback.

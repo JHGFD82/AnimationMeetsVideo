@@ -90,6 +90,9 @@ far that they would be closer than 10 points, only every 2nd, 4th, 8th…
 beat is drawn, counted from the track's first beat (see
 [timeline.md](timeline.md)).
 
+With snapping on (N), clip edges, the blade and the playhead snap to the
+shown layer's beats (see [timeline.md](timeline.md#snapping)).
+
 ## Hearing the beats
 
 Below the picker, **Click on beats** plays a short tone on each marker of
@@ -153,7 +156,6 @@ keep up for a few beats ("92–140 BPM") when it varies by more than 4%.
   is smoothed over. Only click tracks have been tested; tune the constants
   in `BeatTracker` against real music.
 - **Editing markers** by hand, nudging, or adding missing beats.
-- **Snapping** clips or the playhead to markers.
 - **Re-detect** from the browser, or a choice of tempo range.
 - Markers for audio inside **nested timelines**; only clips placed directly
   on a layer are considered.
