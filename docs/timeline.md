@@ -29,6 +29,11 @@ layer.
 
 ## Layers
 
+A layer is named "Video N" or "Audio N" (audio-only layers), numbered
+among layers of its kind from the top, so the names follow the stack as it
+is reordered. Double-click the name to give it a custom one, which is saved
+as the layer's `customName`; clearing it brings the default back.
+
 Dragging a layer's header (its number and name) up or down reorders the
 stack; a line shows where it will land, and it goes there on release
 (`moveLayer(_:in:toIndex:)`). **Move Layer Up/Down** in the header's menu

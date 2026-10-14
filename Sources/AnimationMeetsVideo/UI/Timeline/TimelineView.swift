@@ -158,9 +158,9 @@ struct TimelineView: View {
     }
 
     private var beatLayerChoices: [(id: UUID, name: String)] {
-        timeline.layers.enumerated()
-            .filter { project.layerHasBeats($0.element, tracks: beatTracks) }
-            .map { (id: $0.element.id, name: project.displayName(of: $0.element, number: $0.offset + 1)) }
+        timeline.layers
+            .filter { project.layerHasBeats($0, tracks: beatTracks) }
+            .map { (id: $0.id, name: project.displayName(of: $0, in: timeline)) }
     }
 
     /// Everything `EditingProject.beatMarkers` reads for the chosen layer.
@@ -447,7 +447,7 @@ struct TimelineView: View {
                     LayerHeaderRow(
                         number: index + 1,
                         layer: layer,
-                        project: project,
+                        displayName: project.displayName(of: layer, in: timeline),
                         height: layerHeight,
                         canMoveUp: index > 0,
                         canMoveDown: index < timeline.layers.count - 1,

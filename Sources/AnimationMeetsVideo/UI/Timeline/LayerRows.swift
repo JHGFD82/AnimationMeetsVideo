@@ -2,19 +2,30 @@ import CoreMedia
 import SwiftUI
 
 extension EditingProject {
-    /// A layer's name as shown in the timeline: its own name, else its first
-    /// clip's, else "Layer N".
-    func displayName(of layer: TimelineLayer, number: Int) -> String {
+    /// A layer's name as shown in the timeline: its own name, else "Video N"
+    /// or "Audio N", counting layers of its kind from the top. Footage names
+    /// made poor defaults: a layer outlives its first clip, and several
+    /// layers cut from one file all read the same.
+    func displayName(of layer: TimelineLayer, in timeline: Timeline) -> String {
         if let customName = layer.customName, !customName.isEmpty { return customName }
-        if let firstClip = layer.clips.first, let info = resolvedInfo(for: firstClip.source) { return info.name }
-        return "Layer \(number)"
+        let isAudio = isAudioOnly(layer)
+        let sameKind = timeline.layers.filter { isAudioOnly($0) == isAudio }
+        let number = (sameKind.firstIndex { $0.id == layer.id } ?? 0) + 1
+        return "\(isAudio ? "Audio" : "Video") \(number)"
+    }
+
+    /// Layers holding only sound are audio layers; empty ones count as video,
+    /// since that is what most layers become.
+    private func isAudioOnly(_ layer: TimelineLayer) -> Bool {
+        !layer.clips.isEmpty && !layer.isVisual(in: self)
     }
 }
 
 struct LayerHeaderRow: View {
     let number: Int
     let layer: TimelineLayer
-    let project: EditingProject
+    /// The layer's custom name, or its default. See `displayName(of:in:)`.
+    let displayName: String
     let height: CGFloat
     let canMoveUp: Bool
     let canMoveDown: Bool
@@ -40,10 +51,6 @@ struct LayerHeaderRow: View {
     @State private var draftName: String = ""
     @FocusState private var isNameFieldFocused: Bool
 
-    private var displayName: String {
-        project.displayName(of: layer, number: number)
-    }
-
     var body: some View {
         HStack(spacing: 6) {
             Group {
@@ -68,7 +75,7 @@ struct LayerHeaderRow: View {
                 .foregroundStyle(Design.textTertiary)
                 .frame(width: 18, alignment: .trailing)
             if isEditingName {
-                TextField("Name", text: $draftName)
+                TextField(displayName, text: $draftName)
                     .font(Design.Typeface.label)
                     .textFieldStyle(.plain)
                     .focused($isNameFieldFocused)
