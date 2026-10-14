@@ -231,6 +231,13 @@ struct TimelineView: View {
                 Text(playheadTime.timecode(frameRate: timeline.frameRate))
                     .font(Design.Typeface.numericSmall)
                     .foregroundStyle(Design.textSecondary)
+                TimelineZoomSliders(
+                    horizontal: zoomFractionBinding,
+                    vertical: Binding(
+                        get: { areaLayout.shownLayerHeightFraction },
+                        set: { areaLayout.setShownLayerHeightFraction($0) }
+                    )
+                )
                 ControlGroup {
                     Button { zoomAroundPlayhead(by: 1 / zoomStep) } label: { Image(systemName: "minus.magnifyingglass") }
                         .help("Zoom out (-)")

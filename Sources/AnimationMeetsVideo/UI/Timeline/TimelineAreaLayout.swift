@@ -37,6 +37,48 @@ struct TimelineAreaLayout: Equatable, Codable {
         layerHeights[kind] = min(max(height, Self.layerHeightRange.lowerBound), Self.layerHeightRange.upperBound)
     }
 
+    /// A layer height on a 0...1 scale that is even in ratio, so each step
+    /// of a slider multiplies the height by the same amount.
+    static func fraction(ofLayerHeight height: CGFloat) -> Double {
+        let range = layerHeightRange
+        let clamped = min(max(height, range.lowerBound), range.upperBound)
+        return Double(log(clamped / range.lowerBound) / log(range.upperBound / range.lowerBound))
+    }
+
+    static func layerHeight(atFraction fraction: Double) -> CGFloat {
+        let range = layerHeightRange
+        return range.lowerBound * pow(range.upperBound / range.lowerBound, CGFloat(min(max(fraction, 0), 1)))
+    }
+
+    /// The shown areas' layer heights together, on the scale of
+    /// `fraction(ofLayerHeight:)`: their mean there, which is the
+    /// geometric mean of the heights.
+    var shownLayerHeightFraction: Double {
+        let shown = shown
+        guard !shown.isEmpty else { return 0 }
+        return shown.reduce(0) { $0 + Self.fraction(ofLayerHeight: layerHeight($1)) } / Double(shown.count)
+    }
+
+    /// Zooms every shown area's layers together, to `fraction` on the
+    /// scale of `shownLayerHeightFraction`. Each moves by the same ratio,
+    /// so an area made taller than the others stays taller. Near either end
+    /// of the range the differences shrink just enough to fit, so the
+    /// slider's ends make every area shortest or tallest, and the mean is
+    /// always exactly `fraction` (the slider never jumps under the pointer).
+    mutating func setShownLayerHeightFraction(_ fraction: Double) {
+        let shown = shown
+        let target = min(max(fraction, 0), 1)
+        let mean = shownLayerHeightFraction
+        let offsets = shown.map { Self.fraction(ofLayerHeight: layerHeight($0)) - mean }
+        var spread = 1.0
+        for offset in offsets where abs(offset) > 1e-12 {
+            spread = min(spread, offset > 0 ? (1 - target) / offset : target / -offset)
+        }
+        for (kind, offset) in zip(shown, offsets) {
+            setLayerHeight(kind, Self.layerHeight(atFraction: target + offset * spread))
+        }
+    }
+
     /// Each shown area's height when `available` points are split among
     /// them by their shares.
     func heights(splitting available: CGFloat) -> [LayerKind: CGFloat] {

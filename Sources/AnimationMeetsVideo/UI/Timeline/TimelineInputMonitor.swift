@@ -16,6 +16,7 @@ enum PinchAxis {
 /// axis is fixed for the rest of that pinch, so a pinch that drifts doesn't
 /// flip between the two. Without finger positions (some input devices
 /// don't report them) a pinch zooms time, or layer height with Shift.
+/// Option-pinch always zooms layer height, whatever the fingers do.
 struct TimelineInputMonitor: NSViewRepresentable {
     /// Called with the factor to scale by, the axis, the pointer's x in
     /// this view and the pointer in window coordinates (top-left origin,
@@ -96,8 +97,10 @@ struct TimelineInputMonitor: NSViewRepresentable {
             }
         }
 
-        /// The axis a pinch's fingers lie along, or by Shift without them.
+        /// Option always zooms layer height. Otherwise the axis a pinch's
+        /// fingers lie along, or by Shift without them.
         private func axis(of event: NSEvent) -> PinchAxis {
+            if event.modifierFlags.contains(.option) { return .vertical }
             if let spread = fingerSpread(of: event) {
                 return abs(spread.width) >= abs(spread.height) ? .horizontal : .vertical
             }
