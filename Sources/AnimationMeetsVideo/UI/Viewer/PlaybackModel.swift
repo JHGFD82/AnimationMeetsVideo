@@ -34,6 +34,8 @@ final class PlaybackModel {
 
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
+    @ObservationIgnored private var itemObservation: NSKeyValueObservation?
+    @ObservationIgnored private var itemStatusObservation: NSKeyValueObservation?
     @ObservationIgnored private var governor = PreviewGovernor()
     /// The current item's composition at full size; each level is drawn
     /// from a scaled copy of it.
@@ -46,6 +48,10 @@ final class PlaybackModel {
 
     init() {
         let player = AVPlayer()
+        // Media is local, so there's no network to wait on: play starts at
+        // once from what `prerollIfPaused` has already decoded, instead of
+        // waiting for the player to judge its buffer full enough.
+        player.automaticallyWaitsToMinimizeStalling = false
         self.player = player
         quality = UserDefaults.standard.string(forKey: Self.qualityKey).flatMap(PreviewQuality.init(rawValue:)) ?? .auto
         beatClicks = BeatClickPlayer(player: player)
@@ -59,6 +65,29 @@ final class PlaybackModel {
             let playing = player.timeControlStatus != .paused
             Task { @MainActor in self?.playStateChanged(playing) }
         }
+        // Each new item is prerolled once it can be.
+        itemObservation = player.observe(\.currentItem, options: [.initial, .new]) { [weak self] player, _ in
+            let item = player.currentItem
+            Task { @MainActor in self?.watchStatus(of: item) }
+        }
+    }
+
+    private func watchStatus(of item: AVPlayerItem?) {
+        itemStatusObservation = item?.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            guard item.status == .readyToPlay else { return }
+            Task { @MainActor in self?.prerollIfPaused() }
+        }
+    }
+
+    /// Fills the player's pipeline from the paused position, so pressing
+    /// play shows frames at once. Done after every pause, seek and new
+    /// item; any seek or play cancels it.
+    private func prerollIfPaused() {
+        guard !isPlaying, !isSeeking, player.rate == 0,
+              player.status == .readyToPlay, player.currentItem?.status == .readyToPlay
+        else { return }
+        player.cancelPendingPrerolls()
+        player.preroll(atRate: 1)
     }
 
     /// Gives `item` the composition at the current level, and keeps
@@ -84,7 +113,12 @@ final class PlaybackModel {
             governor.stopPlaying()
         }
         applyLevel()
-        if playing { clearStill() } else { refreshStill() }
+        if playing {
+            clearStill()
+        } else {
+            refreshStill()
+            prerollIfPaused()
+        }
     }
 
     /// While playing, measures twice a second how many frames the compositor
@@ -118,6 +152,7 @@ final class PlaybackModel {
             item.videoComposition = composed.videoComposition(scaledBy: wanted.scale)
         }
         refreshStill()
+        prerollIfPaused()
     }
 
     /// Draws the paused frame at full size when Auto is drawing smaller,
@@ -173,6 +208,7 @@ final class PlaybackModel {
         }
         isSeeking = false
         refreshStill()
+        prerollIfPaused()
     }
 
     func togglePlayback() {

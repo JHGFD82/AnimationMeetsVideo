@@ -38,6 +38,16 @@ per project:
   playback or a scrub starts. Scrubbing shows the smaller size until it
   stops. While Auto is below full, the menu shows ½ or ¼.
 
+Starting playback: whenever the player is paused (after a pause, a seek,
+a new item or a size change) it is prerolled, so its pipeline is already
+full when play is pressed, and it doesn't wait to judge its buffer full
+enough (`automaticallyWaitsToMinimizeStalling` is off; media is local).
+On the test project that cut the wait for the first moving frame from
+about 920 ms to about 310 ms. What remains is AVPlayer holding the
+picture back to keep it in sync with the sound device, which takes longer
+on Bluetooth output (160 ms of latency on AirPods); without sound the
+first frame moves after about 45 ms.
+
 Limits:
 
 - A smaller size makes compositing cheaper, not decoding: every source is
