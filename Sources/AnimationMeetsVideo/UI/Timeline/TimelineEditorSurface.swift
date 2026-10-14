@@ -228,14 +228,18 @@ struct TimelineEditorSurface<Library: View>: View {
         let project = self.project
         let tID = timelineID
         let player = playback.player
+        let playback = playback
+        let frameRate = timeline.frameRate
         buildTask = Task {
             do {
-                let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: tID)
+                let composed = try await CompositionExporter.buildComposedTimeline(
+                    for: project, timelineID: tID, forPreview: true, meter: playback.meter
+                )
                 guard !Task.isCancelled else { return }
                 let wasPlaying = player.timeControlStatus != .paused
                 let resumeTime = resetPosition ? playheadTime : player.currentTime()
                 let item = AVPlayerItem(asset: composed.composition)
-                item.videoComposition = composed.videoComposition
+                playback.prepare(item, with: composed, frameRate: frameRate)
                 player.replaceCurrentItem(with: item)
                 _ = await player.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
                 if wasPlaying { player.play() }

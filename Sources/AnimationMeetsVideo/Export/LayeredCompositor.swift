@@ -2,6 +2,7 @@ import AVFoundation
 import CoreImage
 import CoreMedia
 import Foundation
+import QuartzCore
 
 /// One stretch of a timeline for `LayeredCompositor`: the video tracks
 /// showing, top first, each with how it is placed.
@@ -17,22 +18,28 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
     let requiredSourceTrackIDs: [NSValue]?
     let passthroughTrackID = kCMPersistentTrackID_Invalid
     let layers: [Layer]
+    /// The timeline's frame size. The player may draw smaller than this.
     let renderSize: CGSize
     let colorSpace: ProjectColorSpace
+    /// Told how long each frame took, when the viewer is watching.
+    let meter: RenderMeter?
 
-    init(timeRange: CMTimeRange, layers: [Layer], renderSize: CGSize, colorSpace: ProjectColorSpace) {
+    init(timeRange: CMTimeRange, layers: [Layer], renderSize: CGSize, colorSpace: ProjectColorSpace, meter: RenderMeter? = nil) {
         self.timeRange = timeRange
         self.layers = layers
         self.renderSize = renderSize
         self.colorSpace = colorSpace
+        self.meter = meter
         requiredSourceTrackIDs = layers.map { NSNumber(value: $0.trackID) }
     }
 }
 
-/// Draws a timeline with Core Image when it uses a film dissolve, which
-/// keys on brightness and so can't be drawn by the built-in compositor.
-/// Everything else is drawn as the built-in compositor would: each layer's
-/// crop, transform and opacity, bottom layer first, over black.
+/// Draws a timeline with Core Image on the GPU through Metal. The viewer
+/// always uses it, since it can draw at a reduced size; export uses it only
+/// for a film dissolve, which keys on brightness and so can't be drawn by
+/// the built-in compositor. Everything else is drawn as the built-in
+/// compositor would: each layer's crop, transform and opacity, bottom layer
+/// first, over black.
 ///
 /// AVFoundation's transforms measure from the top left and Core Image's
 /// from the bottom left, so each layer is flipped into the transform's
@@ -42,11 +49,14 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
 /// without color management, so the two draw the same picture and the
 /// film dissolve keys on brightness as it looks rather than as light.
 final class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
-    private let context = CIContext(options: [
-        .cacheIntermediates: false,
-        .workingColorSpace: NSNull(),
-        .outputColorSpace: NSNull(),
-    ])
+    private let context: CIContext = {
+        let options: [CIContextOption: Any] = [
+            .cacheIntermediates: false,
+            .workingColorSpace: NSNull(),
+            .outputColorSpace: NSNull(),
+        ]
+        return MetalDevice.shared.map { CIContext(mtlDevice: $0, options: options) } ?? CIContext(options: options)
+    }()
     private let queue = DispatchQueue(label: "LayeredCompositor", qos: .userInitiated)
 
     // Half floats keep HDR sources and timelines intact.
@@ -70,12 +80,14 @@ final class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable
                     request.finish(with: CompositionError.exportFailed("The film dissolve couldn't be drawn."))
                     return
                 }
+                let started = CACurrentMediaTime()
                 let size = request.renderContext.size
                 let image = Self.compose(instruction, at: request.compositionTime, outputSize: size) {
                     request.sourceFrame(byTrackID: $0)
                 }
                 context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
                 instruction.colorSpace.attach(to: output)
+                instruction.meter?.record(renderSeconds: CACurrentMediaTime() - started)
                 request.finish(withComposedVideoFrame: output)
             }
         }

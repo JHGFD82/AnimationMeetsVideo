@@ -40,6 +40,22 @@ enum CompositionError: LocalizedError {
 struct ComposedTimeline {
     var composition: AVMutableComposition
     var videoComposition: AVMutableVideoComposition?
+
+    /// The video composition drawn at `scale` of the timeline's frame size,
+    /// for the viewer. Only one built for preview can be drawn smaller: its
+    /// instructions keep the frame size and scale into whatever size the
+    /// player asks for.
+    func videoComposition(scaledBy scale: Double) -> AVVideoComposition? {
+        guard let videoComposition, scale != 1,
+              let scaled = videoComposition.mutableCopy() as? AVMutableVideoComposition
+        else {
+            return videoComposition
+        }
+        // Even sizes, which every pixel format accepts.
+        func even(_ value: CGFloat) -> CGFloat { max(2, (value * scale / 2).rounded() * 2) }
+        scaled.renderSize = CGSize(width: even(videoComposition.renderSize.width), height: even(videoComposition.renderSize.height))
+        return scaled
+    }
 }
 
 /// Track metadata for one media file, loaded once and reused across the many
@@ -249,7 +265,15 @@ enum CompositionExporter {
         await MediaTrackCache.shared.forget(url)
     }
 
-    static func buildComposedTimeline(for project: EditingProject, timelineID: UUID) async throws -> ComposedTimeline {
+    /// With `forPreview` every frame is drawn by `LayeredCompositor`, so the
+    /// viewer can draw it at a reduced size and `meter` hears how long each
+    /// frame took.
+    static func buildComposedTimeline(
+        for project: EditingProject,
+        timelineID: UUID,
+        forPreview: Bool = false,
+        meter: RenderMeter? = nil
+    ) async throws -> ComposedTimeline {
         guard let timeline = project.timeline(id: timelineID), !timeline.layers.isEmpty else {
             throw CompositionError.emptyTimeline
         }
@@ -312,7 +336,9 @@ enum CompositionExporter {
             overallDuration: composition.duration,
             renderSize: timeline.frameSize,
             frameRate: timeline.frameRate,
-            colorSpace: timeline.colorSpace
+            colorSpace: timeline.colorSpace,
+            layered: forPreview,
+            meter: meter
         )
         return ComposedTimeline(composition: composition, videoComposition: videoComposition)
     }
@@ -493,7 +519,9 @@ enum CompositionExporter {
         overallDuration: CMTime,
         renderSize: CGSize,
         frameRate: Double,
-        colorSpace: ProjectColorSpace
+        colorSpace: ProjectColorSpace,
+        layered: Bool,
+        meter: RenderMeter?
     ) -> AVMutableVideoComposition? {
         guard !layers.isEmpty else { return nil }
 
@@ -514,9 +542,10 @@ enum CompositionExporter {
         videoComposition.renderSize = renderSize
         videoComposition.frameDuration = frame
 
-        // The built-in compositor draws everything else exactly; only a film
-        // dissolve needs ours, so it is used just for timelines with one.
-        if layers.contains(where: { $0.segments.contains { $0.animation.hasLumaReveal } }) {
+        // The built-in compositor draws everything else exactly; for export
+        // only a film dissolve needs ours, so it is used just for timelines
+        // with one.
+        if layered || layers.contains(where: { $0.segments.contains { $0.animation.hasLumaReveal } }) {
             var instructions: [LayeredInstruction] = []
             for index in 0..<(breakpoints.count - 1) {
                 let range = CMTimeRange(start: breakpoints[index], end: breakpoints[index + 1])
@@ -527,7 +556,9 @@ enum CompositionExporter {
                     }
                     return LayeredInstruction.Layer(trackID: layer.track.trackID, animation: segment.animation)
                 }
-                instructions.append(LayeredInstruction(timeRange: range, layers: shown, renderSize: renderSize, colorSpace: colorSpace))
+                instructions.append(LayeredInstruction(
+                    timeRange: range, layers: shown, renderSize: renderSize, colorSpace: colorSpace, meter: meter
+                ))
             }
             videoComposition.customVideoCompositorClass = LayeredCompositor.self
             videoComposition.instructions = instructions

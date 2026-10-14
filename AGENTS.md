@@ -34,6 +34,8 @@ Follow Google's change-description conventions for every commit.
   - `Analysis/`: media analysis (beats, scene cuts, alignment, comparison,
     reference capture, sample reading).
   - `Replacement/`, `Export/`: media replacement logic and ProRes export.
+  - `Rendering/`: viewer quality and render timing; the render cache goes
+    here too.
   - `UI/`: SwiftUI views by area: `Editor/` (shell and toolbar),
     `Timeline/`, `Browser/`, `Inspector/`, `Viewer/` (player, playback,
     external display), `Replacement/`, and `Components/` for shared controls.

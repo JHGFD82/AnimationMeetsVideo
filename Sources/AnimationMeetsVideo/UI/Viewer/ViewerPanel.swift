@@ -55,10 +55,34 @@ struct ViewerPanel: View {
                     .font(.system(.body, design: .monospaced))
                     .foregroundStyle(.secondary)
                 Spacer()
+                qualityMenu
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
             .background(Color(nsColor: .windowBackgroundColor))
         }
+    }
+
+    /// Auto shows the size it's drawing at while that isn't full.
+    private var qualityMenu: some View {
+        Picker(selection: Binding(get: { playback.quality }, set: { playback.quality = $0 })) {
+            ForEach(PreviewQuality.allCases) { quality in
+                Text(quality.label).tag(quality)
+            }
+        } label: {
+            EmptyView()
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .fixedSize()
+        .overlay(alignment: .leading) {
+            if playback.quality == .auto, playback.level != .full {
+                Text(playback.level.label)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .offset(x: -18)
+            }
+        }
+        .help("Viewer quality. Smaller sizes play complex timelines smoothly; Auto draws full size when paused and steps down only while playback can't keep up.")
     }
 }
