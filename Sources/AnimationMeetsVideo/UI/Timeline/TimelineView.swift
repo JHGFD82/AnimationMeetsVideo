@@ -38,6 +38,13 @@ struct TimelineView: View {
     let onSelectLayer: () -> Void
     let onDeleteClip: (UUID, UUID) -> Void
     let onDeleteLayer: (UUID) -> Void
+    /// Layer, clip and the timeline time to split it at, from the blade.
+    let onBladeClip: (UUID, UUID, CMTime) -> Void
+    let onRippleTrimStart: (UUID, UUID, CMTime) -> Void
+    let onRippleTrimEnd: (UUID, UUID, CMTime) -> Void
+    /// The clip as a ripple drag would leave it, for the viewer to show its
+    /// first and last frames; nil when the drag ends.
+    let onTrimPreview: (TimelineClip?) -> Void
     @Binding var showsTransitions: Bool
 
     /// The chosen zoom, or nil while the whole timeline is fitted to the
@@ -69,6 +76,7 @@ struct TimelineView: View {
     @State private var headerBarHeight: CGFloat = 32
     /// The layer selected by its header, for Delete. Selecting a clip clears it.
     @State private var selectedLayerID: UUID?
+    @State private var tool: TimelineTool = .arrow
     @AppStorage("clickOnBeats") private var clickOnBeats = false
     @AppStorage("beatClickFrequency") private var beatClickFrequency = 1000.0
 
@@ -182,6 +190,17 @@ struct TimelineView: View {
             HStack {
                 Label("Timeline", systemImage: "timeline.selection")
                     .font(.headline)
+                Picker("Tool", selection: $tool) {
+                    ForEach(TimelineTool.allCases) { tool in
+                        Image(systemName: tool.systemImage)
+                            .help(tool.help)
+                            .tag(tool)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .help(tool.help)
                 Spacer()
                 Text(playheadTime.timecode(frameRate: timeline.frameRate))
                     .font(.caption.monospacedDigit())
@@ -488,7 +507,13 @@ struct TimelineView: View {
                         onRemoveTransition: { clipID, edge in onRemoveTransition(layer.id, clipID, edge) },
                         onSelectTransition: { clip, edge in onSelectTransition(layer.id, clip, edge) },
                         onSetTransitionCurve: { clipID, edge, curve in onSetTransitionCurve(layer.id, clipID, edge, curve) },
-                        onDetachAudio: { clipID in onDetachAudio(layer.id, [clipID]) }
+                        onDetachAudio: { clipID in onDetachAudio(layer.id, [clipID]) },
+                        tool: tool,
+                        snap: { timeline.snappedToFrame($0) },
+                        onBlade: { clipID, time in onBladeClip(layer.id, clipID, time) },
+                        onRippleTrimStart: { clipID, trimStart in onRippleTrimStart(layer.id, clipID, trimStart) },
+                        onRippleTrimEnd: { clipID, trimEnd in onRippleTrimEnd(layer.id, clipID, trimEnd) },
+                        onTrimPreview: onTrimPreview
                     )
                     // Empty space on a layer scrubs; clips claim their own clicks.
                     .gesture(contentScrubGesture(in: viewport))
@@ -506,7 +531,9 @@ struct TimelineView: View {
                                 copy.applyJointEdit(edit, at: joint.incoming.id, in: timelineID, layer: layer.id)
                                 return copy.joint(at: joint.incoming.id, in: timelineID, layer: layer.id)
                             },
-                            onCommit: { edit in onApplyJointEdit(layer.id, joint.incoming.id, edit) }
+                            onCommit: { edit in onApplyJointEdit(layer.id, joint.incoming.id, edit) },
+                            tool: tool,
+                            onTrimPreview: onTrimPreview
                         )
                     }
                     if showsLinkedAudio(of: layer) {
@@ -663,6 +690,10 @@ struct TimelineView: View {
         case "-": zoomAroundPlayhead(by: 1 / zoomStep); return true
         case "\\": fitToWindow(); return true
         default: break
+        }
+        if let chosen = TimelineTool(shortcutKey: key), !flags.contains(.shift) {
+            tool = chosen
+            return true
         }
         guard let property = TransformProperty(shortcutKey: key) else { return false }
         let targets: [TimelineLayer]

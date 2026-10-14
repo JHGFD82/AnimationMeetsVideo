@@ -91,6 +91,33 @@ top, in the ruler. Clicking or dragging anywhere in the ruler, or in empty
 track space, moves it there. It lands on frames and stays within the
 timeline.
 
+## Tools
+
+A segmented control in the timeline's header picks what dragging and
+clicking clips does (`TimelineTool`); the keys switch tools while no text
+is being edited.
+
+- **Arrow (A)**: select, move and trim clips, as described below.
+- **Blade (B)**: a red line follows the pointer over a clip, on the frame
+  it would cut at; clicking splits the clip there (`split(…atTimelineTime:)`).
+  Clips can't be moved or trimmed with it. The inspector no longer has a
+  Split button.
+- **Ripple (E)**: dragging a clip's edge trims it and moves every later
+  clip on its layer by as much as its end moved, so the gaps after it stay
+  (`rippleTrimStart` / `rippleTrimEnd` in `MediaModels.swift`). Trimming
+  the start keeps the clip in place and changes which frame it begins on.
+  The trim stops where the footage runs out (or at a one-frame clip) and
+  goes no further. Later clips follow on screen during the drag, and the
+  viewer shows the clip's first and last frames side by side with their
+  source timecodes, so it's clear exactly which footage it will play.
+  Clips can't be moved with it. Ripple doesn't move other layers, the
+  layer's keyframes, or detached sound on other layers. In a transition's
+  footage lane the cut line turns yellow and splits in two: its top half
+  ripples the outgoing clip's end (the incoming clip and everything after
+  follow the cut), its bottom half the incoming clip's start (the cut stays).
+
+P, S, R and T show transform properties, which is why ripple is E.
+
 ## Moving and trimming clips
 
 Dragging the middle of a clip moves it; dragging within a few points of

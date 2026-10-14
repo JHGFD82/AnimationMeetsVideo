@@ -172,6 +172,39 @@ struct LayerClipRow: View {
     let onSelectTransition: (TimelineClip, TransitionEdge) -> Void
     let onSetTransitionCurve: (UUID, TransitionEdge, TransitionCurve) -> Void
     let onDetachAudio: (UUID) -> Void
+    let tool: TimelineTool
+    /// Rounds a time onto the timeline's frames.
+    let snap: (CMTime) -> CMTime
+    let onBlade: (UUID, CMTime) -> Void
+    let onRippleTrimStart: (UUID, CMTime) -> Void
+    let onRippleTrimEnd: (UUID, CMTime) -> Void
+    let onTrimPreview: (TimelineClip?) -> Void
+
+    /// While a clip's edge is rippled: how far the clips after it move.
+    private struct RippleShift: Equatable {
+        var clipID: UUID
+        var after: CMTime
+        var shift: CMTime
+    }
+
+    @State private var rippleShift: RippleShift?
+
+    private func shiftX(of clip: TimelineClip) -> CGFloat {
+        guard let rippleShift, clip.id != rippleShift.clipID, clip.startOffset >= rippleShift.after else { return 0 }
+        return rippleShift.shift.seconds * pixelsPerSecond
+    }
+
+    /// A ripple drag's draft: the clips after it follow on screen until
+    /// the edit arrives, and the viewer shows its first and last frames.
+    private func rippleDraft(of clip: TimelineClip, _ draft: TimelineClip?, committing: Bool) {
+        if let draft {
+            rippleShift = RippleShift(clipID: clip.id, after: clip.endOffset, shift: CMTimeSubtract(draft.endOffset, clip.endOffset))
+            onTrimPreview(draft)
+        } else {
+            onTrimPreview(nil)
+            if !committing { rippleShift = nil }
+        }
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -192,19 +225,36 @@ struct LayerClipRow: View {
                     height: height,
                     visibleX: visibleX,
                     resolveMove: { start, dy in resolveMove(clip, dy, start) },
-                    resolveTrimStart: { project.resolvedTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
-                    resolveTrimEnd: { project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
+                    resolveTrimStart: { trimStart in
+                        tool == .ripple
+                            ? project.resolvedRippleTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: trimStart)
+                            : project.resolvedTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: trimStart)
+                    },
+                    resolveTrimEnd: { trimEnd in
+                        tool == .ripple
+                            ? project.resolvedRippleTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: trimEnd)
+                            : project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: trimEnd)
+                    },
                     onSelect: { onSelectClip(clip) },
                     onMove: { newStart, targetLayerID in onMoveClip(clip.id, targetLayerID, newStart) },
                     onDragging: onDraggingClip,
-                    onTrimStart: { newTrimStart in onTrimClipStart(clip.id, newTrimStart) },
-                    onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) },
+                    onTrimStart: { newTrimStart in
+                        if tool == .ripple { onRippleTrimStart(clip.id, newTrimStart) } else { onTrimClipStart(clip.id, newTrimStart) }
+                    },
+                    onTrimEnd: { newTrimEnd in
+                        if tool == .ripple { onRippleTrimEnd(clip.id, newTrimEnd) } else { onTrimClipEnd(clip.id, newTrimEnd) }
+                    },
                     onSetTransition: { kind, edge in onSetTransition(clip.id, kind, edge) },
                     onRemoveTransition: { edge in onRemoveTransition(clip.id, edge) },
                     onSelectTransition: { edge in onSelectTransition(clip, edge) },
                     onSetTransitionCurve: { edge, curve in onSetTransitionCurve(clip.id, edge, curve) },
-                    onDetachAudio: { onDetachAudio(clip.id) }
+                    onDetachAudio: { onDetachAudio(clip.id) },
+                    tool: tool,
+                    snap: snap,
+                    onBlade: { time in onBlade(clip.id, time) },
+                    onTrimDraft: tool == .ripple ? { draft, committing in rippleDraft(of: clip, draft, committing: committing) } : nil
                 )
+                .offset(x: shiftX(of: clip))
             }
             // Transitions joining two clips sit over the cut, on top of both.
             ForEach(layer.clips) { clip in
@@ -222,9 +272,11 @@ struct LayerClipRow: View {
                         onSetCurve: { curve in onSetTransitionCurve(clip.id, .leading, curve) },
                         onRemove: { onRemoveTransition(clip.id, .leading) }
                     )
+                    .offset(x: shiftX(of: clip))
                 }
             }
         }
+        .onChange(of: layer.clips) { _, _ in rippleShift = nil }
         // offset() shifts rendering without changing the size a view reports
         // to its parent, so without an explicit width here the row would
         // size itself to its (un-offset) widest clip rather than spanning
@@ -296,6 +348,14 @@ struct ClipBlockView: View {
     let onSelectTransition: (TransitionEdge) -> Void
     let onSetTransitionCurve: (TransitionEdge, TransitionCurve) -> Void
     let onDetachAudio: () -> Void
+    /// Arrow moves and trims, blade splits where clicked, ripple only trims.
+    let tool: TimelineTool
+    let snap: (CMTime) -> CMTime
+    /// Splits the clip at a timeline time, from the blade.
+    let onBlade: (CMTime) -> Void
+    /// Hears each trim draft, then nil when the drag ends (with whether
+    /// the trim is being committed). Set for ripple trims.
+    let onTrimDraft: ((TimelineClip?, Bool) -> Void)?
 
     /// The clip as it will be if the current drag ends now. After a drop
     /// it stays up until the edited clip comes back down from the project:
@@ -312,6 +372,8 @@ struct ClipBlockView: View {
     @State private var dropCount = 0
     @State private var isTrimming = false
     @State private var isTransitionTarget = false
+    /// Where the blade would cut, in the row's coordinates, while hovering.
+    @State private var bladeX: CGFloat?
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
 
     private let handleWidth: CGFloat = 8
@@ -396,6 +458,14 @@ struct ClipBlockView: View {
                 isTransitionTarget = targeted && acceptsTransitions
             }
             .contextMenu { clipMenu }
+            .onContinuousHover(coordinateSpace: .named(space)) { phase in
+                guard tool == .blade, case .active(let location) = phase else {
+                    bladeX = nil
+                    return
+                }
+                let time = bladeTime(atX: location.x)
+                bladeX = time > clip.startOffset && time < clip.endOffset ? time.seconds * pixelsPerSecond : nil
+            }
             .offset(x: drawnX)
             // Measured in window coordinates: the block moves (and resizes)
             // as the preview changes, so in its own coordinates every
@@ -420,11 +490,16 @@ struct ClipBlockView: View {
                         } else {
                             endDrop()
                         }
-                    }
+                    },
+                // Only the arrow moves clips.
+                including: tool == .arrow ? .all : .none
             )
             // A click selects the clip, or the transition under it.
             .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(space)).onEnded { value in
-                if let edge = transitionEdge(atX: value.location.x, liveX: liveX) {
+                if tool == .blade {
+                    let time = bladeTime(atX: value.location.x)
+                    if time > clip.startOffset && time < clip.endOffset { onBlade(time) }
+                } else if let edge = transitionEdge(atX: value.location.x, liveX: liveX) {
                     onSelectTransition(edge)
                 } else {
                     onSelect()
@@ -435,8 +510,17 @@ struct ClipBlockView: View {
             // points of either side trims that edge instead of moving the
             // whole clip (SwiftUI resolves overlapping gestures to the
             // topmost hit-testable view at the touch point).
-            trimHandle(edge: .leading, liveX: liveX, liveWidth: liveWidth)
-            trimHandle(edge: .trailing, liveX: liveX, liveWidth: liveWidth)
+            if tool != .blade {
+                trimHandle(edge: .leading, liveX: liveX, liveWidth: liveWidth)
+                trimHandle(edge: .trailing, liveX: liveX, liveWidth: liveWidth)
+            }
+            if tool == .blade, let bladeX {
+                Rectangle()
+                    .fill(Color.red)
+                    .frame(width: 1.5, height: height)
+                    .offset(x: bladeX - 0.75)
+                    .allowsHitTesting(false)
+            }
         }
         .frame(height: height, alignment: .topLeading)
         .offset(y: previewTarget?.offsetY ?? 0)
@@ -444,6 +528,11 @@ struct ClipBlockView: View {
         .onChange(of: clip) { _, _ in
             if pendingDrop != nil { endDrop() }
         }
+    }
+
+    /// The timeline time the blade cuts at for `x` in the row: on a frame.
+    private func bladeTime(atX x: CGFloat) -> CMTime {
+        snap(CMTime(seconds: Double(max(0, x) / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale))
     }
 
     /// The end whose transition covers `x` (in the clip's row), if any.
@@ -582,8 +671,10 @@ struct ClipBlockView: View {
                         case .trailing: resolveTrimEnd(CMTimeAdd(clip.trimEnd, delta)) ?? clip
                         }
                         showPreview(trimmed)
+                        onTrimDraft?(trimmed, false)
                     }
                     .onEnded { _ in
+                        onTrimDraft?(nil, preview.map { $0 != clip } ?? false)
                         if let preview, preview != clip {
                             commitDrop {
                                 switch edge {

@@ -92,10 +92,6 @@ struct InspectorPanel: View {
                 }
 
                 Section("Arrange") {
-                    Button("Split at Playhead") {
-                        project.split(selection.timelineClipID, in: timelineID, layer: selection.layerID, atTimelineTime: playheadTime)
-                    }
-                    .disabled(!(playheadTime > timelineClip.startOffset && playheadTime < timelineClip.endOffset))
                     if project.hasLinkedAudio(timelineClip) {
                         Button("Detach Audio") {
                             project.detachAudio(of: [timelineClip.id], in: timelineID, layer: selection.layerID)

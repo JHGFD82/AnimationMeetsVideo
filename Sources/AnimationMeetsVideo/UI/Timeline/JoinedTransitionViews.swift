@@ -95,6 +95,11 @@ struct TransitionFootageLane: View {
     let visibleX: ClosedRange<CGFloat>
     let preview: (JointEdit) -> TransitionJoint?
     let onCommit: (JointEdit) -> Void
+    /// With the ripple tool the cut line ripples instead of rolling: its top
+    /// half the outgoing clip's end, its bottom half the incoming clip's start.
+    let tool: TimelineTool
+    /// The clip a ripple drag is changing, for the viewer; nil when it ends.
+    let onTrimPreview: (TimelineClip?) -> Void
 
     static let height: CGFloat = 68
 
@@ -138,7 +143,21 @@ struct TransitionFootageLane: View {
                 .place(duration: CMTimeAdd(self.joint.transition.duration, delta), lead: self.joint.lead)
             }
 
-            // The cut, which rolls.
+            if tool == .ripple {
+                rippleHandle(atX: cutX, y: 0, edit: { .rippleOut($0) })
+                    .help("Drag to ripple the outgoing clip's end: everything after it moves")
+                rippleHandle(atX: cutX, y: Self.height / 2, edit: { .rippleIn($0) })
+                    .help("Drag to ripple the incoming clip's start: everything after it moves")
+            } else {
+                cutHandle(atX: cutX)
+            }
+        }
+        .frame(width: width, height: Self.height, alignment: .topLeading)
+        .background(Color.black.opacity(0.15))
+    }
+
+    /// The cut, which rolls.
+    private func cutHandle(atX cutX: CGFloat) -> some View {
             ZStack {
                 Rectangle()
                     .fill(Color.white)
@@ -153,9 +172,23 @@ struct TransitionFootageLane: View {
             .gesture(drag { delta in .roll(delta) })
             .pointerStyle(.columnResize)
             .help("Drag to roll the cut: the transition draws on different footage")
+    }
+
+    /// Half of the cut line, for one clip's row, that ripples that clip.
+    private func rippleHandle(atX cutX: CGFloat, y: CGFloat, edit: @escaping (CMTime) -> JointEdit) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.yellow)
+                .frame(width: 2, height: Self.height / 2)
+            Capsule()
+                .fill(Color.yellow)
+                .frame(width: 8, height: 14)
         }
-        .frame(width: width, height: Self.height, alignment: .topLeading)
-        .background(Color.black.opacity(0.15))
+        .frame(width: 12, height: Self.height / 2)
+        .contentShape(Rectangle())
+        .offset(x: cutX - 6, y: y)
+        .gesture(drag(edit))
+        .pointerStyle(.columnResize)
     }
 
     private func x(_ time: CMTime) -> CGFloat {
@@ -199,9 +232,16 @@ struct TransitionFootageLane: View {
             .onChanged { value in
                 let delta = CMTime(seconds: Double(value.translation.width / pixelsPerSecond), preferredTimescale: 600)
                 let change = edit(delta)
-                if let joint = preview(change) { draft = (change, joint) }
+                guard let joint = preview(change) else { return }
+                draft = (change, joint)
+                switch change {
+                case .rippleOut: onTrimPreview(joint.outgoing)
+                case .rippleIn: onTrimPreview(joint.incoming)
+                case .roll, .place: break
+                }
             }
             .onEnded { _ in
+                onTrimPreview(nil)
                 if let draft { onCommit(draft.edit) }
                 draft = nil
             }

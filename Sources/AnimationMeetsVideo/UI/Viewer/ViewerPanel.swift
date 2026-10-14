@@ -6,6 +6,8 @@ struct ViewerPanel: View {
     let frameSize: CGSize
     let frameRate: Double
     let buildError: String?
+    /// A rippled clip's first and last frames, shown over the picture.
+    let trimPreview: TrimPreviewModel
 
     // Deliberately darker than the surrounding window chrome and distinct
     // from pure black, so the composition's actual frame boundary stays
@@ -29,6 +31,10 @@ struct ViewerPanel: View {
                         .aspectRatio(aspectRatio, contentMode: .fit)
                         .padding(36)
                     ContentUnavailableView("No Clips", systemImage: "film")
+                }
+                if trimPreview.isActive {
+                    TrimPreviewOverlay(model: trimPreview, frameRate: frameRate, aspectRatio: aspectRatio)
+                        .padding(24)
                 }
                 if let buildError {
                     Label(buildError, systemImage: "exclamationmark.triangle.fill")

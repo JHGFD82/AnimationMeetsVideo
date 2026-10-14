@@ -17,6 +17,7 @@ struct TimelineEditorSurface<Library: View>: View {
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
 
     @State private var playheadTime: CMTime = .zero
+    @State private var trimPreview = TrimPreviewModel()
     @State private var buildTask: Task<Void, Never>?
     @State private var buildError: String?
     @State private var timelineHeight: CGFloat = 280
@@ -67,7 +68,8 @@ struct TimelineEditorSurface<Library: View>: View {
                         hasContent: timeline?.layers.contains { !$0.clips.isEmpty } ?? false,
                         frameSize: timeline?.frameSize ?? CGSize(width: 16, height: 9),
                         frameRate: timeline?.frameRate ?? 24,
-                        buildError: buildError
+                        buildError: buildError,
+                        trimPreview: trimPreview
                     )
                     InspectorPanel(
                         project: $project,
@@ -204,6 +206,16 @@ struct TimelineEditorSurface<Library: View>: View {
                     project.deleteLayer(layerID, in: timelineID)
                     if selection?.layerID == layerID { selection = nil }
                 },
+                onBladeClip: { layerID, clipID, time in
+                    project.split(clipID, in: timelineID, layer: layerID, atTimelineTime: time)
+                },
+                onRippleTrimStart: { layerID, clipID, trimStart in
+                    project.rippleTrimStart(clipID, in: timelineID, layer: layerID, to: trimStart)
+                },
+                onRippleTrimEnd: { layerID, clipID, trimEnd in
+                    project.rippleTrimEnd(clipID, in: timelineID, layer: layerID, to: trimEnd)
+                },
+                onTrimPreview: { clip in showTrimPreview(of: clip) },
                 showsTransitions: $showsTransitions
             )
         } else {
@@ -231,6 +243,25 @@ struct TimelineEditorSurface<Library: View>: View {
     }
 
     // MARK: -
+
+    /// Shows a rippled clip's first and last frames over the viewer, or
+    /// stops with nil. Only clips with pictures from a file have frames.
+    private func showTrimPreview(of clip: TimelineClip?) {
+        guard let clip, let timeline, case .media(let mediaID) = clip.source,
+              let media = project.mediaClip(id: mediaID), media.kind == .video, let url = media.url
+        else {
+            trimPreview.clear()
+            return
+        }
+        let last = CMTimeMaximum(clip.trimStart, CMTimeSubtract(clip.trimEnd, timeline.frameDuration))
+        trimPreview.show(
+            url: url,
+            first: media.fileTime(forSourceTime: clip.trimStart),
+            last: media.fileTime(forSourceTime: last),
+            labelFirst: clip.trimStart,
+            labelLast: last
+        )
+    }
 
     /// Scrubbing moves the shared playhead and seeks the player directly —
     /// the player always shows the whole composited timeline (every layer
