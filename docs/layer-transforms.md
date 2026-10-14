@@ -104,7 +104,9 @@ opens that parameter's graph editor in a floating **HUD panel** of its
 own, titled with the layer and the parameter ("Video 1 · Position"), so
 several can be open side by side: one per parameter, and pressing the
 button again brings the existing panel forward (`KeyframeGraphHUDs`).
-Panels float over the window, hide while the app is in the background,
+Panels move only by their title bar, so every drag inside goes to the
+graph, and the first click on one goes to the graph too. They float over
+the window, hide while the app is in the background,
 follow renames and close when their layer is deleted or the editor goes
 away.
 

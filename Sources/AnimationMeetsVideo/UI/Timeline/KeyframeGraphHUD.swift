@@ -32,9 +32,12 @@ final class KeyframeGraphHUDs {
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = true
         panel.isReleasedWhenClosed = false
+        // Drags inside belong to the graph; the panel moves by its title
+        // bar only. HUD panels otherwise move from anywhere on them.
+        panel.isMovableByWindowBackground = false
         panel.contentMinSize = NSSize(width: 360, height: 200)
         panel.title = title(of: key)
-        panel.contentView = NSHostingView(rootView: KeyframeGraphView(hud: self, key: key))
+        panel.contentView = GraphHostingView(rootView: KeyframeGraphView(hud: self, key: key))
         place(panel)
         closeObservers[key] = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: panel, queue: .main
@@ -91,4 +94,13 @@ final class KeyframeGraphHUDs {
             y: frame.maxY - 80 - step
         ))
     }
+}
+
+/// Hosts a graph without letting a mouse down on it move the window: a
+/// hosting view's see-through parts otherwise say it may, and the panel
+/// then moves instead of the graph seeing the drag. The first click on a
+/// panel that isn't in front goes to the graph too.
+private final class GraphHostingView: NSHostingView<KeyframeGraphView> {
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
