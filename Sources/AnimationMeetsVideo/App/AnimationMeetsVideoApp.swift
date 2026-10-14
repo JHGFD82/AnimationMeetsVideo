@@ -13,6 +13,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated { TerminationGuard.shared.shouldTerminate?() ?? .terminateNow }
+    }
+}
+
+/// Lets the app's state answer whether it may quit, since the delegate
+/// can't see it: unsaved changes are offered for saving first.
+@MainActor
+final class TerminationGuard {
+    static let shared = TerminationGuard()
+    var shouldTerminate: (() -> NSApplication.TerminateReply)?
+    /// Opens the editor window again, for when closing the last one asked
+    /// to quit and the person cancelled.
+    var reopenWindow: (() -> Void)?
+}
+
+/// Hands the window-opening action to `TerminationGuard`.
+private struct WindowReopenerRegistration: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Color.clear
+            .onAppear {
+                TerminationGuard.shared.reopenWindow = { openWindow(id: AnimationMeetsVideoApp.windowID) }
+            }
+    }
 }
 
 @main
@@ -36,6 +63,7 @@ struct AnimationMeetsVideoApp: App {
 
     private static let autosaveInterval: Duration = .seconds(60)
     private static let lastProjectKey = "lastProjectPath"
+    static let windowID = "editor"
 
     private var hasUnsavedChanges: Bool { project != savedProject }
 
@@ -47,7 +75,7 @@ struct AnimationMeetsVideoApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Animation Meets Video") {
+        WindowGroup("Animation Meets Video", id: Self.windowID) {
             EditorView(
                 project: $project, history: history, analysis: analysis,
                 replacement: replacement, packageURL: projectURL
@@ -58,7 +86,9 @@ struct AnimationMeetsVideoApp: App {
                 .sheet(isPresented: Binding(get: { launchChecked && projectURL == nil }, set: { _ in })) {
                     ProjectStartView(onNew: newProject, onOpen: openProject)
                 }
+                .background(WindowReopenerRegistration())
                 .task {
+                    TerminationGuard.shared.shouldTerminate = { confirmQuit() }
                     if !launchChecked {
                         await reopenLastProject()
                         launchChecked = true
@@ -85,12 +115,12 @@ struct AnimationMeetsVideoApp: App {
                 Divider()
 
                 Button("Save Project") {
-                    saveProject()
+                    Task { await saveProject() }
                 }
                 .keyboardShortcut("s", modifiers: [.command])
 
                 Button("Save Project As…") {
-                    saveProject(forcePanel: true)
+                    Task { await saveProject(forcePanel: true) }
                 }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
 
@@ -105,7 +135,13 @@ struct AnimationMeetsVideoApp: App {
     /// Asks where to save the new project and creates its package at once,
     /// so imports and analysis have somewhere to go from the start.
     private func newProject() {
-        guard confirmDiscardingCurrentProject() else { return }
+        Task {
+            guard await confirmDiscardingCurrentProject() else { return }
+            await createProject()
+        }
+    }
+
+    private func createProject() async {
         let panel = NSSavePanel()
         if let type = UTType(filenameExtension: ProjectStore.packageExtension, conformingTo: .package) {
             panel.allowedContentTypes = [type]
@@ -127,27 +163,25 @@ struct AnimationMeetsVideoApp: App {
         var fresh = EditingProject.empty
         fresh.name = url.deletingPathExtension().lastPathComponent
         fresh.copiesMediaOnImport = copyOption.state == .on
-        Task {
-            isBusy = true
-            defer { isBusy = false }
-            do {
-                try replaceExisting(at: url)
-                try ProjectStore.preparePackage(at: url)
-                let lock = try ProjectLock.acquire(at: url)
-                let saved = try await ProjectStore.save(fresh, to: url)
-                project = saved
-                history.reset(to: saved)
-                savedProject = saved
-                lastAutosaved = nil
-                projectURL = url
-                projectLock = lock
-                fileMonitor.track(package: url)
-                analysis.reset(packageURL: url)
-                replacement.reset()
-                rememberLastProject(url)
-            } catch {
-                showAlert(title: "Couldn't Create Project", message: error.localizedDescription)
-            }
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            try replaceExisting(at: url)
+            try ProjectStore.preparePackage(at: url)
+            let lock = try ProjectLock.acquire(at: url)
+            let saved = try await ProjectStore.save(fresh, to: url)
+            project = saved
+            history.reset(to: saved)
+            savedProject = saved
+            lastAutosaved = nil
+            projectURL = url
+            projectLock = lock
+            fileMonitor.track(package: url)
+            analysis.reset(packageURL: url)
+            replacement.reset()
+            rememberLastProject(url)
+        } catch {
+            showAlert(title: "Couldn't Create Project", message: error.localizedDescription)
         }
     }
 
@@ -163,7 +197,13 @@ struct AnimationMeetsVideoApp: App {
     }
 
     private func openProject() {
-        guard confirmDiscardingCurrentProject() else { return }
+        Task {
+            guard await confirmDiscardingCurrentProject() else { return }
+            chooseProjectToOpen()
+        }
+    }
+
+    private func chooseProjectToOpen() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.folder, .json]
         panel.allowsMultipleSelection = false
@@ -195,11 +235,24 @@ struct AnimationMeetsVideoApp: App {
         do {
             try ProjectStore.validatePackage(at: url)
             let lock = try lockForProject(at: url)
-            let result = try await ProjectStore.load(from: url)
+            let saved = try await ProjectStore.load(from: url)
+            // Work an autosave holds that was never saved, as after quitting
+            // without saving or a crash, is offered back.
+            var restored: ProjectLoadResult?
+            if let backup = ProjectStore.unsavedBackup(in: url) {
+                if askToRestore(backup, name: saved.project.name) {
+                    restored = try? await ProjectStore.load(from: url, projectFile: backup)
+                } else {
+                    ProjectStore.markBackupsSeen(in: url)
+                }
+            }
+            let result = restored ?? saved
+            history.reset(to: saved.project)
+            savedProject = saved.project
+            // Restoring is an ordinary edit on top of the saved version, so
+            // it shows as unsaved and can be undone.
             project = result.project
-            history.reset(to: result.project)
-            savedProject = result.project
-            lastAutosaved = nil
+            lastAutosaved = restored?.project
             projectURL = url
             projectLock = lock
             fileMonitor.track(package: url)
@@ -229,7 +282,9 @@ struct AnimationMeetsVideoApp: App {
         }
     }
 
-    private func saveProject(forcePanel: Bool = false) {
+    /// Returns whether the project was saved.
+    @discardableResult
+    private func saveProject(forcePanel: Bool = false) async -> Bool {
         var destination = forcePanel ? nil : projectURL
         if destination == nil {
             let panel = NSSavePanel()
@@ -237,15 +292,15 @@ struct AnimationMeetsVideoApp: App {
                 panel.allowedContentTypes = [type]
             }
             panel.nameFieldStringValue = project.name
-            guard panel.runModal() == .OK, var url = panel.url else { return }
+            guard panel.runModal() == .OK, var url = panel.url else { return false }
             if url.pathExtension != ProjectStore.packageExtension {
                 url.appendPathExtension(ProjectStore.packageExtension)
             }
             destination = url
         }
-        guard let url = destination else { return }
+        guard let url = destination else { return false }
 
-        Task {
+        do {
             isBusy = true
             defer { isBusy = false }
             do {
@@ -254,7 +309,7 @@ struct AnimationMeetsVideoApp: App {
                 // Imports are copied as they come in, so only Save As copies,
                 // carrying along what the previous package holds.
                 let isNewLocation = projectURL.map { !isSamePackage($0, url) } ?? true
-                guard let copying = isNewLocation ? chooseMediaToCopy(for: project, into: url) : [] else { return }
+                guard let copying = isNewLocation ? chooseMediaToCopy(for: project, into: url) : [] else { return false }
                 let snapshot = project
                 let scoresToSave = analysis.unsavedTracks
                 let referencesToSave = analysis.unsavedReferences
@@ -283,8 +338,10 @@ struct AnimationMeetsVideoApp: App {
                 fileMonitor.track(package: url)
                 analysis.packageURL = url
                 rememberLastProject(url)
+                return true
             } catch {
                 showAlert(title: "Couldn't Save Project", message: error.localizedDescription)
+                return false
             }
         }
     }
@@ -395,13 +452,70 @@ struct AnimationMeetsVideoApp: App {
         }
     }
 
-    private func confirmDiscardingCurrentProject() -> Bool {
-        guard hasUnsavedChanges else { return true }
+    private enum UnsavedChoice { case save, discard, cancel }
+
+    /// Asks what to do with unsaved changes before they would be lost.
+    private func askAboutUnsavedChanges(_ question: String) -> UnsavedChoice {
         let alert = NSAlert()
-        alert.messageText = "Replace the current project?"
-        alert.informativeText = "Changes you haven't saved will be lost."
-        alert.addButton(withTitle: "Replace")
+        alert.messageText = question
+        alert.informativeText = "If you don't save, your changes since the last save are lost."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Don't Save")
         alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .save
+        case .alertSecondButtonReturn: return .discard
+        default: return .cancel
+        }
+    }
+
+    /// Before another project replaces this one: saves, discards or cancels.
+    private func confirmDiscardingCurrentProject() async -> Bool {
+        guard hasUnsavedChanges, let url = projectURL else { return true }
+        switch askAboutUnsavedChanges("Save changes to \u{201C}\(project.name)\u{201D} first?") {
+        case .save: return await saveProject()
+        case .discard:
+            ProjectStore.markBackupsSeen(in: url)
+            return true
+        case .cancel: return false
+        }
+    }
+
+    /// Before quitting, including by closing the window: unsaved changes are
+    /// saved, discarded, or keep the app open.
+    private func confirmQuit() -> NSApplication.TerminateReply {
+        guard hasUnsavedChanges, let url = projectURL else { return .terminateNow }
+        switch askAboutUnsavedChanges("Save changes to \u{201C}\(project.name)\u{201D} before quitting?") {
+        case .save:
+            Task {
+                let saved = await saveProject()
+                if !saved { reopenWindowIfClosed() }
+                NSApp.reply(toApplicationShouldTerminate: saved)
+            }
+            return .terminateLater
+        case .discard:
+            ProjectStore.markBackupsSeen(in: url)
+            return .terminateNow
+        case .cancel:
+            reopenWindowIfClosed()
+            return .terminateCancel
+        }
+    }
+
+    /// Closing the last window asks to quit; when that's cancelled the
+    /// window comes back, still holding the project.
+    private func reopenWindowIfClosed() {
+        guard !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) else { return }
+        TerminationGuard.shared.reopenWindow?()
+    }
+
+    private func askToRestore(_ backup: URL, name: String) -> Bool {
+        let date = (try? backup.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
+        let alert = NSAlert()
+        alert.messageText = "Restore unsaved changes to \u{201C}\(name)\u{201D}?"
+        alert.informativeText = "An automatic backup from \(date.formatted(date: .abbreviated, time: .shortened)) has changes that were never saved. Restoring them is an ordinary edit: you can undo it, and nothing is written until you save."
+        alert.addButton(withTitle: "Restore")
+        alert.addButton(withTitle: "Don't Restore")
         return alert.runModal() == .alertFirstButtonReturn
     }
 

@@ -8,7 +8,7 @@ signature.bin` holds each video's change scores, `reference.json` and
 `audio.bin` hold the metadata snapshot and audio envelope captured at import,
 and `project.json` holds scene edits (see [scene-cuts.md](scene-cuts.md)).
 `thumbs/` holds reference pictures. `beats.bin` holds detected beats (see
-[beat-detection.md](beat-detection.md)). The render cache is implemented (see [rendering.md](rendering.md)). Not yet implemented: dense reference frames, a restore-from-backup screen (copy a backup over
+[beat-detection.md](beat-detection.md)). The render cache is implemented (see [rendering.md](rendering.md)). Not yet implemented: dense reference frames, a list of backups to restore from (copy one over
 `project.json` by hand for now), and a Finder-visible package type (that
 needs an app bundle that declares the `.amv` type).
 Step 4 is implemented (see [media-replacement.md](media-replacement.md)):
@@ -98,6 +98,18 @@ project used last; when there is none, or it has gone, a start sheet offers
 New Project and Open Project and stays until one exists. New Project asks
 where to save before the editor opens and writes the package and an empty
 `project.json` right away.
+
+**Saving is still explicit.** Imports, edits and the clip list live in
+`project.json`, which only Save writes. Quitting (including closing the last
+window), New Project and Open Project ask to Save, Don't Save or Cancel
+when there are unsaved changes; cancelling a quit brings the window back.
+Every minute with unsaved changes an autosave goes into `Backups/`. When a
+project opens and its newest autosave is newer than `project.json` and
+differs from it, as after a crash or a quit that skipped saving, the app
+offers to restore it. Restoring is an ordinary, undoable edit on top of
+the saved version and isn't written until saved. Declining, or choosing
+Don't Save, marks the autosaves as seen (their dates are set back to just
+before the save's) so they aren't offered again; the files stay.
 
 Because of that, analysis results (change scores, reference data, pictures
 and beats) are written into `Reference/` as soon as each is computed, and

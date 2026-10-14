@@ -357,6 +357,26 @@ private struct Sandbox {
         #expect(loaded.project.name == "Recovered")
     }
 
+    @Test func aBackupNewerThanTheSaveIsOfferedUntilSeen() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let saved = try #require(try? FileManager.default.attributesOfItem(atPath: sandbox.projectJSON.path)[.modificationDate] as? Date)
+        #expect(ProjectStore.unsavedBackup(in: sandbox.packageURL) == nil)
+
+        project.name = "Changed"
+        let backup = try ProjectStore.writeBackup(of: project, in: sandbox.packageURL, now: saved.addingTimeInterval(60))
+        try FileManager.default.setAttributes([.modificationDate: saved.addingTimeInterval(60)], ofItemAtPath: backup.path)
+        #expect(ProjectStore.unsavedBackup(in: sandbox.packageURL) == backup)
+        let restored = try await ProjectStore.load(from: sandbox.packageURL, projectFile: backup, importMedia: Sandbox.stubImporter)
+        #expect(restored.project.name == "Changed")
+
+        ProjectStore.markBackupsSeen(in: sandbox.packageURL)
+        #expect(ProjectStore.unsavedBackup(in: sandbox.packageURL) == nil)
+        #expect(FileManager.default.fileExists(atPath: backup.path))
+    }
+
     @Test func oldestBackupsArePrunedBeyondTheLimit() throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
