@@ -549,8 +549,11 @@ struct ClipBlockView: View {
                             endDrop()
                         }
                     },
-                // Only the arrow moves clips.
-                including: tool == .arrow ? .all : .none
+                // Only the arrow moves clips. Off means `.subviews`, not
+                // `.none`: `.none` also switches off every gesture already
+                // on this view, which let the slip gesture below disable
+                // this one and left clips impossible to move.
+                including: tool == .arrow ? .all : .subviews
             )
             // With the slip tool, dragging the clip slides its footage under
             // it, like film under a window: right brings earlier frames in.
@@ -573,7 +576,7 @@ struct ClipBlockView: View {
                         }
                         slipDelta = nil
                     },
-                including: tool == .slip ? .all : .none
+                including: tool == .slip ? .all : .subviews
             )
             // A click selects the clip, or the transition under it.
             .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(space)).onEnded { value in
