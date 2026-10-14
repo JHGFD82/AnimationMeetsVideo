@@ -96,6 +96,45 @@ keyframe's value or retiming it keeps its eases.
 The shape of an ease is set by dragging its handle in the parameter's
 graph editor (see [Graph editor](#graph-editor)).
 
+### Graph editor
+
+Each animated property has a graph button (a small chart) after its
+keyframe buttons, in the timeline and the inspector; volume does too. It
+opens that parameter's graph editor in a floating **HUD panel** of its
+own, titled with the layer and the parameter ("Video 1 · Position"), so
+several can be open side by side: one per parameter, and pressing the
+button again brings the existing panel forward (`KeyframeGraphHUDs`).
+Panels float over the window, hide while the app is in the background,
+follow renames and close when their layer is deleted or the editor goes
+away.
+
+The panel is a value graph (`KeyframeGraphView`): time across the span of
+the keyframes, the value up as the editor shows it (position absolute in
+the frame, volume in dB), one line per component (position's X in red and
+Y in green, a single property in yellow), the playhead in red, and each
+keyframe a mark on each line, pinched where eased.
+
+- **Click a keyframe** to select it. Its bezier handles appear on either
+  side, drawn against the component that changes most over that segment.
+- **Drag a handle** to shape that side's ease: across sets its influence,
+  up and down its speed. A handle can't leave its segment in time; it can
+  overshoot in value. Over a segment whose value doesn't change only its
+  influence can be set, since the curve is flat whatever the speed.
+- **Drag a keyframe** to move it in time (on frames, never past a
+  neighbor) and in that component's value; Shift keeps the drag to
+  whichever direction it moves most.
+- **Click elsewhere** to move the playhead there, and drag to scrub.
+  **Double-click** to add a keyframe there (or remove the one there).
+- The **preset buttons** along the top, and the right-click menu (with
+  **Delete Keyframe**), act on the selected keyframe, or else the one at
+  the playhead.
+
+The graph is scaled to the keyframes, their curves and their handles
+(`KeyframeGraphLayout`) and keeps that scale while a drag is in progress,
+so nothing moves under the pointer. A drag is drawn as it goes and saved
+when it ends, as one undo step; in-between states don't rebuild the
+player.
+
 ## In the timeline
 
 Each visual layer has a disclosure arrow left of its number. The arrow shows
@@ -209,6 +248,10 @@ ignore it, and drop the transforms if it saved the project.
 
 - **Hold keyframes**, spatial (curved) motion paths for position, and
   separate easing per component.
+- In the graph editor: zooming and scrolling the graph, a speed graph,
+  selecting several keyframes, handles that stay continuous across a
+  keyframe, and keeping linked scale's aspect when dragging one
+  component.
 - **Image layers.** Still images can't be imported yet. When they can, they
   are visual layers and get the same transform.
 - **Anchor point**, and **3D** (see [Only 2D for now](#only-2d-for-now)).

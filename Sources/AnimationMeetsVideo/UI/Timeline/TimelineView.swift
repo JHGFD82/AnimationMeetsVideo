@@ -101,6 +101,8 @@ struct TimelineView: View {
     /// The section selected in the lane under the ruler, for Delete.
     @State private var selectedSectionID: UUID?
     @AppStorage("snapping") private var snapping = true
+    /// The surface's graph editor panels.
+    @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
     /// Where a drag in progress snapped, drawn as a line across the layers.
     @State private var snapIndicator: CMTime?
 
@@ -685,7 +687,10 @@ struct TimelineView: View {
                             time: frameTime,
                             frameSize: timeline.frameSize,
                             onEdit: { change in onEditTransform(layer.id, change) },
-                            onSeek: onScrub
+                            onSeek: onScrub,
+                            onShowGraph: graphs.map { graphs in
+                                { graphs.show(ParameterKey(timelineID: timelineID, layerID: layer.id, parameter: .transform(property))) }
+                            }
                         )
                         .padding(.leading, 30)
                         .padding(.trailing, 8)
@@ -696,7 +701,10 @@ struct TimelineView: View {
                             volume: layer.volume,
                             time: frameTime,
                             onEdit: { change in onEditVolume(layer.id, change) },
-                            onSeek: onScrub
+                            onSeek: onScrub,
+                            onShowGraph: graphs.map { graphs in
+                                { graphs.show(ParameterKey(timelineID: timelineID, layerID: layer.id, parameter: .volume)) }
+                            }
                         )
                         .padding(.leading, 30)
                         .padding(.trailing, 8)

@@ -28,6 +28,8 @@ struct TimelineEditorSurface<Library: View>: View {
     @AppStorage("timelineHeight") private var timelineHeight: Double = 280
     @AppStorage("showsTransitionsPanel") private var showsTransitions = false
     @AppStorage("showsAudioMeter") private var showsMeter = false
+    /// The graph editors this surface has open, one HUD per parameter.
+    @State private var graphs = KeyframeGraphHUDs()
 
     private let minTimelineHeight: CGFloat = 140
     private let minTopAreaHeight: CGFloat = 220
@@ -111,6 +113,15 @@ struct TimelineEditorSurface<Library: View>: View {
                 .editorAnimation(Design.Motion.panel, value: showsMeter)
             }
         }
+        .environment(graphs)
+        .onChange(of: project, initial: true) { _, project in graphs.update(project: project) }
+        .onChange(of: playheadTime, initial: true) { _, time in graphs.playhead = time }
+        .onAppear {
+            let project = $project
+            graphs.onEdit = { change in change(&project.wrappedValue) }
+            graphs.onSeek = { time in scrub(to: time) }
+        }
+        .onDisappear { graphs.closeAll() }
         .onChange(of: timelineID) { _, newValue in
             if selection?.timelineID != newValue {
                 selection = nil

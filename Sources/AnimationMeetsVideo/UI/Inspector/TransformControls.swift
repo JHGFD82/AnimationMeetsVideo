@@ -13,6 +13,8 @@ struct TransformPropertyRow: View {
     let frameSize: CGSize
     let onEdit: ((inout LayerTransform) -> Void) -> Void
     let onSeek: (CMTime) -> Void
+    /// Opens the property's graph editor; offered while it is animated.
+    var onShowGraph: (() -> Void)?
 
     private var isAnimated: Bool { transform.isAnimated(property) }
     private var keyframeTimes: [CMTime] { transform.keyframeTimes(property) }
@@ -55,9 +57,20 @@ struct TransformPropertyRow: View {
 
             if isAnimated {
                 keyframeNavigation
+                if let onShowGraph { graphButton(property.rawValue, action: onShowGraph) }
             }
         }
         .font(Design.Typeface.label)
+    }
+
+    private func graphButton(_ name: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "chart.xyaxis.line")
+                .foregroundStyle(Design.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 9))
+        .help("Open \(name.lowercased())'s graph editor to shape its eases")
     }
 
     private var keyframeNavigation: some View {
@@ -99,12 +112,14 @@ struct TransformInspectorSection: View {
     let frameSize: CGSize
     let onEdit: ((inout LayerTransform) -> Void) -> Void
     let onSeek: (CMTime) -> Void
+    var onShowGraph: ((TransformProperty) -> Void)?
 
     var body: some View {
         ForEach(TransformProperty.allCases) { property in
             TransformPropertyRow(
                 property: property, transform: transform, time: time,
-                frameSize: frameSize, onEdit: onEdit, onSeek: onSeek
+                frameSize: frameSize, onEdit: onEdit, onSeek: onSeek,
+                onShowGraph: onShowGraph.map { show in { show(property) } }
             )
         }
         Button("Reset transform") {

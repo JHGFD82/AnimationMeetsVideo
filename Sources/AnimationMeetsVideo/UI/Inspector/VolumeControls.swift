@@ -11,6 +11,8 @@ struct VolumePropertyRow: View {
     let time: CMTime
     let onEdit: ((inout AnimatedValue<Double>) -> Void) -> Void
     let onSeek: (CMTime) -> Void
+    /// Opens the volume's graph editor; offered while it is animated.
+    var onShowGraph: (() -> Void)?
 
     private var keyframeTimes: [CMTime] { volume.keyframes.map(\.time) }
 
@@ -50,6 +52,7 @@ struct VolumePropertyRow: View {
 
             if volume.isAnimated {
                 keyframeNavigation
+                if let onShowGraph { graphButton("Volume", action: onShowGraph) }
             }
         }
         .font(Design.Typeface.label)
@@ -57,6 +60,16 @@ struct VolumePropertyRow: View {
             Button("Reset to 0 dB") { onEdit { $0 = AnimatedValue(0.0) } }
                 .disabled(volume == AnimatedValue(0.0))
         }
+    }
+
+    private func graphButton(_ name: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "chart.xyaxis.line")
+                .foregroundStyle(Design.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 9))
+        .help("Open \(name.lowercased())'s graph editor to shape its eases")
     }
 
     private var keyframeNavigation: some View {

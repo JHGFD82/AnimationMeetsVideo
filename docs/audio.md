@@ -30,7 +30,7 @@ It is keyframed like a transform property (see
 animation on, editing the level at the playhead then sets a keyframe there,
 and the diamonds step between keyframes or add and remove one. Keyframes
 blend in **decibels**, so a fade sounds even instead of dropping away at
-its end.
+its end, and take the same eases and graph editor as transforms.
 
 ### In the timeline
 

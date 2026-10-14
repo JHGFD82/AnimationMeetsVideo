@@ -10,6 +10,8 @@ struct InspectorPanel: View {
     let playheadTime: CMTime
     let onSeek: (CMTime) -> Void
     let onDeleteSelection: () -> Void
+    /// The surface's graph editor panels.
+    @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
 
     private var maxDurationSeconds: Double? {
         switch info {
@@ -112,7 +114,10 @@ struct InspectorPanel: View {
                             time: timeline.snappedToFrame(playheadTime),
                             frameSize: timeline.frameSize,
                             onEdit: { change in project.editTransform(of: layer.id, in: timelineID, change) },
-                            onSeek: onSeek
+                            onSeek: onSeek,
+                            onShowGraph: graphs.map { graphs in
+                                { graphs.show(ParameterKey(timelineID: timelineID, layerID: layer.id, parameter: .transform($0))) }
+                            }
                         )
                     }
                 }
@@ -125,7 +130,10 @@ struct InspectorPanel: View {
                             volume: layer.volume,
                             time: timeline.snappedToFrame(playheadTime),
                             onEdit: { change in project.editVolume(of: layer.id, in: timelineID, change) },
-                            onSeek: onSeek
+                            onSeek: onSeek,
+                            onShowGraph: graphs.map { graphs in
+                                { graphs.show(ParameterKey(timelineID: timelineID, layerID: layer.id, parameter: .volume)) }
+                            }
                         )
                     }
                 }

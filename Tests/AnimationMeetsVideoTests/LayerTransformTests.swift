@@ -272,3 +272,29 @@ private func seconds(_ value: Double) -> CMTime {
         #expect(layer.transform.position.keyframes[1].value == Vector2(x: 10, y: 20))
     }
 }
+
+@Suite struct KeyframeGraphLayoutTests {
+    @Test func theGraphFitsTheKeyframesAndMapsBothWays() {
+        var value = AnimatedValue(0.0)
+        value.setAnimated(true, at: seconds(1))
+        value.set(50, at: seconds(3))
+        let layout = KeyframeGraphLayout(value.asComponents, offset: [0], size: CGSize(width: 400, height: 200))
+        // Every keyframe is inside the plot, with room around it.
+        for keyframe in value.keyframes {
+            #expect(layout.plot.insetBy(dx: 1, dy: 1).contains(CGPoint(x: layout.x(keyframe.time.seconds), y: layout.y(keyframe.value))))
+        }
+        #expect(abs(layout.seconds(atX: layout.x(2.25)) - 2.25) < 1e-9)
+        #expect(abs(layout.value(atY: layout.y(12.5)) - 12.5) < 1e-9)
+        // Higher values draw higher up.
+        #expect(layout.y(50) < layout.y(0))
+    }
+
+    @Test func aFlatParameterStillGetsARange() {
+        var value = AnimatedValue(Vector2(x: 5, y: 5))
+        value.setAnimated(true, at: seconds(0))
+        value.set(Vector2(x: 5, y: 5), at: seconds(2))
+        let layout = KeyframeGraphLayout(value.asComponents, offset: [960, 540], size: CGSize(width: 400, height: 200))
+        #expect(layout.values.contains(965) && layout.values.contains(545))
+        #expect(layout.values.upperBound > layout.values.lowerBound)
+    }
+}
