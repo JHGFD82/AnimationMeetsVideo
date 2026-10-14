@@ -496,7 +496,7 @@ struct TimelineView: View {
     private func layerTracks(viewport: TimelineViewport, frameTime: CMTime) -> some View {
         let pixelsPerSecond = viewport.pixelsPerSecond
         let contentWidth = viewport.contentWidth
-        let snapTargets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: beatMarkers) : nil
+        let snapTargets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: drawnBeats(viewport)) : nil
         let snapTolerance = snapTolerance(viewport)
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(timeline.layers) { layer in
@@ -655,9 +655,13 @@ struct TimelineView: View {
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         // With snapping on, the playhead snaps to clip edges and beat markers.
         let snapped = snapping
-            ? project.snapTargets(in: timelineID, playhead: nil, markers: beatMarkers).nearest(to: time, within: snapTolerance(viewport))
+            ? project.snapTargets(in: timelineID, playhead: nil, markers: drawnBeats(viewport)).nearest(to: time, within: snapTolerance(viewport))
             : nil
         onScrub(timeline.snappedToFrame(snapped ?? time))
+    }
+
+    private func drawnBeats(_ viewport: TimelineViewport) -> [CMTime] {
+        BeatMarkerOverlay.drawnMarkers(beatMarkers, pixelsPerSecond: viewport.pixelsPerSecond)
     }
 
     private func snapTolerance(_ viewport: TimelineViewport) -> CMTime {

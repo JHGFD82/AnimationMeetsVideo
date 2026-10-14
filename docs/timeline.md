@@ -126,8 +126,9 @@ line in the header turns it off and on, and the choice is remembered. With
 it on, an edge that comes within 8 points (on screen, at any zoom) of a
 target lands on it (`SnapTargets` in `Snapping.swift`). The targets are the
 timeline's start, the start and end of every clip on every layer, the
-playhead, and the beat markers of the layer chosen in the view options
-(every beat, also those thinned out of the drawing when zoomed out).
+playhead, and the beat markers of the layer chosen in the view options,
+only those drawn at the current zoom (zoomed out, every second or fourth
+beat is drawn, and only those snap).
 
 - **Moving a clip** snaps by whichever of its ends is nearer a target.
 - **Trimming** with the arrow snaps the edge being dragged.

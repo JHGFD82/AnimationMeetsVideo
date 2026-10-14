@@ -218,6 +218,15 @@ struct BeatMarkerOverlay: View {
         return stride
     }
 
+    /// The markers drawn at this zoom: every `beatsPerMarker`-th, counted
+    /// from the first. Snapping uses only these, so it never catches on a
+    /// beat that isn't shown.
+    static func drawnMarkers(_ markers: [CMTime], pixelsPerSecond: CGFloat) -> [CMTime] {
+        let stride = beatsPerMarker(markers, pixelsPerSecond: pixelsPerSecond)
+        guard stride > 1 else { return markers }
+        return Swift.stride(from: 0, to: markers.count, by: stride).map { markers[$0] }
+    }
+
     var body: some View {
         let visible = viewport.visibleSeconds
         let stride = Self.beatsPerMarker(markers, pixelsPerSecond: viewport.pixelsPerSecond)

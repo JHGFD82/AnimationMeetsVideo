@@ -46,6 +46,13 @@ import Testing
         #expect(BeatMarkerOverlay.beatsPerMarker(beats, pixelsPerSecond: 5) == 4)
         #expect(BeatMarkerOverlay.beatsPerMarker(beats, pixelsPerSecond: 4.9) == 8)
     }
+
+    @Test func onlyDrawnBeatsAreOffered() {
+        #expect(BeatMarkerOverlay.drawnMarkers(beats, pixelsPerSecond: 40) == beats)
+        let drawn = BeatMarkerOverlay.drawnMarkers(beats, pixelsPerSecond: 5)
+        #expect(drawn.count == 60)
+        #expect(drawn.prefix(2) == [.zero, CMTime(value: 4, timescale: 2)])
+    }
 }
 
 @Suite struct RulerLandmarkTests {
