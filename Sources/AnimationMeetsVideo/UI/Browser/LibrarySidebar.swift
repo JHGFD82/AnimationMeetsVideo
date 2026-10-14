@@ -309,7 +309,9 @@ struct LibrarySidebar: View {
     }
 
     /// Imported files go into the library only; they reach a timeline when
-    /// dragged there or added from their menu.
+    /// dragged there or added from their menu. When the project copies
+    /// imports, each file is copied into its `Media/` folder first and the
+    /// copy is what's imported.
     private func importMedia() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.movie, .audio]
@@ -317,16 +319,43 @@ struct LibrarySidebar: View {
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
+        guard let copying = filesToCopy(urls) else { return }
+        let packageURL = packageURL
 
         Task {
             for url in urls {
+                var copy: URL?
                 do {
-                    let clip = try await MediaImporter.importClip(at: url)
+                    if copying.contains(url), let packageURL {
+                        copy = try await Task.detached(priority: .userInitiated) {
+                            try ProjectStore.copyIntoPackage(url, packageURL: packageURL)
+                        }.value
+                    }
+                    var clip = try await MediaImporter.importClip(at: copy ?? url)
+                    // A copy may be numbered to avoid a name already in Media/.
+                    clip.name = url.deletingPathExtension().lastPathComponent
                     project.addMedia(clip)
                 } catch {
+                    if let copy, copy != url { try? FileManager.default.removeItem(at: copy) }
                     importError = "\(url.lastPathComponent): \(error.localizedDescription)"
                 }
             }
+        }
+    }
+
+    /// Which of `urls` to copy into the package: none when the project
+    /// references imports in place, otherwise all, after asking about any
+    /// that would use real disk space. Nil to cancel the import.
+    private func filesToCopy(_ urls: [URL]) -> Set<URL>? {
+        guard project.copiesMediaOnImport, let packageURL else { return [] }
+        let clones = urls.filter { ProjectStore.copyIsClone(of: $0, into: packageURL) }
+        let heavy = urls.filter { !clones.contains($0) }
+        guard !heavy.isEmpty else { return Set(urls) }
+        let total = heavy.reduce(Int64(0)) { $0 + ProjectStore.fileSize(of: $1) }
+        switch MediaCopyPrompt.ask(fileCount: heavy.count, byteCount: total) {
+        case .copy: return Set(urls)
+        case .referenceInPlace: return Set(clones)
+        case nil: return nil
         }
     }
 }

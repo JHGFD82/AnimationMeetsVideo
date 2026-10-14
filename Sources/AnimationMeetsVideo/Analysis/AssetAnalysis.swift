@@ -97,8 +97,9 @@ final class AssetAnalysis {
     /// Bumped by `reset` so a result that arrives after the project was
     /// replaced is dropped.
     @ObservationIgnored private var generation = 0
-    /// Where results are written as they arrive; nil holds them until a save.
-    @ObservationIgnored private(set) var packageURL: URL?
+    /// Where results are written as they arrive; nil holds them until a
+    /// save. Set by `reset`, and directly after Save As moves the project.
+    @ObservationIgnored var packageURL: URL?
 
     /// Starts over for a different project, with whatever scores it had saved.
     func reset(

@@ -30,8 +30,12 @@ struct AnimationMeetsVideoApp: App {
     @State private var fileMonitor = ProjectFileMonitor()
     /// True while the project file is being written or reloaded.
     @State private var isBusy = false
+    /// Set once launch has tried to reopen the last project, so the start
+    /// sheet doesn't flash up before that.
+    @State private var launchChecked = false
 
     private static let autosaveInterval: Duration = .seconds(60)
+    private static let lastProjectKey = "lastProjectPath"
 
     private var hasUnsavedChanges: Bool { project != savedProject }
 
@@ -51,7 +55,14 @@ struct AnimationMeetsVideoApp: App {
                 .mediaReplacementDialogs(project: $project, controller: replacement)
                 .onExternalProjectChange { checkForExternalProjectChange() }
                 .frame(minWidth: 1_100, minHeight: 700)
+                .sheet(isPresented: Binding(get: { launchChecked && projectURL == nil }, set: { _ in })) {
+                    ProjectStartView(onNew: newProject, onOpen: openProject)
+                }
                 .task {
+                    if !launchChecked {
+                        await reopenLastProject()
+                        launchChecked = true
+                    }
                     while !Task.isCancelled {
                         try? await Task.sleep(for: Self.autosaveInterval)
                         autosave()
@@ -82,21 +93,73 @@ struct AnimationMeetsVideoApp: App {
                     saveProject(forcePanel: true)
                 }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
+
+                Divider()
+
+                Toggle("Copy Imported Media into Project", isOn: $project.copiesMediaOnImport)
+                    .disabled(projectURL == nil)
             }
         }
     }
 
+    /// Asks where to save the new project and creates its package at once,
+    /// so imports and analysis have somewhere to go from the start.
     private func newProject() {
         guard confirmDiscardingCurrentProject() else { return }
-        project = EditingProject.empty
-        history.reset(to: project)
-        savedProject = project
-        lastAutosaved = nil
-        projectURL = nil
-        projectLock = nil
-        analysis.reset()
-        replacement.reset()
-        fileMonitor.stop()
+        let panel = NSSavePanel()
+        if let type = UTType(filenameExtension: ProjectStore.packageExtension, conformingTo: .package) {
+            panel.allowedContentTypes = [type]
+        }
+        panel.title = "New Project"
+        panel.prompt = "Create"
+        panel.nameFieldStringValue = "Untitled Project"
+        let copyOption = NSButton(checkboxWithTitle: "Copy imported media into the project", target: nil, action: nil)
+        copyOption.state = .on
+        copyOption.toolTip = "Off: imported files stay where they are and the project refers to them there."
+        let accessory = NSStackView(views: [copyOption])
+        accessory.edgeInsets = NSEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        panel.accessoryView = accessory
+        guard panel.runModal() == .OK, var url = panel.url else { return }
+        if url.pathExtension != ProjectStore.packageExtension {
+            url.appendPathExtension(ProjectStore.packageExtension)
+        }
+
+        var fresh = EditingProject.empty
+        fresh.name = url.deletingPathExtension().lastPathComponent
+        fresh.copiesMediaOnImport = copyOption.state == .on
+        Task {
+            isBusy = true
+            defer { isBusy = false }
+            do {
+                try replaceExisting(at: url)
+                try ProjectStore.preparePackage(at: url)
+                let lock = try ProjectLock.acquire(at: url)
+                let saved = try await ProjectStore.save(fresh, to: url)
+                project = saved
+                history.reset(to: saved)
+                savedProject = saved
+                lastAutosaved = nil
+                projectURL = url
+                projectLock = lock
+                fileMonitor.track(package: url)
+                analysis.reset(packageURL: url)
+                replacement.reset()
+                rememberLastProject(url)
+            } catch {
+                showAlert(title: "Couldn't Create Project", message: error.localizedDescription)
+            }
+        }
+    }
+
+    /// The save panel has already asked whether to replace what's at `url`,
+    /// so it goes to the Trash, unless it's a project open somewhere else.
+    private func replaceExisting(at url: URL) throws {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        if (try? ProjectStore.validatePackage(at: url)) != nil, !isOpenProject(url) {
+            // Throws if another window or app has it open; released right away.
+            _ = try ProjectLock.acquire(at: url)
+        }
+        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
     }
 
     private func openProject() {
@@ -109,42 +172,60 @@ struct AnimationMeetsVideoApp: App {
         panel.message = "Choose a project (.\(ProjectStore.packageExtension)) to open."
         guard panel.runModal() == .OK, let selection = panel.url else { return }
         let url = ProjectStore.packageURL(forSelection: selection)
+        Task { await openProject(at: url) }
+    }
 
-        Task {
-            do {
-                try ProjectStore.validatePackage(at: url)
-                let lock = try lockForProject(at: url)
-                let result = try await ProjectStore.load(from: url)
-                project = result.project
-                history.reset(to: result.project)
-                savedProject = result.project
-                lastAutosaved = nil
-                projectURL = url
-                projectLock = lock
-                fileMonitor.track(package: url)
-                analysis.reset(
-                    tracks: result.changeScores, references: result.references,
-                    thumbnailed: result.assetsWithThumbnails, beats: result.beats
+    /// Opens the project used last, if it's still there. Without one the
+    /// start sheet asks for a new project or another to open.
+    private func reopenLastProject() async {
+        guard let path = UserDefaults.standard.string(forKey: Self.lastProjectKey) else { return }
+        let url = URL(fileURLWithPath: path, isDirectory: true)
+        guard (try? ProjectStore.validatePackage(at: url)) != nil else {
+            UserDefaults.standard.removeObject(forKey: Self.lastProjectKey)
+            return
+        }
+        await openProject(at: url)
+    }
+
+    private func rememberLastProject(_ url: URL) {
+        UserDefaults.standard.set(url.path, forKey: Self.lastProjectKey)
+    }
+
+    private func openProject(at url: URL) async {
+        do {
+            try ProjectStore.validatePackage(at: url)
+            let lock = try lockForProject(at: url)
+            let result = try await ProjectStore.load(from: url)
+            project = result.project
+            history.reset(to: result.project)
+            savedProject = result.project
+            lastAutosaved = nil
+            projectURL = url
+            projectLock = lock
+            fileMonitor.track(package: url)
+            rememberLastProject(url)
+            analysis.reset(
+                tracks: result.changeScores, references: result.references,
+                thumbnailed: result.assetsWithThumbnails, beats: result.beats, packageURL: url
+            )
+            analysis.analyzeMissing(in: result.project)
+            replacement.reset()
+            replacement.markChanged(result.changedMedia)
+            if !result.changedMedia.isEmpty {
+                replacement.notice = .init(
+                    title: "Media Changed Since Last Saved",
+                    message: "\(result.changedMedia.count) media file(s) were changed outside the app. Control-click each one in the Clips list and choose \u{201C}File Changed — Check Sync…\u{201D}."
                 )
-                analysis.analyzeMissing(in: result.project)
-                replacement.reset()
-                replacement.markChanged(result.changedMedia)
-                if !result.changedMedia.isEmpty {
-                    replacement.notice = .init(
-                        title: "Media Changed Since Last Saved",
-                        message: "\(result.changedMedia.count) media file(s) were changed outside the app. Control-click each one in the Clips list and choose \u{201C}File Changed — Check Sync…\u{201D}."
-                    )
-                }
-                if !result.missingMedia.isEmpty {
-                    let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
-                    showAlert(
-                        title: "Some Media Couldn't Be Opened",
-                        message: "These files are missing or unreadable, so their clips were removed from the timelines:\n\n\(names)"
-                    )
-                }
-            } catch {
-                showAlert(title: "Couldn't Open Project", message: error.localizedDescription)
             }
+            if !result.missingMedia.isEmpty {
+                let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
+                showAlert(
+                    title: "Some Media Couldn't Be Opened",
+                    message: "These files are missing or unreadable, so their clips were removed from the timelines:\n\n\(names)"
+                )
+            }
+        } catch {
+            showAlert(title: "Couldn't Open Project", message: error.localizedDescription)
         }
     }
 
@@ -170,7 +251,10 @@ struct AnimationMeetsVideoApp: App {
             do {
                 try ProjectStore.preparePackage(at: url)
                 let lock = try lockForProject(at: url)
-                guard let copying = chooseMediaToCopy(for: project, into: url) else { return }
+                // Imports are copied as they come in, so only Save As copies,
+                // carrying along what the previous package holds.
+                let isNewLocation = projectURL.map { !isSamePackage($0, url) } ?? true
+                guard let copying = isNewLocation ? chooseMediaToCopy(for: project, into: url) : [] else { return }
                 let snapshot = project
                 let scoresToSave = analysis.unsavedTracks
                 let referencesToSave = analysis.unsavedReferences
@@ -197,6 +281,8 @@ struct AnimationMeetsVideoApp: App {
                 projectURL = url
                 projectLock = lock
                 fileMonitor.track(package: url)
+                analysis.packageURL = url
+                rememberLastProject(url)
             } catch {
                 showAlert(title: "Couldn't Save Project", message: error.localizedDescription)
             }
@@ -234,7 +320,7 @@ struct AnimationMeetsVideoApp: App {
                 fileMonitor.acknowledge(change)
                 analysis.reset(
                     tracks: result.changeScores, references: result.references,
-                    thumbnailed: result.assetsWithThumbnails, beats: result.beats
+                    thumbnailed: result.assetsWithThumbnails, beats: result.beats, packageURL: url
                 )
                 analysis.analyzeMissing(in: result.project)
                 replacement.reset()
@@ -260,38 +346,38 @@ struct AnimationMeetsVideoApp: App {
     /// otherwise a new one (throws if another instance has the project open).
     /// A new lock replaces the old one only when the caller assigns it.
     private func lockForProject(at url: URL) throws -> ProjectLock {
-        if let projectLock,
-           projectLock.packageURL.standardizedFileURL.resolvingSymlinksInPath()
-            == url.standardizedFileURL.resolvingSymlinksInPath() {
+        if let projectLock, isSamePackage(projectLock.packageURL, url) {
             return projectLock
         }
         return try ProjectLock.acquire(at: url)
     }
 
-    /// Picks which media to copy into the package. Same-volume copies are
-    /// APFS clones that cost no space, so they happen without asking; copies
-    /// that use real disk space need confirmation. Returns nil to cancel.
+    private func isOpenProject(_ url: URL) -> Bool {
+        projectURL.map { isSamePackage($0, url) } ?? false
+    }
+
+    private func isSamePackage(_ a: URL, _ b: URL) -> Bool {
+        a.standardizedFileURL.resolvingSymlinksInPath() == b.standardizedFileURL.resolvingSymlinksInPath()
+    }
+
+    /// Picks which media Save As copies into the new package: what the
+    /// current package holds. Same-volume copies are APFS clones that cost no
+    /// space, so they happen without asking; copies that use real disk space
+    /// need confirmation. Returns nil to cancel.
     private func chooseMediaToCopy(for project: EditingProject, into packageURL: URL) -> Set<UUID>? {
-        let candidates = ProjectStore.mediaToCopy(in: project, into: packageURL)
+        let candidates = ProjectStore.mediaToCopy(in: project, into: packageURL, from: projectURL)
         var selected = Set(candidates.filter(\.isClone).map(\.clipID))
         let heavy = candidates.filter { !$0.isClone }
         guard !heavy.isEmpty else { return selected }
 
         let total = heavy.reduce(Int64(0)) { $0 + $1.byteCount }
-        let size = ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
-        let alert = NSAlert()
-        alert.messageText = "Copy \(heavy.count) media file\(heavy.count == 1 ? "" : "s") into the project?"
-        alert.informativeText = "\(size) will be copied because the files are on a different volume than the project, so it uses real disk space. You can leave them where they are and the project will reference them in place."
-        alert.addButton(withTitle: "Copy \(size)")
-        alert.addButton(withTitle: "Reference in Place")
-        alert.addButton(withTitle: "Cancel")
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
+        switch MediaCopyPrompt.ask(fileCount: heavy.count, byteCount: total) {
+        case .copy:
             selected.formUnion(heavy.map(\.clipID))
             return selected
-        case .alertSecondButtonReturn:
+        case .referenceInPlace:
             return selected
-        default:
+        case nil:
             return nil
         }
     }

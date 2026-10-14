@@ -1,7 +1,7 @@
 # Project package format
 
 Status: **steps 1 and 2 implemented**: package layout, `formatVersion` 1,
-stable IDs, rational times, deterministic output, media copy on save, undo
+stable IDs, rational times, deterministic output, media copy on import, undo
 and redo, the single-writer `.lock`, unsaved-change tracking, and autosave
 into `Backups/`. Step 3 is partly implemented: `Reference/<asset id>/
 signature.bin` holds each video's change scores, `reference.json` and
@@ -45,8 +45,12 @@ MyProject.amv/
   .lock               single-writer lock (an flock held while the project is open)
 ```
 
-Media may be copied into `Media/` or referenced from elsewhere, chosen per
-asset. **Copying into the package is the default.** To avoid duplicating
+Media may be copied into `Media/` or referenced from elsewhere. **Copying
+into the package is the default**, and it happens at import: the file is
+copied first and the copy is what the project imports. The New Project
+dialog has a checkbox to reference imports in place instead, and File >
+Copy Imported Media into Project changes it later; the setting belongs to
+the project (`copiesMediaOnImport`). To avoid duplicating
 large footage, the copy is an APFS clone (copy-on-write) whenever the source
 is on the same volume, which uses no extra disk space until a file changes.
 If the source is on a different volume, the app shows the size and warns
@@ -78,11 +82,39 @@ footage is excluded from backup and only becomes backed up once it is used
 in a project, but anyone who backs up both the source folder and their
 projects will store the footage twice. To avoid that, exclude the source
 footage or the packages' `Media/` folders from the backup, or choose
-"Reference in Place" when saving.
+"Reference in Place" when importing.
 
 The package is a macOS package folder (`.amv`) rather than a plain visible
 folder: it appears as one file in Finder and "Show Package Contents" gives
 the plain folder.
+
+## Creating and opening
+
+Status: **implemented**.
+
+There is always a package to write into. At launch the app reopens the
+project used last; when there is none, or it has gone, a start sheet offers
+New Project and Open Project and stays until one exists. New Project asks
+where to save before the editor opens and writes the package and an empty
+`project.json` right away.
+
+Because of that, analysis results (change scores, reference data, pictures
+and beats) are written into `Reference/` as soon as each is computed, and
+pictures are then dropped from memory. They are keyed by asset ID and
+recomputable, so writing them ahead of `project.json` is safe; a result
+waits for the next save only if writing it fails. Outdated beats are
+deleted at once. Forgetting an original still waits for the save so it can
+be undone.
+
+Saving writes `project.json` and copies nothing, since imports are already
+in place. Save As copies what the old package holds in `Media/` and
+`Reference/` into the new one; media referenced from elsewhere stays where
+it is.
+
+An asset imported and then removed without saving leaves its copy in
+`Media/` and its folder in `Reference/`. They are kept: an autosave in
+`Backups/` may still list the asset, and the app never deletes reference
+data on its own (see Retention).
 
 ## project.json
 

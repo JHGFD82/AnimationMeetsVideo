@@ -14,7 +14,7 @@ struct EditorView: View {
     let history: ProjectHistory
     let analysis: AssetAnalysis
     let replacement: MediaReplacementController
-    /// Where the project is saved, or nil before its first save.
+    /// Where the project is saved; nil only while the start sheet is up.
     let packageURL: URL?
     @Environment(\.undoManager) private var undoManager
     @State private var activeTimelineID: UUID
