@@ -118,10 +118,26 @@ private struct ProjectFile: Codable {
         }
     }
 
-    /// One keyframe. Vector values are written as `[x, y]`.
+    /// One keyframe. Vector values are written as `[x, y]`. Eases are
+    /// absent on linear sides.
     struct KeyframeEntry<Value: Codable>: Codable {
         var time: TimeEntry
         var value: Value
+        var easeIn: EaseEntry?
+        var easeOut: EaseEntry?
+    }
+
+    /// A keyframe side's temporal ease (`KeyframeEase`).
+    struct EaseEntry: Codable {
+        var influence: Double
+        var speed: Double
+
+        init(_ ease: KeyframeEase) {
+            influence = ease.influence
+            speed = ease.speed
+        }
+
+        var ease: KeyframeEase { KeyframeEase(influence: influence, speed: speed) }
     }
 
     /// A property's value, or its keyframes when animated.
@@ -131,7 +147,12 @@ private struct ProjectFile: Codable {
 
         init<V: Interpolatable>(_ property: AnimatedValue<V>, encode: (V) -> Value) {
             if property.isAnimated {
-                keyframes = property.keyframes.map { KeyframeEntry(time: TimeEntry($0.time), value: encode($0.value)) }
+                keyframes = property.keyframes.map {
+                    KeyframeEntry(
+                        time: TimeEntry($0.time), value: encode($0.value),
+                        easeIn: $0.easeIn.map(EaseEntry.init), easeOut: $0.easeOut.map(EaseEntry.init)
+                    )
+                }
             } else {
                 value = encode(property.value)
             }
@@ -139,7 +160,9 @@ private struct ProjectFile: Codable {
 
         func property<V: Interpolatable>(default fallback: V, decode: (Value) -> V?) -> AnimatedValue<V> {
             let frames = (keyframes ?? []).compactMap { entry in
-                decode(entry.value).map { Keyframe(time: entry.time.time, value: $0) }
+                decode(entry.value).map {
+                    Keyframe(time: entry.time.time, value: $0, easeIn: entry.easeIn?.ease, easeOut: entry.easeOut?.ease)
+                }
             }
             return AnimatedValue(value.flatMap(decode) ?? frames.first?.value ?? fallback, keyframes: frames)
         }

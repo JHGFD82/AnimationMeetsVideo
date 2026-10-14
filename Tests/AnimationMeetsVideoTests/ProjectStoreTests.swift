@@ -100,6 +100,8 @@ private struct Sandbox {
             volume.setAnimated(true, at: .zero)
             volume.set(AudioLevel.silence, at: CMTime(value: 2, timescale: 1))
             volume.set(4.5, at: CMTime(value: 1, timescale: 1))
+            volume.applyEase(.easyEase, at: CMTime(value: 1, timescale: 1))
+            volume.setEase(at: .zero, in: nil, out: KeyframeEase(influence: 0.6, speed: 1.5))
         }
         try await ProjectStore.save(project, to: sandbox.packageURL)
         let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)

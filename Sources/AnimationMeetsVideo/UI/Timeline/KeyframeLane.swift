@@ -1,10 +1,25 @@
 import CoreMedia
 import SwiftUI
 
-/// A property's keyframes as diamonds under the layer's clips. Clicking a
-/// diamond moves the playhead to it; dragging retimes it, snapping to frames.
+/// A keyframe as the lane draws it: where, and which sides are eased.
+struct KeyframeMark: Hashable {
+    var time: CMTime
+    var easedIn: Bool
+    var easedOut: Bool
+}
+
+extension AnimatedValue {
+    var marks: [KeyframeMark] {
+        keyframes.map { KeyframeMark(time: $0.time, easedIn: $0.easeIn != nil, easedOut: $0.easeOut != nil) }
+    }
+}
+
+/// A property's keyframes as diamonds under the layer's clips, each side
+/// pinched like an hourglass where it is eased. Clicking a diamond moves
+/// the playhead to it; dragging retimes it, snapping to frames; its menu
+/// sets its ease.
 struct KeyframeLane: View {
-    let times: [CMTime]
+    let marks: [KeyframeMark]
     let currentTime: CMTime
     let pixelsPerSecond: CGFloat
     let width: CGFloat
@@ -13,21 +28,23 @@ struct KeyframeLane: View {
     let onSeek: (CMTime) -> Void
     let onMove: (CMTime, CMTime) -> Void
     let onDelete: (CMTime) -> Void
+    let onEase: (CMTime, KeyframeEase.Preset) -> Void
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.black.opacity(0.18)
                 .allowsHitTesting(false)
-            ForEach(times, id: \.self) { time in
+            ForEach(marks, id: \.time) { mark in
                 KeyframeDiamond(
-                    time: time,
-                    isAtPlayhead: time == currentTime,
+                    mark: mark,
+                    isAtPlayhead: mark.time == currentTime,
                     pixelsPerSecond: pixelsPerSecond,
                     height: height,
                     snap: snap,
                     onSeek: onSeek,
                     onMove: onMove,
-                    onDelete: onDelete
+                    onDelete: onDelete,
+                    onEase: onEase
                 )
             }
         }
@@ -35,8 +52,50 @@ struct KeyframeLane: View {
     }
 }
 
+/// A keyframe's mark: a diamond, with each eased side pinched in so the
+/// two together read as an hourglass, as in After Effects.
+struct KeyframeMarkShape: Shape {
+    var easedIn: Bool
+    var easedOut: Bool
+
+    func path(in rect: CGRect) -> Path {
+        let pinch = rect.width * 0.18
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        if easedOut {
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.midX + pinch, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        } else {
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        }
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        if easedIn {
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.midX - pinch, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        } else {
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
+        }
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// Sets a keyframe's ease from a menu.
+struct KeyframeEaseMenuItems: View {
+    let onEase: (KeyframeEase.Preset) -> Void
+
+    var body: some View {
+        ForEach(KeyframeEase.Preset.allCases) { preset in
+            Button(preset.shortcutHint.map { "\(preset.name)  \($0)" } ?? preset.name) { onEase(preset) }
+                .help(preset.detail)
+        }
+    }
+}
+
 private struct KeyframeDiamond: View {
-    let time: CMTime
+    let mark: KeyframeMark
     let isAtPlayhead: Bool
     let pixelsPerSecond: CGFloat
     let height: CGFloat
@@ -44,24 +103,24 @@ private struct KeyframeDiamond: View {
     let onSeek: (CMTime) -> Void
     let onMove: (CMTime, CMTime) -> Void
     let onDelete: (CMTime) -> Void
+    let onEase: (CMTime, KeyframeEase.Preset) -> Void
+
+    private var time: CMTime { mark.time }
 
     /// Where the diamond is dragged to, on its snapped frame. After a drop
     /// it stays there until the moved keyframe comes back from the project
     /// and replaces this diamond, so the old place never shows for a frame.
     @State private var dragX: CGFloat = 0
 
-    private let size: CGFloat = 9
+    private let size: CGFloat = 12
 
     var body: some View {
         let x = CGFloat(time.seconds) * pixelsPerSecond + dragX
-        Rectangle()
+        let shape = KeyframeMarkShape(easedIn: mark.easedIn, easedOut: mark.easedOut)
+        shape
             .fill(isAtPlayhead ? Design.keyframe : Design.textSecondary)
-            .overlay {
-                Rectangle()
-                    .strokeBorder(Color.black.opacity(0.45), lineWidth: 0.5)
-            }
+            .overlay { shape.stroke(Color.black.opacity(0.45), lineWidth: 0.5) }
             .frame(width: size, height: size)
-            .rotationEffect(.degrees(45))
             .frame(width: size + 6, height: height)
             .contentShape(Rectangle())
             .offset(x: x - (size + 6) / 2)
@@ -88,6 +147,8 @@ private struct KeyframeDiamond: View {
                     }
             )
             .contextMenu {
+                KeyframeEaseMenuItems { onEase(time, $0) }
+                Divider()
                 Button("Delete Keyframe", role: .destructive) { onDelete(time) }
             }
             .help(time.formatted)

@@ -18,6 +18,7 @@ struct VolumeLane: View {
     let onSeek: (CMTime) -> Void
     let onMove: (CMTime, CMTime) -> Void
     let onDelete: (CMTime) -> Void
+    let onEase: (CMTime, KeyframeEase.Preset) -> Void
 
     /// Where a level sits in the lane, 0 at the top.
     static func y(ofLevel decibels: Double, height: CGFloat) -> CGFloat {
@@ -29,7 +30,7 @@ struct VolumeLane: View {
 
     var body: some View {
         KeyframeLane(
-            times: volume.keyframes.map(\.time),
+            marks: volume.marks,
             currentTime: currentTime,
             pixelsPerSecond: pixelsPerSecond,
             width: width,
@@ -37,7 +38,8 @@ struct VolumeLane: View {
             snap: snap,
             onSeek: onSeek,
             onMove: onMove,
-            onDelete: onDelete
+            onDelete: onDelete,
+            onEase: onEase
         )
         .overlay(alignment: .topLeading) {
             // Drawn only across what is on screen: the lane spans the whole

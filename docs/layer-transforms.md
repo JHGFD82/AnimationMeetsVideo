@@ -43,11 +43,12 @@ built-in one takes only an affine transform.
 ## Keyframes
 
 Each property is an `AnimatedValue`: either a single value, or a list of
-keyframes (time, value).
+keyframes (time, value, and how the value arrives and leaves). A layer's
+volume (see [audio.md](audio.md)) is keyframed the same way.
 
 - Before its first keyframe a property holds the first keyframe's value,
-  after its last it holds the last one's, and in between it blends
-  linearly.
+  after its last it holds the last one's, and in between it blends,
+  linearly unless either keyframe is eased (see [Easing](#easing)).
 - A property has at most one keyframe per time. Keyframes are identified by
   their time, which is snapped to the timeline's frames (exactly, so 23.976
   fps keyframes land on 1001/24000 s steps). Editing a value with the
@@ -62,6 +63,38 @@ keyframes (time, value).
   the next keyframe.
 - Removing the last keyframe leaves the property set to that keyframe's
   value, not animated.
+
+### Easing
+
+Each side of a keyframe may have an ease (`KeyframeEase`), as After
+Effects' temporal ease: a bezier handle reaching some share of the way to
+the neighboring keyframe (its **influence**) at some **speed** relative to
+a steady blend (0 stops at the keyframe, 1 is steady, more overshoots).
+Between two keyframes the value follows a cubic bezier, time across and
+progress up, whose inner control points are the first keyframe's outgoing
+handle and the second's incoming one. A side with no ease is linear: its
+handle sits on the straight line a third of the way along, so two linear
+sides blend steadily, as before. All components of a value (position's x
+and y) share the keyframe's ease.
+
+Presets, named as on transitions:
+
+| Preset | Key | Sets |
+| --- | --- | --- |
+| Linear | | Both sides linear |
+| Ease In | Shift-F9 | The incoming side to Easy Ease (slows into the keyframe); the other side stays |
+| Ease Out | Cmd-Shift-F9 | The outgoing side (leaves the keyframe slowly) |
+| Easy Ease | F9 | Both sides: speed 0, 33% influence |
+
+They're in each keyframe's right-click menu on the timeline and in the
+graph editor. The F9 keys ease the keyframes at the playhead in every
+property row that is showing, under the selected clip's layer or under
+every layer when nothing is selected (on a laptop keyboard, with Fn
+unless the function keys are set to act as standard keys). Setting a
+keyframe's value or retiming it keeps its eases.
+
+The shape of an ease is set by dragging its handle in the parameter's
+graph editor (see [Graph editor](#graph-editor)).
 
 ## In the timeline
 
@@ -82,12 +115,13 @@ Each shown property gets a row: the stopwatch, its name, its values at the
 playhead, and the keyframe buttons. The label column widens from 150 to 300
 points while any property row is showing. To the right, under the layer's
 clips, the row's lane shows its keyframes as diamonds (yellow when the
-playhead is on one):
+playhead is on one). An eased side is pinched in, so a keyframe eased on
+both sides reads as an hourglass, as in After Effects:
 
 - Click a diamond to move the playhead to it.
 - Drag a diamond to retime it; it snaps to frames and replaces any keyframe
   where it lands.
-- Right-click for **Delete Keyframe**.
+- Right-click for the ease presets and **Delete Keyframe**.
 
 Which properties are shown is view state, not saved in the project.
 
@@ -161,6 +195,8 @@ diffs.
 ```
 
 - A property has either `value` or `keyframes`.
+- A keyframe's `easeIn` and `easeOut` (`{"influence": 0.333, "speed": 0}`)
+  are written only on eased sides.
 - `position` is stored as the offset of the layer's center from the frame's
   center, so an untouched layer stays centered if the timeline's frame size
   changes. The editor shows it as an absolute position.
@@ -171,9 +207,8 @@ ignore it, and drop the transforms if it saved the project.
 
 ## Not implemented yet
 
-- **Easing and hold keyframes.** Only linear interpolation. Ease in/out,
-  hold, and a graph editor are the natural next step; each keyframe would
-  gain an interpolation type.
+- **Hold keyframes**, spatial (curved) motion paths for position, and
+  separate easing per component.
 - **Image layers.** Still images can't be imported yet. When they can, they
   are visual layers and get the same transform.
 - **Anchor point**, and **3D** (see [Only 2D for now](#only-2d-for-now)).

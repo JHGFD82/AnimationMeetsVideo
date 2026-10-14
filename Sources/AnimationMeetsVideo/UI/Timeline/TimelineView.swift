@@ -819,7 +819,7 @@ struct TimelineView: View {
                     }
                     ForEach(shownProperties(of: layer)) { property in
                         KeyframeLane(
-                            times: layer.transform.keyframeTimes(property),
+                            marks: layer.transform[components: property].marks,
                             currentTime: frameTime,
                             pixelsPerSecond: pixelsPerSecond,
                             width: contentWidth,
@@ -831,6 +831,9 @@ struct TimelineView: View {
                             },
                             onDelete: { time in
                                 onEditTransform(layer.id) { $0.removeKeyframe(property, at: time) }
+                            },
+                            onEase: { time, preset in
+                                onEditTransform(layer.id) { $0[components: property].applyEase(preset, at: time) }
                             }
                         )
                     }
@@ -844,7 +847,8 @@ struct TimelineView: View {
                             snap: { timeline.snappedToFrame($0) },
                             onSeek: onScrub,
                             onMove: { from, to in onEditVolume(layer.id) { $0.moveKeyframe(at: from, to: to) } },
-                            onDelete: { time in onEditVolume(layer.id) { $0.removeKeyframe(at: time) } }
+                            onDelete: { time in onEditVolume(layer.id) { $0.removeKeyframe(at: time) } },
+                            onEase: { time, preset in onEditVolume(layer.id) { $0.applyEase(preset, at: time) } }
                         )
                     }
                     separator
@@ -1026,6 +1030,14 @@ struct TimelineView: View {
         if [51, 117].contains(event.keyCode), flags.isDisjoint(with: [.command, .control, .option, .shift]) {
             return deleteSelection()
         }
+        // F9 eases, as in After Effects: Easy Ease, Shift for Ease In,
+        // Command-Shift for Ease Out.
+        if event.keyCode == 101, flags.isDisjoint(with: [.control, .option]) {
+            let preset: KeyframeEase.Preset = flags.contains(.shift)
+                ? (flags.contains(.command) ? .easeOut : .easeIn)
+                : .easyEase
+            return easeKeyframesAtPlayhead(preset)
+        }
         guard flags.isDisjoint(with: [.command, .control, .option]),
               let key = event.charactersIgnoringModifiers?.lowercased().first
         else {
@@ -1065,6 +1077,31 @@ struct TimelineView: View {
             revealed[layer.id] = shown
         }
         return true
+    }
+
+    /// Eases the keyframes at the playhead in the property rows that are
+    /// showing, under the selected clip's layer or under every layer when
+    /// nothing is selected. False when there are none.
+    private func easeKeyframesAtPlayhead(_ preset: KeyframeEase.Preset) -> Bool {
+        let time = timeline.snappedToFrame(playheadTime)
+        let layers: [TimelineLayer]
+        if let selection, selection.timelineID == timelineID, let layer = timeline.layer(id: selection.layerID) {
+            layers = [layer]
+        } else {
+            layers = timeline.layers
+        }
+        var eased = false
+        for layer in layers {
+            for property in shownProperties(of: layer) where layer.transform.hasKeyframe(property, at: time) {
+                onEditTransform(layer.id) { $0[components: property].applyEase(preset, at: time) }
+                eased = true
+            }
+            if showsVolume(of: layer), layer.volume.keyframe(at: time) != nil {
+                onEditVolume(layer.id) { $0.applyEase(preset, at: time) }
+                eased = true
+            }
+        }
+        return eased
     }
 
     /// L shows only volume (pressing it again hides it), as levels in After

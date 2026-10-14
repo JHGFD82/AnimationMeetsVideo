@@ -29,16 +29,21 @@ struct Vector2: Interpolatable, Hashable {
     }
 }
 
-/// One keyframe: a property's value at a time on the layer's timeline.
+/// One keyframe: a property's value at a time on the layer's timeline,
+/// and how the value arrives at it and leaves it (nil is linear; see
+/// `KeyframeEase`).
 struct Keyframe<Value: Interpolatable>: Equatable, Sendable {
     var time: CMTime
     var value: Value
+    var easeIn: KeyframeEase?
+    var easeOut: KeyframeEase?
 }
 
 /// A property that is either a single value or animated by keyframes.
 /// With no keyframes `value` applies everywhere. With keyframes, the value
 /// holds the first keyframe's value before it, the last one's after it, and
-/// is blended linearly in between; `value` is then unused.
+/// is blended in between, linearly or along the curve the two keyframes'
+/// eases make; `value` is then unused.
 ///
 /// A keyframe is identified by its time: a property has at most one per
 /// time, so setting a value at an existing keyframe's time replaces it.
@@ -71,23 +76,46 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
         let span = CMTimeSubtract(after.time, before.time).seconds
         guard span > 0 else { return after.value }
         let fraction = CMTimeSubtract(time, before.time).seconds / span
-        return Value.interpolate(before.value, after.value, fraction: fraction)
+        let progress = KeyframeEase.progress(fraction, leaving: before.easeOut, arriving: after.easeIn)
+        return Value.interpolate(before.value, after.value, fraction: progress)
     }
 
     func keyframe(at time: CMTime) -> Keyframe<Value>? {
         keyframes.first { $0.time == time }
     }
 
-    /// Sets the value at `time`: a keyframe there when animated, otherwise
-    /// the single value.
+    /// Sets the value at `time`: a keyframe there when animated (keeping
+    /// its eases if one is already there), otherwise the single value.
     mutating func set(_ newValue: Value, at time: CMTime) {
         guard isAnimated else {
             value = newValue
             return
         }
-        keyframes.removeAll { $0.time == time }
+        if let index = keyframes.firstIndex(where: { $0.time == time }) {
+            keyframes[index].value = newValue
+            return
+        }
         keyframes.append(Keyframe(time: time, value: newValue))
         keyframes = Self.normalized(keyframes)
+    }
+
+    /// Sets how the value arrives at and leaves the keyframe at `time`.
+    mutating func setEase(at time: CMTime, in easeIn: KeyframeEase?, out easeOut: KeyframeEase?) {
+        guard let index = keyframes.firstIndex(where: { $0.time == time }) else { return }
+        keyframes[index].easeIn = easeIn
+        keyframes[index].easeOut = easeOut
+    }
+
+    /// Applies a ready-made ease to the keyframe at `time`. Ease In and
+    /// Ease Out change only their own side.
+    mutating func applyEase(_ preset: KeyframeEase.Preset, at time: CMTime) {
+        guard let keyframe = keyframe(at: time) else { return }
+        switch preset {
+        case .linear: setEase(at: time, in: nil, out: nil)
+        case .easeIn: setEase(at: time, in: .easy, out: keyframe.easeOut)
+        case .easeOut: setEase(at: time, in: keyframe.easeIn, out: .easy)
+        case .easyEase: setEase(at: time, in: .easy, out: .easy)
+        }
     }
 
     /// Turns animation on with one keyframe holding the current value at
@@ -121,11 +149,13 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
         if keyframes.isEmpty { value = removed.value }
     }
 
-    /// Moves a keyframe in time, replacing any keyframe already at `newTime`.
+    /// Moves a keyframe in time, with its eases, replacing any keyframe
+    /// already at `newTime`.
     mutating func moveKeyframe(at time: CMTime, to newTime: CMTime) {
-        guard time != newTime, let moving = keyframe(at: time) else { return }
+        guard time != newTime, var moving = keyframe(at: time) else { return }
         keyframes.removeAll { $0.time == time || $0.time == newTime }
-        keyframes.append(Keyframe(time: newTime, value: moving.value))
+        moving.time = newTime
+        keyframes.append(moving)
         keyframes = Self.normalized(keyframes)
     }
 

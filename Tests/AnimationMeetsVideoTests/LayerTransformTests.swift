@@ -206,3 +206,69 @@ private func seconds(_ value: Double) -> CMTime {
         #expect(abs(start.a - start.d) < 0.0001 && start.a > 0 && abs(start.b + start.c) < 0.0001 && start.b > 0)
     }
 }
+
+@Suite struct KeyframeEaseTests {
+    private func eased(_ preset: KeyframeEase.Preset) -> AnimatedValue<Double> {
+        var value = AnimatedValue(0.0)
+        value.setAnimated(true, at: seconds(0))
+        value.set(100, at: seconds(4))
+        value.applyEase(preset, at: seconds(0))
+        value.applyEase(preset, at: seconds(4))
+        return value
+    }
+
+    @Test func linearKeyframesStillBlendSteadily() {
+        let value = eased(.linear)
+        #expect(abs(value.value(at: seconds(1)) - 25) < 1e-6)
+        #expect(abs(value.value(at: seconds(3)) - 75) < 1e-6)
+    }
+
+    @Test func easyEaseStartsAndEndsSlowlyAndPassesTheMiddle() {
+        let value = eased(.easyEase)
+        #expect(value.value(at: seconds(0.4)) < 5)
+        #expect(abs(value.value(at: seconds(2)) - 50) < 1e-6)
+        #expect(value.value(at: seconds(3.6)) > 95)
+    }
+
+    @Test func easeInAndOutChangeOnlyTheirSide() {
+        var value = AnimatedValue(0.0)
+        value.setAnimated(true, at: seconds(0))
+        value.set(100, at: seconds(4))
+        value.applyEase(.easeOut, at: seconds(0))
+        #expect(value.keyframes[0].easeOut == .easy && value.keyframes[0].easeIn == nil)
+        // Leaving slowly: behind a steady blend early on.
+        #expect(value.value(at: seconds(1)) < 25)
+        value.applyEase(.easeIn, at: seconds(0))
+        #expect(value.keyframes[0].easeOut == .easy && value.keyframes[0].easeIn == .easy)
+    }
+
+    @Test func settingAndMovingKeepEases() {
+        var value = eased(.easyEase)
+        value.set(50, at: seconds(4))
+        #expect(value.keyframes[1].easeIn == .easy)
+        value.moveKeyframe(at: seconds(4), to: seconds(5))
+        #expect(value.keyframes[1].time == seconds(5) && value.keyframes[1].easeIn == .easy)
+    }
+
+    @Test func handlesTurnIntoEasesAndBack() {
+        let out = KeyframeEase(influence: 0.5, speed: 0.4)
+        #expect(KeyframeEase.outgoing(handleAt: KeyframeEase.outgoingHandle(out)) == out)
+        let into = KeyframeEase(influence: 0.25, speed: 2)
+        let back = KeyframeEase.incoming(handleAt: KeyframeEase.incomingHandle(into))
+        #expect(abs(back.influence - 0.25) < 1e-9 && abs(back.speed - 2) < 1e-9)
+        // A handle dragged past the segment stays inside it.
+        #expect(KeyframeEase.outgoing(handleAt: CGPoint(x: 1.5, y: 0)).influence == 1)
+    }
+
+    @Test func parametersReadAndWriteThroughComponents() {
+        var layer = TimelineLayer(clips: [])
+        layer.transform.position.setAnimated(true, at: seconds(0))
+        layer.transform.position.set(Vector2(x: 10, y: 20), at: seconds(1))
+        var position = layer[components: .transform(.position)]
+        #expect(position.keyframes.map(\.value.values) == [[0, 0], [10, 20]])
+        position.applyEase(.easyEase, at: seconds(1))
+        layer[components: .transform(.position)] = position
+        #expect(layer.transform.position.keyframes[1].easeIn == .easy)
+        #expect(layer.transform.position.keyframes[1].value == Vector2(x: 10, y: 20))
+    }
+}
