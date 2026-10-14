@@ -257,13 +257,21 @@ struct TimelineEditorSurface<Library: View>: View {
                 )
                 guard !Task.isCancelled else { return }
                 renderer?.update(project: project, timelineID: tID, segments: composed.segments)
-                let wasPlaying = player.timeControlStatus != .paused
-                let resumeTime = resetPosition ? playheadTime : player.currentTime()
                 let item = AVPlayerItem(asset: composed.composition)
                 playback.prepare(item, with: composed, frameRate: frameRate)
-                player.replaceCurrentItem(with: item)
-                _ = await player.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
-                if wasPlaying { player.play() }
+                if player.timeControlStatus == .paused {
+                    // Seeked before it's shown, so the swap doesn't flash
+                    // the item's first frame, as when a render finishes.
+                    let resumeTime = resetPosition ? playheadTime : player.currentTime()
+                    _ = await item.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                    guard !Task.isCancelled else { return }
+                    player.replaceCurrentItem(with: item)
+                } else {
+                    let resumeTime = resetPosition ? playheadTime : player.currentTime()
+                    player.replaceCurrentItem(with: item)
+                    _ = await player.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                    player.play()
+                }
                 buildError = nil
             } catch is CancellationError {
             } catch {
