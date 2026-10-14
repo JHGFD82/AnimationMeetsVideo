@@ -268,6 +268,38 @@ struct EditingProject: Identifiable, Equatable {
         replaceClip(trimmed, in: timelineID, layer: layerID)
     }
 
+    /// Ripple-trims a clip's start (see `resolvedRippleTrimStart`) and moves
+    /// every later clip on its layer by as much as its end moved, so the
+    /// gaps after it stay as they were.
+    mutating func rippleTrimStart(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime) {
+        guard let trimmed = resolvedRippleTrimStart(of: id, in: timelineID, layer: layerID, to: proposedTrimStart) else { return }
+        applyRipple(trimmed, in: timelineID, layer: layerID)
+    }
+
+    /// Ripple-trims a clip's end, moving every later clip on its layer with it.
+    mutating func rippleTrimEnd(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimEnd: CMTime) {
+        guard let trimmed = resolvedRippleTrimEnd(of: id, in: timelineID, layer: layerID, to: proposedTrimEnd) else { return }
+        applyRipple(trimmed, in: timelineID, layer: layerID)
+    }
+
+    private mutating func applyRipple(_ trimmed: TimelineClip, in timelineID: UUID, layer layerID: UUID) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == trimmed.id })
+        else {
+            return
+        }
+        let originalEnd = timelines[tIndex].layers[lIndex].clips[cIndex].endOffset
+        let shift = CMTimeSubtract(trimmed.endOffset, originalEnd)
+        for index in timelines[tIndex].layers[lIndex].clips.indices where index != cIndex {
+            let start = timelines[tIndex].layers[lIndex].clips[index].startOffset
+            if start >= originalEnd {
+                timelines[tIndex].layers[lIndex].clips[index].startOffset = CMTimeAdd(start, shift)
+            }
+        }
+        timelines[tIndex].layers[lIndex].clips[cIndex] = trimmed
+    }
+
     private mutating func replaceClip(_ clip: TimelineClip, in timelineID: UUID, layer layerID: UUID) {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),

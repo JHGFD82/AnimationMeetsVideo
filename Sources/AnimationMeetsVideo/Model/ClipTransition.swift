@@ -245,6 +245,12 @@ enum JointEdit: Equatable {
     case roll(CMTime)
     /// Sets the transition's length and how much of it plays before the cut.
     case place(duration: CMTime, lead: CMTime)
+    /// Ripple-trims the outgoing clip's end by a distance: the incoming clip
+    /// and everything after it move with the cut.
+    case rippleOut(CMTime)
+    /// Ripple-trims the incoming clip's start by a distance: the cut stays,
+    /// and everything after the incoming clip moves.
+    case rippleIn(CMTime)
 }
 
 extension EditingProject {
@@ -342,6 +348,10 @@ extension EditingProject {
             updateClip(incomingID, in: timelineID, layer: layerID) { $0.setTransition(transition, at: .leading) }
         case .roll(let delta):
             rollCut(joint, by: delta, in: timeline)
+        case .rippleOut(let delta):
+            rippleTrimEnd(joint.outgoing.id, in: timelineID, layer: layerID, to: CMTimeAdd(joint.outgoing.trimEnd, delta))
+        case .rippleIn(let delta):
+            rippleTrimStart(joint.incoming.id, in: timelineID, layer: layerID, to: CMTimeAdd(joint.incoming.trimStart, delta))
         }
     }
 

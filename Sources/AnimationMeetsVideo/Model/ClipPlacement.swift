@@ -203,6 +203,51 @@ extension EditingProject {
         return trimmed
     }
 
+    /// The clip after a ripple trim of its leading edge toward
+    /// `proposedTrimStart`. Its start stays where it is and its end moves by
+    /// as much as its length changed; `rippleTrimStart` moves every later
+    /// clip on the layer by the same amount. It can't reveal frames before
+    /// the source's start or get shorter than the minimum length: past
+    /// either it stops where it is.
+    func resolvedRippleTrimStart(of id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime) -> TimelineClip? {
+        guard let (timeline, clip, _) = placementContext(id, in: timelineID, layer: layerID) else { return nil }
+        // Worked out as where the end lands, so it falls where placement puts ends.
+        let proposedEnd = CMTimeAdd(clip.startOffset, CMTimeSubtract(clip.trimEnd, proposedTrimStart))
+        let longest = CMTimeAdd(clip.startOffset, clip.trimEnd)
+        guard let end = rippledEnd(of: clip, toward: proposedEnd, longest: longest, in: timeline) else { return nil }
+        var trimmed = clip
+        trimmed.trimStart = CMTimeSubtract(clip.trimEnd, CMTimeSubtract(end, clip.startOffset))
+        return trimmed
+    }
+
+    /// The clip after a ripple trim of its trailing edge toward
+    /// `proposedTrimEnd`: as `resolvedRippleTrimStart`, but the source's
+    /// end is the limit.
+    func resolvedRippleTrimEnd(of id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimEnd: CMTime) -> TimelineClip? {
+        guard let (timeline, clip, _) = placementContext(id, in: timelineID, layer: layerID),
+              let sourceDuration = sourceDuration(for: clip.source)
+        else {
+            return nil
+        }
+        let proposedEnd = CMTimeAdd(clip.startOffset, CMTimeSubtract(proposedTrimEnd, clip.trimStart))
+        let longest = CMTimeAdd(clip.startOffset, CMTimeSubtract(sourceDuration, clip.trimStart))
+        guard let end = rippledEnd(of: clip, toward: proposedEnd, longest: longest, in: timeline) else { return nil }
+        var trimmed = clip
+        trimmed.trimEnd = CMTimeAdd(clip.trimStart, CMTimeSubtract(end, clip.startOffset))
+        return trimmed
+    }
+
+    /// Where a rippled clip's end lands: on a frame for video, at least the
+    /// minimum length after its start and no later than `longest`.
+    private func rippledEnd(of clip: TimelineClip, toward proposedEnd: CMTime, longest: CMTime, in timeline: Timeline) -> CMTime? {
+        let locked = isFrameLocked(clip)
+        let lower = timeline.placementTime(CMTimeAdd(clip.startOffset, minimumDuration(of: clip, in: timeline)), .up, frameLocked: locked)
+        let upper = timeline.placementTime(longest, .down, frameLocked: locked)
+        guard upper >= lower else { return nil }
+        let end = timeline.placementTime(proposedEnd, .nearest, frameLocked: locked)
+        return CMTimeMinimum(CMTimeMaximum(end, lower), upper)
+    }
+
     func sourceDuration(for source: ClipSource) -> CMTime? {
         switch resolvedInfo(for: source) {
         case .media(let clip): clip.duration

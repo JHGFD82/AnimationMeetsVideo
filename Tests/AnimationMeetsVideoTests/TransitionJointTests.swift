@@ -86,6 +86,22 @@ private func video(url: URL? = nil, duration: Double = 10) -> MediaClip {
         #expect(f.clipB.trimmedDuration == CMTime(value: 1, timescale: 24))
     }
 
+    @Test func rippleEditsAtACutMoveWhatFollows() throws {
+        var f = Fixture()
+        f.project.setTransition(.crossDissolve, at: .leading, of: f.b, in: f.t, layer: f.layer)
+
+        // The outgoing clip grows by a second; the incoming one follows the cut.
+        f.project.applyJointEdit(.rippleOut(seconds(1)), at: f.b, in: f.t, layer: f.layer)
+        #expect(f.clipA.endOffset == seconds(5))
+        #expect(f.clipB.startOffset == seconds(5) && f.clipB.trimStart == seconds(6))
+
+        // The incoming clip loses its first second; the cut stays.
+        f.project.applyJointEdit(.rippleIn(seconds(1)), at: f.b, in: f.t, layer: f.layer)
+        #expect(f.clipB.startOffset == seconds(5) && f.clipB.trimStart == seconds(7))
+        #expect(f.clipB.endOffset == seconds(7))
+        #expect(f.joint != nil)
+    }
+
     @Test func withoutSpareFootageTheTransitionStaysInTheClip() throws {
         var project = EditingProject.empty
         let t = project.rootTimelineID
