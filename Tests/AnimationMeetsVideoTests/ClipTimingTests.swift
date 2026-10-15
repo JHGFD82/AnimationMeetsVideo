@@ -278,8 +278,10 @@ import Testing
         for t in elapsed {
             let at = CMTime(seconds: t, preferredTimescale: 240_000)
             let source = clip.sourceTime(atTimelineTime: at).seconds
-            // Rounded to 1 / 240000, which the rate (at most 100) scales.
-            #expect(abs(integral.at(source) - base - t) < 100 / 240_000 / 2 + 1e-6, "elapsed \(t)")
+            // The source time is cut to 1 / 240000 (under that, since the cut
+            // truncates), which the rate (at most 100) turns into timeline
+            // time, plus the Newton tolerance.
+            #expect(abs(integral.at(source) - base - t) <= 100 / 240_000 + SpeedIntegral.timeTolerance, "elapsed \(t)")
             #expect(abs(source - bisectedSource(clip, atElapsed: at.seconds)) < 2e-5, "elapsed \(t)")
         }
     }
@@ -305,7 +307,20 @@ import Testing
         let integral = SpeedIntegral.of(clip.time.speed)
         for keyframe in [0.0, 10, 25, 40] {
             let there = clip.timelineTime(forSourceTime: second(keyframe))
-            #expect(abs(clip.sourceTime(atTimelineTime: there).seconds - keyframe) < 1e-4)  // The placed time is rounded; at 800% that is a few 1e-5.
+            // The error of timeline time to source time and back, in source
+            // seconds, with v the speed there as a multiple of 1:
+            //  - `timelineLength` cuts to the 1 / 240000 grid (CMTime(seconds:)
+            //    truncates): under 1 / 240000 of timeline time, which the
+            //    inverse scales by v;
+            //  - the final cut of the source time: under 1 / 240000;
+            //  - Newton stops within `timeTolerance` of timeline time, scaled by v;
+            //  - the rate is read at times cut to 1e-9 s, which moves a piece's
+            //    sum by under its length times the largest |d rate / dt| (under 1
+            //    here) times 1e-9, at most 4e-8 over 40 s; the forward and
+            //    inverse sums differ by at most twice that, scaled by v.
+            let v = clip.speed(atSource: second(keyframe)) / 100
+            let bound = (v + 1) / 240_000 + (SpeedIntegral.timeTolerance + 2 * 4e-8) * v
+            #expect(abs(clip.sourceTime(atTimelineTime: there).seconds - keyframe) <= bound, "keyframe \(keyframe)")
             #expect(abs(integral.source(atIntegral: integral.at(keyframe)) - keyframe) < 1e-7)
         }
     }

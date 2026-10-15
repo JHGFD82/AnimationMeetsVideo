@@ -228,7 +228,10 @@ struct SpeedIntegral {
     }
 
     private static func rate(_ speed: AnimatedValue<Double>, at seconds: Double) -> Double {
-        let value = speed.value(at: CMTime(seconds: seconds, preferredTimescale: 240_000))
+        // A fine timescale, since each time is cut to the grid: at 1 / 240000
+        // the cuts add up to about 1e-5 s over a long piece, more than the
+        // result is rounded by.
+        let value = speed.value(at: CMTime(seconds: seconds, preferredTimescale: 1_000_000_000))
         return 100 / min(max(value, ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound)
     }
 
