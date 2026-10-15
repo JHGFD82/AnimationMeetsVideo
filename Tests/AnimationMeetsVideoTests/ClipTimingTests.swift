@@ -307,19 +307,18 @@ import Testing
         let integral = SpeedIntegral.of(clip.time.speed)
         for keyframe in [0.0, 10, 25, 40] {
             let there = clip.timelineTime(forSourceTime: second(keyframe))
-            // The error of timeline time to source time and back, in source
-            // seconds, with v the speed there as a multiple of 1:
+            // The error of source time to timeline time and back, in source
+            // seconds, with v the speed there as a multiple of 1. Both ways go
+            // through the same integral, so its own error (a few
+            // `pieceTolerance`) cancels, and what is left is:
             //  - `timelineLength` cuts to the 1 / 240000 grid (CMTime(seconds:)
             //    truncates): under 1 / 240000 of timeline time, which the
             //    inverse scales by v;
-            //  - the final cut of the source time: under 1 / 240000;
-            //  - Newton stops within `timeTolerance` of timeline time, scaled by v;
-            //  - the rate is read at times cut to 1e-9 s, which moves a piece's
-            //    sum by under its length times the largest |d rate / dt| (under 1
-            //    here) times 1e-9, at most 4e-8 over 40 s; the forward and
-            //    inverse sums differ by at most twice that, scaled by v.
+            //  - the inverse lands within `timeTolerance` of the timeline
+            //    time on the integral's own curve, scaled by v;
+            //  - the final cut of the source time: under 1 / 240000.
             let v = clip.speed(atSource: second(keyframe)) / 100
-            let bound = (v + 1) / 240_000 + (SpeedIntegral.timeTolerance + 2 * 4e-8) * v
+            let bound = (v + 1) / 240_000 + SpeedIntegral.timeTolerance * v
             #expect(abs(clip.sourceTime(atTimelineTime: there).seconds - keyframe) <= bound, "keyframe \(keyframe)")
             #expect(abs(integral.source(atIntegral: integral.at(keyframe)) - keyframe) < 1e-7)
         }

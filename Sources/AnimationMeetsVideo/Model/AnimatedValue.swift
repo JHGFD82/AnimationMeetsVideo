@@ -80,6 +80,28 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
         return Value.interpolate(before.value, after.value, fraction: progress)
     }
 
+    /// The value at a time given as plain seconds, which is not cut to a
+    /// CMTime grid, for numerical work (integrating a speed) that reads the
+    /// curve at points of its own choosing. It agrees with `value(at:)`
+    /// wherever the time is one a CMTime can say.
+    func value(atSeconds seconds: Double) -> Value {
+        guard let first = keyframes.first, let last = keyframes.last else { return value }
+        if seconds <= first.time.seconds { return first.value }
+        if seconds >= last.time.seconds { return last.value }
+        // The first keyframe after `seconds`.
+        var low = 1, high = keyframes.count - 1
+        while low < high {
+            let middle = (low + high) / 2
+            if keyframes[middle].time.seconds > seconds { high = middle } else { low = middle + 1 }
+        }
+        let before = keyframes[low - 1]
+        let after = keyframes[low]
+        let span = after.time.seconds - before.time.seconds
+        guard span > 0 else { return after.value }
+        let progress = KeyframeEase.progress((seconds - before.time.seconds) / span, leaving: before.easeOut, arriving: after.easeIn)
+        return Value.interpolate(before.value, after.value, fraction: progress)
+    }
+
     func keyframe(at time: CMTime) -> Keyframe<Value>? {
         keyframes.first { $0.time == time }
     }

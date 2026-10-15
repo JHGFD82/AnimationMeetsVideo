@@ -244,8 +244,10 @@ struct TransitionCurve: Equatable, Sendable {
     /// The bezier parameter where the segment reaches `time`. Handles never
     /// point backward, so x only grows along a segment and halving finds it.
     static func parameter(forTime time: Double, on controls: (CGPoint, CGPoint, CGPoint, CGPoint)) -> Double {
+        // 52 halvings reach Double's precision; 40 left 1e-12 in the
+        // parameter, which a speed ramp's integral would carry.
         var low = 0.0, high = 1.0
-        for _ in 0..<40 {
+        for _ in 0..<52 {
             let mid = (low + high) / 2
             if Double(point(on: controls, at: mid).x) < time { low = mid } else { high = mid }
         }

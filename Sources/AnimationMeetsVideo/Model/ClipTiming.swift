@@ -191,19 +191,44 @@ extension TimelineClip {
 /// The time the source takes to play, as a function of how far into it:
 /// the integral of `100 / speed` over source seconds, measured from the
 /// speed's first keyframe. Outside the keyframes the speed is constant, so
-/// the integral is a line; between them it is added up by Simpson's rule,
-/// and the total up to each keyframe is kept, so finding the time at any
-/// point integrates only the piece it is in.
+/// the integral is a line.
+///
+/// Between keyframes it is built once, by adaptive Gauss-Kronrod (a 15-point
+/// rule, with the 7-point Gauss rule inside it as its error estimate): a
+/// piece is split until each cell's estimate is within its share of
+/// `pieceTolerance`. The edges of the cells and the integral up to each are
+/// kept, so a query finds its cell by binary search and integrates only the
+/// part of that cell before it, and the inverse (`source(atIntegral:)`)
+/// brackets the cell by the totals and solves inside it.
+///
+/// Accuracy budget, in seconds of timeline time:
+///  - the curve is read at exact `Double` times (`value(atSeconds:)`), so
+///    no time is cut to a grid;
+///  - a piece's cells add up to within `pieceTolerance` (1e-8) of the true
+///    integral, as far as the error estimate is true, and the part of a
+///    cell a query adds is within another `pieceTolerance`. So `at(s)` is
+///    within `(pieces before s + 2) * pieceTolerance` (one less at a
+///    keyframe), plus about 1e-13 of the value for rounding;
+///  - the inverse lands within `timeTolerance` (1e-9) of the target on
+///    `at`'s own curve, so the round trip adds that, scaled by the speed.
+/// All of it is small against the 1/240000 s the result is rounded to
+/// (4e-6), which is the limit on a placed time.
 struct SpeedIntegral {
     private let speed: AnimatedValue<Double>
-    private let times: [Double]
-    /// The integral at each keyframe.
+    /// Cell edges, ascending: every keyframe time, and between them the
+    /// points where a piece was split.
+    private let edges: [Double]
+    /// The integral at each edge.
     private let totals: [Double]
 
-    static let stepsPerPiece = 24
+    /// What a piece's cells may be off by in total, and a query's partial
+    /// cell too.
+    static let pieceTolerance = 1e-8
+    /// How far the inverse may land from the target, in timeline seconds.
+    static let timeTolerance = 1e-9
 
-    /// The grid the rate's times are cut to, per second.
-    static let rateTimescale: Int32 = 1_000_000_000
+    /// A cell is split to at most this many halvings.
+    private static let maxDepth = 48
 
     /// The few most recently used, since a speed is asked about over and
     /// over (every clip block, frame and render key) between edits.
@@ -220,73 +245,130 @@ struct SpeedIntegral {
         return made
     }
 
-    private init(_ speed: AnimatedValue<Double>) {
+    /// Builds the cells; use `of` unless the cache is in the way.
+    init(_ speed: AnimatedValue<Double>) {
         self.speed = speed
-        times = speed.keyframes.map(\.time.seconds)
-        var totals = [0.0]
-        for index in times.indices.dropFirst() {
-            totals.append(totals[index - 1] + Self.simpson(speed, from: times[index - 1], to: times[index]))
+        let times = speed.keyframes.map(\.time.seconds)
+        guard let first = times.first else {
+            edges = []
+            totals = []
+            return
         }
+        var edges = [first], totals = [0.0]
+        for (a, b) in zip(times, times.dropFirst()) where b > a {
+            var cells = [(end: Double, value: Double)]()
+            Self.split(speed, a, b, tolerance: Self.pieceTolerance, depth: 0, into: &cells)
+            for cell in cells {
+                edges.append(cell.end)
+                totals.append(totals[totals.count - 1] + cell.value)
+            }
+        }
+        self.edges = edges
         self.totals = totals
     }
 
+    /// The cell edges, for tests.
+    var cellEdges: [Double] { edges }
+
     private static func rate(_ speed: AnimatedValue<Double>, at seconds: Double) -> Double {
-        // A fine timescale, since each time is cut to the grid: at 1 / 240000
-        // the cuts add up to about 1e-5 s over a long piece, more than the
-        // result is rounded by.
-        let value = speed.value(at: CMTime(seconds: seconds, preferredTimescale: rateTimescale))
+        let value = speed.value(atSeconds: seconds)
         return 100 / min(max(value, ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound)
     }
 
-    private static func simpson(_ speed: AnimatedValue<Double>, from low: Double, to high: Double) -> Double {
-        guard high > low else { return 0 }
-        let steps = stepsPerPiece
-        let h = (high - low) / Double(steps)
-        var sum = rate(speed, at: low) + rate(speed, at: high)
-        for i in 1..<steps { sum += rate(speed, at: low + Double(i) * h) * (i.isMultiple(of: 2) ? 2 : 4) }
-        return sum * h / 3
+    private static let kronrodNodes = [0.991455371120813, 0.949107912342759, 0.864864423359769, 0.741531185599394, 0.586087235467691, 0.405845151377397, 0.207784955007898, 0.0]
+    private static let kronrodWeights = [0.022935322010529, 0.063092092629979, 0.104790010322250, 0.140653259715525, 0.169004726639267, 0.190350578064785, 0.204432940075298, 0.209482141084728]
+    private static let gaussWeights = [0.129484966168870, 0.279705391489277, 0.381830050505119, 0.417959183673469]
+
+    /// The 15-point Kronrod estimate of the integral over `a...b` and the
+    /// distance to the 7-point Gauss one, which says how far to trust it.
+    private static func kronrod(_ speed: AnimatedValue<Double>, _ a: Double, _ b: Double) -> (value: Double, error: Double) {
+        let centre = (a + b) / 2, half = (b - a) / 2
+        var kronrodSum = 0.0, gaussSum = 0.0
+        for index in 0..<8 {
+            let node = kronrodNodes[index]
+            let sum = index == 7
+                ? rate(speed, at: centre)
+                : rate(speed, at: centre - half * node) + rate(speed, at: centre + half * node)
+            kronrodSum += kronrodWeights[index] * sum
+            if index % 2 == 1 { gaussSum += gaussWeights[index / 2] * sum }
+        }
+        return (kronrodSum * half, abs(kronrodSum - gaussSum) * half)
+    }
+
+    /// Whether an estimate is within `tolerance`, or as close as rounding lets
+    /// it get (so a tolerance halved many times can't ask for the impossible).
+    private static func settled(_ estimate: (value: Double, error: Double), tolerance: Double, depth: Int) -> Bool {
+        estimate.error <= max(tolerance, 64 * Double.ulpOfOne * abs(estimate.value)) || depth >= maxDepth
+    }
+
+    /// Splits `a...b` until each cell is settled, appending each with the
+    /// integral over it. A cell's share of the tolerance is halved with each
+    /// split, so the shares add up to the tolerance.
+    private static func split(_ speed: AnimatedValue<Double>, _ a: Double, _ b: Double, tolerance: Double, depth: Int, into cells: inout [(end: Double, value: Double)]) {
+        let estimate = kronrod(speed, a, b)
+        if settled(estimate, tolerance: tolerance, depth: depth) {
+            cells.append((b, estimate.value))
+            return
+        }
+        let middle = (a + b) / 2
+        split(speed, a, middle, tolerance: tolerance / 2, depth: depth + 1, into: &cells)
+        split(speed, middle, b, tolerance: tolerance / 2, depth: depth + 1, into: &cells)
+    }
+
+    /// The integral over `a...b`, split as far as it needs to be.
+    private static func integrate(_ speed: AnimatedValue<Double>, _ a: Double, _ b: Double, tolerance: Double, depth: Int = 0) -> Double {
+        guard b > a else { return 0 }
+        let estimate = kronrod(speed, a, b)
+        if settled(estimate, tolerance: tolerance, depth: depth) { return estimate.value }
+        let middle = (a + b) / 2
+        return integrate(speed, a, middle, tolerance: tolerance / 2, depth: depth + 1)
+            + integrate(speed, middle, b, tolerance: tolerance / 2, depth: depth + 1)
+    }
+
+    /// The cell `seconds` is in: the last edge at or before it.
+    private func cell(containing seconds: Double) -> Int {
+        var low = 0, high = edges.count - 1
+        while high - low > 1 {
+            let middle = (low + high) / 2
+            if edges[middle] <= seconds { low = middle } else { high = middle }
+        }
+        return low
     }
 
     /// The integral at `seconds` of source time.
     func at(_ seconds: Double) -> Double {
-        guard let first = times.first, let last = times.last else { return seconds * Self.rate(speed, at: 0) }
+        guard let first = edges.first, let last = edges.last else { return seconds * Self.rate(speed, at: 0) }
         if seconds <= first { return (seconds - first) * Self.rate(speed, at: first) }
         if seconds >= last { return totals[totals.count - 1] + (seconds - last) * Self.rate(speed, at: last) }
-        var index = 0
-        while index + 1 < times.count - 1, times[index + 1] <= seconds { index += 1 }
-        return totals[index] + Self.simpson(speed, from: times[index], to: seconds)
+        let index = cell(containing: seconds)
+        return totals[index] + Self.integrate(speed, edges[index], seconds, tolerance: Self.pieceTolerance)
     }
-
-    /// The most the timeline time a result may be off by, in seconds. It is
-    /// far below a frame and below the 240000 timescale the answer is
-    /// rounded to.
-    static let timeTolerance = 1e-8
 
     /// The source time, in seconds, whose integral is `target`: the inverse
     /// of `at`. The rate is always positive, so `at` only rises and the
-    /// answer is the only one. The totals at the keyframes say which piece
-    /// it is in; there it is found by Newton's method, whose step is the
-    /// timeline time left over divided by the rate. A step that leaves the
-    /// bracket the totals and earlier steps have narrowed, or that fails to
-    /// halve the error, is replaced by bisection, so it always ends.
+    /// answer is the only one. The totals say which cell it is in; there it
+    /// is found by Newton's method, whose step is the timeline time left over
+    /// divided by the rate. A step that leaves the bracket the cell and
+    /// earlier steps have narrowed, or that fails to halve the error, is
+    /// replaced by bisection, so it always ends.
     func source(atIntegral target: Double) -> Double {
-        guard let first = times.first, let last = times.last else { return target / Self.rate(speed, at: 0) }
+        guard let first = edges.first, let last = edges.last else { return target / Self.rate(speed, at: 0) }
         if target <= 0 { return first + target / Self.rate(speed, at: first) }
         let end = totals[totals.count - 1]
         if target >= end { return last + (target - end) / Self.rate(speed, at: last) }
-        // The last keyframe whose total is at or below the target.
+        // The last edge whose total is at or below the target.
         var low = 0, high = totals.count - 1
         while high - low > 1 {
             let middle = (low + high) / 2
             if totals[middle] <= target { low = middle } else { high = middle }
         }
-        if totals[low] == target { return times[low] }
+        if totals[low] == target { return edges[low] }
         let remaining = target - totals[low]
-        var lower = times[low], upper = times[low + 1]
+        var lower = edges[low], upper = edges[low + 1]
         var guess = lower + (upper - lower) * remaining / (totals[low + 1] - totals[low])
         var lastError = Double.infinity
         for _ in 0..<100 {
-            let error = Self.simpson(speed, from: times[low], to: guess) - remaining
+            let error = Self.integrate(speed, edges[low], guess, tolerance: Self.pieceTolerance) - remaining
             if abs(error) <= Self.timeTolerance || upper - lower <= 1e-12 { break }
             if error < 0 { lower = guess } else { upper = guess }
             var next = guess - error / Self.rate(speed, at: guess)

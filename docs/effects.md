@@ -339,6 +339,27 @@ works on frames already chosen:
   source time like all others. Speed decides how much source time passes,
   so the clip's length on the timeline follows from it: dragging the
   clip's end trims the source, it never stretches the clip.
+
+  How long a ramp lasts is the integral of 100 / speed over the source
+  time it plays, taken from the curve itself (its eases included, speed
+  clamped to 1%...10000%). `SpeedIntegral` computes it once per speed curve
+  with adaptive Gauss-Kronrod and keeps the edges of its cells and the
+  integral up to each, so a lookup finds its cell by binary search and
+  integrates only the part of it before the query, and the inverse
+  (timeline time to source time) solves inside one cell by Newton's method
+  with a bisection fallback. The accuracy budget, in seconds of timeline
+  time: each piece between keyframes within 1e-8 of the true integral
+  (`pieceTolerance`, split among its cells), a query inside a cell within
+  another 1e-8, the curve read at exact `Double` times rather than a CMTime
+  grid, and the inverse within 1e-9 of its target. All of it sits far below
+  the 1/240000 s a placed time is rounded to. Tests check it against a
+  separate reference (its own Bézier, a fine partition cut at the clamp's
+  kinks, adaptive Gauss-Kronrod), for whole pieces, partial cells, cell
+  edges and the inverse, on curves that stress it (1% to 10000% in half a
+  second, sharp and full-width handles, overshoot past the clamp). An
+  earlier fixed 24-step Simpson sum read 5% to 3000% over 40 s as 16.3 s
+  for 8.54 s; project files saved with it keep their stored times, so a
+  ramped clip's end moves to the true length, and nothing migrates them.
 - **Frame Blending**: Off, Blend (mix the two nearest frames when the
   speed doesn't land on whole frames), or Optical Flow (build in-between
   frames from Vision's optical flow). Optical Flow is too slow to draw
