@@ -58,6 +58,7 @@ struct NumericField: View {
                 }
                 .frame(minWidth: 44, maxWidth: 70)
                 .focused($isFocused)
+                .background(OutsideClickMonitor(onOutsideClick: commit))
                 .onAppear { isFocused = true }
                 .onSubmit { commit() }
                 .onExitCommand { isEditing = false }
@@ -144,5 +145,54 @@ extension View {
     /// unevaluated text (the form was submitted without leaving it) counts.
     func evaluatesArithmetic(_ text: Binding<String>) -> some View {
         modifier(ArithmeticFieldModifier(text: text))
+    }
+}
+
+/// Calls `onOutsideClick` when the mouse goes down anywhere in this view's
+/// window except on it, so a field being edited takes what was typed when
+/// the person clicks or starts dragging something else. The click still
+/// goes through to what was clicked.
+private struct OutsideClickMonitor: NSViewRepresentable {
+    let onOutsideClick: () -> Void
+
+    func makeNSView(context: Context) -> MonitorView {
+        let view = MonitorView()
+        view.onOutsideClick = onOutsideClick
+        return view
+    }
+
+    func updateNSView(_ view: MonitorView, context: Context) {
+        view.onOutsideClick = onOutsideClick
+    }
+
+    static func dismantleNSView(_ view: MonitorView, coordinator: ()) {
+        view.stopMonitoring()
+    }
+
+    final class MonitorView: NSView {
+        var onOutsideClick: (() -> Void)?
+        private var monitor: Any?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            stopMonitoring()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+                nonisolated(unsafe) let event = event
+                MainActor.assumeIsolated {
+                    guard let self, let window = self.window, event.window === window else { return }
+                    let inside = self.convert(self.bounds, to: nil).contains(event.locationInWindow)
+                    if !inside { self.onOutsideClick?() }
+                }
+                return event
+            }
+        }
+
+        func stopMonitoring() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
     }
 }
