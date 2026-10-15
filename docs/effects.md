@@ -5,6 +5,23 @@ in [layer-transforms.md](layer-transforms.md): transforms move from layers
 to clips and become effects. Keyframes, easing, the graph editor and
 arithmetic in numeric fields carry over unchanged.
 
+## Guiding principle: gravity
+
+What is above acts on what is below. In a clip's stack, each control works
+on the picture handed down from the ones above it. On the timeline, a clip
+blends onto the layers below it. Every other rule follows from this:
+
+- The anchor point is pinned at the top of the stack, so it affects every
+  step.
+- Transitions are pinned at the bottom of the stack, so they act on
+  everything above them.
+- A nested timeline is a closed container: what falls inside it never
+  lands on the timeline it is placed in, except through its alpha.
+- The one exception is an adjustment layer, which can set how far down its
+  effect falls (see [Reach](#reach)).
+
+When a new feature needs an order, it gets this one.
+
 ## The idea: the list is the render order
 
 In After Effects, Final Cut Pro and Motion, where a control sits in the
@@ -125,8 +142,8 @@ For each frame, each clip goes through:
    first, on its own (see below).
 2. **Stack**: each enabled effect, top to bottom, and within it each
    enabled control that isn't at its default.
-3. **Transition**: the clip's transitions, if any. They aren't effects and
-   aren't in the list: they always come last. A dissolve fades the stack's
+3. **Transition**: the clip's transitions, if any. They aren't effects:
+   they are pinned at the bottom of the list and always come last. A dissolve fades the stack's
    result, a wipe crops it in frame coordinates, and a film dissolve keys
    on it or on the backdrop.
 4. **Composite**: drawn normally over the backdrop.
@@ -235,7 +252,9 @@ effect onto a clip, or double-click it to add it to the end of the selected
 clip's stack.
 
 Below: the selected clip's **stack**, with the anchor point pinned as the
-first row (it can't be moved or deleted).
+first row and the clip's transitions, if any, pinned as the last. Neither
+can be moved. Clicking a transition row selects it, as clicking it on the
+timeline does.
 
 - Each **effect** row has a drag handle, a disclosure arrow, an
   enable checkbox, its name and a **⋯** menu: Duplicate (Cmd-D), Reset,
