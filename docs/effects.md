@@ -451,10 +451,40 @@ keys. A clip block with effects shows a small badge with the count.
   them when the effect it reads came along, or goes back to Backdrop when
   it didn't. Inputs stay behind, since their media belongs to a project:
   a pasted or preset effect's drop zone is empty.
+- **Every change is flagged** (see [Paste changes](#paste-changes)).
 - A preset file uses the same JSON as effects in `project.json`, with its
   own `formatVersion`, and is read just as strictly. One that can't be read
   shows in the browser with the same message and path, and isn't used; it
   never stops anything else from loading.
+
+### Paste changes
+
+Pasting or applying a preset can't always bring an effect over exactly.
+When it doesn't, the effect is flagged, as Track Changes would in Word, so
+nothing is lost silently. A **paste change** is recorded for each of these:
+
+- An input was left behind: "Input left behind (was Logo matte.mov)."
+- Against went back to Backdrop: "Against reset to Backdrop: Before Blur
+  wasn't pasted."
+- Keyframes landed outside the clip it was pasted onto, so they don't play:
+  "3 keyframes fall past the end of this clip."
+
+A flagged effect has a marked edge in the stack, and its changes are
+listed under its name, each with a **Mark Resolved** button. Fixing the
+problem (dropping in a new input, for example) doesn't resolve it by
+itself; the person marks it once they're satisfied. The effect renders as
+it stands meanwhile, so the result can be checked while fixing it. A clip
+with unresolved changes shows a mark on its block in the timeline.
+
+**Unresolved changes block export.** The editor's toolbar shows how many
+there are, across every timeline the export draws (nested ones too).
+Clicking that count, or trying to export, opens the **Paste Changes**
+list: each change with its timeline, clip and effect, a button to go to
+it (selecting the clip and opening the effects panel at that effect), and
+Mark Resolved. **Accept All** resolves every change in the list and lets
+the export go ahead. Marking and accepting can be undone.
+
+Paste changes are saved with the project, so they survive closing it.
 
 ## Saving
 
@@ -486,8 +516,11 @@ Defaults are left out as everywhere else: `enabled` is written only as
 only as `false`. A Blending step's `against` holds the effect ID it reads,
 written only when it isn't the backdrop. An effect with an input has
 `input` (`{"asset": "…"}` or `{"timeline": "…"}`, plus `offset` and
-`"loops": true` when set). A clip has `time` and `shutter` only when they
-aren't off, and a nested clip `"passThrough": true` only when set. The
+`"loops": true` when set). An effect has `pasteChanges` only while
+some are unresolved, each with its `kind` (`"inputLeftBehind"`,
+`"againstReset"` or `"keyframesOutside"`) and what it was (the input's
+name, the effect read, the keyframe count). A clip has `time` and
+`shutter` only when they aren't off, and a nested clip `"passThrough": true` only when set. The
 project has `canvasMargin` only when it isn't 0.5 (of a frame, on each
 side). Keyframes are written as layer transforms' are today
 (`easeIn` and `easeOut` only when eased), with times in rational seconds
@@ -535,4 +568,4 @@ In order, each step usable on its own:
    Trails.
 10. **Inputs**, with the first effect that takes one (a matte).
 11. **Speed ramps and Optical Flow.**
-12. **Copy, paste and presets.**
+12. **Copy, paste and presets**, with paste changes and the export check.
