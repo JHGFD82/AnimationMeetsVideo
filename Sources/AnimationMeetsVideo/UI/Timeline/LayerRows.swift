@@ -231,6 +231,12 @@ struct LayerClipRow: View {
     /// An edit of the joint at the start of a clip.
     let onApplyJointEdit: (UUID, JointEdit) -> Void
     let onSetTransitionDuration: (UUID, TransitionEdge, CMTime) -> Void
+    /// Adds an effect to the end of a clip's stack.
+    let onAddEffect: (UUID, EffectKind) -> Void
+    /// Sets whether a nested clip passes through.
+    let onSetPassThrough: (UUID, Bool) -> Void
+    /// Draws each clip's volume as a line across it.
+    let showsVolumeLines: Bool
 
     /// While a slip shortens a clip: how far the clips after it move in.
     private struct FollowerShift: Equatable {
@@ -316,7 +322,13 @@ struct LayerClipRow: View {
                         snapTargets?.snappedStart(start, duration: duration, within: snapTolerance, excluding: clip.id)
                     },
                     onSnapIndicator: onSnapIndicator,
-                    onSetTransitionDuration: { edge, duration in onSetTransitionDuration(clip.id, edge, duration) }
+                    onSetTransitionDuration: { edge, duration in onSetTransitionDuration(clip.id, edge, duration) },
+                    acceptsEffects: project.hasEffectStack(clip),
+                    effectCount: clip.effects.count,
+                    showsVolumeLine: showsVolumeLines && project.playsAudio(clip),
+                    passesThrough: clip.passThrough,
+                    onAddEffect: { kind in onAddEffect(clip.id, kind) },
+                    onSetPassThrough: { onSetPassThrough(clip.id, $0) }
                 )
                 .offset(x: shiftX(of: clip))
                 // Clips slide aside as a drag makes room, but not when the
@@ -436,6 +448,17 @@ struct ClipBlockView: View {
     let onSnapIndicator: (CMTime?) -> Void
     /// Sets a transition's length, from dragging its inner side.
     let onSetTransitionDuration: (TransitionEdge, CMTime) -> Void
+    /// Clips with pictures take effects dragged from the effects panel.
+    let acceptsEffects: Bool
+    /// How many effects are in the clip's stack, for its badge.
+    let effectCount: Int
+    /// Draws the clip's volume as a line across it.
+    let showsVolumeLine: Bool
+    /// For a nested clip: whether its layers are drawn into the timeline it
+    /// is placed in.
+    let passesThrough: Bool
+    let onAddEffect: (EffectKind) -> Void
+    let onSetPassThrough: (Bool) -> Void
 
     /// The clip as it will be if the current drag ends now. After a drop
     /// it stays up until the edited clip comes back down from the project:
@@ -455,6 +478,7 @@ struct ClipBlockView: View {
     /// outline left where it came from.
     @State private var isLifted = false
     @State private var isTransitionTarget = false
+    @State private var isEffectTarget = false
     /// Where the blade would cut, in the row's coordinates, while hovering.
     @State private var bladeX: CGFloat?
     /// How far a slip drag in progress moves the footage.
@@ -553,6 +577,19 @@ struct ClipBlockView: View {
                             .font(Design.Typeface.micro)
                             .help("Plays its own sound; show it with the layer's waveform button")
                     }
+                    if effectCount > 0 {
+                        HStack(spacing: 2) {
+                            Image(systemName: "wand.and.stars")
+                            Text("\(effectCount)").font(Design.Typeface.numericMicro)
+                        }
+                        .font(Design.Typeface.micro)
+                        .help("\(effectCount) effect\(effectCount == 1 ? "" : "s") in its stack")
+                    }
+                    if passesThrough {
+                        Image(systemName: "square.stack.3d.down.right")
+                            .font(Design.Typeface.micro)
+                            .help("Passes through: its layers are drawn into the timeline it is placed in")
+                    }
                 }
                 .foregroundStyle(Design.textOnColor.opacity(0.7))
             }
@@ -561,6 +598,7 @@ struct ClipBlockView: View {
             .background {
                 Design.clipFill(typeColor, selected: isSelected)
                     .overlay(alignment: .leading) { waveform(of: shown, drawnX: drawnX, liveX: liveX, width: drawnWidth) }
+                    .overlay(alignment: .leading) { volumeLine(of: shown, drawnX: drawnX, liveX: liveX, width: drawnWidth) }
             }
             .overlay(alignment: .topLeading) {
                 transitionMarks(of: shown, liveX: liveX, drawnX: drawnX, drawnWidth: drawnWidth)
@@ -573,8 +611,8 @@ struct ClipBlockView: View {
             .clipShape(shape)
             .overlay {
                 shape.strokeBorder(
-                    isTransitionTarget ? Design.accent : isSelected ? Design.textOnColor.opacity(0.95) : typeColor.opacity(0.85),
-                    lineWidth: isTransitionTarget ? 2 : isSelected ? 1.5 : 1
+                    isTransitionTarget || isEffectTarget ? Design.accent : isSelected ? Design.textOnColor.opacity(0.95) : typeColor.opacity(0.85),
+                    lineWidth: isTransitionTarget || isEffectTarget ? 2 : isSelected ? 1.5 : 1
                 )
             }
             // The bevel: lit along the top, shaded along the bottom, so a
@@ -604,6 +642,14 @@ struct ClipBlockView: View {
                 return true
             } isTargeted: { targeted in
                 isTransitionTarget = targeted && acceptsTransitions
+            }
+            .dropDestination(for: EffectDragPayload.self) { payloads, _ in
+                guard acceptsEffects, let payload = payloads.first else { return false }
+                onAddEffect(payload.kind)
+                onSelect()
+                return true
+            } isTargeted: { targeted in
+                isEffectTarget = targeted && acceptsEffects
             }
             .contextMenu { clipMenu }
             .onContinuousHover(coordinateSpace: .named(space)) { phase in
@@ -742,6 +788,33 @@ struct ClipBlockView: View {
         }
     }
 
+    /// The clip's volume as a line across the drawn part of the block, as
+    /// on the layer volume lane: mute at the bottom, +6 dB at the top, and
+    /// a faint line at 0 dB.
+    @ViewBuilder
+    private func volumeLine(of shown: TimelineClip, drawnX: CGFloat, liveX: CGFloat, width: CGFloat) -> some View {
+        if showsVolumeLine, width > 0 {
+            let first = CMTimeAdd(shown.trimStart, CMTime(seconds: Double((drawnX - liveX) / pixelsPerSecond), preferredTimescale: 600))
+            let volume = shown.volume
+            let pixels = pixelsPerSecond
+            Canvas { context, size in
+                let unity = VolumeLane.y(ofLevel: 0, height: size.height)
+                context.fill(Path(CGRect(x: 0, y: unity, width: size.width, height: 0.5)), with: .color(Design.textOnColor.opacity(0.35)))
+                var line = Path()
+                var x: CGFloat = 0
+                while x <= size.width + 2 {
+                    let time = CMTimeAdd(first, CMTime(seconds: Double(x / pixels), preferredTimescale: 600))
+                    let point = CGPoint(x: x, y: VolumeLane.y(ofLevel: volume.value(at: time), height: size.height))
+                    if line.isEmpty { line.move(to: point) } else { line.addLine(to: point) }
+                    x += 2
+                }
+                context.stroke(line, with: .color(Design.textOnColor.opacity(0.9)), lineWidth: 1.5)
+            }
+            .frame(width: width, height: height)
+            .allowsHitTesting(false)
+        }
+    }
+
     /// The block's outline, rounded only at ends that are really the
     /// clip's ends. See the call site.
     private func blockShape(drawnX: CGFloat, drawnWidth: CGFloat, liveX: CGFloat, liveWidth: CGFloat) -> UnevenRoundedRectangle {
@@ -789,6 +862,9 @@ struct ClipBlockView: View {
         if hasLinkedAudio {
             if clip.transitionIn != nil || clip.transitionOut != nil { Divider() }
             Button("Detach Audio", action: onDetachAudio)
+        }
+        if case .timeline = clip.source {
+            Toggle("Pass Through", isOn: Binding(get: { passesThrough }, set: onSetPassThrough))
         }
     }
 

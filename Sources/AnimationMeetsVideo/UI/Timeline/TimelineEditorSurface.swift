@@ -27,6 +27,9 @@ struct TimelineEditorSurface<Library: View>: View {
     /// areas share whatever height it has and scroll the rest.
     @AppStorage("timelineHeight") private var timelineHeight: Double = 280
     @AppStorage("showsTransitionsPanel") private var showsTransitions = false
+    @AppStorage("showsEffectsPanel") private var showsEffects = false
+    @AppStorage("effectsPanelWidth") private var effectsPanelWidth = 640.0
+    @State private var effectsState = EffectsPanelState()
     @AppStorage("showsAudioMeter") private var showsMeter = false
     /// The graph editors this surface has open, one HUD per parameter.
     @State private var graphs = KeyframeGraphHUDs()
@@ -36,6 +39,11 @@ struct TimelineEditorSurface<Library: View>: View {
 
     private var timeline: Timeline? {
         project.timeline(id: timelineID)
+    }
+
+    /// The effects panel's width, kept so the timeline keeps room.
+    private func effectsWidth(in available: CGFloat) -> CGFloat {
+        min(max(CGFloat(effectsPanelWidth), EffectsPanelResizeHandle.minimumWidth), max(EffectsPanelResizeHandle.minimumWidth, available * 0.8))
     }
 
     private var compositionKey: CompositionKey { CompositionKey(project: project) }
@@ -107,13 +115,41 @@ struct TimelineEditorSurface<Library: View>: View {
                             .grooved(.leading)
                             .transition(.move(edge: .trailing))
                     }
+                    if showsEffects {
+                        EffectsPanel(
+                            project: $project,
+                            timelineID: timelineID,
+                            selection: selection,
+                            playheadTime: playheadTime,
+                            state: effectsState,
+                            onSeek: { time in scrub(to: time) },
+                            onSelectTransition: { edge in
+                                if let selection {
+                                    self.selection = TimelineSelection(
+                                        timelineID: selection.timelineID, layerID: selection.layerID,
+                                        timelineClipID: selection.timelineClipID, transitionEdge: edge
+                                    )
+                                }
+                            },
+                            onClose: { showsEffects = false }
+                        )
+                        .frame(width: effectsWidth(in: geometry.size.width))
+                        .overlay(alignment: .leading) { EffectsPanelResizeHandle(width: $effectsPanelWidth, maxWidth: geometry.size.width * 0.8) }
+                        .grooved(.leading)
+                        .transition(.move(edge: .trailing))
+                    }
                 }
                 .frame(height: resolvedTimelineHeight)
                 .editorAnimation(Design.Motion.panel, value: showsTransitions)
+                .editorAnimation(Design.Motion.panel, value: showsEffects)
                 .editorAnimation(Design.Motion.panel, value: showsMeter)
             }
         }
         .environment(graphs)
+        // The effects and transitions panels share a place: opening one
+        // closes the other.
+        .onChange(of: showsEffects) { _, on in if on { showsTransitions = false } }
+        .onChange(of: showsTransitions) { _, on in if on { showsEffects = false } }
         .onChange(of: project, initial: true) { _, project in graphs.update(project: project) }
         .onChange(of: playheadTime, initial: true) { _, time in graphs.playhead = time }
         .onAppear {
@@ -256,7 +292,9 @@ struct TimelineEditorSurface<Library: View>: View {
                 },
                 onEditProject: { change in change(&project) },
                 showsTransitions: $showsTransitions,
-                showsMeter: $showsMeter
+                showsEffects: $showsEffects,
+                showsMeter: $showsMeter,
+                effectsState: effectsState
             )
         } else {
             ContentUnavailableView("No Timeline Selected", systemImage: "timeline.selection")
@@ -424,5 +462,33 @@ struct TimelineResizeHandle: View {
                     dragStartHeight = nil
                 }
         )
+    }
+}
+
+/// The strip along the effects panel's left edge that resizes it.
+struct EffectsPanelResizeHandle: View {
+    static let minimumWidth: CGFloat = 480
+
+    @Binding var width: Double
+    let maxWidth: CGFloat
+    @State private var startWidth: Double?
+
+    var body: some View {
+        Color.clear
+            .frame(width: 6)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { value in
+                        let start = startWidth ?? width
+                        startWidth = start
+                        width = min(max(start - Double(value.translation.width), Double(Self.minimumWidth)), Double(maxWidth))
+                    }
+                    .onEnded { _ in startWidth = nil }
+            )
+            .help("Drag to resize the effects panel")
     }
 }

@@ -661,10 +661,15 @@ In order, each step usable on its own:
    a nested clip's Position, Scale, Rotation, Opacity and its dissolve,
    slide and zoom to each layer inside (a Blending step inside a pass-through
    group that has its own placement blends in the placed frame).
-3. **Effects panel**: library, stack editing, keyframe lanes and playhead,
-   dragging values, clip volume.
-   Remove the timeline's property rows and the inspector's transform
-   section.
+3. **Effects panel** (done): library, stack editing, keyframe lanes and
+   playhead, dragging values, clip volume. The timeline's property rows and
+   the inspector's transform section were removed in step 1. The panel
+   shows what exists so far: Pass Through, the anchor point, the stack,
+   the transitions and Volume; Time and Shutter, Against, dimming,
+   thumbnails and Show Up to Here come with their steps, and copy, paste
+   and presets with step 12. It is resizable by its left edge. Moving or
+   dropping an effect, deleting it (Delete) and duplicating it (⌘D) are
+   undoable, and a value drag is one undo step.
 4. **Blending**: one Metal kernel per mode, using the formula above, and
    Against.
 5. **Color**, with its working spaces.

@@ -10,8 +10,10 @@ with a trackpad. What is not built is listed under
 The timeline sits under the library, viewer and inspector and spans the
 full width of the window: a label column on the left (layer number and
 name, and its volume row when shown), and the track area on the
-right with the ruler across its top. The transitions panel, opened with the
-button in the timeline's header, takes its place at the right end.
+right with the ruler across its top. The transitions panel and the effects
+panel ([effects.md](effects.md#the-effects-panel)), each opened with its
+button in the timeline's header (Shift-E for effects), take their place at
+the right end, one at a time.
 
 The timeline is as tall as the person makes it with the grip between it and
 the viewer, whatever its layers need; it remembers that height. Under the
@@ -406,6 +408,13 @@ the layer is at least 30 points tall, its points and handles appear:
 - Right-click a point to delete it or toggle its corner.
 
 A drag is saved when it ends, as one undo step.
+
+## Clip badges and menus
+
+A clip with effects shows a small badge with how many, and a nested clip
+that passes through shows a mark. Dragging an effect from the effects panel
+onto a clip adds it to the end of the clip's stack. The clip's menu has
+**Pass Through** for nested clips.
 
 ## Not implemented yet
 

@@ -18,6 +18,12 @@ extension NumericExpression {
 /// Effects-style. Return or clicking away enters what was typed, which may
 /// be arithmetic ("100+25"); Escape cancels. Text that isn't a number beeps
 /// and leaves the value alone.
+///
+/// With a `dragStep` the number can also be dragged: press on it and drag
+/// left or right to lower or raise it by that much per point (ten times
+/// with Shift, a tenth with Option). `onCommit` then gets every value along
+/// the way, so the picture follows the drag, and the whole drag is one undo
+/// step. Escape puts the value back.
 struct NumericField: View {
     let value: Double
     var unit = ""
@@ -25,10 +31,18 @@ struct NumericField: View {
     /// How the value reads while not being edited, in place of the number
     /// and unit.
     var label: ((Double) -> String)?
+    /// One point of drag moves the value this far; nil for a field that
+    /// can't be dragged.
+    var dragStep: Double?
+    /// What dragging keeps the value within.
+    var dragRange: ClosedRange<Double>?
     let onCommit: (Double) -> Void
 
+    @Environment(\.projectHistory) private var history
     @State private var isEditing = false
     @State private var draft = ""
+    @State private var drag: ValueDragSession?
+    @State private var dragStart = 0.0
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -61,8 +75,33 @@ struct NumericField: View {
                     draft = NumericExpression.format(value, maxFractionDigits: 3)
                     isEditing = true
                 }
-                .help("Click to type a value. Arithmetic such as 100+25 works.")
+                .simultaneousGesture(dragStep.map { step in
+                    DragGesture(minimumDistance: 3, coordinateSpace: .global)
+                        .onChanged { _ in beginDrag(step: step) }
+                        .onEnded { _ in drag?.finish(cancelled: false) }
+                })
+                .help(dragStep == nil
+                    ? "Click to type a value. Arithmetic such as 100+25 works."
+                    : "Click to type a value (arithmetic such as 100+25 works), or drag to change it. Shift for ten times as fast, Option for a tenth.")
         }
+    }
+
+    private func beginDrag(step: Double) {
+        guard drag == nil else { return }
+        let start = value
+        dragStart = start
+        history?.beginGesture()
+        drag = ValueDragSession(
+            onMove: { distance, flags in
+                onCommit(ValueDrag.value(from: start, distance: distance, step: step, flags: flags, range: dragRange))
+            },
+            onFinish: { cancelled in
+                if cancelled { onCommit(start) }
+                drag = nil
+                // After the last edit has reached the project.
+                Task { @MainActor in history?.endGesture() }
+            }
+        )
     }
 
     private func commit() {

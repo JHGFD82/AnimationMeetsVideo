@@ -300,6 +300,30 @@ struct Effect: Identifiable, Equatable, Sendable {
         return effect
     }
 
+    /// Back to a new effect's controls, all at their defaults, keeping its
+    /// ID and name.
+    mutating func reset() {
+        self = Effect(id: id, kind: kind, name: name)
+    }
+
+    /// Deletes a control. Without it the effect does nothing for it.
+    mutating func removeControl(_ id: UUID) {
+        controls.removeAll { $0.id == id }
+    }
+
+    /// Moves a control to `index` among the effect's controls.
+    mutating func moveControl(_ id: UUID, toIndex index: Int) {
+        guard let from = controlIndex(id) else { return }
+        let control = controls.remove(at: from)
+        controls.insert(control, at: min(max(index, 0), controls.count))
+    }
+
+    /// Puts back a control that was deleted, at the end.
+    mutating func addControl(_ kind: ControlKind) {
+        guard self.kind.controlKinds.contains(kind), control(kind) == nil else { return }
+        controls.append(EffectControl(kind: kind))
+    }
+
     /// A copy with new IDs for the effect and its controls.
     func duplicated(named name: String? = nil) -> Effect {
         var copy = self
@@ -465,5 +489,33 @@ extension EditingProject {
             copyID = copy.id
         }
         return copyID
+    }
+}
+
+// MARK: - Easing at the playhead
+
+extension TimelineClip {
+    /// Applies an ease to every keyframe the clip's anchor point, volume and
+    /// effect controls have at `time` in the timeline, for the F9 keys.
+    /// Returns whether there was one.
+    @discardableResult
+    mutating func easeKeyframes(atTimelineTime time: CMTime, _ preset: KeyframeEase.Preset) -> Bool {
+        let source = sourceTime(atTimelineTime: time)
+        var eased = false
+        if anchorPoint.keyframe(at: source) != nil {
+            anchorPoint.applyEase(preset, at: source)
+            eased = true
+        }
+        if volume.keyframe(at: source) != nil {
+            volume.applyEase(preset, at: source)
+            eased = true
+        }
+        for e in effects.indices {
+            for c in effects[e].controls.indices where effects[e].controls[c].number.keyframe(at: source) != nil {
+                effects[e].controls[c].number.applyEase(preset, at: source)
+                eased = true
+            }
+        }
+        return eased
     }
 }

@@ -17,6 +17,8 @@ final class ProjectHistory {
     var undoManager: UndoManager?
     /// Writes a restored snapshot back into the app's project state.
     var restore: ((EditingProject) -> Void)?
+    /// Reads the app's project state as it is now.
+    var current: (() -> EditingProject)?
 
     init(project: EditingProject) {
         baseline = project
@@ -36,8 +38,29 @@ final class ProjectHistory {
         change(&baseline)
     }
 
+    /// Whether a gesture holds the changes back (see `beginGesture`).
+    private(set) var isInGesture = false
+
+    /// Starts a gesture, such as dragging a value, whose changes are one
+    /// step however long it takes: they aren't recorded until `endGesture`,
+    /// so the project can be put back as it was in the meantime (Escape)
+    /// without leaving a step behind.
+    func beginGesture() {
+        isInGesture = true
+    }
+
+    /// Records the gesture's changes, if there were any, as one step.
+    /// `project` is the project as it is now, by default read from `current`.
+    func endGesture(_ project: EditingProject? = nil) {
+        guard isInGesture else { return }
+        isInGesture = false
+        lastRecordedAt = nil
+        if let project = project ?? current?() { projectDidChange(project) }
+    }
+
     /// Call whenever the project value changes.
     func projectDidChange(_ project: EditingProject, now: Date = Date()) {
+        guard !isInGesture else { return }
         guard project != baseline else { return }
         let before = baseline
         baseline = project

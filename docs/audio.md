@@ -11,9 +11,9 @@ Showing a layer's channels apart is described with the waveforms in
 [timeline.md](timeline.md#waveforms).
 
 Volume lives on **clips** and on **Sound and Music layers** as a fader
-over everything on them ([effects.md](effects.md#volume)). The panel row
-and the line across clip blocks for clip volume come with the effects
-panel; until then a clip's volume is set in the inspector.
+over everything on them ([effects.md](effects.md#volume)). A clip's volume
+is a row at the bottom of the effects panel (and in the inspector), and
+while **L** is on each clip block draws it as a line across itself.
 
 ## Volume
 
@@ -43,10 +43,12 @@ its end, and take the same eases and graph editor as other controls.
 
 ### In the timeline
 
-**L** shows the layer volume row under the selected clip's Sound or Music
-layer, or under every such layer when nothing is selected; pressing it
-again hides it. The layer's disclosure arrow does the same. Video layers
-have no volume row.
+**L** shows volume: each clip's as a line across its block, mute at the
+bottom and +6 dB at the top with a faint line at 0 dB, and a Sound or Music
+layer's as a row under it. It acts on the selected clip's layer, or on every
+layer with sound when nothing is selected; pressing it again hides it. A
+layer's disclosure arrow shows or hides its row. Video layers have no volume
+row, only the lines.
 
 The row's label column holds the stopwatch, the level (click it to type
 decibels; arithmetic works), a fader, and the keyframe buttons. Its lane
@@ -102,8 +104,6 @@ are clamped on load.
 ## Not implemented yet
 
 - Pan.
-- The line across each clip block for clip volume, and the clip volume row
-  in the effects panel (see [effects.md](effects.md#volume)).
 - Dragging the level line up and down in the lane; levels are set in the
   field or with the fader.
 - Audio fades under transitions.

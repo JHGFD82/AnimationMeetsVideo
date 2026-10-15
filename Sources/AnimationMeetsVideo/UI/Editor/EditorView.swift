@@ -69,6 +69,7 @@ struct EditorView: View {
         // `DesignSystem`.
         .preferredColorScheme(.dark)
         .tint(Design.accent)
+        .environment(\.projectHistory, history)
         .onChange(of: project.id) { _, _ in
             activeTimelineID = project.rootTimelineID
             selection = nil
@@ -103,6 +104,7 @@ struct EditorView: View {
     private func connectHistory() {
         history.undoManager = undoManager
         history.restore = { project = $0 }
+        history.current = { project }
     }
 
     /// Undo and redo can remove the timeline or clip the view was pointing at.
