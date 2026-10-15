@@ -60,6 +60,7 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
 enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     case transform
     case blending
+    case color
 
     var id: Self { self }
 
@@ -67,12 +68,13 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .transform: "Transform"
         case .blending: "Blending"
+        case .color: "Color"
         }
     }
 
     var category: EffectCategory {
         switch self {
-        case .transform, .blending: .foundations
+        case .transform, .blending, .color: .foundations
         }
     }
 
@@ -80,6 +82,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .transform: "arrow.up.left.and.down.right.and.arrow.up.right.and.down.left"
         case .blending: "circle.lefthalf.filled.righthalf.striped.horizontal"
+        case .color: "slider.horizontal.3"
         }
     }
 
@@ -88,6 +91,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .transform: [.position, .scale, .rotation, .opacity]
         case .blending: [.mode, .amount]
+        case .color: [.exposure, .contrast, .saturation, .temperature, .tint, .lift, .gamma, .gain]
         }
     }
 }
@@ -96,6 +100,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
 enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case position, scale, rotation, opacity
     case mode, amount
+    case exposure, contrast, saturation, temperature, tint, lift, gamma, gain
 
     var id: Self { self }
 
@@ -107,6 +112,14 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .opacity: "Opacity"
         case .mode: "Mode"
         case .amount: "Amount"
+        case .exposure: "Exposure"
+        case .contrast: "Contrast"
+        case .saturation: "Saturation"
+        case .temperature: "Temperature"
+        case .tint: "Tint"
+        case .lift: "Lift"
+        case .gamma: "Gamma"
+        case .gain: "Gain"
         }
     }
 
@@ -115,6 +128,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .position, .scale, .rotation, .opacity: .transform
         case .mode, .amount: .blending
+        case .exposure, .contrast, .saturation, .temperature, .tint, .lift, .gamma, .gain: .color
         }
     }
 
@@ -127,6 +141,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .position: ["Δx", "Δy"]
         case .scale: ["x", "y"]
         case .mode: []
+        case .lift, .gamma, .gain: ["All", "Red", "Green", "Blue"]
         default: [name]
         }
     }
@@ -136,8 +151,10 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .position: [0, 0]
         case .scale: [100, 100]
-        case .rotation: [0]
-        case .opacity, .amount: [100]
+        case .rotation, .exposure, .temperature, .tint: [0]
+        case .opacity, .amount, .contrast, .saturation: [100]
+        case .lift: [0, 0, 0, 0]
+        case .gamma, .gain: [1, 1, 1, 1]
         case .mode: []
         }
     }
@@ -145,27 +162,46 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     var unit: String {
         switch self {
         case .position: " px"
-        case .scale, .opacity, .amount: "%"
+        case .scale, .opacity, .amount, .contrast, .saturation: "%"
         case .rotation: "°"
-        case .mode: ""
+        case .exposure: " stops"
+        case .mode, .temperature, .tint, .lift, .gamma, .gain: ""
         }
     }
 
     /// How far one point of dragging a value moves it: a pixel, a percent,
-    /// a degree.
-    var dragStep: Double { 1 }
+    /// a degree, a tenth of a stop.
+    var dragStep: Double {
+        switch self {
+        case .exposure: 0.1
+        case .lift, .gamma, .gain: 0.01
+        default: 1
+        }
+    }
+
+    /// What a component is limited to, if anything.
+    var range: ClosedRange<Double>? {
+        switch self {
+        case .opacity, .amount: 0...100
+        case .exposure: -20...20
+        case .contrast, .saturation: 0...1000
+        case .temperature, .tint: -100...100
+        case .lift: -1...1
+        case .gamma: 0.01...10
+        case .gain: 0...10
+        case .position, .scale, .rotation, .mode: nil
+        }
+    }
 
     /// A component limited to what the control allows.
     func clamped(_ component: Double) -> Double {
-        switch self {
-        case .opacity, .amount: min(max(component, 0), 100)
-        default: component
-        }
+        guard let range else { return component }
+        return min(max(component, range.lowerBound), range.upperBound)
     }
 
     /// A shown value with its unit.
     func label(_ shown: Double) -> String {
-        NumericExpression.format(shown, maxFractionDigits: 1) + unit
+        NumericExpression.format(shown, maxFractionDigits: dragStep < 1 ? 2 : 1) + unit
     }
 }
 

@@ -403,7 +403,7 @@ enum CompositionExporter {
 
             for clip in clips {
                 func stack(of clip: TimelineClip, edges: EdgeTransitions? = nil) -> ClipStack {
-                    ClipStack(clip: clip, center: center, shift: offset, edges: edges)
+                    ClipStack(clip: clip, center: center, shift: offset, edges: edges, colorSpace: timeline.colorSpace)
                 }
                 // The clip's volume counts in its source time.
                 let clipVolume = VolumeStage(id: clip.id, shift: CMTimeAdd(offset, CMTimeSubtract(clip.startOffset, clip.trimStart)))
@@ -602,8 +602,8 @@ enum CompositionExporter {
                     return overlap.isValid && overlap.duration > .zero
                 }
             }
-            let blends = clips.contains { clip in clip.everyClip.contains { $0.stack.resolve(atRoot: whole.start).blends } }
-            let needsRender = whole.duration >= frame && (leaves.count > 1 || animated || blends)
+            let changesPixels = clips.contains { clip in clip.everyClip.contains { $0.stack.resolve(atRoot: whole.start).changesPixels } }
+            let needsRender = whole.duration >= frame && (leaves.count > 1 || animated || changesPixels)
 
             // A single picture with nothing done to it and no fitting is the
             // stretch's frames as they are.
@@ -674,6 +674,10 @@ enum CompositionExporter {
                     case .place(let m, let opacity): text += "p \(matrix(m)) \(number(opacity))"
                     case .mark(let id): text += "m \(id.uuidString)"
                     case .blend(let mode, let amount, let against): text += "b \(mode.rawValue) \(number(amount)) \(against?.uuidString ?? "-")"
+                    case .color(let ops):
+                        text += "g \(clip.stack.colorSpace.rawValue) " + ops.map { op in
+                            "\(op.kind.rawValue):" + (0..<4).map { number(Double(op.value[$0])) }.joined(separator: ",")
+                        }.joined(separator: " ")
                     }
                     text += " "
                 }

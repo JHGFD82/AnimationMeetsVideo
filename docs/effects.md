@@ -682,7 +682,21 @@ In order, each step usable on its own:
    below shows "Unavailable" and the step does nothing (dimming and notes
    come with step 6). A stretch with a Blending step is rendered in the
    background like other costly stretches.
-5. **Color**, with its working spaces.
+5. **Color** (done), with its working spaces. One Metal kernel
+   (`ColorKernels`) grades a run of Color steps in the order listed,
+   converting between encoded values, linear light and the log curve only
+   when a step needs a different one. Linear light is scaled so 1.0 is
+   reference white (100% on Rec. 709, 203 nits on PQ, a 75% signal on HLG)
+   and the log curve is ACEScct's. Exposure is in stops, Temperature and Tint
+   run -100...100 (up to half a stop of red against blue, and of green
+   against red and blue), Contrast and Saturation are percentages, and Lift,
+   Gamma and Gain have four values (all, then red, green and blue). Contrast
+   pivots about mid gray; Lift adds to the blacks, fading to nothing at white
+   (the log curve's value for 1.0); Gamma bends the tones between them. A run
+   of Position, Scale, Rotation, Opacity and Color steps is one move and
+   one grade, since neither depends on the other. Checked against a
+   double-precision restatement of the math in each space, and for the same
+   light giving the same result in every space.
 6. **Reading aids**: dimming, thumbnails, Show Up to Here.
 7. **Pushing transforms into nested timelines.**
 8. **Adjustment layers** with reach.

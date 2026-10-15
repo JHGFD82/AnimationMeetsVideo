@@ -32,7 +32,7 @@ struct FoldedPlacement: Equatable {
         case .opacity:
             guard let percent = values.first else { return }
             opacity *= min(max(percent / 100, 0), 1)
-        case .mode, .amount:
+        default:
             break
         }
     }
@@ -61,6 +61,8 @@ enum ResolvedStep: Equatable, Sendable {
     /// Blends the picture with the backdrop, or with the picture kept at
     /// the mark `against`. `amount` is 0...1.
     case blend(mode: BlendMode, amount: Double, against: UUID?)
+    /// Grades the picture's color, a run of Color steps in the order listed.
+    case color([ColorOp])
 }
 
 enum StackFolding {
@@ -84,14 +86,22 @@ enum StackFolding {
     static func steps(effects: [Effect], anchorPoint: AnimatedValue<Vector2>, at time: CMTime, center: CGPoint) -> [ResolvedStep] {
         let offset = anchorPoint.value(at: time)
         var placement = FoldedPlacement(anchor: CGPoint(x: center.x + offset.x, y: center.y + offset.y))
+        var colors: [ColorOp] = []
         var steps: [ResolvedStep] = []
-        // The placement so far becomes a step; the anchor keeps its place
-        // in the frame, so what follows turns about it as before.
+        // What has built up becomes steps; the anchor keeps its place in the
+        // frame, so what follows turns about it as before. Moving a picture
+        // and grading its color don't depend on each other, so a run of both
+        // is one move and one grade whatever order they were listed in.
         func flush() {
-            guard placement.matrix != .identity || placement.opacity != 1 else { return }
-            steps.append(.place(matrix: placement.matrix, opacity: placement.opacity))
-            placement.matrix = .identity
-            placement.opacity = 1
+            if placement.matrix != .identity || placement.opacity != 1 {
+                steps.append(.place(matrix: placement.matrix, opacity: placement.opacity))
+                placement.matrix = .identity
+                placement.opacity = 1
+            }
+            if !colors.isEmpty {
+                steps.append(.color(colors))
+                colors = []
+            }
         }
         let targets = Set(effects.compactMap { $0.kind == .blending && $0.enabled ? $0.against : nil })
 
@@ -105,6 +115,10 @@ enum StackFolding {
             case .transform:
                 for control in effect.controls {
                     placement.apply(control, movesAnchor: effect.movesAnchor, at: time)
+                }
+            case .color:
+                for control in effect.controls where control.enabled && !control.isNoOp {
+                    if let op = ColorOp(control, at: time) { colors.append(op) }
                 }
             case .blending:
                 guard let mode = effect.control(.mode), mode.enabled, mode.blendMode != .normal else { continue }

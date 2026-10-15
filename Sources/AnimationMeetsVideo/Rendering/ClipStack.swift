@@ -20,18 +20,23 @@ struct ClipStack: @unchecked Sendable {
     var sourceShift: CMTime = .zero
     /// The clip's transitions, in its timeline's time.
     var edges: EdgeTransitions?
+    /// The color space of the timeline the clip is in, which Color steps
+    /// convert from and back to.
+    var colorSpace = ProjectColorSpace.rec709
 
-    init(clip: TimelineClip, center: CGPoint, shift: CMTime, edges: EdgeTransitions? = nil) {
+    init(clip: TimelineClip, center: CGPoint, shift: CMTime, edges: EdgeTransitions? = nil, colorSpace: ProjectColorSpace = .rec709) {
         self.init(
             effects: clip.effects, anchorPoint: clip.anchorPoint, center: center, shift: shift,
-            sourceShift: CMTimeSubtract(clip.startOffset, clip.trimStart), edges: edges
+            sourceShift: CMTimeSubtract(clip.startOffset, clip.trimStart), edges: edges, colorSpace: colorSpace
         )
     }
 
     init(
         effects: [Effect] = [], anchorPoint: AnimatedValue<Vector2> = AnimatedValue(.zero), center: CGPoint = .zero,
-        shift: CMTime = .zero, sourceShift: CMTime = .zero, edges: EdgeTransitions? = nil
+        shift: CMTime = .zero, sourceShift: CMTime = .zero, edges: EdgeTransitions? = nil,
+        colorSpace: ProjectColorSpace = .rec709
     ) {
+        self.colorSpace = colorSpace
         self.effects = effects
         self.anchorPoint = anchorPoint
         self.center = center
@@ -118,8 +123,14 @@ struct ResolvedClip: Equatable {
         return (matrix, opacity)
     }
 
-    /// Whether any step reads a picture other than the clip's own.
-    var blends: Bool {
-        steps.contains { if case .blend = $0 { true } else { false } }
+    /// Whether any step works on the picture's pixels, which costs more than
+    /// moving it: blending and grading.
+    var changesPixels: Bool {
+        steps.contains {
+            switch $0 {
+            case .blend, .color: true
+            case .place, .mark: false
+            }
+        }
     }
 }

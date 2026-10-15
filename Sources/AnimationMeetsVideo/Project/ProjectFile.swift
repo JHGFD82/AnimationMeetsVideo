@@ -423,10 +423,10 @@ extension ProjectFile {
         }
 
         func control(_ kind: ControlKind) -> JSONObjectShape {
+            let count = kind.defaultValues.count
             let value: JSONShape = switch kind {
-            case .position, .scale: .numbers(count: 2)
             case .mode: .choice(BlendMode.allCases.map(\.rawValue), noun: "blend mode")
-            default: .number
+            default: count > 1 ? .numbers(count: count) : .number
             }
             var fields: [O.Field] = [
                 .required("id", .uuid), .required("kind", .string), .optional("enabled", .bool),
@@ -447,6 +447,7 @@ extension ProjectFile {
             switch kind {
             case .transform: fields.append(.optional("movesAnchor", .bool))
             case .blending: fields.append(.optional("against", .uuid))
+            case .color: break
             }
             let controls = Dictionary(uniqueKeysWithValues: kind.controlKinds.map { ($0.rawValue, control($0)) })
             fields.append(.required("controls", .array(.tagged(key: "kind", noun: "control kind", controls))))

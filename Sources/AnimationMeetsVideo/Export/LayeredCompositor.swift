@@ -246,6 +246,13 @@ struct Drawing {
             case .mark(let id):
                 settleOpacity()
                 kept[id] = picture
+            case .color(let ops):
+                // Grading doesn't depend on where a pixel is, so it doesn't
+                // wait for the opacity either.
+                let canvas = canvasRect(of: frameSize)
+                if let graded = ColorProcessor.grade(picture, ops, in: clip.stack.colorSpace, over: picture.extent.intersection(canvas)) {
+                    picture = graded
+                }
             case .blend(let mode, let amount, let against):
                 settleOpacity()
                 let backdrop: CIImage
@@ -255,8 +262,7 @@ struct Drawing {
                 } else {
                     backdrop = backdropInOwnFrame
                 }
-                let canvas = CGRect(x: 0, y: 0, width: frameSize.width * scale.width, height: frameSize.height * scale.height)
-                    .insetBy(dx: -canvas(margin: canvasMargin, of: frameSize).width, dy: -canvas(margin: canvasMargin, of: frameSize).height)
+                let canvas = canvasRect(of: frameSize)
                 var region = picture.extent.intersection(canvas)
                 if against != nil { region = region.union(backdrop.extent.intersection(canvas)) }
                 if let blended = BlendProcessor.blend(
@@ -299,10 +305,11 @@ struct Drawing {
         return picture.composited(over: output)
     }
 
-    /// How far past the frame, in output pixels, the canvas reaches on
-    /// each side.
-    private func canvas(margin: Double, of frameSize: CGSize) -> CGSize {
-        CGSize(width: frameSize.width * scale.width * margin, height: frameSize.height * scale.height * margin)
+    /// The frame and the margin round it that pictures are kept in, in
+    /// output pixels.
+    private func canvasRect(of frameSize: CGSize) -> CGRect {
+        CGRect(x: 0, y: 0, width: frameSize.width * scale.width, height: frameSize.height * scale.height)
+            .insetBy(dx: -frameSize.width * scale.width * canvasMargin, dy: -frameSize.height * scale.height * canvasMargin)
     }
 
     /// Flips between top-left and bottom-left origins in a frame

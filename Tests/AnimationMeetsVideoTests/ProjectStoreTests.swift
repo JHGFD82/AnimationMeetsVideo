@@ -85,8 +85,13 @@ private struct Sandbox {
         blend.controls[1].setComponent(0, to: 40, at: .zero)
         blend.controls[1].enabled = false
 
+        var grade = Effect(kind: .color)
+        grade.controls[0].number = AnimatedValue(ComponentValue(values: [0.5]))
+        grade.controls[5].number = AnimatedValue(ComponentValue(values: [0.05, 0, 0.02, 0]))
+        grade.controls[6].number.setAnimated(true, at: .zero)
+        grade.controls[6].number.set(ComponentValue(values: [1.2, 1, 1, 0.9]), at: CMTime(value: 2, timescale: 1))
         project.editClip(clipID, in: timelineID) {
-            $0.effects = [move, blend]
+            $0.effects = [move, blend, grade]
             $0.anchorPoint.setAnimated(true, at: .zero)
             $0.anchorPoint.set(Vector2(x: 12, y: -4), at: CMTime(value: 2, timescale: 1))
             $0.volume.set(-6, at: .zero)
@@ -1102,6 +1107,16 @@ private struct Sandbox {
     @Test func aMissingRequiredFieldIsNamed() async throws {
         let message = try await loadingMessage { editClip(&$0) { $0["id"] = nil } }
         #expect(message == "The project can't be opened. Missing \"id\" at timelines[0].layers[0].clips[0].")
+    }
+
+    @Test func aColorControlWithTheWrongNumberOfChannelsIsRejected() async throws {
+        let message = try await loadingMessage { json in
+            editEffect(&json, 0) { effect in
+                effect["kind"] = "color"
+                effect["controls"] = [["id": UUID().uuidString, "kind": "lift", "value": [0.1, 0.2]]]
+            }
+        }
+        #expect(message == "The project can't be opened. Expected a list of 4 numbers at timelines[0].layers[0].clips[0].effects[0].controls[0].value.")
     }
 
     @Test func aControlNeedsAValueOrKeyframes() async throws {

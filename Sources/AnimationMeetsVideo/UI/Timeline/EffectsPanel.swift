@@ -421,7 +421,7 @@ struct EffectsPanel: View {
                     components: control.values(at: c.sourceNow),
                     unit: control.kind.unit,
                     dragStep: control.kind.dragStep,
-                    dragRange: { _ in control.kind == .opacity || control.kind == .amount ? 0...100 : nil },
+                    dragRange: { _ in control.kind.range },
                     isAnimated: control.isAnimated,
                     isSelected: isSelected,
                     keyframeTimes: control.number.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
