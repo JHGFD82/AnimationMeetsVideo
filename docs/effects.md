@@ -167,11 +167,18 @@ timeline into an image of its own.
   run of Opacity steps into one factor. The picture is sampled once at the
   end of the run, from the full-size source, so fifty Transform effects
   cost no more than one.
-- **Pixel steps sample.** Blending, Color and later effects draw an
-  intermediate image on the timeline frame's pixel grid (at the viewer's
-  size while previewing). Scaling to 10%, blurring and scaling back up looks
-  soft. That's what the stack asks for, and the panel's thumbnails make it
-  visible.
+- **Per-pixel steps don't sample either.** Blending, Color and Opacity
+  change each pixel on its own, so moving a transform past them gives the
+  same picture. Core Image evaluates the whole chain lazily: it maps each
+  output pixel back through every step to the source and fuses per-pixel
+  steps into as few GPU passes as it can. Scaling to 10%, color correcting
+  and scaling back up stays sharp. A Blending step reads the backdrop where
+  the pixel was at that step, which the same mapping gives.
+- **Neighborhood steps sample.** Effects that read the pixels around each
+  one (a blur, a glow, a sharpen) draw an intermediate image on the
+  timeline frame's pixel grid (at the viewer's size while previewing).
+  Scaling to 10%, blurring and scaling back up looks soft. That's what the
+  stack asks for, and the panel's thumbnails make it visible.
 - **Transforms are pushed into nested timelines.** A nested timeline scaled
   up 300% is drawn at that size, with the matrix applied to each layer
   inside, instead of drawing it at 100% and enlarging the result. This is
@@ -181,8 +188,9 @@ timeline into an image of its own.
   come, are drawn at their final size the same way.
 - **The canvas has an edge.** Intermediate images keep pixels moved off the
   frame, so a later step can bring them back, up to a margin around the
-  frame (one frame width and height on each side to start with). Folded
-  transforms have no such limit, since they aren't drawn until the end.
+  frame (one frame width and height on each side to start with). Chains
+  without a neighborhood step have no such limit, since nothing is drawn
+  until the end.
 
 ### One compositor
 
