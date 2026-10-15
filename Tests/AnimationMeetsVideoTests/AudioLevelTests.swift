@@ -156,3 +156,11 @@ import Testing
         #expect(meter.reading(at: 5) == .silent)
     }
 }
+
+@Suite struct MixLevelMeterInvalidTimeTests {
+    @Test func aPlayerWithNoValidTimeReadsAsSilent() {
+        let meter = MixLevelMeter()
+        #expect(meter.reading(at: .nan) == .silent)
+        #expect(meter.reading(at: .infinity) == .silent)
+    }
+}
