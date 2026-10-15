@@ -219,6 +219,12 @@ private final class TrackHost {
     }
 }
 
+/// A picture an effect takes, on its way to being an `InputDraw`.
+private enum BuildInput {
+    case track(Placement, base: CGAffineTransform)
+    case group(frameSize: CGSize, toOuter: CGAffineTransform, children: [BuildNode])
+}
+
 /// A clip on its way to being a `DrawClip`, once the composition's tracks
 /// exist.
 private final class BuildNode {
@@ -236,13 +242,32 @@ private final class BuildNode {
     let owner: UUID
     /// The layer of its timeline the clip is on.
     let layerID: UUID
+    /// The pictures its effects take, by the ID of the effect.
+    let inputs: [UUID: BuildInput]
 
-    init(content: Content, stack: ClipStack, range: CMTimeRange, owner: UUID, layerID: UUID) {
+    init(content: Content, stack: ClipStack, range: CMTimeRange, owner: UUID, layerID: UUID, inputs: [UUID: BuildInput] = [:]) {
         self.content = content
         self.stack = stack
         self.range = range
         self.owner = owner
         self.layerID = layerID
+        self.inputs = inputs
+    }
+
+    /// The inputs, drawn from tracks that now exist; one the file has no
+    /// frames for is left out.
+    func frozenInputs() -> [UUID: InputDraw] {
+        inputs.compactMapValues { input -> InputDraw? in
+            switch input {
+            case .track(let placement, let base):
+                guard let range = placement.drawRange else { return nil }
+                return InputDraw.track(TrackCopy(trackID: placement.trackID, range: range, strength: 1), base: base)
+            case .group(let frameSize, let toOuter, let children):
+                let drawn = children.compactMap { $0.frozen() }
+                guard !drawn.isEmpty else { return nil }
+                return InputDraw.group(GroupDraw(frameSize: frameSize, toOuter: toOuter, passThrough: false, children: drawn))
+            }
+        }
     }
 
     /// Nil for a picture the file has no frames for.
@@ -265,12 +290,12 @@ private final class BuildNode {
                     echoes: extras.echoes.compactMap { copy($0.placement, $0.strength) },
                     trails: extras.trails.compactMap { copy($0.placement, $0.strength) }
                 )),
-                stack: stack, range: range, owner: owner, layerID: layerID
+                stack: stack, range: range, owner: owner, layerID: layerID, inputs: frozenInputs()
             )
         case .adjustment(let reachedLayerIDs, let reachesAll):
             return DrawClip(
                 content: .adjustment(AdjustmentDraw(reachedLayerIDs: reachedLayerIDs, reachesAll: reachesAll)),
-                stack: stack, range: range, owner: owner, layerID: layerID
+                stack: stack, range: range, owner: owner, layerID: layerID, inputs: frozenInputs()
             )
         case .group(let frameSize, let toOuter, let passThrough, let children):
             let drawn = children.compactMap { $0.frozen() }
@@ -280,7 +305,7 @@ private final class BuildNode {
                     frameSize: frameSize, toOuter: toOuter, passThrough: passThrough, children: drawn,
                     pushesTransforms: !drawn.contains { $0.everyClip.contains { $0.stack.dependsOnPixelSize } }
                 )),
-                stack: stack, range: range, owner: owner, layerID: layerID
+                stack: stack, range: range, owner: owner, layerID: layerID, inputs: frozenInputs()
             )
         }
     }
@@ -443,6 +468,7 @@ enum CompositionExporter {
         offset: CMTime,
         outerVolume: [VolumeStage],
         rootClipID: UUID?,
+        silent: Bool = false,
         hosts: inout [TrackHost]
     ) async throws -> [BuildNode] {
         guard !visiting.contains(timelineID) else {
@@ -511,6 +537,42 @@ enum CompositionExporter {
                 guard visible.isValid, visible.duration > .zero else { continue }
                 let owner = rootClipID ?? clip.id
 
+                // The pictures its effects take come from the browser, not
+                // the timeline: footage on tracks of its own, or a nested
+                // timeline drawn as one picture.
+                var inputs: [UUID: BuildInput] = [:]
+                for effect in clip.effects where effect.enabled && effect.kind.takesInput {
+                    guard let input = effect.input else { continue }
+                    switch input.source {
+                    case .asset(let assetID):
+                        if let (placement, base) = try await inputPlacement(
+                            assetID, input: input, clip: clip, visible: visible,
+                            project: project, frameSize: timeline.frameSize, offset: offset
+                        ) {
+                            copyHosts.append(TrackHost(placements: [placement]))
+                            inputs[effect.id] = .track(placement, base: base)
+                        }
+                    case .timeline(let nestedID):
+                        guard let nested = project.timeline(id: nestedID) else { continue }
+                        guard !visiting.contains(nestedID) else { throw CompositionError.cyclicTimeline }
+                        var inner: [TrackHost] = []
+                        let children = try await flatten(
+                            project: project, timelineID: nestedID, visiting: visiting,
+                            window: CMTimeRange(
+                                start: CMTimeAdd(input.offset, CMTimeSubtract(visible.start, clip.startOffset)), duration: visible.duration
+                            ),
+                            offset: CMTimeAdd(offset, CMTimeSubtract(clip.startOffset, input.offset)),
+                            outerVolume: [], rootClipID: owner, silent: true, hosts: &inner
+                        )
+                        nestedHosts += inner
+                        if !children.isEmpty {
+                            inputs[effect.id] = .group(
+                                frameSize: nested.frameSize, toOuter: fitTransform(from: nested.frameSize, to: timeline.frameSize), children: children
+                            )
+                        }
+                    }
+                }
+
                 switch clip.source {
                 case .media(let mediaID):
                     let main: (Placement, CGAffineTransform)?
@@ -528,6 +590,7 @@ enum CompositionExporter {
                         )
                     }
                     if let (placement, base) = main {
+                        if silent { placement.includesAudio = false }
                         // A retimed clip's sound is silent, or played at its
                         // new speed with or without its pitch changing.
                         if clip.isRetimed, clip.time.sound == .mute { placement.includesAudio = false }
@@ -566,7 +629,10 @@ enum CompositionExporter {
                                     (copy(CMTimeMultiply(trails.delay, multiplier: Int32(k))), pow(trails.decay, Double(k)))
                                 }
                             }
-                            ownNodes.append(BuildNode(content: .media(placement, base: base, extras: extras), stack: clipStack, range: .invalid, owner: owner, layerID: layer.id))
+                            ownNodes.append(BuildNode(
+                                content: .media(placement, base: base, extras: extras), stack: clipStack, range: .invalid,
+                                owner: owner, layerID: layer.id, inputs: inputs
+                            ))
                         }
                     }
                     // Where this clip meets its neighbor at a cut, the
@@ -619,6 +685,7 @@ enum CompositionExporter {
                         offset: CMTimeAdd(offset, shift),
                         outerVolume: [clipVolume] + volume,
                         rootClipID: owner,
+                        silent: silent,
                         hosts: &inner
                     )
                     nestedHosts += inner
@@ -631,7 +698,8 @@ enum CompositionExporter {
                         stack: clipStack,
                         range: CMTimeRange(start: CMTimeAdd(visible.start, offset), duration: visible.duration),
                         owner: owner,
-                        layerID: layer.id
+                        layerID: layer.id,
+                        inputs: inputs
                     ))
                 case .adjustment:
                     // No picture: its stack is applied to the layers it
@@ -642,7 +710,8 @@ enum CompositionExporter {
                         stack: clipStack,
                         range: CMTimeRange(start: CMTimeAdd(visible.start, offset), duration: visible.duration),
                         owner: owner,
-                        layerID: layer.id
+                        layerID: layer.id,
+                        inputs: inputs
                     ))
                 }
             }
@@ -784,6 +853,15 @@ enum CompositionExporter {
                 case .adjustment:
                     break
                 }
+                for input in clip.inputs.values {
+                    switch input {
+                    case .track(let copy, _):
+                        breakpoints.append(copy.range.start)
+                        breakpoints.append(copy.range.end)
+                    case .group(let group):
+                        collect(group.children)
+                    }
+                }
             }
         }
         collect(tree)
@@ -905,6 +983,7 @@ enum CompositionExporter {
                     switch step {
                     case .place(let m, let opacity): text += "p \(matrix(m)) \(number(opacity))"
                     case .mark(let id): text += "m \(id.uuidString)"
+                    case .matte(let effect, let mode, let amount): text += "k \(effect.uuidString) \(mode.rawValue) \(number(amount))"
                     case .blend(let mode, let amount, let against): text += "b \(mode.rawValue) \(number(amount)) \(against?.uuidString ?? "-")"
                     case .color(let ops):
                         text += "g \(clip.stack.colorSpace.rawValue) " + ops.map { op in
@@ -1090,5 +1169,59 @@ private extension Placement.Piece {
             duration == file.duration ? CMTimeAdd(at, skipped) : CMTimeAdd(at, CMTimeMultiplyByFloat64(skipped, multiplier: ratio)),
             duration == file.duration ? kept.duration : CMTimeMultiplyByFloat64(kept.duration, multiplier: ratio)
         )
+    }
+}
+
+extension CompositionExporter {
+    /// The footage an effect takes, for the stretch of the timeline `visible`
+    /// where its clip is: it starts with the clip, `input.offset` into itself,
+    /// and plays at its own speed. At its end it holds its last frame, or
+    /// plays again from its start when it loops. Nil when the asset has no
+    /// file or no pictures.
+    fileprivate static func inputPlacement(
+        _ assetID: UUID,
+        input: EffectInput,
+        clip: TimelineClip,
+        visible: CMTimeRange,
+        project: EditingProject,
+        frameSize: CGSize,
+        offset: CMTime
+    ) async throws -> (Placement, CGAffineTransform)? {
+        guard let media = project.mediaClip(id: assetID), media.kind == .video, let url = media.url else { return nil }
+        let info = try await MediaTrackCache.shared.info(for: url)
+        guard info.video != nil, media.duration > .zero else { return nil }
+
+        let frame = Timeline.frameDuration(for: media.frameRate > 0 ? media.frameRate : 24)
+        let length = media.duration
+        var position = CMTimeAdd(input.offset, CMTimeSubtract(visible.start, clip.startOffset))
+        var left = visible.duration
+        var at = CMTimeAdd(visible.start, offset)
+        var pieces: [Placement.Piece] = []
+        if input.loops {
+            position = CMTime(seconds: position.seconds.truncatingRemainder(dividingBy: length.seconds), preferredTimescale: 240_000)
+        }
+        while left > .zero, pieces.count < 4000 {
+            if position < length {
+                let span = CMTimeMinimum(left, CMTimeSubtract(length, position))
+                pieces.append(Placement.Piece(
+                    file: CMTimeRange(start: media.fileTime(forSourceTime: position), duration: span), at: at, duration: span
+                ))
+                left = CMTimeSubtract(left, span)
+                at = CMTimeAdd(at, span)
+                position = CMTimeAdd(position, span)
+            } else if !input.loops {
+                // Past the end: its last frame, held for what remains.
+                let last = CMTimeMaximum(.zero, CMTimeSubtract(length, frame))
+                pieces.append(Placement.Piece(
+                    file: CMTimeRange(start: media.fileTime(forSourceTime: last), duration: frame), at: at, duration: left
+                ))
+                left = .zero
+            } else {
+                position = .zero
+            }
+        }
+        guard !pieces.isEmpty else { return nil }
+        let base = info.orientedTransform.concatenating(fitTransform(from: info.orientedSize, to: frameSize))
+        return (Placement(info: info, pieces: pieces, includesVideo: true, includesAudio: false), base)
     }
 }

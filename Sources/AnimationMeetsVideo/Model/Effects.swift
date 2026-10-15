@@ -46,14 +46,58 @@ enum BlendMode: String, CaseIterable, Identifiable, Sendable {
 /// A group of effects in the library.
 enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
     case foundations
+    case mattes
 
     var id: Self { self }
 
     var name: String {
         switch self {
         case .foundations: "Foundations"
+        case .mattes: "Mattes"
         }
     }
+}
+
+/// What a Matte takes from its picture to cut the clip with.
+enum MatteMode: String, CaseIterable, Identifiable, Sendable {
+    /// The clip shows where the picture is opaque.
+    case alpha
+    /// The clip shows where the picture is bright.
+    case luma
+    case invertedAlpha
+    case invertedLuma
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .alpha: "Alpha"
+        case .luma: "Luma"
+        case .invertedAlpha: "Inverted Alpha"
+        case .invertedLuma: "Inverted Luma"
+        }
+    }
+
+    var usesLuma: Bool { self == .luma || self == .invertedLuma }
+    var isInverted: Bool { self == .invertedAlpha || self == .invertedLuma }
+}
+
+/// A picture an effect takes besides the clip's: it comes from the browser,
+/// not the timeline, so it takes up no layer and belongs to the clip, as
+/// part of the effect's step. See docs/effects.md, "Inputs".
+struct EffectInput: Equatable, Sendable {
+    enum Source: Equatable, Sendable {
+        case asset(UUID)
+        case timeline(UUID)
+    }
+
+    var source: Source
+    /// Where in the input it is when the clip starts. A moving input plays
+    /// from the start of the clip.
+    var offset = CMTime.zero
+    /// Whether it plays again from its start at its end, rather than holding
+    /// its last frame.
+    var loops = false
 }
 
 /// The kinds of effect the library offers.
@@ -61,6 +105,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     case transform
     case blending
     case color
+    case matte
 
     var id: Self { self }
 
@@ -69,12 +114,14 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .transform: "Transform"
         case .blending: "Blending"
         case .color: "Color"
+        case .matte: "Matte"
         }
     }
 
     var category: EffectCategory {
         switch self {
         case .transform, .blending, .color: .foundations
+        case .matte: .mattes
         }
     }
 
@@ -83,8 +130,12 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .transform: "arrow.up.left.and.down.right.and.arrow.up.right.and.down.left"
         case .blending: "circle.lefthalf.filled.righthalf.striped.horizontal"
         case .color: "slider.horizontal.3"
+        case .matte: "circle.dashed.inset.filled"
         }
     }
+
+    /// Whether the effect takes a picture dragged from the browser.
+    var takesInput: Bool { self == .matte }
 
     /// Whether the picture it makes depends on the size it is drawn at, so a
     /// nested timeline holding it can't have its move pushed into its
@@ -92,7 +143,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     /// single pixels, or move them, don't.
     var dependsOnPixelSize: Bool {
         switch self {
-        case .transform, .blending, .color: false
+        case .transform, .blending, .color, .matte: false
         }
     }
 
@@ -102,6 +153,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .transform: [.position, .scale, .rotation, .opacity]
         case .blending: [.mode, .amount]
         case .color: [.exposure, .contrast, .saturation, .temperature, .tint, .lift, .gamma, .gain]
+        case .matte: [.matteMode, .amount]
         }
     }
 }
@@ -111,6 +163,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case position, scale, rotation, opacity
     case mode, amount
     case exposure, contrast, saturation, temperature, tint, lift, gamma, gain
+    case matteMode
 
     var id: Self { self }
 
@@ -121,6 +174,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .rotation: "Rotation"
         case .opacity: "Opacity"
         case .mode: "Mode"
+        case .matteMode: "Take"
         case .amount: "Amount"
         case .exposure: "Exposure"
         case .contrast: "Contrast"
@@ -137,20 +191,22 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     var effectKind: EffectKind {
         switch self {
         case .position, .scale, .rotation, .opacity: .transform
-        case .mode, .amount: .blending
+        case .mode: .blending
+        case .amount: .blending
+        case .matteMode: .matte
         case .exposure, .contrast, .saturation, .temperature, .tint, .lift, .gamma, .gain: .color
         }
     }
 
     /// Whether the control is a choice from a list rather than numbers.
-    var isChoice: Bool { self == .mode }
+    var isChoice: Bool { self == .mode || self == .matteMode }
 
     /// The names of its components, for a graph's legend.
     var componentNames: [String] {
         switch self {
         case .position: ["Δx", "Δy"]
         case .scale: ["x", "y"]
-        case .mode: []
+        case .mode, .matteMode: []
         case .lift, .gamma, .gain: ["All", "Red", "Green", "Blue"]
         default: [name]
         }
@@ -165,7 +221,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .opacity, .amount, .contrast, .saturation: [100]
         case .lift: [0, 0, 0, 0]
         case .gamma, .gain: [1, 1, 1, 1]
-        case .mode: []
+        case .mode, .matteMode: []
         }
     }
 
@@ -175,7 +231,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .scale, .opacity, .amount, .contrast, .saturation: "%"
         case .rotation: "°"
         case .exposure: " stops"
-        case .mode, .temperature, .tint, .lift, .gamma, .gain: ""
+        case .mode, .matteMode, .temperature, .tint, .lift, .gamma, .gain: ""
         }
     }
 
@@ -199,7 +255,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .lift: -1...1
         case .gamma: 0.01...10
         case .gain: 0...10
-        case .position, .scale, .rotation, .mode: nil
+        case .position, .scale, .rotation, .mode, .matteMode: nil
         }
     }
 
@@ -233,7 +289,11 @@ struct EffectControl: Identifiable, Equatable, Sendable {
         self.kind = kind
         self.enabled = enabled
         number = AnimatedValue(ComponentValue(values: kind.defaultValues))
-        choice = kind == .mode ? BlendMode.normal.rawValue : nil
+        switch kind {
+        case .mode: choice = BlendMode.normal.rawValue
+        case .matteMode: choice = MatteMode.alpha.rawValue
+        default: choice = nil
+        }
     }
 
     var isAnimated: Bool { number.isAnimated }
@@ -243,11 +303,17 @@ struct EffectControl: Identifiable, Equatable, Sendable {
         set { choice = newValue.rawValue }
     }
 
+    var matteMode: MatteMode {
+        get { choice.flatMap(MatteMode.init(rawValue:)) ?? .alpha }
+        set { choice = newValue.rawValue }
+    }
+
     /// True when the control changes nothing: it is off, or it holds its
     /// default throughout.
     var isNoOp: Bool {
         guard enabled else { return true }
-        if kind.isChoice { return blendMode == .normal }
+        if kind == .mode { return blendMode == .normal }
+        if kind == .matteMode { return false }
         let defaults = ComponentValue(values: kind.defaultValues)
         if number.isAnimated { return number.keyframes.allSatisfy { $0.value == defaults } }
         return number.value == defaults
@@ -296,6 +362,8 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// Blending: the effect whose input picture is blended with, or nil for
     /// the backdrop.
     var against: UUID?
+    /// For an effect that takes one: the picture dropped on it.
+    var input: EffectInput?
     var controls: [EffectControl]
 
     init(id: UUID = UUID(), kind: EffectKind, name: String? = nil, controls: [EffectControl]? = nil) {
@@ -318,6 +386,12 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// True when nothing in the effect changes the picture.
     var isNoOp: Bool {
         guard enabled else { return true }
+        if kind == .matte {
+            // Without a picture to cut with, or at 0%, nothing changes.
+            guard input != nil else { return true }
+            guard let amount = control(.amount) else { return false }
+            return amount.enabled && !amount.number.isAnimated && amount.number.value.values.first == 0
+        }
         if kind == .blending {
             // Without a mode there is nothing to blend, and at 0% the blend
             // isn't applied.

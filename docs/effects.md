@@ -212,6 +212,23 @@ footage gets replaced):
   encoding. On a timeline's stored values the same Contrast would look
   different on PQ than on HLG or Rec. 709.
 
+## Mattes
+
+The second category is **Mattes**, effects that take an input (see
+[Inputs](#inputs)). **Matte** cuts the clip with its input.
+
+- **Mode** picks what is read from the input: **Alpha** shows the clip
+  where the input is opaque, **Luma** where it is bright (Rec. 709 weights,
+  over black where the input has no picture), and **Inverted Alpha** and
+  **Inverted Luma** the opposite. Gray is a partial cut.
+- **Amount** mixes the cut in, 0% to 100%. At 0% the step does nothing.
+- The input is fitted into the frame and stays there. Outside its own
+  picture it is empty: transparent for Alpha, black for Luma.
+- Without an input, or when the input's media is missing, the effect does
+  nothing and is dimmed with a note in the stack.
+- Drawing: a Matte step ends a run of moves, like a Blending step, since it
+  needs the picture as it is at that point.
+
 ## How a clip is drawn
 
 For each frame, each clip goes through:
@@ -364,7 +381,7 @@ rendered in the background like everything else.
 Some effects take a second picture: a matte that cuts the clip, a map that
 displaces it, a source for a light wrap. That picture comes from the
 **browser**, not the timeline. It is dragged from the browser into the
-effect's drop zone in the effects panel. It can be a media clip, a still,
+effect's drop zone in the effects panel. It can be a media clip
 or a nested timeline, and it never takes up a layer: it belongs to the
 clip, as part of the step.
 
@@ -786,6 +803,16 @@ In order, each step usable on its own:
    the panel). Not yet drawn: Time (speed, blend, echo, sound) and trails on a
    nested timeline's clip, whose Time rows aren't offered; Optical Flow is
    shown as Blend (step 11)
-10. **Inputs**, with the first effect that takes one (a matte).
+10. **Inputs**, with the first effect that takes one (a matte) (done). The
+    Matte effect and its Mode and Amount; an input is footage or a nested
+    timeline dropped on the effect's drop zone, with Offset and Loop. Footage
+    gets a track of its own in the composition that starts with the clip
+    (holding its last frame, or looping), and a timeline is drawn as one
+    picture. The project file writes it as the effect's `input`
+    (`asset` or `timeline`, `offset`, `loops`), allowed only on effects that
+    take one. Missing footage leaves the effect dimmed and is reported
+    with the asset, and inputs count as uses of the media when it is
+    replaced. Not yet: stills are not a media kind, so an input is video
+    footage or a timeline
 11. **Speed ramps and Optical Flow.**
 12. **Copy, paste and presets**, with paste changes and the export check.

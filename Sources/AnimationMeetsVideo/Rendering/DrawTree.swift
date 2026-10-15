@@ -24,6 +24,25 @@ struct DrawClip: @unchecked Sendable {
     /// The layer of its timeline it is on, which an adjustment layer's
     /// reach is made of.
     var layerID = UUID()
+    /// The pictures its effects take, by the ID of the effect.
+    var inputs: [UUID: InputDraw] = [:]
+}
+
+/// A picture an effect takes besides the clip's.
+enum InputDraw: @unchecked Sendable {
+    /// Footage on a composition track, with the transform that orients it
+    /// and fits it into the frame of the timeline the clip is in.
+    case track(TrackCopy, base: CGAffineTransform)
+    /// A nested timeline, drawn as one picture.
+    case group(GroupDraw)
+
+    /// The tracks it reads.
+    var trackIDs: [CMPersistentTrackID] {
+        switch self {
+        case .track(let copy, _): [copy.trackID]
+        case .group(let group): group.children.flatMap(\.allTrackIDs)
+        }
+    }
 }
 
 /// An adjustment clip: no picture of its own, but a stack applied to the
@@ -118,15 +137,26 @@ extension DrawClip {
     /// groups cut down to the children that are.
     func pruned(to range: CMTimeRange) -> DrawClip? {
         guard self.range.start <= range.start, self.range.end >= range.end else { return nil }
+        var copy = self
+        // An input the stretch doesn't have throughout is left out, and
+        // the step that takes it does nothing.
+        copy.inputs = inputs.compactMapValues { input -> InputDraw? in
+            switch input {
+            case .track(let track, let base):
+                guard track.range.start <= range.start, track.range.end >= range.end else { return nil }
+                return InputDraw.track(track, base: base)
+            case .group(var group):
+                group.children = Self.assembled(group.children.compactMap { $0.pruned(to: range) })
+                return group.children.isEmpty ? nil : InputDraw.group(group)
+            }
+        }
         if case .media(let media) = content {
-            var copy = self
             copy.content = .media(media.covering(range))
             return copy
         }
-        guard case .group(var group) = content else { return self }
+        guard case .group(var group) = content else { return copy }
         group.children = Self.assembled(group.children.compactMap { $0.pruned(to: range) })
         guard !group.children.isEmpty else { return nil }
-        var copy = self
         copy.content = .group(group)
         return copy
     }
@@ -158,6 +188,16 @@ extension DrawClip {
         case .media(let media): [(self, media)]
         case .group(let group): group.children.flatMap(\.leaves)
         case .adjustment(let adjustment): adjustment.reached.flatMap(\.leaves)
+        }
+    }
+
+    /// Every track the clip and what is inside it read from.
+    var allTrackIDs: [CMPersistentTrackID] {
+        let own = inputs.values.flatMap(\.trackIDs)
+        switch content {
+        case .media(let media): return media.trackIDs + own
+        case .group(let group): return group.children.flatMap(\.allTrackIDs) + own
+        case .adjustment(let adjustment): return adjustment.reached.flatMap(\.allTrackIDs) + own
         }
     }
 

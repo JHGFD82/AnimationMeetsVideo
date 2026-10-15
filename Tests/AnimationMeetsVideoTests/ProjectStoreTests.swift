@@ -117,6 +117,26 @@ private struct Sandbox {
         #expect(restored.volume == saved.volume)
     }
 
+    @Test func roundTripKeepsAnEffectsInput() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, assetID) = sandbox.makeProject()
+        let timelineID = project.rootTimelineID
+        var plain = Effect(kind: .matte)
+        plain.input = EffectInput(source: .asset(assetID))
+        var shifted = Effect(kind: .matte)
+        shifted.controls[0].matteMode = .invertedAlpha
+        shifted.input = EffectInput(source: .timeline(timelineID), offset: CMTime(value: 1001, timescale: 24000), loops: true)
+        project.editClip(clipID, in: timelineID) { $0.effects = [plain, shifted] }
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        let restored = try #require(loaded.project.clipAndLayer(clipID, in: timelineID)?.clip)
+        #expect(restored.effects == [plain, shifted])
+        #expect(restored.effects[0].input?.loops == false && restored.effects[0].input?.offset == .zero)
+    }
+
     @Test func roundTripKeepsAdjustmentLayersAndTheirReach() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
@@ -1102,6 +1122,27 @@ private struct Sandbox {
             change(&effects[index])
             clip["effects"] = effects
         }
+    }
+
+    @Test func anInputOnAnEffectThatTakesNoneIsAnUnknownKey() async throws {
+        let message = try await loadingMessage { json in
+            editEffect(&json, 0) { $0["input"] = ["asset": UUID().uuidString] }
+        }
+        #expect(message == "The project can't be opened. Unknown key \"input\" at timelines[0].layers[0].clips[0].effects[0].")
+    }
+
+    @Test func aMatteInputNamingNothingIsRejected() async throws {
+        let message = try await loadingMessage { json in
+            editClip(&json) { clip in
+                let matte: [String: Any] = [
+                    "id": UUID().uuidString, "kind": "matte", "input": ["loops": true],
+                    "controls": [["id": UUID().uuidString, "kind": "matteMode", "value": "luma"]],
+                ]
+                clip["effects"] = [matte]
+            }
+        }
+        #expect(message.hasPrefix("The project can't be opened."))
+        #expect(message.contains("effects[0].input"))
     }
 
     @Test func aLayerTransformIsAnUnknownKey() async throws {

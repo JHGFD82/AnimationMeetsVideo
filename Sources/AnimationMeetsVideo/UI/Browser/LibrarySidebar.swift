@@ -85,7 +85,8 @@ struct LibrarySidebar: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(!project.canEmbed(timeline.id, into: activeTimelineID))
-                        .help("Embed into the active timeline")
+                        .help("Embed into the active timeline, or drag onto an effect that takes an input")
+                        .draggable(TimelineDragPayload(timelineID: timeline.id))
                     }
                 }
             }

@@ -365,6 +365,9 @@ struct EffectsPanel: View {
             if effect.kind == .blending {
                 againstRow(effect, c, effectDimmed: dimmed)
             }
+            if effect.kind.takesInput {
+                inputRow(effect, c, effectDimmed: dimmed)
+            }
         }
     }
 

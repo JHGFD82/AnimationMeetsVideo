@@ -63,6 +63,9 @@ enum ResolvedStep: Equatable, Sendable {
     case blend(mode: BlendMode, amount: Double, against: UUID?)
     /// Grades the picture's color, a run of Color steps in the order listed.
     case color([ColorOp])
+    /// Cuts the picture with the input of the effect with this ID. `amount`
+    /// is 0...1.
+    case matte(effect: UUID, mode: MatteMode, amount: Double)
 }
 
 enum StackFolding {
@@ -120,6 +123,16 @@ enum StackFolding {
                 for control in effect.controls where control.enabled && !control.isNoOp {
                     if let op = ColorOp(control, at: time) { colors.append(op) }
                 }
+            case .matte:
+                // Without a picture to cut with there is nothing to do.
+                guard effect.input != nil, let take = effect.control(.matteMode), take.enabled else { continue }
+                var amount = 1.0
+                if let control = effect.control(.amount), control.enabled, let percent = control.values(at: time).first {
+                    amount = min(max(percent / 100, 0), 1)
+                }
+                guard amount > 0 else { continue }
+                flush()
+                steps.append(.matte(effect: effect.id, mode: take.matteMode, amount: amount))
             case .blending:
                 guard let mode = effect.control(.mode), mode.enabled, mode.blendMode != .normal else { continue }
                 var amount = 1.0

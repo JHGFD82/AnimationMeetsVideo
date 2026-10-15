@@ -61,6 +61,14 @@ extension EditingProject {
         if passesThrough(clip), effect.kind != .transform {
             return EffectNote(text: "Pass Through can't apply this: it needs one combined picture.", dims: true)
         }
+        if effect.kind.takesInput {
+            guard let input = effect.input else {
+                return EffectNote(text: "Drop a picture from the browser onto this effect to cut the clip with.", dims: true)
+            }
+            if isMissing(input) {
+                return EffectNote(text: "The picture it takes is missing, so the clip is left as it is until it is found or replaced.", dims: true)
+            }
+        }
         if effect.kind == .blending {
             if !clip.effects.againstIsReachable(at: index) {
                 return EffectNote(text: "The effect it blends against is gone or below this step, so it does nothing until pointed elsewhere.", dims: true)

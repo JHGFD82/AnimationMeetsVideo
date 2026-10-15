@@ -340,6 +340,32 @@ struct ProjectFile: Codable {
         }
     }
 
+    /// The picture an effect takes: an asset or a timeline of the project,
+    /// where it starts, and whether it loops.
+    struct InputEntry: Codable {
+        var asset: UUID?
+        var timeline: UUID?
+        /// Absent while it starts at its own start.
+        var offset: TimeEntry?
+        /// Absent unless it loops.
+        var loops: Bool?
+
+        init(_ input: EffectInput) {
+            switch input.source {
+            case .asset(let id): asset = id
+            case .timeline(let id): timeline = id
+            }
+            offset = input.offset == .zero ? nil : TimeEntry(input.offset)
+            loops = input.loops ? true : nil
+        }
+
+        /// Nil for one that names neither, which loading has refused.
+        var input: EffectInput? {
+            guard let source: EffectInput.Source = asset.map({ .asset($0) }) ?? timeline.map({ .timeline($0) }) else { return nil }
+            return EffectInput(source: source, offset: offset?.time ?? .zero, loops: loops ?? false)
+        }
+    }
+
     /// One effect of a clip's stack. `kind` is an `EffectKind` name such as
     /// `"transform"`.
     struct EffectEntry: Codable {
@@ -354,6 +380,8 @@ struct ProjectFile: Codable {
         /// Blending only: the ID of the effect it blends against. Absent for
         /// the backdrop.
         var against: UUID?
+        /// For an effect that takes a picture, the one dropped on it.
+        var input: InputEntry?
         var controls: [ControlEntry]
 
         init(_ effect: Effect) {
@@ -363,6 +391,7 @@ struct ProjectFile: Codable {
             enabled = effect.enabled ? nil : false
             movesAnchor = effect.kind == .transform && !effect.movesAnchor ? false : nil
             against = effect.kind == .blending ? effect.against : nil
+            input = effect.kind.takesInput ? effect.input.map(InputEntry.init) : nil
             controls = effect.controls.map(ControlEntry.init)
         }
 
@@ -372,6 +401,7 @@ struct ProjectFile: Codable {
             effect.enabled = enabled ?? true
             effect.movesAnchor = movesAnchor ?? true
             effect.against = against
+            effect.input = input?.input
             return effect
         }
     }
@@ -504,6 +534,7 @@ extension ProjectFile {
             let count = kind.defaultValues.count
             let value: JSONShape = switch kind {
             case .mode: .choice(BlendMode.allCases.map(\.rawValue), noun: "blend mode")
+            case .matteMode: .choice(MatteMode.allCases.map(\.rawValue), noun: "matte mode")
             default: count > 1 ? .numbers(count: count) : .number
             }
             var fields: [O.Field] = [
@@ -526,6 +557,11 @@ extension ProjectFile {
             case .transform: fields.append(.optional("movesAnchor", .bool))
             case .blending: fields.append(.optional("against", .uuid))
             case .color: break
+            case .matte:
+                fields.append(.optional("input", .object(object([
+                    .optional("asset", .uuid), .optional("timeline", .uuid),
+                    .optional("offset", .time), .optional("loops", .bool),
+                ], oneOf: [["asset", "timeline"]]))))
             }
             let controls = Dictionary(uniqueKeysWithValues: kind.controlKinds.map { ($0.rawValue, control($0)) })
             fields.append(.required("controls", .array(.tagged(key: "kind", noun: "control kind", controls))))

@@ -132,6 +132,12 @@ struct EditingProject: Identifiable, Equatable {
                 if case .timeline(let nestedID) = clip.source {
                     collectNestedTimelineIDs(startingFrom: nestedID, visited: &visited)
                 }
+                // A timeline used as an effect's input is inside this one too.
+                for effect in clip.effects {
+                    if case .timeline(let inputID)? = effect.input?.source {
+                        collectNestedTimelineIDs(startingFrom: inputID, visited: &visited)
+                    }
+                }
             }
         }
     }

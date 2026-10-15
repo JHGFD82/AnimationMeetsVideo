@@ -40,7 +40,7 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
         self.canvasMargin = canvasMargin
         self.meter = meter
         self.options = options
-        requiredSourceTrackIDs = Set(clips.flatMap(\.leaves).flatMap(\.media.trackIDs)).sorted().map { NSNumber(value: $0) }
+        requiredSourceTrackIDs = Set(clips.flatMap(\.allTrackIDs)).sorted().map { NSNumber(value: $0) }
     }
 }
 
@@ -348,7 +348,7 @@ struct Drawing {
         // alpha, so consecutive moves stay one transform.
         picture = runStack(
             steps, on: picture, opacity: &opacity, backdrop: output, clip: clip, frame: frameSize,
-            inOutput: inOutput, placed: placed
+            start: start, inOutput: inOutput, placed: placed
         )
         func settleOpacity() {
             guard opacity != 1 else { return }
@@ -462,7 +462,7 @@ struct Drawing {
         var opacity = 1.0
         var adjusted = runStack(
             resolved.steps, on: with, opacity: &opacity, backdrop: with, clip: clip, frame: frameSize,
-            inOutput: inOutput, placed: placed
+            start: start, inOutput: inOutput, placed: placed
         )
         if let transition {
             adjusted = adjusted.transformed(by: inOutput(placed(transition.transform)))
@@ -500,15 +500,16 @@ struct Drawing {
     /// Opacity the steps ask for is left in `opacity` for the caller.
     private func runStack(
         _ steps: [ResolvedStep],
-        on start: CIImage,
+        on initial: CIImage,
         opacity: inout Double,
         backdrop: CIImage,
         clip: DrawClip,
         frame frameSize: CGSize,
+        start: CGAffineTransform,
         inOutput: (CGAffineTransform) -> CGAffineTransform,
         placed: (CGAffineTransform) -> CGAffineTransform
     ) -> CIImage {
-        var picture = start
+        var picture = initial
         var kept: [UUID: CIImage] = [:]
         func settleOpacity() {
             guard opacity != 1 else { return }
@@ -530,6 +531,10 @@ struct Drawing {
                 if let graded = ColorProcessor.grade(picture, ops, in: clip.stack.colorSpace, over: picture.extent.intersection(canvas)) {
                     picture = graded
                 }
+            case .matte(let effectID, let mode, let amount):
+                settleOpacity()
+                guard let input = clip.inputs[effectID], let matte = matteImage(input, frame: frameSize, start: start) else { continue }
+                picture = cut(picture, by: matte, mode: mode, amount: amount, frame: frameSize)
             case .blend(let mode, let amount, let against):
                 settleOpacity()
                 let other: CIImage
@@ -550,6 +555,53 @@ struct Drawing {
             }
         }
         return picture
+    }
+
+    /// An effect's input as a picture in the clip's frame, in output pixels:
+    /// fitted into the frame and left there, whatever later steps do.
+    private func matteImage(_ input: InputDraw, frame frameSize: CGSize, start: CGAffineTransform) -> CIImage? {
+        let toOutput = Self.flip(height: frameSize.height).concatenating(CGAffineTransform(scaleX: scale.width, y: scale.height))
+        switch input {
+        case .track(let copy, let base):
+            guard let buffer = source(copy.trackID) else { return nil }
+            let image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
+            return image.transformed(
+                by: Self.flip(height: image.extent.height).concatenating(base).concatenating(start).concatenating(toOutput)
+            )
+        case .group(let group):
+            let bounds = CGRect(x: 0, y: 0, width: group.frameSize.width * scale.width, height: group.frameSize.height * scale.height)
+            let nested = draw(group.children, frame: group.frameSize, over: .empty(), outer: .identity).cropped(to: bounds)
+            let toFrame = CGAffineTransform(scaleX: 1 / scale.width, y: 1 / scale.height)
+                .concatenating(Self.flip(height: group.frameSize.height))
+                .concatenating(group.toOuter)
+            return nested.transformed(by: toFrame.concatenating(start).concatenating(toOutput))
+        }
+    }
+
+    /// `picture` shown only where `matte` says: its alpha or its brightness,
+    /// inverted for the inverted modes, and mixed in by `amount`.
+    private func cut(_ picture: CIImage, by matte: CIImage, mode: MatteMode, amount: Double, frame frameSize: CGSize) -> CIImage {
+        let canvas = canvasRect(of: frameSize)
+        // Outside the matte's own picture it is empty.
+        var mask = matte.composited(over: CIImage(color: .clear).cropped(to: canvas)).cropped(to: canvas)
+        let weight = CGFloat(amount) * (mode.isInverted ? -1 : 1)
+        let bias = mode.isInverted ? 1 : 1 - CGFloat(amount)
+        let alphaVector: CIVector
+        if mode.usesLuma {
+            // Brightness is what is left of the picture over black.
+            mask = mask.composited(over: CIImage(color: .black).cropped(to: canvas))
+            alphaVector = CIVector(x: 0.2126 * weight, y: 0.7152 * weight, z: 0.0722 * weight, w: 0)
+        } else {
+            alphaVector = CIVector(x: 0, y: 0, z: 0, w: weight)
+        }
+        mask = mask.applyingFilter("CIColorMatrix", parameters: [
+            "inputAVector": alphaVector,
+            "inputBiasVector": CIVector(x: 0, y: 0, z: 0, w: bias),
+        ])
+        return picture.applyingFilter("CIBlendWithAlphaMask", parameters: [
+            kCIInputBackgroundImageKey: CIImage.empty(),
+            kCIInputMaskImageKey: mask,
+        ])
     }
 
     /// The frame and the margin round it that pictures are kept in, in

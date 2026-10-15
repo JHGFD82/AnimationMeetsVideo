@@ -13,7 +13,7 @@ extension EditingProject {
                 }
             }
         }
-        return ranges
+        return ranges + usedInputRanges(ofMedia: assetID)
     }
 
     /// Points an asset at a different file. Clips, scenes and trims refer to
