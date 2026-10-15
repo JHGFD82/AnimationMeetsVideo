@@ -64,6 +64,14 @@ struct ClipStack: @unchecked Sendable {
 
     var hasTransitions: Bool { edges != nil }
 
+    /// Whether an effect in the stack gives a different picture when it is
+    /// drawn at another size, such as a blur whose radius is in pixels.
+    /// Position, Scale, Rotation, Opacity, Blending and Color work on single
+    /// pixels, so none yet.
+    var dependsOnPixelSize: Bool {
+        effects.contains { $0.enabled && $0.kind.dependsOnPixelSize }
+    }
+
     /// Root-time ranges where the stack or the transitions are changing, in
     /// order and not overlapping. Outside them the clip is drawn the same
     /// way at every moment.

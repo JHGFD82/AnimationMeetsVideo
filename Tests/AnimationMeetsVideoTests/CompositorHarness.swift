@@ -48,10 +48,13 @@ struct CompositorHarness {
     }
 
     /// A picture clip showing track `track` as it is, with this stack.
-    static func clip(track: CMPersistentTrackID, effects: [Effect] = [], frame: CGSize = CGSize(width: 16, height: 8)) -> DrawClip {
+    static func clip(
+        track: CMPersistentTrackID, effects: [Effect] = [], frame: CGSize = CGSize(width: 16, height: 8),
+        base: CGAffineTransform = .identity
+    ) -> DrawClip {
         DrawClip(
             content: .media(MediaDraw(
-                trackID: track, base: .identity, url: URL(fileURLWithPath: "/dev/null"), sourceStart: .zero, segmentStart: .zero
+                trackID: track, base: base, url: URL(fileURLWithPath: "/dev/null"), sourceStart: .zero, segmentStart: .zero
             )),
             stack: ClipStack(effects: effects, center: CGPoint(x: frame.width / 2, y: frame.height / 2)),
             range: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 1)), owner: UUID()
@@ -62,10 +65,14 @@ struct CompositorHarness {
     /// unless it passes through.
     static func group(
         _ children: [DrawClip], effects: [Effect] = [], passThrough: Bool = false,
-        frame: CGSize = CGSize(width: 16, height: 8)
+        frame: CGSize = CGSize(width: 16, height: 8), nestedFrame: CGSize? = nil,
+        toOuter: CGAffineTransform = .identity, pushesTransforms: Bool = true
     ) -> DrawClip {
         DrawClip(
-            content: .group(GroupDraw(frameSize: frame, toOuter: .identity, passThrough: passThrough, children: children)),
+            content: .group(GroupDraw(
+                frameSize: nestedFrame ?? frame, toOuter: toOuter, passThrough: passThrough, children: children,
+                pushesTransforms: pushesTransforms
+            )),
             stack: ClipStack(effects: effects, center: CGPoint(x: frame.width / 2, y: frame.height / 2)),
             range: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 1)), owner: UUID()
         )

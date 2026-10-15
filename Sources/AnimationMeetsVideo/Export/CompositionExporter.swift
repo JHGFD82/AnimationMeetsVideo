@@ -219,7 +219,10 @@ private final class BuildNode {
             let drawn = children.compactMap { $0.frozen() }
             guard !drawn.isEmpty else { return nil }
             return DrawClip(
-                content: .group(GroupDraw(frameSize: frameSize, toOuter: toOuter, passThrough: passThrough, children: drawn)),
+                content: .group(GroupDraw(
+                    frameSize: frameSize, toOuter: toOuter, passThrough: passThrough, children: drawn,
+                    pushesTransforms: !drawn.contains { $0.everyClip.contains { $0.stack.dependsOnPixelSize } }
+                )),
                 stack: stack, range: range, owner: owner
             )
         }

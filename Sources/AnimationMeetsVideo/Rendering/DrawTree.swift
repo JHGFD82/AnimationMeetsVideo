@@ -46,6 +46,10 @@ struct GroupDraw: @unchecked Sendable {
     var passThrough: Bool
     /// Its layers' clips, top first.
     var children: [DrawClip]
+    /// Whether the group's move may be applied to each layer inside, which
+    /// is the same picture only while every step inside works on single
+    /// pixels. An effect that depends on pixel size stops it.
+    var pushesTransforms = true
 }
 
 extension DrawClip {

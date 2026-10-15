@@ -676,8 +676,8 @@ In order, each step usable on its own:
    (`BlendProcessor`), over the part of the picture within the canvas. They
    are checked against a separate restatement of the formulas for every
    mode. A step blends with the backdrop as it was drawn when the clip's
-   turn came; for a clip inside a pass-through nested clip with its own
-   placement, the backdrop is brought into the clip's frame first. The
+   turn came; a layer inside a pass-through nested clip is placed first,
+   so it blends with what is under it where it lands. The
    panel's Against row lists the effects above the step; one that is gone or
    below shows "Unavailable" and the step does nothing (dimming and notes
    come with step 6). A stretch with a Blending step is rendered in the
@@ -713,7 +713,20 @@ In order, each step usable on its own:
    each effect's ⋯ menu: the viewer builds the project with that clip's
    stack cut after the effect and its transitions dropped, shows a banner
    with a way back, and background renders wait; export is never affected.
-7. **Pushing transforms into nested timelines.**
+7. **Pushing transforms into nested timelines** (done). A closed nested
+   clip's leading Position, Scale and Rotation (with its transition's move,
+   when nothing follows) are applied to each layer inside, drawn over
+   transparency in the outer frame, and the result is limited to the nested
+   frame (cropped, or masked when it is turned), with the nested clip's
+   opacity on the whole. Core Image already folds plain moves through
+   composites, so the difference shows when a pixel step (Blending or Color)
+   sits inside: those run as their own passes, and would otherwise run at
+   the nested frame's size and be enlarged. To get that, a layer's placement
+   in the frame it is drawn into (here, and for pass-through) is applied to
+   its picture first, and its own moves are conjugated to work in the placed
+   frame, which is the same picture. `EffectKind.dependsOnPixelSize` (false
+   for every effect so far) stops the push at a nested timeline holding an
+   effect whose result changes with pixel size.
 8. **Adjustment layers** with reach.
 9. **Time and Shutter**: constant speed with its three Sound choices,
    Blend, Echo, Motion Blur and Trails.

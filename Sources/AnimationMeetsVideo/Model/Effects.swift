@@ -86,6 +86,16 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Whether the picture it makes depends on the size it is drawn at, so a
+    /// nested timeline holding it can't have its move pushed into its
+    /// layers (a blur whose radius is in pixels, say). Effects that work on
+    /// single pixels, or move them, don't.
+    var dependsOnPixelSize: Bool {
+        switch self {
+        case .transform, .blending, .color: false
+        }
+    }
+
     /// The controls a new effect of this kind lists, in order.
     var controlKinds: [ControlKind] {
         switch self {

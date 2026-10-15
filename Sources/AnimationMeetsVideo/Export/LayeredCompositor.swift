@@ -191,13 +191,35 @@ struct Drawing {
             toOutput.inverted().concatenating(matrix).concatenating(toOutput)
         }
 
+        // What places the clip's own frame in the one it is drawn into (a
+        // pass-through or pushed nested timeline) is applied to the picture
+        // first, and each move after it is turned to work in the placed
+        // frame. That is the same picture as applying it last, and it means
+        // blending and grading work at the size the picture ends up. A
+        // placement that can't be undone is applied last.
+        let start = outer.matrix.isInvertibleMatrix ? outer.matrix : .identity
+        let startInverse = start.inverted()
+        func placed(_ matrix: CGAffineTransform) -> CGAffineTransform {
+            start == .identity ? matrix : startInverse.concatenating(matrix).concatenating(start)
+        }
+
+        // The stack, which a nested timeline's leading move is taken out of
+        // when it is pushed into the layers inside.
+        var steps = resolved.steps
+        var opacity = 1.0
+        // Whether the transition's move is already part of the matrix pushed
+        // into a nested timeline's layers.
+        var transitionPushed = false
+
         // The picture, put into the frame.
         var picture: CIImage
         switch clip.content {
         case .media(let media):
             guard let buffer = source(media.trackID) else { return output }
             let image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
-            picture = image.transformed(by: Self.flip(height: image.extent.height).concatenating(media.base).concatenating(toOutput))
+            picture = image.transformed(
+                by: Self.flip(height: image.extent.height).concatenating(media.base).concatenating(start).concatenating(toOutput)
+            )
         case .group(let group):
             let placement = resolved.placement
             if group.passThrough {
@@ -213,35 +235,48 @@ struct Drawing {
                 )
                 return draw(group.children, frame: frameSize, over: output, outer: combined)
             }
-            let nestedBounds = CGRect(x: 0, y: 0, width: group.frameSize.width * scale.width, height: group.frameSize.height * scale.height)
-            let nested = draw(group.children, frame: group.frameSize, over: .empty(), outer: .identity).cropped(to: nestedBounds)
-            let toFrame = CGAffineTransform(scaleX: 1 / scale.width, y: 1 / scale.height)
-                .concatenating(Self.flip(height: group.frameSize.height))
-                .concatenating(group.toOuter)
-            picture = nested.transformed(by: toFrame.concatenating(toOutput))
-        }
-
-        // What is under the clip, in the clip's own frame: a pass-through
-        // clip has its frame placed in this one, so what is under it is
-        // brought back into its frame to be blended there.
-        var backdropInOwnFrame: CIImage {
-            outer.matrix == .identity || outer.matrix.isInvertibleMatrix == false
-                ? output : output.transformed(by: inOutput(outer.matrix.inverted()))
+            if group.pushesTransforms, placement.matrix.isInvertibleMatrix {
+                // The nested layers are drawn at the size they end up, with
+                // the group's move applied to each of them over
+                // transparency, rather than drawn at the nested frame's size
+                // and enlarged. That is the same picture where every step
+                // inside is per pixel, and keeps detail a smaller nested
+                // frame would lose. Opacity stays on the whole.
+                var geometry = group.toOuter
+                if case .place(let matrix, let factor)? = steps.first {
+                    geometry = geometry.concatenating(matrix)
+                    opacity *= factor
+                    steps.removeFirst()
+                }
+                if steps.isEmpty, let transition {
+                    geometry = geometry.concatenating(transition.transform)
+                    transitionPushed = true
+                }
+                geometry = geometry.concatenating(start)
+                let layers = draw(group.children, frame: frameSize, over: .empty(), outer: OuterPlacement(matrix: geometry, opacity: 1))
+                picture = Self.limited(layers, toNestedFrame: group.frameSize, through: geometry.concatenating(toOutput))
+            } else {
+                let nestedBounds = CGRect(x: 0, y: 0, width: group.frameSize.width * scale.width, height: group.frameSize.height * scale.height)
+                let nested = draw(group.children, frame: group.frameSize, over: .empty(), outer: .identity).cropped(to: nestedBounds)
+                let toFrame = CGAffineTransform(scaleX: 1 / scale.width, y: 1 / scale.height)
+                    .concatenating(Self.flip(height: group.frameSize.height))
+                    .concatenating(group.toOuter)
+                picture = nested.transformed(by: toFrame.concatenating(start).concatenating(toOutput))
+            }
         }
 
         // The stack. Opacity waits until something needs the picture's own
         // alpha, so consecutive moves stay one transform.
-        var opacity = 1.0
         var kept: [UUID: CIImage] = [:]
         func settleOpacity() {
             guard opacity != 1 else { return }
             picture = picture.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
             opacity = 1
         }
-        for step in resolved.steps {
+        for step in steps {
             switch step {
             case .place(let matrix, let factor):
-                picture = picture.transformed(by: inOutput(matrix))
+                picture = picture.transformed(by: inOutput(placed(matrix)))
                 opacity *= factor
             case .mark(let id):
                 settleOpacity()
@@ -260,7 +295,7 @@ struct Drawing {
                     guard let earlier = kept[against] else { continue }
                     backdrop = earlier
                 } else {
-                    backdrop = backdropInOwnFrame
+                    backdrop = output
                 }
                 let canvas = canvasRect(of: frameSize)
                 var region = picture.extent.intersection(canvas)
@@ -273,12 +308,13 @@ struct Drawing {
             }
         }
 
-        // Then the transitions, then whatever places the clip's timeline.
+        // Then the transitions, then, for a placement that couldn't be
+        // applied first, the placement.
         if let transition {
-            picture = picture.transformed(by: inOutput(transition.transform))
+            if !transitionPushed { picture = picture.transformed(by: inOutput(placed(transition.transform))) }
             opacity *= transition.opacity
         }
-        picture = picture.transformed(by: inOutput(outer.matrix))
+        if start == .identity, outer.matrix != .identity { picture = picture.transformed(by: inOutput(outer.matrix)) }
         opacity *= outer.opacity
 
         if var visible = transition?.visibleRect {
@@ -310,6 +346,19 @@ struct Drawing {
     private func canvasRect(of frameSize: CGSize) -> CGRect {
         CGRect(x: 0, y: 0, width: frameSize.width * scale.width, height: frameSize.height * scale.height)
             .insetBy(dx: -frameSize.width * scale.width * canvasMargin, dy: -frameSize.height * scale.height * canvasMargin)
+    }
+
+    /// `image` kept to the nested timeline's frame (`nested`, in its own
+    /// pixels from the top left) as it lies after `matrix`, which takes
+    /// those pixels to output pixels: cropped when the frame stays upright,
+    /// masked when it is turned.
+    static func limited(_ image: CIImage, toNestedFrame nested: CGSize, through matrix: CGAffineTransform) -> CIImage {
+        let frame = CGRect(origin: .zero, size: nested)
+        if abs(matrix.b) < 1e-6, abs(matrix.c) < 1e-6 {
+            return image.cropped(to: frame.applying(matrix))
+        }
+        let mask = CIImage(color: .white).cropped(to: frame).transformed(by: matrix)
+        return image.applyingFilter("CISourceInCompositing", parameters: [kCIInputBackgroundImageKey: mask])
     }
 
     /// Flips between top-left and bottom-left origins in a frame
