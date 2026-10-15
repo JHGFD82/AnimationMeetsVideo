@@ -2,6 +2,7 @@ import AVFoundation
 import CoreImage
 import CoreMedia
 import Foundation
+import os
 import QuartzCore
 
 /// One stretch of a timeline for `LayeredCompositor`: the video tracks
@@ -62,6 +63,9 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         return MetalDevice.shared.map { CIContext(mtlDevice: $0, options: options) } ?? CIContext(options: options)
     }()
     private let queue = DispatchQueue(label: "LayeredCompositor", qos: .userInitiated)
+    /// Bumped when the player gives up on the requests it has made, as on
+    /// a seek: those still queued are let go undrawn.
+    private let generation = OSAllocatedUnfairLock(initialState: 0)
 
     /// The format frames are decoded into and drawn in. Half floats keep
     /// HDR sources and timelines intact.
@@ -79,7 +83,12 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {}
 
     func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
+        let requestedIn = generation.withLock { $0 }
         queue.async { [self] in
+            guard generation.withLock({ $0 }) == requestedIn else {
+                request.finishCancelledRequest()
+                return
+            }
             autoreleasepool {
                 guard let instruction = request.videoCompositionInstruction as? LayeredInstruction,
                       let output = request.renderContext.newPixelBuffer()
@@ -100,8 +109,10 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         }
     }
 
+    /// Lets go of the queued requests rather than drawing them first; the
+    /// one being drawn finishes as usual.
     func cancelAllPendingVideoCompositionRequests() {
-        queue.sync {}
+        generation.withLock { $0 += 1 }
     }
 
     /// One layer's frame, cropped and placed in the output.
