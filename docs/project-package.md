@@ -1,6 +1,6 @@
 # Project package format
 
-Status: **steps 1 and 2 implemented**: package layout, `formatVersion` 1,
+Status: **steps 1 and 2 implemented**: package layout, `formatVersion` 2,
 stable IDs, rational times, deterministic output, media copy on import, undo
 and redo, the single-writer `.lock`, unsaved-change tracking, and autosave
 into `Backups/`. Step 3 is partly implemented: `Reference/<asset id>/
@@ -152,8 +152,11 @@ JSON was chosen over XML and YAML:
 
 Requirements for the file:
 
-- **`formatVersion`** field. It is 2 today. Old versions aren't migrated
-  and are refused with a message, and loading rejects anything it doesn't
+- **`formatVersion`** field. It is 2 today. Old versions aren't migrated,
+  on purpose: the layer-transform and effects redesign changed what a
+  layer is, and a one-way conversion wasn't worth carrying. They are
+  refused with a message ("This project uses format version 1, which
+  this version of the app can't open"), and loading rejects anything it doesn't
   recognize, naming it and where it is (see
   [effects.md](effects.md#loading-is-strict)).
 - **Stable IDs** for every asset, timeline, layer, clip, and scene, written
