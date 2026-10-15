@@ -162,10 +162,16 @@ Temperature, Tint, and Lift, Gamma and Gain (each per channel and overall).
 
 Transform and Blending work on the frame's encoded values without color
 management, as rendering does today. Color steps are the exception: they
-convert to the working space each control needs and back. Exposure,
-Temperature, Tint and Gain need linear light. Contrast, Saturation, Lift
-and Gamma use the encoded values, as editors expect. The exact working
-space for PQ and HLG timelines is settled when Color is built.
+convert to the working space each control needs and back, so a grade
+looks the same whatever the timeline's color space (which matters, since
+footage gets replaced):
+
+- **Exposure, Temperature, Tint and Gain** work in linear light, on every
+  timeline.
+- **Contrast, Saturation, Lift and Gamma** work on one log curve shared by
+  SDR, PQ and HLG timelines (one like ACEScct), not on the timeline's own
+  encoding. On a timeline's stored values the same Contrast would look
+  different on PQ than on HLG or Rec. 709.
 
 ## How a clip is drawn
 
@@ -245,10 +251,12 @@ Pass-through nested clips cost no more to draw than the layers they hold.
   radius) stops the push at that nested timeline. Text and shapes, when they
   come, are drawn at their final size the same way.
 - **The canvas has an edge.** Intermediate images keep pixels moved off the
-  frame, so a later step can bring them back, up to a margin around the
-  frame (one frame width and height on each side to start with). Chains
-  without a neighborhood step have no such limit, since nothing is drawn
-  until the end.
+  frame, so a later step can bring them back, up to a margin of half the
+  frame's width and height on each side (twice the frame's area). A
+  project setting, **Canvas Margin**, allows more for the rare stack that
+  needs it; a full frame on each side is nine times the area, which is a
+  lot of memory at 4K. Chains without a neighborhood step have no such
+  limit, since nothing is drawn until the end.
 
 ### One compositor
 
@@ -270,9 +278,16 @@ anchor point, Shutter below the transitions.
 **Time** decides which source frames the clip receives, so everything else
 works on frames already chosen:
 
-- **Speed**: a percentage, with keyframed speed ramps later.
-- **Frame Blending**: off, or blend neighboring frames when the speed
-  doesn't land on whole frames.
+- **Speed**: a percentage, which can be keyframed for speed ramps, with
+  the same eases and graph editor as any control. Speed keyframes are in
+  source time like all others. Speed decides how much source time passes,
+  so the clip's length on the timeline follows from it: dragging the
+  clip's end trims the source, it never stretches the clip.
+- **Frame Blending**: Off, Blend (mix the two nearest frames when the
+  speed doesn't land on whole frames), or Optical Flow (build in-between
+  frames from Vision's optical flow). Optical Flow is too slow to draw
+  live, so it is drawn only in background renders and export; until a
+  stretch is rendered, the viewer shows it with Blend.
 - **Echo**: earlier source frames layered under the current one, with a
   count, a delay and a decay.
 
@@ -283,8 +298,13 @@ steady speed over retimed footage, animate an adjustment layer instead.
 **Shutter** acts on the finished clip, so it covers motion from every step
 above, the transition included:
 
-- **Motion Blur**: a shutter angle (180° to start) and a number of samples.
-  The clip is drawn at that many moments across the shutter and averaged.
+- **Motion Blur**: a shutter angle (180° to start) and a number of samples
+  (8 to start, 2 to 64). The clip is drawn at that many moments across the
+  shutter and averaged. While playing, the viewer draws 2 samples, or none
+  at Quarter quality. Paused frames, background renders and export use the
+  full count, so a rendered stretch plays back fully blurred. **Motion Blur
+  in Preview**, in the viewer's menu and remembered per Mac like the
+  quality setting, turns it off in the viewer altogether.
 - **Trails**: copies of the finished clip from earlier moments, with a
   count, a delay and a decay. Unlike Echo, these include the clip's
   movement, which After Effects can only do by precomposing.
@@ -414,6 +434,28 @@ keys. A clip block with effects shows a small badge with the count.
   effect, with later effects and the transition skipped, until it is turned
   off. The viewer shows a banner while it is on.
 
+### Copying and presets
+
+- **Copy and paste** work on the effects selected in the panel. Pasting
+  onto a clip adds them below the selected effect, or at the bottom of the
+  stack. **Paste Effects** with clips selected on the timeline replaces
+  their whole stacks.
+- **Presets**: selected effects can be saved as a preset, which is shared
+  by every project. Presets are files in `~/Library/Application Support/
+  AnimationMeetsVideo/Presets/`, one JSON file each, and appear in the
+  browser's **Presets** section, where they can be renamed, deleted or
+  shown in the Finder. Drag one onto a clip, or into a stack at a spot.
+- **What travels.** Keyframe times are stored from the start of the
+  source clip's trimmed range and land at the same distance from the start
+  of the clip they're pasted onto. Effects get new IDs, and Against follows
+  them when the effect it reads came along, or goes back to Backdrop when
+  it didn't. Inputs stay behind, since their media belongs to a project:
+  a pasted or preset effect's drop zone is empty.
+- A preset file uses the same JSON as effects in `project.json`, with its
+  own `formatVersion`, and is read just as strictly. One that can't be read
+  shows in the browser with the same message and path, and isn't used; it
+  never stops anything else from loading.
+
 ## Saving
 
 `formatVersion` becomes 2. A layer no longer has `transform`. A visual
@@ -445,7 +487,9 @@ only as `false`. A Blending step's `against` holds the effect ID it reads,
 written only when it isn't the backdrop. An effect with an input has
 `input` (`{"asset": "…"}` or `{"timeline": "…"}`, plus `offset` and
 `"loops": true` when set). A clip has `time` and `shutter` only when they
-aren't off, and a nested clip `"passThrough": true` only when set. Keyframes are written as layer transforms' are today
+aren't off, and a nested clip `"passThrough": true` only when set. The
+project has `canvasMargin` only when it isn't 0.5 (of a frame, on each
+side). Keyframes are written as layer transforms' are today
 (`easeIn` and `easeOut` only when eased), with times in rational seconds
 of source time.
 
@@ -487,15 +531,8 @@ In order, each step usable on its own:
 6. **Reading aids**: dimming, thumbnails, Show Up to Here.
 7. **Pushing transforms into nested timelines.**
 8. **Adjustment layers** with reach.
-9. **Time and Shutter**.
+9. **Time and Shutter**: constant speed, Blend, Echo, Motion Blur and
+   Trails.
 10. **Inputs**, with the first effect that takes one (a matte).
-
-## Not decided yet
-
-- The working space for Color on HDR timelines.
-- The size of the canvas margin.
-- Copying and pasting effects or whole stacks between clips, and saved
-  presets.
-- Speed ramps, and optical-flow frame blending.
-- Default Shutter samples, and whether motion blur can be switched off
-  while previewing to keep playback smooth.
+11. **Speed ramps and Optical Flow.**
+12. **Copy, paste and presets.**
