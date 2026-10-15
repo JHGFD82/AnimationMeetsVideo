@@ -62,6 +62,8 @@ struct LayerHeaderRow: View {
                     }
                     .buttonStyle(.plain)
                     .help(isExpanded ? "Hide properties" : "Show properties: transform (P, S, R, T) and volume (L)")
+                    .accessibilityLabel("Properties of \(displayName)")
+                    .accessibilityValue(isExpanded ? "Shown" : "Hidden")
                 } else {
                     Color.clear
                 }
@@ -109,6 +111,8 @@ struct LayerHeaderRow: View {
                 }
                 .buttonStyle(.plain)
                 .help(isAudioExpanded ? "Hide linked audio" : "Show linked audio")
+                .accessibilityLabel("Linked audio of \(displayName)")
+                .accessibilityValue(isAudioExpanded ? "Shown" : "Hidden")
             }
             if let isChannelsExpanded {
                 Button(action: onToggleChannels) {
@@ -120,6 +124,8 @@ struct LayerHeaderRow: View {
                 }
                 .buttonStyle(.plain)
                 .help(isChannelsExpanded ? "Show the sound as one waveform" : "Show each channel (left and right) apart")
+                .accessibilityLabel("Separate channels of \(displayName)")
+                .accessibilityValue(isChannelsExpanded ? "On" : "Off")
             }
         }
         .padding(.horizontal, Design.Space.step)

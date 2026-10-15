@@ -277,6 +277,7 @@ struct TimelineView: View {
                     ForEach(TimelineTool.allCases) { tool in
                         Image(systemName: tool.systemImage)
                             .help(tool.help)
+                            .accessibilityLabel(tool.name)
                             .tag(tool)
                     }
                 }
@@ -296,8 +297,10 @@ struct TimelineView: View {
                 ControlGroup {
                     Button { zoomAroundPlayhead(by: 1 / zoomStep) } label: { Image(systemName: "minus.magnifyingglass") }
                         .help("Zoom out (-)")
+                        .accessibilityLabel("Zoom out")
                     Button { zoomAroundPlayhead(by: zoomStep) } label: { Image(systemName: "plus.magnifyingglass") }
                         .help("Zoom in (=)")
+                        .accessibilityLabel("Zoom in")
                 }
                 .fixedSize()
                 Button {
@@ -306,6 +309,7 @@ struct TimelineView: View {
                     Image(systemName: "slider.horizontal.3")
                 }
                 .help("View options")
+                .accessibilityLabel("View options")
                 .popover(isPresented: $showingViewOptions) {
                     ViewOptionsPopover(
                         zoomFraction: zoomFractionBinding, onFit: fitToWindow, areaLayout: $areaLayout,
@@ -319,16 +323,19 @@ struct TimelineView: View {
                 }
                 .toggleStyle(.button)
                 .help(snapping ? "Snapping on: edges snap to clips, the playhead and beat markers (N)" : "Snapping off (N)")
+                .accessibilityLabel("Snapping")
                 Toggle(isOn: $showsTransitions) {
                     Image(systemName: "square.on.square.dashed")
                 }
                 .toggleStyle(.button)
                 .help(showsTransitions ? "Hide transitions" : "Show transitions")
+                .accessibilityLabel("Transitions panel")
                 Toggle(isOn: $showsMeter) {
                     Image(systemName: "chart.bar.fill")
                 }
                 .toggleStyle(.button)
                 .help(showsMeter ? "Hide the audio meter" : "Show the audio meter: every track together, left and right")
+                .accessibilityLabel("Audio meter")
             }
             .padding(.horizontal, Design.Space.rail)
             .padding(.vertical, Design.Space.close)

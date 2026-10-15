@@ -34,6 +34,11 @@ struct AudioMeterView: View {
                     clearedCount += 1
                 }
                 .help("Lights when a channel reaches full scale; click to clear")
+                .accessibilityElement()
+                .accessibilityLabel("Clip lamps")
+                .accessibilityValue(meter.clipped.contains(true) ? "Clipped" : "Clear")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint("Clears the lamps")
                 Canvas { context, size in draw(meter, in: &context, size: size) }
                     .id(clearedCount)
             }

@@ -286,6 +286,7 @@ struct ScenePreviewSheet: View {
                         .frame(width: 16)
                         .contentTransition(.symbolEffect(.replace))
                 }
+                .accessibilityLabel(model.isPlaying ? "Pause" : "Play")
                 Slider(
                     value: Binding(get: { model.position }, set: { model.seek(to: $0) }),
                     in: target.scene.start.seconds...max(target.scene.end.seconds, target.scene.start.seconds + 0.001)

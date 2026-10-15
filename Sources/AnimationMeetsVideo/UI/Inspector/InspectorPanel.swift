@@ -197,6 +197,7 @@ struct InspectorPanel: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Remove transition")
+                    .accessibilityLabel("Remove \(transition.kind.name) at the \(edge == .leading ? "start" : "end")")
                 }
                 Stepper(
                     value: Binding(

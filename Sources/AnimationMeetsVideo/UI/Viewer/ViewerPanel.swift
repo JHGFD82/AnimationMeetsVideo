@@ -52,6 +52,7 @@ struct ViewerPanel: View {
                 }
                 .keyboardShortcut(.space, modifiers: [])
                 .help("Play/Pause (Space)")
+                .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
                 .disabled(!hasContent)
 
                 // The one number meant to be read from across the desk.

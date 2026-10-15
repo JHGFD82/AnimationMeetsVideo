@@ -82,6 +82,7 @@ struct ViewOptionsPopover: View {
                             }
                             .buttonStyle(.borderless)
                             .help("Preview the click")
+                            .accessibilityLabel("Preview the click")
                         }
                     }
                 }

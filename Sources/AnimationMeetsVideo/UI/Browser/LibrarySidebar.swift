@@ -27,6 +27,7 @@ struct LibrarySidebar: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Import media")
+                .accessibilityLabel("Import media")
             }
             .padding(.horizontal, Design.Space.group)
             .padding(.vertical, Design.Space.step)
