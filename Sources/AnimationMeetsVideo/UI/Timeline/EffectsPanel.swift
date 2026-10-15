@@ -19,8 +19,21 @@ struct EffectsPanel: View {
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) var graphs: KeyframeGraphHUDs?
     @State private var renamingEffectID: UUID?
+    /// Effects being saved as a preset (nil for the whole stack), while the
+    /// name is asked for.
+    @State private var presetSave: PresetSave?
+    @State private var presetName = ""
+    @State private var presetError: String?
     /// The clip after each of its effects, at the playhead.
     @State private var thumbnails: [UUID: CGImage] = [:]
+
+    /// What a Save as Preset is saving.
+    private struct PresetSave: Identifiable {
+        let id = UUID()
+        var clipID: UUID
+        var effectIDs: Set<UUID>?
+        var suggestedName: String
+    }
 
     private var timeline: Timeline? { project.timeline(id: timelineID) }
 
@@ -70,6 +83,18 @@ struct EffectsPanel: View {
         }
         .panelSurface(.base)
         .background(KeyPressMonitor(handler: handleKey))
+        .alert("Save as Preset", isPresented: Binding(get: { presetSave != nil }, set: { if !$0 { presetSave = nil } })) {
+            TextField("Name", text: $presetName)
+            Button("Save", action: savePreset)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Presets are shared by every project and appear in the browser.")
+        }
+        .alert("The Preset Wasn't Saved", isPresented: Binding(get: { presetError != nil }, set: { if !$0 { presetError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(presetError ?? "")
+        }
         .onChange(of: selection) { _, _ in
             state.clear()
             renamingEffectID = nil
@@ -163,6 +188,10 @@ struct EffectsPanel: View {
                             guard let payload = payloads.first else { return false }
                             addEffect(payload.kind, to: clip)
                             return true
+                        }
+                        .dropDestination(for: PresetDragPayload.self) { payloads, _ in
+                            guard let payload = payloads.first else { return false }
+                            return applyPreset(payload.presetID, to: clip, at: nil)
                         }
                 }
                 .sunken(.sunken)
@@ -327,6 +356,7 @@ struct EffectsPanel: View {
                 clipID: clip.id,
                 thumbnail: thumbnails[effect.id],
                 isDimmed: dimmed,
+                isFlagged: !effect.pasteChanges.isEmpty,
                 onToggleCollapsed: { state.toggleCollapsed(effect.id) },
                 onSetEnabled: { value in editEffect(effect.id, in: clip) { $0.enabled = value } },
                 onSelect: { state.select(effect: effect.id) },
@@ -352,11 +382,18 @@ struct EffectsPanel: View {
             project.addEffect(payload.kind, toClip: clip.id, in: timelineID, at: index)
             return true
         }
+        .dropDestination(for: PresetDragPayload.self) { payloads, _ in
+            guard let payload = payloads.first, let index = clip.effects.index(of: effect.id) else { return false }
+            return applyPreset(payload.presetID, to: clip, at: index)
+        }
         if let note {
             HStack(spacing: 0) {
                 EffectNoteRow(note: note).frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
                 Color.black.opacity(0.12)
             }
+        }
+        ForEach(effect.pasteChanges) { change in
+            pasteChangeRow(change, of: effect, in: clip)
         }
         if !collapsed {
             ForEach(effect.controls) { control in
@@ -428,6 +465,14 @@ struct EffectsPanel: View {
                 }
             }
         }
+        Divider()
+        Button("Copy") { copy(effect, from: clip) }
+            .keyboardShortcut("c", modifiers: .command)
+        Button("Paste") { paste(in: clip, below: effect) }
+            .keyboardShortcut("v", modifiers: .command)
+            .disabled(EffectClipboard.shared.isEmpty)
+        Button("Save as Preset…") { askPresetName(for: [effect.id], in: clip, suggesting: effect.displayName) }
+        Button("Save Whole Stack as Preset…") { askPresetName(for: nil, in: clip, suggesting: "\(project.clipName(clip.id, in: timelineID)) look") }
         Divider()
         Button("Delete", role: .destructive) { delete(effect, from: clip) }
     }
@@ -592,6 +637,44 @@ struct EffectsPanel: View {
         }
     }
 
+    private func copy(_ effect: Effect, from clip: TimelineClip) {
+        EffectClipboard.shared.bundle = project.bundle(ofEffects: [effect.id], fromClip: clip.id, in: timelineID)
+    }
+
+    /// Pastes the copied effects below `effect`, or at the end of the stack.
+    private func paste(in clip: TimelineClip, below effect: Effect?) {
+        guard let bundle = EffectClipboard.shared.bundle else { return }
+        let index = effect.flatMap { clip.effects.index(of: $0.id) }.map { $0 + 1 }
+        if let last = project.paste(bundle, ontoClip: clip.id, in: timelineID, at: index).last {
+            state.select(effect: last)
+        }
+    }
+
+    private func applyPreset(_ id: String, to clip: TimelineClip, at index: Int?) -> Bool {
+        guard let preset = try? PresetStore.read(PresetStore.fileURL(id)) else { return false }
+        guard let last = project.paste(preset.bundle, ontoClip: clip.id, in: timelineID, at: index).last else { return false }
+        state.select(effect: last)
+        return true
+    }
+
+    private func askPresetName(for ids: Set<UUID>?, in clip: TimelineClip, suggesting name: String) {
+        presetName = name
+        presetSave = PresetSave(clipID: clip.id, effectIDs: ids, suggestedName: name)
+    }
+
+    private func savePreset() {
+        guard let request = presetSave else { return }
+        presetSave = nil
+        let name = presetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let bundle = project.bundle(ofEffects: request.effectIDs, fromClip: request.clipID, in: timelineID) else { return }
+        do {
+            try PresetStore.save(bundle, named: name)
+            NotificationCenter.default.post(name: .presetsChanged, object: nil)
+        } catch {
+            presetError = error.localizedDescription
+        }
+    }
+
     private func delete(_ effect: Effect, from clip: TimelineClip) {
         project.removeEffect(effect.id, fromClip: clip.id, in: timelineID)
         if state.selectedEffectID == effect.id { state.clear() }
@@ -600,12 +683,23 @@ struct EffectsPanel: View {
     /// Delete removes the selected control, or else the selected effect;
     /// Command-D duplicates the selected effect.
     private func handleKey(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        // Command-V pastes below the selected effect, or at the end of the
+        // selected clip's stack.
+        if flags == .command, key == "v", let clip = selectedClip, project.hasEffectStack(clip), !EffectClipboard.shared.isEmpty {
+            paste(in: clip, below: clip.effects.first { $0.id == state.selectedEffectID })
+            return true
+        }
         guard let clip = selectedClip, let effectID = state.selectedEffectID,
               let effect = clip.effects.first(where: { $0.id == effectID })
         else {
             return false
         }
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags == .command, key == "c" {
+            copy(effect, from: clip)
+            return true
+        }
         if [51, 117].contains(event.keyCode), flags.isEmpty {
             if let controlID = state.selectedControlID {
                 editEffect(effect.id, in: clip) { $0.removeControl(controlID) }

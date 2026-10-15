@@ -181,6 +181,9 @@ struct TimelineEditorSurface<Library: View>: View {
         // closes the other.
         .onChange(of: showsEffects) { _, on in if on { showsTransitions = false } }
         .onChange(of: showsTransitions) { _, on in if on { showsEffects = false } }
+        .onReceive(NotificationCenter.default.publisher(for: .revealEffect)) { note in
+            if let id = note.object as? UUID { effectsState.select(effect: id) }
+        }
         .onChange(of: project, initial: true) { _, project in
             graphs.update(project: project)
             // Show Up to Here lets go of an effect that is gone.

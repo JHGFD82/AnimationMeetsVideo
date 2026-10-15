@@ -123,3 +123,37 @@ struct TimelineDragPayload: Transferable {
         })
     }
 }
+
+/// A preset being dragged from the browser onto a clip or into a stack. It
+/// carries the preset's ID, which is its file's name.
+struct PresetDragPayload: Transferable {
+    private static let scheme = "amv-preset"
+
+    var presetID: String
+
+    init(presetID: String) {
+        self.presetID = presetID
+    }
+
+    init?(url: URL) {
+        guard let parts = payloadParts(url, scheme: Self.scheme), parts.count == 1,
+              let id = parts[0].removingPercentEncoding, !id.isEmpty
+        else { return nil }
+        presetID = id
+    }
+
+    /// The ID is percent-encoded, since file names have spaces and colons.
+    var url: URL {
+        payloadURL(Self.scheme, [presetID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""])
+    }
+
+    static var transferRepresentation: some TransferRepresentation {
+        ProxyRepresentation(
+            exporting: { $0.url },
+            importing: { url in
+                guard let payload = PresetDragPayload(url: url) else { throw CocoaError(.coderInvalidValue) }
+                return payload
+            }
+        )
+    }
+}

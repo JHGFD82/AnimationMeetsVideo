@@ -210,6 +210,9 @@ struct EffectHeaderRow<MenuContent: View>: View {
     /// The clip's picture after this effect, at the playhead.
     var thumbnail: CGImage?
     var isDimmed = false
+    /// Whether the effect has paste changes left to resolve, which marks
+    /// its edge.
+    var isFlagged = false
     let onToggleCollapsed: () -> Void
     let onSetEnabled: (Bool) -> Void
     let onSelect: () -> Void
@@ -285,6 +288,9 @@ struct EffectHeaderRow<MenuContent: View>: View {
         .padding(.horizontal, 4)
         .frame(height: EffectsPanelMetrics.rowHeight)
         .background(Design.Surface.raised.color.opacity(0.6))
+        .overlay(alignment: .leading) {
+            if isFlagged { Rectangle().fill(Design.statusWarning).frame(width: 3) }
+        }
         .selectedRow(isSelected)
         .contextMenu { menu() }
     }

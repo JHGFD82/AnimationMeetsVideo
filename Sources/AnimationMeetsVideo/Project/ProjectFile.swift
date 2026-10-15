@@ -382,6 +382,12 @@ struct ProjectFile: Codable {
         var against: UUID?
         /// For an effect that takes a picture, the one dropped on it.
         var input: InputEntry?
+        /// Absent unless some are unresolved.
+        var pasteChanges: [PasteChangeRecord]?
+        /// Presets only: what the effect's input and Against were called
+        /// when it was saved, since neither comes along.
+        var inputName: String?
+        var againstName: String?
         var controls: [ControlEntry]
 
         init(_ effect: Effect) {
@@ -392,6 +398,7 @@ struct ProjectFile: Codable {
             movesAnchor = effect.kind == .transform && !effect.movesAnchor ? false : nil
             against = effect.kind == .blending ? effect.against : nil
             input = effect.kind.takesInput ? effect.input.map(InputEntry.init) : nil
+            pasteChanges = effect.pasteChanges.isEmpty ? nil : effect.pasteChanges.map(PasteChangeRecord.init)
             controls = effect.controls.map(ControlEntry.init)
         }
 
@@ -402,7 +409,26 @@ struct ProjectFile: Codable {
             effect.movesAnchor = movesAnchor ?? true
             effect.against = against
             effect.input = input?.input
+            effect.pasteChanges = (pasteChanges ?? []).compactMap(\.change)
             return effect
+        }
+    }
+
+    /// One paste change an effect still has to resolve.
+    struct PasteChangeRecord: Codable {
+        var kind: String
+        var detail: String
+        /// Absent for changes that aren't about a number of keyframes.
+        var count: Int?
+
+        init(_ change: PasteChange) {
+            kind = change.kind.rawValue
+            detail = change.detail
+            count = change.kind == .keyframesOutside ? change.count : nil
+        }
+
+        var change: PasteChange? {
+            PasteChange.Kind(rawValue: kind).map { PasteChange(kind: $0, detail: detail, count: count ?? 0) }
         }
     }
 
@@ -511,26 +537,25 @@ struct ProjectFileHeader: Decodable {
 // MARK: - Shape
 
 extension ProjectFile {
-    /// What a project file may contain. Loading checks a file against this
-    /// before decoding it, so every key and value is one the app knows.
-    static let shape: JSONShape = {
+    /// The pieces of the schema that projects and presets share: the effects.
+    enum ShapeKit {
         typealias O = JSONObjectShape
-        func object(_ fields: [O.Field], oneOf: [[String]] = []) -> JSONObjectShape {
+        static func object(_ fields: [O.Field], oneOf: [[String]] = []) -> JSONObjectShape {
             JSONObjectShape(fields: fields, oneOf: oneOf)
         }
 
-        let ease = JSONShape.object(object([.required("influence", .number), .required("speed", .number)]))
-        func keyframe(_ value: JSONShape) -> JSONShape {
+        static let ease = JSONShape.object(object([.required("influence", .number), .required("speed", .number)]))
+        static func keyframe(_ value: JSONShape) -> JSONShape {
             .object(object([
                 .required("time", .time), .required("value", value),
                 .optional("easeIn", ease), .optional("easeOut", ease),
             ]))
         }
-        func property(_ value: JSONShape) -> JSONShape {
+        static func property(_ value: JSONShape) -> JSONShape {
             .object(object([.optional("value", value), .optional("keyframes", .array(keyframe(value)))], oneOf: [["value", "keyframes"]]))
         }
 
-        func control(_ kind: ControlKind) -> JSONObjectShape {
+        static func control(_ kind: ControlKind) -> JSONObjectShape {
             let count = kind.defaultValues.count
             let value: JSONShape = switch kind {
             case .mode: .choice(BlendMode.allCases.map(\.rawValue), noun: "blend mode")
@@ -549,7 +574,7 @@ extension ProjectFile {
             return object(fields, oneOf: kind.isChoice ? [] : [["value", "keyframes"]])
         }
 
-        func effect(_ kind: EffectKind) -> JSONObjectShape {
+        static func effect(_ kind: EffectKind, extra: [O.Field]) -> JSONObjectShape {
             var fields: [O.Field] = [
                 .required("id", .uuid), .required("kind", .string), .optional("name", .string), .optional("enabled", .bool),
             ]
@@ -563,11 +588,32 @@ extension ProjectFile {
                     .optional("offset", .time), .optional("loops", .bool),
                 ], oneOf: [["asset", "timeline"]]))))
             }
+            fields += extra
             let controls = Dictionary(uniqueKeysWithValues: kind.controlKinds.map { ($0.rawValue, control($0)) })
             fields.append(.required("controls", .array(.tagged(key: "kind", noun: "control kind", controls))))
             return object(fields)
         }
-        let effects = Dictionary(uniqueKeysWithValues: EffectKind.allCases.map { ($0.rawValue, effect($0)) })
+
+        /// The shape of a list of effects, with `extra` fields allowed on
+        /// each (a project's effects may have paste changes, a preset's
+        /// may say what was left behind).
+        static func effects(extra: [O.Field]) -> JSONShape {
+            let byKind = Dictionary(uniqueKeysWithValues: EffectKind.allCases.map { ($0.rawValue, effect($0, extra: extra)) })
+            return .array(.tagged(key: "kind", noun: "effect kind", byKind))
+        }
+    }
+
+    /// What a project file may contain. Loading checks a file against this
+    /// before decoding it, so every key and value is one the app knows.
+    static let shape: JSONShape = {
+        typealias O = JSONObjectShape
+        func object(_ fields: [O.Field], oneOf: [[String]] = []) -> JSONObjectShape { ShapeKit.object(fields, oneOf: oneOf) }
+        func keyframe(_ value: JSONShape) -> JSONShape { ShapeKit.keyframe(value) }
+        func property(_ value: JSONShape) -> JSONShape { ShapeKit.property(value) }
+        let effects = ShapeKit.effects(extra: [.optional("pasteChanges", .array(.object(object([
+            .required("kind", .choice(PasteChange.Kind.allCases.map(\.rawValue), noun: "paste change")),
+            .required("detail", .string), .optional("count", .integer),
+        ]))))])
 
         let curvePoint = JSONShape.object(object([
             .required("time", .number), .required("value", .number),
@@ -590,7 +636,7 @@ extension ProjectFile {
             .optional("streams", .choice(["video", "audio"], noun: "stream")),
             .optional("transitionIn", transition), .optional("transitionOut", transition),
             .optional("anchorPoint", property(.numbers(count: 2))),
-            .optional("effects", .array(.tagged(key: "kind", noun: "effect kind", effects))),
+            .optional("effects", effects),
             .optional("volume", property(.number)),
             .optional("passThrough", .bool),
             .optional("time", .object(object([

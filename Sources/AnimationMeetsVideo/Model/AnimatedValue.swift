@@ -84,6 +84,15 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
         keyframes.first { $0.time == time }
     }
 
+    /// The same with every keyframe `delta` later (earlier if negative).
+    func shifted(by delta: CMTime) -> AnimatedValue {
+        AnimatedValue(value, keyframes: keyframes.map { keyframe in
+            var moved = keyframe
+            moved.time = CMTimeAdd(keyframe.time, delta)
+            return moved
+        })
+    }
+
     /// Sets the value at `time`: a keyframe there when animated (keeping
     /// its eases if one is already there), otherwise the single value.
     mutating func set(_ newValue: Value, at time: CMTime) {

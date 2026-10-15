@@ -16,6 +16,13 @@ struct EditorToolbar: View {
     @State private var exportTask: Task<Void, Never>?
     @State private var exportProgress: Double = 0
     @State private var exportError: String?
+    @State private var showsPasteChanges = false
+    /// Whether the Paste Changes list was opened by trying to export.
+    @State private var exportAfterAccepting = false
+    @AppStorage("showsEffectsPanel") private var showsEffectsPanel = false
+
+    /// What an export of the active timeline would be blocked by.
+    private var pasteChanges: [PasteChangeEntry] { project.unresolvedPasteChanges(drawnBy: activeTimelineID) }
 
     private var isExporting: Bool { exportTask != nil }
 
@@ -57,6 +64,17 @@ struct EditorToolbar: View {
             .disabled(externalScreens.isEmpty && !externalDisplay.isActive)
             .frame(width: 170)
 
+            if !pasteChanges.isEmpty {
+                Button {
+                    exportAfterAccepting = false
+                    showsPasteChanges = true
+                } label: {
+                    Label("\(pasteChanges.count)", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Design.statusWarning)
+                }
+                .help("\(pasteChanges.count) pasted effect change\(pasteChanges.count == 1 ? "" : "s") to resolve before exporting")
+            }
+
             Groove(axis: .vertical)
                 .frame(height: 18)
 
@@ -94,6 +112,19 @@ struct EditorToolbar: View {
         .padding(.horizontal, Design.Space.rail)
         .padding(.vertical, Design.Space.step + 2)
         .rail(.raised)
+        .sheet(isPresented: $showsPasteChanges) {
+            PasteChangesSheet(
+                project: $project,
+                timelineID: activeTimelineID,
+                isBlockingExport: exportAfterAccepting,
+                onGoTo: goTo,
+                onAcceptAll: acceptAll,
+                onClose: { showsPasteChanges = false }
+            )
+        }
+        .onChange(of: pasteChanges.isEmpty) { _, empty in
+            if empty { showsPasteChanges = false }
+        }
         .alert(
             "Export Failed",
             isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })
@@ -104,7 +135,40 @@ struct EditorToolbar: View {
         }
     }
 
-    private func exportProject() {
+    /// Selects the clip an entry is on, with the effects panel open at it.
+    private func goTo(_ entry: PasteChangeEntry) {
+        guard let layer = project.clipAndLayer(entry.clipID, in: entry.timelineID)?.layer else { return }
+        showsPasteChanges = false
+        activeTimelineID = entry.timelineID
+        selection = TimelineSelection(timelineID: entry.timelineID, layerID: layer.id, timelineClipID: entry.clipID)
+        showsEffectsPanel = true
+        let effectID = entry.effectID
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(80))
+            NotificationCenter.default.post(name: .revealEffect, object: effectID)
+        }
+    }
+
+    /// Resolves everything in the list; when the list came up because of an
+    /// export, the export goes ahead.
+    private func acceptAll() {
+        project.resolve(pasteChanges)
+        showsPasteChanges = false
+        if exportAfterAccepting {
+            exportAfterAccepting = false
+            exportProject(checkingPasteChanges: false)
+        }
+    }
+
+    /// `checkingPasteChanges` is false right after accepting them all, when
+    /// the project binding may not have caught up yet.
+    private func exportProject(checkingPasteChanges: Bool = true) {
+        // Pasted effects with changes nobody has looked at block the export.
+        guard !checkingPasteChanges || pasteChanges.isEmpty else {
+            exportAfterAccepting = true
+            showsPasteChanges = true
+            return
+        }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.quickTimeMovie]
         panel.nameFieldStringValue = project.name

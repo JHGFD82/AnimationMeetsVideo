@@ -364,6 +364,9 @@ struct Effect: Identifiable, Equatable, Sendable {
     var against: UUID?
     /// For an effect that takes one: the picture dropped on it.
     var input: EffectInput?
+    /// What pasting or applying a preset couldn't bring over, until each is
+    /// marked resolved (see docs/effects.md, "Paste changes").
+    var pasteChanges: [PasteChange] = []
     var controls: [EffectControl]
 
     init(id: UUID = UUID(), kind: EffectKind, name: String? = nil, controls: [EffectControl]? = nil) {

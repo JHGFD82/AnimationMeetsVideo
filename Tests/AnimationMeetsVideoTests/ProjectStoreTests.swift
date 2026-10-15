@@ -137,6 +137,30 @@ private struct Sandbox {
         #expect(restored.effects[0].input?.loops == false && restored.effects[0].input?.offset == .zero)
     }
 
+    @Test func roundTripKeepsUnresolvedPasteChanges() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, _) = sandbox.makeProject()
+        let timelineID = project.rootTimelineID
+        var effect = Effect(kind: .color)
+        effect.pasteChanges = [
+            PasteChange(kind: .inputLeftBehind, detail: "Logo matte.mov"),
+            PasteChange(kind: .againstReset, detail: "Blur"),
+            PasteChange(kind: .keyframesOutside, detail: "end", count: 3),
+        ]
+        project.editClip(clipID, in: timelineID) { $0.effects = [effect, Effect(kind: .transform)] }
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        let restored = try #require(loaded.project.clipAndLayer(clipID, in: timelineID)?.clip)
+        #expect(restored.effects[0] == effect)
+        #expect(restored.effects[0].pasteChanges == effect.pasteChanges)
+        #expect(restored.effects[1].pasteChanges.isEmpty)
+        // Resolved ones aren't written.
+        let text = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(text.components(separatedBy: "pasteChanges").count == 2)
+    }
+
     @Test func roundTripKeepsAdjustmentLayersAndTheirReach() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
@@ -1129,6 +1153,13 @@ private struct Sandbox {
             editEffect(&json, 0) { $0["input"] = ["asset": UUID().uuidString] }
         }
         #expect(message == "The project can't be opened. Unknown key \"input\" at timelines[0].layers[0].clips[0].effects[0].")
+    }
+
+    @Test func anUnknownPasteChangeKindIsRejected() async throws {
+        let message = try await loadingMessage { json in
+            editEffect(&json, 0) { $0["pasteChanges"] = [["kind": "teleported", "detail": "x"]] }
+        }
+        #expect(message == "The project can't be opened. Unknown paste change \"teleported\" at timelines[0].layers[0].clips[0].effects[0].pasteChanges[0].kind.")
     }
 
     @Test func aMatteInputNamingNothingIsRejected() async throws {

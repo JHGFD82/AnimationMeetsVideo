@@ -1,7 +1,7 @@
 # Effects
 
-Status: **being built, step by step** (see [Building it](#building-it) for
-what exists; everything else here is planned). This replaces the layer
+Status: **built** (see [Building it](#building-it) for each step and what
+it leaves out). This replaces the layer
 transforms in [layer-transforms.md](layer-transforms.md): transforms move
 from layers to clips and become effects. Keyframes, easing, the graph
 editor and arithmetic in numeric fields carry over unchanged.
@@ -831,4 +831,36 @@ In order, each step usable on its own:
     thing to add if renders prove slow. Vision's flow runs a little short of
     large motions, so a frame is closer to its neighbors than the true
     in-between one when the footage moves fast
-12. **Copy, paste and presets**, with paste changes and the export check.
+12. **Copy, paste and presets**, with paste changes and the export check
+    (done). An `EffectBundle` is a set of effects taken from a clip's stack
+    with their keyframe times counted from the source clip's trim start
+    (`origin`), what their inputs and Against were called, and nothing
+    else; `paste` puts one into a clip at an index or in place of the whole
+    stack, giving every effect and control new IDs, shifting keyframes by
+    the difference between the two clips' trim starts, numbering names that
+    were automatic, and recording a `PasteChange` on the effect for each
+    thing that didn't come along (`inputLeftBehind`, `againstReset`,
+    `keyframesOutside` with its count, on the start or end side). Copy and
+    paste work on the one effect selected in the panel (⋯ menu or
+    Command-C and Command-V, which paste below it, or at the end of the
+    stack with none selected); a clip's menu on the timeline has Copy
+    Effects (the whole stack) and Paste Effects (replacing the stack).
+    Presets are `PresetStore`'s files, one JSON each, with a `formatVersion`
+    of their own and the effects as a project writes them (plus, for what
+    was left behind, `inputName` and `againstName`), with times from the
+    start of the clip. They are checked as strictly as a project, so a bad
+    one is listed in the browser's Presets section with the path of the
+    problem and skipped. Save as Preset and Save Whole Stack as Preset are in
+    the effect's ⋯ menu; presets are dragged onto a clip's block or into the
+    stack, renamed, shown in the Finder, or moved to the Trash from the
+    browser. Unresolved changes are saved on the effect as `pasteChanges`;
+    flagged effects get a marked edge and the changes listed under their
+    name with Mark Resolved, and a flagged clip a warning mark on its
+    block. The toolbar shows how many there are across the timelines the
+    export draws (`timelineIDsDrawn`: nested ones and ones used as inputs)
+    and opens the Paste Changes list, which Export opens too, instead of
+    exporting, until nothing is left; Accept All resolves them all and
+    carries on with the export. Go To selects the clip on its timeline and
+    opens the effects panel at the effect. Not yet: selecting several
+    effects at once, so copying several means copying the stack and
+    deleting what isn't wanted

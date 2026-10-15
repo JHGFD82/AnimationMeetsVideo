@@ -276,6 +276,12 @@ struct LayerClipRow: View {
     let onSetTransitionDuration: (UUID, TransitionEdge, CMTime) -> Void
     /// Adds an effect to the end of a clip's stack.
     let onAddEffect: (UUID, EffectKind) -> Void
+    /// Puts the preset with this ID on the clip, below its stack.
+    let onApplyPreset: (UUID, String) -> Void
+    /// Copies the clip's whole stack, or pastes the copied effects in place
+    /// of it.
+    let onCopyEffects: (UUID) -> Void
+    let onPasteEffects: (UUID) -> Void
     /// Sets whether a nested clip passes through.
     let onSetPassThrough: (UUID, Bool) -> Void
     /// Draws each clip's volume as a line across it.
@@ -375,6 +381,10 @@ struct LayerClipRow: View {
                     showsVolumeLine: showsVolumeLines && project.playsAudio(clip),
                     passesThrough: clip.passThrough,
                     onAddEffect: { kind in onAddEffect(clip.id, kind) },
+                    hasPasteChanges: project.hasUnresolvedPasteChanges(clip),
+                    onApplyPreset: { onApplyPreset(clip.id, $0) },
+                    onCopyEffects: { onCopyEffects(clip.id) },
+                    onPasteEffects: { onPasteEffects(clip.id) },
                     onSetPassThrough: { onSetPassThrough(clip.id, $0) },
                     playsSound: project.playsAudio(clip),
                     onEditTime: { change in onEditTime(clip.id, change) },
@@ -508,6 +518,11 @@ struct ClipBlockView: View {
     /// is placed in.
     let passesThrough: Bool
     let onAddEffect: (EffectKind) -> Void
+    /// Whether an effect of the clip has paste changes left to resolve.
+    let hasPasteChanges: Bool
+    let onApplyPreset: (String) -> Void
+    let onCopyEffects: () -> Void
+    let onPasteEffects: () -> Void
     let onSetPassThrough: (Bool) -> Void
     /// Whether the clip makes sound, which a retimed clip's sound choice is for.
     let playsSound: Bool
@@ -639,6 +654,11 @@ struct ClipBlockView: View {
                         .font(Design.Typeface.micro)
                         .help("\(effectCount) effect\(effectCount == 1 ? "" : "s") in its stack")
                     }
+                    if hasPasteChanges {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(Design.Typeface.micro)
+                            .help("Effects pasted onto this clip have changes to resolve before it can be exported")
+                    }
                     if passesThrough {
                         Image(systemName: "square.stack.3d.down.right")
                             .font(Design.Typeface.micro)
@@ -710,6 +730,14 @@ struct ClipBlockView: View {
             .dropDestination(for: EffectDragPayload.self) { payloads, _ in
                 guard acceptsEffects, let payload = payloads.first else { return false }
                 onAddEffect(payload.kind)
+                onSelect()
+                return true
+            } isTargeted: { targeted in
+                isEffectTarget = targeted && acceptsEffects
+            }
+            .dropDestination(for: PresetDragPayload.self) { payloads, _ in
+                guard acceptsEffects, let payload = payloads.first else { return false }
+                onApplyPreset(payload.presetID)
                 onSelect()
                 return true
             } isTargeted: { targeted in
@@ -931,6 +959,13 @@ struct ClipBlockView: View {
         }
         if case .timeline = clip.source {
             Toggle("Pass Through", isOn: Binding(get: { passesThrough }, set: onSetPassThrough))
+        }
+        if acceptsEffects {
+            Divider()
+            Button("Copy Effects", action: onCopyEffects)
+                .disabled(clip.effects.isEmpty)
+            Button("Paste Effects", action: onPasteEffects)
+                .disabled(EffectClipboard.shared.isEmpty)
         }
         if case .media = clip.source {
             Divider()

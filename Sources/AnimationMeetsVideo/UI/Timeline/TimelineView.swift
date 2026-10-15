@@ -824,6 +824,17 @@ struct TimelineView: View {
                         onAddEffect: { clipID, kind in
                             onEditProject { $0.addEffect(kind, toClip: clipID, in: timelineID) }
                         },
+                        onApplyPreset: { clipID, presetID in
+                            guard let preset = try? PresetStore.read(PresetStore.fileURL(presetID)) else { return }
+                            onEditProject { $0.paste(preset.bundle, ontoClip: clipID, in: timelineID) }
+                        },
+                        onCopyEffects: { clipID in
+                            EffectClipboard.shared.bundle = project.bundle(ofEffects: nil, fromClip: clipID, in: timelineID)
+                        },
+                        onPasteEffects: { clipID in
+                            guard let bundle = EffectClipboard.shared.bundle else { return }
+                            onEditProject { $0.paste(bundle, ontoClip: clipID, in: timelineID, replacingStack: true) }
+                        },
                         onSetPassThrough: { clipID, value in
                             onEditProject { $0.editClip(clipID, in: timelineID) { $0.passThrough = value } }
                         },

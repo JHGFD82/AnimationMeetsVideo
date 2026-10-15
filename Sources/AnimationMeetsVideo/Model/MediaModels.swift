@@ -125,7 +125,7 @@ struct EditingProject: Identifiable, Equatable {
         return !visited.contains(targetTimelineID)
     }
 
-    private func collectNestedTimelineIDs(startingFrom timelineID: UUID, visited: inout Set<UUID>) {
+    func collectNestedTimelineIDs(startingFrom timelineID: UUID, visited: inout Set<UUID>) {
         guard visited.insert(timelineID).inserted, let timeline = timeline(id: timelineID) else { return }
         for layer in timeline.layers {
             for clip in layer.clips {
