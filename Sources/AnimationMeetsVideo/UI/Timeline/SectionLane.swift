@@ -1,11 +1,13 @@
+import AppKit
 import CoreMedia
 import SwiftUI
 
-/// A slim lane under the ruler showing a timeline's named sections. Drag
-/// across empty space to make one (double-click makes one five seconds
-/// long), double-click a section to rename it, drag it to move it and its
-/// edges to resize it. Click selects it for Delete. Drawn, like the ruler,
-/// only across the visible part of the timeline.
+/// A slim lane under the ruler showing a timeline's named sections.
+/// Double-click empty space to make one five seconds long, double-click a
+/// section to rename it (a click elsewhere saves the name, Escape cancels),
+/// drag it to move it and its edges to resize it. Click selects it for
+/// Delete. Drawn, like the ruler, only across the visible part of the
+/// timeline.
 struct SectionLane: View {
     let sections: [TimelineSection]
     let viewport: TimelineViewport
@@ -34,8 +36,7 @@ struct SectionLane: View {
     /// one's draft; nil when no drop is waiting for its edit.
     @State private var pendingDrop: Int?
     @State private var dropCount = 0
-    /// A section being drawn across empty space.
-    @State private var creating: (start: CMTime, end: CMTime)?
+    @State private var clickMonitor: Any?
     @State private var editingID: UUID?
     @State private var draftName = ""
     @FocusState private var isNameFocused: Bool
@@ -47,22 +48,12 @@ struct SectionLane: View {
         ZStack(alignment: .topLeading) {
             Color.black.opacity(0.22)
                 .contentShape(Rectangle())
-                .gesture(createGesture)
-                .simultaneousGesture(SpatialTapGesture(count: 2, coordinateSpace: .named(space)).onEnded { value in
+                .gesture(SpatialTapGesture(count: 2, coordinateSpace: .named(space)).onEnded { value in
                     let start = snapped(time(atX: value.location.x), excluding: nil)
                     if let id = onCreate(start, CMTimeAdd(start, EditingProject.defaultSectionLength)) { beginRename(id, name: "") }
                 })
             ForEach(sections) { section in
                 sectionView(section, shown: draft?.id == section.id ? draft ?? section : section)
-            }
-            if let creating {
-                let minX = viewport.x(atSeconds: creating.start.seconds)
-                let maxX = viewport.x(atSeconds: creating.end.seconds)
-                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                    .strokeBorder(Design.section, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-                    .frame(width: max(2, maxX - minX), height: Self.height - 4)
-                    .offset(x: minX, y: 2)
-                    .allowsHitTesting(false)
             }
         }
         .frame(width: viewport.width, height: Self.height, alignment: .topLeading)
@@ -71,7 +62,14 @@ struct SectionLane: View {
         .onChange(of: sections) { _, _ in
             if pendingDrop != nil { endDrop() }
         }
-        .help("Sections: drag across empty space to add one, double-click one to rename it")
+        .onChange(of: editingID) { _, id in
+            id == nil ? stopClickMonitor() : startClickMonitor()
+        }
+        .onDisappear {
+            commitRename()
+            stopClickMonitor()
+        }
+        .help("Sections: double-click empty space to add one, double-click one to rename it")
     }
 
     /// `section` as the project has it, drawn as `shown` (the draft while
@@ -102,6 +100,12 @@ struct SectionLane: View {
                     .padding(.horizontal, Design.Space.tight)
                     .focused($isNameFocused)
                     .onSubmit { commitRename() }
+                    .onExitCommand { cancelRename() }
+                    .onAppear {
+                        isNameFocused = true
+                        // Like renaming a file: the whole name is selected.
+                        DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+                    }
                     .onChange(of: isNameFocused) { _, focused in if !focused { commitRename() } }
             } else {
                 Text(section.name)
@@ -187,24 +191,6 @@ struct SectionLane: View {
             }
     }
 
-    private var createGesture: some Gesture {
-        DragGesture(minimumDistance: 3, coordinateSpace: .named(space))
-            .onChanged { value in
-                let from = snapped(time(atX: value.startLocation.x), excluding: nil)
-                let target = snap(time(atX: value.location.x), nil)
-                onSnapIndicator(target)
-                let to = target ?? time(atX: value.location.x)
-                creating = (CMTimeMinimum(from, to), CMTimeMaximum(from, to))
-            }
-            .onEnded { _ in
-                onSnapIndicator(nil)
-                if let creating, creating.end > creating.start, let id = onCreate(creating.start, creating.end) {
-                    beginRename(id, name: "")
-                }
-                creating = nil
-            }
-    }
-
     private func showDraft(_ section: TimelineSection?) {
         pendingDrop = nil
         draft = section
@@ -233,15 +219,44 @@ struct SectionLane: View {
         onSelect(id)
         draftName = name
         editingID = id
-        isNameFocused = true
+    }
+
+    private func cancelRename() {
+        editingID = nil
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+
+    /// A click anywhere outside the name field ends the edit and saves it,
+    /// as in Finder. Focus loss alone missed clicks on views that don't
+    /// take focus, leaving the field open and keeping every key press.
+    private func startClickMonitor() {
+        stopClickMonitor()
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { event in
+            nonisolated(unsafe) let event = event
+            MainActor.assumeIsolated {
+                guard let window = event.window else { return }
+                if let editor = window.firstResponder as? NSTextView, editor.isFieldEditor,
+                   let hit = window.contentView?.hitTest(event.locationInWindow), hit.isDescendant(of: editor) || hit === editor {
+                    return
+                }
+                commitRename()
+                window.makeFirstResponder(nil)
+            }
+            return event
+        }
+    }
+
+    private func stopClickMonitor() {
+        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
+        clickMonitor = nil
     }
 
     /// An empty name keeps the one it had.
     private func commitRename() {
         guard let id = editingID else { return }
         let name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !name.isEmpty { onRename(id, name) }
         editingID = nil
+        if !name.isEmpty { onRename(id, name) }
     }
 
     private func time(atX x: CGFloat) -> CMTime {

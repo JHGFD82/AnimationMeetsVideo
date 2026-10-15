@@ -162,11 +162,15 @@ exports as black, so a timeline can be made longer than its footage (a
 hidden track holds one frame of a source stretched over that time, since a
 composition otherwise ends with its last media).
 
-- Drag across empty space in the lane to make a section over that range;
-  double-click empty space to make one five seconds long. A new section is
-  named "Section N" and its name opens for typing at once.
-- Double-click a section (or use its right-click menu) to rename it;
-  leaving the name empty keeps the old one.
+- Double-click empty space in the lane to make a section five seconds
+  long (dragging across empty space no longer draws one, which happened by
+  accident). A new section is named "Section N" and its name opens for
+  typing at once.
+- Double-click a section (or use its right-click menu) to rename it, as
+  with a file: the name is selected, Return or a click anywhere else saves
+  it, Escape cancels, and leaving it empty keeps the old name.
+- The sections button in the timeline toolbar (or the view options) shows
+  or hides the whole row.
 - Drag a section to move it and its edges to resize it.
 - Click a section to select it, then Delete removes it (also in its menu).
   Selecting a section clears any clip or layer selection.

@@ -309,6 +309,11 @@ struct TimelineView: View {
                 }
                 .toggleStyle(.button)
                 .help(snapping ? "Snapping on: edges snap to clips, the playhead and beat markers (N)" : "Snapping off (N)")
+                Toggle(isOn: $areaLayout.showsSections) {
+                    Image(systemName: "rectangle.split.3x1")
+                }
+                .toggleStyle(.button)
+                .help(areaLayout.showsSections ? "Hide the sections row" : "Show the sections row")
                 Toggle(isOn: $showsBrowser) {
                     Image(systemName: "square.grid.2x2")
                 }
@@ -340,7 +345,7 @@ struct TimelineView: View {
                 let viewport = viewport(width: geometry.size.width - labelColumnWidth)
                 let scrollbarHeight = viewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
                 let shownAreas = areaLayout.shown
-                let railHeight = rulerHeight + SectionLane.height + separatorHeight
+                let railHeight = rulerHeight + (areaLayout.showsSections ? SectionLane.height : 0) + separatorHeight
                 // Whatever height the timeline is given goes to the areas,
                 // split by their shares: a taller timeline shows more
                 // layers, it doesn't make them taller.
@@ -367,13 +372,15 @@ struct TimelineView: View {
                                 .contentShape(Rectangle())
                                 .gesture(scrubGesture(in: viewport))
                         }
-                        HStack(spacing: 0) {
-                            Text("Sections")
-                                .font(Design.Typeface.micro)
-                                .foregroundStyle(Design.textTertiary)
-                                .padding(.leading, Design.Space.step)
-                                .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
-                            sectionLane(viewport: viewport)
+                        if areaLayout.showsSections {
+                            HStack(spacing: 0) {
+                                Text("Sections")
+                                    .font(Design.Typeface.micro)
+                                    .foregroundStyle(Design.textTertiary)
+                                    .padding(.leading, Design.Space.step)
+                                    .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
+                                sectionLane(viewport: viewport)
+                            }
                         }
                     }
                     .background(Design.Surface.raised.color)
