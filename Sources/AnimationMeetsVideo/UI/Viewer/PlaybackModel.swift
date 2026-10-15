@@ -46,6 +46,13 @@ final class PlaybackModel {
     /// play doesn't swap the composition; this is what keeps paused frames
     /// sharp. Nil while playing, scrubbing, or drawing at full size.
     private(set) var still: CGImage?
+    /// The paused frame drawn from the newest edit, while the player still
+    /// holds the composition from before it. Shown over everything until
+    /// the player item is swapped, so the viewer follows a drag without
+    /// swapping the item at every step.
+    private(set) var liveFrame: CGImage?
+    /// What the viewer shows over the player, if anything.
+    var cover: CGImage? { liveFrame ?? still }
 
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
@@ -58,6 +65,7 @@ final class PlaybackModel {
     @ObservationIgnored private var frameRate: Double = 0
     @ObservationIgnored private var sampling: Task<Void, Never>?
     @ObservationIgnored private var stillTask: Task<Void, Never>?
+    @ObservationIgnored private let liveRenderer = LiveFrameRenderer()
 
     private static let qualityKey = "previewQuality"
     private static let motionBlurKey = "motionBlurInPreview"
@@ -74,6 +82,7 @@ final class PlaybackModel {
         motionBlurInPreview = blur
         drawingOptions.update(motionBlurInPreview: blur)
         beatClicks = BeatClickPlayer(player: player)
+        liveRenderer.onFrame = { [weak self] image in self?.receiveLiveFrame(image) }
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(value: 1, timescale: 30),
             queue: .main
@@ -117,14 +126,38 @@ final class PlaybackModel {
         item.videoComposition = composed.videoComposition(scaledBy: level.scale)
         item.audioMix = composed.audioMix(curves: volumeCurves, meter: mixMeter)
         mixMeter.reset()
-        // An older still may show what was just edited away.
-        clearStill()
+        // The old still stays until the new one is drawn (or turns out not
+        // to be needed): clearing it here would uncover the player's
+        // smaller picture for a moment on every rebuild.
         refreshStill()
+    }
+
+    /// Draws the paused frame from `composed`, the newest edit, over the
+    /// viewer. Does nothing while playing or seeking, which show the
+    /// player itself.
+    func showLive(_ composed: ComposedTimeline) {
+        guard !isPlaying, !isSeeking, player.currentItem != nil else { return }
+        liveRenderer.submit(.init(composed: composed, scale: level.scale, time: player.currentTime()))
+    }
+
+    private func receiveLiveFrame(_ image: CGImage) {
+        guard !isPlaying, !isSeeking else { return }
+        liveFrame = image
+        // A still of what was edited away mustn't show once this goes.
+        clearStill()
+    }
+
+    /// Lets go of the live frame, once the player shows the same picture
+    /// or nothing is going to replace it.
+    func clearLive() {
+        liveRenderer.cancel()
+        if liveFrame != nil { liveFrame = nil }
     }
 
     private func playStateChanged(_ playing: Bool) {
         guard playing != isPlaying else { return }
         isPlaying = playing
+        if playing { clearLive() }
         drawingOptions.update(isPlaying: playing)
         sampling?.cancel()
         sampling = nil
@@ -218,6 +251,7 @@ final class PlaybackModel {
     func seek(to time: CMTime) {
         currentTime = time
         pendingSeek = time
+        clearLive()
         clearStill()
         guard !isSeeking else { return }
         isSeeking = true

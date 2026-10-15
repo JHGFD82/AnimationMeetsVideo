@@ -130,6 +130,17 @@ Limits:
   until the next play or scrub. A render that finishes just as play is
   pressed waits for the next pause, since swapping the item mid-play
   freezes the picture.
+- **Following edits.** Dragging a value changes the project many times a
+  second. Each change builds a new composition, and while paused the
+  frame under the playhead is drawn from it (`LiveFrameRenderer`, latest
+  request wins) and shown over the player. A build is never cancelled by
+  the next edit, only queued behind it, so something always finishes. The
+  player item is swapped once edits have paused for 0.3 s. The viewer
+  never uncovers a picture older than the one it replaces: when the item
+  swaps, the held frame is a copy of whatever is on screen (live frame or
+  full-size still), not the old video frame, and the old still stays
+  until its replacement is drawn. Any new source of pictures (a still, a
+  live frame) should go through `PlaybackModel.cover` for this reason.
 - **Export.** A ProRes 422 export plays every stretch that has a render
   from the cache instead of compositing it again, which is much faster for
   stacked or animated stretches. The render is encoded a second time, which

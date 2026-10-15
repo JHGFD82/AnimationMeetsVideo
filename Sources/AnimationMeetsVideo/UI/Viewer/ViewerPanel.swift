@@ -25,7 +25,7 @@ struct ViewerPanel: View {
                 // frame edge stays visible even on a black frame.
                 Design.Surface.well.color
                 if hasContent {
-                    picture { PlayerLayerView(player: playback.player, still: playback.still) }
+                    picture { PlayerLayerView(player: playback.player, still: playback.cover) }
                 } else {
                     picture { MetalPreviewView() }
                     ContentUnavailableView("No clips yet", systemImage: "film",
