@@ -57,6 +57,9 @@ struct AnimationMeetsVideoApp: App {
     @State private var fileMonitor = ProjectFileMonitor()
     /// True while the project file is being written or reloaded.
     @State private var isBusy = false
+    /// The latest save asked for. Each save waits for the one before, so
+    /// two never write the package at once.
+    @State private var saveInProgress: Task<Bool, Never>?
     /// Set once launch has tried to reopen the last project, so the start
     /// sheet doesn't flash up before that.
     @State private var launchChecked = false
@@ -296,9 +299,23 @@ struct AnimationMeetsVideoApp: App {
         }
     }
 
-    /// Returns whether the project was saved.
+    /// Returns whether the project was saved. A save asked for while
+    /// another runs (pressing Save twice, or quitting during a save) starts
+    /// once that one is done.
     @discardableResult
     private func saveProject(forcePanel: Bool = false) async -> Bool {
+        let previous = saveInProgress
+        let save = Task {
+            _ = await previous?.value
+            return await performSave(forcePanel: forcePanel)
+        }
+        saveInProgress = save
+        let saved = await save.value
+        if saveInProgress == save { saveInProgress = nil }
+        return saved
+    }
+
+    private func performSave(forcePanel: Bool) async -> Bool {
         var destination = forcePanel ? nil : projectURL
         if destination == nil {
             let panel = NSSavePanel()
