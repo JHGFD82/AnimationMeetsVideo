@@ -10,6 +10,9 @@ under [Not implemented yet](#not-implemented-yet).
 Showing a layer's channels apart is described with the waveforms in
 [timeline.md](timeline.md#waveforms).
 
+Planned: [effects.md](effects.md#volume) gives every clip with sound a
+volume of its own and keeps layer volume only on Sound and Music layers.
+
 ## Volume
 
 Every layer with sound has a **volume** (`TimelineLayer.volume`), in

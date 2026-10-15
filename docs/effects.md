@@ -58,9 +58,9 @@ before blurring, put Scale above Blur. To blur first, drag it the other way.
 
 Every visual clip has one: a media clip with pictures, a nested timeline,
 and later images, text and shapes. Audio-only clips have none. Layers no
-longer have a transform; a layer keeps only its volume (see
-[audio.md](audio.md)). Animation across several clips goes on an
-adjustment layer (see [Adjustment layers](#adjustment-layers)).
+longer have a transform. Animation across several clips goes on an
+adjustment layer (see [Adjustment layers](#adjustment-layers)). Volume
+moves to clips too (see [Volume](#volume)).
 
 Every visual clip also has an **anchor point**, the one control that isn't
 an effect. It is the point that scale and rotation turn about, given as an
@@ -68,6 +68,43 @@ offset from the center of the clip's picture, in timeline pixels at 100%
 scale. Its default is (0, 0), the center. Because it is relative to the
 fitted picture, not to the media's pixels, replacing the media with a
 different resolution keeps it in place. It can be keyframed.
+
+### Source time
+
+Keyframes, inputs and Time all count in a clip's **source time**:
+
+- For a media clip, the media's **original** time, the same time trims and
+  scenes are stored in. Replacing the media with a version that has an
+  alignment offset (see [media-replacement.md](media-replacement.md))
+  shifts the frames read, not the animation, so moves stay on the picture.
+- For a nested timeline, that timeline's time.
+- For a still (and later text and shapes), which has no time of its own,
+  the time since the clip's start.
+
+**Splitting** a clip gives each half a full copy of its stack, anchor
+point, Time, Shutter and volume. Since keyframes are in source time, each
+half keeps exactly the animation it showed before; nothing is lost, so no
+[paste changes](#paste-changes) are raised.
+
+## Volume
+
+Planned changes to [audio.md](audio.md):
+
+- **Every clip with sound has a volume**: media clips with sound, audio
+  clips and nested timelines. It works as layer volume does today
+  (decibels, −60 to +6, keyframed in source time, blending in decibels).
+- **Sound and Music layers keep a layer volume** as well, applied after
+  the clip's: the clip sets its own level, the layer acts as a fader over
+  everything on it. This leaves room for buses and other mixing that a
+  DAW does at the track level.
+- **Video layers have no layer volume**, only their clips do.
+- Detaching a video clip's sound gives the new sound clip the same clip
+  volume.
+- A clip's volume is a pinned row at the bottom of the effects panel, below
+  Shutter, since sound comes after pictures. An audio clip, which has no
+  stack, shows only this row. The **L** key's row in the timeline stays
+  the layer volume on Sound and Music layers; clip volume is drawn as a
+  line across each clip block while L is on.
 
 ## Foundations
 
@@ -291,7 +328,7 @@ works on frames already chosen:
 - **Echo**: earlier source frames layered under the current one, with a
   count, a delay and a decay.
 
-Keyframes are in source time, so retiming a clip retimes its animation too:
+Keyframes are in [source time](#source-time), so retiming a clip retimes its animation too:
 at 50% the clip and its moves both play at half speed. To animate at a
 steady speed over retimed footage, animate an adjustment layer instead.
 
@@ -348,6 +385,9 @@ adjustment layer has a **Reach**: All Layers Below (the default), or down
 to a chosen layer. For example, it can reach only the one layer under it,
 with all that layer's clips, or three of the five layers below.
 
+- **Reach stops at the edge of its own timeline**, even inside a nested
+  timeline set to pass through, so an adjustment inside a nested timeline
+  never reaches into the timeline it's placed in.
 - **Reach is stored as the bottom layer it reaches, not as a count.** Adding
   or moving layers changes which layers are in between, but never makes the
   adjustment stop at a different layer than the one picked. If the chosen
@@ -397,7 +437,9 @@ row selects it, as clicking it on the timeline does.
 
 - Each **effect** row has a drag handle, a disclosure arrow, an
   enable checkbox, its name and a **⋯** menu: Duplicate (Cmd-D), Reset,
-  Enable/Disable, Delete, Show Up to Here, and, on Transform, Moves Anchor.
+  Rename, Enable/Disable, Delete, Show Up to Here, and, on Transform, Moves
+  Anchor. New effects are numbered by kind ("Transform 2") so that rows
+  and graph editor titles can be told apart; renaming replaces the number.
 - Each **control** row has the stopwatch, its name, its values (fields
   take arithmetic) and the keyframe buttons ◀ ◆ ▶. It also has the graph
   button, which opens the existing graph editor HUD ("Clip 3 · Transform 2 ·
@@ -405,6 +447,27 @@ row selects it, as clicking it on the timeline does.
 - Effects are dragged to reorder within the stack. Controls are dragged to
   reorder within their effect.
 - The Delete key deletes the selected effect or control.
+- The panel opens with **Shift-E** or its button in the timeline's header.
+  The transitions panel keeps its button; opening either closes the other.
+
+### Changing values by dragging
+
+Every numeric value in the panel, and every other value field that takes
+arithmetic, can also be **dragged**: press on it and drag left or right to
+lower or raise it. A press without a drag still opens the field for typing.
+
+- One point of drag is one step of the value's unit: a pixel, a percent, a
+  degree, a tenth of a stop or a decibel. **Shift** makes it ten steps,
+  **Option** a tenth of one.
+- The pointer is hidden and held in place while dragging, so a drag can go
+  on past the edge of the screen, and reappears where it started.
+- The viewer follows the drag live. Letting go saves it as one undo step.
+  On an animated control it sets the keyframe at the playhead, as typing
+  does. Escape during a drag puts the value back.
+- Linked Scale changes both axes; a value with two parts (Position x and
+  y) drags the part pressed.
+- The project settings sheet's width, height and frame rate don't drag:
+  a slip there would change the whole timeline.
 
 ### Keyframes in the panel
 
@@ -414,9 +477,8 @@ and interactions as the timeline's lanes today: click to go to it, drag to
 retime, right-click for ease presets and Delete Keyframe. The panel's
 playhead is the timeline's: scrubbing either moves both.
 
-Keyframes are in the clip's **source time**: media time for a media clip,
-the nested timeline's time for a nested clip. Moving a clip carries its
-animation along. Trimming its start doesn't shift the animation against
+Keyframes are in the clip's [source time](#source-time). Moving a clip
+carries its animation along. Trimming its start doesn't shift the animation against
 the picture. Keyframes outside the trimmed range are kept but don't play.
 
 The timeline no longer has per-layer property rows or the P, S, R and T
@@ -430,6 +492,10 @@ keys. A clip block with effects shows a small badge with the count.
   dimmed with a note, as are steps a pass-through nested clip can't apply.
 - **Each effect shows a thumbnail** of the clip's picture after it, at the
   playhead, drawn small and refreshed when the playhead stops.
+- **Moved from the timeline.** The graph editor HUDs, the F9 ease keys
+  (which act on the keyframes at the playhead in the panel's shown rows),
+  the keyframe buttons and Reset (in each ⋯ menu) work on effect controls
+  as they work on layer properties today.
 - **Show Up to Here** shows the clip in the viewer as it is after that
   effect, with later effects and the transition skipped, until it is turned
   off. The viewer shows a banner while it is on.
@@ -546,16 +612,37 @@ problem and where it is in the file, as a path:
 This also replaces today's rule that an unknown transition kind is dropped
 on load.
 
+## Testing
+
+The test that the built-in and custom compositors draw the same picture
+goes away with the built-in compositor. In its place:
+
+- Reference frames for each effect and blend mode, compared within a small
+  tolerance.
+- Folding, pushing transforms into nested timelines and skipping
+  equivalent intermediates each checked against drawing every step
+  separately, on the same stacks.
+- Strict loading checked against a file per kind of error, for the message
+  and the path.
+
+## Not in this plan
+
+- **Dragging in the viewer** (on-screen handles for position, scale,
+  rotation or the anchor point). Handy as a shortcut, but easy to trigger
+  by mistake; left out until there's a design that avoids that.
+
 ## Building it
 
 In order, each step usable on its own:
 
-1. **Model and saving**: anchor point and stacks on clips, layer transforms
-   removed, format version 2, strict loading with path errors.
+1. **Model and saving**: anchor point, stacks and volume on clips, layer
+   transforms and video layers' volume removed, format version 2, strict
+   loading with path errors.
 2. **Compositor**: the tree with closed nested timelines and Pass Through,
    Transform steps with folding and Moves Anchor, transitions below the
    stack, one compositor for viewer and export, the new render key.
-3. **Effects panel**: library, stack editing, keyframe lanes and playhead.
+3. **Effects panel**: library, stack editing, keyframe lanes and playhead,
+   dragging values, clip volume.
    Remove the timeline's property rows and the inspector's transform
    section.
 4. **Blending**: one Metal kernel per mode, using the formula above, and
