@@ -157,3 +157,32 @@ import Testing
         #expect(hdr.videoComposition?.customVideoCompositorClass == LayeredCompositor.self)
     }
 }
+
+@Suite struct LiveGovernorTests {
+    @Test func aSlowFrameStepsDownAtOnce() {
+        var governor = LiveGovernor()
+        governor.record(seconds: 0.3)
+        #expect(governor.level == .half)
+        governor.record(seconds: 0.3)
+        #expect(governor.level == .quarter)
+        governor.record(seconds: 0.3)
+        #expect(governor.level == .quarter)
+    }
+
+    @Test func fastFramesStepBackUpOnlyAfterSeveralInARow() {
+        var governor = LiveGovernor()
+        governor.record(seconds: 0.3)
+        for _ in 0..<(LiveGovernor.stepUpAfter - 1) { governor.record(seconds: 0.005) }
+        #expect(governor.level == .half)
+        governor.record(seconds: 0.005)
+        #expect(governor.level == .full)
+    }
+
+    @Test func aFrameThatWouldNotFitAtTheNextSizeUpKeepsTheSize() {
+        var governor = LiveGovernor()
+        governor.record(seconds: 0.3)
+        // Under budget, but four times it would not be.
+        for _ in 0..<10 { governor.record(seconds: 0.06) }
+        #expect(governor.level == .half)
+    }
+}

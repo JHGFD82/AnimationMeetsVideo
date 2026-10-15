@@ -39,3 +39,26 @@ struct CompositionKey: Equatable {
         }
     }
 }
+
+extension CompositionKey {
+    /// Whether the only difference from `old` is clips' speed (and the
+    /// clips after them moving to follow it). What speed changes is which
+    /// frames play when, which only playing shows, so a drag of it doesn't
+    /// need the picture updated as it goes.
+    func differsOnlyInSpeed(from old: CompositionKey) -> Bool {
+        guard timelines.count == old.timelines.count, media == old.media else { return false }
+        func neutral(_ timelines: [Timeline]) -> [Timeline] {
+            timelines.map { timeline in
+                var copy = timeline
+                for layer in copy.layers.indices {
+                    for clip in copy.layers[layer].clips.indices {
+                        copy.layers[layer].clips[clip].time.speed = AnimatedValue(100.0)
+                        copy.layers[layer].clips[clip].startOffset = .zero
+                    }
+                }
+                return copy
+            }
+        }
+        return neutral(timelines) == neutral(old.timelines)
+    }
+}

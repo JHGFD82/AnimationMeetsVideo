@@ -66,6 +66,7 @@ final class PlaybackModel {
     @ObservationIgnored private var sampling: Task<Void, Never>?
     @ObservationIgnored private var stillTask: Task<Void, Never>?
     @ObservationIgnored private let liveRenderer = LiveFrameRenderer()
+    @ObservationIgnored private var liveGovernor = LiveGovernor()
 
     private static let qualityKey = "previewQuality"
     private static let motionBlurKey = "motionBlurInPreview"
@@ -82,7 +83,7 @@ final class PlaybackModel {
         motionBlurInPreview = blur
         drawingOptions.update(motionBlurInPreview: blur)
         beatClicks = BeatClickPlayer(player: player)
-        liveRenderer.onFrame = { [weak self] image in self?.receiveLiveFrame(image) }
+        liveRenderer.onFrame = { [weak self] image, seconds, interactive in self?.receiveLiveFrame(image, seconds: seconds, interactive: interactive) }
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(value: 1, timescale: 30),
             queue: .main
@@ -135,13 +136,21 @@ final class PlaybackModel {
     /// Draws the paused frame from `composed`, the newest edit, over the
     /// viewer. Does nothing while playing or seeking, which show the
     /// player itself.
-    func showLive(_ composed: ComposedTimeline) {
+    ///
+    /// With `interactive` (a value is being dragged) the frame is drawn
+    /// at a size the renderer keeps up with, stepping down to a quarter
+    /// of the pixels when frames take too long and back up when they
+    /// don't (`LiveGovernor`); the frame after the drag is full size.
+    func showLive(_ composed: ComposedTimeline, interactive: Bool = false) {
         guard !isPlaying, !isSeeking, player.currentItem != nil else { return }
-        liveRenderer.submit(.init(composed: composed, scale: level.scale, time: player.currentTime()))
+        if !interactive { liveGovernor.reset() }
+        let scale = interactive ? min(level.scale, liveGovernor.level.scale) : level.scale
+        liveRenderer.submit(.init(composed: composed, scale: scale, time: player.currentTime(), interactive: interactive))
     }
 
-    private func receiveLiveFrame(_ image: CGImage) {
+    private func receiveLiveFrame(_ image: CGImage, seconds: Double, interactive: Bool) {
         guard !isPlaying, !isSeeking else { return }
+        if interactive { liveGovernor.record(seconds: seconds) }
         liveFrame = image
         // A still of what was edited away mustn't show once this goes.
         clearStill()

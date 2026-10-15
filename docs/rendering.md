@@ -130,12 +130,16 @@ Limits:
   until the next play or scrub. A render that finishes just as play is
   pressed waits for the next pause, since swapping the item mid-play
   freezes the picture.
-- **Dragging a value holds the picture.** While a value field is being
-  dragged (`ProjectHistory.beginGesture`), the viewer is not rebuilt at
-  all; it shows the result when the mouse is released. Building a
-  composition for every step made dragging, retiming especially,
-  sluggish, and a preview that changes under the pointer isn't needed to
-  judge a value: play it after.
+- **Dragging a value.** While a value field is dragged
+  (`ProjectHistory.beginGesture`), a change to a clip's speed alone waits
+  for the mouse to be released, since retiming is judged by playing. Any
+  other change updates the viewer as it goes, as frames drawn at a size
+  the renderer keeps up with (`LiveGovernor`): a frame that takes over
+  0.1 s drops the next to half size and then quarter size (a quarter of
+  the pixels each step), and four fast frames in a row, ones that would
+  still fit at the larger size, bring it back up. Each drag starts at
+  full size, and the frame after it is full size. The player item is
+  swapped once, when the mouse is released.
 - **Following other edits.** Each change builds a new composition, and while paused the
   frame under the playhead is drawn from it (`LiveFrameRenderer`, latest
   request wins) and shown over the player. A build is never cancelled by

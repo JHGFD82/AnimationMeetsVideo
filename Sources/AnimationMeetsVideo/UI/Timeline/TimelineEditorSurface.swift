@@ -235,8 +235,9 @@ struct TimelineEditorSurface<Library: View>: View {
                 sideTab = .effects
             }
         }
-        // While a value is being dragged the picture stays as it was, and
-        // shows the result when the mouse is released.
+        // While a value is dragged the viewer follows it at a size that
+        // keeps up, and the player item is swapped when the mouse is
+        // released. A change to speed alone waits for that.
         .onReceive(NotificationCenter.default.publisher(for: .valueGestureDidBegin)) { _ in
             isGesturing = true
         }
@@ -268,9 +269,11 @@ struct TimelineEditorSurface<Library: View>: View {
             playheadTime = .zero
             rebuildPlayerItem(resetPosition: true)
         }
-        .onChange(of: compositionKey) { _, _ in
+        .onChange(of: compositionKey) { old, new in
             renderer?.noteActivity()
-            if isGesturing {
+            if isGesturing, new.differsOnlyInSpeed(from: old) {
+                // Retiming is judged by playing, not by the frame at the
+                // playhead: wait for the mouse to be released.
                 rebuildDeferred = true
             } else {
                 rebuildPlayerItem()
@@ -545,7 +548,13 @@ struct TimelineEditorSurface<Library: View>: View {
                 renderer?.update(project: realProject, timelineID: tID, segments: isPartial ? [] : composed.segments)
                 let wasPaused = player.timeControlStatus == .paused
                 if wasPaused, !resetPosition, player.currentItem != nil {
-                    playback.showLive(composed)
+                    playback.showLive(composed, interactive: isGesturing)
+                    if isGesturing {
+                        // The item is swapped when the drag ends.
+                        rebuildDeferred = true
+                        finish()
+                        return
+                    }
                     buildPhase = .settling
                     if rebuildQueued {
                         // Newer edits are already waiting; this one is only worth its frame.

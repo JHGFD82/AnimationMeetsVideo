@@ -15,10 +15,13 @@ final class LiveFrameRenderer {
         /// The fraction of the frame size to draw at.
         var scale: Double
         var time: CMTime
+        /// Drawn for a drag in progress, whose frame times are measured.
+        var interactive = false
     }
 
-    /// Called with each finished picture.
-    var onFrame: ((CGImage) -> Void)?
+    /// Called with each finished picture, how long it took to draw, and
+    /// whether it was for a drag in progress.
+    var onFrame: ((CGImage, Double, Bool) -> Void)?
 
     private var latest: Request?
     private var worker: Task<Void, Never>?
@@ -32,9 +35,11 @@ final class LiveFrameRenderer {
         worker = Task { [weak self] in
             while let self, self.generation == mine, let request = self.latest {
                 self.latest = nil
+                let started = ContinuousClock.now
                 let image = await Self.draw(request)
+                let (seconds, attoseconds) = (ContinuousClock.now - started).components
                 guard self.generation == mine else { return }
-                if let image { self.onFrame?(image) }
+                if let image { self.onFrame?(image, Double(seconds) + Double(attoseconds) / 1e18, request.interactive) }
             }
             if let self, self.generation == mine { self.worker = nil }
         }

@@ -47,3 +47,29 @@ import Testing
         #expect(!RetimeMark(seconds: 0, speed: 100).ramps(to: RetimeMark(seconds: 1, speed: 100)))
     }
 }
+
+@Suite struct CompositionKeySpeedTests {
+    private func project() -> (EditingProject, UUID, UUID) {
+        var project = EditingProject.empty
+        let media = MediaClip(
+            name: "m", kind: .video, url: URL(fileURLWithPath: "/tmp/none.mov"), duration: CMTime(value: 4, timescale: 1),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        let placed = project.importClip(media, intoTimeline: project.rootTimelineID)!
+        return (project, project.rootTimelineID, placed.clipID)
+    }
+
+    @Test func aSpeedChangeAloneIsOnlyASpeedChange() {
+        let (before, tl, clip) = project()
+        var after = before
+        after.editClip(clip, in: tl) { $0.time.speed = AnimatedValue(50) }
+        #expect(CompositionKey(project: after).differsOnlyInSpeed(from: CompositionKey(project: before)))
+    }
+
+    @Test func aSpeedChangeWithAnEffectChangeIsNot() {
+        let (before, tl, clip) = project()
+        var after = before
+        after.editClip(clip, in: tl) { $0.time.speed = AnimatedValue(50); $0.time.frameBlending = .blend }
+        #expect(!CompositionKey(project: after).differsOnlyInSpeed(from: CompositionKey(project: before)))
+    }
+}
