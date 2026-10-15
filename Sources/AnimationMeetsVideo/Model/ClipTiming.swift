@@ -200,7 +200,10 @@ struct SpeedIntegral {
     /// The integral at each keyframe.
     private let totals: [Double]
 
-    private static let stepsPerPiece = 24
+    static let stepsPerPiece = 24
+
+    /// The grid the rate's times are cut to, per second.
+    static let rateTimescale: Int32 = 1_000_000_000
 
     /// The few most recently used, since a speed is asked about over and
     /// over (every clip block, frame and render key) between edits.
@@ -231,7 +234,7 @@ struct SpeedIntegral {
         // A fine timescale, since each time is cut to the grid: at 1 / 240000
         // the cuts add up to about 1e-5 s over a long piece, more than the
         // result is rounded by.
-        let value = speed.value(at: CMTime(seconds: seconds, preferredTimescale: 1_000_000_000))
+        let value = speed.value(at: CMTime(seconds: seconds, preferredTimescale: rateTimescale))
         return 100 / min(max(value, ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound)
     }
 
