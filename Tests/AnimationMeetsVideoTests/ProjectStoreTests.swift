@@ -63,28 +63,77 @@ private struct Sandbox {
 }
 
 @Suite struct ProjectStoreTests {
-    @Test func roundTripKeepsLayerTransformsAndKeyframes() async throws {
+    @Test func roundTripKeepsEffectStacksAndKeyframes() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
-        var (project, _, _) = sandbox.makeProject()
+        var (project, clipID, _) = sandbox.makeProject()
         let timelineID = project.rootTimelineID
-        let layerID = try #require(project.timeline(id: timelineID)?.layers.first?.id)
-        project.editTransform(of: layerID, in: timelineID) { transform in
-            transform.position.setAnimated(true, at: .zero)
-            transform.position.set(Vector2(x: -200, y: 35.5), at: CMTime(value: 1001, timescale: 24000))
-            transform.scale.set(Vector2(x: 50, y: 75), at: .zero)
-            transform.scaleLinked = false
-            transform.rotation.set(-30, at: .zero)
+
+        var move = Effect(kind: .transform, name: "Nudge")
+        move.movesAnchor = false
+        move.controls.removeAll { $0.kind == .opacity }
+        move.controls[0].number = AnimatedValue(ComponentValue(values: [5, -2.5]))
+        move.controls[1].number = AnimatedValue(ComponentValue(values: [50, 75]))
+        move.controls[1].linked = false
+        move.controls[2].number.setAnimated(true, at: .zero)
+        move.controls[2].number.set(ComponentValue(values: [-30]), at: CMTime(value: 1001, timescale: 24000))
+        move.controls[2].number.applyEase(.easyEase, at: CMTime(value: 1001, timescale: 24000))
+        var blend = Effect(kind: .blending)
+        blend.enabled = false
+        blend.against = move.id
+        blend.controls[0].blendMode = .softLight
+        blend.controls[1].setComponent(0, to: 40, at: .zero)
+        blend.controls[1].enabled = false
+
+        project.editClip(clipID, in: timelineID) {
+            $0.effects = [move, blend]
+            $0.anchorPoint.setAnimated(true, at: .zero)
+            $0.anchorPoint.set(Vector2(x: 12, y: -4), at: CMTime(value: 2, timescale: 1))
+            $0.volume.set(-6, at: .zero)
         }
 
         try await ProjectStore.save(project, to: sandbox.packageURL)
-        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
-        #expect(!json.contains("opacity"))
         let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
 
-        let saved = try #require(project.timeline(id: timelineID)?.layers.first?.transform)
-        let restored = try #require(loaded.project.timeline(id: timelineID)?.layers.first?.transform)
-        #expect(restored == saved)
+        let saved = try #require(project.clipAndLayer(clipID, in: timelineID)?.clip)
+        let restored = try #require(loaded.project.clipAndLayer(clipID, in: timelineID)?.clip)
+        #expect(restored.effects == saved.effects)
+        #expect(restored.anchorPoint == saved.anchorPoint)
+        #expect(restored.volume == saved.volume)
+    }
+
+    @Test func plainClipsWriteNoStackAnchorOrVolume() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        for key in ["effects", "anchorPoint", "volume", "transform", "canvasMargin"] {
+            #expect(!json.contains(key))
+        }
+    }
+
+    @Test func defaultsAreLeftOutOfEffects() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, _) = sandbox.makeProject()
+        project.editClip(clipID, in: project.rootTimelineID) { $0.effects = [Effect(kind: .transform), Effect(kind: .blending)] }
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        for key in ["\"enabled\"", "movesAnchor", "linked", "against", "\"name\" : \"Transform"] {
+            #expect(!json.contains(key))
+        }
+        #expect(json.contains("\"kind\" : \"transform\""))
+    }
+
+    @Test func roundTripKeepsTheCanvasMargin() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+        project.canvasMargin = 1
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.project.canvasMargin == 1)
     }
 
     @Test func roundTripKeepsLayerVolume() async throws {
@@ -92,6 +141,8 @@ private struct Sandbox {
         defer { sandbox.cleanUp() }
         var (project, _, _) = sandbox.makeProject()
         let timelineID = project.rootTimelineID
+        // Only Sound and Music layers have a volume of their own.
+        project.timelines[0].layers[0].kind = .sound
         let layerID = try #require(project.timeline(id: timelineID)?.layers.first?.id)
         try await ProjectStore.save(project, to: sandbox.packageURL)
         #expect(!(try String(contentsOf: sandbox.projectJSON, encoding: .utf8)).contains("volume"))
@@ -110,15 +161,6 @@ private struct Sandbox {
         let restored = try #require(loaded.project.timeline(id: timelineID)?.layers.first?.volume)
         #expect(restored == saved)
         #expect(restored.keyframes.count == 3)
-    }
-
-    @Test func untransformedLayersWriteNoTransform() async throws {
-        let sandbox = try Sandbox()
-        defer { sandbox.cleanUp() }
-        let (project, _, _) = sandbox.makeProject()
-        try await ProjectStore.save(project, to: sandbox.packageURL)
-        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
-        #expect(!json.contains("transform"))
     }
 
     @Test func roundTripKeepsStreamsAndTransitions() async throws {
@@ -199,7 +241,7 @@ private struct Sandbox {
         let text = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
 
         #expect(text.contains("\"1001/24000s\""))
-        #expect(text.contains("\"formatVersion\" : 1"))
+        #expect(text.contains("\"formatVersion\" : 2"))
     }
 
     @Test func roundTripKeepsLayerKinds() async throws {
@@ -211,22 +253,6 @@ private struct Sandbox {
         try await ProjectStore.save(project, to: sandbox.packageURL)
         let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
         #expect(loaded.project.timelines[0].layers.map(\.kind) == [.video, .music])
-    }
-
-    @Test func layersWithoutAKindAreGivenOneOnLoad() async throws {
-        let sandbox = try Sandbox()
-        defer { sandbox.cleanUp() }
-        var (project, _, _) = sandbox.makeProject()
-        project.timelines[0].layers[0].kind = .music
-
-        try await ProjectStore.save(project, to: sandbox.packageURL)
-        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
-        let edited = json.replacingOccurrences(of: #""kind"\s*:\s*"music",?"#, with: "", options: .regularExpression)
-        #expect(edited != json)
-        try edited.write(to: sandbox.projectJSON, atomically: true, encoding: .utf8)
-
-        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
-        #expect(loaded.project.timelines[0].layers[0].kind == .video)
     }
 
     @Test func acceptsHandWrittenWholeSecondTimes() async throws {
@@ -267,14 +293,14 @@ private struct Sandbox {
         let original = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
 
         try original
-            .replacingOccurrences(of: "\"formatVersion\" : 1", with: "\"formatVersion\" : 99")
+            .replacingOccurrences(of: "\"formatVersion\" : 2", with: "\"formatVersion\" : 99")
             .write(to: sandbox.projectJSON, atomically: true, encoding: .utf8)
         await #expect(throws: ProjectStoreError.self) {
             try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
         }
 
         try original
-            .replacingOccurrences(of: "\"formatVersion\" : 1,", with: "")
+            .replacingOccurrences(of: "\"formatVersion\" : 2,", with: "")
             .write(to: sandbox.projectJSON, atomically: true, encoding: .utf8)
         await #expect(throws: ProjectStoreError.self) {
             try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
@@ -971,5 +997,150 @@ private struct Sandbox {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
         try ProjectStore.forgetReference(for: UUID(), in: sandbox.packageURL)
+    }
+}
+
+@Suite struct StrictLoadingTests {
+    /// Saves a project whose first clip holds a Transform and a Blending
+    /// effect and a way in, then lets `edit` change the JSON that was
+    /// written, and returns what loading it says.
+    private func loadingMessage(edit: (inout [String: Any]) -> Void) async throws -> String {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, _) = sandbox.makeProject()
+        var move = Effect(kind: .transform)
+        move.controls[0].number = AnimatedValue(ComponentValue(values: [5, 0]))
+        var blend = Effect(kind: .blending)
+        blend.controls[0].blendMode = .multiply
+        project.editClip(clipID, in: project.rootTimelineID) {
+            $0.effects = [move, blend]
+            $0.transitionIn = ClipTransition(kind: .crossDissolve, duration: CMTime(value: 1, timescale: 1))
+        }
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: sandbox.projectJSON)) as? [String: Any])
+        edit(&json)
+        try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]).write(to: sandbox.projectJSON)
+        do {
+            _ = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+            return "loaded"
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// Changes the clip at timelines[0].layers[0].clips[0].
+    private func editClip(_ json: inout [String: Any], _ change: (inout [String: Any]) -> Void) {
+        var timelines = json["timelines"] as! [[String: Any]]
+        var layers = timelines[0]["layers"] as! [[String: Any]]
+        var clips = layers[0]["clips"] as! [[String: Any]]
+        change(&clips[0])
+        layers[0]["clips"] = clips
+        timelines[0]["layers"] = layers
+        json["timelines"] = timelines
+    }
+
+    private func editEffect(_ json: inout [String: Any], _ index: Int, _ change: (inout [String: Any]) -> Void) {
+        editClip(&json) { clip in
+            var effects = clip["effects"] as! [[String: Any]]
+            change(&effects[index])
+            clip["effects"] = effects
+        }
+    }
+
+    @Test func aLayerTransformIsAnUnknownKey() async throws {
+        let message = try await loadingMessage { json in
+            var timelines = json["timelines"] as! [[String: Any]]
+            var layers = timelines[0]["layers"] as! [[String: Any]]
+            layers[0]["transform"] = ["opacity": ["value": 50]]
+            timelines[0]["layers"] = layers
+            json["timelines"] = timelines
+        }
+        #expect(message == "The project can't be opened. Unknown key \"transform\" at timelines[0].layers[0].")
+    }
+
+    @Test func anUnknownEffectKindNamesItsPath() async throws {
+        let message = try await loadingMessage { editEffect(&$0, 1) { $0["kind"] = "glow" } }
+        #expect(message == "The project can't be opened. Unknown effect kind \"glow\" at timelines[0].layers[0].clips[0].effects[1].kind.")
+    }
+
+    @Test func anUnknownBlendModeIsRejected() async throws {
+        let message = try await loadingMessage { json in
+            editEffect(&json, 1) { effect in
+                var controls = effect["controls"] as! [[String: Any]]
+                controls[0]["value"] = "sparkle"
+                effect["controls"] = controls
+            }
+        }
+        #expect(message == "The project can't be opened. Unknown blend mode \"sparkle\" at timelines[0].layers[0].clips[0].effects[1].controls[0].value.")
+    }
+
+    @Test func aControlOfAnotherEffectIsAnUnknownControl() async throws {
+        let message = try await loadingMessage { json in
+            editEffect(&json, 0) { effect in
+                var controls = effect["controls"] as! [[String: Any]]
+                controls[1]["kind"] = "mode"
+                effect["controls"] = controls
+            }
+        }
+        #expect(message == "The project can't be opened. Unknown control kind \"mode\" at timelines[0].layers[0].clips[0].effects[0].controls[1].kind.")
+    }
+
+    @Test func aValueOfTheWrongTypeIsRejected() async throws {
+        let message = try await loadingMessage { json in
+            editEffect(&json, 0) { effect in
+                var controls = effect["controls"] as! [[String: Any]]
+                controls[0]["value"] = "far"
+                effect["controls"] = controls
+            }
+        }
+        #expect(message == "The project can't be opened. Expected a list of 2 numbers at timelines[0].layers[0].clips[0].effects[0].controls[0].value.")
+    }
+
+    @Test func aMissingRequiredFieldIsNamed() async throws {
+        let message = try await loadingMessage { editClip(&$0) { $0["id"] = nil } }
+        #expect(message == "The project can't be opened. Missing \"id\" at timelines[0].layers[0].clips[0].")
+    }
+
+    @Test func aControlNeedsAValueOrKeyframes() async throws {
+        let message = try await loadingMessage { json in
+            editEffect(&json, 0) { effect in
+                var controls = effect["controls"] as! [[String: Any]]
+                controls[0]["value"] = nil
+                effect["controls"] = controls
+            }
+        }
+        #expect(message == "The project can't be opened. Missing \"value\" or \"keyframes\" at timelines[0].layers[0].clips[0].effects[0].controls[0].")
+    }
+
+    @Test func anUnknownTransitionKindIsRejectedNotDropped() async throws {
+        let message = try await loadingMessage { json in
+            editClip(&json) { clip in
+                var transition = clip["transitionIn"] as! [String: Any]
+                transition["kind"] = "spin"
+                clip["transitionIn"] = transition
+            }
+        }
+        #expect(message == "The project can't be opened. Unknown transition kind \"spin\" at timelines[0].layers[0].clips[0].transitionIn.kind.")
+    }
+
+    @Test func aMalformedTimeIsRejectedWithItsPath() async throws {
+        let message = try await loadingMessage { editClip(&$0) { $0["trimStart"] = "soon" } }
+        #expect(message.hasPrefix("The project can't be opened. \"soon\" isn't a valid time"))
+        #expect(message.hasSuffix("at timelines[0].layers[0].clips[0].trimStart."))
+    }
+
+    @Test func anUnknownKeyAtTheTopIsReportedThere() async throws {
+        let message = try await loadingMessage { $0["glow"] = true }
+        #expect(message == "The project can't be opened. Unknown key \"glow\" at the top level of the file.")
+    }
+
+    @Test func version1ProjectsAreNotOpened() async throws {
+        let message = try await loadingMessage { $0["formatVersion"] = 1 }
+        #expect(message == "This project uses format version 1, which this version of the app can't open.")
+    }
+
+    @Test func aFileWithoutProblemsLoads() async throws {
+        #expect(try await loadingMessage { _ in } == "loaded")
     }
 }

@@ -74,10 +74,7 @@ final class KeyframeGraphHUDs {
     }
 
     private func title(of key: ParameterKey) -> String {
-        guard let timeline = project.timeline(id: key.timelineID), let layer = timeline.layer(id: key.layerID) else {
-            return key.parameter.name
-        }
-        return "\(project.displayName(of: layer, in: timeline)) · \(key.parameter.name)"
+        project.parameterTitle(of: key)
     }
 
     /// Near the top right of the main window, each new panel stepped down

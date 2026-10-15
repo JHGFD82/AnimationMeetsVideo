@@ -27,7 +27,6 @@ struct TimelineView: View {
     let onApplyJointEdit: (UUID, UUID, JointEdit) -> Void
     let onTrimClipStart: (UUID, UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, UUID, CMTime) -> Void
-    let onEditTransform: (UUID, (inout LayerTransform) -> Void) -> Void
     let onEditVolume: (UUID, (inout AnimatedValue<Double>) -> Void) -> Void
     let onSetTransition: (UUID, UUID, TransitionKind, TransitionEdge) -> Void
     let onRemoveTransition: (UUID, UUID, TransitionEdge) -> Void
@@ -59,8 +58,6 @@ struct TimelineView: View {
     @State private var zoomedPixelsPerSecond: CGFloat?
     @State private var scrollX: CGFloat = 0
     @State private var trackAreaWidth: CGFloat = 800
-    /// The transform properties shown under each layer, by layer ID.
-    @State private var revealed: [UUID: Set<TransformProperty>] = [:]
     /// Layers showing their volume under their clips.
     @State private var volumeRevealed: Set<UUID> = []
     /// Layers showing their video clips' linked audio.
@@ -112,7 +109,6 @@ struct TimelineView: View {
     @AppStorage("beatClickFrequency") private var beatClickFrequency = 1000.0
 
     private let rulerHeight: CGFloat = 28
-    private let propertyRowHeight: CGFloat = 22
     /// Two points: the groove between layers is a dark cut with a lit edge
     /// under it, which needs a row of pixels each. The header column and
     /// the track area both lay this out, so layer positions stay aligned.
@@ -136,7 +132,6 @@ struct TimelineView: View {
         clipRowHeight(of: layer)
             + (shownJoint(in: layer) != nil ? TransitionFootageLane.height : 0)
             + (showsLinkedAudio(of: layer) ? audioLaneHeight(of: layer) : 0)
-            + CGFloat(shownProperties(of: layer).count) * propertyRowHeight
             + (showsVolume(of: layer) ? VolumeLane.height : 0)
             + separatorHeight
     }
@@ -190,25 +185,19 @@ struct TimelineView: View {
     }
     private let zoomStep: CGFloat = 1.5
 
-    /// Wider while property rows are showing, to fit their values.
+    /// Wider while a volume row is showing, to fit its values.
     private var labelColumnWidth: CGFloat {
-        timeline.layers.contains { !shownProperties(of: $0).isEmpty || showsVolume(of: $0) } ? 300 : 150
+        timeline.layers.contains { showsVolume(of: $0) } ? 300 : 150
     }
 
     private func showsVolume(of layer: TimelineLayer) -> Bool {
-        volumeRevealed.contains(layer.id) && project.layerPlaysAudio(layer)
+        volumeRevealed.contains(layer.id) && hasProperties(layer)
     }
 
-    /// Whether the layer has any property rows to show: transforms on
-    /// layers with pictures, volume on layers with sound.
+    /// Whether the layer has a volume row to show: Sound and Music layers
+    /// have a layer volume, video layers only their clips'.
     private func hasProperties(_ layer: TimelineLayer) -> Bool {
-        layer.isVisual(in: project) || project.layerPlaysAudio(layer)
-    }
-
-    /// The layer's shown properties, in standard order. Audio layers have none.
-    private func shownProperties(of layer: TimelineLayer) -> [TransformProperty] {
-        guard let set = revealed[layer.id], !set.isEmpty else { return [] }
-        return TransformProperty.allCases.filter(set.contains)
+        layer.kind.isAudio && project.layerPlaysAudio(layer)
     }
 
     private var beatLayerChoices: [(id: UUID, name: String)] {
@@ -638,7 +627,7 @@ struct TimelineView: View {
                         height: clipRowHeight(of: layer),
                         canMoveUp: index > 0,
                         canMoveDown: index < layers.count - 1,
-                        isExpanded: hasProperties(layer) ? !shownProperties(of: layer).isEmpty || showsVolume(of: layer) : nil,
+                        isExpanded: hasProperties(layer) ? showsVolume(of: layer) : nil,
                         onToggleExpanded: { toggleExpanded(layer) },
                         isAudioExpanded: project.layerHasLinkedAudio(layer) ? showsLinkedAudio(of: layer) : nil,
                         onToggleAudio: { toggleLinkedAudio(layer) },
@@ -680,22 +669,6 @@ struct TimelineView: View {
                                 Button("Detach Audio") { onDetachAudio(layer.id, nil) }
                             }
                     }
-                    ForEach(shownProperties(of: layer)) { property in
-                        TransformPropertyRow(
-                            property: property,
-                            transform: layer.transform,
-                            time: frameTime,
-                            frameSize: timeline.frameSize,
-                            onEdit: { change in onEditTransform(layer.id, change) },
-                            onSeek: onScrub,
-                            onShowGraph: graphs.map { graphs in
-                                { graphs.show(ParameterKey(timelineID: timelineID, layerID: layer.id, parameter: .transform(property))) }
-                            }
-                        )
-                        .padding(.leading, 30)
-                        .padding(.trailing, 8)
-                        .frame(height: propertyRowHeight)
-                    }
                     if showsVolume(of: layer) {
                         VolumePropertyRow(
                             volume: layer.volume,
@@ -703,7 +676,7 @@ struct TimelineView: View {
                             onEdit: { change in onEditVolume(layer.id, change) },
                             onSeek: onScrub,
                             onShowGraph: graphs.map { graphs in
-                                { graphs.show(ParameterKey(timelineID: timelineID, layerID: layer.id, parameter: .volume)) }
+                                { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
                             }
                         )
                         .padding(.leading, 30)
@@ -823,26 +796,6 @@ struct TimelineView: View {
                             visibleX: viewport.visibleContentX,
                             onSelectClip: { clip in onSelectClip(layer.id, clip) },
                             onDetachAudio: { clipID in onDetachAudio(layer.id, [clipID]) }
-                        )
-                    }
-                    ForEach(shownProperties(of: layer)) { property in
-                        KeyframeLane(
-                            marks: layer.transform[components: property].marks,
-                            currentTime: frameTime,
-                            pixelsPerSecond: pixelsPerSecond,
-                            width: contentWidth,
-                            height: propertyRowHeight,
-                            snap: { timeline.snappedToFrame($0) },
-                            onSeek: onScrub,
-                            onMove: { from, to in
-                                onEditTransform(layer.id) { $0.moveKeyframe(property, at: from, to: to) }
-                            },
-                            onDelete: { time in
-                                onEditTransform(layer.id) { $0.removeKeyframe(property, at: time) }
-                            },
-                            onEase: { time, preset in
-                                onEditTransform(layer.id) { $0[components: property].applyEase(preset, at: time) }
-                            }
                         )
                     }
                     if showsVolume(of: layer) {
@@ -989,23 +942,11 @@ struct TimelineView: View {
         if channelsRevealed.contains(layer.id) { channelsRevealed.remove(layer.id) } else { channelsRevealed.insert(layer.id) }
     }
 
-    /// The disclosure arrow shows every property the layer has (the four
-    /// transform properties if it has pictures, volume if it has sound),
-    /// or hides them all.
+    /// The disclosure arrow shows the layer's volume row, or hides it.
     private func toggleExpanded(_ layer: TimelineLayer) {
-        let showing = !shownProperties(of: layer).isEmpty || showsVolume(of: layer)
-        revealed[layer.id] = !showing && layer.isVisual(in: project) ? Set(TransformProperty.allCases) : []
-        if !showing && project.layerPlaysAudio(layer) {
-            volumeRevealed.insert(layer.id)
-        } else {
-            volumeRevealed.remove(layer.id)
-        }
+        if showsVolume(of: layer) { volumeRevealed.remove(layer.id) } else { volumeRevealed.insert(layer.id) }
     }
 
-    /// P, S, R and T show only position, scale, rotation or opacity (pressing
-    /// the key again hides it); with Shift they add or remove that property
-    /// and keep the others. They act on the selected clip's layer, or on
-    /// every visual layer when nothing is selected.
     private func deleteLayer(_ id: UUID) {
         if selectedLayerID == id { selectedLayerID = nil }
         onDeleteLayer(id)
@@ -1065,26 +1006,8 @@ struct TimelineView: View {
             tool = chosen
             return true
         }
-        if key == "l" { return toggleVolumeRows(adding: flags.contains(.shift)) }
-        guard let property = TransformProperty(shortcutKey: key) else { return false }
-        let targets: [TimelineLayer]
-        if let selection, selection.timelineID == timelineID, let layer = timeline.layer(id: selection.layerID) {
-            targets = layer.isVisual(in: project) ? [layer] : []
-        } else {
-            targets = timeline.layers.filter { $0.isVisual(in: project) }
-        }
-        guard !targets.isEmpty else { return false }
-        for layer in targets {
-            var shown = revealed[layer.id] ?? []
-            if flags.contains(.shift) {
-                if shown.contains(property) { shown.remove(property) } else { shown.insert(property) }
-            } else {
-                shown = shown == [property] && !showsVolume(of: layer) ? [] : [property]
-                volumeRevealed.remove(layer.id)
-            }
-            revealed[layer.id] = shown
-        }
-        return true
+        if key == "l" { return toggleVolumeRows() }
+        return false
     }
 
     /// Eases the keyframes at the playhead in the property rows that are
@@ -1100,10 +1023,6 @@ struct TimelineView: View {
         }
         var eased = false
         for layer in layers {
-            for property in shownProperties(of: layer) where layer.transform.hasKeyframe(property, at: time) {
-                onEditTransform(layer.id) { $0[components: property].applyEase(preset, at: time) }
-                eased = true
-            }
             if showsVolume(of: layer), layer.volume.keyframe(at: time) != nil {
                 onEditVolume(layer.id) { $0.applyEase(preset, at: time) }
                 eased = true
@@ -1112,26 +1031,21 @@ struct TimelineView: View {
         return eased
     }
 
-    /// L shows only volume (pressing it again hides it), as levels in After
-    /// Effects; with Shift it adds or removes volume and keeps the
-    /// transform properties shown. Acts on the selected clip's layer, or on
-    /// every layer with sound when nothing is selected.
-    private func toggleVolumeRows(adding: Bool) -> Bool {
+    /// L shows the volume row of Sound and Music layers (pressing it again
+    /// hides it), as levels in After Effects. Acts on the selected clip's
+    /// layer, or on every layer with a layer volume when nothing is
+    /// selected.
+    private func toggleVolumeRows() -> Bool {
         let targets: [TimelineLayer]
         if let selection, selection.timelineID == timelineID, let layer = timeline.layer(id: selection.layerID) {
-            targets = project.layerPlaysAudio(layer) ? [layer] : []
+            targets = hasProperties(layer) ? [layer] : []
         } else {
-            targets = timeline.layers.filter { project.layerPlaysAudio($0) }
+            targets = timeline.layers.filter(hasProperties)
         }
         guard !targets.isEmpty else { return false }
+        let hiding = targets.allSatisfy { showsVolume(of: $0) }
         for layer in targets {
-            let onlyVolume = showsVolume(of: layer) && shownProperties(of: layer).isEmpty
-            if adding {
-                if showsVolume(of: layer) { volumeRevealed.remove(layer.id) } else { volumeRevealed.insert(layer.id) }
-            } else {
-                revealed[layer.id] = []
-                if onlyVolume { volumeRevealed.remove(layer.id) } else { volumeRevealed.insert(layer.id) }
-            }
+            if hiding { volumeRevealed.remove(layer.id) } else { volumeRevealed.insert(layer.id) }
         }
         return true
     }

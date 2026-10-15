@@ -99,10 +99,10 @@ import Testing
         let placed = project.importClip(media(movies.incoming, frames: 72), intoTimeline: t)
         let quarter = try #require(placed)
         // Half size, in the top left quarter.
-        project.editTransform(of: quarter.layerID, in: t) { transform in
-            transform.scale.set(Vector2(x: 50, y: 50), at: .zero)
-            transform.position.set(Vector2(x: -480, y: -270), at: .zero)
-        }
+        var transform = Effect(kind: .transform)
+        transform.controls[0].number = AnimatedValue(ComponentValue(values: [-480, -270]))
+        transform.controls[1].number = AnimatedValue(ComponentValue(values: [50, 50]))
+        project.editClip(quarter.clipID, in: t) { $0.effects = [transform] }
         let builtIn = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
         #expect(builtIn.videoComposition?.customVideoCompositorClass == nil)
 

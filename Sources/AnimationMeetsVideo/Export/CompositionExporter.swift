@@ -135,32 +135,66 @@ private actor MediaTrackCache {
     }
 }
 
-/// A layer's transform as seen from the root timeline: one nesting level of
-/// a placement's animation.
+/// A clip's stack as seen from the root timeline: one nesting level of a
+/// placement's animation.
 struct TransformStage {
-    var transform: LayerTransform
-    /// Center of the frame of the timeline the layer is in.
+    var effects: [Effect]
+    var anchorPoint: AnimatedValue<Vector2>
+    /// Center of the frame of the timeline the clip is in.
     var center: CGPoint
     /// Root time minus that timeline's time.
     var shift: CMTime
+    /// The clip's start in its timeline minus its trim start: its source
+    /// time is its timeline's time minus this, and its keyframes count in
+    /// source time.
+    var sourceShift: CMTime
     /// Fits that timeline's frame into the frame of the next stage out
     /// (identity at the root).
     var toOuter: CGAffineTransform
-    /// The transitions of the clip placed on the layer, in that timeline's
-    /// time, applied after the layer's own transform.
+    /// The clip's transitions, in that timeline's time, applied after its
+    /// stack.
     var edges: EdgeTransitions? = nil
 
-    /// `inner` carried out through this stage: the layer's transform, the
-    /// clip's transitions, then into the next stage's frame.
+    init(clip: TimelineClip, center: CGPoint, shift: CMTime, toOuter: CGAffineTransform, edges: EdgeTransitions? = nil) {
+        self.init(
+            effects: clip.effects, anchorPoint: clip.anchorPoint, center: center, shift: shift,
+            sourceShift: CMTimeSubtract(clip.startOffset, clip.trimStart), toOuter: toOuter, edges: edges
+        )
+    }
+
+    init(effects: [Effect], anchorPoint: AnimatedValue<Vector2>, center: CGPoint, shift: CMTime, sourceShift: CMTime, toOuter: CGAffineTransform, edges: EdgeTransitions? = nil) {
+        self.effects = effects
+        self.anchorPoint = anchorPoint
+        self.center = center
+        self.shift = shift
+        self.sourceShift = sourceShift
+        self.toOuter = toOuter
+        self.edges = edges
+    }
+
+    /// `inner` carried out through this stage: the clip's stack, its
+    /// transitions, then into the next stage's frame.
     func outward(_ inner: CGAffineTransform, at time: CMTime) -> CGAffineTransform {
         placed(inner, at: CMTimeSubtract(time, shift)).concatenating(toOuter)
     }
 
+    /// The stack's placement and opacity at its timeline's time `local`.
+    func folded(at local: CMTime) -> FoldedPlacement {
+        StackFolding.fold(effects: effects, anchorPoint: anchorPoint, at: CMTimeSubtract(local, sourceShift), center: center)
+    }
+
     /// `inner` in this stage's own frame at its own time `local`.
     fileprivate func placed(_ inner: CGAffineTransform, at local: CMTime) -> CGAffineTransform {
-        let layered = inner.concatenating(transform.affineTransform(at: local, center: center))
+        let layered = inner.concatenating(folded(at: local).matrix)
         guard let edges else { return layered }
         return layered.concatenating(edges.effect(at: local).transform)
+    }
+
+    /// The times in this stage's timeline when the stack is between keyframes.
+    var animatedRanges: [ClosedRange<CMTime>] {
+        (effects.flatMap(\.animatedRanges) + [anchorPoint.animatedRange].compactMap { $0 }).map {
+            CMTimeAdd($0.lowerBound, sourceShift)...CMTimeAdd($0.upperBound, sourceShift)
+        }
     }
 }
 
@@ -179,7 +213,7 @@ struct PlacementAnimation {
         Float(stages.reduce(1.0) { result, stage in
             let local = CMTimeSubtract(time, stage.shift)
             let fade = stage.edges?.effect(at: local).opacity ?? 1
-            return result * stage.transform.opacityFraction(at: local) * fade
+            return result * stage.folded(at: local).opacity * fade
         })
     }
 
@@ -227,7 +261,7 @@ struct PlacementAnimation {
     /// not overlapping. Outside them the transform and opacity are constant.
     var animatedRanges: [CMTimeRange] {
         let ranges = stages.flatMap { stage in
-            let keyframed = stage.transform.animatedRanges.map { range in
+            let keyframed = stage.animatedRanges.map { range in
                 CMTimeRange(start: CMTimeAdd(range.lowerBound, stage.shift), end: CMTimeAdd(range.upperBound, stage.shift))
             }
             let transitions = (stage.edges?.animatedRanges ?? []).map { range in
@@ -256,8 +290,8 @@ private struct Placement {
     let animation: PlacementAnimation
     /// Which of the file's streams to use; detached audio and its picture
     /// each play only one.
-    let includesVideo: Bool
-    let includesAudio: Bool
+    var includesVideo: Bool
+    var includesAudio: Bool
     /// The clip in the built timeline it belongs to: the clip itself, or
     /// the nested timeline's clip it is drawn through.
     let owner: UUID
@@ -418,7 +452,7 @@ enum CompositionExporter {
     /// layers of media placements at absolute root-timeline times, top layer
     /// first. `window` is the visible range in this timeline's own time,
     /// `offset` maps this timeline's time to root time, `outer` holds the
-    /// transforms of the layers this timeline is nested in (innermost
+    /// stacks of the clips this timeline is nested in (innermost
     /// first), `outerVolume` their volumes the same way, and `toOuter` fits this timeline's frame into the frame of
     /// the innermost of them.
     private static func flatten(
@@ -442,8 +476,10 @@ enum CompositionExporter {
         let center = CGPoint(x: timeline.frameSize.width / 2, y: timeline.frameSize.height / 2)
         var result: [FlatLayer] = []
         for layer in timeline.layers {
-            let layerStage = TransformStage(transform: layer.transform, center: center, shift: offset, toOuter: toOuter)
-            let volume = [VolumeStage(layerID: layer.id, shift: offset)] + outerVolume
+            // Sound and Music layers act as a fader over their clips' own
+            // volumes; video layers have no volume of their own.
+            let layerVolume = layer.kind.isAudio ? [VolumeStage(id: layer.id, shift: offset)] : []
+            let volume = layerVolume + outerVolume
             let clips = layer.clips.sorted(by: { $0.startOffset < $1.startOffset })
             var own = FlatLayer(volume: volume)
             // The incoming clip's frames before a joined cut, on a track of
@@ -453,26 +489,41 @@ enum CompositionExporter {
             // Frames shown under a transition at a cut, on a track of their
             // own below the layer's so the two can overlap.
             var underlay = FlatLayer()
+            // The sound of clips with a volume of their own, each on a track
+            // of its own to be played through that volume.
+            var clipSound: [FlatLayer] = []
             var nestedLayers: [FlatLayer] = []
 
             for clip in clips {
-                var stage = layerStage
-                let lead = project.joinedLead(of: clip, among: clips) ?? .zero
-                if project.playsVideo(clip) {
-                    stage.edges = EdgeTransitions(clip: clip, frameSize: timeline.frameSize, lead: lead)
+                func stage(of clip: TimelineClip, edges: EdgeTransitions? = nil) -> TransformStage {
+                    TransformStage(clip: clip, center: center, shift: offset, toOuter: toOuter, edges: edges)
                 }
-                let stages = [stage] + outer
+                // The clip's volume counts in its source time.
+                let clipVolume = VolumeStage(id: clip.id, shift: CMTimeAdd(offset, CMTimeSubtract(clip.startOffset, clip.trimStart)))
+                let hasOwnVolume = clip.volume != AnimatedValue(0.0)
+                let lead = project.joinedLead(of: clip, among: clips) ?? .zero
+                var clipStage = stage(of: clip)
+                if project.playsVideo(clip) {
+                    clipStage.edges = EdgeTransitions(clip: clip, frameSize: timeline.frameSize, lead: lead)
+                }
+                let stages = [clipStage] + outer
                 let placed = CMTimeRange(start: CMTimeSubtract(clip.startOffset, lead), end: clip.endOffset)
                 let visible = placed.intersection(window)
                 guard visible.isValid, visible.duration > .zero else { continue }
 
                 switch clip.source {
                 case .media:
-                    if let placement = try await mediaPlacement(
+                    if var placement = try await mediaPlacement(
                         of: clip, from: clip.trimStart, at: clip.startOffset, for: clip.trimmedDuration,
                         project: project, frameSize: timeline.frameSize, window: window, offset: offset, stages: stages,
                         owner: rootClipID ?? clip.id, includesVideo: clip.streams != .audio, includesAudio: clip.streams != .video
                     ) {
+                        if hasOwnVolume, placement.includesAudio {
+                            var sound = placement
+                            sound.includesVideo = false
+                            clipSound.append(FlatLayer(placements: [sound], volume: [clipVolume] + volume))
+                            placement.includesAudio = false
+                        }
                         own.placements.append(placement)
                     }
                     // Where this clip meets its neighbor at a cut, the
@@ -483,8 +534,7 @@ enum CompositionExporter {
                     // cut, playing this clip's frames before its in point.
                     // Without spare frames there is nothing to show, and the
                     // transition plays over the layers below.
-                    let durations = stage.edges == nil ? (leading: CMTime.zero, trailing: CMTime.zero) : clip.effectiveTransitionDurations(lead: lead)
-                    let neighborStages = [layerStage] + outer
+                    let durations = clipStage.edges == nil ? (leading: CMTime.zero, trailing: CMTime.zero) : clip.effectiveTransitionDurations(lead: lead)
                     if lead > .zero, let placement = try await mediaPlacement(
                         of: clip, from: CMTimeSubtract(clip.trimStart, lead), at: CMTimeSubtract(clip.startOffset, lead), for: lead,
                         project: project, frameSize: timeline.frameSize, window: window, offset: offset, stages: stages,
@@ -496,7 +546,7 @@ enum CompositionExporter {
                        let placement = try await mediaPlacement(
                            of: previous, from: previous.trimEnd, at: clip.startOffset, for: durations.leading,
                            project: project, frameSize: timeline.frameSize, window: window, offset: offset,
-                           stages: neighborStages, owner: rootClipID ?? clip.id, includesVideo: true, includesAudio: false
+                           stages: [stage(of: previous)] + outer, owner: rootClipID ?? clip.id, includesVideo: true, includesAudio: false
                        ) {
                         underlay.placements.append(placement)
                     }
@@ -505,7 +555,7 @@ enum CompositionExporter {
                            of: next, from: CMTimeSubtract(next.trimStart, durations.trailing),
                            at: CMTimeSubtract(clip.endOffset, durations.trailing), for: durations.trailing,
                            project: project, frameSize: timeline.frameSize, window: window, offset: offset,
-                           stages: neighborStages, owner: rootClipID ?? clip.id, includesVideo: true, includesAudio: false
+                           stages: [stage(of: next)] + outer, owner: rootClipID ?? clip.id, includesVideo: true, includesAudio: false
                        ) {
                         underlay.placements.append(placement)
                     }
@@ -521,7 +571,7 @@ enum CompositionExporter {
                         window: nestedWindow,
                         offset: CMTimeAdd(offset, shift),
                         outer: stages,
-                        outerVolume: volume,
+                        outerVolume: [clipVolume] + volume,
                         toOuter: fitTransform(from: nested.frameSize, to: timeline.frameSize),
                         rootClipID: rootClipID ?? clip.id
                     )
@@ -531,6 +581,7 @@ enum CompositionExporter {
             if !overlay.placements.isEmpty { result.append(overlay) }
             if !own.placements.isEmpty { result.append(own) }
             if !underlay.placements.isEmpty { result.append(underlay) }
+            result += clipSound
             result += nestedLayers
         }
         return result

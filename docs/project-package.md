@@ -152,7 +152,10 @@ JSON was chosen over XML and YAML:
 
 Requirements for the file:
 
-- **`formatVersion`** field, with migrations when it changes.
+- **`formatVersion`** field. It is 2 today. Old versions aren't migrated
+  and are refused with a message, and loading rejects anything it doesn't
+  recognize, naming it and where it is (see
+  [effects.md](effects.md#loading-is-strict)).
 - **Stable IDs** for every asset, timeline, layer, clip, and scene, written
   to the file. (Today IDs are regenerated on load and references use array
   indices, which is the main obstacle to live reload and diffing.)
@@ -160,21 +163,23 @@ Requirements for the file:
   of the same project are byte-identical and diffs show only real changes.
 - **Rational times** such as `"1001/24000s"`, never floating-point seconds.
 - **Defaults are left out**, so untouched data adds nothing to a diff. For
-  example a layer's `transform` (see [layer-transforms.md](layer-transforms.md))
-  is written only once the layer is moved, scaled, turned, faded or animated,
-  and its `volume` (see [audio.md](audio.md)) only once it isn't 0 dB.
+  example a clip's `effects`, `anchorPoint` and `volume` (see
+  [effects.md](effects.md#saving) and [audio.md](audio.md)) are written
+  only once they aren't empty, (0, 0) or 0 dB, and a Sound or Music layer's
+  `volume` likewise.
   A timeline's `sections` are written only once it has one. Likewise a
   clip's `streams` (`"video"` or `"audio"`) is written only once
   a video's sound has been detached, and `transitionIn` / `transitionOut`
   (`{"kind": "crossDissolve", "duration": "1s"}`) only when the clip has
-  one. An unknown transition kind is dropped on load. A transition's
+  one. A transition's
   `curve` is written only when it isn't linear, as its points:
   `{"time": 0.4, "value": 0.2, "in": [-0.1, 0], "out": [0.2, 0]}`, with
   handles as offsets and absent for a corner. A way in joining two clips
   also has `lead`, the part played before the cut, when it isn't zero. A curve that doesn't run from
   (0, 0) to (1, 1) in increasing time loads as linear. The project's
   `copiesMediaOnImport` is written only as `false`, once imports are set to
-  be referenced in place instead of copied into `Media/`.
+  be referenced in place instead of copied into `Media/`, and its
+  `canvasMargin` only when it isn't 0.5.
 - Written atomically so a crash cannot leave a half-written file.
 
 ## Retention

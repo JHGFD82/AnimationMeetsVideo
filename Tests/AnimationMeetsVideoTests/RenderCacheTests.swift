@@ -41,7 +41,7 @@ private struct RenderSandbox {
         let placedTop = project.importClip(media(light), intoTimeline: t)
         let bottom = try #require(placedBottom)
         let top = try #require(placedTop)
-        project.editTransform(of: top.layerID, in: t) { $0.opacity.set(50, at: .zero) }
+        project.setOpacity(50, ofClip: top.clipID, in: t)
         return (project, top, bottom)
     }
 
@@ -117,7 +117,7 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         project.moveClip(top.clipID, in: t, layer: top.layerID, to: later)
         #expect(try await key(project) == original)
 
-        project.editTransform(of: top.layerID, in: t) { $0.opacity.set(60, at: .zero) }
+        project.setOpacity(60, ofClip: top.clipID, in: t)
         #expect(try await key(project) != original)
     }
 }
@@ -247,5 +247,14 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         scheduler.playhead = CMTime(value: 2, timescale: 1)
 
         #expect(scheduler.pending.map(\.key) == ["c", "d", "a", "b"])
+    }
+}
+
+extension EditingProject {
+    /// Gives a clip a Transform effect holding only an Opacity of `percent`.
+    mutating func setOpacity(_ percent: Double, ofClip clipID: UUID, in timelineID: UUID) {
+        var effect = Effect(kind: .transform, controls: [EffectControl(kind: .opacity)])
+        effect.controls[0].number = AnimatedValue(ComponentValue(values: [percent]))
+        editClip(clipID, in: timelineID) { $0.effects = [effect] }
     }
 }

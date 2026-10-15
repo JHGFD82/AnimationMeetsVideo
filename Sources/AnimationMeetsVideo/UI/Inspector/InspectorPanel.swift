@@ -105,36 +105,34 @@ struct InspectorPanel: View {
                     }
                 }
 
-                if let timeline = project.timeline(id: timelineID),
-                   let layer = timeline.layer(id: selection.layerID),
-                   layer.isVisual(in: project) {
-                    InspectorGroup("Layer transform") {
-                        TransformInspectorSection(
-                            transform: layer.transform,
-                            time: timeline.snappedToFrame(playheadTime),
-                            frameSize: timeline.frameSize,
-                            onEdit: { change in project.editTransform(of: layer.id, in: timelineID, change) },
-                            onSeek: onSeek,
-                            onShowGraph: graphs.map { graphs in
-                                { graphs.show(ParameterKey(timelineID: timelineID, layerID: layer.id, parameter: .transform($0))) }
-                            }
-                        )
+                if let timeline = project.timeline(id: timelineID) {
+                    if project.playsAudio(timelineClip) {
+                        InspectorGroup("Volume") {
+                            VolumePropertyRow(
+                                volume: timelineClip.volume,
+                                time: timeline.snappedToFrame(timelineClip.sourceTime(atTimelineTime: playheadTime)),
+                                onEdit: { change in
+                                    project.editClip(timelineClip.id, in: timelineID) { change(&$0.volume) }
+                                },
+                                onSeek: { onSeek(timelineClip.timelineTime(forSourceTime: $0)) },
+                                onShowGraph: graphs.map { graphs in
+                                    { graphs.show(ParameterKey(timelineID: timelineID, parameter: .clipVolume(clipID: timelineClip.id))) }
+                                }
+                            )
+                        }
                     }
-                }
-
-                if let timeline = project.timeline(id: timelineID),
-                   let layer = timeline.layer(id: selection.layerID),
-                   project.layerPlaysAudio(layer) {
-                    InspectorGroup("Layer volume") {
-                        VolumePropertyRow(
-                            volume: layer.volume,
-                            time: timeline.snappedToFrame(playheadTime),
-                            onEdit: { change in project.editVolume(of: layer.id, in: timelineID, change) },
-                            onSeek: onSeek,
-                            onShowGraph: graphs.map { graphs in
-                                { graphs.show(ParameterKey(timelineID: timelineID, layerID: layer.id, parameter: .volume)) }
-                            }
-                        )
+                    if let layer = timeline.layer(id: selection.layerID), layer.kind.isAudio {
+                        InspectorGroup("Layer volume") {
+                            VolumePropertyRow(
+                                volume: layer.volume,
+                                time: timeline.snappedToFrame(playheadTime),
+                                onEdit: { change in project.editVolume(of: layer.id, in: timelineID, change) },
+                                onSeek: onSeek,
+                                onShowGraph: graphs.map { graphs in
+                                    { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
+                                }
+                            )
+                        }
                     }
                 }
 

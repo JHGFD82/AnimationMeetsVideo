@@ -1,9 +1,10 @@
 # Effects
 
-Status: **planned, not implemented**. This replaces the layer transforms
-in [layer-transforms.md](layer-transforms.md): transforms move from layers
-to clips and become effects. Keyframes, easing, the graph editor and
-arithmetic in numeric fields carry over unchanged.
+Status: **being built, step by step** (see [Building it](#building-it) for
+what exists; everything else here is planned). This replaces the layer
+transforms in [layer-transforms.md](layer-transforms.md): transforms move
+from layers to clips and become effects. Keyframes, easing, the graph
+editor and arithmetic in numeric fields carry over unchanged.
 
 ## Guiding principle: gravity
 
@@ -132,9 +133,10 @@ New Transform effects list them in this order. Each control is one step:
   later scales and rotations turn the picture about its own anchor, wherever
   the picture now is. Scale and rotation leave it where it is, since it is
   the point they turn about. As a result, Position, Scale and Rotation give
-  the same picture in any order within a Transform effect. Order matters
-  across effects with other steps between them, and when an effect doesn't
-  move the anchor.
+  the same picture in any order within a Transform effect, as long as
+  Scale is uniform: a stretch (x and y apart) works along the screen's axes,
+  so it doesn't commute with a turn. Order matters across effects with
+  other steps between them, and when an effect doesn't move the anchor.
 - **Moves Anchor** (in the effect's ⋯ menu, checked by default): unchecked,
   the effect's Position moves the picture but leaves the anchor at its spot
   in the frame. Later scales and rotations then turn the picture about that
@@ -643,9 +645,14 @@ goes away with the built-in compositor. In its place:
 
 In order, each step usable on its own:
 
-1. **Model and saving**: anchor point, stacks and volume on clips, layer
-   transforms and video layers' volume removed, format version 2, strict
-   loading with path errors.
+1. **Model and saving** (done): anchor point, stacks and volume on clips,
+   layer transforms and video layers' volume removed, format version 2,
+   strict loading with path errors. The renderer already draws a clip's
+   Transform steps (folded into one matrix per clip, through the existing
+   compositors); there is no editing UI for stacks until step 3, so the
+   timeline's property rows and the inspector's transform section are gone
+   for now and a stack can only be written in `project.json`. Clip volume
+   is set in the inspector.
 2. **Compositor**: the tree with closed nested timelines and Pass Through,
    Transform steps with folding and Moves Anchor, transitions below the
    stack, one compositor for viewer and export, the new render key.

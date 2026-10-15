@@ -14,6 +14,13 @@ struct EditingProject: Identifiable, Equatable {
     /// Whether imported media is copied into the package's `Media/` folder
     /// (the default) or referenced where it is.
     var copiesMediaOnImport = true
+    /// How much of the frame, on each side, an intermediate image keeps of
+    /// the picture moved off the frame, as a fraction of its width and
+    /// height. See `defaultCanvasMargin`.
+    var canvasMargin = EditingProject.defaultCanvasMargin
+
+    /// Half a frame on each side: twice the frame's area.
+    static let defaultCanvasMargin = 0.5
 
     static var empty: EditingProject {
         let main = Timeline(
@@ -407,12 +414,9 @@ struct TimelineLayer: Identifiable, Equatable {
     /// takes. See `LayerKind`.
     var kind: LayerKind = .video
     var clips: [TimelineClip]
-    /// Position, scale, rotation and opacity, keyframed in this timeline's
-    /// time. Ignored for layers with no pictures.
-    var transform = LayerTransform.identity
-    /// The volume of everything the layer plays, in decibels (see
-    /// `AudioLevel`), keyframed in this timeline's time. Ignored for layers
-    /// with no sound.
+    /// The volume of everything a Sound or Music layer plays, applied after
+    /// each clip's own, in decibels (see `AudioLevel`), keyframed in this
+    /// timeline's time. Video layers have none, only their clips do.
     var volume = AnimatedValue(0.0)
 
     var duration: CMTime {
@@ -445,6 +449,16 @@ struct TimelineClip: Identifiable, Equatable {
     /// Brings the clip in at its start, and takes it out at its end.
     var transitionIn: ClipTransition?
     var transitionOut: ClipTransition?
+    /// The point scale and rotation turn about: an offset from the center of
+    /// the clip's fitted picture, in timeline pixels at 100% scale. Keyframed
+    /// in the clip's source time, like everything on the clip. Clips with no
+    /// pictures have none.
+    var anchorPoint = AnimatedValue(Vector2.zero)
+    /// What is done to the picture, top to bottom (see `Effect`).
+    var effects: [Effect] = []
+    /// The volume of the clip's sound, in decibels (see `AudioLevel`),
+    /// keyframed in the clip's source time. Clips with no sound have none.
+    var volume = AnimatedValue(0.0)
 
     var trimmedDuration: CMTime {
         CMTimeSubtract(trimEnd, trimStart)

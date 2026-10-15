@@ -217,9 +217,6 @@ struct TimelineEditorSurface<Library: View>: View {
                 onTrimClipEnd: { layerID, clipID, newTrimEnd in
                     project.trimClipEnd(clipID, in: timelineID, layer: layerID, to: newTrimEnd)
                 },
-                onEditTransform: { layerID, change in
-                    project.editTransform(of: layerID, in: timelineID, change)
-                },
                 onEditVolume: { layerID, change in
                     project.editVolume(of: layerID, in: timelineID, change)
                 },

@@ -9,7 +9,7 @@ with a trackpad. What is not built is listed under
 
 The timeline sits under the library, viewer and inspector and spans the
 full width of the window: a label column on the left (layer number and
-name, and transform property rows when shown), and the track area on the
+name, and its volume row when shown), and the track area on the
 right with the ruler across its top. The transitions panel, opened with the
 button in the timeline's header, takes its place at the right end.
 
@@ -202,8 +202,8 @@ is being edited.
   its bottom half the incoming one; the cut stays and the transition gets
   different footage to blend.
 
-P, S, R and T show transform properties, which is why slip is Y, as in
-Premiere.
+Slip is Y, as in Premiere. (P, S, R and T showed layer transforms, which
+moved onto clips; see [effects.md](effects.md).)
 
 ## Snapping
 
@@ -357,7 +357,7 @@ clip's frames after it on a track below. Nested timelines don't join.
 
 Kinds: cross dissolve, film dissolve, wipe left/right/up/down, slide
 left/right and zoom. A wipe or slide acts in the frame of the timeline the
-clip is on, after the layer's transform.
+clip is on, after the clip's effect stack.
 
 The **film dissolve** shows the following picture brightest parts first:
 it appears wherever it is brighter than a threshold that falls from white

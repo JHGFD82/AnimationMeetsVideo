@@ -89,76 +89,180 @@ private func seconds(_ value: Double) -> CMTime {
     }
 }
 
-@Suite struct LayerTransformTests {
-    private let frame = CGSize(width: 1920, height: 1080)
-    private var center: CGPoint { CGPoint(x: 960, y: 540) }
+@Suite struct TransformStackTests {
+    private let center = CGPoint(x: 960, y: 540)
 
-    @Test func identityLeavesContentAlone() {
-        let transform = LayerTransform.identity.affineTransform(at: .zero, center: center)
-        #expect(transform == .identity)
+    /// A stack of one Transform effect holding just these controls.
+    private func transform(_ controls: [(ControlKind, [Double])], movesAnchor: Bool = true) -> Effect {
+        var effect = Effect(kind: .transform, controls: [])
+        effect.movesAnchor = movesAnchor
+        for (kind, values) in controls {
+            var control = EffectControl(kind: kind)
+            control.number = AnimatedValue(ComponentValue(values: values))
+            effect.controls.append(control)
+        }
+        return effect
     }
 
-    @Test func rotationTurnsClockwiseAboutTheFrameCenter() {
-        var layer = LayerTransform()
-        layer.rotation.set(90, at: .zero)
-        let transform = layer.affineTransform(at: .zero, center: center)
-        let mappedCenter = center.applying(transform)
-        #expect(abs(mappedCenter.x - 960) < 0.001 && abs(mappedCenter.y - 540) < 0.001)
+    private func fold(_ effects: [Effect], anchor: Vector2 = .zero, at time: CMTime = .zero) -> FoldedPlacement {
+        StackFolding.fold(effects: effects, anchorPoint: AnimatedValue(anchor), at: time, center: center)
+    }
+
+    private func close(_ a: CGPoint, _ b: CGPoint) -> Bool {
+        abs(a.x - b.x) < 0.001 && abs(a.y - b.y) < 0.001
+    }
+
+    @Test func anEmptyStackLeavesThePictureAlone() {
+        let placement = fold([])
+        #expect(placement.matrix == .identity && placement.opacity == 1)
+        #expect(fold([Effect(kind: .transform)]).matrix == .identity)
+    }
+
+    @Test func rotationTurnsClockwiseAboutTheCenter() {
+        let placement = fold([transform([(.rotation, [90])])])
+        #expect(close(center.applying(placement.matrix), center))
         // A point to the right of center ends up below it (y is down).
-        let right = CGPoint(x: 1060, y: 540).applying(transform)
-        #expect(abs(right.x - 960) < 0.001 && abs(right.y - 640) < 0.001)
+        #expect(close(CGPoint(x: 1060, y: 540).applying(placement.matrix), CGPoint(x: 960, y: 640)))
     }
 
-    @Test func scaleAndPositionAreAboutTheCenter() {
-        var layer = LayerTransform()
-        layer.setComponent(0, of: .scale, to: 50, at: .zero, frameSize: frame)
-        layer.setComponent(0, of: .position, to: 1060, at: .zero, frameSize: frame)
-        let transform = layer.affineTransform(at: .zero, center: center)
-        let corner = CGPoint.zero.applying(transform)
-        #expect(abs(corner.x - 580) < 0.001 && abs(corner.y - 270) < 0.001)
+    @Test func scaleAndPositionWorkOnTheScreen() {
+        let placement = fold([transform([(.scale, [50, 50]), (.position, [100, 0])])])
+        #expect(close(CGPoint.zero.applying(placement.matrix), CGPoint(x: 580, y: 270)))
     }
 
-    @Test func positionIsShownAbsoluteAndStoredFromTheCenter() {
-        var layer = LayerTransform()
-        #expect(layer.components(.position, at: .zero, frameSize: frame) == [960, 540])
-        layer.setComponent(1, of: .position, to: 600, at: .zero, frameSize: frame)
-        #expect(layer.position.value == Vector2(x: 0, y: 60))
+    @Test func positionAfterAScaleMovesByThePixelsAsked() {
+        let placement = fold([transform([(.scale, [200, 200]), (.position, [5, 0])])])
+        #expect(close(center.applying(placement.matrix), CGPoint(x: 965, y: 540)))
     }
 
-    @Test func linkedScaleKeepsItsAspect() {
-        var layer = LayerTransform()
-        layer.setComponent(0, of: .scale, to: 200, at: .zero, frameSize: frame)
-        #expect(layer.scale.value == Vector2(x: 200, y: 200))
-        layer.scaleLinked = false
-        layer.setComponent(1, of: .scale, to: 50, at: .zero, frameSize: frame)
-        #expect(layer.scale.value == Vector2(x: 200, y: 50))
+    /// With a uniform Scale. A stretch (x and y apart) works along the
+    /// screen's axes, so it doesn't commute with a turn.
+    @Test func stepsGiveTheSamePictureInAnyOrderWithinAnEffect() {
+        let steps: [(ControlKind, [Double])] = [(.position, [40, -25]), (.scale, [150, 150]), (.rotation, [30])]
+        let a = fold([transform(steps)]).matrix
+        let b = fold([transform(steps.reversed())]).matrix
+        let c = fold([transform([steps[1], steps[2], steps[0]])]).matrix
+        for point in [CGPoint.zero, CGPoint(x: 300, y: 120), center] {
+            #expect(close(point.applying(a), point.applying(b)))
+            #expect(close(point.applying(a), point.applying(c)))
+        }
+    }
+
+    @Test func repeatsCompound() {
+        let step = transform([(.position, [5, 0])])
+        let moved = fold(Array(repeating: step, count: 50)).matrix
+        #expect(close(center.applying(moved), CGPoint(x: 1210, y: 540)))
+        let grown = fold(Array(repeating: transform([(.scale, [102, 102])]), count: 50)).matrix
+        #expect(abs(grown.a - pow(1.02, 50)) < 0.0001)
+        let faded = fold(Array(repeating: transform([(.opacity, [50])]), count: 2))
+        #expect(abs(faded.opacity - 0.25) < 1e-9)
+    }
+
+    @Test func theAnchorPointIsWhatScaleAndRotationTurnAbout() {
+        let placement = fold([transform([(.rotation, [180])])], anchor: Vector2(x: 100, y: 0))
+        // The anchor stays put; the center swings round it to the other side.
+        #expect(close(CGPoint(x: 1060, y: 540).applying(placement.matrix), CGPoint(x: 1060, y: 540)))
+        #expect(close(center.applying(placement.matrix), CGPoint(x: 1160, y: 540)))
+    }
+
+    @Test func positionCarriesTheAnchorUnlessTold() {
+        let steps: [(ControlKind, [Double])] = [(.position, [200, 0]), (.rotation, [180])]
+        let carried = fold([transform(steps)])
+        // Turned about its own, moved, center: stays where it was moved to.
+        #expect(close(center.applying(carried.matrix), CGPoint(x: 1160, y: 540)))
+        let pinned = fold([transform(steps, movesAnchor: false)])
+        // Turned about the frame center, so the moved picture orbits it.
+        #expect(close(center.applying(pinned.matrix), CGPoint(x: 760, y: 540)))
     }
 
     @Test func opacityIsClamped() {
-        var layer = LayerTransform()
-        layer.setComponent(0, of: .opacity, to: 150, at: .zero, frameSize: frame)
-        #expect(layer.opacity.value == 100)
-        layer.setComponent(0, of: .opacity, to: -5, at: .zero, frameSize: frame)
-        #expect(layer.opacity.value == 0)
+        #expect(fold([transform([(.opacity, [150])])]).opacity == 1)
+        #expect(fold([transform([(.opacity, [-5])])]).opacity == 0)
+    }
+
+    @Test func disabledEffectsAndControlsAreSkipped() {
+        var effect = transform([(.position, [50, 0])])
+        effect.enabled = false
+        #expect(fold([effect]).matrix == .identity)
+        effect.enabled = true
+        effect.controls[0].enabled = false
+        #expect(fold([effect]).matrix == .identity)
+    }
+
+    @Test func keyframesAreReadInSourceTime() {
+        var effect = Effect(kind: .transform, controls: [EffectControl(kind: .rotation)])
+        effect.controls[0].number.setAnimated(true, at: seconds(10))
+        effect.controls[0].number.set(ComponentValue(values: [90]), at: seconds(12))
+        let halfway = fold([effect], at: seconds(11))
+        #expect(abs(halfway.matrix.b - sin(Double.pi / 4)) < 1e-6)
+    }
+
+    @Test func linkedScaleKeepsItsProportionAndUnlinkedDoesNot() {
+        var control = EffectControl(kind: .scale)
+        control.setComponent(0, to: 200, at: .zero)
+        #expect(control.number.value.values == [200, 200])
+        control.linked = false
+        control.setComponent(1, to: 50, at: .zero)
+        #expect(control.number.value.values == [200, 50])
+    }
+
+    @Test func opacityAndAmountControlsAreClamped() {
+        var control = EffectControl(kind: .opacity)
+        control.setComponent(0, to: 150, at: .zero)
+        #expect(control.number.value.values == [100])
+        control.setComponent(0, to: -5, at: .zero)
+        #expect(control.number.value.values == [0])
+    }
+
+    @Test func controlsAtTheirDefaultsAreNoOps() {
+        var effect = Effect(kind: .transform)
+        #expect(effect.isNoOp)
+        effect.controls[2].setComponent(0, to: 10, at: .zero)
+        #expect(!effect.isNoOp && !effect.controls[2].isNoOp && effect.controls[0].isNoOp)
+        effect.controls[2].reset()
+        #expect(effect.isNoOp)
+    }
+
+    @Test func newEffectsAreNumberedByKind() {
+        var stack: [Effect] = []
+        for _ in 0..<3 { stack.append(Effect.make(.transform, among: stack)) }
+        stack.append(Effect.make(.blending, among: stack))
+        #expect(stack.map(\.displayName) == ["Transform", "Transform 2", "Transform 3", "Blending"])
+    }
+
+    @Test func duplicatesGetNewIDs() {
+        let effect = Effect(kind: .transform)
+        let copy = effect.duplicated()
+        #expect(copy.id != effect.id && copy.controls.map(\.id) != effect.controls.map(\.id))
+        #expect(copy.controls.map(\.kind) == effect.controls.map(\.kind))
+    }
+
+    @Test func blendingNeedsAModeAndAnAmount() {
+        var effect = Effect(kind: .blending)
+        #expect(effect.isNoOp)
+        effect.controls[0].blendMode = .multiply
+        #expect(!effect.isNoOp)
+        effect.controls[1].setComponent(0, to: 0, at: .zero)
+        #expect(effect.isNoOp)
     }
 
     @Test func keyframesSnapToFrames() {
-        let timeline = Timeline(name: "T", layers: [], frameSize: frame, frameRate: 23.976, colorSpace: .rec709)
+        let timeline = Timeline(name: "T", layers: [], frameSize: CGSize(width: 1920, height: 1080), frameRate: 23.976, colorSpace: .rec709)
         let snapped = timeline.snappedToFrame(CMTime(seconds: 1.01, preferredTimescale: 600))
         #expect(snapped == CMTime(value: 24 * 1001, timescale: 24000))
         #expect(timeline.snappedToFrame(seconds(-1)) == .zero)
     }
 
     @Test func nestedStagesComposeAndMultiplyOpacity() {
-        var inner = LayerTransform()
-        inner.opacity.set(50, at: .zero)
-        inner.position.set(Vector2(x: 10, y: 0), at: .zero)
-        var outer = LayerTransform()
-        outer.opacity.setAnimated(true, at: seconds(0))
-        outer.opacity.set(0, at: seconds(2))
+        var inner = Effect(kind: .transform)
+        inner.controls[0].number = AnimatedValue(ComponentValue(values: [10, 0]))
+        inner.controls[3].number = AnimatedValue(ComponentValue(values: [50]))
+        var outer = Effect(kind: .transform, controls: [EffectControl(kind: .opacity)])
+        outer.controls[0].number.setAnimated(true, at: seconds(0))
+        outer.controls[0].number.set(ComponentValue(values: [0]), at: seconds(2))
         let animation = PlacementAnimation(base: .identity, stages: [
-            TransformStage(transform: inner, center: center, shift: seconds(1), toOuter: .identity),
-            TransformStage(transform: outer, center: center, shift: .zero, toOuter: .identity),
+            TransformStage(effects: [inner], anchorPoint: AnimatedValue(.zero), center: center, shift: seconds(1), sourceShift: .zero, toOuter: .identity),
+            TransformStage(effects: [outer], anchorPoint: AnimatedValue(.zero), center: center, shift: .zero, sourceShift: .zero, toOuter: .identity),
         ])
         #expect(abs(animation.opacity(at: seconds(1)) - 0.25) < 0.0001)
         #expect(CGPoint.zero.applying(animation.transform(at: seconds(1))) == CGPoint(x: 10, y: 0))
@@ -182,11 +286,11 @@ private func seconds(_ value: Double) -> CMTime {
         )
         let imported = project.importClip(media, intoTimeline: project.rootTimelineID)
         let ids = try #require(imported)
-        project.editTransform(of: ids.layerID, in: project.rootTimelineID) { transform in
-            transform.opacity.setAnimated(true, at: .zero)
-            transform.opacity.set(0, at: CMTime(value: 1, timescale: 1))
-            transform.rotation.set(45, at: .zero)
-        }
+        var effect = Effect(kind: .transform)
+        effect.controls[3].number.setAnimated(true, at: .zero)
+        effect.controls[3].number.set(ComponentValue(values: [0]), at: CMTime(value: 1, timescale: 1))
+        effect.controls[2].number = AnimatedValue(ComponentValue(values: [45]))
+        project.editClip(ids.clipID, in: project.rootTimelineID) { $0.effects = [effect] }
 
         let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
         let instruction = try #require(composed.videoComposition?.instructions.first as? AVVideoCompositionInstruction)
@@ -260,16 +364,29 @@ private func seconds(_ value: Double) -> CMTime {
         #expect(KeyframeEase.outgoing(handleAt: CGPoint(x: 1.5, y: 0)).influence == 1)
     }
 
-    @Test func parametersReadAndWriteThroughComponents() {
-        var layer = TimelineLayer(clips: [])
-        layer.transform.position.setAnimated(true, at: seconds(0))
-        layer.transform.position.set(Vector2(x: 10, y: 20), at: seconds(1))
-        var position = layer[components: .transform(.position)]
-        #expect(position.keyframes.map(\.value.values) == [[0, 0], [10, 20]])
-        position.applyEase(.easyEase, at: seconds(1))
-        layer[components: .transform(.position)] = position
-        #expect(layer.transform.position.keyframes[1].easeIn == .easy)
-        #expect(layer.transform.position.keyframes[1].value == Vector2(x: 10, y: 20))
+    @Test func parametersReadAndWriteThroughComponents() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let media = MediaClip(name: "m", kind: .video, url: nil, duration: seconds(5), frameRate: 24, colorSpace: .rec709, codecName: "H.264")
+        let imported = project.importClip(media, intoTimeline: timelineID)
+        let ids = try #require(imported)
+        let effect = Effect(kind: .transform)
+        project.editClip(ids.clipID, in: timelineID) { $0.effects = [effect] }
+        let position = try #require(effect.control(.position))
+        let key = ParameterKey(
+            timelineID: timelineID,
+            parameter: .control(.position, clipID: ids.clipID, effectID: effect.id, controlID: position.id)
+        )
+        project.editComponents(of: key) {
+            $0.setAnimated(true, at: seconds(0))
+            $0.set(ComponentValue(values: [10, 20]), at: seconds(1))
+            $0.applyEase(.easyEase, at: seconds(1))
+        }
+        let components = try #require(project.components(of: key))
+        #expect(components.keyframes.map(\.value.values) == [[0, 0], [10, 20]])
+        #expect(components.keyframes[1].easeIn == .easy)
+        let stored = try #require(project.clipAndLayer(ids.clipID, in: timelineID)?.clip.effects.first?.controls.first)
+        #expect(stored.number.keyframes[1].value.values == [10, 20])
     }
 }
 
