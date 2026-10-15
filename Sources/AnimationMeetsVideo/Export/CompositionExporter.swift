@@ -149,11 +149,37 @@ struct TransformStage {
     /// The transitions of the clip placed on the layer, in that timeline's
     /// time, applied after the layer's own transform.
     var edges: EdgeTransitions? = nil
+    /// Set when the clip placed on the layer is a nested timeline: one ID
+    /// for every layer drawn through it, so its opacity and transitions
+    /// can fade them together as one picture. Made afresh for each build.
+    var groupID: UUID? = nil
 
     /// `inner` carried out through this stage: the layer's transform, the
     /// clip's transitions, then into the next stage's frame.
     func outward(_ inner: CGAffineTransform, at time: CMTime) -> CGAffineTransform {
         placed(inner, at: CMTimeSubtract(time, shift)).concatenating(toOuter)
+    }
+
+    /// How opaque the stage makes what it holds at root time `time`: its
+    /// layer's opacity and its clip's fades.
+    func opacity(at time: CMTime) -> Double {
+        let local = CMTimeSubtract(time, shift)
+        let fade = edges?.effect(at: local).opacity ?? 1
+        return transform.opacityFraction(at: local) * fade
+    }
+
+    /// The film dissolve the stage's clip plays at root time `time`, if any.
+    func lumaReveal(at time: CMTime) -> LumaReveal? {
+        edges?.effect(at: CMTimeSubtract(time, shift)).lumaReveal
+    }
+
+    /// Whether the stage is a nested timeline that can be less than opaque,
+    /// so the layers drawn through it must be stacked before it fades them.
+    var fadesGroup: Bool {
+        guard groupID != nil else { return false }
+        let fadingKinds: [TransitionKind] = [.crossDissolve, .filmDissolve, .zoom]
+        let edgeKinds = [edges?.leading?.kind, edges?.trailing?.kind].compactMap { $0 }
+        return transform.opacity != AnimatedValue(100.0) || edgeKinds.contains { fadingKinds.contains($0) }
     }
 
     /// `inner` in this stage's own frame at its own time `local`.
@@ -176,11 +202,23 @@ struct PlacementAnimation {
     }
 
     func opacity(at time: CMTime) -> Float {
-        Float(stages.reduce(1.0) { result, stage in
-            let local = CMTimeSubtract(time, stage.shift)
-            let fade = stage.edges?.effect(at: local).opacity ?? 1
-            return result * stage.transform.opacityFraction(at: local) * fade
-        })
+        Float(stages.reduce(1.0) { $0 * $1.opacity(at: time) })
+    }
+
+    /// The opacity of the layer itself, leaving out the nested timelines
+    /// it is drawn through, which `LayeredCompositor` applies to each of
+    /// them as a whole.
+    func ownOpacity(at time: CMTime) -> Float {
+        Float(stages.filter { $0.groupID == nil }.reduce(1.0) { $0 * $1.opacity(at: time) })
+    }
+
+    /// The nested timelines the layer is drawn through, outermost first.
+    var groups: [UUID] {
+        stages.reversed().compactMap(\.groupID)
+    }
+
+    func stage(ofGroup id: UUID) -> TransformStage? {
+        stages.first { $0.groupID == id }
     }
 
     /// Whether a film dissolve plays, which only `LayeredCompositor` can draw.
@@ -190,10 +228,13 @@ struct PlacementAnimation {
 
     /// The film dissolve playing at `time`, innermost first, if any.
     func lumaReveal(at time: CMTime) -> LumaReveal? {
-        for stage in stages {
-            if let reveal = stage.edges?.effect(at: CMTimeSubtract(time, stage.shift)).lumaReveal { return reveal }
-        }
-        return nil
+        stages.lazy.compactMap { $0.lumaReveal(at: time) }.first
+    }
+
+    /// The film dissolve playing on the layer itself, leaving out those of
+    /// the nested timelines it is drawn through.
+    func ownLumaReveal(at time: CMTime) -> LumaReveal? {
+        stages.lazy.filter { $0.groupID == nil }.compactMap { $0.lumaReveal(at: time) }.first
     }
 
     /// Whether a wipe ever crops the media, so a crop must be set.
@@ -511,6 +552,10 @@ enum CompositionExporter {
                     }
                 case .timeline(let nestedID):
                     guard let nested = project.timeline(id: nestedID) else { continue }
+                    // Every layer drawn through this clip shares its stage,
+                    // which fades them together.
+                    var grouped = stages
+                    grouped[0].groupID = UUID()
                     // Nested time = this timeline's time - clip.startOffset + clip.trimStart.
                     let shift = CMTimeSubtract(clip.startOffset, clip.trimStart)
                     let nestedWindow = CMTimeRange(start: CMTimeSubtract(visible.start, shift), duration: visible.duration)
@@ -520,7 +565,7 @@ enum CompositionExporter {
                         visiting: visiting,
                         window: nestedWindow,
                         offset: CMTimeAdd(offset, shift),
-                        outer: stages,
+                        outer: grouped,
                         outerVolume: volume,
                         toOuter: fitTransform(from: nested.frameSize, to: timeline.frameSize),
                         rootClipID: rootClipID ?? clip.id
@@ -671,20 +716,33 @@ enum CompositionExporter {
         func number(_ value: Double) -> String { String(format: "%.5f", value) }
         let frames = Int((range.duration.seconds / frame.seconds).rounded(.up))
         var text = "v\(RenderSegment.formatVersion) \(number(frameSize.width))x\(number(frameSize.height)) \(number(frameRate)) \(colorSpace.rawValue) \(frames)\n"
+        // Group IDs are made afresh on every build, so the nested timelines
+        // are numbered in the order they first appear instead.
+        var groupNumbers: [UUID: Int] = [:]
         for (_, segment) in shown {
             let stamp = FileStamp(url: segment.sourceURL)
             let fileStart = CMTimeAdd(segment.sourceStart, CMTimeSubtract(range.start, segment.timeRange.start))
-            text += "\(segment.sourceURL.path) \(stamp?.byteCount ?? -1) \(number(stamp?.modified ?? 0)) \(number(fileStart.seconds))\n"
             let animation = segment.animation
+            let groups = animation.groups.map { id -> String in
+                if let number = groupNumbers[id] { return String(number) }
+                groupNumbers[id] = groupNumbers.count
+                return String(groupNumbers.count - 1)
+            }
+            text += "\(segment.sourceURL.path) \(stamp?.byteCount ?? -1) \(number(stamp?.modified ?? 0)) \(number(fileStart.seconds)) g\(groups.joined(separator: ","))\n"
             for index in 0..<frames {
                 let time = CMTimeAdd(range.start, CMTimeMultiply(frame, multiplier: Int32(index)))
                 let t = animation.transform(at: time)
-                text += [t.a, t.b, t.c, t.d, t.tx, t.ty, Double(animation.opacity(at: time))].map(number).joined(separator: " ")
+                // Each stage's opacity, since a nested timeline's is applied
+                // to its layers together rather than to each.
+                let opacities = animation.stages.map { $0.opacity(at: time) }
+                text += ([t.a, t.b, t.c, t.d, t.tx, t.ty].map { Double($0) } + opacities).map(number).joined(separator: " ")
                 if let crop = animation.cropRectangle(at: time) {
                     text += " c" + [crop.minX, crop.minY, crop.width, crop.height].map(number).joined(separator: " ")
                 }
-                if let reveal = animation.lumaReveal(at: time) {
-                    text += " r\(number(reveal.progress)) \(reveal.keysIncoming)"
+                for (stageIndex, stage) in animation.stages.enumerated() {
+                    if let reveal = stage.lumaReveal(at: time) {
+                        text += " r\(stageIndex) \(number(reveal.progress)) \(reveal.keysIncoming)"
+                    }
                 }
                 text += "\n"
             }
@@ -747,9 +805,14 @@ enum CompositionExporter {
         videoComposition.frameDuration = frame
 
         // The built-in compositor draws everything else exactly; for export
-        // only a film dissolve needs ours, so it is used just for timelines
+        // only a film dissolve, or a nested timeline fading over layers of
+        // its own that overlap, needs ours, so it is used just for timelines
         // with one.
-        if layered || plan.contains(where: { $0.shown.contains { $0.segment.animation.hasLumaReveal } }) {
+        let needsLayered = plan.contains { planned in
+            let animations = planned.shown.map(\.segment.animation)
+            return animations.contains(where: \.hasLumaReveal) || fadesGroupTogether(animations)
+        }
+        if layered || needsLayered {
             // The viewer draws SDR timelines in 8 bits, which decodes cheaper.
             videoComposition.customVideoCompositorClass = layered && colorSpace == .rec709
                 ? SDRLayeredCompositor.self : LayeredCompositor.self
@@ -774,6 +837,21 @@ enum CompositionExporter {
             return instruction
         }
         return videoComposition
+    }
+
+    /// Whether two of `animations` are drawn through the same nested
+    /// timeline while it may fade. The built-in compositor fades each layer
+    /// on its own, so they would show through each other; only
+    /// `LayeredCompositor` fades them as one picture.
+    static func fadesGroupTogether(_ animations: [PlacementAnimation]) -> Bool {
+        var seen: Set<UUID> = []
+        for animation in animations {
+            for stage in animation.stages {
+                guard stage.fadesGroup, let id = stage.groupID else { continue }
+                if !seen.insert(id).inserted { return true }
+            }
+        }
+        return false
     }
 
     private static func frameDuration(for frameRate: Double) -> CMTime {
