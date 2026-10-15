@@ -143,6 +143,7 @@ struct AnimationMeetsVideoApp: App {
                 .keyboardShortcut("j", modifiers: [.command])
                 .disabled(projectURL == nil)
             }
+            TimelineCommands()
         }
     }
 

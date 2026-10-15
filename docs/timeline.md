@@ -156,6 +156,22 @@ playback stops, so playback doesn't redraw every layer on every tick. The
 values shown in property rows and the inspector hold still while playing
 for the same reason.
 
+### Moving the playhead from the keyboard
+
+- **← / →** step one frame; with Shift, ten. Stepping pauses playback.
+- **↑ / ↓** go to the previous or next edit: any clip's start or end, or
+  the end of the timeline.
+- **Home / End** go to the start and the end.
+- **⌘B** splits at the playhead: the selected clip if the playhead is in
+  it, otherwise every clip the playhead is in, on every layer.
+
+These keys are left to a list or other control that has the keyboard (the
+library's list uses the arrows), and to text being typed. All of them, and
+the timeline's other keys (tools, snapping, zoom, Delete), are listed in
+the **Timeline** menu (`TimelineCommands`). Keys without a modifier are
+written after the item's name rather than set as menu shortcuts, since a
+menu shortcut would take the key from a text field.
+
 ## Sections
 
 A slim lane under the ruler holds the timeline's **sections**: named

@@ -479,6 +479,7 @@ struct TimelineView: View {
         }
         .padding(.top, topPadding)
         .background(KeyPressMonitor(handler: handleKey))
+        .focusedSceneValue(\.timelineActions, actions)
         .onChange(of: selection) { _, newValue in
             if newValue != nil {
                 selectedLayerID = nil
@@ -1043,6 +1044,7 @@ struct TimelineView: View {
 
     private func handleKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if let handled = handleNavigationKey(event, flags: flags) { return handled }
         // Delete and Forward Delete, without modifiers.
         if [51, 117].contains(event.keyCode), flags.isDisjoint(with: [.command, .control, .option, .shift]) {
             return deleteSelection()
@@ -1094,6 +1096,102 @@ struct TimelineView: View {
             revealed[layer.id] = shown
         }
         return true
+    }
+
+    // MARK: - Playhead keys and the Timeline menu
+
+    /// What the Timeline menu does in this timeline. See `TimelineCommands`.
+    private var actions: TimelineActions {
+        TimelineActions(
+            togglePlayback: { playback.togglePlayback() },
+            step: { stepPlayhead(byFrames: $0) },
+            goToStart: { parkPlayhead(at: .zero) },
+            goToEnd: { parkPlayhead(at: timeline.duration) },
+            previousEdit: { _ = jumpToEdit(forward: false) },
+            nextEdit: { _ = jumpToEdit(forward: true) },
+            splitAtPlayhead: { _ = splitAtPlayhead() },
+            deleteSelection: { _ = deleteSelection() },
+            isSnapping: snapping,
+            toggleSnapping: { snapping.toggle() },
+            tool: tool,
+            setTool: { tool = $0 },
+            zoomIn: { zoomAroundPlayhead(by: zoomStep) },
+            zoomOut: { zoomAroundPlayhead(by: 1 / zoomStep) },
+            zoomToFit: { fitToWindow() }
+        )
+    }
+
+    /// ← and → step a frame (ten with Shift), ↑ and ↓ go to the previous or
+    /// next edit, Home and End to the start and end. Nil for other keys.
+    /// False, leaving the key alone, while a list or other control has the
+    /// keyboard, since it uses these keys itself.
+    private func handleNavigationKey(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool? {
+        let left: UInt16 = 123, right: UInt16 = 124, down: UInt16 = 125, up: UInt16 = 126
+        let home: UInt16 = 115, end: UInt16 = 119
+        guard [left, right, down, up, home, end].contains(event.keyCode),
+              flags.isDisjoint(with: [.command, .control, .option])
+        else {
+            return nil
+        }
+        guard !(event.window?.firstResponder is NSControl) else { return false }
+        let frames = flags.contains(.shift) ? 10 : 1
+        switch event.keyCode {
+        case left: stepPlayhead(byFrames: -frames)
+        case right: stepPlayhead(byFrames: frames)
+        case up: return jumpToEdit(forward: false)
+        case down: return jumpToEdit(forward: true)
+        case home: parkPlayhead(at: .zero)
+        default: parkPlayhead(at: timeline.duration)
+        }
+        return true
+    }
+
+    /// Pauses and puts the playhead at `time`, on a frame within the
+    /// timeline.
+    private func parkPlayhead(at time: CMTime) {
+        playback.player.pause()
+        onScrub(timeline.snappedToFrame(CMTimeMinimum(CMTimeMaximum(.zero, time), timeline.duration)))
+    }
+
+    /// Pauses and moves the playhead `frames` frames, back when negative.
+    private func stepPlayhead(byFrames frames: Int) {
+        let from = timeline.snappedToFrame(livePlayheadTime)
+        parkPlayhead(at: CMTimeAdd(from, CMTimeMultiply(timeline.frameDuration, multiplier: Int32(clamping: frames))))
+    }
+
+    /// Moves the playhead to the nearest clip edge (or the timeline's end)
+    /// after it, or before it. False when there is none that way.
+    @discardableResult
+    private func jumpToEdit(forward: Bool) -> Bool {
+        let now = timeline.snappedToFrame(livePlayheadTime)
+        let edges = timeline.layers.flatMap { $0.clips.flatMap { [$0.startOffset, $0.endOffset] } } + [timeline.duration]
+        let frames = edges.map { timeline.snappedToFrame($0) }
+        guard let target = forward ? frames.filter({ $0 > now }).min() : frames.filter({ $0 < now }).max() else {
+            return false
+        }
+        parkPlayhead(at: target)
+        return true
+    }
+
+    /// Splits at the playhead: the selected clip when the playhead is in
+    /// it, otherwise every clip the playhead is in, on every layer. False
+    /// when it is in none.
+    @discardableResult
+    private func splitAtPlayhead() -> Bool {
+        let time = timeline.snappedToFrame(livePlayheadTime)
+        func contains(_ clip: TimelineClip) -> Bool { time > clip.startOffset && time < clip.endOffset }
+        var targets: [(layerID: UUID, clipID: UUID)] = []
+        if let selection, selection.timelineID == timelineID,
+           let clip = timeline.layer(id: selection.layerID)?.clips.first(where: { $0.id == selection.timelineClipID }),
+           contains(clip) {
+            targets = [(selection.layerID, clip.id)]
+        } else {
+            for layer in timeline.layers {
+                for clip in layer.clips where contains(clip) { targets.append((layer.id, clip.id)) }
+            }
+        }
+        for target in targets { onBladeClip(target.layerID, target.clipID, time) }
+        return !targets.isEmpty
     }
 
     /// Eases the keyframes at the playhead in the property rows that are

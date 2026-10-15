@@ -148,7 +148,9 @@ struct TimelineEditorSurface<Library: View>: View {
         .onChange(of: playback.isPlaying) { _, playing in
             // The parked playhead doesn't follow playback (see
             // `TimelineView.playheadTime`); it catches up where it stopped.
-            if !playing { playheadTime = playback.player.currentTime() }
+            // Its time, not the player's: a seek just asked for (stepping a
+            // frame pauses, then seeks) is there at once.
+            if !playing { playheadTime = playback.currentTime }
             renderer?.setPlaying(playing)
             if !playing, renderRebuildPending {
                 renderRebuildPending = false
