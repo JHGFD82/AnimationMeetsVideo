@@ -72,6 +72,78 @@ struct ProjectFile: Codable {
         var volume: PropertyEntry<Double>?
         /// Nested timelines only; absent unless set.
         var passThrough: Bool?
+        /// Absent while the clip plays at its source's own speed with nothing
+        /// else done to time.
+        var time: ClipTimeEntry?
+        /// Absent while there is no motion blur and no trails.
+        var shutter: ShutterEntry?
+    }
+
+    /// Echo or trails: `count` copies, `delay` apart, each `decay` as strong
+    /// as the one in front.
+    struct EchoEntry: Codable {
+        var count: Int
+        var delay: TimeEntry
+        var decay: Double
+
+        init(count: Int, delay: CMTime, decay: Double) {
+            self.count = count
+            self.delay = TimeEntry(delay)
+            self.decay = decay
+        }
+    }
+
+    struct MotionBlurEntry: Codable {
+        var angle: Double
+        var samples: Int
+    }
+
+    /// What a clip does to time, written only for what isn't at its default.
+    struct ClipTimeEntry: Codable {
+        var speed: PropertyEntry<Double>?
+        /// `"blend"` or `"opticalFlow"`.
+        var frameBlending: String?
+        var echo: EchoEntry?
+        /// `"changePitch"` or `"mute"`.
+        var sound: String?
+
+        init?(_ time: ClipTime) {
+            guard !time.isDefault else { return nil }
+            speed = time.speed == AnimatedValue(100.0) ? nil : PropertyEntry(time.speed) { $0 }
+            frameBlending = time.frameBlending == .off ? nil : time.frameBlending.rawValue
+            echo = time.echo.map { EchoEntry(count: $0.count, delay: $0.delay, decay: $0.decay) }
+            sound = time.sound == .keepPitch ? nil : time.sound.rawValue
+        }
+
+        var time: ClipTime {
+            var time = ClipTime()
+            if let speed {
+                time.speed = speed.property(default: 100.0) { min(max($0, ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound) }
+            }
+            time.frameBlending = frameBlending.flatMap(FrameBlending.init(rawValue:)) ?? .off
+            time.echo = echo.map { Echo(count: $0.count, delay: $0.delay.time, decay: $0.decay).clamped }
+            time.sound = sound.flatMap(SoundMode.init(rawValue:)) ?? .keepPitch
+            return time
+        }
+    }
+
+    /// What a clip does with its finished picture.
+    struct ShutterEntry: Codable {
+        var motionBlur: MotionBlurEntry?
+        var trails: EchoEntry?
+
+        init?(_ shutter: ClipShutter) {
+            guard !shutter.isOff else { return nil }
+            motionBlur = shutter.motionBlur.map { MotionBlurEntry(angle: $0.angle, samples: $0.samples) }
+            trails = shutter.trails.map { EchoEntry(count: $0.count, delay: $0.delay, decay: $0.decay) }
+        }
+
+        var shutter: ClipShutter {
+            ClipShutter(
+                motionBlur: motionBlur.map { MotionBlur(angle: $0.angle, samples: $0.samples).clamped },
+                trails: trails.map { Trails(count: $0.count, delay: $0.delay.time, decay: $0.decay).clamped }
+            )
+        }
     }
 
     /// A transition at one end of a clip. `kind` is a `TransitionKind`
@@ -465,6 +537,7 @@ extension ProjectFile {
             .required("time", .number), .required("value", .number),
             .optional("in", .numbers(count: 2)), .optional("out", .numbers(count: 2)),
         ]))
+        let echo = JSONShape.object(object([.required("count", .integer), .required("delay", .time), .required("decay", .number)]))
         let transition = JSONShape.object(object([
             .required("kind", .choice(TransitionKind.allCases.map(\.rawValue), noun: "transition kind")),
             .required("duration", .time), .optional("curve", .array(curvePoint)), .optional("lead", .time),
@@ -484,6 +557,16 @@ extension ProjectFile {
             .optional("effects", .array(.tagged(key: "kind", noun: "effect kind", effects))),
             .optional("volume", property(.number)),
             .optional("passThrough", .bool),
+            .optional("time", .object(object([
+                .optional("speed", property(.number)),
+                .optional("frameBlending", .choice(["blend", "opticalFlow"], noun: "frame blending")),
+                .optional("echo", echo),
+                .optional("sound", .choice(["changePitch", "mute"], noun: "sound mode")),
+            ]))),
+            .optional("shutter", .object(object([
+                .optional("motionBlur", .object(object([.required("angle", .number), .required("samples", .integer)]))),
+                .optional("trails", echo),
+            ]))),
         ]))
         let layer = JSONShape.object(object([
             .required("id", .uuid), .optional("customName", .string),

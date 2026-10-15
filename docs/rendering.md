@@ -85,6 +85,11 @@ Limits:
   pictures, or with anything keyframed or transitioning, is. Those are cut
   into pieces of at most 96 frames, so a render stopped by an edit loses
   little and finished pieces play as soon as they're done.
+- **Time and Shutter.** A clip with Blend, Echo, Trails or Motion Blur draws
+  the clip more than once, so its stretches are rendered like others, and
+  its key holds the file time each frame comes from (when retimed), the
+  extra footage's delays and strengths, and the shutter settings. The
+  viewer draws fewer motion blur samples while playing (see effects.md).
 - **Keyed by content.** Each piece's key is a hash of everything that
   decides its frames: each layer's file, its size and date on disk, the
   file time it starts at, and each clip's resolved steps on every frame

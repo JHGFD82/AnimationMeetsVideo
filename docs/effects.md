@@ -749,8 +749,43 @@ In order, each step usable on its own:
    film dissolve isn't applied to it. A stretch where one plays is rendered
    in the background, and the timeline is cut where it starts and ends.
    Adjustment layers take only adjustment clips and other layers none.
-9. **Time and Shutter**: constant speed with its three Sound choices,
-   Blend, Echo, Motion Blur and Trails.
+9. **Time and Shutter** (done): speed with its three Sound choices, Blend,
+   Echo, Motion Blur and Trails. A clip's `time` (speed, frame blending, echo,
+   sound) and `shutter` (motion blur, trails) are on the clip, set from its
+   menu and in the effects panel's pinned Time rows (above the anchor point)
+   and Shutter rows (below the transitions). `trimmedDuration` is still the
+   source range's length; the new `placedDuration` is how long that lasts on
+   the timeline, and `timelineTime(forSourceTime:)` and
+   `sourceTime(atTimelineTime:)` map between the two for constant speeds
+   (exactly, for whole percents) and for ramps (by integrating the reciprocal
+   speed). Trimming, splitting, moving, slipping, waveforms, beat markers
+   and the panel's keyframe lanes all go through them. Retiming a clip
+   (`editTime`) keeps its end on a frame and moves the clips after it by as
+   much as its end moved. Retimed clips don't join transitions. In the
+   composition a retimed clip's footage is a piece scaled to its length on
+   the track (`scaleTimeRange`), or for a ramp a piece every four frames,
+   each at the speed it has there. Blend adds a track of the same footage one
+   source frame later and mixes the two by how far between frames the moment
+   falls; Echo and Trails add tracks of the footage later by each copy's
+   delay, so each moment has the earlier one to show. They're
+   drawn only where all their tracks have frames, so the timeline is cut
+   where they start and end. Echo layers the earlier source frames under
+   the current one before the stack (time is above it); Trails draw the
+   finished clip, stack and transitions evaluated at the earlier moment,
+   under the current finished clip. Motion Blur draws the finished clip at
+   that many moments across the shutter (`frameDuration × angle / 360`,
+   centered on the frame) and averages them. While playing, the viewer
+   draws two, or none at Quarter quality, and Motion Blur in Preview
+   (the viewer's camera menu, remembered per Mac) turns it off there;
+   `DrawingOptions` carries this to the compositor without rebuilding
+   anything. Sound at other speeds is the host's audio time-pitch algorithm
+   (Keep Pitch is `.spectral`, Change Pitch `.varispeed`) on a track of its
+   own, or no track for Mute. A clip's volume keeps counting in source time
+   through its speed (at the speed it starts at, for a ramp). Speed
+   keyframes are in source time and can be set now (stopwatch and graph in
+   the panel). Not yet drawn: Time (speed, blend, echo, sound) and trails on a
+   nested timeline's clip, whose Time rows aren't offered; Optical Flow is
+   shown as Blend (step 11)
 10. **Inputs**, with the first effect that takes one (a matte).
 11. **Speed ramps and Optical Flow.**
 12. **Copy, paste and presets**, with paste changes and the export check.

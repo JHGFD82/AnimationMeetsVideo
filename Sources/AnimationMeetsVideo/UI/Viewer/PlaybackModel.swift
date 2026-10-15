@@ -22,6 +22,16 @@ final class PlaybackModel {
             refreshStill()
         }
     }
+    /// Whether the viewer draws motion blur at all. Off, frames are drawn
+    /// without it, paused or playing; export and renders never are.
+    var motionBlurInPreview: Bool {
+        didSet {
+            UserDefaults.standard.set(motionBlurInPreview, forKey: Self.motionBlurKey)
+            drawingOptions.update(motionBlurInPreview: motionBlurInPreview)
+        }
+    }
+    /// What the compositor is asked while it plays (see `DrawingOptions`).
+    let drawingOptions = DrawingOptions()
     /// The size it is drawing at now, which Auto changes while playing.
     private(set) var level: PreviewLevel = .full
     /// Hears from the compositor how long each frame took.
@@ -50,6 +60,7 @@ final class PlaybackModel {
     @ObservationIgnored private var stillTask: Task<Void, Never>?
 
     private static let qualityKey = "previewQuality"
+    private static let motionBlurKey = "motionBlurInPreview"
 
     init() {
         let player = AVPlayer()
@@ -59,6 +70,9 @@ final class PlaybackModel {
         player.automaticallyWaitsToMinimizeStalling = false
         self.player = player
         quality = UserDefaults.standard.string(forKey: Self.qualityKey).flatMap(PreviewQuality.init(rawValue:)) ?? .auto
+        let blur = UserDefaults.standard.object(forKey: Self.motionBlurKey) as? Bool ?? true
+        motionBlurInPreview = blur
+        drawingOptions.update(motionBlurInPreview: blur)
         beatClicks = BeatClickPlayer(player: player)
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(value: 1, timescale: 30),
@@ -111,6 +125,7 @@ final class PlaybackModel {
     private func playStateChanged(_ playing: Bool) {
         guard playing != isPlaying else { return }
         isPlaying = playing
+        drawingOptions.update(isPlaying: playing)
         sampling?.cancel()
         sampling = nil
         if playing {
@@ -155,6 +170,7 @@ final class PlaybackModel {
         let wanted = quality.fixedLevel ?? governor.level
         guard wanted != level else { return }
         level = wanted
+        drawingOptions.update(isQuarterSize: wanted == .quarter)
         if let item = player.currentItem, let composed {
             item.videoComposition = composed.videoComposition(scaledBy: wanted.scale)
         }

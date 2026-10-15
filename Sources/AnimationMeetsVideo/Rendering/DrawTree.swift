@@ -40,6 +40,20 @@ struct AdjustmentDraw: @unchecked Sendable {
     var reached: [DrawClip] = []
 }
 
+/// Another composition track holding the same footage, put earlier or later
+/// than the clip's own: the frame after the current one for frame blending,
+/// or earlier frames for echo and trails.
+struct TrackCopy: Equatable, Sendable {
+    var trackID: CMPersistentTrackID
+    /// The root times it has frames for.
+    var range: CMTimeRange
+    /// How strong it is next to the clip's own picture.
+    var strength: Double
+    /// How much later in time its footage plays than the clip's own, so a
+    /// moment of it is how the clip was that long before.
+    var delay = CMTime.zero
+}
+
 /// A picture read from a composition track.
 struct MediaDraw: @unchecked Sendable {
     var trackID: CMPersistentTrackID
@@ -51,6 +65,34 @@ struct MediaDraw: @unchecked Sendable {
     var sourceStart: CMTime
     /// The root time `sourceStart` plays at.
     var segmentStart: CMTime
+    /// How long a frame of the file lasts, and how much later a moment is in
+    /// the file than in the original, for finding where between two frames
+    /// a retimed moment falls.
+    var frameDuration = CMTime.zero
+    var alignmentOffset = CMTime.zero
+    /// For Blend: the footage a frame later, to mix with the current frame
+    /// by how far between the two the moment is.
+    var nextFrame: TrackCopy?
+    /// For Echo: earlier frames, nearest first, layered under the current one.
+    var echoes: [TrackCopy] = []
+    /// For Trails: the footage as it was at earlier moments, nearest first,
+    /// for copies of the finished clip.
+    var trails: [TrackCopy] = []
+
+    /// Every track the picture may be read from.
+    var trackIDs: [CMPersistentTrackID] {
+        [trackID] + [nextFrame].compactMap { $0 }.map(\.trackID) + echoes.map(\.trackID) + trails.map(\.trackID)
+    }
+
+    /// The same, keeping only the copies that have frames throughout `range`.
+    func covering(_ range: CMTimeRange) -> MediaDraw {
+        var copy = self
+        func covers(_ copy: TrackCopy) -> Bool { copy.range.start <= range.start && copy.range.end >= range.end }
+        copy.nextFrame = nextFrame.flatMap { covers($0) ? $0 : nil }
+        copy.echoes = echoes.filter(covers)
+        copy.trails = trails.filter(covers)
+        return copy
+    }
 }
 
 /// A nested timeline.
@@ -76,6 +118,11 @@ extension DrawClip {
     /// groups cut down to the children that are.
     func pruned(to range: CMTimeRange) -> DrawClip? {
         guard self.range.start <= range.start, self.range.end >= range.end else { return nil }
+        if case .media(let media) = content {
+            var copy = self
+            copy.content = .media(media.covering(range))
+            return copy
+        }
         guard case .group(var group) = content else { return self }
         group.children = Self.assembled(group.children.compactMap { $0.pruned(to: range) })
         guard !group.children.isEmpty else { return nil }

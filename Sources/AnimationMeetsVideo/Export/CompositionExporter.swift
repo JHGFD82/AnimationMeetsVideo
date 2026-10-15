@@ -51,7 +51,7 @@ struct ComposedTimeline: @unchecked Sendable {
     /// Keys of the segments drawn from the render cache.
     var cachedKeys: Set<String> = []
     /// Each audio track, with the layers whose volumes it plays through.
-    var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage])] = []
+    var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage], pitch: AVAudioTimePitchAlgorithm?)] = []
 
     /// A mix that plays each audio track at its layers' volumes, read from
     /// `curves` as it plays, and measures the result into `meter`.
@@ -137,9 +137,18 @@ private actor MediaTrackCache {
 
 /// One piece of media placed at an absolute time in the root timeline.
 private final class Placement {
+    /// A stretch of the file played over a stretch of root time. They are
+    /// the same length unless the clip is retimed, when the file is played
+    /// faster or slower.
+    struct Piece {
+        var file: CMTimeRange
+        var at: CMTime
+        var duration: CMTime
+    }
+
     let info: MediaTrackInfo
-    let sourceRange: CMTimeRange
-    let start: CMTime
+    /// In order, one after the other.
+    let pieces: [Piece]
     /// Which of the file's streams to use; detached audio and its picture
     /// each play only one.
     var includesVideo: Bool
@@ -152,17 +161,44 @@ private final class Placement {
     /// The file time drawn at the start of `drawRange`.
     var drawSourceStart = CMTime.zero
 
-    init(info: MediaTrackInfo, sourceRange: CMTimeRange, start: CMTime, includesVideo: Bool, includesAudio: Bool) {
+    init(info: MediaTrackInfo, pieces: [Piece], includesVideo: Bool, includesAudio: Bool) {
         self.info = info
-        self.sourceRange = sourceRange
-        self.start = start
+        self.pieces = pieces
         self.includesVideo = includesVideo
         self.includesAudio = includesAudio
     }
 
-    func copy() -> Placement {
-        Placement(info: info, sourceRange: sourceRange, start: start, includesVideo: includesVideo, includesAudio: includesAudio)
+    /// Footage played unchanged: `file` starting at `at`.
+    convenience init(info: MediaTrackInfo, file: CMTimeRange, at: CMTime, includesVideo: Bool, includesAudio: Bool) {
+        self.init(info: info, pieces: [Piece(file: file, at: at, duration: file.duration)], includesVideo: includesVideo, includesAudio: includesAudio)
     }
+
+    func copy() -> Placement {
+        Placement(info: info, pieces: pieces, includesVideo: includesVideo, includesAudio: includesAudio)
+    }
+
+    /// The same footage later in root time by `delay`, and later in the file
+    /// by `fileShift`.
+    func shifted(by delay: CMTime = .zero, inFileBy fileShift: CMTime = .zero) -> Placement {
+        Placement(
+            info: info,
+            pieces: pieces.map { Piece(file: CMTimeRange(start: CMTimeAdd($0.file.start, fileShift), duration: $0.file.duration), at: CMTimeAdd($0.at, delay), duration: $0.duration) },
+            includesVideo: includesVideo, includesAudio: includesAudio
+        )
+    }
+
+    /// The first moment of root time the placement plays from.
+    var start: CMTime { pieces.first?.at ?? .zero }
+}
+
+/// What else is built from a clip's footage besides the clip itself: the
+/// frame after, for Blend, and the footage earlier, for Echo and Trails.
+private struct PlacementExtras {
+    var next: Placement?
+    var echoes: [(placement: Placement, strength: Double)] = []
+    var trails: [(placement: Placement, strength: Double)] = []
+    var frameDuration = CMTime.zero
+    var alignmentOffset = CMTime.zero
 }
 
 /// An ordered run of non-overlapping placements that share composition
@@ -173,10 +209,13 @@ private final class TrackHost {
     /// the layer's if it has one, then those of the clips and layers of the
     /// timelines it is nested in.
     var volume: [VolumeStage] = []
+    /// How the sound is retimed, when it is; nil to leave it to AVFoundation.
+    var pitch: AVAudioTimePitchAlgorithm?
 
-    init(placements: [Placement] = [], volume: [VolumeStage] = []) {
+    init(placements: [Placement] = [], volume: [VolumeStage] = [], pitch: AVAudioTimePitchAlgorithm? = nil) {
         self.placements = placements
         self.volume = volume
+        self.pitch = pitch
     }
 }
 
@@ -184,7 +223,7 @@ private final class TrackHost {
 /// exist.
 private final class BuildNode {
     enum Content {
-        case media(Placement, base: CGAffineTransform)
+        case media(Placement, base: CGAffineTransform, extras: PlacementExtras)
         case group(frameSize: CGSize, toOuter: CGAffineTransform, passThrough: Bool, children: [BuildNode])
         case adjustment(reachedLayerIDs: Set<UUID>, reachesAll: Bool)
     }
@@ -209,13 +248,22 @@ private final class BuildNode {
     /// Nil for a picture the file has no frames for.
     func frozen() -> DrawClip? {
         switch content {
-        case .media(let placement, let base):
+        case .media(let placement, let base, let extras):
             guard let range = placement.drawRange else { return nil }
             let url = placement.info.asset.url
+            func copy(_ extra: Placement, _ strength: Double) -> TrackCopy? {
+                extra.drawRange.map {
+                    TrackCopy(trackID: extra.trackID, range: $0, strength: strength, delay: CMTimeSubtract($0.start, range.start))
+                }
+            }
             return DrawClip(
                 content: .media(MediaDraw(
                     trackID: placement.trackID, base: base, url: url,
-                    sourceStart: placement.drawSourceStart, segmentStart: range.start
+                    sourceStart: placement.drawSourceStart, segmentStart: range.start,
+                    frameDuration: extras.frameDuration, alignmentOffset: extras.alignmentOffset,
+                    nextFrame: extras.next.flatMap { copy($0, 1) },
+                    echoes: extras.echoes.compactMap { copy($0.placement, $0.strength) },
+                    trails: extras.trails.compactMap { copy($0.placement, $0.strength) }
                 )),
                 stack: stack, range: range, owner: owner, layerID: layerID
             )
@@ -264,6 +312,7 @@ enum CompositionExporter {
         timelineID: UUID,
         forPreview: Bool = false,
         meter: RenderMeter? = nil,
+        options: DrawingOptions? = nil,
         cache: RenderCache? = nil
     ) async throws -> ComposedTimeline {
         guard let timeline = project.timeline(id: timelineID), !timeline.layers.isEmpty else {
@@ -284,7 +333,7 @@ enum CompositionExporter {
         )
 
         let composition = AVMutableComposition()
-        var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage])] = []
+        var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage], pitch: AVAudioTimePitchAlgorithm?)] = []
         /// A stretch of some source's picture, to fill time after the last clip.
         var filler: (track: AVAssetTrack, range: CMTimeRange)?
 
@@ -295,33 +344,44 @@ enum CompositionExporter {
             for placement in host.placements {
                 let info = placement.info
                 if let sourceVideo = info.video, placement.includesVideo {
-                    let range = placement.sourceRange.intersection(info.videoRange)
-                    if range.isValid, range.duration > .zero {
+                    var playing: CMTimeRange?
+                    for piece in placement.pieces {
+                        guard let (file, at, length) = piece.within(info.videoRange) else { continue }
                         if videoTrack == nil {
                             videoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
                         }
-                        let at = CMTimeAdd(placement.start, CMTimeSubtract(range.start, placement.sourceRange.start))
-                        try videoTrack?.insertTimeRange(range, of: sourceVideo, at: at)
-                        if filler == nil { filler = (sourceVideo, range) }
+                        try videoTrack?.insertTimeRange(file, of: sourceVideo, at: at)
+                        // Retimed footage plays faster or slower than it was
+                        // shot.
+                        if length != file.duration {
+                            videoTrack?.scaleTimeRange(CMTimeRange(start: at, duration: file.duration), toDuration: length)
+                        }
+                        if filler == nil { filler = (sourceVideo, file) }
+                        if playing == nil { placement.drawSourceStart = file.start }
+                        let played = CMTimeRange(start: at, duration: length)
+                        playing = playing.map { $0.union(played) } ?? played
+                    }
+                    if let playing {
                         placement.trackID = videoTrack?.trackID ?? kCMPersistentTrackID_Invalid
-                        placement.drawRange = CMTimeRange(start: at, duration: range.duration)
-                        placement.drawSourceStart = range.start
+                        placement.drawRange = playing
                     }
                 }
                 if let sourceAudio = info.audio, placement.includesAudio {
-                    let range = placement.sourceRange.intersection(info.audioRange)
-                    if range.isValid, range.duration > .zero {
+                    for piece in placement.pieces {
+                        guard let (file, at, length) = piece.within(info.audioRange) else { continue }
                         if audioTrack == nil {
                             audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
                         }
-                        let at = CMTimeAdd(placement.start, CMTimeSubtract(range.start, placement.sourceRange.start))
-                        try audioTrack?.insertTimeRange(range, of: sourceAudio, at: at)
+                        try audioTrack?.insertTimeRange(file, of: sourceAudio, at: at)
+                        if length != file.duration {
+                            audioTrack?.scaleTimeRange(CMTimeRange(start: at, duration: file.duration), toDuration: length)
+                        }
                     }
                 }
             }
 
             if let audioTrack {
-                audioTracks.append((audioTrack, host.volume))
+                audioTracks.append((audioTrack, host.volume, host.pitch))
             }
         }
 
@@ -360,7 +420,8 @@ enum CompositionExporter {
             colorSpace: timeline.colorSpace,
             forPreview: forPreview,
             canvasMargin: canvasMargin,
-            meter: meter
+            meter: meter,
+            options: options
         )
         return ComposedTimeline(
             composition: composition, videoComposition: videoComposition,
@@ -421,15 +482,24 @@ enum CompositionExporter {
             // The sound of clips with a volume of their own, each on a track
             // of its own to be played through that volume.
             var clipSound: [TrackHost] = []
+            // The footage again, for frame blending, echo and trails.
+            var copyHosts: [TrackHost] = []
             var nestedHosts: [TrackHost] = []
             var overlayNodes: [BuildNode] = [], ownNodes: [BuildNode] = [], underlayNodes: [BuildNode] = []
 
             for clip in clips {
                 func stack(of clip: TimelineClip, edges: EdgeTransitions? = nil) -> ClipStack {
-                    ClipStack(clip: clip, center: center, shift: offset, edges: edges, colorSpace: timeline.colorSpace)
+                    ClipStack(clip: clip, center: center, shift: offset, edges: edges, colorSpace: timeline.colorSpace, frameDuration: timeline.frameDuration)
                 }
-                // The clip's volume counts in its source time.
-                let clipVolume = VolumeStage(id: clip.id, shift: CMTimeAdd(offset, CMTimeSubtract(clip.startOffset, clip.trimStart)))
+                // The clip's volume counts in its source time, which a
+                // retimed clip plays through at its speed (at the speed it
+                // starts at, when that is changing).
+                let rate = clip.speed(atSource: clip.trimStart) / 100
+                let clipVolume = VolumeStage(
+                    id: clip.id,
+                    shift: CMTimeAdd(offset, CMTimeSubtract(clip.startOffset, CMTimeMultiplyByFloat64(clip.trimStart, multiplier: 1 / rate))),
+                    rate: rate
+                )
                 let hasOwnVolume = clip.volume != AnimatedValue(0.0)
                 let lead = project.joinedLead(of: clip, among: clips) ?? .zero
                 var clipStack = stack(of: clip)
@@ -442,21 +512,61 @@ enum CompositionExporter {
                 let owner = rootClipID ?? clip.id
 
                 switch clip.source {
-                case .media:
-                    if let (placement, base) = try await mediaPlacement(
-                        of: clip, from: clip.trimStart, at: clip.startOffset, for: clip.trimmedDuration,
-                        project: project, frameSize: timeline.frameSize, window: window, offset: offset,
-                        includesVideo: clip.streams != .audio, includesAudio: clip.streams != .video
-                    ) {
-                        if hasOwnVolume, placement.includesAudio {
+                case .media(let mediaID):
+                    let main: (Placement, CGAffineTransform)?
+                    if clip.isRetimed {
+                        main = try await retimedPlacement(
+                            of: clip, project: project, frameSize: timeline.frameSize, frameDuration: timeline.frameDuration,
+                            window: window, offset: offset,
+                            includesVideo: clip.streams != .audio, includesAudio: clip.streams != .video
+                        )
+                    } else {
+                        main = try await mediaPlacement(
+                            of: clip, from: clip.trimStart, at: clip.startOffset, for: clip.trimmedDuration,
+                            project: project, frameSize: timeline.frameSize, window: window, offset: offset,
+                            includesVideo: clip.streams != .audio, includesAudio: clip.streams != .video
+                        )
+                    }
+                    if let (placement, base) = main {
+                        // A retimed clip's sound is silent, or played at its
+                        // new speed with or without its pitch changing.
+                        if clip.isRetimed, clip.time.sound == .mute { placement.includesAudio = false }
+                        if placement.includesAudio, hasOwnVolume || clip.isRetimed {
                             let sound = placement.copy()
                             sound.includesVideo = false
-                            clipSound.append(TrackHost(placements: [sound], volume: [clipVolume] + volume))
+                            let pitch: AVAudioTimePitchAlgorithm? = clip.isRetimed ? (clip.time.sound == .changePitch ? .varispeed : .spectral) : nil
+                            clipSound.append(TrackHost(placements: [sound], volume: [clipVolume] + volume, pitch: pitch))
                             placement.includesAudio = false
                         }
                         own.placements.append(placement)
                         if placement.includesVideo {
-                            ownNodes.append(BuildNode(content: .media(placement, base: base), stack: clipStack, range: .invalid, owner: owner, layerID: layer.id))
+                            let media = project.mediaClip(id: mediaID)
+                            var extras = PlacementExtras(
+                                frameDuration: Timeline.frameDuration(for: media.map { $0.frameRate > 0 ? $0.frameRate : timeline.frameRate } ?? timeline.frameRate),
+                                alignmentOffset: media?.alignmentOffset ?? .zero
+                            )
+                            func copy(_ delay: CMTime, inFileBy fileShift: CMTime = .zero) -> Placement {
+                                let copy = placement.shifted(by: delay, inFileBy: fileShift)
+                                copy.includesAudio = false
+                                copyHosts.append(TrackHost(placements: [copy]))
+                                return copy
+                            }
+                            // Blend mixes the frame the footage is at with the
+                            // one after it.
+                            if clip.time.frameBlending != .off { extras.next = copy(.zero, inFileBy: extras.frameDuration) }
+                            // Echo and trails are the footage again, later in
+                            // time, so each moment has an earlier one to show.
+                            if let echo = clip.time.echo?.clamped {
+                                extras.echoes = (1...echo.count).map { k in
+                                    (copy(CMTimeMultiply(echo.delay, multiplier: Int32(k))), pow(echo.decay, Double(k)))
+                                }
+                            }
+                            if let trails = clip.shutter.trails?.clamped {
+                                extras.trails = (1...trails.count).map { k in
+                                    (copy(CMTimeMultiply(trails.delay, multiplier: Int32(k))), pow(trails.decay, Double(k)))
+                                }
+                            }
+                            ownNodes.append(BuildNode(content: .media(placement, base: base, extras: extras), stack: clipStack, range: .invalid, owner: owner, layerID: layer.id))
                         }
                     }
                     // Where this clip meets its neighbor at a cut, the
@@ -474,7 +584,7 @@ enum CompositionExporter {
                         includesVideo: true, includesAudio: false
                     ) {
                         overlay.placements.append(placement)
-                        overlayNodes.append(BuildNode(content: .media(placement, base: base), stack: clipStack, range: .invalid, owner: owner, layerID: layer.id))
+                        overlayNodes.append(BuildNode(content: .media(placement, base: base, extras: PlacementExtras()), stack: clipStack, range: .invalid, owner: owner, layerID: layer.id))
                     }
                     if durations.leading > .zero, let previous = project.predecessor(joining: clip, among: clips),
                        let (placement, base) = try await mediaPlacement(
@@ -483,7 +593,7 @@ enum CompositionExporter {
                            includesVideo: true, includesAudio: false
                        ) {
                         underlay.placements.append(placement)
-                        underlayNodes.append(BuildNode(content: .media(placement, base: base), stack: stack(of: previous), range: .invalid, owner: owner, layerID: layer.id))
+                        underlayNodes.append(BuildNode(content: .media(placement, base: base, extras: PlacementExtras()), stack: stack(of: previous), range: .invalid, owner: owner, layerID: layer.id))
                     }
                     if durations.trailing > .zero, let next = project.successor(joining: clip, among: clips),
                        let (placement, base) = try await mediaPlacement(
@@ -493,7 +603,7 @@ enum CompositionExporter {
                            includesVideo: true, includesAudio: false
                        ) {
                         underlay.placements.append(placement)
-                        underlayNodes.append(BuildNode(content: .media(placement, base: base), stack: stack(of: next), range: .invalid, owner: owner, layerID: layer.id))
+                        underlayNodes.append(BuildNode(content: .media(placement, base: base, extras: PlacementExtras()), stack: stack(of: next), range: .invalid, owner: owner, layerID: layer.id))
                     }
                 case .timeline(let nestedID):
                     guard let nested = project.timeline(id: nestedID) else { continue }
@@ -540,6 +650,7 @@ enum CompositionExporter {
             result += overlayNodes + ownNodes + underlayNodes
             hosts += [overlay, own, underlay].filter { !$0.placements.isEmpty }
             hosts += clipSound
+            hosts += copyHosts
             hosts += nestedHosts
         }
         return result
@@ -577,12 +688,57 @@ enum CompositionExporter {
             .concatenating(fitTransform(from: info.orientedSize, to: frameSize))
         let placement = Placement(
             info: info,
-            sourceRange: wanted,
-            start: CMTimeAdd(visible.start, offset),
+            file: wanted,
+            at: CMTimeAdd(visible.start, offset),
             includesVideo: includesVideo,
             includesAudio: includesAudio
         )
         return (placement, base)
+    }
+
+    /// A retimed media clip's footage, cut to the window: one piece playing
+    /// the file at the clip's speed, or for a speed that changes, a piece
+    /// for every few frames each at the speed it has there.
+    private static func retimedPlacement(
+        of clip: TimelineClip,
+        project: EditingProject,
+        frameSize: CGSize,
+        frameDuration: CMTime,
+        window: CMTimeRange,
+        offset: CMTime,
+        includesVideo: Bool,
+        includesAudio: Bool
+    ) async throws -> (Placement, CGAffineTransform)? {
+        guard case .media(let mediaID) = clip.source,
+              let media = project.mediaClip(id: mediaID), let url = media.url
+        else {
+            return nil
+        }
+        let visible = CMTimeRange(start: clip.startOffset, end: clip.endOffset).intersection(window)
+        guard visible.isValid, visible.duration > .zero else { return nil }
+        let info = try await MediaTrackCache.shared.info(for: url)
+
+        func piece(from a: CMTime, to b: CMTime) -> Placement.Piece {
+            let first = clip.sourceTime(atTimelineTime: a), last = clip.sourceTime(atTimelineTime: b)
+            return Placement.Piece(
+                file: CMTimeRange(start: media.fileTime(forSourceTime: first), duration: CMTimeSubtract(last, first)),
+                at: CMTimeAdd(a, offset), duration: CMTimeSubtract(b, a)
+            )
+        }
+        var pieces: [Placement.Piece] = []
+        if clip.time.speed.isAnimated {
+            let step = CMTimeMultiply(frameDuration, multiplier: 4)
+            var cursor = visible.start
+            while cursor < visible.end {
+                let end = CMTimeMinimum(CMTimeAdd(cursor, step), visible.end)
+                pieces.append(piece(from: cursor, to: end))
+                cursor = end
+            }
+        } else {
+            pieces = [piece(from: visible.start, to: visible.end)]
+        }
+        let base = info.orientedTransform.concatenating(fitTransform(from: info.orientedSize, to: frameSize))
+        return (Placement(info: info, pieces: pieces, includesVideo: includesVideo, includesAudio: includesAudio), base)
     }
 
     /// Scales `source` to fit inside `target` (aspect-preserving) and centers it.
@@ -615,7 +771,19 @@ enum CompositionExporter {
             for clip in clips {
                 breakpoints.append(clip.range.start)
                 breakpoints.append(clip.range.end)
-                if case .group(let group) = clip.content { collect(group.children) }
+                switch clip.content {
+                case .group(let group):
+                    collect(group.children)
+                case .media(let media):
+                    // Where its other tracks start and end, so each stretch
+                    // has them throughout or not at all.
+                    for copy in [media.nextFrame].compactMap({ $0 }) + media.echoes + media.trails {
+                        breakpoints.append(copy.range.start)
+                        breakpoints.append(copy.range.end)
+                    }
+                case .adjustment:
+                    break
+                }
             }
         }
         collect(tree)
@@ -644,7 +812,15 @@ enum CompositionExporter {
                 }
             }
             let changesPixels = clips.contains { clip in clip.everyClip.contains { $0.stack.resolve(atRoot: whole.start).changesPixels } }
-            let needsRender = whole.duration >= frame && (leaves.count > 1 || animated || changesPixels)
+            // Frames mixed from several, earlier copies, and motion blur
+            // draw a clip more than once.
+            let drawsTwice = clips.contains { clip in
+                clip.everyClip.contains { clip in
+                    if case .media(let media) = clip.content, media.nextFrame != nil || !media.echoes.isEmpty || !media.trails.isEmpty { return true }
+                    return clip.stack.shutter.motionBlur != nil
+                }
+            }
+            let needsRender = whole.duration >= frame && (leaves.count > 1 || animated || changesPixels || drawsTwice)
 
             // A single picture with nothing done to it and no fitting is the
             // stretch's frames as they are.
@@ -704,14 +880,27 @@ enum CompositionExporter {
                 let stamp = FileStamp(url: media.url)
                 let fileStart = CMTimeAdd(media.sourceStart, CMTimeSubtract(range.start, media.segmentStart))
                 text += "L \(media.url.path) \(stamp?.byteCount ?? -1) \(number(stamp?.modified ?? 0)) \(number(fileStart.seconds)) \(matrix(media.base))\n"
+                // What is done to the footage's time, which the picture
+                // depends on beyond the file time it starts at.
+                text += "T \(number(media.frameDuration.seconds)) \(number(media.alignmentOffset.seconds)) next:\(media.nextFrame != nil)"
+                text += " echo:" + media.echoes.map { "\(number($0.strength))@\(number($0.delay.seconds))" }.joined(separator: ",")
+                text += " trails:" + media.trails.map { "\(number($0.strength))@\(number($0.delay.seconds))" }.joined(separator: ",") + "\n"
             case .group(let group):
                 text += "G \(number(group.frameSize.width))x\(number(group.frameSize.height)) \(matrix(group.toOuter)) \(group.passThrough ? "pass" : "closed")\n"
             case .adjustment(let adjustment):
                 text += "A \(adjustment.reachesAll ? "all" : "some")\n"
             }
+            if let blur = clip.stack.shutter.motionBlur {
+                text += "B \(number(blur.angle)) \(blur.samples) \(number(clip.stack.frameDuration.seconds))\n"
+            }
             for index in 0..<frames {
                 let time = CMTimeAdd(range.start, CMTimeMultiply(frame, multiplier: Int32(index)))
                 let resolved = clip.stack.resolve(atRoot: time)
+                // Retimed, the file time each frame comes from isn't a
+                // straight line from where the stretch starts.
+                if clip.stack.retimed != nil {
+                    text += "s \(number(clip.stack.sourceTime(atLocal: clip.stack.localTime(atRoot: time)).seconds)) "
+                }
                 for step in resolved.steps {
                     switch step {
                     case .place(let m, let opacity): text += "p \(matrix(m)) \(number(opacity))"
@@ -799,7 +988,8 @@ enum CompositionExporter {
         colorSpace: ProjectColorSpace,
         forPreview: Bool,
         canvasMargin: Double,
-        meter: RenderMeter?
+        meter: RenderMeter?,
+        options: DrawingOptions?
     ) -> AVMutableVideoComposition? {
         guard hasPictures else { return nil }
 
@@ -812,7 +1002,7 @@ enum CompositionExporter {
         videoComposition.instructions = plan.map { planned in
             LayeredInstruction(
                 timeRange: planned.range, clips: planned.clips, passthrough: planned.passthrough ?? kCMPersistentTrackID_Invalid,
-                renderSize: renderSize, colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter
+                renderSize: renderSize, colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options
             )
         }
         return videoComposition
@@ -880,5 +1070,25 @@ enum CompositionExporter {
             throw CompositionError.exportFailed(error.localizedDescription)
         }
         return composed.cachedKeys.count
+    }
+}
+
+private extension Placement.Piece {
+    /// The part of the piece the file has frames for, where it plays in
+    /// root time, and for how long: the piece itself unless the file runs
+    /// out at one end, when the footage that is left plays for the share of
+    /// the piece's time it has the share of the piece's file for. Nil when
+    /// none of it is in the file.
+    func within(_ available: CMTimeRange) -> (file: CMTimeRange, at: CMTime, length: CMTime)? {
+        let kept = file.intersection(available)
+        guard kept.isValid, kept.duration > .zero else { return nil }
+        guard kept != file else { return (file, at, duration) }
+        let ratio = file.duration.seconds > 0 ? duration.seconds / file.duration.seconds : 1
+        let skipped = CMTimeSubtract(kept.start, file.start)
+        return (
+            kept,
+            duration == file.duration ? CMTimeAdd(at, skipped) : CMTimeAdd(at, CMTimeMultiplyByFloat64(skipped, multiplier: ratio)),
+            duration == file.duration ? kept.duration : CMTimeMultiplyByFloat64(kept.duration, multiplier: ratio)
+        )
     }
 }

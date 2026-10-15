@@ -234,6 +234,10 @@ struct TimelineEditorSurface<Library: View>: View {
         .onChange(of: renderer?.packageURL) { _, _ in
             rebuildPlayerItem()
         }
+        // Motion blur on or off in the viewer redraws what it shows.
+        .onChange(of: playback.motionBlurInPreview) { _, _ in
+            rebuildPlayerItem()
+        }
         .onChange(of: playback.currentTime) { _, newValue in
             if playback.isPlaying {
                 playheadTime = newValue
@@ -409,7 +413,8 @@ struct TimelineEditorSurface<Library: View>: View {
         buildTask = Task {
             do {
                 let composed = try await CompositionExporter.buildComposedTimeline(
-                    for: project, timelineID: tID, forPreview: true, meter: playback.meter, cache: isPartial ? nil : renderer?.cache
+                    for: project, timelineID: tID, forPreview: true, meter: playback.meter, options: playback.drawingOptions,
+                    cache: isPartial ? nil : renderer?.cache
                 )
                 guard !Task.isCancelled else { return }
                 // A clip cut short isn't what renders are for.

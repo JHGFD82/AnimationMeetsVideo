@@ -11,8 +11,12 @@ import os
 struct VolumeStage: Equatable, Sendable {
     /// The ID of the clip or the layer.
     let id: UUID
-    /// Root time minus the time the volume's keyframes count in.
+    /// Root time minus the time the volume's keyframes count in, when they
+    /// count at the root's pace.
     let shift: CMTime
+    /// How much faster the keyframes' time passes than the root's: a retimed
+    /// clip's volume counts in its source time, which plays at its speed.
+    var rate: Double = 1
 }
 
 /// Every clip's and layer's volume curve, shared between the editor and the audio
@@ -55,7 +59,8 @@ final class VolumeCurves: @unchecked Sendable {
         var gain: Float = 1
         for stage in stages {
             guard let curve = current[stage.id] else { continue }
-            gain *= AudioLevel.gain(decibels: curve.value(at: CMTimeSubtract(time, stage.shift)))
+            let local = CMTimeSubtract(time, stage.shift)
+            gain *= AudioLevel.gain(decibels: curve.value(at: stage.rate == 1 ? local : CMTimeMultiplyByFloat64(local, multiplier: stage.rate)))
         }
         return gain
     }
@@ -66,13 +71,16 @@ final class VolumeCurves: @unchecked Sendable {
 enum AudioLevelTap {
     /// An audio mix with a tap on each of `tracks`.
     static func audioMix(
-        for tracks: [(track: AVAssetTrack, stages: [VolumeStage])],
+        for tracks: [(track: AVAssetTrack, stages: [VolumeStage], pitch: AVAudioTimePitchAlgorithm?)],
         curves: VolumeCurves,
         meter: MixLevelMeter?
     ) -> AVAudioMix {
         let mix = AVMutableAudioMix()
         mix.inputParameters = tracks.enumerated().compactMap { index, entry in
             let parameters = AVMutableAudioMixInputParameters(track: entry.track)
+            // How retimed sound is played: at the new speed at its own pitch
+            // (spectral), or like tape (varispeed).
+            if let pitch = entry.pitch { parameters.audioTimePitchAlgorithm = pitch }
             let context = TapContext(stages: entry.stages, curves: curves, meter: meter, meterIndex: index)
             guard let tap = makeTap(context) else { return nil }
             parameters.audioTapProcessor = tap

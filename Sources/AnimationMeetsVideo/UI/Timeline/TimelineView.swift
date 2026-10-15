@@ -827,7 +827,13 @@ struct TimelineView: View {
                         onSetPassThrough: { clipID, value in
                             onEditProject { $0.editClip(clipID, in: timelineID) { $0.passThrough = value } }
                         },
-                        showsVolumeLines: showsVolumeLines(of: layer)
+                        showsVolumeLines: showsVolumeLines(of: layer),
+                        onEditTime: { clipID, change in
+                            onEditProject { $0.editTime(ofClip: clipID, in: timelineID, layer: layer.id, change) }
+                        },
+                        onEditClip: { clipID, change in
+                            onEditProject { $0.editClip(clipID, in: timelineID, change) }
+                        }
                     )
                     // Recorded for drags that cross areas; see
                     // `TimelineGeometryStore`.

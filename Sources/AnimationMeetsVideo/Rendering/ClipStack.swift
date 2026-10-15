@@ -23,12 +23,25 @@ struct ClipStack: @unchecked Sendable {
     /// The color space of the timeline the clip is in, which Color steps
     /// convert from and back to.
     var colorSpace = ProjectColorSpace.rec709
+    /// The clip, when it is retimed, which says where each moment of its
+    /// timeline plays in its source. Otherwise `sourceShift` does.
+    var retimed: TimelineClip?
+    /// What the clip does with its finished picture across a frame, and how
+    /// long a frame of its timeline lasts, which the shutter is part of.
+    var shutter = ClipShutter()
+    var frameDuration = CMTime.zero
 
-    init(clip: TimelineClip, center: CGPoint, shift: CMTime, edges: EdgeTransitions? = nil, colorSpace: ProjectColorSpace = .rec709) {
+    init(
+        clip: TimelineClip, center: CGPoint, shift: CMTime, edges: EdgeTransitions? = nil,
+        colorSpace: ProjectColorSpace = .rec709, frameDuration: CMTime = .zero
+    ) {
         self.init(
             effects: clip.effects, anchorPoint: clip.anchorPoint, center: center, shift: shift,
             sourceShift: CMTimeSubtract(clip.startOffset, clip.trimStart), edges: edges, colorSpace: colorSpace
         )
+        retimed = clip.isRetimed ? clip : nil
+        shutter = clip.shutter
+        self.frameDuration = frameDuration
     }
 
     init(
@@ -57,9 +70,19 @@ struct ClipStack: @unchecked Sendable {
     func resolve(atRoot time: CMTime) -> ResolvedClip {
         let local = localTime(atRoot: time)
         return ResolvedClip(
-            steps: StackFolding.steps(effects: effects, anchorPoint: anchorPoint, at: CMTimeSubtract(local, sourceShift), center: center),
+            steps: StackFolding.steps(effects: effects, anchorPoint: anchorPoint, at: sourceTime(atLocal: local), center: center),
             transition: edges?.effect(at: local)
         )
+    }
+
+    /// The clip's source time at `local` in its timeline.
+    func sourceTime(atLocal local: CMTime) -> CMTime {
+        retimed?.sourceTime(atTimelineTime: local) ?? CMTimeSubtract(local, sourceShift)
+    }
+
+    /// The timeline time a moment of the clip's source plays at.
+    func timelineTime(forSource source: CMTime) -> CMTime {
+        retimed?.timelineTime(forSourceTime: source) ?? CMTimeAdd(source, sourceShift)
     }
 
     var hasTransitions: Bool { edges != nil }
@@ -78,8 +101,8 @@ struct ClipStack: @unchecked Sendable {
     var animatedRanges: [CMTimeRange] {
         let keyframed = (effects.flatMap(\.animatedRanges) + [anchorPoint.animatedRange].compactMap { $0 }).map {
             CMTimeRange(
-                start: CMTimeAdd(CMTimeAdd($0.lowerBound, sourceShift), shift),
-                end: CMTimeAdd(CMTimeAdd($0.upperBound, sourceShift), shift)
+                start: CMTimeAdd(timelineTime(forSource: $0.lowerBound), shift),
+                end: CMTimeAdd(timelineTime(forSource: $0.upperBound), shift)
             )
         }
         let transitions = (edges?.animatedRanges ?? []).map {

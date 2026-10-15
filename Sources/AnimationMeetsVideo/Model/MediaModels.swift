@@ -197,8 +197,7 @@ struct EditingProject: Identifiable, Equatable {
         else {
             return
         }
-        let sourceTime = CMTimeAdd(clip.trimStart, CMTimeSubtract(time, clip.startOffset))
-        Self.split(&timelines[tIndex].layers[lIndex].clips, id: id, at: sourceTime)
+        Self.split(&timelines[tIndex].layers[lIndex].clips, id: id, at: clip.sourceTime(atTimelineTime: time), startingSecondAt: time)
     }
 
     /// Removes a clip from its layer. The layer stays, even when empty.
@@ -323,7 +322,7 @@ struct EditingProject: Identifiable, Equatable {
 
     /// Replaces a clip and moves every clip after it on the layer by as
     /// much as its end moved.
-    private mutating func applyRipple(_ trimmed: TimelineClip, in timelineID: UUID, layer layerID: UUID) {
+    mutating func applyRipple(_ trimmed: TimelineClip, in timelineID: UUID, layer layerID: UUID) {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
               let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == trimmed.id })
@@ -351,17 +350,17 @@ struct EditingProject: Identifiable, Equatable {
         timelines[tIndex].layers[lIndex].clips[cIndex] = clip
     }
 
-    private static func split(_ clips: inout [TimelineClip], id: UUID, at time: CMTime) {
+    /// Splits at source time `time`. The second half starts at
+    /// `startingSecondAt` in the timeline, or where that source time plays.
+    private static func split(_ clips: inout [TimelineClip], id: UUID, at time: CMTime, startingSecondAt secondStartTime: CMTime? = nil) {
         guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
         let clip = clips[index]
         guard time > clip.trimStart, time < clip.trimEnd else { return }
-        // The split point is in trim-relative coordinates; convert it to how
-        // far into the clip's absolute placement that point falls, so the
-        // second half starts exactly where the first half now ends — no gap
-        // introduced by splitting, even though either half can be dragged
-        // apart afterward.
-        let offsetIntoClip = CMTimeSubtract(time, clip.trimStart)
-        let secondStart = CMTimeAdd(clip.startOffset, offsetIntoClip)
+        // The split point is in source time; convert it to where that point
+        // plays in the timeline, so the second half starts exactly where the
+        // first half now ends — no gap introduced by splitting, even though
+        // either half can be dragged apart afterward.
+        let secondStart = secondStartTime ?? clip.timelineTime(forSourceTime: time)
         // The first half keeps the way in, the second the way out.
         var first = clip
         first.id = UUID()
@@ -479,13 +478,21 @@ struct TimelineClip: Identifiable, Equatable {
     /// For a nested timeline: draw its layers straight into the timeline
     /// it is placed in instead of as one picture (see docs/effects.md).
     var passThrough = false
+    /// What the clip does to time (speed, frame blending, echo and sound),
+    /// above its stack. See `ClipTime`.
+    var time = ClipTime()
+    /// What it does with its finished picture (motion blur and trails),
+    /// below its transitions. See `ClipShutter`.
+    var shutter = ClipShutter()
 
+    /// The length of the part of the source the clip plays. How long it lasts
+    /// on the timeline is `placedDuration`, which differs when it is retimed.
     var trimmedDuration: CMTime {
         CMTimeSubtract(trimEnd, trimStart)
     }
 
     var endOffset: CMTime {
-        CMTimeAdd(startOffset, trimmedDuration)
+        CMTimeAdd(startOffset, placedDuration)
     }
 }
 

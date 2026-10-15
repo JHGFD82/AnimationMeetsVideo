@@ -100,7 +100,7 @@ extension TimelineClip {
     /// the clip before. A trim can leave the stored lengths longer than the
     /// clip; then they share it in proportion, so the two never overlap.
     func effectiveTransitionDurations(lead: CMTime = .zero) -> (leading: CMTime, trailing: CMTime) {
-        let total = trimmedDuration
+        let total = placedDuration
         let leading = transitionIn.map { CMTimeMinimum(CMTimeMaximum(.zero, CMTimeSubtract($0.duration, lead)), total) } ?? .zero
         let trailing = transitionOut.map { CMTimeMinimum($0.duration, total) } ?? .zero
         let sum = CMTimeAdd(leading, trailing)
@@ -156,7 +156,7 @@ extension EditingProject {
             duration = existing.duration
         } else {
             let other = clip.transition(at: edge == .leading ? .trailing : .leading)?.duration ?? .zero
-            let room = CMTimeSubtract(clip.trimmedDuration, other)
+            let room = CMTimeSubtract(clip.placedDuration, other)
             let fitted = timeline.frameAligned(CMTimeMinimum(ClipTransition.defaultDuration, room), .down)
             duration = fitted > .zero ? fitted : timeline.frameDuration
         }
@@ -187,7 +187,7 @@ extension EditingProject {
             }
         }
         let other = clip.transition(at: edge == .leading ? .trailing : .leading)?.duration ?? .zero
-        let room = CMTimeMaximum(timeline.frameDuration, CMTimeSubtract(clip.trimmedDuration, other))
+        let room = CMTimeMaximum(timeline.frameDuration, CMTimeSubtract(clip.placedDuration, other))
         let snapped = timeline.frameAligned(CMTimeMinimum(duration, room), .nearest)
         transition.duration = CMTimeMaximum(timeline.frameDuration, snapped)
         updateClip(clipID, in: timelineID, layer: layerID) { $0.setTransition(transition, at: edge) }
@@ -255,8 +255,10 @@ enum JointEdit: Equatable {
 }
 
 extension EditingProject {
+    /// Retimed clips don't join: their spare footage isn't a length of
+    /// timeline time.
     private func isJoinable(_ clip: TimelineClip) -> Bool {
-        guard case .media = clip.source else { return false }
+        guard case .media = clip.source, !clip.isRetimed else { return false }
         return playsVideo(clip)
     }
 
@@ -294,8 +296,8 @@ extension EditingProject {
         in timeline: Timeline
     ) -> (duration: CMTime, lead: CMTime)? {
         let spare = spareFootage(outgoing: outgoing, incoming: incoming)
-        let before = timeline.frameAligned(CMTimeMinimum(spare.head, outgoing.trimmedDuration), .down)
-        let insideRoom = CMTimeSubtract(incoming.trimmedDuration, incoming.transitionOut?.duration ?? .zero)
+        let before = timeline.frameAligned(CMTimeMinimum(spare.head, outgoing.placedDuration), .down)
+        let insideRoom = CMTimeSubtract(incoming.placedDuration, incoming.transitionOut?.duration ?? .zero)
         let after = timeline.frameAligned(CMTimeMinimum(spare.tail, insideRoom), .down)
         let longest = CMTimeAdd(CMTimeMaximum(.zero, before), CMTimeMaximum(.zero, after))
         let frame = timeline.frameDuration
@@ -313,7 +315,7 @@ extension EditingProject {
         guard let transition = clip.transitionIn, let previous = predecessor(joining: clip, among: clips) else { return nil }
         let spare = spareFootage(outgoing: previous, incoming: clip)
         guard spare.tail > .zero || spare.head > .zero else { return nil }
-        return CMTimeMaximum(.zero, CMTimeMinimum(CMTimeMinimum(transition.lead, spare.head), CMTimeMinimum(previous.trimmedDuration, transition.duration)))
+        return CMTimeMaximum(.zero, CMTimeMinimum(CMTimeMinimum(transition.lead, spare.head), CMTimeMinimum(previous.placedDuration, transition.duration)))
     }
 
     /// The joint at the start of `incomingID`, if its way in joins it to

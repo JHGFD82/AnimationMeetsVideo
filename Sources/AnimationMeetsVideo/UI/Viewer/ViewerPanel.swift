@@ -77,6 +77,18 @@ struct ViewerPanel: View {
                     .font(Design.Typeface.timecode)
                     .foregroundStyle(Design.textPrimary)
                 Spacer()
+                Menu {
+                    Toggle("Motion Blur in Preview", isOn: Binding(
+                        get: { playback.motionBlurInPreview },
+                        set: { playback.motionBlurInPreview = $0 }
+                    ))
+                } label: {
+                    Image(systemName: "camera.filters")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Preview options. Motion Blur in Preview draws clips' motion blur in the viewer; export and renders always draw it.")
                 qualityMenu
             }
             .padding(.horizontal, Design.Space.rail)

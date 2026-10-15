@@ -96,6 +96,13 @@ private struct Sandbox {
             $0.anchorPoint.set(Vector2(x: 12, y: -4), at: CMTime(value: 2, timescale: 1))
             $0.volume.set(-6, at: .zero)
             $0.passThrough = true
+            $0.time.speed.setAnimated(true, at: .zero)
+            $0.time.speed.set(300, at: CMTime(value: 3, timescale: 1))
+            $0.time.frameBlending = .blend
+            $0.time.echo = Echo(count: 3, delay: CMTime(value: 1, timescale: 24), decay: 0.5)
+            $0.time.sound = .mute
+            $0.shutter.motionBlur = MotionBlur(angle: 90, samples: 4)
+            $0.shutter.trails = Trails(count: 2, delay: CMTime(value: 2, timescale: 24), decay: 0.25)
         }
 
         try await ProjectStore.save(project, to: sandbox.packageURL)
@@ -104,6 +111,7 @@ private struct Sandbox {
         let saved = try #require(project.clipAndLayer(clipID, in: timelineID)?.clip)
         let restored = try #require(loaded.project.clipAndLayer(clipID, in: timelineID)?.clip)
         #expect(restored.passThrough)
+        #expect(restored.time == saved.time && restored.shutter == saved.shutter)
         #expect(restored.effects == saved.effects)
         #expect(restored.anchorPoint == saved.anchorPoint)
         #expect(restored.volume == saved.volume)
@@ -156,7 +164,7 @@ private struct Sandbox {
         let (project, _, _) = sandbox.makeProject()
         try await ProjectStore.save(project, to: sandbox.packageURL)
         let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
-        for key in ["effects", "anchorPoint", "volume", "transform", "canvasMargin", "passThrough"] {
+        for key in ["effects", "anchorPoint", "volume", "transform", "canvasMargin", "passThrough", "shutter", "\"time\" : {"] {
             #expect(!json.contains(key))
         }
     }
@@ -1158,6 +1166,20 @@ private struct Sandbox {
             }
         }
         #expect(message == "The project can't be opened. Expected a list of 4 numbers at timelines[0].layers[0].clips[0].effects[0].controls[0].value.")
+    }
+
+    @Test func anUnknownFrameBlendingIsRejected() async throws {
+        let message = try await loadingMessage { json in
+            editClip(&json) { $0["time"] = ["frameBlending": "smear"] }
+        }
+        #expect(message == "The project can't be opened. Unknown frame blending \"smear\" at timelines[0].layers[0].clips[0].time.frameBlending.")
+    }
+
+    @Test func aMotionBlurWithoutItsSamplesIsRejected() async throws {
+        let message = try await loadingMessage { json in
+            editClip(&json) { $0["shutter"] = ["motionBlur": ["angle": 180]] }
+        }
+        #expect(message == "The project can't be opened. Missing \"samples\" at timelines[0].layers[0].clips[0].shutter.motionBlur.")
     }
 
     @Test func aControlNeedsAValueOrKeyframes() async throws {

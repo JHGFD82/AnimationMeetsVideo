@@ -11,16 +11,18 @@ struct ClipLaneGeometry {
     /// The width of every lane.
     let width: CGFloat
 
-    var duration: Double { max(clip.trimmedDuration.seconds, 0.001) }
+    var duration: Double { max(clip.placedDuration.seconds, 0.001) }
     var pixelsPerSecond: CGFloat { width / CGFloat(duration) }
 
-    /// A source time as a time in the lane (0 at the clip's start).
+    /// A source time as a time in the lane (0 at the clip's start), where it
+    /// plays, which differs from its distance from the trim start when the
+    /// clip is retimed.
     func lane(fromSource time: CMTime) -> CMTime {
-        CMTimeSubtract(time, clip.trimStart)
+        CMTimeSubtract(clip.timelineTime(forSourceTime: time), clip.startOffset)
     }
 
     func source(fromLane time: CMTime) -> CMTime {
-        CMTimeAdd(clip.trimStart, time)
+        clip.sourceTime(atTimelineTime: CMTimeAdd(clip.startOffset, time))
     }
 
     /// A timeline time as a time in the lane.

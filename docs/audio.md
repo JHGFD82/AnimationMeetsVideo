@@ -73,6 +73,16 @@ editor replaces whenever a volume changes. The taps read it as they play,
 so an edit is heard at once: volume is left out of `CompositionKey` and
 doesn't rebuild the player. Export builds its own store from the project.
 
+### Sound of a retimed clip
+
+A clip that isn't at 100% speed has a **Sound** choice (in its menu and the
+effects panel): **Keep Pitch** (the default) plays it at the new speed at its
+own pitch, **Change Pitch** speeds it up and slows it down like tape, and
+**Mute** silences it while the speed isn't 100%. They are AVFoundation's
+time-pitch algorithms (`.spectral` and `.varispeed`) on the clip's audio mix
+track, which is its own track, so they work in playback and export alike.
+Its volume keyframes count in source time, so they follow the sound.
+
 ## Meter
 
 The bar-chart button in the timeline's header shows a **meter** to the

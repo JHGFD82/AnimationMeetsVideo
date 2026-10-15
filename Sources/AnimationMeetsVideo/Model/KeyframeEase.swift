@@ -161,11 +161,13 @@ enum AnimatedParameter: Hashable {
     case layerVolume(layerID: UUID)
     case clipVolume(clipID: UUID)
     case anchorPoint(clipID: UUID)
+    case speed(clipID: UUID)
     case control(ControlKind, clipID: UUID, effectID: UUID, controlID: UUID)
 
     var name: String {
         switch self {
         case .layerVolume, .clipVolume: "Volume"
+        case .speed: "Speed"
         case .anchorPoint: "Anchor Point"
         case .control(let kind, _, _, _): kind.name
         }
@@ -175,6 +177,7 @@ enum AnimatedParameter: Hashable {
     var componentNames: [String] {
         switch self {
         case .layerVolume, .clipVolume: ["Level"]
+        case .speed: ["Speed"]
         case .anchorPoint: ["x", "y"]
         case .control(let kind, _, _, _): kind.componentNames
         }
@@ -190,6 +193,7 @@ enum AnimatedParameter: Hashable {
     func clamped(_ component: Double) -> Double {
         switch self {
         case .layerVolume, .clipVolume: AudioLevel.clamped(component)
+        case .speed: min(max(component, ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound)
         case .anchorPoint: component
         case .control(let kind, _, _, _): kind.clamped(component)
         }
@@ -199,6 +203,7 @@ enum AnimatedParameter: Hashable {
     func label(_ shown: Double) -> String {
         switch self {
         case .layerVolume, .clipVolume: AudioLevel.label(shown)
+        case .speed: NumericExpression.format(shown, maxFractionDigits: 1) + "%"
         case .anchorPoint: NumericExpression.format(shown, maxFractionDigits: 1) + " px"
         case .control(let kind, _, _, _): kind.label(shown)
         }
@@ -223,6 +228,8 @@ extension EditingProject {
             return clipAndLayer(clipID, in: key.timelineID)?.clip.volume.asComponents
         case .anchorPoint(let clipID):
             return clipAndLayer(clipID, in: key.timelineID)?.clip.anchorPoint.asComponents
+        case .speed(let clipID):
+            return clipAndLayer(clipID, in: key.timelineID)?.clip.time.speed.asComponents
         case .control(_, let clipID, let effectID, let controlID):
             let control = clipAndLayer(clipID, in: key.timelineID)?.clip.effects
                 .first { $0.id == effectID }?.controls.first { $0.id == controlID }
@@ -249,6 +256,13 @@ extension EditingProject {
                 var components = clip.anchorPoint.asComponents
                 change(&components)
                 clip.anchorPoint = AnimatedValue(components: components)
+            }
+        case .speed(let clipID):
+            guard let layerID = clipAndLayer(clipID, in: key.timelineID)?.layer.id else { return }
+            editTime(ofClip: clipID, in: key.timelineID, layer: layerID) { time in
+                var components = time.speed.asComponents
+                change(&components)
+                time.speed = AnimatedValue(components: components)
             }
         case .control(_, let clipID, let effectID, let controlID):
             editClip(clipID, in: key.timelineID) { clip in

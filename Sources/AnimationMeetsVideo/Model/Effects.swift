@@ -417,18 +417,6 @@ extension TimelineClip {
     var animatedSourceRanges: [ClosedRange<CMTime>] {
         effects.flatMap(\.animatedRanges) + [anchorPoint.animatedRange].compactMap { $0 }
     }
-
-    /// Where the clip's source time `sourceTime` falls in its timeline.
-    /// Source time is the media's original time (trims are in it), and for a
-    /// nested timeline that timeline's time.
-    func timelineTime(forSourceTime sourceTime: CMTime) -> CMTime {
-        CMTimeAdd(startOffset, CMTimeSubtract(sourceTime, trimStart))
-    }
-
-    /// The clip's source time at `time` in its timeline.
-    func sourceTime(atTimelineTime time: CMTime) -> CMTime {
-        CMTimeAdd(trimStart, CMTimeSubtract(time, startOffset))
-    }
 }
 
 // MARK: - Editing
@@ -471,7 +459,7 @@ extension EditingProject {
         case .layerVolume(let layerID):
             guard let layer = timeline.layer(id: layerID) else { return key.parameter.name }
             return "\(displayName(of: layer, in: timeline)) · Volume"
-        case .clipVolume(let clipID), .anchorPoint(let clipID):
+        case .clipVolume(let clipID), .anchorPoint(let clipID), .speed(let clipID):
             return "\(clipName(clipID, in: key.timelineID)) · \(key.parameter.name)"
         case .control(_, let clipID, let effectID, _):
             let effect = clipAndLayer(clipID, in: key.timelineID)?.clip.effects.first { $0.id == effectID }
@@ -554,6 +542,10 @@ extension TimelineClip {
         }
         if volume.keyframe(at: source) != nil {
             volume.applyEase(preset, at: source)
+            eased = true
+        }
+        if self.time.speed.keyframe(at: source) != nil {
+            self.time.speed.applyEase(preset, at: source)
             eased = true
         }
         for e in effects.indices {

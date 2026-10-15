@@ -409,6 +409,17 @@ the layer is at least 30 points tall, its points and handles appear:
 
 A drag is saved when it ends, as one undo step.
 
+## Retimed clips
+
+A clip's speed (percent of its source's own) decides how long it lasts: the
+block is as long as its source range takes at that speed, and a clock mark
+shows it is retimed. Dragging its end trims the source, never stretching the
+clip; changing the speed moves the clips after it on the layer by as much as
+its end moved, as trimming does. Speed, frame blending, echo and the sound
+choice are in the clip's menu and the effects panel's Time rows; motion blur
+and trails (a camera aperture mark) are under Shutter. See
+[effects.md](effects.md#time-and-shutter).
+
 ## Adjustment layers
 
 The adjustment button in the timeline's header adds an **adjustment layer**

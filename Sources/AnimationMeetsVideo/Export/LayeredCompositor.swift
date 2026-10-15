@@ -23,11 +23,14 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
     let canvasMargin: Double
     /// Told how long each frame took, when the viewer is watching.
     let meter: RenderMeter?
+    /// What the viewer asks of drawing while it plays; nil to draw everything
+    /// at full quality, as export does.
+    let options: DrawingOptions?
 
     init(
         timeRange: CMTimeRange, clips: [DrawClip], passthrough: CMPersistentTrackID = kCMPersistentTrackID_Invalid,
         renderSize: CGSize, colorSpace: ProjectColorSpace, canvasMargin: Double = EditingProject.defaultCanvasMargin,
-        meter: RenderMeter? = nil
+        meter: RenderMeter? = nil, options: DrawingOptions? = nil
     ) {
         self.timeRange = timeRange
         self.clips = clips
@@ -36,7 +39,8 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
         self.colorSpace = colorSpace
         self.canvasMargin = canvasMargin
         self.meter = meter
-        requiredSourceTrackIDs = Set(clips.flatMap(\.leaves).map(\.media.trackID)).sorted().map { NSNumber(value: $0) }
+        self.options = options
+        requiredSourceTrackIDs = Set(clips.flatMap(\.leaves).flatMap(\.media.trackIDs)).sorted().map { NSNumber(value: $0) }
     }
 }
 
@@ -122,6 +126,7 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             time: time,
             scale: CGSize(width: scale, height: renderSize.height > 0 ? outputSize.height / renderSize.height : 1),
             canvasMargin: instruction.canvasMargin,
+            options: instruction.options,
             source: frame
         )
         let black = CIImage(color: .black).cropped(to: bounds)
@@ -164,14 +169,23 @@ struct OuterPlacement {
 /// Draws one frame: the clips of a timeline, then those of the timelines
 /// nested in them.
 struct Drawing {
-    let time: CMTime
+    var time: CMTime
     /// Output pixels per frame pixel, in each direction.
     let scale: CGSize
     /// How far past a frame's edges pictures are kept, as a fraction of its
     /// size.
     let canvasMargin: Double
+    /// What the viewer asks of drawing while it plays, if it is the viewer.
+    var options: DrawingOptions?
     /// The decoded frame of a composition track at `time`.
     let source: (CMPersistentTrackID) -> CVPixelBuffer?
+
+    /// The same drawing at another moment.
+    func at(_ time: CMTime) -> Drawing {
+        var moved = self
+        moved.time = time
+        return moved
+    }
 
     /// `clips` (top first) drawn bottom first over `output`, which holds
     /// the timeline whose frame is `frameSize`, in output pixels with the
@@ -186,6 +200,65 @@ struct Drawing {
     }
 
     private func draw(_ clip: DrawClip, frame frameSize: CGSize, over output: CIImage, outer: OuterPlacement) -> CIImage {
+        if case .adjustment(let adjustment) = clip.content {
+            return drawAdjustment(
+                clip, adjustment, resolved: clip.stack.resolve(atRoot: time), frame: frameSize, over: output, outer: outer
+            )
+        }
+        // Which moment a nested timeline's pictures are drawn at is the
+        // drawing's own time; so a group is drawn through `at`.
+        guard var picture = finishedPicture(clip, at: time, frame: frameSize, over: output, outer: outer) else { return output }
+        let shutter = clip.stack.shutter
+
+        // Motion blur: the finished clip drawn at moments across the shutter
+        // and averaged. The viewer draws fewer while playing.
+        if let blur = shutter.motionBlur?.clamped {
+            let samples = options.map { $0.motionBlurSamples(wanted: blur.samples) } ?? blur.samples
+            let open = clip.stack.frameDuration.seconds > 0 ? clip.stack.frameDuration.seconds : 1.0 / 24
+            let shutterSeconds = open * blur.angle / 360
+            if samples > 1, shutterSeconds > 0 {
+                let weight = CGFloat(1) / CGFloat(samples)
+                var sum: CIImage?
+                for index in 0..<samples {
+                    let moment = CMTimeAdd(time, CMTime(seconds: shutterSeconds * ((Double(index) + 0.5) / Double(samples) - 0.5), preferredTimescale: 240_000))
+                    guard let sample = finishedPicture(clip, at: moment, frame: frameSize, over: output, outer: outer) else { continue }
+                    // The matrix works on colors before they are multiplied by
+                    // alpha, so scaling alpha alone scales the picture.
+                    let scaled = sample.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: weight)])
+                    sum = sum.map { scaled.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: $0]) } ?? scaled
+                }
+                if let sum { picture = sum }
+            }
+        }
+
+        // Trails: copies of the finished clip from earlier moments, under it,
+        // the furthest first.
+        if case .media(let media) = clip.content, !media.trails.isEmpty {
+            var under: CIImage?
+            for trail in media.trails.reversed() {
+                let moment = CMTimeSubtract(time, trail.delay)
+                guard let copy = finishedPicture(clip, at: moment, frame: frameSize, over: output, outer: outer, trail: trail) else { continue }
+                let faded = trail.strength == 1 ? copy : copy.applyingFilter("CIColorMatrix", parameters: [
+                    "inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(trail.strength)),
+                ])
+                under = under.map { faded.composited(over: $0) } ?? faded
+            }
+            if let under { picture = picture.composited(over: under) }
+        }
+        return picture.composited(over: output)
+    }
+
+    /// The clip as it finishes, at root time `time`: its picture put into the
+    /// frame, run through its stack and its transitions, before it is drawn
+    /// over what is below. With `trail` the footage is that copy's.
+    private func finishedPicture(
+        _ clip: DrawClip,
+        at time: CMTime,
+        frame frameSize: CGSize,
+        over output: CIImage,
+        outer: OuterPlacement,
+        trail: TrackCopy? = nil
+    ) -> CIImage? {
         let resolved = clip.stack.resolve(atRoot: time)
         let transition = resolved.transition
         // From the frame's pixels (origin top left) to output pixels.
@@ -218,11 +291,10 @@ struct Drawing {
         // The picture, put into the frame.
         var picture: CIImage
         switch clip.content {
-        case .adjustment(let adjustment):
-            return drawAdjustment(clip, adjustment, resolved: resolved, frame: frameSize, over: output, outer: outer)
+        case .adjustment:
+            return nil
         case .media(let media):
-            guard let buffer = source(media.trackID) else { return output }
-            let image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
+            guard let image = sourcePicture(of: media, clip: clip, at: time, trail: trail) else { return nil }
             picture = image.transformed(
                 by: Self.flip(height: image.extent.height).concatenating(media.base).concatenating(start).concatenating(toOutput)
             )
@@ -240,7 +312,7 @@ struct Drawing {
                     opacity: placement.opacity * (transition?.opacity ?? 1) * outer.opacity,
                     passesThrough: true
                 )
-                return draw(group.children, frame: frameSize, over: output, outer: combined)
+                return at(time).draw(group.children, frame: frameSize, over: output, outer: combined)
             }
             if group.pushesTransforms, placement.matrix.isInvertibleMatrix {
                 // The nested layers are drawn at the size they end up, with
@@ -260,11 +332,11 @@ struct Drawing {
                     transitionPushed = true
                 }
                 geometry = geometry.concatenating(start)
-                let layers = draw(group.children, frame: frameSize, over: .empty(), outer: OuterPlacement(matrix: geometry, opacity: 1))
+                let layers = at(time).draw(group.children, frame: frameSize, over: .empty(), outer: OuterPlacement(matrix: geometry, opacity: 1))
                 picture = Self.limited(layers, toNestedFrame: group.frameSize, through: geometry.concatenating(toOutput))
             } else {
                 let nestedBounds = CGRect(x: 0, y: 0, width: group.frameSize.width * scale.width, height: group.frameSize.height * scale.height)
-                let nested = draw(group.children, frame: group.frameSize, over: .empty(), outer: .identity).cropped(to: nestedBounds)
+                let nested = at(time).draw(group.children, frame: group.frameSize, over: .empty(), outer: .identity).cropped(to: nestedBounds)
                 let toFrame = CGAffineTransform(scaleX: 1 / scale.width, y: 1 / scale.height)
                     .concatenating(Self.flip(height: group.frameSize.height))
                     .concatenating(group.toOuter)
@@ -314,7 +386,39 @@ struct Drawing {
                 kCIInputMaskImageKey: mask,
             ])
         }
-        return picture.composited(over: output)
+        return picture
+    }
+
+    /// A media clip's picture at root time `time`, before anything is done
+    /// to it: the frame it is at, mixed with the next by how far between
+    /// the two the moment falls (Blend), with earlier frames layered under
+    /// it (Echo). With `trail`, that copy's footage as it is.
+    private func sourcePicture(of media: MediaDraw, clip: DrawClip, at time: CMTime, trail: TrackCopy?) -> CIImage? {
+        func frame(_ trackID: CMPersistentTrackID) -> CIImage? {
+            source(trackID).map { CIImage(cvPixelBuffer: $0, options: [.colorSpace: NSNull()]) }
+        }
+        func scaled(_ image: CIImage, by strength: Double) -> CIImage {
+            guard strength < 1 else { return image }
+            return image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(strength))])
+        }
+        guard var image = frame(trail?.trackID ?? media.trackID) else { return nil }
+        if trail != nil { return image }
+
+        if let next = media.nextFrame, media.frameDuration.seconds > 0, let later = frame(next.trackID) {
+            // How far past the frame the moment is in the file.
+            let local = clip.stack.localTime(atRoot: time)
+            let position = (clip.stack.sourceTime(atLocal: local).seconds + media.alignmentOffset.seconds) / media.frameDuration.seconds
+            let fraction = position - (position + 1e-6).rounded(.down)
+            if fraction > 0.01 { image = scaled(later, by: fraction).composited(over: image) }
+        }
+        var under: CIImage?
+        for echo in media.echoes.reversed() {
+            guard let earlier = frame(echo.trackID) else { continue }
+            let faded = scaled(earlier, by: echo.strength)
+            under = under.map { faded.composited(over: $0) } ?? faded
+        }
+        if let under { image = image.composited(over: under) }
+        return image
     }
 
     /// An adjustment clip: its stack is run on the layers it reaches drawn

@@ -280,6 +280,10 @@ struct LayerClipRow: View {
     let onSetPassThrough: (UUID, Bool) -> Void
     /// Draws each clip's volume as a line across it.
     let showsVolumeLines: Bool
+    /// Applies a change to a clip's time settings (see `editTime`), or to
+    /// the clip itself.
+    let onEditTime: (UUID, (inout ClipTime) -> Void) -> Void
+    let onEditClip: (UUID, (inout TimelineClip) -> Void) -> Void
 
     /// While a slip shortens a clip: how far the clips after it move in.
     private struct FollowerShift: Equatable {
@@ -371,7 +375,10 @@ struct LayerClipRow: View {
                     showsVolumeLine: showsVolumeLines && project.playsAudio(clip),
                     passesThrough: clip.passThrough,
                     onAddEffect: { kind in onAddEffect(clip.id, kind) },
-                    onSetPassThrough: { onSetPassThrough(clip.id, $0) }
+                    onSetPassThrough: { onSetPassThrough(clip.id, $0) },
+                    playsSound: project.playsAudio(clip),
+                    onEditTime: { change in onEditTime(clip.id, change) },
+                    onEditClip: { change in onEditClip(clip.id, change) }
                 )
                 .offset(x: shiftX(of: clip))
                 // Clips slide aside as a drag makes room, but not when the
@@ -502,6 +509,10 @@ struct ClipBlockView: View {
     let passesThrough: Bool
     let onAddEffect: (EffectKind) -> Void
     let onSetPassThrough: (Bool) -> Void
+    /// Whether the clip makes sound, which a retimed clip's sound choice is for.
+    let playsSound: Bool
+    let onEditTime: ((inout ClipTime) -> Void) -> Void
+    let onEditClip: ((inout TimelineClip) -> Void) -> Void
 
     /// The clip as it will be if the current drag ends now. After a drop
     /// it stays up until the edited clip comes back down from the project:
@@ -552,9 +563,9 @@ struct ClipBlockView: View {
     var body: some View {
         let shown = shownClip
         let baseX = clip.startOffset.seconds * pixelsPerSecond
-        let baseWidth = max(2, clip.trimmedDuration.seconds * pixelsPerSecond)
+        let baseWidth = max(2, clip.placedDuration.seconds * pixelsPerSecond)
         let liveX = shown.startOffset.seconds * pixelsPerSecond
-        let liveWidth = max(2, shown.trimmedDuration.seconds * pixelsPerSecond)
+        let liveWidth = max(2, shown.placedDuration.seconds * pixelsPerSecond)
         let unionMinX = min(baseX, liveX)
         let unionMaxX = max(baseX + baseWidth, liveX + liveWidth)
         // Only the on-screen part of the block is drawn (with a little
@@ -613,7 +624,7 @@ struct ClipBlockView: View {
                 }
                 .foregroundStyle(Design.textOnColor)
                 HStack(spacing: Design.Space.tight) {
-                    Text(shown.trimmedDuration.formatted)
+                    Text(shown.placedDuration.formatted)
                         .font(Design.Typeface.numericMicro)
                     if hasLinkedAudio {
                         Image(systemName: "speaker.wave.2.fill")
@@ -632,6 +643,16 @@ struct ClipBlockView: View {
                         Image(systemName: "square.stack.3d.down.right")
                             .font(Design.Typeface.micro)
                             .help("Passes through: its layers are drawn into the timeline it is placed in")
+                    }
+                    if !shown.time.isDefault {
+                        Image(systemName: "clock")
+                            .font(Design.Typeface.micro)
+                            .help(shown.isRetimed ? "Retimed: plays at \(NumericExpression.format(shown.speed(atSource: shown.trimStart), maxFractionDigits: 1))%" : "Time settings")
+                    }
+                    if !shown.shutter.isOff {
+                        Image(systemName: "camera.aperture")
+                            .font(Design.Typeface.micro)
+                            .help("Motion blur or trails")
                     }
                 }
                 .foregroundStyle(Design.textOnColor.opacity(0.7))
@@ -717,7 +738,7 @@ struct ClipBlockView: View {
                             onDragging(true)
                         }
                         var proposed = CMTimeAdd(clip.startOffset, timeDelta(value.translation.width))
-                        let snapped = snapSpan(proposed, clip.trimmedDuration)
+                        let snapped = snapSpan(proposed, clip.placedDuration)
                         if let snapped { proposed = snapped.start }
                         onSnapIndicator(snapped?.target)
                         let target = resolveMove(proposed, value.location)
@@ -819,11 +840,13 @@ struct ClipBlockView: View {
     private func waveform(of shown: TimelineClip, drawnX: CGFloat, liveX: CGFloat, width: CGFloat) -> some View {
         if showsWaveform, splitsChannels || ClipWaveform.strength(atHeight: height) > 0,
            case .media(let media) = info, let url = media.url {
-            let sourceStart = CMTimeAdd(shown.trimStart, CMTime(seconds: Double((drawnX - liveX) / pixelsPerSecond), preferredTimescale: 600))
+            let sourceStart = shown.sourceTime(atTimelineTime: CMTimeAdd(shown.startOffset, CMTime(seconds: Double((drawnX - liveX) / pixelsPerSecond), preferredTimescale: 600)))
             ClipWaveform(
                 url: url,
                 fileStart: media.fileTime(forSourceTime: sourceStart).seconds,
-                secondsPerPoint: 1 / Double(pixelsPerSecond),
+                // A retimed clip plays more or less of the file for each
+                // second of the timeline.
+                secondsPerPoint: shown.speed(atSource: shown.trimStart) / 100 / Double(pixelsPerSecond),
                 width: width,
                 height: height,
                 splitsChannels: splitsChannels
@@ -882,7 +905,7 @@ struct ClipBlockView: View {
     /// The end whose transition covers `x` (in the clip's row), if any.
     private func transitionEdge(atX x: CGFloat, liveX: CGFloat) -> TransitionEdge? {
         let durations = clip.effectiveTransitionDurations(lead: joinedLead ?? .zero)
-        let end = liveX + clip.trimmedDuration.seconds * pixelsPerSecond
+        let end = liveX + clip.placedDuration.seconds * pixelsPerSecond
         if clip.transitionIn != nil, joinedLead == nil, x >= liveX, x <= liveX + durations.leading.seconds * pixelsPerSecond {
             return .leading
         }
@@ -909,6 +932,74 @@ struct ClipBlockView: View {
         if case .timeline = clip.source {
             Toggle("Pass Through", isOn: Binding(get: { passesThrough }, set: onSetPassThrough))
         }
+        if case .media = clip.source {
+            Divider()
+            timeMenu
+            if acceptsEffects { shutterMenu }
+        }
+    }
+
+    /// Speed, frame blending, echo and the sound choice, set on the clip
+    /// (and shown in the effects panel).
+    @ViewBuilder
+    private var timeMenu: some View {
+        Menu("Speed") {
+            ForEach([25.0, 50, 100, 200, 400], id: \.self) { percent in
+                Button {
+                    onEditTime { $0.speed = AnimatedValue(percent) }
+                } label: {
+                    if !clip.time.speed.isAnimated, clip.time.speed.value == percent { Image(systemName: "checkmark") }
+                    Text(percent == 100 ? "Normal (100%)" : "\(Int(percent))%")
+                }
+            }
+            if clip.time.speed.isAnimated {
+                Divider()
+                Button("Remove Speed Ramp") { onEditTime { $0.speed = AnimatedValue(100) } }
+            }
+        }
+        if acceptsEffects {
+            Menu("Frame Blending") {
+                ForEach(FrameBlending.allCases) { mode in
+                    Button {
+                        onEditTime { $0.frameBlending = mode }
+                    } label: {
+                        if clip.time.frameBlending == mode { Image(systemName: "checkmark") }
+                        Text(mode.name)
+                    }
+                }
+            }
+            Toggle("Echo", isOn: Binding(
+                get: { clip.time.echo != nil },
+                set: { on in onEditTime { $0.echo = on ? Echo(count: 4, delay: CMTime(value: 1, timescale: 12), decay: 0.6) : nil } }
+            ))
+        }
+        if playsSound {
+            Menu("Sound at Other Speeds") {
+                ForEach(SoundMode.allCases) { mode in
+                    Button {
+                        onEditTime { $0.sound = mode }
+                    } label: {
+                        if clip.time.sound == mode { Image(systemName: "checkmark") }
+                        Text(mode.name)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Motion blur and trails.
+    @ViewBuilder
+    private var shutterMenu: some View {
+        Menu("Shutter") {
+            Toggle("Motion Blur", isOn: Binding(
+                get: { clip.shutter.motionBlur != nil },
+                set: { on in onEditClip { $0.shutter.motionBlur = on ? MotionBlur() : nil } }
+            ))
+            Toggle("Trails", isOn: Binding(
+                get: { clip.shutter.trails != nil },
+                set: { on in onEditClip { $0.shutter.trails = on ? Trails(count: 4, delay: CMTime(value: 1, timescale: 12), decay: 0.6) : nil } }
+            ))
+        }
     }
 
     /// Shaded wedges over the part of the clip each transition plays in,
@@ -916,7 +1007,7 @@ struct ClipBlockView: View {
     /// one wide enough on screen shows its curve's points to edit.
     private func transitionMarks(of shown: TimelineClip, liveX: CGFloat, drawnX: CGFloat, drawnWidth: CGFloat) -> some View {
         let durations = shown.effectiveTransitionDurations(lead: joinedLead ?? .zero)
-        let liveEnd = liveX + shown.trimmedDuration.seconds * pixelsPerSecond
+        let liveEnd = liveX + shown.placedDuration.seconds * pixelsPerSecond
         let leadingWidth = durations.leading.seconds * pixelsPerSecond
         let trailingWidth = durations.trailing.seconds * pixelsPerSecond
         return ZStack(alignment: .topLeading) {
@@ -1007,7 +1098,7 @@ struct ClipBlockView: View {
     @ViewBuilder
     private func transitionSideHandles(of shown: TimelineClip, liveX: CGFloat) -> some View {
         let durations = shown.effectiveTransitionDurations(lead: joinedLead ?? .zero)
-        let liveEnd = liveX + shown.trimmedDuration.seconds * pixelsPerSecond
+        let liveEnd = liveX + shown.placedDuration.seconds * pixelsPerSecond
         if let transition = clip.transitionIn, joinedLead == nil, durations.leading > .zero {
             transitionSideHandle(.leading, transition: transition, atX: liveX + durations.leading.seconds * pixelsPerSecond)
         }
@@ -1048,8 +1139,9 @@ struct ClipBlockView: View {
         if let snapped { delta = CMTimeSubtract(snapped, edgeTime) }
         onSnapIndicator(snapped)
         let trimmed = switch edge {
-        case .leading: resolveTrimStart(CMTimeAdd(clip.trimStart, delta)) ?? clip
-        case .trailing: resolveTrimEnd(CMTimeAdd(clip.trimEnd, delta)) ?? clip
+        // The trim is in the source, which a retimed clip plays at its speed.
+        case .leading: resolveTrimStart(clip.sourceTime(atTimelineTime: CMTimeAdd(clip.startOffset, delta))) ?? clip
+        case .trailing: resolveTrimEnd(clip.sourceTime(atTimelineTime: CMTimeAdd(clip.endOffset, delta))) ?? clip
         }
         showPreview(trimmed)
     }
@@ -1148,7 +1240,7 @@ struct LinkedAudioLane: View {
         ZStack(alignment: .topLeading) {
             ForEach(layer.clips.filter { project.hasLinkedAudio($0) }) { clip in
                 let x = clip.startOffset.seconds * pixelsPerSecond
-                let clipWidth = max(2, clip.trimmedDuration.seconds * pixelsPerSecond)
+                let clipWidth = max(2, clip.placedDuration.seconds * pixelsPerSecond)
                 let drawnMinX = max(x, visibleX.lowerBound - 4)
                 let drawnMaxX = min(x + clipWidth, visibleX.upperBound + 4)
                 if drawnMaxX > drawnMinX {
@@ -1186,11 +1278,11 @@ struct LinkedAudioLane: View {
     private func waveform(of clip: TimelineClip, drawnMinX: CGFloat, clipX: CGFloat, width: CGFloat) -> some View {
         if showsChannels || ClipWaveform.strength(atHeight: height) > 0,
            case .media(let media) = project.resolvedInfo(for: clip.source), let url = media.url {
-            let sourceStart = CMTimeAdd(clip.trimStart, CMTime(seconds: Double((drawnMinX - clipX) / pixelsPerSecond), preferredTimescale: 600))
+            let sourceStart = clip.sourceTime(atTimelineTime: CMTimeAdd(clip.startOffset, CMTime(seconds: Double((drawnMinX - clipX) / pixelsPerSecond), preferredTimescale: 600)))
             ClipWaveform(
                 url: url,
                 fileStart: media.fileTime(forSourceTime: sourceStart).seconds,
-                secondsPerPoint: 1 / Double(pixelsPerSecond),
+                secondsPerPoint: clip.speed(atSource: clip.trimStart) / 100 / Double(pixelsPerSecond),
                 width: width,
                 height: height,
                 splitsChannels: showsChannels

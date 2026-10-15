@@ -158,7 +158,10 @@ extension EditingProject {
             else { continue }
             let fileStart = asset.fileTime(forSourceTime: clip.trimStart)
             for beat in track.beats(from: fileStart, to: asset.fileTime(forSourceTime: clip.trimEnd)) {
-                markers.append(CMTimeAdd(clip.startOffset, CMTimeSubtract(beat, fileStart)))
+                // A retimed clip plays the file faster or slower, so a beat
+                // lands where the footage under it does.
+                let source = CMTimeAdd(clip.trimStart, CMTimeSubtract(beat, fileStart))
+                markers.append(clip.timelineTime(forSourceTime: source))
             }
         }
         return markers.sorted { CMTimeCompare($0, $1) < 0 }

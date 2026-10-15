@@ -17,7 +17,7 @@ struct EffectsPanel: View {
     let onClose: () -> Void
 
     /// The surface's graph editor panels.
-    @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
+    @Environment(KeyframeGraphHUDs.self) var graphs: KeyframeGraphHUDs?
     @State private var renamingEffectID: UUID?
     /// The clip after each of its effects, at the playhead.
     @State private var thumbnails: [UUID: CGImage] = [:]
@@ -172,7 +172,7 @@ struct EffectsPanel: View {
 
     /// Everything the rows of the stack need to know about the clip and
     /// the moment.
-    private struct RowContext {
+    struct RowContext {
         let clip: TimelineClip
         let timeline: Timeline
         /// The layer the clip is on.
@@ -203,6 +203,7 @@ struct EffectsPanel: View {
                     lane: emptyLane(c)
                 )
             }
+            timeRows(c)
             if project.hasEffectStack(clip) {
                 anchorRow(c)
                 ForEach(clip.effects) { effect in
@@ -230,6 +231,7 @@ struct EffectsPanel: View {
                     }
                 }
             }
+            shutterRows(c)
             if project.playsAudio(clip) {
                 volumeRow(c)
             }
@@ -238,7 +240,7 @@ struct EffectsPanel: View {
         .frame(minHeight: 0, alignment: .top)
     }
 
-    private func labelled<Label: View, Lane: View>(_ label: Label, lane: Lane) -> some View {
+    func labelled<Label: View, Lane: View>(_ label: Label, lane: Lane) -> some View {
         HStack(spacing: 0) {
             label.frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
             lane
@@ -250,7 +252,7 @@ struct EffectsPanel: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Design.hairline).frame(height: 0.5) }
     }
 
-    private func emptyLane(_ c: RowContext) -> some View {
+    func emptyLane(_ c: RowContext) -> some View {
         Color.clear.frame(width: c.geometry.width)
     }
 
@@ -556,7 +558,7 @@ struct EffectsPanel: View {
 
     // MARK: Editing
 
-    private func editClip(_ id: UUID, _ change: (inout TimelineClip) -> Void) {
+    func editClip(_ id: UUID, _ change: (inout TimelineClip) -> Void) {
         project.editClip(id, in: timelineID, change)
     }
 
