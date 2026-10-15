@@ -1,4 +1,5 @@
 import CoreMedia
+import os
 import Foundation
 
 // Time and Shutter (see docs/effects.md, "Time and Shutter"): what a clip
@@ -137,7 +138,8 @@ extension TimelineClip {
         if b < a { return CMTimeMultiply(timelineLength(ofSource: b, to: a), multiplier: -1) }
         let span = CMTimeSubtract(b, a)
         guard !time.speed.isAnimated else {
-            return Self.seconds(integratingReciprocalSpeed: time.speed, from: a, to: b)
+            let integral = SpeedIntegral.of(time.speed)
+            return CMTime(seconds: integral.length(from: a.seconds, to: b.seconds), preferredTimescale: 240_000)
         }
         let speed = speed(atSource: a)
         if speed == 100 { return span }
@@ -165,16 +167,18 @@ extension TimelineClip {
             return CMTimeAdd(trimStart, CMTimeMultiplyByFloat64(elapsed, multiplier: speed / 100))
         }
         // Playing the source takes more time the more of it has played, so
-        // find where the time that has passed is used up.
+        // find where the time that has passed is used up. The speed is
+        // integrated up to each keyframe once, not at every step.
         let target = elapsed.seconds
         let anchor = trimStart.seconds
+        let integral = SpeedIntegral.of(self.time.speed)
+        let base = integral.at(anchor)
         let fastest = ClipTime.speedRange.upperBound / 100
         var low = target >= 0 ? anchor : anchor + target * fastest - 1e-6
         var high = target >= 0 ? anchor + target * fastest + 1e-6 : anchor
-        for _ in 0..<48 {
+        for _ in 0..<44 {
             let middle = (low + high) / 2
-            let length = timelineLength(ofSource: trimStart, to: CMTime(seconds: middle, preferredTimescale: 240_000)).seconds
-            if length < target { low = middle } else { high = middle }
+            if integral.at(middle) - base < target { low = middle } else { high = middle }
         }
         return CMTime(seconds: (low + high) / 2, preferredTimescale: 240_000)
     }
@@ -192,26 +196,74 @@ extension TimelineClip {
         if speed == 100 { return placedDelta }
         return CMTimeMultiplyByFloat64(placedDelta, multiplier: speed / 100)
     }
+}
 
-    /// Time in seconds of `100 / speed` integrated over the source from `a`
-    /// to `b`, in pieces that start and end at keyframes.
-    private static func seconds(integratingReciprocalSpeed speed: AnimatedValue<Double>, from a: CMTime, to b: CMTime) -> CMTime {
-        var edges = [a.seconds]
-        edges += speed.keyframes.map(\.time.seconds).filter { $0 > a.seconds && $0 < b.seconds }
-        edges.append(b.seconds)
-        func rate(_ seconds: Double) -> Double {
-            100 / min(max(speed.value(at: CMTime(seconds: seconds, preferredTimescale: 240_000)), ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound)
+/// The time the source takes to play, as a function of how far into it:
+/// the integral of `100 / speed` over source seconds, measured from the
+/// speed's first keyframe. Outside the keyframes the speed is constant, so
+/// the integral is a line; between them it is added up by Simpson's rule,
+/// and the total up to each keyframe is kept, so finding the time at any
+/// point integrates only the piece it is in.
+struct SpeedIntegral {
+    private let speed: AnimatedValue<Double>
+    private let times: [Double]
+    /// The integral at each keyframe.
+    private let totals: [Double]
+
+    private static let stepsPerPiece = 24
+
+    /// The few most recently used, since a speed is asked about over and
+    /// over (every clip block, frame and render key) between edits.
+    private static let recent = OSAllocatedUnfairLock(initialState: [SpeedIntegral]())
+
+    /// The integral of `speed`, from the cache if it was made lately.
+    static func of(_ speed: AnimatedValue<Double>) -> SpeedIntegral {
+        if let found = recent.withLock({ $0.first { $0.speed == speed } }) { return found }
+        let made = SpeedIntegral(speed)
+        recent.withLock { cache in
+            cache.append(made)
+            if cache.count > 8 { cache.removeFirst() }
         }
-        var total = 0.0
-        for (low, high) in zip(edges, edges.dropFirst()) where high > low {
-            // Simpson's rule on an even number of steps.
-            let steps = min(max(Int(((high - low) * 120).rounded(.up)) * 2, 8), 8192)
-            let h = (high - low) / Double(steps)
-            var sum = rate(low) + rate(high)
-            for i in 1..<steps { sum += rate(low + Double(i) * h) * (i.isMultiple(of: 2) ? 2 : 4) }
-            total += sum * h / 3
+        return made
+    }
+
+    private init(_ speed: AnimatedValue<Double>) {
+        self.speed = speed
+        times = speed.keyframes.map(\.time.seconds)
+        var totals = [0.0]
+        for index in times.indices.dropFirst() {
+            totals.append(totals[index - 1] + Self.simpson(speed, from: times[index - 1], to: times[index]))
         }
-        return CMTime(seconds: total, preferredTimescale: 240_000)
+        self.totals = totals
+    }
+
+    private static func rate(_ speed: AnimatedValue<Double>, at seconds: Double) -> Double {
+        let value = speed.value(at: CMTime(seconds: seconds, preferredTimescale: 240_000))
+        return 100 / min(max(value, ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound)
+    }
+
+    private static func simpson(_ speed: AnimatedValue<Double>, from low: Double, to high: Double) -> Double {
+        guard high > low else { return 0 }
+        let steps = stepsPerPiece
+        let h = (high - low) / Double(steps)
+        var sum = rate(speed, at: low) + rate(speed, at: high)
+        for i in 1..<steps { sum += rate(speed, at: low + Double(i) * h) * (i.isMultiple(of: 2) ? 2 : 4) }
+        return sum * h / 3
+    }
+
+    /// The integral at `seconds` of source time.
+    func at(_ seconds: Double) -> Double {
+        guard let first = times.first, let last = times.last else { return seconds * Self.rate(speed, at: 0) }
+        if seconds <= first { return (seconds - first) * Self.rate(speed, at: first) }
+        if seconds >= last { return totals[totals.count - 1] + (seconds - last) * Self.rate(speed, at: last) }
+        var index = 0
+        while index + 1 < times.count - 1, times[index + 1] <= seconds { index += 1 }
+        return totals[index] + Self.simpson(speed, from: times[index], to: seconds)
+    }
+
+    /// The time in seconds the source takes to play from `a` to `b`.
+    func length(from a: Double, to b: Double) -> Double {
+        at(b) - at(a)
     }
 }
 

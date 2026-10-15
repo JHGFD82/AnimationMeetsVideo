@@ -204,3 +204,42 @@ import Testing
         #expect(ProjectFile.ClipTimeEntry(ClipTime()) == nil && ProjectFile.ShutterEntry(ClipShutter()) == nil)
     }
 }
+
+@Suite struct SpeedRampCostTests {
+    private func second(_ value: Double) -> CMTime { CMTime(seconds: value, preferredTimescale: 600) }
+
+    private func rampedClip() -> TimelineClip {
+        var clip = TimelineClip(source: .media(UUID()), startOffset: second(5), trimStart: .zero, trimEnd: second(120))
+        clip.time.speed.setAnimated(true, at: .zero)
+        clip.time.speed.set(50, at: second(10))
+        clip.time.speed.set(400, at: second(60))
+        return clip
+    }
+
+    @Test func aLinearRampTakesAsLongAsItsIntegralSays() {
+        var clip = TimelineClip(source: .media(UUID()), startOffset: .zero, trimStart: .zero, trimEnd: second(10))
+        clip.time.speed.setAnimated(true, at: .zero)
+        clip.time.speed.set(50, at: second(10))
+        // Speed 100 - 5t: the integral of 100 / speed is 20 ln 2.
+        #expect(abs(clip.placedDuration.seconds - 20 * log(2.0)) < 1e-4)
+    }
+
+    @Test func theTwoMappingsUndoEachOtherAcrossKeyframes() {
+        let clip = rampedClip()
+        for source in [3.0, 10.0, 25.5, 60.0, 90.0] {
+            let there = clip.timelineTime(forSourceTime: second(source))
+            #expect(abs(clip.sourceTime(atTimelineTime: there).seconds - source) < 1e-3)
+        }
+    }
+
+    @Test func askingWhereAndHowLongIsCheapEnoughForEveryFrame() {
+        let clip = rampedClip()
+        let start = ContinuousClock.now
+        for index in 0..<200 {
+            _ = clip.placedDuration
+            _ = clip.sourceTime(atTimelineTime: second(5 + Double(index) * 0.3))
+        }
+        let elapsed = ContinuousClock.now - start
+        #expect(elapsed < .milliseconds(500))
+    }
+}
