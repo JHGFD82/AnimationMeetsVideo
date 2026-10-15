@@ -11,12 +11,22 @@ What is above acts on what is below. In a clip's stack, each control works
 on the picture handed down from the ones above it. On the timeline, a clip
 blends onto the layers below it. Every other rule follows from this:
 
+- Time is the top of everything: a clip's speed, frame blending and echo
+  decide which source frames the rest of the clip receives (see
+  [Time and Shutter](#time-and-shutter)).
 - The anchor point is pinned at the top of the stack, so it affects every
   step.
+- An effect only reads from above: a Blending step can blend against an
+  earlier step's picture, never a later one (see [Against](#against)).
 - Transitions are pinned at the bottom of the stack, so they act on
-  everything above them.
+  everything above them, and the Shutter (motion blur) sits below them,
+  blurring the motion of all of it.
 - A nested timeline is a closed container: what falls inside it never
-  lands on the timeline it is placed in, except through its alpha.
+  lands on the timeline it is placed in, except through its alpha, unless
+  it is set to [pass through](#pass-through).
+- Pictures an effect uses as input (a matte, a map) aren't layers, so
+  they're nowhere in the order: they come from the browser (see
+  [Inputs](#inputs)).
 - The one exception is an adjustment layer, which can set how far down its
   effect falls (see [Reach](#reach)).
 
@@ -95,12 +105,13 @@ New Transform effects list them in this order. Each control is one step:
 
 ### Blending
 
-Two controls:
+Three controls:
 
 | Control | Default | Does |
 | --- | --- | --- |
 | Mode | Normal (a no-op) | Darken, Multiply, Color Burn, Linear Burn, Lighten, Screen, Color Dodge, Add, Overlay, Soft Light, Hard Light, Difference, Exclusion, Subtract, Divide, Hue, Saturation, Color or Luminosity. |
 | Amount | 100% | How much of the blend is applied: at 0% the step is a no-op, in between the clip's color is mixed toward the blended one. Unlike Opacity it doesn't change the clip's alpha. |
+| Against | Backdrop | What the clip is blended with: the backdrop, or the clip's own picture before an earlier effect in the stack (see [Against](#against)). |
 
 A blend mode combines the clip with its **backdrop**: everything below the
 clip in its own timeline, fully drawn at this frame. The backdrop is never
@@ -118,7 +129,30 @@ stack the clip is drawn normally over the backdrop, so a Blending effect at
 the end behaves like a layer blend mode in other apps.
 
 The bottom clip of a nested timeline has nothing under it, so blending
-there does nothing. The panel says so.
+there against the backdrop does nothing. The panel says so.
+
+#### Against
+
+A Blending step can also blend the clip with **an earlier version of
+itself**: Against lists the effects above the step, and picking one blends
+against the picture as it was just before that effect. The classic use is a
+glow: Blur, then Blending set to Screen against "Before Blur" screens the
+blurred picture over the sharp one, in one stack, with no duplicate layer.
+
+The formula is the same with the earlier picture in place of the backdrop.
+One difference: both pictures are the clip's own, so the result keeps both,
+drawn as the current picture blended over the earlier one (alpha as in
+normal compositing over it). Against the backdrop only the clip's alpha is
+kept, since the backdrop is drawn under it at the end anyway.
+
+Against stores the effect's ID. If that effect is deleted, or dragged
+below the Blending step, the step can't read it (it only reads from
+above), so it does nothing and is dimmed with a note until it is pointed
+somewhere else.
+
+On an adjustment clip, Backdrop means the picture the adjustment receives,
+unadjusted, so a Blending step there blends the adjusted picture with the
+unadjusted one.
 
 ### Color
 
@@ -137,16 +171,20 @@ space for PQ and HLG timelines is settled when Color is built.
 
 For each frame, each clip goes through:
 
-1. **Source**: the media frame, oriented and fitted into its timeline's
+1. **Time**: which source frames the clip shows at this moment, after its
+   speed, frame blending and echo.
+2. **Source**: those frames, oriented and fitted into the timeline's
    frame, centered (as 100% scale is today). A nested timeline is drawn
    first, on its own (see below).
-2. **Stack**: each enabled effect, top to bottom, and within it each
+3. **Stack**: each enabled effect, top to bottom, and within it each
    enabled control that isn't at its default.
-3. **Transition**: the clip's transitions, if any. They aren't effects:
-   they are pinned at the bottom of the list and always come last. A dissolve fades the stack's
-   result, a wipe crops it in frame coordinates, and a film dissolve keys
-   on it or on the backdrop.
-4. **Composite**: drawn normally over the backdrop.
+4. **Transition**: the clip's transitions, if any. They aren't effects:
+   they are pinned below the stack. A dissolve fades the stack's result, a
+   wipe crops it in frame coordinates, and a film dissolve keys on it or on
+   the backdrop.
+5. **Shutter**: with motion blur or trails on, steps 1–4 are drawn at
+   several moments and combined.
+6. **Composite**: drawn normally over the backdrop.
 
 ### Nested timelines are closed groups
 
@@ -159,6 +197,26 @@ its alpha shows through. The root timeline draws over black.
 This replaces flattening. Today nested timelines are flattened into one
 stack of tracks; instead the compositor gets a tree and draws each nested
 timeline into an image of its own.
+
+#### Pass through
+
+A nested clip can be set to **Pass Through** (in its ⋯ menu; off by
+default). Its timeline's layers are then drawn straight into the parent, as
+if they were on the parent's timeline at that spot, so they blend with
+whatever is under the nested clip. With no single group picture, the
+nested clip's own stack can only hold steps that work layer by layer:
+
+- **Position, Scale and Rotation** are applied to each layer inside, which
+  gives the same picture.
+- **Opacity**, a dissolve, and motion blur are applied to each layer
+  inside. Where those layers overlap this differs from applying them to the
+  group, and the panel notes it.
+- **Time** retimes the nested timeline as usual.
+- **Everything else** (Blending, Color, neighborhood effects, wipes, the
+  film dissolve) needs one combined picture, so it is dimmed with a note
+  and does nothing while Pass Through is on.
+
+Pass-through nested clips cost no more to draw than the layers they hold.
 
 ### Keeping it sharp and cheap
 
@@ -201,6 +259,59 @@ their defaults, with no transition, still plays straight from its file.
 Everything else is drawn by the compositor and rendered in the background
 as today ([rendering.md](rendering.md)). The render key hashes each clip's
 resolved steps on every frame, after folding, plus the nesting.
+
+## Time and Shutter
+
+Effects that change time aren't in the stack. They sit above it and below
+it, set on the clip in the timeline (its ⋯ menu, with a small mark on the
+clip block) and shown in the effects panel as pinned rows: Time above the
+anchor point, Shutter below the transitions.
+
+**Time** decides which source frames the clip receives, so everything else
+works on frames already chosen:
+
+- **Speed**: a percentage, with keyframed speed ramps later.
+- **Frame Blending**: off, or blend neighboring frames when the speed
+  doesn't land on whole frames.
+- **Echo**: earlier source frames layered under the current one, with a
+  count, a delay and a decay.
+
+Keyframes are in source time, so retiming a clip retimes its animation too:
+at 50% the clip and its moves both play at half speed. To animate at a
+steady speed over retimed footage, animate an adjustment layer instead.
+
+**Shutter** acts on the finished clip, so it covers motion from every step
+above, the transition included:
+
+- **Motion Blur**: a shutter angle (180° to start) and a number of samples.
+  The clip is drawn at that many moments across the shutter and averaged.
+- **Trails**: copies of the finished clip from earlier moments, with a
+  count, a delay and a decay. Unlike Echo, these include the clip's
+  movement, which After Effects can only do by precomposing.
+
+Both cost as many draws of the clip as they have samples or copies, and are
+rendered in the background like everything else.
+
+## Inputs
+
+Some effects take a second picture: a matte that cuts the clip, a map that
+displaces it, a source for a light wrap. That picture comes from the
+**browser**, not the timeline. It is dragged from the browser into the
+effect's drop zone in the effects panel. It can be a media clip, a still,
+or a nested timeline, and it never takes up a layer: it belongs to the
+clip, as part of the step.
+
+- **Where it sits follows the order.** The input is fitted into the frame
+  at its step and stays put. A Matte step above a Transform cuts the clip
+  before it moves, so the mask travels with the clip. Below the Transform,
+  the clip moves under a fixed mask.
+- **When it plays**: a moving input starts with the clip, with an offset,
+  and either holds its last frame or loops at its end.
+- **Animating it**: an input has no stack of its own. To animate a mask,
+  drop in a nested timeline that animates it.
+- An input is tracked like any other use of its media: replacing the media
+  updates it, missing media is reported, and a nested timeline used as an
+  input inside itself is rejected as a cycle.
 
 ## Adjustment layers
 
@@ -259,10 +370,10 @@ Top: the **library**, grouped by category, Foundations first. Drag an
 effect onto a clip, or double-click it to add it to the end of the selected
 clip's stack.
 
-Below: the selected clip's **stack**, with the anchor point pinned as the
-first row and the clip's transitions, if any, pinned as the last. Neither
-can be moved. Clicking a transition row selects it, as clicking it on the
-timeline does.
+Below: the selected clip's **stack**, framed by pinned rows that can't be
+moved: Time and the anchor point above it, the clip's transitions (if any)
+and Shutter below it, in the order they are drawn. Clicking a transition
+row selects it, as clicking it on the timeline does.
 
 - Each **effect** row has a drag handle, a disclosure arrow, an
   enable checkbox, its name and a **⋯** menu: Duplicate (Cmd-D), Reset,
@@ -295,7 +406,8 @@ keys. A clip block with effects shows a small badge with the count.
 
 - **No-ops are dimmed**: a control at its default, a disabled control or
   effect, and an effect whose controls are all no-ops. A Blending step with
-  nothing under it is dimmed with a note.
+  nothing under it, or Against an effect that is gone or below it, is
+  dimmed with a note, as are steps a pass-through nested clip can't apply.
 - **Each effect shows a thumbnail** of the clip's picture after it, at the
   playhead, drawn small and refreshed when the playhead stops.
 - **Show Up to Here** shows the clip in the viewer as it is after that
@@ -329,7 +441,11 @@ and `effects` (written only when the stack isn't empty):
 
 Defaults are left out as everywhere else: `enabled` is written only as
 `false`, `movesAnchor` only as `false`, and a Scale control's `linked`
-only as `false`. Keyframes are written as layer transforms' are today
+only as `false`. A Blending step's `against` holds the effect ID it reads,
+written only when it isn't the backdrop. An effect with an input has
+`input` (`{"asset": "…"}` or `{"timeline": "…"}`, plus `offset` and
+`"loops": true` when set). A clip has `time` and `shutter` only when they
+aren't off, and a nested clip `"passThrough": true` only when set. Keyframes are written as layer transforms' are today
 (`easeIn` and `easeOut` only when eased), with times in rational seconds
 of source time.
 
@@ -359,17 +475,20 @@ In order, each step usable on its own:
 
 1. **Model and saving**: anchor point and stacks on clips, layer transforms
    removed, format version 2, strict loading with path errors.
-2. **Compositor**: the tree with closed nested timelines, Transform steps
-   with folding and Moves Anchor, transitions last, one compositor for
-   viewer and export, the new render key.
+2. **Compositor**: the tree with closed nested timelines and Pass Through,
+   Transform steps with folding and Moves Anchor, transitions below the
+   stack, one compositor for viewer and export, the new render key.
 3. **Effects panel**: library, stack editing, keyframe lanes and playhead.
    Remove the timeline's property rows and the inspector's transform
    section.
-4. **Blending**: one Metal kernel per mode, using the formula above.
+4. **Blending**: one Metal kernel per mode, using the formula above, and
+   Against.
 5. **Color**, with its working spaces.
 6. **Reading aids**: dimming, thumbnails, Show Up to Here.
 7. **Pushing transforms into nested timelines.**
 8. **Adjustment layers** with reach.
+9. **Time and Shutter**.
+10. **Inputs**, with the first effect that takes one (a matte).
 
 ## Not decided yet
 
@@ -377,5 +496,6 @@ In order, each step usable on its own:
 - The size of the canvas margin.
 - Copying and pasting effects or whole stacks between clips, and saved
   presets.
-- What a Blending step on an adjustment clip blends against (the adjusted
-  picture with the unadjusted one, most likely).
+- Speed ramps, and optical-flow frame blending.
+- Default Shutter samples, and whether motion blur can be switched off
+  while previewing to keep playback smooth.
