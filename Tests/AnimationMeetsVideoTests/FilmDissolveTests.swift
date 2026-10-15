@@ -88,7 +88,7 @@ import Testing
         #expect(abs(try await gray(of: darkComposed, at: seconds(3.5)) - 20) < 15)
     }
 
-    @Test func theLayeredCompositorPlacesLayersLikeTheBuiltInOne() async throws {
+    @Test func aHalfSizeClipSitsInItsCornerAndAFilmDissolveElsewhereChangesNothingHere() async throws {
         let dir = FileManager.default.temporaryDirectory.appending(path: "amv-film-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -103,22 +103,16 @@ import Testing
         transform.controls[0].number = AnimatedValue(ComponentValue(values: [-480, -270]))
         transform.controls[1].number = AnimatedValue(ComponentValue(values: [50, 50]))
         project.editClip(quarter.clipID, in: t) { $0.effects = [transform] }
-        let builtIn = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
-        #expect(builtIn.videoComposition?.customVideoCompositorClass == nil)
 
-        // A film dissolve elsewhere in time switches the whole timeline over.
         let later = project.importClip(media(movies.under, frames: 96), intoTimeline: t)
         let other = try #require(later)
         project.moveClip(other.clipID, in: t, layer: other.layerID, to: seconds(4))
         project.setTransition(.filmDissolve, at: .leading, of: other.clipID, in: t, layer: other.layerID)
-        let layered = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
-        #expect(layered.videoComposition?.customVideoCompositorClass == LayeredCompositor.self)
+        let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
+        #expect(composed.videoComposition?.customVideoCompositorClass == LayeredCompositor.self)
 
-        // The two draw the same picture.
         for (x, y) in [(0.1, 0.1), (0.25, 0.25), (0.45, 0.45), (0.25, 0.75), (0.75, 0.25), (0.75, 0.75)] {
-            let expected = try await gray(of: builtIn, at: seconds(1), x: x, y: y)
-            let drawn = try await gray(of: layered, at: seconds(1), x: x, y: y)
-            #expect(abs(drawn - expected) <= 3)
+            let drawn = try await gray(of: composed, at: seconds(1), x: x, y: y)
             #expect(x < 0.5 && y < 0.5 ? drawn > 180 : drawn < 15)
         }
     }

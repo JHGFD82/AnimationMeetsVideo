@@ -69,6 +69,8 @@ struct ProjectFile: Codable {
         var effects: [EffectEntry]?
         /// Decibels; absent while at 0 and not animated.
         var volume: PropertyEntry<Double>?
+        /// Nested timelines only; absent unless set.
+        var passThrough: Bool?
     }
 
     /// A transition at one end of a clip. `kind` is a `TransitionKind`
@@ -472,6 +474,7 @@ extension ProjectFile {
             .optional("anchorPoint", property(.numbers(count: 2))),
             .optional("effects", .array(.tagged(key: "kind", noun: "effect kind", effects))),
             .optional("volume", property(.number)),
+            .optional("passThrough", .bool),
         ]))
         let layer = JSONShape.object(object([
             .required("id", .uuid), .optional("customName", .string),

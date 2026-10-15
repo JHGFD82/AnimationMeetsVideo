@@ -46,6 +46,15 @@ struct FoldedPlacement: Equatable {
     }
 }
 
+/// One step of a clip's stack as the compositor draws it at a moment.
+/// Consecutive Position, Scale, Rotation and Opacity steps are folded into
+/// one `place`, so the picture is sampled once however many there are.
+enum ResolvedStep: Equatable, Sendable {
+    /// Moves the picture by `matrix` (in the frame's pixels, origin top
+    /// left) and multiplies its alpha by `opacity`.
+    case place(matrix: CGAffineTransform, opacity: Double)
+}
+
 enum StackFolding {
     /// The placement the stack gives the fitted picture at source time
     /// `time`. `center` is the center of the picture, where the anchor
@@ -60,5 +69,13 @@ enum StackFolding {
             }
         }
         return placement
+    }
+
+    /// The steps to draw for the stack at source time `time`: nothing while
+    /// every control is at its default.
+    static func steps(effects: [Effect], anchorPoint: AnimatedValue<Vector2>, at time: CMTime, center: CGPoint) -> [ResolvedStep] {
+        let placement = fold(effects: effects, anchorPoint: anchorPoint, at: time, center: center)
+        guard placement.matrix != .identity || placement.opacity != 1 else { return [] }
+        return [.place(matrix: placement.matrix, opacity: placement.opacity)]
     }
 }

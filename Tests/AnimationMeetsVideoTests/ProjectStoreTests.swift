@@ -90,6 +90,7 @@ private struct Sandbox {
             $0.anchorPoint.setAnimated(true, at: .zero)
             $0.anchorPoint.set(Vector2(x: 12, y: -4), at: CMTime(value: 2, timescale: 1))
             $0.volume.set(-6, at: .zero)
+            $0.passThrough = true
         }
 
         try await ProjectStore.save(project, to: sandbox.packageURL)
@@ -97,6 +98,7 @@ private struct Sandbox {
 
         let saved = try #require(project.clipAndLayer(clipID, in: timelineID)?.clip)
         let restored = try #require(loaded.project.clipAndLayer(clipID, in: timelineID)?.clip)
+        #expect(restored.passThrough)
         #expect(restored.effects == saved.effects)
         #expect(restored.anchorPoint == saved.anchorPoint)
         #expect(restored.volume == saved.volume)
@@ -108,7 +110,7 @@ private struct Sandbox {
         let (project, _, _) = sandbox.makeProject()
         try await ProjectStore.save(project, to: sandbox.packageURL)
         let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
-        for key in ["effects", "anchorPoint", "volume", "transform", "canvasMargin"] {
+        for key in ["effects", "anchorPoint", "volume", "transform", "canvasMargin", "passThrough"] {
             #expect(!json.contains(key))
         }
     }

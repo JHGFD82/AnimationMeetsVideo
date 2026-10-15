@@ -459,6 +459,9 @@ struct TimelineClip: Identifiable, Equatable {
     /// The volume of the clip's sound, in decibels (see `AudioLevel`),
     /// keyframed in the clip's source time. Clips with no sound have none.
     var volume = AnimatedValue(0.0)
+    /// For a nested timeline: draw its layers straight into the timeline
+    /// it is placed in instead of as one picture (see docs/effects.md).
+    var passThrough = false
 
     var trimmedDuration: CMTime {
         CMTimeSubtract(trimEnd, trimStart)

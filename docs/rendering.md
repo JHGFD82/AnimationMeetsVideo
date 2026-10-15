@@ -3,7 +3,7 @@
 Status: **implemented**: viewer quality, the render cache, and export
 reusing renders.
 
-Transitions, keyframed layer transforms, and soon video effects and
+Transitions, effect stacks, and soon more effects and
 adjustment layers make some stretches of a timeline too expensive to draw
 live at full size. The approach has two halves: draw live at a reduced size
 when needed, and render full-size frames in the background when the
@@ -11,15 +11,27 @@ timeline is idle.
 
 ## Viewer quality (implemented)
 
-The viewer always draws through `LayeredCompositor`, which composites with
-Core Image on a Metal context. Its instructions keep the timeline's frame
+The viewer and export both draw through `LayeredCompositor`, which
+composites with Core Image on a Metal context; the built-in AVFoundation
+compositor is no longer used. Its instructions keep the timeline's frame
 size and scale into whatever size the player asks for, so the viewer can
 draw at full, half or quarter size (a quarter of the pixels per step) by
-swapping the player item's video composition for a scaled copy.
+swapping the player item's video composition for a scaled copy. Every
+picture, and every nested timeline, is drawn straight to that size.
 
-Export is unchanged: it uses the built-in compositor, and `LayeredCompositor`
-only for a timeline with a film dissolve. The two are tested to draw the
-same picture.
+Each stretch's instruction holds a tree (`DrawClip`): the clips of the
+timeline's layers from the top down, where a nested timeline is a group
+holding the clips of its own layers. A group is drawn on its own over
+transparency and placed as one picture, which is what makes it closed; one
+set to Pass Through has its layers drawn straight into the timeline above,
+placed as the group's Position, Scale, Rotation, Opacity and dissolve
+would place them (wipes and the film dissolve need one picture and are
+skipped).
+
+One exception to drawing: a stretch of a single picture with nothing done
+to it and no fitting needed (the media is the frame's size, upright) is a
+passthrough instruction in export, so its frames go through as they are.
+The viewer always draws, since it may draw smaller.
 
 The setting is in the viewer's transport bar and remembered per Mac, not
 per project:
@@ -66,17 +78,19 @@ Limits:
 ## Render cache (implemented)
 
 - **Segments, not clips.** Every build of the timeline splits it where any
-  layer's footage starts or ends (`RenderSegment`). A transition spans two
+  picture's footage starts or ends (`RenderSegment`). A transition spans two
   clips, and a layer above changes everything under it, so caching by clip
-  would be wrong. A stretch with one layer drawn the same way throughout
-  plays straight from its file and is never rendered; one with several
-  layers, or with anything keyframed or transitioning, is. Those are cut
+  would be wrong. A stretch with one picture drawn the same way throughout
+  (whatever fixed transform it has) is never rendered; one with several
+  pictures, or with anything keyframed or transitioning, is. Those are cut
   into pieces of at most 96 frames, so a render stopped by an edit loses
   little and finished pieces play as soon as they're done.
 - **Keyed by content.** Each piece's key is a hash of everything that
   decides its frames: each layer's file, its size and date on disk, the
-  file time it starts at, and the transform, opacity, crop and film-dissolve
-  state on every frame, plus the frame size, rate and color space. Where the
+  file time it starts at, and each clip's resolved steps on every frame
+  (after folding, with its transition's opacity, transform, crop and
+  film-dissolve state), in the structure the clips are nested in, plus the
+  frame size, rate and color space. Where the
   piece sits in the timeline is left out, so moving clips keeps their
   renders, and old renders stay until evicted, so undo finds them again.
   `RenderSegment.formatVersion` is bumped when drawing changes in a way the

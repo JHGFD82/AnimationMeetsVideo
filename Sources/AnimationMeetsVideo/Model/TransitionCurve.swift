@@ -10,7 +10,7 @@ import Foundation
 /// Each point has a handle on either side, as an offset from the point in
 /// the same units, or none for a sharp corner. A segment whose two inner
 /// handles are both missing is a straight line.
-struct TransitionCurve: Equatable {
+struct TransitionCurve: Equatable, Sendable {
     struct Point: Equatable {
         var time: Double
         var value: Double

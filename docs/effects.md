@@ -653,9 +653,14 @@ In order, each step usable on its own:
    timeline's property rows and the inspector's transform section are gone
    for now and a stack can only be written in `project.json`. Clip volume
    is set in the inspector.
-2. **Compositor**: the tree with closed nested timelines and Pass Through,
-   Transform steps with folding and Moves Anchor, transitions below the
-   stack, one compositor for viewer and export, the new render key.
+2. **Compositor** (done): the tree with closed nested timelines and Pass
+   Through, Transform steps with folding and Moves Anchor, transitions below
+   the stack, one compositor for viewer and export, the new render key.
+   The model has `passThrough` on a nested clip and saves it; the toggle
+   in the clip's menu comes with the panel in step 3. Pass Through applies
+   a nested clip's Position, Scale, Rotation, Opacity and its dissolve,
+   slide and zoom to each layer inside (a Blending step inside a pass-through
+   group that has its own placement blends in the placed frame).
 3. **Effects panel**: library, stack editing, keyframe lanes and playhead,
    dragging values, clip volume.
    Remove the timeline's property rows and the inspector's transform

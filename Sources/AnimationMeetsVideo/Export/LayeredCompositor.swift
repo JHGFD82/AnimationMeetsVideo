@@ -4,50 +4,50 @@ import CoreMedia
 import Foundation
 import QuartzCore
 
-/// One stretch of a timeline for `LayeredCompositor`: the video tracks
-/// showing, top first, each with how it is placed.
+/// One stretch of a timeline for `LayeredCompositor`: the clips drawn in
+/// it, top first, as a tree (see `DrawClip`).
 final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
-    struct Layer {
-        let trackID: CMPersistentTrackID
-        let animation: PlacementAnimation
-    }
-
     let timeRange: CMTimeRange
     let enablePostProcessing = false
     let containsTweening = true
     let requiredSourceTrackIDs: [NSValue]?
-    let passthroughTrackID = kCMPersistentTrackID_Invalid
-    let layers: [Layer]
+    /// The track whose frames are the stretch's frames as they are, for one
+    /// picture that needs no drawing; invalid otherwise.
+    let passthroughTrackID: CMPersistentTrackID
+    let clips: [DrawClip]
     /// The timeline's frame size. The player may draw smaller than this.
     let renderSize: CGSize
     let colorSpace: ProjectColorSpace
     /// Told how long each frame took, when the viewer is watching.
     let meter: RenderMeter?
 
-    init(timeRange: CMTimeRange, layers: [Layer], renderSize: CGSize, colorSpace: ProjectColorSpace, meter: RenderMeter? = nil) {
+    init(
+        timeRange: CMTimeRange, clips: [DrawClip], passthrough: CMPersistentTrackID = kCMPersistentTrackID_Invalid,
+        renderSize: CGSize, colorSpace: ProjectColorSpace, meter: RenderMeter? = nil
+    ) {
         self.timeRange = timeRange
-        self.layers = layers
+        self.clips = clips
+        passthroughTrackID = passthrough
         self.renderSize = renderSize
         self.colorSpace = colorSpace
         self.meter = meter
-        requiredSourceTrackIDs = layers.map { NSNumber(value: $0.trackID) }
+        requiredSourceTrackIDs = Set(clips.flatMap(\.leaves).map(\.media.trackID)).sorted().map { NSNumber(value: $0) }
     }
 }
 
-/// Draws a timeline with Core Image on the GPU through Metal. The viewer
-/// always uses it, since it can draw at a reduced size; export uses it only
-/// for a film dissolve, which keys on brightness and so can't be drawn by
-/// the built-in compositor. Everything else is drawn as the built-in
-/// compositor would: each layer's crop, transform and opacity, bottom layer
-/// first, over black.
+/// Draws a timeline with Core Image on the GPU through Metal, for the viewer
+/// and for export alike. Each clip goes through its stack and then its
+/// transitions and is drawn over the clips below it; a nested timeline is
+/// drawn first on transparency, as one picture, unless it passes through.
 ///
-/// AVFoundation's transforms measure from the top left and Core Image's
-/// from the bottom left, so each layer is flipped into the transform's
-/// space and back out.
+/// Geometry is worked out in each timeline's frame, in pixels with the
+/// origin at the top left and y down, as AVFoundation does; Core Image's
+/// origin is at the bottom left, so each picture is flipped into that space
+/// and back out. The viewer may ask for a smaller size: every picture is
+/// then drawn straight to it, rather than drawing full size and scaling.
 ///
-/// Like the built-in compositor it works on the frames' encoded values,
-/// without color management, so the two draw the same picture and the
-/// film dissolve keys on brightness as it looks rather than as light.
+/// It works on the frames' encoded values, without color management, so
+/// the film dissolve keys on brightness as it looks rather than as light.
 class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     private let context: CIContext = {
         let options: [CIContextOption: Any] = [
@@ -80,7 +80,7 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                 guard let instruction = request.videoCompositionInstruction as? LayeredInstruction,
                       let output = request.renderContext.newPixelBuffer()
                 else {
-                    request.finish(with: CompositionError.exportFailed("The film dissolve couldn't be drawn."))
+                    request.finish(with: CompositionError.exportFailed("A frame couldn't be drawn."))
                     return
                 }
                 let started = CACurrentMediaTime()
@@ -100,53 +100,26 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         queue.sync {}
     }
 
-    /// The frame at `time`: layers stacked bottom first over black.
+    /// The frame at `time`: the instruction's clips from the bottom up over
+    /// black.
     static func compose(
         _ instruction: LayeredInstruction,
         at time: CMTime,
         outputSize: CGSize,
-        frame: (CMPersistentTrackID) -> CVPixelBuffer?
+        frame: @escaping (CMPersistentTrackID) -> CVPixelBuffer?
     ) -> CIImage {
         let renderSize = instruction.renderSize
         let bounds = CGRect(origin: .zero, size: outputSize)
         // The render context may be smaller than the timeline's frame, as
         // when the player draws at a reduced size.
-        let toOutput = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: renderSize.height)
-            .concatenating(CGAffineTransform(
-                scaleX: renderSize.width > 0 ? outputSize.width / renderSize.width : 1,
-                y: renderSize.height > 0 ? outputSize.height / renderSize.height : 1
-            ))
-
-        var output = CIImage(color: .black).cropped(to: bounds)
-        for layer in instruction.layers.reversed() {
-            guard let buffer = frame(layer.trackID) else { continue }
-            let animation = layer.animation
-            var image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
-            let sourceHeight = image.extent.height
-            if let crop = animation.cropRectangle(at: time) {
-                image = image.cropped(to: CGRect(x: crop.minX, y: sourceHeight - crop.maxY, width: crop.width, height: crop.height))
-            }
-            let fromSource = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: sourceHeight)
-            image = image.transformed(by: fromSource.concatenating(animation.transform(at: time)).concatenating(toOutput))
-
-            let opacity = CGFloat(animation.opacity(at: time))
-            if opacity < 1 {
-                image = image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity)])
-            }
-            if let reveal = animation.lumaReveal(at: time) {
-                // On the way in the clip is the following picture; on the way
-                // out it is what's underneath, and the clip stays where that
-                // hasn't come through yet.
-                var mask = Self.revealMask(of: reveal.keysIncoming ? image : output, reveal)
-                if !reveal.keysIncoming { mask = mask.applyingFilter("CIColorInvert") }
-                image = image.applyingFilter("CIBlendWithMask", parameters: [
-                    kCIInputBackgroundImageKey: CIImage.empty(),
-                    kCIInputMaskImageKey: mask,
-                ])
-            }
-            output = image.composited(over: output)
-        }
-        return output.cropped(to: bounds)
+        let scale = renderSize.width > 0 ? outputSize.width / renderSize.width : 1
+        let drawing = Drawing(
+            time: time,
+            scale: CGSize(width: scale, height: renderSize.height > 0 ? outputSize.height / renderSize.height : 1),
+            source: frame
+        )
+        let black = CIImage(color: .black).cropped(to: bounds)
+        return drawing.draw(instruction.clips, frame: renderSize, over: black, outer: .identity).cropped(to: bounds)
     }
 
     /// White where the picture is bright enough to show through by now,
@@ -166,6 +139,118 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                 "inputMinComponents": CIVector(x: 0, y: 0, z: 0, w: 0),
                 "inputMaxComponents": CIVector(x: 1, y: 1, z: 1, w: 1),
             ])
+    }
+}
+
+/// How the clips of a pass-through nested timeline are placed in the
+/// timeline it passes through to: from their own frame into that one.
+struct OuterPlacement {
+    var matrix = CGAffineTransform.identity
+    var opacity = 1.0
+
+    static let identity = OuterPlacement()
+}
+
+/// Draws one frame: the clips of a timeline, then those of the timelines
+/// nested in them.
+struct Drawing {
+    let time: CMTime
+    /// Output pixels per frame pixel, in each direction.
+    let scale: CGSize
+    /// The decoded frame of a composition track at `time`.
+    let source: (CMPersistentTrackID) -> CVPixelBuffer?
+
+    /// `clips` (top first) drawn bottom first over `output`, which holds
+    /// the timeline whose frame is `frameSize`, in output pixels with the
+    /// origin at the bottom left. Clips of a nested timeline that passes
+    /// through are drawn here too, `outer` placing them.
+    func draw(_ clips: [DrawClip], frame frameSize: CGSize, over output: CIImage, outer: OuterPlacement) -> CIImage {
+        var output = output
+        for clip in clips.reversed() {
+            output = draw(clip, frame: frameSize, over: output, outer: outer)
+        }
+        return output
+    }
+
+    private func draw(_ clip: DrawClip, frame frameSize: CGSize, over output: CIImage, outer: OuterPlacement) -> CIImage {
+        let resolved = clip.stack.resolve(atRoot: time)
+        let placement = resolved.placement
+        let transition = resolved.transition
+
+        // The picture, and the matrix taking it into the frame the clip is
+        // placed in (top-left pixels) before its own stack.
+        var picture: CIImage
+        var toFrame: CGAffineTransform
+        switch clip.content {
+        case .media(let media):
+            guard let buffer = source(media.trackID) else { return output }
+            picture = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
+            toFrame = Self.flip(height: picture.extent.height).concatenating(media.base)
+        case .group(let group):
+            let combined = OuterPlacement(
+                matrix: group.toOuter
+                    .concatenating(placement.matrix)
+                    .concatenating(transition?.transform ?? .identity)
+                    .concatenating(outer.matrix),
+                opacity: placement.opacity * (transition?.opacity ?? 1) * outer.opacity
+            )
+            if group.passThrough {
+                // The nested layers go straight into this timeline, each
+                // placed as the group is. Only what works layer by layer
+                // applies: wipes and the film dissolve need one picture.
+                return draw(group.children, frame: frameSize, over: output, outer: combined)
+            }
+            let nestedBounds = CGRect(x: 0, y: 0, width: group.frameSize.width * scale.width, height: group.frameSize.height * scale.height)
+            let nested = draw(group.children, frame: group.frameSize, over: .empty(), outer: .identity).cropped(to: nestedBounds)
+            picture = nested
+            toFrame = CGAffineTransform(scaleX: 1 / scale.width, y: 1 / scale.height)
+                .concatenating(Self.flip(height: group.frameSize.height))
+                .concatenating(group.toOuter)
+        }
+
+        // Stack, then transitions, then whatever places the clip's timeline.
+        var matrix = toFrame.concatenating(placement.matrix)
+        var opacity = placement.opacity
+        if let transition {
+            matrix = matrix.concatenating(transition.transform)
+            opacity *= transition.opacity
+        }
+        matrix = matrix.concatenating(outer.matrix)
+        opacity *= outer.opacity
+
+        let toOutput = Self.flip(height: frameSize.height).concatenating(CGAffineTransform(scaleX: scale.width, y: scale.height))
+        picture = picture.transformed(by: matrix.concatenating(toOutput))
+
+        if var visible = transition?.visibleRect {
+            // In the clip's own frame; a pass-through group places it in
+            // the frame it passes to.
+            visible = visible.applying(outer.matrix)
+            picture = picture.cropped(to: CGRect(
+                x: visible.minX * scale.width, y: (frameSize.height - visible.maxY) * scale.height,
+                width: visible.width * scale.width, height: visible.height * scale.height
+            ))
+        }
+        if opacity < 1 {
+            picture = picture.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
+        }
+        if let reveal = transition?.lumaReveal {
+            // On the way in the clip is the following picture; on the way
+            // out it is what's underneath, and the clip stays where that
+            // hasn't come through yet.
+            var mask = LayeredCompositor.revealMask(of: reveal.keysIncoming ? picture : output, reveal)
+            if !reveal.keysIncoming { mask = mask.applyingFilter("CIColorInvert") }
+            picture = picture.applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: CIImage.empty(),
+                kCIInputMaskImageKey: mask,
+            ])
+        }
+        return picture.composited(over: output)
+    }
+
+    /// Flips between top-left and bottom-left origins in a frame
+    /// `height` high.
+    static func flip(height: CGFloat) -> CGAffineTransform {
+        CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: height)
     }
 }
 

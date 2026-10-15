@@ -129,7 +129,7 @@ import Testing
         )
         #expect(composed.videoComposition?.customVideoCompositorClass == SDRLayeredCompositor.self)
         let exported = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
-        #expect(exported.videoComposition?.customVideoCompositorClass == nil)
+        #expect(exported.videoComposition?.customVideoCompositorClass == LayeredCompositor.self)
 
         let quarter = try #require(composed.videoComposition(scaledBy: PreviewLevel.quarter.scale))
         #expect(quarter.renderSize == CGSize(width: 480, height: 270))

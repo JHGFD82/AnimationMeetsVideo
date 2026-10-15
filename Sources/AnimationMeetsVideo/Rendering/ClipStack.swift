@@ -1,0 +1,122 @@
+import CoreGraphics
+import CoreMedia
+import Foundation
+
+/// A clip's stack and transitions as the compositor sees them: what to
+/// draw at each moment, with the times its keyframes and transitions count
+/// in. Built when the timeline is, so drawing needs nothing from the
+/// project.
+struct ClipStack: @unchecked Sendable {
+    var effects: [Effect] = []
+    var anchorPoint = AnimatedValue(Vector2.zero)
+    /// Center of the frame of the timeline the clip is in, which is the
+    /// center of its fitted picture.
+    var center: CGPoint = .zero
+    /// Root time minus the time of the timeline the clip is in.
+    var shift: CMTime = .zero
+    /// The clip's start in its timeline minus its trim start: its source
+    /// time is its timeline's time minus this, and its keyframes count in
+    /// source time.
+    var sourceShift: CMTime = .zero
+    /// The clip's transitions, in its timeline's time.
+    var edges: EdgeTransitions?
+
+    init(clip: TimelineClip, center: CGPoint, shift: CMTime, edges: EdgeTransitions? = nil) {
+        self.init(
+            effects: clip.effects, anchorPoint: clip.anchorPoint, center: center, shift: shift,
+            sourceShift: CMTimeSubtract(clip.startOffset, clip.trimStart), edges: edges
+        )
+    }
+
+    init(
+        effects: [Effect] = [], anchorPoint: AnimatedValue<Vector2> = AnimatedValue(.zero), center: CGPoint = .zero,
+        shift: CMTime = .zero, sourceShift: CMTime = .zero, edges: EdgeTransitions? = nil
+    ) {
+        self.effects = effects
+        self.anchorPoint = anchorPoint
+        self.center = center
+        self.shift = shift
+        self.sourceShift = sourceShift
+        self.edges = edges
+    }
+
+    /// A stack that does nothing, for a picture drawn as it is.
+    static let none = ClipStack()
+
+    /// The clip's time in its own timeline at root time `time`.
+    func localTime(atRoot time: CMTime) -> CMTime {
+        CMTimeSubtract(time, shift)
+    }
+
+    /// What the stack and transitions draw at root time `time`.
+    func resolve(atRoot time: CMTime) -> ResolvedClip {
+        let local = localTime(atRoot: time)
+        return ResolvedClip(
+            steps: StackFolding.steps(effects: effects, anchorPoint: anchorPoint, at: CMTimeSubtract(local, sourceShift), center: center),
+            transition: edges?.effect(at: local)
+        )
+    }
+
+    var hasTransitions: Bool { edges != nil }
+
+    /// Root-time ranges where the stack or the transitions are changing, in
+    /// order and not overlapping. Outside them the clip is drawn the same
+    /// way at every moment.
+    var animatedRanges: [CMTimeRange] {
+        let keyframed = (effects.flatMap(\.animatedRanges) + [anchorPoint.animatedRange].compactMap { $0 }).map {
+            CMTimeRange(
+                start: CMTimeAdd(CMTimeAdd($0.lowerBound, sourceShift), shift),
+                end: CMTimeAdd(CMTimeAdd($0.upperBound, sourceShift), shift)
+            )
+        }
+        let transitions = (edges?.animatedRanges ?? []).map {
+            CMTimeRange(start: CMTimeAdd($0.start, shift), duration: $0.duration)
+        }
+        return (keyframed + transitions).merged()
+    }
+
+    /// Whether the stack changes the picture at any moment of `range`.
+    func isNoOp(over range: CMTimeRange, frame: CMTime) -> Bool {
+        if !resolve(atRoot: range.start).steps.isEmpty { return false }
+        return !animatedRanges.contains { animated in
+            let overlap = animated.intersection(range)
+            return overlap.isValid && overlap.duration > .zero
+        }
+    }
+}
+
+extension Array where Element == CMTimeRange {
+    /// Sorted, with ranges that touch or overlap joined.
+    func merged() -> [CMTimeRange] {
+        var merged: [CMTimeRange] = []
+        for range in sorted(by: { $0.start < $1.start }) {
+            if let last = merged.last, range.start <= last.end {
+                merged[merged.count - 1] = CMTimeRange(start: last.start, end: CMTimeMaximum(last.end, range.end))
+            } else {
+                merged.append(range)
+            }
+        }
+        return merged
+    }
+}
+
+/// A clip's stack and transitions at one moment, ready to draw.
+struct ResolvedClip: Equatable {
+    var steps: [ResolvedStep]
+    /// What the clip's transitions do now; nil when it has none.
+    var transition: EdgeTransitions.Effect?
+
+    /// The product of the stack's placing steps.
+    var placement: (matrix: CGAffineTransform, opacity: Double) {
+        var matrix = CGAffineTransform.identity
+        var opacity = 1.0
+        for step in steps {
+            switch step {
+            case .place(let m, let o):
+                matrix = matrix.concatenating(m)
+                opacity *= o
+            }
+        }
+        return (matrix, opacity)
+    }
+}

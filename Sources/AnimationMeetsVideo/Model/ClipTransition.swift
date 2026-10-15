@@ -7,11 +7,9 @@ import Foundation
 /// whatever is showing underneath it: lower layers, or the outgoing clip's
 /// extra frames when two clips on the same layer meet at a cut.
 ///
-/// Every kind but the film dissolve is drawn with the built-in compositor's
-/// opacity, transform and crop. The film dissolve keys on brightness, which
-/// that compositor can't do, so a timeline using one is drawn by
-/// `LayeredCompositor` instead. Preview and export use the same path, so
-/// they match.
+/// They sit below the clip's effect stack and act on its result. All are
+/// drawn by `LayeredCompositor`, which the viewer and export share, so they
+/// match.
 enum TransitionKind: String, CaseIterable, Identifiable {
     case crossDissolve
     case filmDissolve
@@ -414,7 +412,7 @@ extension EditingProject {
 
 /// A clip's transitions placed in the time of the timeline it is on, for
 /// rendering.
-struct EdgeTransitions {
+struct EdgeTransitions: Sendable {
     var start: CMTime
     var end: CMTime
     var leading: (kind: TransitionKind, duration: CMTime, curve: TransitionCurve)?
@@ -443,7 +441,7 @@ struct EdgeTransitions {
     /// What the transitions do to the clip at `time`, in its timeline's
     /// frame: how opaque it is, how it is moved, and the part of the frame
     /// it may show (nil when it isn't wiped).
-    struct Effect {
+    struct Effect: Equatable, Sendable {
         var opacity: Double = 1
         var transform: CGAffineTransform = .identity
         var visibleRect: CGRect?

@@ -253,61 +253,100 @@ private func seconds(_ value: Double) -> CMTime {
         #expect(timeline.snappedToFrame(seconds(-1)) == .zero)
     }
 
-    @Test func nestedStagesComposeAndMultiplyOpacity() {
-        var inner = Effect(kind: .transform)
-        inner.controls[0].number = AnimatedValue(ComponentValue(values: [10, 0]))
-        inner.controls[3].number = AnimatedValue(ComponentValue(values: [50]))
-        var outer = Effect(kind: .transform, controls: [EffectControl(kind: .opacity)])
-        outer.controls[0].number.setAnimated(true, at: seconds(0))
-        outer.controls[0].number.set(ComponentValue(values: [0]), at: seconds(2))
-        let animation = PlacementAnimation(base: .identity, stages: [
-            TransformStage(effects: [inner], anchorPoint: AnimatedValue(.zero), center: center, shift: seconds(1), sourceShift: .zero, toOuter: .identity),
-            TransformStage(effects: [outer], anchorPoint: AnimatedValue(.zero), center: center, shift: .zero, sourceShift: .zero, toOuter: .identity),
-        ])
-        #expect(abs(animation.opacity(at: seconds(1)) - 0.25) < 0.0001)
-        #expect(CGPoint.zero.applying(animation.transform(at: seconds(1))) == CGPoint(x: 10, y: 0))
-        #expect(animation.animatedRanges == [CMTimeRange(start: .zero, end: seconds(2))])
+    @Test func aStackIsReadInSourceTimeAndTheClipsTimeline() {
+        var effect = Effect(kind: .transform, controls: [EffectControl(kind: .opacity)])
+        effect.controls[0].number.setAnimated(true, at: seconds(10))
+        effect.controls[0].number.set(ComponentValue(values: [0]), at: seconds(12))
+        // The clip is placed at 1 s of a timeline that is itself 5 s behind
+        // the root, and starts 10 s into its file.
+        let stack = ClipStack(effects: [effect], center: center, shift: seconds(5), sourceShift: seconds(1 - 10))
+        #expect(abs(stack.resolve(atRoot: seconds(7)).placement.opacity - 0.5) < 1e-9)
+        #expect(stack.resolve(atRoot: seconds(5 + 1 - 1)).placement.opacity == 1)
+        #expect(stack.animatedRanges == [CMTimeRange(start: seconds(5 + 1), end: seconds(5 + 3))])
+    }
+
+    @Test func aStackAtItsDefaultsDrawsNothing() {
+        let stack = ClipStack(effects: [Effect(kind: .transform), Effect(kind: .blending)], center: center)
+        #expect(stack.resolve(atRoot: .zero).steps.isEmpty)
+        #expect(stack.isNoOp(over: CMTimeRange(start: .zero, duration: seconds(1)), frame: seconds(0.04)))
+    }
+
+    @Test func consecutiveStepsFoldIntoOne() {
+        var move = Effect(kind: .transform, controls: [EffectControl(kind: .position)])
+        move.controls[0].number = AnimatedValue(ComponentValue(values: [5, 0]))
+        let stack = ClipStack(effects: Array(repeating: move, count: 50), center: center)
+        let steps = stack.resolve(atRoot: .zero).steps
+        #expect(steps.count == 1)
+        #expect(stack.resolve(atRoot: .zero).placement.matrix.tx == 250)
     }
 }
 
 @Suite struct TransformCompositionTests {
-    @Test func keyframedOpacityAndRotationAreSetPerFrame() async throws {
-        let dir = FileManager.default.temporaryDirectory.appending(path: "amv-transform-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let movie = dir.appending(path: "m.mov")
-        try await writeMovie(to: movie, segments: [(luma: 120, frames: 48)])
+    @Test func keyframedOpacityFadesTheClipOverBlack() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let clip = try await fixture.addClip(luma: 120)
+        var effect = Effect(kind: .transform, controls: [EffectControl(kind: .opacity)])
+        effect.controls[0].number.setAnimated(true, at: .zero)
+        effect.controls[0].number.set(ComponentValue(values: [0]), at: CMTime(value: 1, timescale: 1))
+        fixture.project.editClip(clip.clipID, in: fixture.timelineID) { $0.effects = [effect] }
 
-        var project = EditingProject.empty
-        let media = MediaClip(
-            name: "m", kind: .video, url: movie,
-            duration: CMTime(seconds: 2, preferredTimescale: 600),
-            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
-        )
-        let imported = project.importClip(media, intoTimeline: project.rootTimelineID)
-        let ids = try #require(imported)
-        var effect = Effect(kind: .transform)
-        effect.controls[3].number.setAnimated(true, at: .zero)
-        effect.controls[3].number.set(ComponentValue(values: [0]), at: CMTime(value: 1, timescale: 1))
-        effect.controls[2].number = AnimatedValue(ComponentValue(values: [45]))
-        project.editClip(ids.clipID, in: project.rootTimelineID) { $0.effects = [effect] }
+        let composed = try await fixture.build()
+        let start = try await grayLevel(of: composed, at: .zero)
+        let half = try await grayLevel(of: composed, at: CMTime(value: 12, timescale: 24))
+        let end = try await grayLevel(of: composed, at: CMTime(value: 36, timescale: 24))
+        // Halfway down, the clip is halfway between itself and black.
+        #expect(start > 100)
+        #expect(abs(Double(half) - Double(start) / 2) <= 6)
+        #expect(end <= 2)
+    }
 
-        let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
-        let instruction = try #require(composed.videoComposition?.instructions.first as? AVVideoCompositionInstruction)
-        let layer = try #require(instruction.layerInstructions.first)
+    @Test func rotationTurnsThePictureAndLeavesCornersBare() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let clip = try await fixture.addClip(luma: 200)
+        let plain = try await grayLevel(of: fixture.build(), at: .zero)
+        fixture.setTransform([(.rotation, [45])], ofClip: clip.clipID)
+        let composed = try await fixture.build()
+        #expect(abs(try await grayLevel(of: composed, at: .zero) - plain) <= 4)
+        #expect(try await grayLevel(of: composed, at: .zero, x: 0.02, y: 0.02) <= 2)
+    }
 
-        var startOpacity: Float = 0, endOpacity: Float = 0, range = CMTimeRange.zero
-        // Half a second in (frame 12 of 24) the opacity is halfway down.
-        _ = layer.getOpacityRamp(for: CMTime(value: 12, timescale: 24), startOpacity: &startOpacity, endOpacity: &endOpacity, timeRange: &range)
-        #expect(abs(startOpacity - 0.5) < 0.001)
-        // After the last keyframe it stays at zero.
-        _ = layer.getOpacityRamp(for: CMTime(value: 36, timescale: 24), startOpacity: &startOpacity, endOpacity: &endOpacity, timeRange: &range)
-        #expect(startOpacity == 0)
+    @Test func positionMovesThePictureAndTheAnchorMovesWithIt() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let clip = try await fixture.addClip(luma: 200)
+        let plain = try await grayLevel(of: fixture.build(), at: .zero)
+        // Half the frame to the right.
+        fixture.setTransform([(.position, [64, 0])], ofClip: clip.clipID)
+        let composed = try await fixture.build()
+        #expect(try await grayLevel(of: composed, at: .zero, x: 0.25) <= 2)
+        #expect(abs(try await grayLevel(of: composed, at: .zero, x: 0.75) - plain) <= 4)
+    }
 
-        var start = CGAffineTransform.identity, end = CGAffineTransform.identity
-        _ = layer.getTransformRamp(for: CMTime(value: 12, timescale: 24), start: &start, end: &end, timeRange: &range)
-        // 45° keeps a and d equal and positive, with b = -c.
-        #expect(abs(start.a - start.d) < 0.0001 && start.a > 0 && abs(start.b + start.c) < 0.0001 && start.b > 0)
+    @Test func aSingleUntouchedClipPlaysStraightFromItsFileInExportButNotInTheViewer() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        _ = try await fixture.addClip(luma: 90)
+        let exported = try await fixture.build()
+        let straight = try #require(exported.videoComposition?.instructions.first as? LayeredInstruction)
+        #expect(straight.passthroughTrackID != kCMPersistentTrackID_Invalid)
+        let viewer = try await fixture.build(forPreview: true)
+        let drawn = try #require(viewer.videoComposition?.instructions.first as? LayeredInstruction)
+        #expect(drawn.passthroughTrackID == kCMPersistentTrackID_Invalid)
+    }
+
+    @Test func aClipWithAnythingDoneToItIsDrawn() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let clip = try await fixture.addClip(luma: 90)
+        let plain = try await grayLevel(of: fixture.build(), at: .zero)
+        fixture.setTransform([(.scale, [50, 50])], ofClip: clip.clipID)
+        let composed = try await fixture.build()
+        let instruction = try #require(composed.videoComposition?.instructions.first as? LayeredInstruction)
+        #expect(instruction.passthroughTrackID == kCMPersistentTrackID_Invalid)
+        #expect(abs(try await grayLevel(of: composed, at: .zero) - plain) <= 4)
+        #expect(try await grayLevel(of: composed, at: .zero, x: 0.1, y: 0.1) <= 2)
     }
 }
 

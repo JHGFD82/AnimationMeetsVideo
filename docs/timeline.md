@@ -368,16 +368,15 @@ picture looks.
 
 ### Rendering
 
-Everything but the film dissolve is drawn with the built-in compositor's
-opacity, transform and crop (`EdgeTransitions` in `ClipTransition.swift`,
-applied per frame with the layer's keyframes). Keying on brightness needs
-our own compositor, so a timeline with a film dissolve anywhere is drawn by
-`LayeredCompositor` (Core Image) for its whole length, in preview and
-export alike. It stacks the same layers with the same crops, transforms and
-opacities, without color management just like the built-in one, and a test
-checks the two draw the same picture. On a nested timeline the key applies
-to each of its layers separately rather than to its composite, as opacity
-already does.
+Transitions sit below a clip's effect stack: the compositor draws the clip
+through its stack, then applies the transition's opacity, transform and
+crop in the frame of the timeline the clip is on (`EdgeTransitions` in
+`ClipTransition.swift`, evaluated per frame). The film dissolve keys on
+brightness, on the clip's picture or on what is drawn under it. All of it
+is drawn by `LayeredCompositor` (Core Image), in preview and export alike,
+without color management. A nested timeline is one picture, so a
+transition on it applies to the whole; on a pass-through nested clip only
+its dissolve, slide and zoom apply, to each layer inside.
 
 ### Curves
 
