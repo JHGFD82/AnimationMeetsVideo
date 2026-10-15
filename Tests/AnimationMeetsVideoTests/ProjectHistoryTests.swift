@@ -127,6 +127,33 @@ private final class Harness {
         #expect(!h.undoManager.canUndo)
     }
 
+    @Test func undoAfterSaveAsKeepsMediaWhereTheSaveMovedIt() {
+        let h = Harness()
+        let old = URL(fileURLWithPath: "/Old.amv/Media/clip.mov")
+        let new = URL(fileURLWithPath: "/New.amv/Media/clip.mov")
+        let media = MediaClip(
+            name: "Clip", kind: .video, url: old,
+            duration: .init(seconds: 5, preferredTimescale: 600),
+            frameRate: 24, colorSpace: .rec709, codecName: "Stub"
+        )
+        h.edit { $0.addMedia(media) }
+        h.edit { $0.name = "Edited" }
+
+        // Save As copies the file into the new package.
+        let original = h.project
+        var saved = original
+        saved.clips[0].url = new
+        h.history.adoptMediaLocations(of: original, from: saved)
+        h.project.applyMediaLocations(from: saved)
+        h.history.projectDidChange(h.project)
+
+        h.undo()
+        #expect(h.project.name == "Untitled Project")
+        #expect(h.project.clips.first?.url == new)
+        h.redo()
+        #expect(h.project.clips.first?.url == new)
+    }
+
     @Test func undoingTimelineEditsRestoresClips() {
         let h = Harness()
         let media = MediaClip(
