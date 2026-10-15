@@ -124,12 +124,17 @@ struct SectionLane: View {
         // as a simultaneous gesture, grabbing an edge also moved the
         // section, and the two fought over the draft.
         .gesture(moveGesture(section))
-        // Two separate taps, not one exclusive to the other: waiting out the
-        // double-click interval before a single click could select delayed
-        // every selection. A double-click selects on its first click and
-        // renames on its second.
-        .simultaneousGesture(TapGesture().onEnded { onSelect(section.id) })
-        .simultaneousGesture(TapGesture(count: 2).onEnded { beginRename(section.id, name: section.name) })
+        // Selecting happens on the mouse-down itself. SwiftUI's tap gestures
+        // held a single click back while they waited to see whether a
+        // second one followed. The system's click count gives the
+        // double-click, with the user's own double-click interval.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .named(space)).onChanged { _ in
+                guard let event = NSApp.currentEvent, event.type == .leftMouseDown else { return }
+                onSelect(section.id)
+                if event.clickCount == 2 { beginRename(section.id, name: section.name) }
+            }
+        )
         .contextMenu {
             Button("Rename…") { beginRename(section.id, name: section.name) }
             Button("Delete Section", role: .destructive) { onDelete(section.id) }
