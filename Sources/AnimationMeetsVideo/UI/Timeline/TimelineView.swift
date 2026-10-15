@@ -49,7 +49,8 @@ struct TimelineView: View {
     let onSetTransitionDuration: (UUID, UUID, TransitionEdge, CMTime) -> Void
     /// Applies a change to the project, for the section lane.
     let onEditProject: ((inout EditingProject) -> Void) -> Void
-    @Binding var showsTransitions: Bool
+    @Binding var showsBrowser: Bool
+    @Binding var showsSidePanel: Bool
     @Binding var showsEffects: Bool
     @Binding var showsMeter: Bool
     /// What is selected in the effects panel, which gets the Delete key
@@ -308,22 +309,22 @@ struct TimelineView: View {
                 }
                 .toggleStyle(.button)
                 .help(snapping ? "Snapping on: edges snap to clips, the playhead and beat markers (N)" : "Snapping off (N)")
-                Toggle(isOn: $showsTransitions) {
-                    Image(systemName: "square.on.square.dashed")
+                Toggle(isOn: $showsBrowser) {
+                    Image(systemName: "square.grid.2x2")
                 }
                 .toggleStyle(.button)
-                .help(showsTransitions ? "Hide transitions" : "Show transitions")
+                .help(showsBrowser ? "Hide the effects and transitions browser" : "Show the effects and transitions browser")
                 Button {
                     addAdjustmentLayer()
                 } label: {
                     Image(systemName: "slider.horizontal.below.rectangle")
                 }
                 .help("New adjustment layer: effects applied to the layers below it")
-                Toggle(isOn: $showsEffects) {
-                    Image(systemName: "wand.and.stars")
+                Toggle(isOn: $showsSidePanel) {
+                    Image(systemName: "sidebar.right")
                 }
                 .toggleStyle(.button)
-                .help(showsEffects ? "Hide effects (⇧E)" : "Show the selected clip's effects (⇧E)")
+                .help(showsSidePanel ? "Hide the inspector and effects" : "Show the inspector and effects (⇧E for the selected clip's effects)")
                 Toggle(isOn: $showsMeter) {
                     Image(systemName: "chart.bar.fill")
                 }

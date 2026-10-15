@@ -449,19 +449,19 @@ this matches other apps' adjustment layers.
 
 ## The effects panel
 
-The effects panel opens to the right of the viewer, where the inspector
-is, and replaces the inspector while open. It is resizable by its left
-edge. Its button is in the timeline's header, beside the transitions
-panel's, which opens at the right end of the timeline.
+The area to the right of the viewer has two tabs, **Inspector** and
+**Effects** (the effects panel), and a button in the timeline's header
+shows or hides it. Picking a tab is the only thing that changes it, apart
+from applying an effect to the selected clip, which shows the Effects tab.
+The Effects tab is resizable by its left edge.
 
-The **library** of effects to add is separate: while the effects panel is
-open it fills the browser slot at the right end of the timeline, where the
-transitions panel goes (the transitions panel takes the slot back while it
-is open). It is grouped by category, Foundations first. Drag an effect onto
-a clip or into the stack, or double-click it to add it to the end of the
-selected clip's stack.
+The **browser** at the right end of the timeline has tabs too: **Effects**
+(the library, grouped by category, Foundations first) and **Transitions**.
+One button in the timeline's header shows or hides it, and opening it
+changes nothing else. Drag an effect onto a clip or into the stack, or
+double-click it to add it to the end of the selected clip's stack.
 
-The panel itself is the selected clip's **stack**, framed by pinned rows that can't be
+The Effects tab is the selected clip's **stack**, framed by pinned rows that can't be
 moved: Time and the anchor point above it, the clip's transitions (if any)
 and Shutter below it, in the order they are drawn. Clicking a transition
 row selects it, as clicking it on the timeline does.

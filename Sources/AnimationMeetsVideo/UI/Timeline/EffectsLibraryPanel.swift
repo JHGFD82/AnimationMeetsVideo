@@ -1,33 +1,16 @@
 import SwiftUI
 
-/// The effects that can be added, grouped by category, in the browser
-/// slot at the right end of the timeline (where the transitions panel
-/// goes). Effects are dragged onto a clip or into the stack in the effects
+/// The effects that can be added, grouped by category: a tab of the
+/// browser panel at the right end of the timeline. Effects are dragged onto a clip or into the stack in the effects
 /// panel, or double-clicked to add them to the selected clip.
 struct EffectsLibraryPanel: View {
     @Binding var project: EditingProject
     let timelineID: UUID
     let selection: TimelineSelection?
     let state: EffectsPanelState
-    let onClose: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Add Effect")
-                    .font(Design.Typeface.panelTitle)
-                    .foregroundStyle(Design.textPrimary)
-                Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                }
-                .buttonStyle(.borderless)
-                .help("Close effects (⇧E)")
-            }
-            .padding(.horizontal, Design.Space.group)
-            .padding(.vertical, Design.Space.step)
-            .rail(.raised)
-
             ScrollView {
                 VStack(alignment: .leading, spacing: Design.Space.close) {
                     ForEach(EffectCategory.allCases) { category in

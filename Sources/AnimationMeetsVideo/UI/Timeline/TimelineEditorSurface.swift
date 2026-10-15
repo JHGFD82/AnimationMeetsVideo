@@ -31,13 +31,32 @@ struct TimelineEditorSurface<Library: View>: View {
     /// As tall as the person makes it, not as tall as its layers need: its
     /// areas share whatever height it has and scroll the rest.
     @AppStorage("timelineHeight") private var timelineHeight: Double = 280
-    @AppStorage("showsTransitionsPanel") private var showsTransitions = false
-    @AppStorage("showsEffectsPanel") private var showsEffects = false
+    /// The browser at the right end of the timeline, and which tab it is on.
+    @AppStorage("showsBrowserPanel") private var showsBrowser = false
+    @AppStorage("browserTab") private var browserTab = BrowserTab.effects
+    /// The area beside the viewer, and which tab it is on. The tab only
+    /// changes when the person picks one or an effect is applied.
+    @AppStorage("showsSidePanel") private var showsSidePanel = true
+    @AppStorage("sidePanelTab") private var sideTab = SidePanelTab.inspector
     @AppStorage("effectsPanelWidth") private var effectsPanelWidth = 640.0
     @State private var effectsState = EffectsPanelState()
     @AppStorage("showsAudioMeter") private var showsMeter = false
     /// The graph editors this surface has open, one HUD per parameter.
     @State private var graphs = KeyframeGraphHUDs()
+
+    /// A value is being dragged, so the viewer waits (`rebuildDeferred`).
+    @State private var isGesturing = false
+    @State private var rebuildDeferred = false
+
+    /// How many effects the selected clip has, to notice one being applied.
+    private struct AppliedEffects: Equatable {
+        var clipID: UUID
+        var count: Int
+    }
+
+    private var appliedEffects: AppliedEffects? {
+        selectedTimelineClip.map { AppliedEffects(clipID: $0.id, count: $0.effects.count) }
+    }
 
     private enum BuildPhase { case idle, building, settling }
 
@@ -126,48 +145,54 @@ struct TimelineEditorSurface<Library: View>: View {
                         banner: partialBanner,
                         onClearBanner: { effectsState.showUpTo = nil }
                     )
-                    // The effects panel takes the inspector's place while it
-                    // is open.
-                    if showsEffects {
-                        EffectsPanel(
-                            project: $project,
-                            timelineID: timelineID,
-                            selection: selection,
-                            playheadTime: playheadTime,
-                            state: effectsState,
-                            onSeek: { time in scrub(to: time) },
-                            onSelectTransition: { edge in
-                                if let selection {
-                                    self.selection = TimelineSelection(
-                                        timelineID: selection.timelineID, layerID: selection.layerID,
-                                        timelineClipID: selection.timelineClipID, transitionEdge: edge
-                                    )
-                                }
-                            },
-                            onClose: { showsEffects = false }
-                        )
-                        .frame(width: effectsWidth(in: geometry.size.width))
+                    if showsSidePanel {
+                        VStack(spacing: 0) {
+                            PanelTabBar(
+                                tabs: SidePanelTab.allCases, selection: $sideTab, title: \.title,
+                                onClose: { showsSidePanel = false }, closeHelp: "Hide the inspector and effects"
+                            )
+                            switch sideTab {
+                            case .inspector:
+                                InspectorPanel(
+                                    project: $project,
+                                    timelineID: timelineID,
+                                    selection: selection,
+                                    info: selectedInfo,
+                                    timelineClip: selectedTimelineClip,
+                                    playheadTime: playheadTime,
+                                    onSeek: { time in scrub(to: time) },
+                                    onDeleteSelection: { selection = nil }
+                                )
+                            case .effects:
+                                EffectsPanel(
+                                    project: $project,
+                                    timelineID: timelineID,
+                                    selection: selection,
+                                    playheadTime: playheadTime,
+                                    state: effectsState,
+                                    onSeek: { time in scrub(to: time) },
+                                    onSelectTransition: { edge in
+                                        if let selection {
+                                            self.selection = TimelineSelection(
+                                                timelineID: selection.timelineID, layerID: selection.layerID,
+                                                timelineClipID: selection.timelineClipID, transitionEdge: edge
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        .frame(width: sideTab == .effects ? effectsWidth(in: geometry.size.width) : 280)
                         .overlay(alignment: .leading) {
-                            EffectsPanelResizeHandle(width: $effectsPanelWidth, maxWidth: effectsMaxWidth(in: geometry.size.width))
+                            if sideTab == .effects {
+                                EffectsPanelResizeHandle(width: $effectsPanelWidth, maxWidth: effectsMaxWidth(in: geometry.size.width))
+                            }
                         }
                         .grooved(.leading)
                         .transition(.move(edge: .trailing))
-                    } else {
-                        InspectorPanel(
-                            project: $project,
-                            timelineID: timelineID,
-                            selection: selection,
-                            info: selectedInfo,
-                            timelineClip: selectedTimelineClip,
-                            playheadTime: playheadTime,
-                            onSeek: { time in scrub(to: time) },
-                            onDeleteSelection: { selection = nil }
-                        )
-                        .frame(width: 280)
-                        .grooved(.leading)
                     }
                 }
-                .editorAnimation(Design.Motion.panel, value: showsEffects)
+                .editorAnimation(Design.Motion.panel, value: showsSidePanel)
                 .frame(maxHeight: .infinity)
 
                 TimelineResizeHandle(
@@ -184,17 +209,10 @@ struct TimelineEditorSurface<Library: View>: View {
                             .grooved(.leading)
                             .transition(.move(edge: .trailing))
                     }
-                    // The browser slot: transitions when asked for, else the
-                    // effects to add while the effects panel is open.
-                    if showsTransitions {
-                        TransitionsPanel(onClose: { showsTransitions = false })
-                            .frame(width: 220)
-                            .grooved(.leading)
-                            .transition(.move(edge: .trailing))
-                    } else if showsEffects {
-                        EffectsLibraryPanel(
+                    if showsBrowser {
+                        BrowserPanel(
                             project: $project, timelineID: timelineID, selection: selection,
-                            state: effectsState, onClose: { showsEffects = false }
+                            state: effectsState, tab: $browserTab, onClose: { showsBrowser = false }
                         )
                         .frame(width: 280)
                         .grooved(.leading)
@@ -202,14 +220,33 @@ struct TimelineEditorSurface<Library: View>: View {
                     }
                 }
                 .frame(height: resolvedTimelineHeight)
-                .editorAnimation(Design.Motion.panel, value: showsTransitions)
-                .editorAnimation(Design.Motion.panel, value: showsEffects)
+                .editorAnimation(Design.Motion.panel, value: showsBrowser)
                 .editorAnimation(Design.Motion.panel, value: showsMeter)
             }
         }
         .environment(graphs)
         .onReceive(NotificationCenter.default.publisher(for: .revealEffect)) { note in
             if let id = note.object as? UUID { effectsState.select(effect: id) }
+        }
+        // Applying an effect shows the effects list; nothing else does.
+        .onChange(of: appliedEffects) { old, new in
+            if let old, let new, old.clipID == new.clipID, new.count > old.count {
+                showsSidePanel = true
+                sideTab = .effects
+            }
+        }
+        // While a value is being dragged the picture stays as it was, and
+        // shows the result when the mouse is released.
+        .onReceive(NotificationCenter.default.publisher(for: .valueGestureDidBegin)) { _ in
+            isGesturing = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .valueGestureDidEnd)) { _ in
+            isGesturing = false
+            if rebuildDeferred {
+                rebuildDeferred = false
+                renderer?.noteActivity()
+                rebuildPlayerItem()
+            }
         }
         .onChange(of: project, initial: true) { _, project in
             graphs.update(project: project)
@@ -233,7 +270,11 @@ struct TimelineEditorSurface<Library: View>: View {
         }
         .onChange(of: compositionKey) { _, _ in
             renderer?.noteActivity()
-            rebuildPlayerItem()
+            if isGesturing {
+                rebuildDeferred = true
+            } else {
+                rebuildPlayerItem()
+            }
         }
         // Volumes aren't part of the composition: the player's audio taps
         // read them as they play, so an edit is heard without a rebuild.
@@ -360,8 +401,14 @@ struct TimelineEditorSurface<Library: View>: View {
                     project.setTransitionDuration(duration, at: edge, of: clipID, in: timelineID, layer: layerID)
                 },
                 onEditProject: { change in change(&project) },
-                showsTransitions: $showsTransitions,
-                showsEffects: $showsEffects,
+                showsBrowser: $showsBrowser,
+                showsSidePanel: $showsSidePanel,
+                showsEffects: Binding(
+                    get: { showsSidePanel && sideTab == .effects },
+                    set: { on in
+                        if on { showsSidePanel = true; sideTab = .effects } else { sideTab = .inspector }
+                    }
+                ),
                 showsMeter: $showsMeter,
                 effectsState: effectsState
             )
@@ -546,6 +593,20 @@ struct TimelineEditorSurface<Library: View>: View {
                 }
                 finish()
             }
+        }
+    }
+}
+
+/// What the area beside the viewer shows.
+enum SidePanelTab: String, CaseIterable, Identifiable {
+    case inspector, effects
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .inspector: "Inspector"
+        case .effects: "Effects"
         }
     }
 }

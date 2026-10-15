@@ -47,6 +47,7 @@ final class ProjectHistory {
     /// without leaving a step behind.
     func beginGesture() {
         isInGesture = true
+        NotificationCenter.default.post(name: .valueGestureDidBegin, object: self)
     }
 
     /// Records the gesture's changes, if there were any, as one step.
@@ -56,6 +57,7 @@ final class ProjectHistory {
         isInGesture = false
         lastRecordedAt = nil
         if let project = project ?? current?() { projectDidChange(project) }
+        NotificationCenter.default.post(name: .valueGestureDidEnd, object: self)
     }
 
     /// Call whenever the project value changes.
@@ -89,4 +91,12 @@ final class ProjectHistory {
         // Registered while undoing this becomes the redo step, and vice versa.
         registerUndo(restoring: current)
     }
+}
+
+extension Notification.Name {
+    /// A gesture of many small edits (dragging a value) began or ended. The
+    /// viewer holds its picture while one is going and shows the result
+    /// when it ends.
+    static let valueGestureDidBegin = Notification.Name("valueGestureDidBegin")
+    static let valueGestureDidEnd = Notification.Name("valueGestureDidEnd")
 }

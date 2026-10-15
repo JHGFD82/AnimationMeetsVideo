@@ -13,7 +13,6 @@ struct EffectsPanel: View {
     let state: EffectsPanelState
     let onSeek: (CMTime) -> Void
     let onSelectTransition: (TransitionEdge) -> Void
-    let onClose: () -> Void
 
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) var graphs: KeyframeGraphHUDs?
@@ -55,11 +54,6 @@ struct EffectsPanel: View {
                         .truncationMode(.middle)
                 }
                 Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                }
-                .buttonStyle(.borderless)
-                .help("Close effects (⇧E)")
             }
             .padding(.horizontal, Design.Space.group)
             .padding(.vertical, Design.Space.step)

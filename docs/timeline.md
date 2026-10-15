@@ -10,11 +10,10 @@ with a trackpad. What is not built is listed under
 The timeline sits under the library, viewer and inspector and spans the
 full width of the window: a label column on the left (layer number and
 name, and its volume row when shown), and the track area on the
-right with the ruler across its top. The transitions panel, opened with its
-button in the timeline's header, takes its place at the right end. The
-effects panel ([effects.md](effects.md#the-effects-panel)) opens beside the
-viewer instead, in the inspector's place, and the effects to add take the
-transitions panel's slot while it is open.
+right with the ruler across its top. The browser (effects and
+transitions in tabs, [effects.md](effects.md#the-effects-panel)) takes the
+right end when its button in the header is on. The inspector and the
+effects list are tabs of the area beside the viewer.
 
 The timeline is as tall as the person makes it with the grip between it and
 the viewer, whatever its layers need; it remembers that height. Under the

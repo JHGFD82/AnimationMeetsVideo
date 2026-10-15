@@ -130,8 +130,13 @@ Limits:
   until the next play or scrub. A render that finishes just as play is
   pressed waits for the next pause, since swapping the item mid-play
   freezes the picture.
-- **Following edits.** Dragging a value changes the project many times a
-  second. Each change builds a new composition, and while paused the
+- **Dragging a value holds the picture.** While a value field is being
+  dragged (`ProjectHistory.beginGesture`), the viewer is not rebuilt at
+  all; it shows the result when the mouse is released. Building a
+  composition for every step made dragging, retiming especially,
+  sluggish, and a preview that changes under the pointer isn't needed to
+  judge a value: play it after.
+- **Following other edits.** Each change builds a new composition, and while paused the
   frame under the playhead is drawn from it (`LiveFrameRenderer`, latest
   request wins) and shown over the player. A build is never cancelled by
   the next edit, only queued behind it, so something always finishes. The

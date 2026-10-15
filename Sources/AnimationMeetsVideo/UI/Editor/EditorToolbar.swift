@@ -19,7 +19,8 @@ struct EditorToolbar: View {
     @State private var showsPasteChanges = false
     /// Whether the Paste Changes list was opened by trying to export.
     @State private var exportAfterAccepting = false
-    @AppStorage("showsEffectsPanel") private var showsEffectsPanel = false
+    @AppStorage("showsSidePanel") private var showsSidePanel = true
+    @AppStorage("sidePanelTab") private var sideTab = SidePanelTab.inspector
 
     /// What an export of the active timeline would be blocked by.
     private var pasteChanges: [PasteChangeEntry] { project.unresolvedPasteChanges(drawnBy: activeTimelineID) }
@@ -141,7 +142,8 @@ struct EditorToolbar: View {
         showsPasteChanges = false
         activeTimelineID = entry.timelineID
         selection = TimelineSelection(timelineID: entry.timelineID, layerID: layer.id, timelineClipID: entry.clipID)
-        showsEffectsPanel = true
+        showsSidePanel = true
+        sideTab = .effects
         let effectID = entry.effectID
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(80))

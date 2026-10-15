@@ -31,30 +31,13 @@ struct TransitionDragPayload: Transferable {
     }
 }
 
-/// The transitions that can be dragged onto either end of a clip, shown to
-/// the right of the timeline.
+/// The transitions that can be dragged onto either end of a clip: a tab of
+/// the browser panel.
 struct TransitionsPanel: View {
-    let onClose: () -> Void
-
     private let columns = [GridItem(.adaptive(minimum: 84), spacing: 8)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Transitions")
-                    .font(Design.Typeface.panelTitle)
-                    .foregroundStyle(Design.textPrimary)
-                Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                }
-                .buttonStyle(.borderless)
-                .help("Close transitions")
-            }
-            .padding(.horizontal, Design.Space.group)
-            .padding(.vertical, Design.Space.step)
-            .rail(.raised)
-
             ScrollView {
                 LazyVGrid(columns: columns, spacing: Design.Space.step) {
                     ForEach(TransitionKind.allCases) { kind in
