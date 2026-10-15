@@ -508,8 +508,11 @@ struct TimelineEditorSurface<Library: View>: View {
                     _ = await item.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
                     guard buildID == id else { return }
                     player.replaceCurrentItem(with: item)
-                    // The container now holds the live frame itself.
-                    playback.clearLive()
+                    // The live frame stays over the new item: the picture
+                    // the video and an image make aren't pixel for pixel
+                    // the same, so changing from one to the other after
+                    // an edit shows as a blink. Playing or scrubbing
+                    // takes it away.
                 } else {
                     let resumeTime = resetPosition ? playheadTime : player.currentTime()
                     player.replaceCurrentItem(with: item)

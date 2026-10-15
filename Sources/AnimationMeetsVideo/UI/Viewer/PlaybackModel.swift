@@ -147,8 +147,8 @@ final class PlaybackModel {
         clearStill()
     }
 
-    /// Lets go of the live frame, once the player shows the same picture
-    /// or nothing is going to replace it.
+    /// Lets go of the live frame, so the player shows. Done by playing and
+    /// scrubbing, and when there is nothing to show.
     func clearLive() {
         liveRenderer.cancel()
         if liveFrame != nil { liveFrame = nil }
