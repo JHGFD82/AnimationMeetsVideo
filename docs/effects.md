@@ -801,8 +801,7 @@ In order, each step usable on its own:
    through its speed (at the speed it starts at, for a ramp). Speed
    keyframes are in source time and can be set now (stopwatch and graph in
    the panel). Not yet drawn: Time (speed, blend, echo, sound) and trails on a
-   nested timeline's clip, whose Time rows aren't offered; Optical Flow is
-   shown as Blend (step 11)
+   nested timeline's clip, whose Time rows aren't offered
 10. **Inputs**, with the first effect that takes one (a matte) (done). The
     Matte effect and its Mode and Amount; an input is footage or a nested
     timeline dropped on the effect's drop zone, with Offset and Loop. Footage
@@ -814,5 +813,22 @@ In order, each step usable on its own:
     with the asset, and inputs count as uses of the media when it is
     replaced. Not yet: stills are not a media kind, so an input is video
     footage or a timeline
-11. **Speed ramps and Optical Flow.**
+11. **Speed ramps and Optical Flow** (done). Ramps came with step 9 (keyframed
+    speed, with its eases and graph, integrated into the clip's length and
+    drawn as a piece every four frames); this step checks them against
+    footage and adds Optical Flow. Vision's `VNGenerateOpticalFlowRequest`
+    estimates the motion from a frame to the next one on a copy at most 640
+    pixels wide (accuracy High), and a Metal kernel (`interpolate_flow`)
+    moves both full-size frames along it, the first back by the fraction
+    and the second forward by the rest, and mixes them. It is drawn only
+    when the compositor has no `DrawingOptions`, which is how background
+    renders and export draw, so the viewer fades (Blend) while it plays or
+    is paused on an unrendered stretch and shows the optical result once
+    the stretch is rendered (a note under the Frames row says so). Where
+    Vision can't estimate (frames of different sizes, no result), it fades.
+    The flow is estimated again for each frame drawn between the same two
+    source frames, which slow motion repeats; a cache of fields is the first
+    thing to add if renders prove slow. Vision's flow runs a little short of
+    large motions, so a frame is closer to its neighbors than the true
+    in-between one when the footage moves fast
 12. **Copy, paste and presets**, with paste changes and the export check.

@@ -85,6 +85,13 @@ extension EffectsPanel {
             speedRow(c)
             if project.playsVideo(clip) {
                 frameBlendingRow(c)
+                if clip.time.frameBlending == .opticalFlow {
+                    HStack(spacing: 0) {
+                        EffectNoteRow(note: EffectNote(text: "Shown as Blend until the stretch is rendered.", dims: false))
+                            .frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
+                        Color.black.opacity(0.12)
+                    }
+                }
                 echoRow(c)
             }
             if project.playsAudio(clip) {

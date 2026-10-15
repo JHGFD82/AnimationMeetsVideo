@@ -1,0 +1,220 @@
+import CoreImage
+import CoreVideo
+import Foundation
+import Metal
+import Vision
+
+/// In-between frames for Frame Blending's Optical Flow: Vision estimates
+/// where each pixel of one frame goes in the next, and a Metal kernel
+/// moves both frames part of the way along it and mixes them, instead of
+/// fading between them. See docs/effects.md, "Time and Shutter".
+///
+/// Estimating takes many milliseconds a frame, so the viewer doesn't do it
+/// live (it blends), and background renders and export do.
+enum OpticalFlow {
+    /// The widest picture the flow is estimated on. Motion this coarse is
+    /// all an in-between frame needs, and it keeps the estimate fast; the
+    /// frames themselves are moved at full size.
+    static let estimateWidth = 640
+
+    private static let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull(), .cacheIntermediates: false])
+
+    /// A flow field: for each pixel of an `width` x `height` estimate, where
+    /// it moves to in the next frame, in the estimate's pixels.
+    struct Field {
+        var width: Int
+        var height: Int
+        /// x and y of each pixel, row by row from the top.
+        var vectors: [Float]
+    }
+
+    /// The motion from `first` to `second`, nil if Vision couldn't
+    /// estimate it. Both are frames of the same size.
+    static func field(from first: CIImage, to second: CIImage) -> Field? {
+        let extent = first.extent
+        guard extent.width >= 2, extent.height >= 2, extent.size == second.extent.size else { return nil }
+        let scale = min(1, Double(estimateWidth) / extent.width)
+        let width = max(2, Int((extent.width * scale).rounded())), height = max(2, Int((extent.height * scale).rounded()))
+        guard let a = small(first, width: width, height: height), let b = small(second, width: width, height: height) else { return nil }
+
+        let request = VNGenerateOpticalFlowRequest(targetedCVPixelBuffer: b, options: [:])
+        request.computationAccuracy = .high
+        request.outputPixelFormat = kCVPixelFormatType_TwoComponent32Float
+        do {
+            try VNImageRequestHandler(cvPixelBuffer: a, options: [:]).perform([request])
+        } catch {
+            return nil
+        }
+        guard let flow = (request.results?.first as? VNPixelBufferObservation)?.pixelBuffer else { return nil }
+        CVPixelBufferLockBaseAddress(flow, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(flow, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(flow),
+              CVPixelBufferGetPixelFormatType(flow) == kCVPixelFormatType_TwoComponent32Float
+        else {
+            return nil
+        }
+        let flowWidth = CVPixelBufferGetWidth(flow), flowHeight = CVPixelBufferGetHeight(flow)
+        let rowBytes = CVPixelBufferGetBytesPerRow(flow)
+        var vectors = [Float](repeating: 0, count: flowWidth * flowHeight * 2)
+        for y in 0..<flowHeight {
+            let row = base.advanced(by: y * rowBytes).assumingMemoryBound(to: Float.self)
+            for x in 0..<(flowWidth * 2) { vectors[y * flowWidth * 2 + x] = row[x] }
+        }
+        return Field(width: flowWidth, height: flowHeight, vectors: vectors)
+    }
+
+    /// `image` at `width` x `height` pixels, in a buffer Vision reads.
+    private static func small(_ image: CIImage, width: Int, height: Int) -> CVPixelBuffer? {
+        var buffer: CVPixelBuffer?
+        let attributes: [CFString: Any] = [kCVPixelBufferMetalCompatibilityKey: true, kCVPixelBufferIOSurfacePropertiesKey: [:] as [String: Any]]
+        guard CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_32BGRA, attributes as CFDictionary, &buffer) == kCVReturnSuccess,
+              let buffer
+        else {
+            return nil
+        }
+        let extent = image.extent
+        let fitted = image
+            .transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY))
+            .transformed(by: CGAffineTransform(scaleX: CGFloat(width) / extent.width, y: CGFloat(height) / extent.height))
+        context.render(fitted, to: buffer, bounds: CGRect(x: 0, y: 0, width: width, height: height), colorSpace: nil)
+        return buffer
+    }
+
+    /// The frame `fraction` of the way from `first` to `second` (0...1),
+    /// with every pixel moved along `field`. Nil if it can't be drawn, in
+    /// which case the caller blends instead.
+    static func interpolated(from first: CIImage, to second: CIImage, fraction: Double, field: Field) -> CIImage? {
+        let extent = first.extent.integral
+        guard !extent.isEmpty, !extent.isInfinite, extent.size == second.extent.integral.size else { return nil }
+        let data = field.vectors.withUnsafeBufferPointer { Data(buffer: $0) }
+        return try? InterpolationProcessor.apply(
+            withExtent: extent,
+            inputs: [first, second.transformed(by: CGAffineTransform(translationX: extent.minX - second.extent.minX, y: extent.minY - second.extent.minY))],
+            arguments: [
+                "fraction": min(max(fraction, 0), 1),
+                "flow": data,
+                "flowWidth": field.width,
+                "flowHeight": field.height,
+                "extent": NSValue(rect: extent),
+            ]
+        )
+    }
+
+    /// The frame between two, or nil when there isn't one to estimate.
+    static func between(_ first: CIImage, _ second: CIImage, fraction: Double) -> CIImage? {
+        guard let field = field(from: first, to: second) else { return nil }
+        return interpolated(from: first, to: second, fraction: fraction, field: field)
+    }
+}
+
+enum OpticalFlowKernels {
+    static let source = """
+    #include <metal_stdlib>
+    using namespace metal;
+
+    struct FlowParameters {
+        float fraction;
+        float2 flowScale;
+    };
+
+    // Each output pixel takes the first frame from where the motion says it
+    // was `fraction` of the way back, and the second from where it will be
+    // the rest of the way on, and mixes the two toward the second.
+    kernel void interpolate_flow(texture2d<float, access::sample> firstTexture [[texture(0)]],
+                                 texture2d<float, access::sample> secondTexture [[texture(1)]],
+                                 texture2d<float, access::sample> flowTexture [[texture(2)]],
+                                 texture2d<float, access::write> outTexture [[texture(3)]],
+                                 constant FlowParameters &params [[buffer(0)]],
+                                 uint2 gid [[thread_position_in_grid]]) {
+        if (gid.x >= outTexture.get_width() || gid.y >= outTexture.get_height()) return;
+        constexpr sampler flowSampler(coord::normalized, address::clamp_to_edge, filter::linear);
+        constexpr sampler pixelSampler(coord::pixel, address::clamp_to_edge, filter::linear);
+        float2 p = float2(gid) + 0.5;
+        float2 uv = p / float2(outTexture.get_width(), outTexture.get_height());
+        float2 motion = flowTexture.sample(flowSampler, uv).xy * params.flowScale;
+        float4 a = firstTexture.sample(pixelSampler, p - params.fraction * motion);
+        float4 b = secondTexture.sample(pixelSampler, p + (1.0 - params.fraction) * motion);
+        outTexture.write(mix(a, b, params.fraction), gid);
+    }
+    """
+
+    nonisolated(unsafe) private static var pipelines: [ObjectIdentifier: MTLComputePipelineState] = [:]
+    private static let lock = NSLock()
+
+    static func pipeline(on device: MTLDevice) -> MTLComputePipelineState? {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = ObjectIdentifier(device as AnyObject)
+        if let cached = pipelines[key] { return cached }
+        guard let library = try? device.makeLibrary(source: source, options: nil),
+              let function = library.makeFunction(name: "interpolate_flow"),
+              let state = try? device.makeComputePipelineState(function: function)
+        else {
+            NSLog("The optical flow kernel couldn't be compiled.")
+            return nil
+        }
+        pipelines[key] = state
+        return state
+    }
+}
+
+/// Runs the interpolation kernel as a step of a Core Image graph: the first
+/// two inputs are the frames, over the same extent. A pixel can come from
+/// anywhere in a frame, so each is needed whole.
+final class InterpolationProcessor: CIImageProcessorKernel {
+    override class var synchronizeInputs: Bool { false }
+    override class var outputFormat: CIFormat { .RGBAh }
+
+    override class func formatForInput(at input: Int32) -> CIFormat { .RGBAh }
+
+    override class func roi(forInput input: Int32, arguments: [String: Any]?, outputRect: CGRect) -> CGRect {
+        (arguments?["extent"] as? NSValue)?.rectValue ?? outputRect
+    }
+
+    override class func process(
+        with inputs: [any CIImageProcessorInput]?,
+        arguments: [String: Any]?,
+        output: any CIImageProcessorOutput
+    ) throws {
+        guard let inputs, inputs.count == 2,
+              let commandBuffer = output.metalCommandBuffer,
+              let first = inputs[0].metalTexture, let second = inputs[1].metalTexture,
+              let target = output.metalTexture,
+              let fraction = arguments?["fraction"] as? Double,
+              let flow = arguments?["flow"] as? Data,
+              let flowWidth = arguments?["flowWidth"] as? Int, let flowHeight = arguments?["flowHeight"] as? Int,
+              flow.count == flowWidth * flowHeight * 2 * MemoryLayout<Float>.size,
+              let pipeline = OpticalFlowKernels.pipeline(on: commandBuffer.device)
+        else {
+            throw NSError(domain: "InterpolationProcessor", code: 1)
+        }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rg32Float, width: flowWidth, height: flowHeight, mipmapped: false)
+        descriptor.usage = .shaderRead
+        guard let flowTexture = commandBuffer.device.makeTexture(descriptor: descriptor),
+              let encoder = commandBuffer.makeComputeCommandEncoder()
+        else {
+            throw NSError(domain: "InterpolationProcessor", code: 2)
+        }
+        flow.withUnsafeBytes { bytes in
+            flowTexture.replace(
+                region: MTLRegionMake2D(0, 0, flowWidth, flowHeight), mipmapLevel: 0,
+                withBytes: bytes.baseAddress!, bytesPerRow: flowWidth * 2 * MemoryLayout<Float>.size
+            )
+        }
+        // The estimate was made at a smaller size, so its motion is too.
+        var parameters = (Float(fraction), SIMD2<Float>(Float(first.width) / Float(flowWidth), Float(first.height) / Float(flowHeight)))
+        encoder.setComputePipelineState(pipeline)
+        encoder.setTexture(first, index: 0)
+        encoder.setTexture(second, index: 1)
+        encoder.setTexture(flowTexture, index: 2)
+        encoder.setTexture(target, index: 3)
+        encoder.setBytes(&parameters, length: 16, index: 0)
+        let width = pipeline.threadExecutionWidth
+        let height = max(1, pipeline.maxTotalThreadsPerThreadgroup / width)
+        encoder.dispatchThreads(
+            MTLSize(width: target.width, height: target.height, depth: 1),
+            threadsPerThreadgroup: MTLSize(width: width, height: height, depth: 1)
+        )
+        encoder.endEncoding()
+    }
+}

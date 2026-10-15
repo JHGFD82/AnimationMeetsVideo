@@ -51,6 +51,50 @@ private let frame = CMTime(value: 1, timescale: 24)
         #expect(abs(harness.pixel(quarter, x: 8, y: 4).x - 0.25) < 0.03)
     }
 
+    /// A smooth texture, `dx` and `dy` pixels along, on a 192 x 108 frame.
+    private func texture(_ dx: Double, _ dy: Double) -> (Double, Double) -> SIMD4<Float> {
+        { u, v in
+            let x = u * 192 - dx, y = v * 108 - dy
+            let wave = sin(x * 0.21 + y * 0.07) + sin(y * 0.19 - x * 0.05) + sin((x + y) * 0.11) + sin(x * 0.043) * cos(y * 0.061)
+            let value = Float(0.5 + wave * 0.12)
+            return SIMD4(value, value, value, 1)
+        }
+    }
+
+    @Test func opticalFlowMovesTheFramesWhereBlendFadesThem() throws {
+        var harness = CompositorHarness(size: CGSize(width: 192, height: 108))
+        try harness.addPicture(track: 1, texture(0, 0))
+        try harness.addPicture(track: 2, texture(12, 6))
+        var truth = CompositorHarness(size: CGSize(width: 192, height: 108))
+        try truth.addPicture(track: 1, texture(6, 3))
+        let wanted = try truth.draw([CompositorHarness.clip(track: 1)])
+
+        func error(_ mode: FrameBlending, options: DrawingOptions? = nil) throws -> Float {
+            var clip = baseClip()
+            clip.time.speed = AnimatedValue(50)
+            clip.time.frameBlending = mode
+            let drawn = drawClip(clip) {
+                $0.nextFrame = copy(2)
+                $0.opticalFlow = mode == .opticalFlow
+            }
+            // Half way to the next frame, as above.
+            let frame = try harness.draw([drawn], at: CMTime(value: 7, timescale: 24), options: options)
+            var total: Float = 0, count: Float = 0
+            for y in 30..<78 {
+                for x in 40..<150 {
+                    total += abs(harness.pixel(frame, x: x, y: y).x - harness.pixel(wanted, x: x, y: y).x)
+                    count += 1
+                }
+            }
+            return total / count
+        }
+        let faded = try error(.blend), moved = try error(.opticalFlow)
+        #expect(moved < faded / 2)
+        // The viewer asks for no more than a fade while it plays.
+        let live = try error(.opticalFlow, options: DrawingOptions())
+        #expect(abs(live - faded) < 0.002)
+    }
+
     @Test func withoutBlendTheNearestFrameShowsAlone() throws {
         var harness = CompositorHarness()
         try harness.addSolid(track: 1, SIMD4(0, 0, 0, 1))
@@ -191,6 +235,25 @@ private let frame = CMTime(value: 1, timescale: 24)
         // The dark second lasts two seconds now.
         #expect(abs(early - middleOfDark) <= 3)
         #expect(late > early + 40)
+    }
+
+    @Test func opticalFlowDrawsInExportFromRealFootage() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        // Dark for a second, then bright: between the frames at the cut
+        // there is no motion to follow, so the in-between frame is a mix.
+        let placed = try await movie(in: &fixture, segments: [(50, 24), (200, 24)])
+        fixture.project.editClip(placed.clipID, in: fixture.timelineID) {
+            $0.time.speed = AnimatedValue(50)
+            $0.time.frameBlending = .opticalFlow
+        }
+        let composed = try await fixture.build()
+        let before = try await grayLevel(of: composed, at: CMTime(value: 3, timescale: 2))
+        let after = try await grayLevel(of: composed, at: CMTime(value: 5, timescale: 2))
+        #expect(after > before + 40)
+        // A moment between frames still draws.
+        let between = try await grayLevel(of: composed, at: CMTime(value: 7, timescale: 24))
+        #expect(abs(between - before) < 10)
     }
 
     @Test func doubleSpeedPlaysItInHalfTheTime() async throws {

@@ -409,7 +409,17 @@ struct Drawing {
             let local = clip.stack.localTime(atRoot: time)
             let position = (clip.stack.sourceTime(atLocal: local).seconds + media.alignmentOffset.seconds) / media.frameDuration.seconds
             let fraction = position - (position + 1e-6).rounded(.down)
-            if fraction > 0.01 { image = scaled(later, by: fraction).composited(over: image) }
+            if fraction > 0.01 {
+                // Optical Flow moves the frames along the motion between
+                // them. It costs too much to do while the viewer plays or
+                // is drawing for display; renders and export do (they draw
+                // without options). Where it can't be done, it fades.
+                if media.opticalFlow, options == nil, let moved = OpticalFlow.between(image, later, fraction: fraction) {
+                    image = moved
+                } else {
+                    image = scaled(later, by: fraction).composited(over: image)
+                }
+            }
         }
         var under: CIImage?
         for echo in media.echoes.reversed() {

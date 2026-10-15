@@ -195,6 +195,7 @@ private final class Placement {
 /// frame after, for Blend, and the footage earlier, for Echo and Trails.
 private struct PlacementExtras {
     var next: Placement?
+    var opticalFlow = false
     var echoes: [(placement: Placement, strength: Double)] = []
     var trails: [(placement: Placement, strength: Double)] = []
     var frameDuration = CMTime.zero
@@ -287,6 +288,7 @@ private final class BuildNode {
                     sourceStart: placement.drawSourceStart, segmentStart: range.start,
                     frameDuration: extras.frameDuration, alignmentOffset: extras.alignmentOffset,
                     nextFrame: extras.next.flatMap { copy($0, 1) },
+                    opticalFlow: extras.opticalFlow,
                     echoes: extras.echoes.compactMap { copy($0.placement, $0.strength) },
                     trails: extras.trails.compactMap { copy($0.placement, $0.strength) }
                 )),
@@ -616,7 +618,10 @@ enum CompositionExporter {
                             }
                             // Blend mixes the frame the footage is at with the
                             // one after it.
-                            if clip.time.frameBlending != .off { extras.next = copy(.zero, inFileBy: extras.frameDuration) }
+                            if clip.time.frameBlending != .off {
+                                extras.next = copy(.zero, inFileBy: extras.frameDuration)
+                                extras.opticalFlow = clip.time.frameBlending == .opticalFlow
+                            }
                             // Echo and trails are the footage again, later in
                             // time, so each moment has an earlier one to show.
                             if let echo = clip.time.echo?.clamped {
@@ -960,7 +965,7 @@ enum CompositionExporter {
                 text += "L \(media.url.path) \(stamp?.byteCount ?? -1) \(number(stamp?.modified ?? 0)) \(number(fileStart.seconds)) \(matrix(media.base))\n"
                 // What is done to the footage's time, which the picture
                 // depends on beyond the file time it starts at.
-                text += "T \(number(media.frameDuration.seconds)) \(number(media.alignmentOffset.seconds)) next:\(media.nextFrame != nil)"
+                text += "T \(number(media.frameDuration.seconds)) \(number(media.alignmentOffset.seconds)) next:\(media.nextFrame != nil) flow:\(media.opticalFlow)"
                 text += " echo:" + media.echoes.map { "\(number($0.strength))@\(number($0.delay.seconds))" }.joined(separator: ",")
                 text += " trails:" + media.trails.map { "\(number($0.strength))@\(number($0.delay.seconds))" }.joined(separator: ",") + "\n"
             case .group(let group):

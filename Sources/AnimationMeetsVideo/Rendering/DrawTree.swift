@@ -92,6 +92,10 @@ struct MediaDraw: @unchecked Sendable {
     /// For Blend: the footage a frame later, to mix with the current frame
     /// by how far between the two the moment is.
     var nextFrame: TrackCopy?
+    /// Whether the mix with the next frame follows the motion between the
+    /// two (Optical Flow) instead of fading (Blend). Drawn so only at full
+    /// quality: the viewer blends while it plays.
+    var opticalFlow = false
     /// For Echo: earlier frames, nearest first, layered under the current one.
     var echoes: [TrackCopy] = []
     /// For Trails: the footage as it was at earlier moments, nearest first,
