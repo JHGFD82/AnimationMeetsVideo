@@ -328,6 +328,14 @@ works on frames already chosen:
 - **Echo**: earlier source frames layered under the current one, with a
   count, a delay and a decay.
 
+- **Sound**: what a retimed clip's sound does when Speed isn't 100%.
+  **Keep Pitch** (the default) plays it at the new speed at its own pitch.
+  **Change Pitch** speeds it up and slows it down like tape, pitch and all.
+  **Mute** silences it while the speed isn't 100%. Keep Pitch and Change
+  Pitch map to AVFoundation's time-pitch algorithms on the clip's audio
+  mix track (`.spectral` and `.varispeed`), so they work in playback and
+  export alike.
+
 Keyframes are in [source time](#source-time), so retiming a clip retimes its animation too:
 at 50% the clip and its moves both play at half speed. To animate at a
 steady speed over retimed footage, animate an adjustment layer instead.
@@ -651,8 +659,8 @@ In order, each step usable on its own:
 6. **Reading aids**: dimming, thumbnails, Show Up to Here.
 7. **Pushing transforms into nested timelines.**
 8. **Adjustment layers** with reach.
-9. **Time and Shutter**: constant speed, Blend, Echo, Motion Blur and
-   Trails.
+9. **Time and Shutter**: constant speed with its three Sound choices,
+   Blend, Echo, Motion Blur and Trails.
 10. **Inputs**, with the first effect that takes one (a matte).
 11. **Speed ramps and Optical Flow.**
 12. **Copy, paste and presets**, with paste changes and the export check.
