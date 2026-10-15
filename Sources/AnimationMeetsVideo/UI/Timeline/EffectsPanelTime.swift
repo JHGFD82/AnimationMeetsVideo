@@ -19,7 +19,7 @@ struct ToggleFieldsRow: View {
     let title: String
     let isOn: Bool
     var help = ""
-    let onToggle: (Bool) -> Void
+    let onToggle: @MainActor (Bool) -> Void
     let fields: [ToggleField]
 
     var body: some View {

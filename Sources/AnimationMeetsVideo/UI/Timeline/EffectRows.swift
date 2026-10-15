@@ -162,7 +162,7 @@ struct ChoiceRow<MenuContent: View>: View {
     var showsMenu = true
     var isDimmed = false
     let onSelect: () -> Void
-    let onChoose: (String) -> Void
+    let onChoose: @MainActor (String) -> Void
     @ViewBuilder let menu: () -> MenuContent
 
     var body: some View {
@@ -214,7 +214,7 @@ struct EffectHeaderRow<MenuContent: View>: View {
     /// its edge.
     var isFlagged = false
     let onToggleCollapsed: () -> Void
-    let onSetEnabled: (Bool) -> Void
+    let onSetEnabled: @MainActor (Bool) -> Void
     let onSelect: () -> Void
     let onRename: (String?) -> Void
     /// Whether the name is being edited, which the ⋯ menu can start.
