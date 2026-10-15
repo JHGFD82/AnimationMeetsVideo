@@ -167,20 +167,10 @@ extension TimelineClip {
             return CMTimeAdd(trimStart, CMTimeMultiplyByFloat64(elapsed, multiplier: speed / 100))
         }
         // Playing the source takes more time the more of it has played, so
-        // find where the time that has passed is used up. The speed is
-        // integrated up to each keyframe once, not at every step.
-        let target = elapsed.seconds
-        let anchor = trimStart.seconds
+        // find where the time that has passed is used up.
         let integral = SpeedIntegral.of(self.time.speed)
-        let base = integral.at(anchor)
-        let fastest = ClipTime.speedRange.upperBound / 100
-        var low = target >= 0 ? anchor : anchor + target * fastest - 1e-6
-        var high = target >= 0 ? anchor + target * fastest + 1e-6 : anchor
-        for _ in 0..<44 {
-            let middle = (low + high) / 2
-            if integral.at(middle) - base < target { low = middle } else { high = middle }
-        }
-        return CMTime(seconds: (low + high) / 2, preferredTimescale: 240_000)
+        let anchor = trimStart.seconds
+        return CMTime(seconds: integral.source(atIntegral: integral.at(anchor) + elapsed.seconds), preferredTimescale: 240_000)
     }
 
     /// How much source plays in `length` of timeline time from the clip's
@@ -259,6 +249,46 @@ struct SpeedIntegral {
         var index = 0
         while index + 1 < times.count - 1, times[index + 1] <= seconds { index += 1 }
         return totals[index] + Self.simpson(speed, from: times[index], to: seconds)
+    }
+
+    /// The most the timeline time a result may be off by, in seconds. It is
+    /// far below a frame and below the 240000 timescale the answer is
+    /// rounded to.
+    static let timeTolerance = 1e-8
+
+    /// The source time, in seconds, whose integral is `target`: the inverse
+    /// of `at`. The rate is always positive, so `at` only rises and the
+    /// answer is the only one. The totals at the keyframes say which piece
+    /// it is in; there it is found by Newton's method, whose step is the
+    /// timeline time left over divided by the rate. A step that leaves the
+    /// bracket the totals and earlier steps have narrowed, or that fails to
+    /// halve the error, is replaced by bisection, so it always ends.
+    func source(atIntegral target: Double) -> Double {
+        guard let first = times.first, let last = times.last else { return target / Self.rate(speed, at: 0) }
+        if target <= 0 { return first + target / Self.rate(speed, at: first) }
+        let end = totals[totals.count - 1]
+        if target >= end { return last + (target - end) / Self.rate(speed, at: last) }
+        // The last keyframe whose total is at or below the target.
+        var low = 0, high = totals.count - 1
+        while high - low > 1 {
+            let middle = (low + high) / 2
+            if totals[middle] <= target { low = middle } else { high = middle }
+        }
+        if totals[low] == target { return times[low] }
+        let remaining = target - totals[low]
+        var lower = times[low], upper = times[low + 1]
+        var guess = lower + (upper - lower) * remaining / (totals[low + 1] - totals[low])
+        var lastError = Double.infinity
+        for _ in 0..<100 {
+            let error = Self.simpson(speed, from: times[low], to: guess) - remaining
+            if abs(error) <= Self.timeTolerance || upper - lower <= 1e-12 { break }
+            if error < 0 { lower = guess } else { upper = guess }
+            var next = guess - error / Self.rate(speed, at: guess)
+            if !(next > lower && next < upper) || abs(error) > lastError / 2 { next = (lower + upper) / 2 }
+            lastError = abs(error)
+            guess = next
+        }
+        return guess
     }
 
     /// The time in seconds the source takes to play from `a` to `b`.

@@ -242,4 +242,95 @@ import Testing
         let elapsed = ContinuousClock.now - start
         #expect(elapsed < .milliseconds(500))
     }
+
+    // MARK: Inverting a speed ramp
+
+    /// The bisection the mapping used before: the reference for the new one.
+    private func bisectedSource(_ clip: TimelineClip, atElapsed target: Double) -> Double {
+        let integral = SpeedIntegral.of(clip.time.speed)
+        let anchor = clip.trimStart.seconds
+        let base = integral.at(anchor)
+        let fastest = ClipTime.speedRange.upperBound / 100
+        var low = target >= 0 ? anchor : anchor + target * fastest - 1e-6
+        var high = target >= 0 ? anchor + target * fastest + 1e-6 : anchor
+        for _ in 0..<44 {
+            let middle = (low + high) / 2
+            if integral.at(middle) - base < target { low = middle } else { high = middle }
+        }
+        return (low + high) / 2
+    }
+
+    private func easedClip(speeds: [(Double, Double)], eased: Bool = true) -> TimelineClip {
+        var clip = TimelineClip(source: .media(UUID()), startOffset: .zero, trimStart: second(speeds[0].0), trimEnd: second(speeds[speeds.count - 1].0))
+        clip.time.speed.setAnimated(true, at: second(speeds[0].0))
+        for (time, value) in speeds { clip.time.speed.set(value, at: second(time)) }
+        if eased {
+            for (time, _) in speeds { clip.time.speed.setEase(at: second(time), in: KeyframeEase(influence: 0.7, speed: 0), out: KeyframeEase(influence: 0.7, speed: 0)) }
+        }
+        return clip
+    }
+
+    /// Checks that the mapping agrees with the integral it inverts, to the
+    /// tolerance, at `elapsed` seconds of timeline time.
+    private func expectInverts(_ clip: TimelineClip, elapsed: [Double]) {
+        let integral = SpeedIntegral.of(clip.time.speed)
+        let base = integral.at(clip.trimStart.seconds)
+        for t in elapsed {
+            let at = CMTime(seconds: t, preferredTimescale: 240_000)
+            let source = clip.sourceTime(atTimelineTime: at).seconds
+            // Rounded to 1 / 240000, which the rate (at most 100) scales.
+            #expect(abs(integral.at(source) - base - t) < 100 / 240_000 / 2 + 1e-6, "elapsed \(t)")
+            #expect(abs(source - bisectedSource(clip, atElapsed: at.seconds)) < 2e-5, "elapsed \(t)")
+        }
+    }
+
+    @Test func invertingANonlinearRampMatchesTheIntegral() {
+        let clip = easedClip(speeds: [(0, 100), (10, 30), (25, 800), (40, 100)])
+        expectInverts(clip, elapsed: stride(from: -3.0, through: 60, by: 0.37).map { $0 })
+    }
+
+    @Test func invertingNearTheSlowestSpeed() {
+        // 1% is the slowest: a hundred seconds of timeline per source second.
+        let clip = easedClip(speeds: [(0, 1), (2, 1), (4, 5), (6, 1)])
+        expectInverts(clip, elapsed: [0, 0.001, 0.5, 37, 100, 150, 199.9, 260, 400, 800])
+    }
+
+    @Test func invertingAtTheFastestSpeed() {
+        let clip = easedClip(speeds: [(0, 10_000), (1, 10_000), (3, 100)])
+        expectInverts(clip, elapsed: [0, 0.0001, 0.01, 0.0199, 0.5, 2, 3])
+    }
+
+    @Test func invertingExactlyAtKeyframesGivesTheKeyframe() {
+        let clip = easedClip(speeds: [(0, 100), (10, 30), (25, 800), (40, 100)])
+        let integral = SpeedIntegral.of(clip.time.speed)
+        for keyframe in [0.0, 10, 25, 40] {
+            let there = clip.timelineTime(forSourceTime: second(keyframe))
+            #expect(abs(clip.sourceTime(atTimelineTime: there).seconds - keyframe) < 1e-4)  // The placed time is rounded; at 800% that is a few 1e-5.
+            #expect(abs(integral.source(atIntegral: integral.at(keyframe)) - keyframe) < 1e-7)
+        }
+    }
+
+    @Test func invertingBeyondTheKeyframesFollowsTheHeldSpeed() {
+        let clip = easedClip(speeds: [(5, 50), (15, 200)], eased: false)
+        let integral = SpeedIntegral.of(clip.time.speed)
+        #expect(abs(integral.source(atIntegral: integral.at(30)) - 30) < 1e-7)
+        #expect(abs(integral.source(atIntegral: integral.at(-4)) - -4) < 1e-7)
+    }
+
+    @Test func invertingARampIsFasterThanBisecting() {
+        let clip = easedClip(speeds: [(0, 100), (10, 30), (25, 800), (40, 100)])
+        let times = (0..<400).map { Double($0) * 0.1 }
+        func measure(_ body: (Double) -> Double) -> Duration {
+            let start = ContinuousClock.now
+            var sum = 0.0
+            for _ in 0..<5 { for t in times { sum += body(t) } }
+            #expect(sum.isFinite)
+            return ContinuousClock.now - start
+        }
+        _ = clip.sourceTime(atTimelineTime: second(1))
+        let newer = measure { clip.sourceTime(atTimelineTime: CMTime(seconds: $0, preferredTimescale: 240_000)).seconds }
+        let older = measure { bisectedSource(clip, atElapsed: $0) }
+        print("speed-ramp inverse: new \(newer), bisection \(older)")
+        #expect(newer < older)
+    }
 }
