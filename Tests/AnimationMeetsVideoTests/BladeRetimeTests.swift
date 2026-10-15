@@ -68,3 +68,24 @@ import Testing
         #expect(gray > 100)
     }
 }
+
+@Suite struct WholeFrameCoverTests {
+    @Test func aLengthJustShortOfAWholeFrameCountIsThatCountNotOneLess() {
+        var project = EditingProject.empty
+        let media = MediaClip(
+            name: "m", kind: .video, url: URL(fileURLWithPath: "/tmp/none.mov"), duration: CMTime(value: 10, timescale: 1),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        let imported = project.importClip(media, intoTimeline: project.rootTimelineID)
+        let placed = try! #require(imported)
+        let timeline = project.timeline(id: project.rootTimelineID)!
+        var clip = project.clipAndLayer(placed.clipID, in: project.rootTimelineID)!.clip
+        // 51 frames at 24 fps, less four microseconds.
+        clip.trimEnd = CMTimeSubtract(CMTime(value: 51, timescale: 24), CMTime(value: 1, timescale: 240_000))
+        let covered = project.coveringWholeFrames(clip, in: timeline)
+        #expect(covered.endOffset == CMTime(value: 51, timescale: 24))
+        // A real shortfall still rounds down.
+        clip.trimEnd = CMTimeSubtract(CMTime(value: 51, timescale: 24), CMTime(value: 1, timescale: 100))
+        #expect(project.coveringWholeFrames(clip, in: timeline).endOffset == CMTime(value: 50, timescale: 24))
+    }
+}

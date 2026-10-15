@@ -74,7 +74,12 @@ extension EditingProject {
     /// and no cut to join with a transition. Under a frame it is left alone.
     func coveringWholeFrames(_ clip: TimelineClip, in timeline: Timeline) -> TimelineClip {
         guard isFrameLocked(clip) else { return clip }
-        let length = timeline.frameAligned(clip.placedDuration, .down)
+        // A retimed clip's length is found to a few microseconds, so one
+        // meant to be a whole number of frames can come out just short of
+        // it; that is the whole number, not a frame less.
+        let nearest = timeline.frameAligned(clip.placedDuration, .nearest)
+        let isNearWhole = abs(CMTimeSubtract(clip.placedDuration, nearest).seconds) < Timeline.abutmentTolerance.seconds
+        let length = isNearWhole ? nearest : timeline.frameAligned(clip.placedDuration, .down)
         guard length > .zero, length != clip.placedDuration else { return clip }
         var aligned = clip
         aligned.trimEnd = CMTimeAdd(clip.trimStart, clip.sourceDuration(forPlaced: length))
