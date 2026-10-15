@@ -13,7 +13,8 @@ name, and its volume row when shown), and the track area on the
 right with the ruler across its top. The transitions panel, opened with its
 button in the timeline's header, takes its place at the right end. The
 effects panel ([effects.md](effects.md#the-effects-panel)) opens beside the
-viewer instead, in the inspector's place.
+viewer instead, in the inspector's place, and the effects to add take the
+transitions panel's slot while it is open.
 
 The timeline is as tall as the person makes it with the grip between it and
 the viewer, whatever its layers need; it remembers that height. Under the

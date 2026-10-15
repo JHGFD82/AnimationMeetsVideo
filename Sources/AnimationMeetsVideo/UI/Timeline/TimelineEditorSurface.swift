@@ -184,15 +184,26 @@ struct TimelineEditorSurface<Library: View>: View {
                             .grooved(.leading)
                             .transition(.move(edge: .trailing))
                     }
+                    // The browser slot: transitions when asked for, else the
+                    // effects to add while the effects panel is open.
                     if showsTransitions {
                         TransitionsPanel(onClose: { showsTransitions = false })
                             .frame(width: 220)
                             .grooved(.leading)
                             .transition(.move(edge: .trailing))
+                    } else if showsEffects {
+                        EffectsLibraryPanel(
+                            project: $project, timelineID: timelineID, selection: selection,
+                            state: effectsState, onClose: { showsEffects = false }
+                        )
+                        .frame(width: 280)
+                        .grooved(.leading)
+                        .transition(.move(edge: .trailing))
                     }
                 }
                 .frame(height: resolvedTimelineHeight)
                 .editorAnimation(Design.Motion.panel, value: showsTransitions)
+                .editorAnimation(Design.Motion.panel, value: showsEffects)
                 .editorAnimation(Design.Motion.panel, value: showsMeter)
             }
         }

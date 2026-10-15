@@ -454,11 +454,14 @@ is, and replaces the inspector while open. It is resizable by its left
 edge. Its button is in the timeline's header, beside the transitions
 panel's, which opens at the right end of the timeline.
 
-Top: the **library**, grouped by category, Foundations first. Drag an
-effect onto a clip, or double-click it to add it to the end of the selected
-clip's stack.
+The **library** of effects to add is separate: while the effects panel is
+open it fills the browser slot at the right end of the timeline, where the
+transitions panel goes (the transitions panel takes the slot back while it
+is open). It is grouped by category, Foundations first. Drag an effect onto
+a clip or into the stack, or double-click it to add it to the end of the
+selected clip's stack.
 
-Below: the selected clip's **stack**, framed by pinned rows that can't be
+The panel itself is the selected clip's **stack**, framed by pinned rows that can't be
 moved: Time and the anchor point above it, the clip's transitions (if any)
 and Shutter below it, in the order they are drawn. Clicking a transition
 row selects it, as clicking it on the timeline does.
