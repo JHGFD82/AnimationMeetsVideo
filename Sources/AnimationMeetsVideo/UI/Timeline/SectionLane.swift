@@ -124,8 +124,12 @@ struct SectionLane: View {
         // as a simultaneous gesture, grabbing an edge also moved the
         // section, and the two fought over the draft.
         .gesture(moveGesture(section))
-        .simultaneousGesture(TapGesture(count: 2).onEnded { beginRename(section.id, name: section.name) }
-            .exclusively(before: TapGesture().onEnded { onSelect(section.id) }))
+        // Two separate taps, not one exclusive to the other: waiting out the
+        // double-click interval before a single click could select delayed
+        // every selection. A double-click selects on its first click and
+        // renames on its second.
+        .simultaneousGesture(TapGesture().onEnded { onSelect(section.id) })
+        .simultaneousGesture(TapGesture(count: 2).onEnded { beginRename(section.id, name: section.name) })
         .contextMenu {
             Button("Rename…") { beginRename(section.id, name: section.name) }
             Button("Delete Section", role: .destructive) { onDelete(section.id) }
