@@ -38,8 +38,6 @@ struct TimelineEditorSurface<Library: View>: View {
         project.timeline(id: timelineID)
     }
 
-    private var compositionKey: CompositionKey { CompositionKey(project: project) }
-
     private var selectedTimelineClip: TimelineClip? {
         guard let selection, selection.timelineID == timelineID, let timeline,
               let layer = timeline.layer(id: selection.layerID)
@@ -114,7 +112,20 @@ struct TimelineEditorSurface<Library: View>: View {
             }
         }
         .environment(graphs)
-        .onChange(of: project, initial: true) { _, project in graphs.update(project: project) }
+        // Everything that follows the project is worked out here, once per
+        // edit, rather than in `body`, which also runs for selection and
+        // playhead changes.
+        .onChange(of: project, initial: true) { old, new in
+            graphs.update(project: new)
+            // Volumes aren't part of the composition: the player's audio
+            // taps read them as they play, so an edit is heard without a
+            // rebuild.
+            playback.volumeCurves.replace(with: VolumeCurves.of(new))
+            if CompositionKey(project: old) != CompositionKey(project: new) {
+                renderer?.noteActivity()
+                rebuildPlayerItem()
+            }
+        }
         .onChange(of: playheadTime, initial: true) { _, time in graphs.playhead = time }
         .onAppear {
             let project = $project
@@ -130,20 +141,14 @@ struct TimelineEditorSurface<Library: View>: View {
             playheadTime = .zero
             rebuildPlayerItem(resetPosition: true)
         }
-        .onChange(of: compositionKey) { _, _ in
-            renderer?.noteActivity()
-            rebuildPlayerItem()
-        }
-        // Volumes aren't part of the composition: the player's audio taps
-        // read them as they play, so an edit is heard without a rebuild.
-        .onChange(of: VolumeCurves.of(project), initial: true) { _, curves in
-            playback.volumeCurves.replace(with: curves)
-        }
         // Wherever it stops, playing or scrubbing, is where rendering starts.
         .onChange(of: playheadTime) { _, time in
             renderer?.playhead = time
         }
         .onChange(of: playback.isPlaying) { _, playing in
+            // The parked playhead doesn't follow playback (see
+            // `TimelineView.playheadTime`); it catches up where it stopped.
+            if !playing { playheadTime = playback.player.currentTime() }
             renderer?.setPlaying(playing)
             if !playing, renderRebuildPending {
                 renderRebuildPending = false
@@ -163,11 +168,6 @@ struct TimelineEditorSurface<Library: View>: View {
         .onChange(of: renderer?.packageURL) { _, _ in
             rebuildPlayerItem()
         }
-        .onChange(of: playback.currentTime) { _, newValue in
-            if playback.isPlaying {
-                playheadTime = newValue
-            }
-        }
         .onAppear {
             rebuildPlayerItem(resetPosition: true)
         }
@@ -186,6 +186,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 selection: selection,
                 beatTracks: analysis.beats,
                 beatClicks: playback.beatClicks,
+                playback: playback,
                 playheadTime: $playheadTime,
                 onScrub: { time in scrub(to: time) },
                 onSelectClip: { layerID, clip in

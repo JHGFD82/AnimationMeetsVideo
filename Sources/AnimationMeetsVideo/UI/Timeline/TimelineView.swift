@@ -9,6 +9,12 @@ struct TimelineView: View {
     let selection: TimelineSelection?
     let beatTracks: [UUID: BeatTrack]
     let beatClicks: BeatClickPlayer
+    /// Read only by the playhead and its timecode while playing; see
+    /// `LivePlayheadRail`.
+    let playback: PlaybackModel
+    /// Where the playhead is parked. It doesn't follow playback, which
+    /// would redraw every layer on every tick; it catches up when playback
+    /// stops.
     @Binding var playheadTime: CMTime
     let onScrub: (CMTime) -> Void
     let onSelectClip: (UUID, TimelineClip) -> Void
@@ -255,6 +261,12 @@ struct TimelineView: View {
     /// layout pass (buttons, keys, the slider).
     private var currentViewport: TimelineViewport { viewport(width: trackAreaWidth) }
 
+    /// Where the playhead is now: the player's time while it plays, which
+    /// `playheadTime` doesn't follow, else the parked time.
+    private var livePlayheadTime: CMTime {
+        playback.isPlaying ? playback.player.currentTime() : playheadTime
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Design.Space.step) {
@@ -273,9 +285,7 @@ struct TimelineView: View {
                 .fixedSize()
                 .help(tool.help)
                 Spacer()
-                Text(playheadTime.timecode(frameRate: timeline.frameRate))
-                    .font(Design.Typeface.numericSmall)
-                    .foregroundStyle(Design.textSecondary)
+                PlayheadTimecode(playback: playback, parked: playheadTime, frameRate: timeline.frameRate)
                 TimelineZoomSliders(
                     horizontal: zoomFractionBinding,
                     vertical: Binding(
@@ -338,8 +348,9 @@ struct TimelineView: View {
                 let areaHeights = areaLayout.heights(splitting: areasAvailable)
                 let trackHeight = max(railHeight, geometry.size.height - scrollbarHeight)
                 let frameTime = timeline.snappedToFrame(playheadTime)
-                let playheadX = viewport.x(atSeconds: playheadTime.seconds)
-                let playheadVisible = (-1...(viewport.width + 1)).contains(playheadX)
+                // Built once per layout, not once per area: it walks every
+                // clip and beat.
+                let snapTargets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: drawnBeats(viewport)) : nil
 
                 VStack(alignment: .leading, spacing: 0) {
                     // The time rail: the ruler and the sections under it
@@ -362,7 +373,7 @@ struct TimelineView: View {
                                 .foregroundStyle(Design.textTertiary)
                                 .padding(.leading, Design.Space.step)
                                 .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
-                            sectionLane(viewport: viewport)
+                            sectionLane(viewport: viewport, targets: snapTargets)
                         }
                     }
                     .background(Design.Surface.raised.color)
@@ -386,7 +397,7 @@ struct TimelineView: View {
                                 },
                                 onResizeEnded: { boundaryDragStart = nil }
                             )
-                            area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, frameTime: frameTime)
+                            area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets)
                         }
                     }
                     .frame(maxHeight: .infinity, alignment: .top)
@@ -428,13 +439,13 @@ struct TimelineView: View {
                         // The playhead and the snap line move far more
                         // often than anything else here, so they are Core
                         // Animation layers rather than SwiftUI shapes.
-                        PlayheadRail(
-                            playheadX: playheadX,
-                            isPlayheadVisible: playheadVisible,
+                        LivePlayheadRail(
+                            playback: playback,
+                            parked: playheadTime,
+                            viewport: viewport,
                             snapX: snapIndicator.map { viewport.x(atSeconds: $0.seconds) },
                             height: trackHeight
                         )
-                        .frame(width: viewport.width, height: trackHeight)
                     }
                     .frame(width: viewport.width, height: trackHeight, alignment: .topLeading)
                     .clipped()
@@ -491,7 +502,7 @@ struct TimelineView: View {
 
     /// One area: its layers' names beside their tracks, scrolling up and
     /// down on its own.
-    private func area(_ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, frameTime: CMTime) -> some View {
+    private func area(_ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, frameTime: CMTime, snapTargets: SnapTargets?) -> some View {
         ScrollView(.vertical) {
             HStack(alignment: .top, spacing: 0) {
                 layerHeaders(kind, frameTime: frameTime)
@@ -510,7 +521,7 @@ struct TimelineView: View {
                         onHover: { hover in if hover != newLayerHover { newLayerHover = hover } },
                         onDrop: { payloads, kind in _ = onDropScenes(payloads, nil, playheadTime, kind) }
                     ))
-                layerTracks(kind, viewport: viewport, frameTime: frameTime)
+                layerTracks(kind, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets)
                     .offset(x: -viewport.scrollX)
                     .frame(width: viewport.width, alignment: .topLeading)
                     .clipped()
@@ -735,10 +746,9 @@ struct TimelineView: View {
 
     /// Every layer's clips and keyframe lanes, laid out across the whole
     /// span in unscrolled coordinates; the caller shifts them into view.
-    private func layerTracks(_ kind: LayerKind, viewport: TimelineViewport, frameTime: CMTime) -> some View {
+    private func layerTracks(_ kind: LayerKind, viewport: TimelineViewport, frameTime: CMTime, snapTargets: SnapTargets?) -> some View {
         let pixelsPerSecond = viewport.pixelsPerSecond
         let contentWidth = viewport.contentWidth
-        let snapTargets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: drawnBeats(viewport)) : nil
         let snapTolerance = snapTolerance(viewport)
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(areaLayers(kind).enumerated()), id: \.element.id) { index, layer in
@@ -893,7 +903,7 @@ struct TimelineView: View {
     /// where it is on screen, or comes to the middle if it was out of view.
     private func zoomAroundPlayhead(to pixelsPerSecond: CGFloat) {
         let viewport = currentViewport
-        let seconds = playheadTime.seconds
+        let seconds = livePlayheadTime.seconds
         let x = viewport.x(atSeconds: seconds)
         let anchorX = (0...viewport.width).contains(x) ? x : viewport.width / 2
         apply(viewport.zoomed(to: pixelsPerSecond, keeping: seconds, atX: anchorX))
@@ -942,8 +952,7 @@ struct TimelineView: View {
         onScrub(timeline.snappedToFrame(snapped ?? time))
     }
 
-    private func sectionLane(viewport: TimelineViewport) -> some View {
-        let targets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: drawnBeats(viewport)) : nil
+    private func sectionLane(viewport: TimelineViewport, targets: SnapTargets?) -> some View {
         let tolerance = snapTolerance(viewport)
         return SectionLane(
             sections: timeline.sections,
@@ -1136,6 +1145,43 @@ struct TimelineView: View {
         return true
     }
 
+}
+
+/// The playhead drawn over the tracks. While playing it follows the player
+/// itself, so only this view redraws on each tick rather than the whole
+/// timeline; parked, it shows `parked`.
+private struct LivePlayheadRail: View {
+    let playback: PlaybackModel
+    let parked: CMTime
+    let viewport: TimelineViewport
+    let snapX: CGFloat?
+    let height: CGFloat
+
+    var body: some View {
+        let time = playback.isPlaying ? playback.currentTime : parked
+        let x = viewport.x(atSeconds: time.seconds)
+        PlayheadRail(
+            playheadX: x,
+            isPlayheadVisible: (-1...(viewport.width + 1)).contains(x),
+            snapX: snapX,
+            height: height
+        )
+        .frame(width: viewport.width, height: height)
+    }
+}
+
+/// The playhead's timecode in the timeline's header, following the player
+/// while it plays, like `LivePlayheadRail`.
+private struct PlayheadTimecode: View {
+    let playback: PlaybackModel
+    let parked: CMTime
+    let frameRate: Double
+
+    var body: some View {
+        Text((playback.isPlaying ? playback.currentTime : parked).timecode(frameRate: frameRate))
+            .font(Design.Typeface.numericSmall)
+            .foregroundStyle(Design.textSecondary)
+    }
 }
 
 /// Labels the per-layer columns, beside the ruler — currently just

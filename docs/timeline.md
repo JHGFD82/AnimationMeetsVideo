@@ -149,6 +149,13 @@ top, in the ruler. Only clicking or dragging in the ruler moves it, so
 drags on the layers are free for the tools. It lands on frames and stays
 within the timeline.
 
+While playing, only the playhead line and the timeline's timecode follow
+the player (`LivePlayheadRail`, which reads the player's time itself).
+The rest of the editor reads the parked playhead, which catches up when
+playback stops, so playback doesn't redraw every layer on every tick. The
+values shown in property rows and the inspector hold still while playing
+for the same reason.
+
 ## Sections
 
 A slim lane under the ruler holds the timeline's **sections**: named
