@@ -341,6 +341,19 @@ struct AnimationMeetsVideoApp: App {
                 // carrying along what the previous package holds.
                 let isNewLocation = projectURL.map { !isSamePackage($0, url) } ?? true
                 guard let copying = isNewLocation ? chooseMediaToCopy(for: project, into: url) : [] else { return false }
+                // Results finished while saving somewhere new would go into
+                // the old package after its reference data was copied, so
+                // they are held until the save is done.
+                if isNewLocation {
+                    analysis.packageURL = nil
+                }
+                defer {
+                    if isNewLocation {
+                        let package = projectURL
+                        analysis.packageURL = package
+                        Task { await analysis.writeHeldResults() }
+                    }
+                }
                 let snapshot = project
                 let scoresToSave = analysis.unsavedTracks
                 let referencesToSave = analysis.unsavedReferences

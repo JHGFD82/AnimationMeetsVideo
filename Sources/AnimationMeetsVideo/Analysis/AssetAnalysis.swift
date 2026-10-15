@@ -257,6 +257,25 @@ final class AssetAnalysis {
         for id in ids { unsavedPictures[id] = nil }
     }
 
+    /// Writes results held for a save, those that arrived while there was
+    /// no `packageURL` or whose write failed, into the package now. Each
+    /// that is written no longer waits for a save.
+    func writeHeldResults() async {
+        guard let package = packageURL else { return }
+        for (id, track) in unsavedTracks {
+            if await write(to: package, { try ProjectStore.writeChangeScores(track, for: id, in: $0) }) { unsaved.remove(id) }
+        }
+        for (id, reference) in unsavedReferences {
+            if await write(to: package, { try ProjectStore.writeReference(reference, for: id, in: $0) }) { unsavedReferenceIDs.remove(id) }
+        }
+        for (id, pictures) in unsavedPictures {
+            if await write(to: package, { try ProjectStore.writeThumbnails(pictures, for: id, in: $0) }) { unsavedPictures[id] = nil }
+        }
+        for (id, track) in unsavedBeats {
+            if await write(to: package, { try ProjectStore.writeBeats(track, for: id, in: $0) }) { unsavedBeatIDs.remove(id) }
+        }
+    }
+
     /// Drops the reference data of originals that `saved` marks forgotten,
     /// once that save has deleted it from the package. Until then it is
     /// kept, so undoing Forget Original brings it back.
