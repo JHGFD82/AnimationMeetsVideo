@@ -186,20 +186,24 @@ private final class BuildNode {
     enum Content {
         case media(Placement, base: CGAffineTransform)
         case group(frameSize: CGSize, toOuter: CGAffineTransform, passThrough: Bool, children: [BuildNode])
+        case adjustment(reachedLayerIDs: Set<UUID>, reachesAll: Bool)
     }
 
     let content: Content
     let stack: ClipStack
-    /// Where the clip is drawn in root time, for a group. A picture's is
-    /// where its track puts it.
+    /// Where the clip is drawn in root time, for a group or an adjustment.
+    /// A picture's is where its track puts it.
     let range: CMTimeRange
     let owner: UUID
+    /// The layer of its timeline the clip is on.
+    let layerID: UUID
 
-    init(content: Content, stack: ClipStack, range: CMTimeRange, owner: UUID) {
+    init(content: Content, stack: ClipStack, range: CMTimeRange, owner: UUID, layerID: UUID) {
         self.content = content
         self.stack = stack
         self.range = range
         self.owner = owner
+        self.layerID = layerID
     }
 
     /// Nil for a picture the file has no frames for.
@@ -213,7 +217,12 @@ private final class BuildNode {
                     trackID: placement.trackID, base: base, url: url,
                     sourceStart: placement.drawSourceStart, segmentStart: range.start
                 )),
-                stack: stack, range: range, owner: owner
+                stack: stack, range: range, owner: owner, layerID: layerID
+            )
+        case .adjustment(let reachedLayerIDs, let reachesAll):
+            return DrawClip(
+                content: .adjustment(AdjustmentDraw(reachedLayerIDs: reachedLayerIDs, reachesAll: reachesAll)),
+                stack: stack, range: range, owner: owner, layerID: layerID
             )
         case .group(let frameSize, let toOuter, let passThrough, let children):
             let drawn = children.compactMap { $0.frozen() }
@@ -223,7 +232,7 @@ private final class BuildNode {
                     frameSize: frameSize, toOuter: toOuter, passThrough: passThrough, children: drawn,
                     pushesTransforms: !drawn.contains { $0.everyClip.contains { $0.stack.dependsOnPixelSize } }
                 )),
-                stack: stack, range: range, owner: owner
+                stack: stack, range: range, owner: owner, layerID: layerID
             )
         }
     }
@@ -384,6 +393,17 @@ enum CompositionExporter {
 
         let center = CGPoint(x: timeline.frameSize.width / 2, y: timeline.frameSize.height / 2)
         var result: [BuildNode] = []
+        /// The layers below an adjustment layer that its effect reaches.
+        func reach(of layer: TimelineLayer) -> (layers: Set<UUID>, all: Bool) {
+            guard let index = timeline.layers.firstIndex(where: { $0.id == layer.id }) else { return ([], false) }
+            let below = timeline.layers[(index + 1)...]
+            guard let bottom = layer.reach, let bottomIndex = timeline.layers.firstIndex(where: { $0.id == bottom }) else {
+                return (Set(below.map(\.id)), true)
+            }
+            // Reaching down to a layer that is above it reaches nothing.
+            guard bottomIndex > index else { return ([], false) }
+            return (Set(timeline.layers[(index + 1)...bottomIndex].map(\.id)), false)
+        }
         for layer in timeline.layers {
             // Sound and Music layers act as a fader over their clips' own
             // volumes; video layers have no volume of their own.
@@ -436,7 +456,7 @@ enum CompositionExporter {
                         }
                         own.placements.append(placement)
                         if placement.includesVideo {
-                            ownNodes.append(BuildNode(content: .media(placement, base: base), stack: clipStack, range: .invalid, owner: owner))
+                            ownNodes.append(BuildNode(content: .media(placement, base: base), stack: clipStack, range: .invalid, owner: owner, layerID: layer.id))
                         }
                     }
                     // Where this clip meets its neighbor at a cut, the
@@ -454,7 +474,7 @@ enum CompositionExporter {
                         includesVideo: true, includesAudio: false
                     ) {
                         overlay.placements.append(placement)
-                        overlayNodes.append(BuildNode(content: .media(placement, base: base), stack: clipStack, range: .invalid, owner: owner))
+                        overlayNodes.append(BuildNode(content: .media(placement, base: base), stack: clipStack, range: .invalid, owner: owner, layerID: layer.id))
                     }
                     if durations.leading > .zero, let previous = project.predecessor(joining: clip, among: clips),
                        let (placement, base) = try await mediaPlacement(
@@ -463,7 +483,7 @@ enum CompositionExporter {
                            includesVideo: true, includesAudio: false
                        ) {
                         underlay.placements.append(placement)
-                        underlayNodes.append(BuildNode(content: .media(placement, base: base), stack: stack(of: previous), range: .invalid, owner: owner))
+                        underlayNodes.append(BuildNode(content: .media(placement, base: base), stack: stack(of: previous), range: .invalid, owner: owner, layerID: layer.id))
                     }
                     if durations.trailing > .zero, let next = project.successor(joining: clip, among: clips),
                        let (placement, base) = try await mediaPlacement(
@@ -473,7 +493,7 @@ enum CompositionExporter {
                            includesVideo: true, includesAudio: false
                        ) {
                         underlay.placements.append(placement)
-                        underlayNodes.append(BuildNode(content: .media(placement, base: base), stack: stack(of: next), range: .invalid, owner: owner))
+                        underlayNodes.append(BuildNode(content: .media(placement, base: base), stack: stack(of: next), range: .invalid, owner: owner, layerID: layer.id))
                     }
                 case .timeline(let nestedID):
                     guard let nested = project.timeline(id: nestedID) else { continue }
@@ -500,7 +520,19 @@ enum CompositionExporter {
                         ),
                         stack: clipStack,
                         range: CMTimeRange(start: CMTimeAdd(visible.start, offset), duration: visible.duration),
-                        owner: owner
+                        owner: owner,
+                        layerID: layer.id
+                    ))
+                case .adjustment:
+                    // No picture: its stack is applied to the layers it
+                    // reaches while it plays.
+                    let reached = reach(of: layer)
+                    ownNodes.append(BuildNode(
+                        content: .adjustment(reachedLayerIDs: reached.layers, reachesAll: reached.all),
+                        stack: clipStack,
+                        range: CMTimeRange(start: CMTimeAdd(visible.start, offset), duration: visible.duration),
+                        owner: owner,
+                        layerID: layer.id
                     ))
                 }
             }
@@ -577,10 +609,16 @@ enum CompositionExporter {
         canvasMargin: Double
     ) -> [PlannedRange] {
         var breakpoints: [CMTime] = [.zero]
-        for clip in tree.flatMap(\.leaves) {
-            breakpoints.append(clip.clip.range.start)
-            breakpoints.append(clip.clip.range.end)
+        // Wherever a picture, a nested timeline or an adjustment starts or
+        // ends, something about the drawing changes.
+        func collect(_ clips: [DrawClip]) {
+            for clip in clips {
+                breakpoints.append(clip.range.start)
+                breakpoints.append(clip.range.end)
+                if case .group(let group) = clip.content { collect(group.children) }
+            }
         }
+        collect(tree)
         breakpoints = breakpoints.filter { $0 > .zero && $0 < overallDuration }
         breakpoints.append(.zero)
         breakpoints.sort()
@@ -592,7 +630,7 @@ enum CompositionExporter {
         for index in 0..<(breakpoints.count - 1) {
             let whole = CMTimeRange(start: breakpoints[index], end: breakpoints[index + 1])
             guard whole.duration > .zero else { continue }
-            let clips = tree.compactMap { $0.pruned(to: whole) }
+            let clips = DrawClip.assembled(tree.compactMap { $0.pruned(to: whole) })
             let leaves = clips.flatMap(\.leaves)
             let owners = Set(clips.map(\.owner))
 
@@ -668,6 +706,8 @@ enum CompositionExporter {
                 text += "L \(media.url.path) \(stamp?.byteCount ?? -1) \(number(stamp?.modified ?? 0)) \(number(fileStart.seconds)) \(matrix(media.base))\n"
             case .group(let group):
                 text += "G \(number(group.frameSize.width))x\(number(group.frameSize.height)) \(matrix(group.toOuter)) \(group.passThrough ? "pass" : "closed")\n"
+            case .adjustment(let adjustment):
+                text += "A \(adjustment.reachesAll ? "all" : "some")\n"
             }
             for index in 0..<frames {
                 let time = CMTimeAdd(range.start, CMTimeMultiply(frame, multiplier: Int32(index)))
@@ -695,10 +735,17 @@ enum CompositionExporter {
                 }
                 text += "\n"
             }
-            if case .group(let group) = clip.content {
+            switch clip.content {
+            case .group(let group):
                 text += "(\n"
                 group.children.forEach(describe)
                 text += ")\n"
+            case .adjustment(let adjustment):
+                text += "(\n"
+                adjustment.reached.forEach(describe)
+                text += ")\n"
+            case .media:
+                break
             }
         }
         clips.forEach(describe)

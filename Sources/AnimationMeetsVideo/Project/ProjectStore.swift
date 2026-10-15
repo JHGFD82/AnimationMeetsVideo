@@ -519,6 +519,7 @@ enum ProjectStore {
             switch source {
             case .media(let id): mediaIDs.contains(id) ? ProjectFile.SourceEntry(kind: .media, id: id) : nil
             case .timeline(let id): timelineIDs.contains(id) ? ProjectFile.SourceEntry(kind: .timeline, id: id) : nil
+            case .adjustment: ProjectFile.SourceEntry(kind: .adjustment, id: nil)
             }
         }
 
@@ -555,7 +556,9 @@ enum ProjectStore {
                             )
                         },
                         volume: layer.kind.isAudio && layer.volume != AnimatedValue(0.0)
-                            ? ProjectFile.PropertyEntry(layer.volume) { $0 } : nil
+                            ? ProjectFile.PropertyEntry(layer.volume) { $0 } : nil,
+                        adjustment: layer.isAdjustment ? true : nil,
+                        reach: layer.isAdjustment ? layer.reach : nil
                     )
                 },
                 sections: timeline.sections.isEmpty ? nil : timeline.sections.map { section in
@@ -653,13 +656,15 @@ enum ProjectStore {
 
         func resolveSource(_ entry: ProjectFile.SourceEntry) -> ClipSource? {
             switch entry.kind {
-            case .media: importedClips[entry.id] != nil ? .media(entry.id) : nil
-            case .timeline: timelineIDs.contains(entry.id) ? .timeline(entry.id) : nil
+            case .media: entry.id.flatMap { importedClips[$0] != nil ? ClipSource.media($0) : nil }
+            case .timeline: entry.id.flatMap { timelineIDs.contains($0) ? ClipSource.timeline($0) : nil }
+            case .adjustment: .adjustment
             }
         }
 
         let timelines: [Timeline] = file.timelines.map { entry in
-            Timeline(
+            let layerIDs = Set(entry.layers.map(\.id))
+            return Timeline(
                 id: entry.id,
                 name: entry.name,
                 layers: entry.layers.map { layerEntry in
@@ -687,7 +692,10 @@ enum ProjectStore {
                                 passThrough: clipEntry.passThrough ?? false
                             )
                         },
-                        volume: layerEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0)
+                        volume: layerEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0),
+                        isAdjustment: layerEntry.adjustment ?? false,
+                        // A reach that names no layer of this timeline reaches every layer below.
+                        reach: (layerEntry.adjustment ?? false) ? layerEntry.reach.flatMap { layerIDs.contains($0) ? $0 : nil } : nil
                     )
                 },
                 frameSize: CGSize(width: entry.width, height: entry.height),

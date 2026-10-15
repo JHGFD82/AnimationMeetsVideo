@@ -727,7 +727,28 @@ In order, each step usable on its own:
    frame, which is the same picture. `EffectKind.dependsOnPixelSize` (false
    for every effect so far) stops the push at a nested timeline holding an
    effect whose result changes with pixel size.
-8. **Adjustment layers** with reach.
+8. **Adjustment layers** with reach (done). An adjustment layer is a video
+   layer flagged `isAdjustment`, holding adjustment clips (`ClipSource.adjustment`:
+   no media, any length, and keyframes count from the clip's own start). The
+   timeline header's button adds one at the top of the stack, spanning the
+   timeline, and its header menu sets Reach to every layer below or down to
+   any layer under it. Reach is saved as the layer's ID (`reach`, written only
+   when it isn't every layer below), goes back to every layer below when that
+   layer is deleted, and reaches nothing, with a note in the panel, when the
+   layer is moved above the adjustment. A bracket along the adjustment
+   layer's left edge spans the layers it reaches. Drawing follows the
+   Below / With / Adjusted / Coverage / Result steps above: the tree gives
+   each adjustment the clips of the layers it reaches (`DrawClip.assembled`,
+   lowest adjustment first, so one reaching down to another gets it as it is
+   adjusted), the layers are drawn once over Below and once alone for their
+   alpha, and the result is a Core Image alpha-mask blend of Adjusted over
+   Below. Reaching every layer below uses a full-frame coverage. Inside a
+   pass-through nested clip an adjustment adjusts only that timeline's
+   layers, which then go over what is there. An adjustment's Opacity,
+   dissolve, slide and wipe act on the coverage and the adjusted picture; the
+   film dissolve isn't applied to it. A stretch where one plays is rendered
+   in the background, and the timeline is cut where it starts and ends.
+   Adjustment layers take only adjustment clips and other layers none.
 9. **Time and Shutter**: constant speed with its three Sound choices,
    Blend, Echo, Motion Blur and Trails.
 10. **Inputs**, with the first effect that takes one (a matte).

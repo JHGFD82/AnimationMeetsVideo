@@ -124,7 +124,7 @@ extension EditingProject {
         guard let (timeline, moving, sameLayer) = placementContext(id, in: timelineID, layer: layerID) else { return nil }
         let others: [TimelineClip]
         if let targetLayerID, targetLayerID != layerID {
-            guard let target = timeline.layer(id: targetLayerID), layerKind(target.kind, accepts: moving) else { return nil }
+            guard let target = timeline.layer(id: targetLayerID), layer(target, accepts: moving) else { return nil }
             others = target.clips
         } else {
             others = sameLayer
@@ -283,6 +283,8 @@ extension EditingProject {
         switch resolvedInfo(for: source) {
         case .media(let clip): clip.duration
         case .timeline(let timeline): timeline.duration
+        // No footage to run out of: as long as anyone would want.
+        case .adjustment: CMTime(value: 36_000, timescale: 1)
         case nil: nil
         }
     }

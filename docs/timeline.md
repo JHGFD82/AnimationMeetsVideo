@@ -409,6 +409,17 @@ the layer is at least 30 points tall, its points and handles appear:
 
 A drag is saved when it ends, as one undo step.
 
+## Adjustment layers
+
+The adjustment button in the timeline's header adds an **adjustment layer**
+at the top of the stack. It lives in the Video area, holds adjustment clips
+and nothing else, and is named "Adjustment 1" and so on. An adjustment clip
+has no picture: its effect stack (edited in the effects panel, like any
+clip's) is applied to the layers below it while it plays. Its layer's header
+menu has **Reach**: all layers below, or down to a chosen one. A bracket
+along the layer's left edge shows the layers it reaches, faded when it reaches
+none. See [effects.md](effects.md#adjustment-layers).
+
 ## Clip badges and menus
 
 A clip with effects shows a small badge with how many, and a nested clip

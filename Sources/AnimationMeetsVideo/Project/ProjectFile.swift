@@ -45,9 +45,10 @@ struct ProjectFile: Codable {
     }
 
     struct SourceEntry: Codable {
-        enum Kind: String, Codable { case media, timeline }
+        enum Kind: String, Codable { case media, timeline, adjustment }
         var kind: Kind
-        var id: UUID
+        /// The asset or timeline; absent for an adjustment clip.
+        var id: UUID?
     }
 
     struct ClipEntry: Codable {
@@ -313,6 +314,11 @@ struct ProjectFile: Codable {
         /// Decibels, on Sound and Music layers; absent while at 0 and not
         /// animated.
         var volume: PropertyEntry<Double>?
+        /// True for an adjustment layer; absent otherwise.
+        var adjustment: Bool?
+        /// The lowest layer an adjustment layer reaches; absent for every
+        /// layer below it.
+        var reach: UUID?
     }
 
     struct TimelineEntry: Codable {
@@ -465,9 +471,11 @@ extension ProjectFile {
         ]))
         let clip = JSONShape.object(object([
             .required("id", .uuid),
-            .required("source", .object(object([
-                .required("kind", .choice(["media", "timeline"], noun: "source kind")), .required("id", .uuid),
-            ]))),
+            .required("source", .tagged(key: "kind", noun: "source kind", [
+                "media": object([.required("kind", .string), .required("id", .uuid)]),
+                "timeline": object([.required("kind", .string), .required("id", .uuid)]),
+                "adjustment": object([.required("kind", .string)]),
+            ])),
             .required("startOffset", .time), .required("trimStart", .time), .required("trimEnd", .time),
             .required("autoMatteEnabled", .bool),
             .optional("streams", .choice(["video", "audio"], noun: "stream")),
@@ -481,6 +489,7 @@ extension ProjectFile {
             .required("id", .uuid), .optional("customName", .string),
             .required("kind", .choice(LayerKind.allCases.map(\.rawValue), noun: "layer kind")),
             .required("clips", .array(clip)), .optional("volume", property(.number)),
+            .optional("adjustment", .bool), .optional("reach", .uuid),
         ]))
         let timeline = JSONShape.object(object([
             .required("id", .uuid), .required("name", .string),

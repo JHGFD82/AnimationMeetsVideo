@@ -9,7 +9,7 @@ extension EditingProject {
     func playsVideo(_ clip: TimelineClip) -> Bool {
         switch resolvedInfo(for: clip.source) {
         case .media(let media): media.kind == .video && clip.streams != .audio
-        case .timeline: true
+        case .timeline, .adjustment: true
         case nil: false
         }
     }
@@ -20,7 +20,7 @@ extension EditingProject {
         switch resolvedInfo(for: clip.source) {
         case .media(let media): media.hasAudio && clip.streams != .video
         case .timeline: true
-        case nil: false
+        case .adjustment, nil: false
         }
     }
 

@@ -313,6 +313,12 @@ struct TimelineView: View {
                 }
                 .toggleStyle(.button)
                 .help(showsTransitions ? "Hide transitions" : "Show transitions")
+                Button {
+                    addAdjustmentLayer()
+                } label: {
+                    Image(systemName: "slider.horizontal.below.rectangle")
+                }
+                .help("New adjustment layer: effects applied to the layers below it")
                 Toggle(isOn: $showsEffects) {
                     Image(systemName: "wand.and.stars")
                 }
@@ -659,7 +665,8 @@ struct TimelineView: View {
                             selectedSectionID = nil
                             onSelectLayer()
                         },
-                        onDelete: { deleteLayer(layer.id) }
+                        onDelete: { deleteLayer(layer.id) },
+                        reach: reachMenu(for: layer)
                     )
                     if shownJoint(in: layer) != nil {
                         HStack {
@@ -711,6 +718,45 @@ struct TimelineView: View {
                 .zIndex(isDragged ? 1 : 0)
             }
             Color.clear.frame(height: newLayerRowHeight)
+        }
+        .overlay(alignment: .topLeading) { reachBrackets(of: layers) }
+    }
+
+    /// The reach choices of an adjustment layer: every layer below it, or
+    /// down to any one of them.
+    private func reachMenu(for layer: TimelineLayer) -> ReachMenu? {
+        guard layer.isAdjustment, let index = timeline.layers.firstIndex(where: { $0.id == layer.id }) else { return nil }
+        return ReachMenu(
+            current: layer.reach,
+            options: timeline.layers[(index + 1)...].map { ($0.id, project.displayName(of: $0, in: timeline)) },
+            summary: project.reachDescription(of: layer, in: timeline),
+            onChoose: { bottom in onEditProject { $0.setReach(of: layer.id, in: timelineID, toLayer: bottom) } }
+        )
+    }
+
+    /// A bracket at the left edge of each adjustment layer in the area,
+    /// spanning the layers it reaches (in the same area), so what an
+    /// adjustment affects can be read off the stack.
+    private func reachBrackets(of layers: [TimelineLayer]) -> some View {
+        let tops = tops(of: layers)
+        return ZStack(alignment: .topLeading) {
+            ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
+                if layer.isAdjustment {
+                    let reached = project.reachedLayers(of: layer, in: timeline)
+                    let last = reached.last.flatMap { target in layers.firstIndex { $0.id == target.id } }
+                    let bottom = (last ?? index)
+                    let y0 = tops[index]
+                    let y1 = tops[bottom] + blockHeight(of: layers[bottom]) - separatorHeight
+                    RoundedRectangle(cornerRadius: 1, style: .continuous)
+                        .fill(Design.ClipTone.adjustment.color.opacity(reached.isEmpty ? 0.35 : 0.9))
+                        .frame(width: 3, height: max(4, y1 - y0))
+                        .offset(x: 1, y: y0)
+                        .help(reached.isEmpty && layer.reach != nil
+                            ? "Reaches nothing: the layer it reached down to is above it"
+                            : "Reaches: \(project.reachDescription(of: layer, in: timeline))")
+                        .allowsHitTesting(false)
+                }
+            }
         }
     }
 
@@ -967,6 +1013,16 @@ struct TimelineView: View {
     /// The disclosure arrow shows the layer's volume row, or hides it.
     private func toggleExpanded(_ layer: TimelineLayer) {
         if showsVolume(of: layer) { volumeRevealed.remove(layer.id) } else { volumeRevealed.insert(layer.id) }
+    }
+
+    /// Puts an adjustment layer at the top of the stack and selects its clip.
+    private func addAdjustmentLayer() {
+        var created: (layerID: UUID, clipID: UUID)?
+        onEditProject { created = $0.addAdjustmentLayer(to: timelineID, from: .zero) }
+        // Selection goes by ID; the view hasn't seen the new clip yet.
+        if let created {
+            onSelectClip(created.layerID, TimelineClip(id: created.clipID, source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: .zero))
+        }
     }
 
     private func deleteLayer(_ id: UUID) {

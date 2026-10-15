@@ -50,12 +50,25 @@ struct CompositorHarness {
     /// A picture clip showing track `track` as it is, with this stack.
     static func clip(
         track: CMPersistentTrackID, effects: [Effect] = [], frame: CGSize = CGSize(width: 16, height: 8),
-        base: CGAffineTransform = .identity
+        base: CGAffineTransform = .identity, layer: UUID = UUID()
     ) -> DrawClip {
         DrawClip(
             content: .media(MediaDraw(
                 trackID: track, base: base, url: URL(fileURLWithPath: "/dev/null"), sourceStart: .zero, segmentStart: .zero
             )),
+            stack: ClipStack(effects: effects, center: CGPoint(x: frame.width / 2, y: frame.height / 2)),
+            range: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 1)), owner: UUID(), layerID: layer
+        )
+    }
+
+    /// An adjustment clip applying `effects` to the layers `reaching` (all
+    /// the layers below it when nil). Clips are given to `draw` through
+    /// `DrawClip.assembled`, as the composition does.
+    static func adjustment(
+        effects: [Effect], reaching layers: Set<UUID>? = nil, frame: CGSize = CGSize(width: 16, height: 8)
+    ) -> DrawClip {
+        DrawClip(
+            content: .adjustment(AdjustmentDraw(reachedLayerIDs: layers ?? [], reachesAll: layers == nil)),
             stack: ClipStack(effects: effects, center: CGPoint(x: frame.width / 2, y: frame.height / 2)),
             range: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 1)), owner: UUID()
         )
@@ -83,7 +96,7 @@ struct CompositorHarness {
     func draw(_ clips: [DrawClip], at time: CMTime = .zero) throws -> [Color] {
         let instruction = LayeredInstruction(
             timeRange: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 1)),
-            clips: clips, renderSize: size, colorSpace: .rec709
+            clips: DrawClip.assembled(clips), renderSize: size, colorSpace: .rec709
         )
         let pictures = pictures
         let image = LayeredCompositor.compose(instruction, at: time, outputSize: size) { pictures[$0] }

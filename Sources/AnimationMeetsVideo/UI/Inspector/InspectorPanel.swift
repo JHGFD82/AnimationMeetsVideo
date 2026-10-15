@@ -17,6 +17,7 @@ struct InspectorPanel: View {
         switch info {
         case .media(let clip): clip.duration.seconds
         case .timeline(let timeline): timeline.duration.seconds
+        case .adjustment: 36_000
         case nil: nil
         }
     }
@@ -71,6 +72,8 @@ struct InspectorPanel: View {
                     InspectorRow("Frame size", value: "\(Int(timeline.frameSize.width))×\(Int(timeline.frameSize.height))", numeric: true)
                     InspectorRow("Frame rate", value: String(format: "%.2f fps", timeline.frameRate), numeric: true)
                     InspectorRow("Colour", value: timeline.colorSpace.rawValue)
+                case .adjustment:
+                    InspectorRow("Kind", value: "Adjustment")
                 case nil:
                     EmptyView()
                 }

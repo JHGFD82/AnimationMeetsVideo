@@ -86,6 +86,9 @@ enum EffectThumbnails {
             generator.requestedTimeToleranceBefore = .zero
             generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 10)
             return try? await generator.image(at: media.fileTime(forSourceTime: sourceTime)).image
+        case .adjustment:
+            // No picture of its own.
+            return nil
         case .timeline(let id):
             guard let composed = try? await CompositionExporter.buildComposedTimeline(for: project, timelineID: id, forPreview: true) else {
                 return nil

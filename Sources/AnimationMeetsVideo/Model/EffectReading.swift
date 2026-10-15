@@ -55,6 +55,9 @@ extension EditingProject {
         let effect = clip.effects[index]
         guard effect.enabled else { return nil }
 
+        if clip.source == .adjustment, reachesNothing(layer, in: timeline) {
+            return EffectNote(text: "The layer this adjustment reaches down to is above it, so it reaches nothing.", dims: true)
+        }
         if passesThrough(clip), effect.kind != .transform {
             return EffectNote(text: "Pass Through can't apply this: it needs one combined picture.", dims: true)
         }
@@ -62,7 +65,9 @@ extension EditingProject {
             if !clip.effects.againstIsReachable(at: index) {
                 return EffectNote(text: "The effect it blends against is gone or below this step, so it does nothing until pointed elsewhere.", dims: true)
             }
-            if effect.against == nil, isNested(timeline.id), !hasPicturesBelow(layer.id, in: timeline) {
+            // An adjustment blends with the picture it receives, which is
+            // always there.
+            if effect.against == nil, clip.source != .adjustment, isNested(timeline.id), !hasPicturesBelow(layer.id, in: timeline) {
                 return EffectNote(text: "Nothing is under this clip in a nested timeline, so there is nothing to blend with.", dims: true)
             }
         }

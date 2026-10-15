@@ -153,6 +153,10 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
 struct OuterPlacement {
     var matrix = CGAffineTransform.identity
     var opacity = 1.0
+    /// Whether the clips are those of a pass-through nested timeline,
+    /// drawn straight into the timeline above. An adjustment layer in one
+    /// reaches no further than that nested timeline's own layers.
+    var passesThrough = false
 
     static let identity = OuterPlacement()
 }
@@ -214,6 +218,8 @@ struct Drawing {
         // The picture, put into the frame.
         var picture: CIImage
         switch clip.content {
+        case .adjustment(let adjustment):
+            return drawAdjustment(clip, adjustment, resolved: resolved, frame: frameSize, over: output, outer: outer)
         case .media(let media):
             guard let buffer = source(media.trackID) else { return output }
             let image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
@@ -231,7 +237,8 @@ struct Drawing {
                         .concatenating(placement.matrix)
                         .concatenating(transition?.transform ?? .identity)
                         .concatenating(outer.matrix),
-                    opacity: placement.opacity * (transition?.opacity ?? 1) * outer.opacity
+                    opacity: placement.opacity * (transition?.opacity ?? 1) * outer.opacity,
+                    passesThrough: true
                 )
                 return draw(group.children, frame: frameSize, over: output, outer: combined)
             }
@@ -267,45 +274,14 @@ struct Drawing {
 
         // The stack. Opacity waits until something needs the picture's own
         // alpha, so consecutive moves stay one transform.
-        var kept: [UUID: CIImage] = [:]
+        picture = runStack(
+            steps, on: picture, opacity: &opacity, backdrop: output, clip: clip, frame: frameSize,
+            inOutput: inOutput, placed: placed
+        )
         func settleOpacity() {
             guard opacity != 1 else { return }
             picture = picture.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
             opacity = 1
-        }
-        for step in steps {
-            switch step {
-            case .place(let matrix, let factor):
-                picture = picture.transformed(by: inOutput(placed(matrix)))
-                opacity *= factor
-            case .mark(let id):
-                settleOpacity()
-                kept[id] = picture
-            case .color(let ops):
-                // Grading doesn't depend on where a pixel is, so it doesn't
-                // wait for the opacity either.
-                let canvas = canvasRect(of: frameSize)
-                if let graded = ColorProcessor.grade(picture, ops, in: clip.stack.colorSpace, over: picture.extent.intersection(canvas)) {
-                    picture = graded
-                }
-            case .blend(let mode, let amount, let against):
-                settleOpacity()
-                let backdrop: CIImage
-                if let against {
-                    guard let earlier = kept[against] else { continue }
-                    backdrop = earlier
-                } else {
-                    backdrop = output
-                }
-                let canvas = canvasRect(of: frameSize)
-                var region = picture.extent.intersection(canvas)
-                if against != nil { region = region.union(backdrop.extent.intersection(canvas)) }
-                if let blended = BlendProcessor.blend(
-                    picture, with: backdrop, mode: mode, amount: amount, keepsBackdrop: against != nil, over: region
-                ) {
-                    picture = blended
-                }
-            }
         }
 
         // Then the transitions, then, for a placement that couldn't be
@@ -339,6 +315,137 @@ struct Drawing {
             ])
         }
         return picture.composited(over: output)
+    }
+
+    /// An adjustment clip: its stack is run on the layers it reaches drawn
+    /// together over what is below them (`output`), and the result is mixed
+    /// into what is below by how much the reached layers cover:
+    ///
+    /// 1. Below: `output`, the layers under the reach.
+    /// 2. With: the reached layers drawn over it, as usual.
+    /// 3. Adjusted: the stack run on With. A Blending step's backdrop is With.
+    /// 4. Coverage: the alpha of the reached layers alone over transparency;
+    ///    the whole frame when it reaches every layer below.
+    /// 5. Result: Below mixed toward Adjusted by Coverage.
+    ///
+    /// Inside a pass-through nested timeline it reaches no further than that
+    /// timeline's own layers, so only they are adjusted, and drawn over
+    /// `output` as they are.
+    private func drawAdjustment(
+        _ clip: DrawClip,
+        _ adjustment: AdjustmentDraw,
+        resolved: ResolvedClip,
+        frame frameSize: CGSize,
+        over output: CIImage,
+        outer: OuterPlacement
+    ) -> CIImage {
+        let passes = outer.passesThrough
+        let transition = resolved.transition
+        guard !resolved.steps.isEmpty || transition != nil else {
+            return draw(adjustment.reached, frame: frameSize, over: output, outer: outer)
+        }
+        let toOutput = Self.flip(height: frameSize.height).concatenating(CGAffineTransform(scaleX: scale.width, y: scale.height))
+        func inOutput(_ matrix: CGAffineTransform) -> CGAffineTransform {
+            toOutput.inverted().concatenating(matrix).concatenating(toOutput)
+        }
+        let start = outer.matrix.isInvertibleMatrix ? outer.matrix : .identity
+        let startInverse = start.inverted()
+        func placed(_ matrix: CGAffineTransform) -> CGAffineTransform {
+            start == .identity ? matrix : startInverse.concatenating(matrix).concatenating(start)
+        }
+
+        let with = draw(adjustment.reached, frame: frameSize, over: passes ? .empty() : output, outer: outer)
+        var opacity = 1.0
+        var adjusted = runStack(
+            resolved.steps, on: with, opacity: &opacity, backdrop: with, clip: clip, frame: frameSize,
+            inOutput: inOutput, placed: placed
+        )
+        if let transition {
+            adjusted = adjusted.transformed(by: inOutput(placed(transition.transform)))
+            opacity *= transition.opacity
+        }
+        opacity *= outer.opacity
+
+        let bounds = CGRect(x: 0, y: 0, width: frameSize.width * scale.width, height: frameSize.height * scale.height)
+        if passes {
+            if opacity != 1 {
+                adjusted = adjusted.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
+            }
+            return adjusted.composited(over: output)
+        }
+        var coverage = adjustment.reachesAll
+            ? CIImage(color: .white).cropped(to: bounds)
+            : draw(adjustment.reached, frame: frameSize, over: .empty(), outer: outer)
+        if var visible = transition?.visibleRect {
+            visible = visible.applying(outer.matrix)
+            coverage = coverage.cropped(to: CGRect(
+                x: visible.minX * scale.width, y: (frameSize.height - visible.maxY) * scale.height,
+                width: visible.width * scale.width, height: visible.height * scale.height
+            ))
+        }
+        if opacity != 1 {
+            coverage = coverage.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
+        }
+        return adjusted.applyingFilter("CIBlendWithAlphaMask", parameters: [
+            kCIInputBackgroundImageKey: output,
+            kCIInputMaskImageKey: coverage,
+        ]).cropped(to: bounds.union(output.extent.isInfinite ? bounds : output.extent))
+    }
+
+    /// The steps of a clip's stack run on `picture`, in output pixels.
+    /// Opacity the steps ask for is left in `opacity` for the caller.
+    private func runStack(
+        _ steps: [ResolvedStep],
+        on start: CIImage,
+        opacity: inout Double,
+        backdrop: CIImage,
+        clip: DrawClip,
+        frame frameSize: CGSize,
+        inOutput: (CGAffineTransform) -> CGAffineTransform,
+        placed: (CGAffineTransform) -> CGAffineTransform
+    ) -> CIImage {
+        var picture = start
+        var kept: [UUID: CIImage] = [:]
+        func settleOpacity() {
+            guard opacity != 1 else { return }
+            picture = picture.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
+            opacity = 1
+        }
+        for step in steps {
+            switch step {
+            case .place(let matrix, let factor):
+                picture = picture.transformed(by: inOutput(placed(matrix)))
+                opacity *= factor
+            case .mark(let id):
+                settleOpacity()
+                kept[id] = picture
+            case .color(let ops):
+                // Grading doesn't depend on where a pixel is, so it doesn't
+                // wait for the opacity either.
+                let canvas = canvasRect(of: frameSize)
+                if let graded = ColorProcessor.grade(picture, ops, in: clip.stack.colorSpace, over: picture.extent.intersection(canvas)) {
+                    picture = graded
+                }
+            case .blend(let mode, let amount, let against):
+                settleOpacity()
+                let other: CIImage
+                if let against {
+                    guard let earlier = kept[against] else { continue }
+                    other = earlier
+                } else {
+                    other = backdrop
+                }
+                let canvas = canvasRect(of: frameSize)
+                var region = picture.extent.intersection(canvas)
+                if against != nil { region = region.union(other.extent.intersection(canvas)) }
+                if let blended = BlendProcessor.blend(
+                    picture, with: other, mode: mode, amount: amount, keepsBackdrop: against != nil, over: region
+                ) {
+                    picture = blended
+                }
+            }
+        }
+        return picture
     }
 
     /// The frame and the margin round it that pictures are kept in, in
