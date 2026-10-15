@@ -1,9 +1,9 @@
 import CoreMedia
 import SwiftUI
 
-/// The effects of the selected clip, to the right of the timeline where the
-/// transitions panel goes: the library of effects to add, and below it the
-/// clip's stack, framed by the rows that are pinned in place. Each control
+/// The effects of the selected clip, to the right of the viewer where the
+/// inspector goes, and replacing it while open: the library of effects to
+/// add, and below it the clip's stack, framed by the rows that are pinned in place. Each control
 /// has a lane of keyframes beside it, on a ruler and playhead that span the
 /// clip.
 struct EffectsPanel: View {

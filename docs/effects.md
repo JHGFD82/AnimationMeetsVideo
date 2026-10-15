@@ -449,9 +449,10 @@ this matches other apps' adjustment layers.
 
 ## The effects panel
 
-The effects panel opens at the right end of the timeline, where the
-transitions panel goes, and replaces it while open. The two have buttons
-side by side in the timeline's header.
+The effects panel opens to the right of the viewer, where the inspector
+is, and replaces the inspector while open. It is resizable by its left
+edge. Its button is in the timeline's header, beside the transitions
+panel's, which opens at the right end of the timeline.
 
 Top: the **library**, grouped by category, Foundations first. Drag an
 effect onto a clip, or double-click it to add it to the end of the selected
@@ -475,7 +476,6 @@ row selects it, as clicking it on the timeline does.
   reorder within their effect.
 - The Delete key deletes the selected effect or control.
 - The panel opens with **Shift-E** or its button in the timeline's header.
-  The transitions panel keeps its button; opening either closes the other.
 
 ### Changing values by dragging
 

@@ -19,6 +19,11 @@ struct TimelineEditorSurface<Library: View>: View {
     @State private var playheadTime: CMTime = .zero
     @State private var trimPreview = TrimPreviewModel()
     @State private var buildTask: Task<Void, Never>?
+    /// Where the player item rebuild is. Edits that arrive while one is
+    /// building wait their turn (see `rebuildPlayerItem`).
+    @State private var buildPhase: BuildPhase = .idle
+    @State private var rebuildQueued = false
+    @State private var buildID = UUID()
     @State private var buildError: String?
     /// A render finished while playing; its rebuild waits for a pause,
     /// since swapping the item mid-play freezes the picture.
@@ -34,6 +39,12 @@ struct TimelineEditorSurface<Library: View>: View {
     /// The graph editors this surface has open, one HUD per parameter.
     @State private var graphs = KeyframeGraphHUDs()
 
+    private enum BuildPhase { case idle, building, settling }
+
+    /// How long edits must pause before the player item is swapped. Until
+    /// then the viewer shows frames drawn from each edit (`showLive`).
+    private let settleDelay = Duration.milliseconds(300)
+
     private let minTimelineHeight: CGFloat = 140
     private let minTopAreaHeight: CGFloat = 220
 
@@ -41,9 +52,13 @@ struct TimelineEditorSurface<Library: View>: View {
         project.timeline(id: timelineID)
     }
 
-    /// The effects panel's width, kept so the timeline keeps room.
+    /// The widest the effects panel gets, so the viewer keeps room.
+    private func effectsMaxWidth(in available: CGFloat) -> CGFloat {
+        max(EffectsPanelResizeHandle.minimumWidth, available * 0.55)
+    }
+
     private func effectsWidth(in available: CGFloat) -> CGFloat {
-        min(max(CGFloat(effectsPanelWidth), EffectsPanelResizeHandle.minimumWidth), max(EffectsPanelResizeHandle.minimumWidth, available * 0.8))
+        min(max(CGFloat(effectsPanelWidth), EffectsPanelResizeHandle.minimumWidth), effectsMaxWidth(in: available))
     }
 
     /// The clip and effect Show Up to Here is showing, while the effect
@@ -111,19 +126,48 @@ struct TimelineEditorSurface<Library: View>: View {
                         banner: partialBanner,
                         onClearBanner: { effectsState.showUpTo = nil }
                     )
-                    InspectorPanel(
-                        project: $project,
-                        timelineID: timelineID,
-                        selection: selection,
-                        info: selectedInfo,
-                        timelineClip: selectedTimelineClip,
-                        playheadTime: playheadTime,
-                        onSeek: { time in scrub(to: time) },
-                        onDeleteSelection: { selection = nil }
-                    )
-                    .frame(width: 280)
-                    .grooved(.leading)
+                    // The effects panel takes the inspector's place while it
+                    // is open.
+                    if showsEffects {
+                        EffectsPanel(
+                            project: $project,
+                            timelineID: timelineID,
+                            selection: selection,
+                            playheadTime: playheadTime,
+                            state: effectsState,
+                            onSeek: { time in scrub(to: time) },
+                            onSelectTransition: { edge in
+                                if let selection {
+                                    self.selection = TimelineSelection(
+                                        timelineID: selection.timelineID, layerID: selection.layerID,
+                                        timelineClipID: selection.timelineClipID, transitionEdge: edge
+                                    )
+                                }
+                            },
+                            onClose: { showsEffects = false }
+                        )
+                        .frame(width: effectsWidth(in: geometry.size.width))
+                        .overlay(alignment: .leading) {
+                            EffectsPanelResizeHandle(width: $effectsPanelWidth, maxWidth: effectsMaxWidth(in: geometry.size.width))
+                        }
+                        .grooved(.leading)
+                        .transition(.move(edge: .trailing))
+                    } else {
+                        InspectorPanel(
+                            project: $project,
+                            timelineID: timelineID,
+                            selection: selection,
+                            info: selectedInfo,
+                            timelineClip: selectedTimelineClip,
+                            playheadTime: playheadTime,
+                            onSeek: { time in scrub(to: time) },
+                            onDeleteSelection: { selection = nil }
+                        )
+                        .frame(width: 280)
+                        .grooved(.leading)
+                    }
                 }
+                .editorAnimation(Design.Motion.panel, value: showsEffects)
                 .frame(maxHeight: .infinity)
 
                 TimelineResizeHandle(
@@ -146,41 +190,13 @@ struct TimelineEditorSurface<Library: View>: View {
                             .grooved(.leading)
                             .transition(.move(edge: .trailing))
                     }
-                    if showsEffects {
-                        EffectsPanel(
-                            project: $project,
-                            timelineID: timelineID,
-                            selection: selection,
-                            playheadTime: playheadTime,
-                            state: effectsState,
-                            onSeek: { time in scrub(to: time) },
-                            onSelectTransition: { edge in
-                                if let selection {
-                                    self.selection = TimelineSelection(
-                                        timelineID: selection.timelineID, layerID: selection.layerID,
-                                        timelineClipID: selection.timelineClipID, transitionEdge: edge
-                                    )
-                                }
-                            },
-                            onClose: { showsEffects = false }
-                        )
-                        .frame(width: effectsWidth(in: geometry.size.width))
-                        .overlay(alignment: .leading) { EffectsPanelResizeHandle(width: $effectsPanelWidth, maxWidth: geometry.size.width * 0.8) }
-                        .grooved(.leading)
-                        .transition(.move(edge: .trailing))
-                    }
                 }
                 .frame(height: resolvedTimelineHeight)
                 .editorAnimation(Design.Motion.panel, value: showsTransitions)
-                .editorAnimation(Design.Motion.panel, value: showsEffects)
                 .editorAnimation(Design.Motion.panel, value: showsMeter)
             }
         }
         .environment(graphs)
-        // The effects and transitions panels share a place: opening one
-        // closes the other.
-        .onChange(of: showsEffects) { _, on in if on { showsTransitions = false } }
-        .onChange(of: showsTransitions) { _, on in if on { showsEffects = false } }
         .onReceive(NotificationCenter.default.publisher(for: .revealEffect)) { note in
             if let id = note.object as? UUID { effectsState.select(effect: id) }
         }
@@ -397,13 +413,45 @@ struct TimelineEditorSurface<Library: View>: View {
     /// Rebuilds the player item from the current project. Keeps the
     /// position and play state the player has when the build *finishes*,
     /// not when it started, so edits made during playback don't jump back.
+    ///
+    /// A rebuild is never cancelled by the next edit, or a fast drag would
+    /// cancel every build before it finished and nothing would draw until
+    /// the drag ended. An edit that arrives during a build is queued and
+    /// built when the current one is done. While paused, each finished
+    /// build also draws the frame under the playhead over the viewer
+    /// (`showLive`), so the picture follows the edit; the player item
+    /// itself is swapped only once edits have paused for `settleDelay`,
+    /// and the live frame is held over the swap so nothing blinks.
     private func rebuildPlayerItem(resetPosition: Bool = false) {
-        buildTask?.cancel()
+        if resetPosition {
+            buildTask?.cancel()
+            buildTask = nil
+            buildID = UUID()
+            buildPhase = .idle
+            rebuildQueued = false
+            playback.clearLive()
+        }
         guard let timeline, timeline.layers.contains(where: { !$0.clips.isEmpty }) else {
+            buildTask?.cancel()
+            buildTask = nil
+            buildID = UUID()
+            buildPhase = .idle
+            rebuildQueued = false
+            playback.clearLive()
             playback.player.replaceCurrentItem(with: nil)
             buildError = nil
             renderer?.update(project: project, timelineID: timelineID, segments: [])
             return
+        }
+        switch buildPhase {
+        case .building:
+            rebuildQueued = true
+            return
+        case .settling:
+            // Waiting out the delay with an item built: this edit replaces it.
+            buildTask?.cancel()
+        case .idle:
+            break
         }
         let project = self.viewedProject
         let isPartial = partialView != nil
@@ -413,15 +461,43 @@ struct TimelineEditorSurface<Library: View>: View {
         let playback = playback
         let frameRate = timeline.frameRate
         let renderer = renderer
+        let id = UUID()
+        buildID = id
+        buildPhase = .building
+        rebuildQueued = false
+        /// Ends this build, starting the queued one if there is one. A
+        /// build replaced since it began leaves things to its successor.
+        func finish() {
+            guard buildID == id else { return }
+            buildTask = nil
+            buildPhase = .idle
+            if rebuildQueued {
+                rebuildQueued = false
+                rebuildPlayerItem()
+            }
+        }
         buildTask = Task {
             do {
                 let composed = try await CompositionExporter.buildComposedTimeline(
                     for: project, timelineID: tID, forPreview: true, meter: playback.meter, options: playback.drawingOptions,
                     cache: isPartial ? nil : renderer?.cache
                 )
-                guard !Task.isCancelled else { return }
+                guard buildID == id else { return }
                 // A clip cut short isn't what renders are for.
                 renderer?.update(project: realProject, timelineID: tID, segments: isPartial ? [] : composed.segments)
+                let wasPaused = player.timeControlStatus == .paused
+                if wasPaused, !resetPosition, player.currentItem != nil {
+                    playback.showLive(composed)
+                    buildPhase = .settling
+                    if rebuildQueued {
+                        // Newer edits are already waiting; this one is only worth its frame.
+                        finish()
+                        return
+                    }
+                    try await Task.sleep(for: settleDelay)
+                    guard buildID == id else { return }
+                    buildPhase = .building
+                }
                 let item = AVPlayerItem(asset: composed.composition)
                 playback.prepare(item, with: composed, frameRate: frameRate)
                 if player.timeControlStatus == .paused {
@@ -430,8 +506,10 @@ struct TimelineEditorSurface<Library: View>: View {
                     // `PlayerContainerView` covers the gap until it draws.
                     let resumeTime = resetPosition ? playheadTime : player.currentTime()
                     _ = await item.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
-                    guard !Task.isCancelled else { return }
+                    guard buildID == id else { return }
                     player.replaceCurrentItem(with: item)
+                    // The container now holds the live frame itself.
+                    playback.clearLive()
                 } else {
                     let resumeTime = resetPosition ? playheadTime : player.currentTime()
                     player.replaceCurrentItem(with: item)
@@ -439,15 +517,20 @@ struct TimelineEditorSurface<Library: View>: View {
                     player.play()
                 }
                 buildError = nil
+                finish()
             } catch is CancellationError {
+                finish()
             } catch {
-                guard !Task.isCancelled else { return }
-                if let compositionError = error as? CompositionError, case .emptyTimeline = compositionError {
-                    player.replaceCurrentItem(with: nil)
-                    buildError = nil
-                } else {
-                    buildError = error.localizedDescription
+                playback.clearLive()
+                if buildID == id {
+                    if let compositionError = error as? CompositionError, case .emptyTimeline = compositionError {
+                        player.replaceCurrentItem(with: nil)
+                        buildError = nil
+                    } else {
+                        buildError = error.localizedDescription
+                    }
                 }
+                finish()
             }
         }
     }
