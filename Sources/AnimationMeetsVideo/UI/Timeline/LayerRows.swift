@@ -636,46 +636,52 @@ struct ClipBlockView: View {
                     Text(info?.name ?? "Unknown")
                         .font(Design.Typeface.label)
                         .lineLimit(1)
+                        .layoutPriority(-1)
+                    HStack(spacing: Design.Space.tight) {
+                        if hasLinkedAudio {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .font(Design.Typeface.micro)
+                                .help("Plays its own sound; show it with the layer's waveform button")
+                        }
+                        if effectCount > 0 {
+                            HStack(spacing: 2) {
+                                Image(systemName: "wand.and.stars")
+                                Text("\(effectCount)").font(Design.Typeface.numericMicro)
+                            }
+                            .font(Design.Typeface.micro)
+                            .help("\(effectCount) effect\(effectCount == 1 ? "" : "s") in its stack")
+                        }
+                        if hasPasteChanges {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(Design.Typeface.micro)
+                                .help("Effects pasted onto this clip have changes to resolve before it can be exported")
+                        }
+                        if passesThrough {
+                            Image(systemName: "square.stack.3d.down.right")
+                                .font(Design.Typeface.micro)
+                                .help("Passes through: its layers are drawn into the timeline it is placed in")
+                        }
+                        if !shown.time.isDefault {
+                            Image(systemName: "clock")
+                                .font(Design.Typeface.micro)
+                                .help(shown.isRetimed ? "Retimed: plays at \(NumericExpression.format(shown.speed(atSource: shown.trimStart), maxFractionDigits: 1))%" : "Time settings")
+                        }
+                        if !shown.shutter.isOff {
+                            Image(systemName: "camera.aperture")
+                                .font(Design.Typeface.micro)
+                                .help("Motion blur or trails")
+                        }
+                    }
+                    .foregroundStyle(Design.textOnColor.opacity(0.7))
                 }
                 .foregroundStyle(Design.textOnColor)
-                HStack(spacing: Design.Space.tight) {
-                    Text(shown.placedDuration.formatted)
-                        .font(Design.Typeface.numericMicro)
-                    if hasLinkedAudio {
-                        Image(systemName: "speaker.wave.2.fill")
-                            .font(Design.Typeface.micro)
-                            .help("Plays its own sound; show it with the layer's waveform button")
-                    }
-                    if effectCount > 0 {
-                        HStack(spacing: 2) {
-                            Image(systemName: "wand.and.stars")
-                            Text("\(effectCount)").font(Design.Typeface.numericMicro)
-                        }
-                        .font(Design.Typeface.micro)
-                        .help("\(effectCount) effect\(effectCount == 1 ? "" : "s") in its stack")
-                    }
-                    if hasPasteChanges {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(Design.Typeface.micro)
-                            .help("Effects pasted onto this clip have changes to resolve before it can be exported")
-                    }
-                    if passesThrough {
-                        Image(systemName: "square.stack.3d.down.right")
-                            .font(Design.Typeface.micro)
-                            .help("Passes through: its layers are drawn into the timeline it is placed in")
-                    }
-                    if !shown.time.isDefault {
-                        Image(systemName: "clock")
-                            .font(Design.Typeface.micro)
-                            .help(shown.isRetimed ? "Retimed: plays at \(NumericExpression.format(shown.speed(atSource: shown.trimStart), maxFractionDigits: 1))%" : "Time settings")
-                    }
-                    if !shown.shutter.isOff {
-                        Image(systemName: "camera.aperture")
-                            .font(Design.Typeface.micro)
-                            .help("Motion blur or trails")
-                    }
-                }
-                .foregroundStyle(Design.textOnColor.opacity(0.7))
+                // Where a retimed clip's speed is set, along the bar.
+                RetimeStrip(
+                    marks: RetimeMark.marks(of: shown), pixelsPerSecond: pixelsPerSecond,
+                    inset: drawnX - liveX, width: drawnWidth
+                )
+                // The strip counts from the bar's edge, not the label's.
+                .padding(.leading, -(drawnX > liveX ? Design.Space.step : Design.Space.close))
             }
             .padding(.leading, drawnX > liveX ? Design.Space.step : Design.Space.close)
             .frame(width: drawnWidth, height: height, alignment: .leading)

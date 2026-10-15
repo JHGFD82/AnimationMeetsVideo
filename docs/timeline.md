@@ -414,7 +414,14 @@ A drag is saved when it ends, as one undo step.
 
 A clip's speed (percent of its source's own) decides how long it lasts: the
 block is as long as its source range takes at that speed, and a clock mark
-shows it is retimed. Dragging its end trims the source, never stretching the
+shows it is retimed. A clip block no longer shows its duration. Instead a
+retimed one reads its speed along the second line of the bar: a `|`, a
+space and the speed at the start and at each speed keyframe, where the
+keyframe plays. Between two points whose speeds differ (a ramp) a stretched
+arrow runs from one to the next; between equal speeds there is none. (A
+hard change, with no ramp, would show no arrow either, but speed keyframes
+always ramp for now.) Badges (effects, sound, time, shutter) sit at the end
+of the name line. Dragging its end trims the source, never stretching the
 clip; changing the speed moves the clips after it on the layer by as much as
 its end moved, as trimming does. Speed, frame blending, echo and the sound
 choice are in the clip's menu and the effects panel's Time rows; motion blur
