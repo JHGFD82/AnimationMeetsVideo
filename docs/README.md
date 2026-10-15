@@ -12,6 +12,7 @@ implemented (each document lists what remains).
 | [scene-cuts.md](scene-cuts.md) | Implemented (core). Detecting scene cuts in a media file and treating each scene as a virtual clip in the browser, without touching the file. |
 | [beat-detection.md](beat-detection.md) | Implemented. Finding the beats of audio tracks, and showing one audio layer's beats as timeline markers chosen from the view options. |
 | [layer-transforms.md](layer-transforms.md) | Implemented (core). Position, scale, rotation and opacity per layer, keyframed in the timeline (P, S, R, T) and inspector, and arithmetic in numeric fields. |
+| [effects.md](effects.md) | Planned. Per-clip effect stacks applied in the order listed (Transform, Blending and Color to start), an anchor point on every visual clip, closed nested timelines, the effects panel, and strict project loading. Replaces layer transforms. |
 | [audio.md](audio.md) | Implemented (core). Keyframed layer volume from mute to +6 dB in playback and export, and a meter of the whole mix beside the timeline. |
 | [timeline.md](timeline.md) | Implemented. Zooming and scrolling the timeline, the ruler's tick grouping, the playhead, frame-locked moving and trimming of clips, linked and detached audio, and transitions. |
 | [media-replacement.md](media-replacement.md) | Implemented (core). Replacing a file with a different version ("bait and switch"), the reference data that makes it safe, and how mismatches are handled. |

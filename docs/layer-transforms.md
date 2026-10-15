@@ -9,6 +9,10 @@ tested. The timeline and inspector controls are compile-checked but have not
 been exercised on screen. What is not built is listed under
 [Not implemented yet](#not-implemented-yet).
 
+Planned: [effects.md](effects.md) replaces layer transforms with per-clip
+effect stacks. Keyframes, easing, the graph editor and arithmetic in
+numeric fields carry over.
+
 ## Properties
 
 Every layer that draws pictures (a layer holding video or a nested
