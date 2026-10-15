@@ -342,6 +342,10 @@ enum CompositionExporter {
         options: DrawingOptions? = nil,
         cache: RenderCache? = nil
     ) async throws -> ComposedTimeline {
+        // Slivers of gap between clips (a retimed clip's end can't be found
+        // closer than a few microseconds) would draw black frames.
+        var project = project
+        for index in project.timelines.indices { project.timelines[index] = project.timelines[index].closingSlivers() }
         guard let timeline = project.timeline(id: timelineID), !timeline.layers.isEmpty else {
             throw CompositionError.emptyTimeline
         }

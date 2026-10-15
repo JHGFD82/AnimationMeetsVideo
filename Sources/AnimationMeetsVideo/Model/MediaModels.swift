@@ -340,7 +340,11 @@ struct EditingProject: Identifiable, Equatable {
         for index in timelines[tIndex].layers[lIndex].clips.indices where index != cIndex {
             let start = timelines[tIndex].layers[lIndex].clips[index].startOffset
             if start >= originalEnd {
-                timelines[tIndex].layers[lIndex].clips[index].startOffset = CMTimeAdd(start, shift)
+                // A clip that met this one's end (give or take the rounding
+                // of a retimed end) still meets it, rather than keeping a
+                // sliver of gap that shows as a black frame.
+                let abuts = CMTimeSubtract(start, originalEnd) < Timeline.abutmentTolerance
+                timelines[tIndex].layers[lIndex].clips[index].startOffset = abuts ? trimmed.endOffset : CMTimeAdd(start, shift)
             }
         }
         timelines[tIndex].layers[lIndex].clips[cIndex] = trimmed
@@ -378,6 +382,39 @@ struct EditingProject: Identifiable, Equatable {
         second.trimStart = time
         second.transitionIn = nil
         clips.replaceSubrange(index...index, with: [first, second])
+    }
+}
+
+extension Timeline {
+    /// Clips on a layer closer than this are taken to meet: the end of a
+    /// retimed clip can't be found closer than the rounding of source
+    /// time (4 µs), and a gap that small shows as a black frame.
+    static let abutmentTolerance = CMTime(value: 1, timescale: 1000)
+
+    /// The same timeline with every gap between clips on a layer smaller
+    /// than `abutmentTolerance` closed, by moving the later clip to the
+    /// earlier one's end.
+    func closingSlivers() -> Timeline {
+        var copy = self
+        for layer in copy.layers.indices {
+            let clips = copy.layers[layer].clips.sorted { $0.startOffset < $1.startOffset }
+            var previousEnd: CMTime?
+            var result: [TimelineClip] = []
+            for var clip in clips {
+                if let previousEnd {
+                    let gap = CMTimeSubtract(clip.startOffset, previousEnd)
+                    if gap > .zero, gap < Self.abutmentTolerance { clip.startOffset = previousEnd }
+                }
+                previousEnd = clip.endOffset
+                result.append(clip)
+            }
+            // Keep the layer's own order of clips.
+            let moved = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0.startOffset) })
+            for index in copy.layers[layer].clips.indices {
+                copy.layers[layer].clips[index].startOffset = moved[copy.layers[layer].clips[index].id] ?? copy.layers[layer].clips[index].startOffset
+            }
+        }
+        return copy
     }
 }
 
