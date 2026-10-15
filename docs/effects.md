@@ -32,8 +32,8 @@ before blurring, put Scale above Blur. To blur first, drag it the other way.
 Every visual clip has one: a media clip with pictures, a nested timeline,
 and later images, text and shapes. Audio-only clips have none. Layers no
 longer have a transform; a layer keeps only its volume (see
-[audio.md](audio.md)). A layer-wide stack (an adjustment layer) may come
-later.
+[audio.md](audio.md)). Animation across several clips goes on an
+adjustment layer (see [Adjustment layers](#adjustment-layers)).
 
 Every visual clip also has an **anchor point**, the one control that isn't
 an effect. It is the point that scale and rotation turn about, given as an
@@ -78,10 +78,12 @@ New Transform effects list them in this order. Each control is one step:
 
 ### Blending
 
-One control, **Mode**: Normal (the default, a no-op), Darken, Multiply,
-Color Burn, Linear Burn, Lighten, Screen, Color Dodge, Add, Overlay, Soft
-Light, Hard Light, Difference, Exclusion, Subtract, Divide, Hue,
-Saturation, Color and Luminosity.
+Two controls:
+
+| Control | Default | Does |
+| --- | --- | --- |
+| Mode | Normal (a no-op) | Darken, Multiply, Color Burn, Linear Burn, Lighten, Screen, Color Dodge, Add, Overlay, Soft Light, Hard Light, Difference, Exclusion, Subtract, Divide, Hue, Saturation, Color or Luminosity. |
+| Amount | 100% | How much of the blend is applied: at 0% the step is a no-op, in between the clip's color is mixed toward the blended one. Unlike Opacity it doesn't change the clip's alpha. |
 
 A blend mode combines the clip with its **backdrop**: everything below the
 clip in its own timeline, fully drawn at this frame. The backdrop is never
@@ -89,7 +91,8 @@ moved or changed by the clip's own steps. A Blending step replaces the
 clip's color with the blend and keeps the clip's alpha, as in the W3C
 compositing model:
 
-    color = (1 − backdrop alpha) · clip color + backdrop alpha · B(backdrop color, clip color)
+    blended = (1 − backdrop alpha) · clip color + backdrop alpha · B(backdrop color, clip color)
+    color   = clip color + amount · (blended − clip color)
 
 Steps after it work on that result. Two Multiply steps multiply by the
 backdrop twice. Multiply followed by Position +50 px moves pixels that
@@ -173,6 +176,53 @@ their defaults, with no transition, still plays straight from its file.
 Everything else is drawn by the compositor and rendered in the background
 as today ([rendering.md](rendering.md)). The render key hashes each clip's
 resolved steps on every frame, after folding, plus the nesting.
+
+## Adjustment layers
+
+An adjustment layer holds **adjustment clips**: stretches of time with an
+effect stack and no picture of their own. While one plays, its stack is
+applied to the layers below it, drawn together as one picture. A Transform
+on it moves that whole picture, so animation that spans several clips or
+layers goes here, keyframed in the adjustment clip's time.
+
+### Reach
+
+Other apps apply an adjustment to everything below it. Here each
+adjustment layer has a **Reach**: All Layers Below (the default), or down
+to a chosen layer. For example, it can reach only the one layer under it,
+with all that layer's clips, or three of the five layers below.
+
+- **Reach is stored as the bottom layer it reaches, not as a count.** Adding
+  or moving layers changes which layers are in between, but never makes the
+  adjustment stop at a different layer than the one picked. If the chosen
+  layer is deleted, the reach goes back to All Layers Below. If the chosen
+  layer is moved above the adjustment layer, the adjustment reaches nothing
+  and is dimmed with a note.
+- In the timeline, a bracket at the adjustment layer's left edge spans the
+  layers it reaches.
+
+### How it draws
+
+Layers inside the reach still blend with everything beneath them,
+including layers outside the reach, so adding an adjustment layer never
+changes how the layers under it blend. Then the adjustment changes only
+the pixels those layers put there:
+
+1. **Below**: draw the layers under the reach.
+2. **With**: draw the reached layers over that, as usual.
+3. **Adjusted**: run the adjustment's stack on With.
+4. **Coverage**: the alpha of the reached layers alone, drawn over
+   transparency.
+5. **Result**: Below mixed toward Adjusted by Coverage. Where the reached
+   layers are opaque, the result is fully adjusted. Where they're empty,
+   Below is untouched.
+
+Where a reached layer is partly transparent, the part of Below showing
+through it gets adjusted too, in proportion. That's the cost of letting the
+reached layers keep blending with what's under them.
+
+With All Layers Below, Below is empty and Coverage is the full frame, so
+this matches other apps' adjustment layers.
 
 ## The effects panel
 
@@ -292,6 +342,7 @@ In order, each step usable on its own:
 5. **Color**, with its working spaces.
 6. **Reading aids**: dimming, thumbnails, Show Up to Here.
 7. **Pushing transforms into nested timelines.**
+8. **Adjustment layers** with reach.
 
 ## Not decided yet
 
@@ -299,5 +350,5 @@ In order, each step usable on its own:
 - The size of the canvas margin.
 - Copying and pasting effects or whole stacks between clips, and saved
   presets.
-- An amount (mix) control on Blending.
-- Adjustment layers: a stack applied to everything below on a layer.
+- What a Blending step on an adjustment clip blends against (the adjusted
+  picture with the unadjusted one, most likely).
