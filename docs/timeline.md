@@ -427,6 +427,25 @@ choice are in the clip's menu and the effects panel's Time rows; motion blur
 and trails (a camera aperture mark) are under Shutter. See
 [effects.md](effects.md#time-and-shutter).
 
+### Rounding and gaps
+
+A clip's end is exclusive: a clip that ends at frame 50 and one that starts
+at frame 50 meet; one that starts at 51 leaves a one-frame gap. At a fixed
+speed a clip's length is exact. Under a speed ramp, where the source time
+for a moment is found by searching and stored to 1/240000 s, a clip's end
+is only known to a few microseconds, so these rules apply:
+
+- **1 ms is the tolerance** for "the same place": about 3% of a frame at
+  30 fps, far above the 4 µs of error and far below anything a person
+  could mean. It is `Timeline.abutmentTolerance`.
+- A retimed clip's length within 1 ms of a whole number of frames is that
+  number; otherwise trimming it back to whole frames rounds down.
+- A clip that met a retimed clip's end before an edit still meets it after
+  (it moves to the frame the end is at).
+- Building a composition closes any gap between clips under 1 ms, so a
+  microsecond of difference never draws a black frame.
+- A gap of a frame or more is a real gap, and is never closed for you.
+
 ## Adjustment layers
 
 The adjustment button in the timeline's header adds an **adjustment layer**

@@ -341,10 +341,14 @@ struct EditingProject: Identifiable, Equatable {
             let start = timelines[tIndex].layers[lIndex].clips[index].startOffset
             if start >= originalEnd {
                 // A clip that met this one's end (give or take the rounding
-                // of a retimed end) still meets it, rather than keeping a
-                // sliver of gap that shows as a black frame.
+                // of a retimed end) still meets it, on the frame the end
+                // is at: a retimed end can be a few microseconds off its
+                // frame, which `closingSlivers` covers when building, but
+                // the next clip stays on a frame.
                 let abuts = CMTimeSubtract(start, originalEnd) < Timeline.abutmentTolerance
-                timelines[tIndex].layers[lIndex].clips[index].startOffset = abuts ? trimmed.endOffset : CMTimeAdd(start, shift)
+                let follower = timelines[tIndex].layers[lIndex].clips[index]
+                let meeting = isFrameLocked(follower) ? timelines[tIndex].frameAligned(trimmed.endOffset, .nearest) : trimmed.endOffset
+                timelines[tIndex].layers[lIndex].clips[index].startOffset = abuts ? meeting : CMTimeAdd(start, shift)
             }
         }
         timelines[tIndex].layers[lIndex].clips[cIndex] = trimmed
