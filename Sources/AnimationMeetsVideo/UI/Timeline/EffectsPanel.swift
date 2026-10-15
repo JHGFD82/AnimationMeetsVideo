@@ -19,6 +19,8 @@ struct EffectsPanel: View {
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
     @State private var renamingEffectID: UUID?
+    /// The clip after each of its effects, at the playhead.
+    @State private var thumbnails: [UUID: CGImage] = [:]
 
     private var timeline: Timeline? { project.timeline(id: timelineID) }
 
@@ -72,6 +74,35 @@ struct EffectsPanel: View {
             state.clear()
             renamingEffectID = nil
         }
+        // Refreshed when the playhead stops, or the stack changes.
+        .task(id: thumbnailRequest) {
+            guard let request = thumbnailRequest else {
+                thumbnails = [:]
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            let snapshot = project
+            let images = await EffectThumbnails.render(
+                project: snapshot, timelineID: timelineID, clipID: request.clipID, at: request.time
+            )
+            guard !Task.isCancelled else { return }
+            thumbnails = images
+        }
+    }
+
+    /// What the thumbnails are drawn from; they are drawn again when it
+    /// changes.
+    private struct ThumbnailRequest: Equatable {
+        var clipID: UUID
+        var effects: [Effect]
+        var anchorPoint: AnimatedValue<Vector2>
+        var time: CMTime
+    }
+
+    private var thumbnailRequest: ThumbnailRequest? {
+        guard let clip = selectedClip, let timeline, project.hasEffectStack(clip), !clip.effects.isEmpty else { return nil }
+        return ThumbnailRequest(clipID: clip.id, effects: clip.effects, anchorPoint: clip.anchorPoint, time: timeline.snappedToFrame(playheadTime))
     }
 
     // MARK: Library
@@ -106,7 +137,11 @@ struct EffectsPanel: View {
             let geometry = ClipLaneGeometry(clip: clip, timeline: timeline, width: laneWidth)
             let frameTime = timeline.snappedToFrame(playheadTime)
             let sourceNow = geometry.clampedSource(atTimeline: frameTime)
-            let context = RowContext(clip: clip, timeline: timeline, geometry: geometry, frameTime: frameTime, sourceNow: sourceNow)
+            let layer = project.clipAndLayer(clip.id, in: timelineID)?.layer
+            let context = RowContext(
+                clip: clip, timeline: timeline, layer: layer ?? TimelineLayer(clips: []),
+                geometry: geometry, frameTime: frameTime, sourceNow: sourceNow
+            )
 
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
@@ -140,6 +175,8 @@ struct EffectsPanel: View {
     private struct RowContext {
         let clip: TimelineClip
         let timeline: Timeline
+        /// The layer the clip is on.
+        let layer: TimelineLayer
         let geometry: ClipLaneGeometry
         /// The playhead on a frame, in the timeline's time.
         let frameTime: CMTime
@@ -173,15 +210,23 @@ struct EffectsPanel: View {
                 }
                 ForEach([TransitionEdge.leading, .trailing], id: \.self) { edge in
                     if let transition = clip.transition(at: edge) {
+                        let note = project.note(for: transition, of: clip)
                         labelled(
                             PinnedRow(
                                 title: "\(edge == .leading ? "Start" : "End") · \(transition.kind.name)",
                                 systemImage: transition.kind.systemImage,
                                 isSelected: selection?.transitionEdge == edge,
                                 onSelect: { onSelectTransition(edge) }
-                            ) { EmptyView() },
+                            ) { EmptyView() }
+                            .opacity(note?.dims == true ? 0.5 : 1),
                             lane: emptyLane(c)
                         )
+                        if let note {
+                            HStack(spacing: 0) {
+                                EffectNoteRow(note: note).frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
+                                Color.black.opacity(0.12)
+                            }
+                        }
                     }
                 }
             }
@@ -269,12 +314,17 @@ struct EffectsPanel: View {
     private func effectRows(_ effect: Effect, _ c: RowContext) -> some View {
         let clip = c.clip
         let collapsed = state.isCollapsed(effect.id)
+        let index = clip.effects.index(of: effect.id) ?? 0
+        let note = project.note(forEffectAt: index, in: clip, on: c.layer, of: c.timeline)
+        let dimmed = effect.isNoOp || note?.dims == true
         labelled(
             EffectHeaderRow(
                 effect: effect,
                 isCollapsed: collapsed,
                 isSelected: state.selectedEffectID == effect.id && state.selectedControlID == nil,
                 clipID: clip.id,
+                thumbnail: thumbnails[effect.id],
+                isDimmed: dimmed,
                 onToggleCollapsed: { state.toggleCollapsed(effect.id) },
                 onSetEnabled: { value in editEffect(effect.id, in: clip) { $0.enabled = value } },
                 onSelect: { state.select(effect: effect.id) },
@@ -300,19 +350,25 @@ struct EffectsPanel: View {
             project.addEffect(payload.kind, toClip: clip.id, in: timelineID, at: index)
             return true
         }
+        if let note {
+            HStack(spacing: 0) {
+                EffectNoteRow(note: note).frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
+                Color.black.opacity(0.12)
+            }
+        }
         if !collapsed {
             ForEach(effect.controls) { control in
-                controlRow(control, of: effect, c)
+                controlRow(control, of: effect, c, effectDimmed: dimmed)
             }
             if effect.kind == .blending {
-                againstRow(effect, c)
+                againstRow(effect, c, effectDimmed: dimmed)
             }
         }
     }
 
     /// What a Blending step blends with: the backdrop, or the clip's own
     /// picture as it was before one of the effects above it.
-    private func againstRow(_ effect: Effect, _ c: RowContext) -> some View {
+    private func againstRow(_ effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
         let clip = c.clip
         let index = clip.effects.index(of: effect.id) ?? 0
         let above = clip.effects.effectsAbove(index)
@@ -332,6 +388,7 @@ struct EffectsPanel: View {
                 isSelected: false,
                 dragHandle: nil,
                 showsMenu: false,
+                isDimmed: effectDimmed,
                 onSelect: {},
                 onChoose: { choice in editEffect(effect.id, in: clip) { $0.against = UUID(uuidString: choice) } },
                 menu: { EmptyView() }
@@ -349,6 +406,10 @@ struct EffectsPanel: View {
             .disabled(effect.controls.allSatisfy { $0.isNoOp && !$0.isAnimated } && effect.controls.count == effect.kind.controlKinds.count)
         Button("Rename") { renamingEffectID = effect.id }
         Button(effect.enabled ? "Disable" : "Enable") { editEffect(effect.id, in: clip) { $0.enabled.toggle() } }
+        Toggle("Show Up to Here", isOn: Binding(
+            get: { state.showUpTo == EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) },
+            set: { state.showUpTo = $0 ? EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) : nil }
+        ))
         if effect.kind == .transform {
             Toggle("Moves Anchor", isOn: Binding(
                 get: { effect.movesAnchor },
@@ -369,7 +430,7 @@ struct EffectsPanel: View {
     // MARK: Controls
 
     @ViewBuilder
-    private func controlRow(_ control: EffectControl, of effect: Effect, _ c: RowContext) -> some View {
+    private func controlRow(_ control: EffectControl, of effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
         let clip = c.clip
         let handle = AnyView(
             Image(systemName: "line.3.horizontal")
@@ -402,6 +463,7 @@ struct EffectsPanel: View {
                     selected: control.choice ?? BlendMode.normal.rawValue,
                     isSelected: isSelected,
                     dragHandle: handle,
+                    isDimmed: effectDimmed || control.isNoOp,
                     onSelect: select,
                     onChoose: { choice in editControl(control.id, of: effect, in: clip) { $0.choice = choice } },
                     menu: menu
@@ -429,6 +491,7 @@ struct EffectsPanel: View {
                     linked: control.kind == .scale ? control.linked : nil,
                     onToggleLink: { editControl(control.id, of: effect, in: clip) { $0.linked.toggle() } },
                     dragHandle: handle,
+                    isDimmed: effectDimmed || control.isNoOp,
                     onSelect: select,
                     onSetComponent: { index, value in
                         editControl(control.id, of: effect, in: clip) { $0.setComponent(index, to: value, at: c.sourceNow) }

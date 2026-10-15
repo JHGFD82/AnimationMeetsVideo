@@ -11,6 +11,15 @@ final class EffectsPanelState {
     /// Effects folded up in the stack; the rest show their controls.
     var collapsed: Set<UUID> = []
 
+    /// Show Up to Here: the clip and effect the viewer shows the clip
+    /// after, with later effects and its transitions skipped.
+    struct ShowUpTo: Equatable {
+        var clipID: UUID
+        var effectID: UUID
+    }
+
+    var showUpTo: ShowUpTo?
+
     var hasSelection: Bool { selectedEffectID != nil }
 
     func select(effect: UUID?, control: UUID? = nil) {

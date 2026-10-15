@@ -50,6 +50,9 @@ struct ParameterRow<MenuContent: View>: View {
     var linked: Bool?
     var onToggleLink: () -> Void = {}
     var dragHandle: AnyView?
+    /// Draws the row faded: it does nothing, because it is at its default,
+    /// off, or can't be applied.
+    var isDimmed = false
     let onSelect: () -> Void
     let onSetComponent: (Int, Double) -> Void
     let onToggleAnimated: () -> Void
@@ -75,7 +78,7 @@ struct ParameterRow<MenuContent: View>: View {
             Text(name)
                 .foregroundStyle(Design.textSecondary)
                 .lineLimit(1)
-                .frame(width: 56, alignment: .leading)
+                .frame(width: 74, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onSelect)
 
@@ -109,6 +112,7 @@ struct ParameterRow<MenuContent: View>: View {
             RowMenu(content: menu)
         }
         .font(Design.Typeface.label)
+        .opacity(isDimmed ? 0.45 : 1)
         .padding(.leading, indent)
         .padding(.horizontal, 4)
         .frame(height: EffectsPanelMetrics.rowHeight)
@@ -156,6 +160,7 @@ struct ChoiceRow<MenuContent: View>: View {
     var dragHandle: AnyView?
     /// Whether the row has a ⋯ menu.
     var showsMenu = true
+    var isDimmed = false
     let onSelect: () -> Void
     let onChoose: (String) -> Void
     @ViewBuilder let menu: () -> MenuContent
@@ -171,7 +176,7 @@ struct ChoiceRow<MenuContent: View>: View {
             Text(name)
                 .foregroundStyle(Design.textSecondary)
                 .lineLimit(1)
-                .frame(width: 56, alignment: .leading)
+                .frame(width: 74, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onSelect)
             Picker(name, selection: Binding(get: { selected }, set: onChoose)) {
@@ -186,6 +191,7 @@ struct ChoiceRow<MenuContent: View>: View {
             if showsMenu { RowMenu(content: menu) }
         }
         .font(Design.Typeface.label)
+        .opacity(isDimmed ? 0.45 : 1)
         .padding(.leading, indent)
         .padding(.horizontal, 4)
         .frame(height: EffectsPanelMetrics.rowHeight)
@@ -201,6 +207,9 @@ struct EffectHeaderRow<MenuContent: View>: View {
     let isCollapsed: Bool
     let isSelected: Bool
     let clipID: UUID
+    /// The clip's picture after this effect, at the playhead.
+    var thumbnail: CGImage?
+    var isDimmed = false
     let onToggleCollapsed: () -> Void
     let onSetEnabled: (Bool) -> Void
     let onSelect: () -> Void
@@ -259,9 +268,20 @@ struct EffectHeaderRow<MenuContent: View>: View {
                     .onTapGesture(perform: onSelect)
             }
             Spacer(minLength: 2)
+            if let thumbnail {
+                Image(decorative: thumbnail, scale: 2)
+                    .resizable()
+                    .interpolation(.medium)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 32, height: 18)
+                    .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+                    .overlay { RoundedRectangle(cornerRadius: 2, style: .continuous).strokeBorder(Design.bevelEdge, lineWidth: 0.5) }
+                    .help("The clip after \(effect.displayName), at the playhead")
+            }
             RowMenu(content: menu)
         }
         .font(Design.Typeface.label)
+        .opacity(isDimmed ? 0.5 : 1)
         .padding(.horizontal, 4)
         .frame(height: EffectsPanelMetrics.rowHeight)
         .background(Design.Surface.raised.color.opacity(0.6))
@@ -305,5 +325,25 @@ struct PinnedRow<Trailing: View>: View {
         .contentShape(Rectangle())
         .onTapGesture { onSelect?() }
         .selectedRow(isSelected)
+    }
+}
+
+/// A line under an effect saying why it does nothing, or how it works.
+struct EffectNoteRow: View {
+    let note: EffectNote
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 4) {
+            Image(systemName: note.dims ? "exclamationmark.triangle" : "info.circle")
+                .font(.system(size: 9))
+            Text(note.text)
+                .font(Design.Typeface.micro)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(note.dims ? Design.statusWarning : Design.textTertiary)
+        .padding(.leading, EffectsPanelMetrics.controlIndent)
+        .padding(.trailing, 8)
+        .padding(.vertical, 3)
     }
 }

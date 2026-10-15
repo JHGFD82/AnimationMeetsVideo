@@ -697,7 +697,22 @@ In order, each step usable on its own:
    one grade, since neither depends on the other. Checked against a
    double-precision restatement of the math in each space, and for the same
    light giving the same result in every space.
-6. **Reading aids**: dimming, thumbnails, Show Up to Here.
+6. **Reading aids** (done): dimming, thumbnails, Show Up to Here. A control
+   at its default, a disabled control or effect, and an effect whose
+   controls are all no-ops are drawn faded. A Blending step is faded with a
+   note when its Against effect is gone or below it, when it is on the
+   bottom clip of a nested timeline (nothing under it), or when the clip
+   passes through, as are Color and anything else that needs one picture
+   (and wipes and the film dissolve among the transitions); an Opacity on a
+   pass-through clip only gets a note, since it still applies, to each
+   layer inside. Each effect row shows a thumbnail of the clip after it, at
+   the playhead, refreshed about a third of a second after the playhead
+   stops or the stack changes. Thumbnails draw the clip's own picture
+   through the stack up to that effect over black, so what is under the clip
+   isn't drawn and a Blending step blends with black. Show Up to Here is in
+   each effect's ⋯ menu: the viewer builds the project with that clip's
+   stack cut after the effect and its transitions dropped, shows a banner
+   with a way back, and background renders wait; export is never affected.
 7. **Pushing transforms into nested timelines.**
 8. **Adjustment layers** with reach.
 9. **Time and Shutter**: constant speed with its three Sound choices,

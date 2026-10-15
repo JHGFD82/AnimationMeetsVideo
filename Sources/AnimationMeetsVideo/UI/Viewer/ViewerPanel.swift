@@ -8,6 +8,10 @@ struct ViewerPanel: View {
     let buildError: String?
     /// A slipped clip's first and last frames, shown over the picture.
     let trimPreview: TrimPreviewModel
+    /// Says the picture isn't the finished timeline, with a way back
+    /// (Show Up to Here).
+    var banner: String?
+    var onClearBanner: () -> Void = {}
 
     private var aspectRatio: CGFloat {
         frameSize.width > 0 && frameSize.height > 0 ? frameSize.width / frameSize.height : 16.0 / 9.0
@@ -30,6 +34,20 @@ struct ViewerPanel: View {
                 if trimPreview.isActive {
                     TrimPreviewOverlay(model: trimPreview, frameRate: frameRate, aspectRatio: aspectRatio)
                         .padding(24)
+                }
+                if let banner {
+                    HStack(spacing: Design.Space.close) {
+                        Image(systemName: "eye")
+                        Text(banner).font(Design.Typeface.bodyEmphasis)
+                        Button("Show All", action: onClearBanner)
+                            .controlSize(.small)
+                    }
+                    .padding(.horizontal, Design.Space.step)
+                    .padding(.vertical, Design.Space.tight)
+                    .background(Design.statusWarning.opacity(0.92), in: Capsule())
+                    .foregroundStyle(Color.black.opacity(0.85))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 10)
                 }
                 if let buildError {
                     Label(buildError, systemImage: "exclamationmark.triangle.fill")

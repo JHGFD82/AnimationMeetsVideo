@@ -46,7 +46,36 @@ struct TimelineEditorSurface<Library: View>: View {
         min(max(CGFloat(effectsPanelWidth), EffectsPanelResizeHandle.minimumWidth), max(EffectsPanelResizeHandle.minimumWidth, available * 0.8))
     }
 
-    private var compositionKey: CompositionKey { CompositionKey(project: project) }
+    /// The clip and effect Show Up to Here is showing, while the effect
+    /// is still there.
+    private var partialView: EffectsPanelState.ShowUpTo? {
+        guard let showing = effectsState.showUpTo,
+              project.hasEffect(showing.effectID, ofClip: showing.clipID, in: timelineID)
+        else {
+            return nil
+        }
+        return showing
+    }
+
+    /// The project as the viewer draws it: the real one, except while Show
+    /// Up to Here is on, when one clip is cut short. Export and renders
+    /// always use the real one.
+    private var viewedProject: EditingProject {
+        guard let showing = partialView else { return project }
+        return project.showing(upTo: showing.effectID, ofClip: showing.clipID, in: timelineID)
+    }
+
+    private var compositionKey: CompositionKey { CompositionKey(project: viewedProject) }
+
+    /// What the viewer's banner says while Show Up to Here is on.
+    private var partialBanner: String? {
+        guard let showing = partialView,
+              let effect = project.clipAndLayer(showing.clipID, in: timelineID)?.clip.effects.first(where: { $0.id == showing.effectID })
+        else {
+            return nil
+        }
+        return "Showing up to \(effect.displayName)"
+    }
 
     private var selectedTimelineClip: TimelineClip? {
         guard let selection, selection.timelineID == timelineID, let timeline,
@@ -78,7 +107,9 @@ struct TimelineEditorSurface<Library: View>: View {
                         frameSize: timeline?.frameSize ?? CGSize(width: 16, height: 9),
                         frameRate: timeline?.frameRate ?? 24,
                         buildError: buildError,
-                        trimPreview: trimPreview
+                        trimPreview: trimPreview,
+                        banner: partialBanner,
+                        onClearBanner: { effectsState.showUpTo = nil }
                     )
                     InspectorPanel(
                         project: $project,
@@ -150,7 +181,11 @@ struct TimelineEditorSurface<Library: View>: View {
         // closes the other.
         .onChange(of: showsEffects) { _, on in if on { showsTransitions = false } }
         .onChange(of: showsTransitions) { _, on in if on { showsEffects = false } }
-        .onChange(of: project, initial: true) { _, project in graphs.update(project: project) }
+        .onChange(of: project, initial: true) { _, project in
+            graphs.update(project: project)
+            // Show Up to Here lets go of an effect that is gone.
+            if effectsState.showUpTo != nil, partialView == nil { effectsState.showUpTo = nil }
+        }
         .onChange(of: playheadTime, initial: true) { _, time in graphs.playhead = time }
         .onAppear {
             let project = $project
@@ -363,7 +398,9 @@ struct TimelineEditorSurface<Library: View>: View {
             renderer?.update(project: project, timelineID: timelineID, segments: [])
             return
         }
-        let project = self.project
+        let project = self.viewedProject
+        let isPartial = partialView != nil
+        let realProject = self.project
         let tID = timelineID
         let player = playback.player
         let playback = playback
@@ -372,10 +409,11 @@ struct TimelineEditorSurface<Library: View>: View {
         buildTask = Task {
             do {
                 let composed = try await CompositionExporter.buildComposedTimeline(
-                    for: project, timelineID: tID, forPreview: true, meter: playback.meter, cache: renderer?.cache
+                    for: project, timelineID: tID, forPreview: true, meter: playback.meter, cache: isPartial ? nil : renderer?.cache
                 )
                 guard !Task.isCancelled else { return }
-                renderer?.update(project: project, timelineID: tID, segments: composed.segments)
+                // A clip cut short isn't what renders are for.
+                renderer?.update(project: realProject, timelineID: tID, segments: isPartial ? [] : composed.segments)
                 let item = AVPlayerItem(asset: composed.composition)
                 playback.prepare(item, with: composed, frameRate: frameRate)
                 if player.timeControlStatus == .paused {
