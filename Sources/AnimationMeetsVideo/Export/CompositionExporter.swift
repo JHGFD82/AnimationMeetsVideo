@@ -331,8 +331,10 @@ enum CompositionExporter {
         let tree = nodes.compactMap { $0.frozen() }
         var plan = planRanges(
             tree: tree, overallDuration: composition.duration, allowsPassthrough: !forPreview,
-            frameSize: timeline.frameSize, frameRate: timeline.frameRate, colorSpace: timeline.colorSpace
+            frameSize: timeline.frameSize, frameRate: timeline.frameRate, colorSpace: timeline.colorSpace,
+            canvasMargin: project.canvasMargin
         )
+        let canvasMargin = project.canvasMargin
         var cachedKeys: Set<String> = []
         if let cache {
             cachedKeys = try await substituteCachedRanges(&plan, from: cache, into: composition)
@@ -345,6 +347,7 @@ enum CompositionExporter {
             frameRate: timeline.frameRate,
             colorSpace: timeline.colorSpace,
             forPreview: forPreview,
+            canvasMargin: canvasMargin,
             meter: meter
         )
         return ComposedTimeline(
@@ -567,7 +570,8 @@ enum CompositionExporter {
         allowsPassthrough: Bool,
         frameSize: CGSize,
         frameRate: Double,
-        colorSpace: ProjectColorSpace
+        colorSpace: ProjectColorSpace,
+        canvasMargin: Double
     ) -> [PlannedRange] {
         var breakpoints: [CMTime] = [.zero]
         for clip in tree.flatMap(\.leaves) {
@@ -598,7 +602,8 @@ enum CompositionExporter {
                     return overlap.isValid && overlap.duration > .zero
                 }
             }
-            let needsRender = whole.duration >= frame && (leaves.count > 1 || animated)
+            let blends = clips.contains { clip in clip.everyClip.contains { $0.stack.resolve(atRoot: whole.start).blends } }
+            let needsRender = whole.duration >= frame && (leaves.count > 1 || animated || blends)
 
             // A single picture with nothing done to it and no fitting is the
             // stretch's frames as they are.
@@ -620,7 +625,7 @@ enum CompositionExporter {
                 let range = CMTimeRange(start: start, end: CMTimeMinimum(CMTimeAdd(start, piece), whole.end))
                 let key = renderKey(
                     for: range, clips: clips, frame: frame,
-                    frameSize: frameSize, frameRate: frameRate, colorSpace: colorSpace
+                    frameSize: frameSize, frameRate: frameRate, colorSpace: colorSpace, canvasMargin: canvasMargin
                 )
                 plan.append(PlannedRange(
                     range: range, clips: clips,
@@ -644,12 +649,13 @@ enum CompositionExporter {
         frame: CMTime,
         frameSize: CGSize,
         frameRate: Double,
-        colorSpace: ProjectColorSpace
+        colorSpace: ProjectColorSpace,
+        canvasMargin: Double
     ) -> String {
         func number(_ value: Double) -> String { String(format: "%.5f", value) }
         func matrix(_ t: CGAffineTransform) -> String { [t.a, t.b, t.c, t.d, t.tx, t.ty].map(number).joined(separator: " ") }
         let frames = Int((range.duration.seconds / frame.seconds).rounded(.up))
-        var text = "v\(RenderSegment.formatVersion) \(number(frameSize.width))x\(number(frameSize.height)) \(number(frameRate)) \(colorSpace.rawValue) \(frames)\n"
+        var text = "v\(RenderSegment.formatVersion) \(number(frameSize.width))x\(number(frameSize.height)) \(number(frameRate)) \(colorSpace.rawValue) \(number(canvasMargin)) \(frames)\n"
 
         func describe(_ clip: DrawClip) {
             switch clip.content {
@@ -666,6 +672,8 @@ enum CompositionExporter {
                 for step in resolved.steps {
                     switch step {
                     case .place(let m, let opacity): text += "p \(matrix(m)) \(number(opacity))"
+                    case .mark(let id): text += "m \(id.uuidString)"
+                    case .blend(let mode, let amount, let against): text += "b \(mode.rawValue) \(number(amount)) \(against?.uuidString ?? "-")"
                     }
                     text += " "
                 }
@@ -736,6 +744,7 @@ enum CompositionExporter {
         frameRate: Double,
         colorSpace: ProjectColorSpace,
         forPreview: Bool,
+        canvasMargin: Double,
         meter: RenderMeter?
     ) -> AVMutableVideoComposition? {
         guard hasPictures else { return nil }
@@ -749,7 +758,7 @@ enum CompositionExporter {
         videoComposition.instructions = plan.map { planned in
             LayeredInstruction(
                 timeRange: planned.range, clips: planned.clips, passthrough: planned.passthrough ?? kCMPersistentTrackID_Invalid,
-                renderSize: renderSize, colorSpace: colorSpace, meter: meter
+                renderSize: renderSize, colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter
             )
         }
         return videoComposition

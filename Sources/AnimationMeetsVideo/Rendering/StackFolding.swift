@@ -48,18 +48,26 @@ struct FoldedPlacement: Equatable {
 
 /// One step of a clip's stack as the compositor draws it at a moment.
 /// Consecutive Position, Scale, Rotation and Opacity steps are folded into
-/// one `place`, so the picture is sampled once however many there are.
+/// one `place`, so the picture is sampled once however many there are; a
+/// step that reads another picture ends the run.
 enum ResolvedStep: Equatable, Sendable {
     /// Moves the picture by `matrix` (in the frame's pixels, origin top
     /// left) and multiplies its alpha by `opacity`.
     case place(matrix: CGAffineTransform, opacity: Double)
+    /// Keeps the picture as it is here, for a Blending step lower in the
+    /// stack to blend against: it is how the picture was just before the
+    /// effect with this ID.
+    case mark(UUID)
+    /// Blends the picture with the backdrop, or with the picture kept at
+    /// the mark `against`. `amount` is 0...1.
+    case blend(mode: BlendMode, amount: Double, against: UUID?)
 }
 
 enum StackFolding {
-    /// The placement the stack gives the fitted picture at source time
-    /// `time`. `center` is the center of the picture, where the anchor
-    /// point's offset is measured from. Only Transform effects move the
-    /// picture; the rest are the pixel steps drawn by the compositor.
+    /// The placement the stack's Transform effects give the fitted picture
+    /// at source time `time`, as if nothing but them were in it.
+    /// `center` is the center of the picture, where the anchor point's
+    /// offset is measured from.
     static func fold(effects: [Effect], anchorPoint: AnimatedValue<Vector2>, at time: CMTime, center: CGPoint) -> FoldedPlacement {
         let offset = anchorPoint.value(at: time)
         var placement = FoldedPlacement(anchor: CGPoint(x: center.x + offset.x, y: center.y + offset.y))
@@ -74,8 +82,42 @@ enum StackFolding {
     /// The steps to draw for the stack at source time `time`: nothing while
     /// every control is at its default.
     static func steps(effects: [Effect], anchorPoint: AnimatedValue<Vector2>, at time: CMTime, center: CGPoint) -> [ResolvedStep] {
-        let placement = fold(effects: effects, anchorPoint: anchorPoint, at: time, center: center)
-        guard placement.matrix != .identity || placement.opacity != 1 else { return [] }
-        return [.place(matrix: placement.matrix, opacity: placement.opacity)]
+        let offset = anchorPoint.value(at: time)
+        var placement = FoldedPlacement(anchor: CGPoint(x: center.x + offset.x, y: center.y + offset.y))
+        var steps: [ResolvedStep] = []
+        // The placement so far becomes a step; the anchor keeps its place
+        // in the frame, so what follows turns about it as before.
+        func flush() {
+            guard placement.matrix != .identity || placement.opacity != 1 else { return }
+            steps.append(.place(matrix: placement.matrix, opacity: placement.opacity))
+            placement.matrix = .identity
+            placement.opacity = 1
+        }
+        let targets = Set(effects.compactMap { $0.kind == .blending && $0.enabled ? $0.against : nil })
+
+        for effect in effects {
+            if targets.contains(effect.id) {
+                flush()
+                steps.append(.mark(effect.id))
+            }
+            guard effect.enabled else { continue }
+            switch effect.kind {
+            case .transform:
+                for control in effect.controls {
+                    placement.apply(control, movesAnchor: effect.movesAnchor, at: time)
+                }
+            case .blending:
+                guard let mode = effect.control(.mode), mode.enabled, mode.blendMode != .normal else { continue }
+                var amount = 1.0
+                if let control = effect.control(.amount), control.enabled, let percent = control.values(at: time).first {
+                    amount = min(max(percent / 100, 0), 1)
+                }
+                guard amount > 0 else { continue }
+                flush()
+                steps.append(.blend(mode: mode.blendMode, amount: amount, against: effect.against))
+            }
+        }
+        flush()
+        return steps
     }
 }

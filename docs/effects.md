@@ -670,8 +670,18 @@ In order, each step usable on its own:
    and presets with step 12. It is resizable by its left edge. Moving or
    dropping an effect, deleting it (Delete) and duplicating it (⌘D) are
    undoable, and a value drag is one undo step.
-4. **Blending**: one Metal kernel per mode, using the formula above, and
-   Against.
+4. **Blending** (done): one Metal kernel per mode, using the formula above,
+   and Against. The kernels (`BlendKernels`, compiled from source at run
+   time) run inside the Core Image graph as an image processor
+   (`BlendProcessor`), over the part of the picture within the canvas. They
+   are checked against a separate restatement of the formulas for every
+   mode. A step blends with the backdrop as it was drawn when the clip's
+   turn came; for a clip inside a pass-through nested clip with its own
+   placement, the backdrop is brought into the clip's frame first. The
+   panel's Against row lists the effects above the step; one that is gone or
+   below shows "Unavailable" and the step does nothing (dimming and notes
+   come with step 6). A stretch with a Blending step is rendered in the
+   background like other costly stretches.
 5. **Color**, with its working spaces.
 6. **Reading aids**: dimming, thumbnails, Show Up to Here.
 7. **Pushing transforms into nested timelines.**

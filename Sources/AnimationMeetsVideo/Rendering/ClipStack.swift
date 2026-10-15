@@ -106,17 +106,20 @@ struct ResolvedClip: Equatable {
     /// What the clip's transitions do now; nil when it has none.
     var transition: EdgeTransitions.Effect?
 
-    /// The product of the stack's placing steps.
+    /// The product of the stack's placing steps, skipping the others: all a
+    /// pass-through nested clip can apply.
     var placement: (matrix: CGAffineTransform, opacity: Double) {
         var matrix = CGAffineTransform.identity
         var opacity = 1.0
-        for step in steps {
-            switch step {
-            case .place(let m, let o):
-                matrix = matrix.concatenating(m)
-                opacity *= o
-            }
+        for case .place(let m, let o) in steps {
+            matrix = matrix.concatenating(m)
+            opacity *= o
         }
         return (matrix, opacity)
+    }
+
+    /// Whether any step reads a picture other than the clip's own.
+    var blends: Bool {
+        steps.contains { if case .blend = $0 { true } else { false } }
     }
 }

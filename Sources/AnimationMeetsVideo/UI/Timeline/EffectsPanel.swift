@@ -304,7 +304,41 @@ struct EffectsPanel: View {
             ForEach(effect.controls) { control in
                 controlRow(control, of: effect, c)
             }
+            if effect.kind == .blending {
+                againstRow(effect, c)
+            }
         }
+    }
+
+    /// What a Blending step blends with: the backdrop, or the clip's own
+    /// picture as it was before one of the effects above it.
+    private func againstRow(_ effect: Effect, _ c: RowContext) -> some View {
+        let clip = c.clip
+        let index = clip.effects.index(of: effect.id) ?? 0
+        let above = clip.effects.effectsAbove(index)
+        var options: [(id: String, name: String)] = [("backdrop", "Backdrop")]
+        options += above.map { ($0.id.uuidString, "Before \($0.displayName)") }
+        // An effect that is gone, or has been moved below the step, can't be
+        // read; the step does nothing until it points somewhere else.
+        if let against = effect.against, !above.contains(where: { $0.id == against }) {
+            options.append((against.uuidString, "Unavailable"))
+        }
+        return labelled(
+            ChoiceRow(
+                name: "Against",
+                indent: EffectsPanelMetrics.controlIndent - 12,
+                options: options,
+                selected: effect.against?.uuidString ?? "backdrop",
+                isSelected: false,
+                dragHandle: nil,
+                showsMenu: false,
+                onSelect: {},
+                onChoose: { choice in editEffect(effect.id, in: clip) { $0.against = UUID(uuidString: choice) } },
+                menu: { EmptyView() }
+            ),
+            lane: emptyLane(c)
+        )
+        .help("What the clip is blended with: the backdrop, or its own picture before an earlier effect")
     }
 
     @ViewBuilder

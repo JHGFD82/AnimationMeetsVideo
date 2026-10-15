@@ -154,6 +154,8 @@ struct ChoiceRow<MenuContent: View>: View {
     let selected: String
     let isSelected: Bool
     var dragHandle: AnyView?
+    /// Whether the row has a ⋯ menu.
+    var showsMenu = true
     let onSelect: () -> Void
     let onChoose: (String) -> Void
     @ViewBuilder let menu: () -> MenuContent
@@ -181,14 +183,14 @@ struct ChoiceRow<MenuContent: View>: View {
             .controlSize(.small)
             .frame(width: 130)
             Spacer(minLength: 2)
-            RowMenu(content: menu)
+            if showsMenu { RowMenu(content: menu) }
         }
         .font(Design.Typeface.label)
         .padding(.leading, indent)
         .padding(.horizontal, 4)
         .frame(height: EffectsPanelMetrics.rowHeight)
         .selectedRow(isSelected)
-        .contextMenu { menu() }
+        .contextMenu { if showsMenu { menu() } }
     }
 }
 

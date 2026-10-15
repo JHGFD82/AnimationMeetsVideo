@@ -94,7 +94,8 @@ Limits:
   piece sits in the timeline is left out, so moving clips keeps their
   renders, and old renders stay until evicted, so undo finds them again.
   `RenderSegment.formatVersion` is bumped when drawing changes in a way the
-  key can't see. Effects will add their settings to the key.
+  key can't see. Effects add their settings to the key through the resolved
+  steps.
 - **Format.** ProRes 422 without sound in `Cache/Renders/<key>.mov`, drawn
   by the export compositor. A render is written as `<key>.partial.mov` and
   renamed when done; leftovers are deleted when the project opens. The
