@@ -228,9 +228,12 @@ so animation looks the same in both.
 - Matrix ramps (`setTransformRamp`) aren't used: they blend matrix entries,
   which shrinks a layer midway through a turn. Per-frame values are exact
   at every rendered frame.
-- Opacity of nested layers multiplies: a nested layer at 50% inside a layer
-  at 50% draws at 25%. This is per layer, not group opacity, so overlapping
-  layers inside a faded nested timeline show through each other.
+- Opacity of nested layers is group opacity: a nested timeline's layers are
+  stacked first and the layer holding it fades the result as one picture,
+  so its overlapping layers don't show through each other. The built-in
+  compositor can only fade layer by layer, so a timeline where a fading
+  nested timeline shows two of its layers at once is drawn by
+  `LayeredCompositor`, in preview and export alike.
 
 ## Saving
 
@@ -277,6 +280,6 @@ ignore it, and drop the transforms if it saved the project.
 - **Selecting several keyframes**, copying and pasting them, and deleting
   with the Delete key.
 - **U** to show only animated properties, as in After Effects.
-- **Motion blur** and **group opacity** for nested timelines.
+- **Motion blur** for nested timelines.
 - Each edit rebuilds the player item, as other edits do. Fine for typed
   values; live dragging in the viewer will need a cheaper update path.

@@ -57,6 +57,9 @@ struct AnimationMeetsVideoApp: App {
     @State private var fileMonitor = ProjectFileMonitor()
     /// True while the project file is being written or reloaded.
     @State private var isBusy = false
+    /// The latest save asked for. Each save waits for the one before, so
+    /// two never write the package at once.
+    @State private var saveInProgress: Task<Bool, Never>?
     /// Set once launch has tried to reopen the last project, so the start
     /// sheet doesn't flash up before that.
     @State private var launchChecked = false
@@ -279,6 +282,7 @@ struct AnimationMeetsVideoApp: App {
             analysis.analyzeMissing(in: result.project)
             replacement.reset()
             replacement.markChanged(result.changedMedia)
+            replacement.markMissing(result.offlineMedia)
             if !result.changedMedia.isEmpty {
                 replacement.notice = .init(
                     title: "Media Changed Since Last Saved",
@@ -289,7 +293,7 @@ struct AnimationMeetsVideoApp: App {
                 let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
                 showAlert(
                     title: "Some Media Couldn't Be Opened",
-                    message: "These files are missing or unreadable, so their clips were removed from the timelines:\n\n\(names)"
+                    message: "These files are missing or unreadable:\n\n\(names)\n\nTheir clips stay in the project and play as gaps until the files are back. Put them back, or Control-click one in the Clips list and choose \u{201C}Replace Media…\u{201D}."
                 )
             }
         } catch {
@@ -297,9 +301,23 @@ struct AnimationMeetsVideoApp: App {
         }
     }
 
-    /// Returns whether the project was saved.
+    /// Returns whether the project was saved. A save asked for while
+    /// another runs (pressing Save twice, or quitting during a save) starts
+    /// once that one is done.
     @discardableResult
     private func saveProject(forcePanel: Bool = false) async -> Bool {
+        let previous = saveInProgress
+        let save = Task {
+            _ = await previous?.value
+            return await performSave(forcePanel: forcePanel)
+        }
+        saveInProgress = save
+        let saved = await save.value
+        if saveInProgress == save { saveInProgress = nil }
+        return saved
+    }
+
+    private func performSave(forcePanel: Bool) async -> Bool {
         var destination = forcePanel ? nil : projectURL
         if destination == nil {
             let panel = NSSavePanel()
@@ -325,6 +343,19 @@ struct AnimationMeetsVideoApp: App {
                 // carrying along what the previous package holds.
                 let isNewLocation = projectURL.map { !isSamePackage($0, url) } ?? true
                 guard let copying = isNewLocation ? chooseMediaToCopy(for: project, into: url) : [] else { return false }
+                // Results finished while saving somewhere new would go into
+                // the old package after its reference data was copied, so
+                // they are held until the save is done.
+                if isNewLocation {
+                    analysis.packageURL = nil
+                }
+                defer {
+                    if isNewLocation {
+                        let package = projectURL
+                        analysis.packageURL = package
+                        Task { await analysis.writeHeldResults() }
+                    }
+                }
                 let snapshot = project
                 let scoresToSave = analysis.unsavedTracks
                 let referencesToSave = analysis.unsavedReferences
@@ -344,7 +375,7 @@ struct AnimationMeetsVideoApp: App {
                 analysis.markBeatsDiscarded(beatsToDiscard)
                 analysis.dropForgottenReferences(in: saved)
                 // Edits made while saving stay; only the media locations change.
-                history.adopt { $0.applyMediaLocations(from: saved) }
+                history.adoptMediaLocations(of: snapshot, from: saved)
                 project.applyMediaLocations(from: saved)
                 savedProject = saved
                 lastAutosaved = nil
@@ -397,11 +428,12 @@ struct AnimationMeetsVideoApp: App {
                 analysis.analyzeMissing(in: result.project)
                 replacement.reset()
                 replacement.markChanged(result.changedMedia)
+                replacement.markMissing(result.offlineMedia)
                 if !result.missingMedia.isEmpty {
                     let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
                     showAlert(
                         title: "Some Media Couldn't Be Opened",
-                        message: "These files are missing or unreadable, so their clips were removed from the timelines:\n\n\(names)"
+                        message: "These files are missing or unreadable:\n\n\(names)\n\nTheir clips stay in the project and play as gaps until the files are back. Put them back, or Control-click one in the Clips list and choose \u{201C}Replace Media…\u{201D}."
                     )
                 }
             } catch {

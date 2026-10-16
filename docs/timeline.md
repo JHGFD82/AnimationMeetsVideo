@@ -284,6 +284,12 @@ rules for where a clip may go are in `ClipPlacement.swift`:
   the end (`coveringWholeFrames`), and so are clips in projects saved
   before this. Otherwise its end falls between frames and no neighbor
   can meet it to make a cut.
+- **Changing a timeline's frame rate** moves what is on it onto the new
+  frames (`alignToFrames`): clip edges with pictures, transition lengths,
+  keyframes and sections each go to the nearest frame, so edges that met
+  still meet. Keyframes that land on one frame merge, keeping the later.
+  Rates other than whole numbers and the NTSC family (such as 12.5) are
+  kept exact rather than rounded to a whole number.
 - **Audio moves freely**, to 1/48000 of a second.
 - Clips never start before zero and never overlap on a layer. A moved
   clip lands where it is dropped. Dropped inside another clip, it goes to
@@ -417,9 +423,11 @@ our own compositor, so a timeline with a film dissolve anywhere is drawn by
 `LayeredCompositor` (Core Image) for its whole length, in preview and
 export alike. It stacks the same layers with the same crops, transforms and
 opacities, without color management just like the built-in one, and a test
-checks the two draw the same picture. On a nested timeline the key applies
-to each of its layers separately rather than to its composite, as opacity
-already does.
+checks the two draw the same picture. On a nested timeline the transition
+applies to its composite, as its opacity does: its layers are stacked
+first and then faded or keyed together. A timeline where a nested timeline
+fades over two of its own layers at once is likewise drawn by
+`LayeredCompositor`.
 
 ### Curves
 

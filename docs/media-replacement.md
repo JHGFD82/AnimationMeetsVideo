@@ -137,8 +137,11 @@ context menu then offers **File Changed — Check Sync…**, which runs the same
 analysis on the file already in place and stores the result as the new
 accepted state. A file that matches again is unflagged.
 
-A file that goes missing or can't be read is reported once, and its clip's
-context menu says **File Is Missing**. It is not flagged as changed, since
+A file that goes missing or can't be read is reported once, the library
+says **File missing**, and its clip's context menu says **File Is
+Missing**. Its clips play as gaps in the viewer, and export stops with its
+name, until it is back (see "Offline media" in
+[project-package.md](project-package.md)). It is not flagged as changed, since
 there is nothing to check sync against; when it comes back it is compared
 as usual. **Replace Media…** points the asset at another file.
 

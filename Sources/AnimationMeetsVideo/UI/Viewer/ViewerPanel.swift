@@ -6,6 +6,9 @@ struct ViewerPanel: View {
     let frameSize: CGSize
     let frameRate: Double
     let buildError: String?
+    /// Which files are missing, shown at the foot of the picture while
+    /// their clips play as gaps.
+    var offlineNotice: String?
     /// A slipped clip's first and last frames, shown over the picture.
     let trimPreview: TrimPreviewModel
 
@@ -34,6 +37,16 @@ struct ViewerPanel: View {
                 if trimPreview.isActive {
                     TrimPreviewOverlay(model: trimPreview, frameRate: frameRate, aspectRatio: aspectRatio)
                         .padding(24)
+                }
+                if let offlineNotice {
+                    Label(offlineNotice, systemImage: "externaldrive.badge.exclamationmark")
+                        .font(Design.Typeface.label)
+                        .foregroundStyle(Design.textPrimary)
+                        .padding(.horizontal, Design.Space.step)
+                        .padding(.vertical, Design.Space.tight)
+                        .beveledChip(fill: Design.statusWarning.opacity(0.28))
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, Design.Space.group)
                 }
                 if let buildError {
                     Label(buildError, systemImage: "exclamationmark.triangle.fill")

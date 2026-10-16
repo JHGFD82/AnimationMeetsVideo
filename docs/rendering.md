@@ -18,8 +18,9 @@ draw at full, half or quarter size (a quarter of the pixels per step) by
 swapping the player item's video composition for a scaled copy.
 
 Export is unchanged: it uses the built-in compositor, and `LayeredCompositor`
-only for a timeline with a film dissolve. The two are tested to draw the
-same picture.
+only for a timeline with a film dissolve, or with a nested timeline fading
+over overlapping layers of its own (which only it fades as one picture).
+The two are tested to draw the same picture.
 
 The setting is in the viewer's transport bar and remembered per Mac, not
 per project:

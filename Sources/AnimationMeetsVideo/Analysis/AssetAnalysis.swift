@@ -92,6 +92,10 @@ final class AssetAnalysis {
     /// are read back from the package when needed.
     @ObservationIgnored private var unsavedPictures: [UUID: ReferenceThumbnails] = [:]
     @ObservationIgnored private var thumbnailFailures: Set<UUID> = []
+    /// Assets whose file was gone when their job ran. They aren't queued
+    /// again, or recorded as failed, until `retryUnavailable` says files
+    /// may be back.
+    @ObservationIgnored private var unavailable: Set<UUID> = []
     /// Assets whose saved results were looked for in the package already.
     @ObservationIgnored private var checkedPackage: Set<UUID> = []
     @ObservationIgnored private var waiting: [Job] = []
@@ -129,6 +133,7 @@ final class AssetAnalysis {
         beatFiles = [:]
         discardedBeats = []
         latestProject = nil
+        unavailable = []
         self.packageURL = packageURL
         self.beats = beats
         self.thumbnailed = thumbnailed
@@ -147,7 +152,7 @@ final class AssetAnalysis {
             }
             // Even while a job runs, so outdated beats stop showing at once.
             discardStaleBeats(of: clip, file: file)
-            guard progress[clip.id] == nil else { continue }
+            guard progress[clip.id] == nil, !unavailable.contains(clip.id) else { continue }
             let wantsScores = clip.kind == .video && tracks[clip.id] == nil && failures[clip.id] == nil
             // Reference data describes the original, so it is never taken
             // from a file that replaced it.
@@ -215,6 +220,14 @@ final class AssetAnalysis {
         discardedBeats.subtract(ids)
     }
 
+    /// Analyzes again what was skipped because its file was gone, for when
+    /// files may have come back.
+    func retryUnavailable(in project: EditingProject) {
+        guard !unavailable.isEmpty else { return }
+        unavailable = []
+        analyzeMissing(in: project)
+    }
+
     /// Drops a stored result and analyzes again, for a person's explicit "re-detect".
     func reanalyze(_ clip: MediaClip, in project: EditingProject) {
         tracks[clip.id] = nil
@@ -257,6 +270,25 @@ final class AssetAnalysis {
         for id in ids { unsavedPictures[id] = nil }
     }
 
+    /// Writes results held for a save, those that arrived while there was
+    /// no `packageURL` or whose write failed, into the package now. Each
+    /// that is written no longer waits for a save.
+    func writeHeldResults() async {
+        guard let package = packageURL else { return }
+        for (id, track) in unsavedTracks {
+            if await write(to: package, { try ProjectStore.writeChangeScores(track, for: id, in: $0) }) { unsaved.remove(id) }
+        }
+        for (id, reference) in unsavedReferences {
+            if await write(to: package, { try ProjectStore.writeReference(reference, for: id, in: $0) }) { unsavedReferenceIDs.remove(id) }
+        }
+        for (id, pictures) in unsavedPictures {
+            if await write(to: package, { try ProjectStore.writeThumbnails(pictures, for: id, in: $0) }) { unsavedPictures[id] = nil }
+        }
+        for (id, track) in unsavedBeats {
+            if await write(to: package, { try ProjectStore.writeBeats(track, for: id, in: $0) }) { unsavedBeatIDs.remove(id) }
+        }
+    }
+
     /// Drops the reference data of originals that `saved` marks forgotten,
     /// once that save has deleted it from the package. Until then it is
     /// kept, so undoing Forget Original brings it back.
@@ -288,6 +320,13 @@ final class AssetAnalysis {
     private func run(_ job: Job, generation expected: Int) async {
         let id = job.id
         let package = packageURL
+        // An offline file can't be analyzed, and isn't a failure: it waits.
+        guard FileManager.default.fileExists(atPath: job.url.path) else {
+            unavailable.insert(id)
+            progress[id] = nil
+            stages[id] = nil
+            return
+        }
         if job.wantsReference {
             begin(.reference, for: id)
             do {

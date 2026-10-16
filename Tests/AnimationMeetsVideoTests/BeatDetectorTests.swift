@@ -451,8 +451,11 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
     }
 
     @Test func beatsAreFoundAgainWhenTheAssetPointsAtAnotherFile() async throws {
-        // Missing files keep this cheap: what matters is that the new file is tried.
+        // The old file is missing; the new one is a real click track, since a
+        // missing file waits for its file rather than being analyzed.
         let folder = FileManager.default.temporaryDirectory
+        let newURL = try writeClickFile(seconds: 5)
+        defer { try? FileManager.default.removeItem(at: newURL) }
         var project = project(url: folder.appending(path: "amv-old-\(UUID().uuidString).wav"), hasAudio: true)
         project.clips[0].referenceForgotten = true
         let id = project.clips[0].id
@@ -462,14 +465,15 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         #expect(analysis.beats[id] == BeatTrack.none())
         #expect(analysis.progress.isEmpty)
 
-        project.clips[0].url = folder.appending(path: "amv-new-\(UUID().uuidString).wav")
+        project.clips[0].url = newURL
         analysis.analyzeMissing(in: project)
 
         #expect(analysis.beats[id] == nil)
         #expect(analysis.discardedBeats == [id])
         #expect(analysis.progress[id] != nil)
         try await waitForBeats(analysis)
-        #expect(analysis.beatFailures[id] != nil)
+        let track = try #require(analysis.beats[id])
+        #expect(track != BeatTrack.none())
         #expect(analysis.stages.isEmpty)
     }
 
