@@ -36,13 +36,18 @@ enum TransitionCategory: String, CaseIterable, Identifiable {
 ///
 /// Cross dissolve, wipe, slide and zoom are drawn with the built-in
 /// compositor's opacity, transform and crop. The film dissolve keys on
-/// brightness, which that compositor can't do, so a timeline using one is
-/// drawn by `LayeredCompositor` instead, as is one where a nested timeline
-/// fades over layers of its own that overlap. Preview and export use the
-/// same path, so they match.
+/// brightness, and the rest are drawn from the whole pictures before and
+/// after them (`drawsTwoPictures`), which that compositor can't do, so a
+/// timeline using any of them is drawn by `LayeredCompositor` instead, as
+/// is one where a nested timeline fades over layers of its own that
+/// overlap. Preview and export use the same path, so they match.
 enum TransitionKind: String, CaseIterable, Identifiable {
     case crossDissolve
     case filmDissolve
+    case dipToColor
+    case additiveDissolve
+    case channelDissolve
+    case blurDissolve
     case wipe
     case slide
     case zoom
@@ -53,6 +58,10 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         switch self {
         case .crossDissolve: "Cross Dissolve"
         case .filmDissolve: "Film Dissolve"
+        case .dipToColor: "Dip to Color"
+        case .additiveDissolve: "Additive Dissolve"
+        case .channelDissolve: "Channel Dissolve"
+        case .blurDissolve: "Blur Dissolve"
         case .wipe: "Wipe"
         case .slide: "Slide"
         case .zoom: "Zoom"
@@ -61,7 +70,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
 
     var category: TransitionCategory {
         switch self {
-        case .crossDissolve, .filmDissolve: .dissolves
+        case .crossDissolve, .filmDissolve, .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve: .dissolves
         case .wipe: .wipes
         case .slide, .zoom: .moves
         }
@@ -71,7 +80,9 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     var settings: [TransitionSetting] {
         switch self {
         case .wipe, .slide: [.direction]
-        case .crossDissolve, .filmDissolve, .zoom: []
+        case .dipToColor: [.color]
+        case .blurDissolve: [.amount]
+        case .crossDissolve, .filmDissolve, .additiveDissolve, .channelDissolve, .zoom: []
         }
     }
 
@@ -93,9 +104,25 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         switch self {
         case .crossDissolve: "circle.lefthalf.filled"
         case .filmDissolve: "sun.max"
+        case .dipToColor: "circle.fill"
+        case .additiveDissolve: "plus.circle"
+        case .channelDissolve: "camera.filters"
+        case .blurDissolve: "aqi.medium"
         case .wipe: "arrow.right.to.line"
         case .slide: "rectangle.righthalf.inset.filled.arrow.right"
         case .zoom: "arrow.up.left.and.arrow.down.right"
+        }
+    }
+
+    /// Whether it is drawn from the two whole pictures, the one before it
+    /// and the one after, by `TransitionRenderer`. Only `LayeredCompositor`
+    /// can draw those; the rest are the built-in compositor's opacity,
+    /// transform and crop on the clip alone (the film dissolve has its own
+    /// key, `LumaReveal`).
+    var drawsTwoPictures: Bool {
+        switch self {
+        case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom: false
+        case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve: true
         }
     }
 
@@ -548,6 +575,36 @@ struct EdgeTransitions {
         leading?.kind == .filmDissolve || trailing?.kind == .filmDissolve
     }
 
+    var drawsTwoPictures: Bool {
+        [leading?.kind, trailing?.kind].contains { $0?.drawsTwoPictures == true }
+    }
+
+    /// The transition drawn from two whole pictures playing at `time`, if
+    /// any. Its progress runs from the picture before to the picture after:
+    /// on a way in from what's under the clip to the clip over it, on a way
+    /// out the other way round.
+    func transitionFrame(at time: CMTime) -> TransitionFrame? {
+        if let leading, leading.kind.drawsTwoPictures {
+            let elapsed = CMTimeSubtract(time, leadingStart).seconds / leading.duration.seconds
+            if elapsed < 1 {
+                return TransitionFrame(
+                    kind: leading.kind, options: leading.options,
+                    progress: leading.curve.value(at: max(elapsed, 0)), entering: true
+                )
+            }
+        }
+        if let trailing, trailing.kind.drawsTwoPictures {
+            let elapsed = 1 - CMTimeSubtract(end, time).seconds / trailing.duration.seconds
+            if elapsed > 0 {
+                return TransitionFrame(
+                    kind: trailing.kind, options: trailing.options,
+                    progress: trailing.curve.value(at: min(elapsed, 1)), entering: false
+                )
+            }
+        }
+        return nil
+    }
+
     /// Each transition's curve maps the fraction of its length that has
     /// passed to how far it has got; a way in shows more of the clip as it
     /// goes, a way out less.
@@ -617,6 +674,10 @@ struct EdgeTransitions {
             effect.transform = effect.transform.concatenating(
                 CGAffineTransform(translationX: entering ? -dx : dx, y: entering ? -dy : dy)
             )
+        case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve:
+            // Drawn from the two pictures by `TransitionRenderer`; the clip
+            // itself is placed as usual.
+            break
         case .zoom:
             let scale = max(v, 0.001)
             effect.transform = effect.transform.concatenating(
@@ -647,5 +708,30 @@ struct LumaReveal: Equatable, Sendable {
         let s = Self.softness
         let threshold = (1 + s) - min(max(progress, 0), 1) * (1 + 2 * s)
         return (1 / (2 * s), (s - threshold) / (2 * s))
+    }
+}
+
+/// A transition drawn from two whole pictures, at one moment.
+struct TransitionFrame: Equatable, Sendable {
+    var kind: TransitionKind
+    var options: TransitionOptions
+    /// How far it has got: at 0 only the picture before shows, at 1 only
+    /// the picture after.
+    var progress: Double
+    /// True on a way in, where the picture after is the clip over what's
+    /// under it; false on a way out, where it is what's under the clip.
+    var entering: Bool
+
+    /// Everything that decides how it draws, for the render cache's key.
+    var key: String {
+        let o = options
+        let center = String(format: "%.4f,%.4f", Double(o.center.x), Double(o.center.y))
+        let color = String(format: "%.4f,%.4f,%.4f", o.color.red, o.color.green, o.color.blue)
+        let matte: String
+        switch o.matte {
+        case .noise: matte = "noise"
+        case .clip(let id): matte = id.uuidString
+        }
+        return "\(kind.rawValue) \(String(format: "%.5f", progress)) \(entering) \(o.direction.rawValue) \(color) \(center) \(o.shape.rawValue) \(o.count) \(o.order.rawValue) \(String(format: "%.4f", o.amount)) \(matte)"
     }
 }

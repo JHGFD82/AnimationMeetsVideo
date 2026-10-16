@@ -176,13 +176,21 @@ struct TransformStage {
         edges?.effect(at: CMTimeSubtract(time, shift)).lumaReveal
     }
 
+    /// The transition drawn from two whole pictures that the stage's clip
+    /// plays at root time `time`, if any.
+    func transitionFrame(at time: CMTime) -> TransitionFrame? {
+        edges?.transitionFrame(at: CMTimeSubtract(time, shift))
+    }
+
     /// Whether the stage is a nested timeline that can be less than opaque,
-    /// so the layers drawn through it must be stacked before it fades them.
+    /// or whose transitions draw it as a whole picture, so the layers drawn
+    /// through it must be stacked first.
     var fadesGroup: Bool {
         guard groupID != nil else { return false }
         let fadingKinds: [TransitionKind] = [.crossDissolve, .filmDissolve, .zoom]
         let edgeKinds = [edges?.leading?.kind, edges?.trailing?.kind].compactMap { $0 }
-        return transform.opacity != AnimatedValue(100.0) || edgeKinds.contains { fadingKinds.contains($0) }
+        return transform.opacity != AnimatedValue(100.0)
+            || edgeKinds.contains { fadingKinds.contains($0) || $0.drawsTwoPictures }
     }
 
     /// `inner` in this stage's own frame at its own time `local`.
@@ -238,6 +246,23 @@ struct PlacementAnimation {
     /// the nested timelines it is drawn through.
     func ownLumaReveal(at time: CMTime) -> LumaReveal? {
         stages.lazy.filter { $0.groupID == nil }.compactMap { $0.lumaReveal(at: time) }.first
+    }
+
+    /// Whether a transition plays that is drawn from two whole pictures.
+    var drawsTransitionsOnTwoPictures: Bool {
+        stages.contains { $0.edges?.drawsTwoPictures == true }
+    }
+
+    /// Whether only `LayeredCompositor` can draw it: a film dissolve, or a
+    /// transition drawn from two whole pictures.
+    var needsLayeredCompositor: Bool {
+        hasLumaReveal || drawsTransitionsOnTwoPictures
+    }
+
+    /// The transition drawn from two whole pictures playing on the layer
+    /// itself, leaving out those of the nested timelines it is drawn through.
+    func ownTransitionFrame(at time: CMTime) -> TransitionFrame? {
+        stages.lazy.filter { $0.groupID == nil }.compactMap { $0.transitionFrame(at: time) }.first
     }
 
     /// Whether a wipe ever crops the media, so a crop must be set.
@@ -765,6 +790,9 @@ enum CompositionExporter {
                     if let reveal = stage.lumaReveal(at: time) {
                         text += " r\(stageIndex) \(number(reveal.progress)) \(reveal.keysIncoming)"
                     }
+                    if let transition = stage.transitionFrame(at: time) {
+                        text += " x\(stageIndex) \(transition.key)"
+                    }
                 }
                 text += "\n"
             }
@@ -827,12 +855,12 @@ enum CompositionExporter {
         videoComposition.frameDuration = frame
 
         // The built-in compositor draws everything else exactly; for export
-        // only a film dissolve, or a nested timeline fading over layers of
-        // its own that overlap, needs ours, so it is used just for timelines
-        // with one.
+        // only a film dissolve, a transition drawn from two whole pictures,
+        // or a nested timeline fading over layers of its own that overlap
+        // needs ours, so it is used just for timelines with one.
         let needsLayered = plan.contains { planned in
             let animations = planned.shown.map(\.segment.animation)
-            return animations.contains(where: \.hasLumaReveal) || fadesGroupTogether(animations)
+            return animations.contains(where: \.needsLayeredCompositor) || fadesGroupTogether(animations)
         }
         if layered || needsLayered {
             // The viewer draws SDR timelines in 8 bits, which decodes cheaper.

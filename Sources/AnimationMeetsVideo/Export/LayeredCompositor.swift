@@ -46,6 +46,10 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
 /// opacity and transitions of the clip that holds it then fade the result
 /// as one picture, so its layers don't show through each other.
 ///
+/// A transition drawn from two whole pictures (`TransitionRenderer`) gets
+/// what's under its clip and the clip over that, as the pictures before
+/// and after it, and its result replaces both.
+///
 /// AVFoundation's transforms measure from the top left and Core Image's
 /// from the bottom left, so each layer is flipped into the transform's
 /// space and back out.
@@ -151,25 +155,25 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             return Drawn(animation: animation, image: image)
         }
         let black = CIImage(color: .black).cropped(to: bounds)
-        return stack(drawn[...], depth: 0, at: time, over: black).cropped(to: bounds)
+        return stack(drawn[...], depth: 0, at: time, over: black, in: bounds).cropped(to: bounds)
     }
 
     /// `layers`, top first, stacked bottom first over `background`. Layers
     /// drawn through the same nested timeline `depth` levels in are stacked
     /// by themselves, over nothing, and the result is faded as one picture
     /// by the clip that holds the nested timeline.
-    private static func stack(_ layers: ArraySlice<Drawn>, depth: Int, at time: CMTime, over background: CIImage) -> CIImage {
+    private static func stack(_ layers: ArraySlice<Drawn>, depth: Int, at time: CMTime, over background: CIImage, in bounds: CGRect) -> CIImage {
         var output = background
         var end = layers.endIndex
         while end > layers.startIndex {
             let bottom = layers[end - 1]
             let groups = bottom.animation.groups
             guard depth < groups.count else {
-                let faded = fade(
+                output = draw(
                     bottom.image, opacity: bottom.animation.ownOpacity(at: time),
-                    reveal: bottom.animation.ownLumaReveal(at: time), over: output
+                    reveal: bottom.animation.ownLumaReveal(at: time),
+                    transition: bottom.animation.ownTransitionFrame(at: time), over: output, in: bounds
                 )
-                output = faded.composited(over: output)
                 end -= 1
                 continue
             }
@@ -181,16 +185,37 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                 guard depth < above.count, above[depth] == group else { break }
                 start -= 1
             }
-            let inside = stack(layers[start..<end], depth: depth + 1, at: time, over: CIImage.empty())
+            let inside = stack(layers[start..<end], depth: depth + 1, at: time, over: CIImage.empty(), in: bounds)
             let stage = bottom.animation.stage(ofGroup: group)
-            let faded = fade(
+            output = draw(
                 inside, opacity: Float(stage?.opacity(at: time) ?? 1),
-                reveal: stage?.lumaReveal(at: time), over: output
+                reveal: stage?.lumaReveal(at: time), transition: stage?.transitionFrame(at: time),
+                over: output, in: bounds
             )
-            output = faded.composited(over: output)
             end = start
         }
         return output
+    }
+
+    /// `image` drawn over `below`: faded, keyed by a film dissolve, and
+    /// when a transition drawn from two whole pictures plays, drawn by it
+    /// between what's underneath and the image over it.
+    private static func draw(
+        _ image: CIImage,
+        opacity: Float,
+        reveal: LumaReveal?,
+        transition: TransitionFrame?,
+        over below: CIImage,
+        in bounds: CGRect
+    ) -> CIImage {
+        let together = fade(image, opacity: opacity, reveal: reveal, over: below).composited(over: below)
+        guard let transition else { return together }
+        return TransitionRenderer.draw(
+            transition,
+            from: transition.entering ? below : together,
+            to: transition.entering ? together : below,
+            in: bounds
+        )
     }
 
     /// `image` at `opacity`, keyed by a film dissolve against `below`, what
