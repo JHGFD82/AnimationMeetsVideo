@@ -94,6 +94,16 @@ struct ClipTime: Equatable, Sendable {
     /// Whether the speed plays the source backwards.
     var isReversed: Bool { (speed.keyframes.first?.value ?? speed.value) < 0 }
 
+    /// The speed turned to play forwards or backwards, with its sizes,
+    /// keyframes and eases as they were: 100% becomes -100%.
+    mutating func setReversed(_ reversed: Bool) {
+        let sign: Double = reversed ? -1 : 1
+        speed = AnimatedValue(
+            abs(speed.value) * sign,
+            keyframes: speed.keyframes.map { Keyframe(time: $0.time, value: abs($0.value) * sign, easeIn: $0.easeIn, easeOut: $0.easeOut) }
+        )
+    }
+
     var isDefault: Bool { self == ClipTime() }
 }
 

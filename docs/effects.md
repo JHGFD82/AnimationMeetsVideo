@@ -346,7 +346,11 @@ works on frames already chosen:
   value's, with none) is the clip's direction. A speed can't turn around
   partway, since passing through zero would take forever, so every other
   keyframe keeps that direction (`editTime(ofClip:)`) and no speed is
-  under 1% in size. A composition can't play footage backwards, so the
+  under 1% in size. The Time section's **Reverse** checkbox flips the
+  sign of the whole curve (100% becomes -100%, ramps and eases kept). A
+  speed typed across zero is held at 1% in the clip's direction, with a
+  note suggesting the Blade tool: cut the clip and set each segment's
+  speed. A composition can't play footage backwards, so the
   exporter builds a backwards clip from a piece for every frame, and its
   sound is silent.
 

@@ -83,6 +83,13 @@ extension EffectsPanel {
                 lane: emptyLane(c)
             )
             speedRow(c)
+            reverseRow(c)
+            if speedBlockedClipID == clip.id {
+                besideLane(EffectNoteRow(note: EffectNote(
+                    text: "Speed can't cross zero. To change direction, cut the clip with the Blade tool and set each segment's speed.",
+                    dims: true
+                )))
+            }
             if project.playsVideo(clip) {
                 frameBlendingRow(c)
                 if clip.time.frameBlending == .opticalFlow {
@@ -119,13 +126,22 @@ extension EffectsPanel {
                 indent: 14,
                 components: [clip.speed(atSource: c.sourceNow)],
                 unit: "%",
-                dragRange: { _ in -ClipTime.speedRange.upperBound...ClipTime.speedRange.upperBound },
+                dragRange: { _ in
+                    clip.isReversed ? -ClipTime.speedRange.upperBound ... -ClipTime.speedRange.lowerBound : ClipTime.speedRange
+                },
                 isAnimated: speed.isAnimated,
                 isSelected: false,
                 keyframeTimes: speed.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
                 playhead: c.frameTime,
                 onSelect: {},
-                onSetComponent: { _, value in editTime(c) { $0.speed.set(value, at: c.sourceNow) } },
+                onSetComponent: { _, value in
+                    // Crossing zero would take forever to play: hold at the
+                    // nearest speed in the clip's direction and say why.
+                    let crosses = value == 0 || (value < 0) != clip.isReversed
+                    speedBlockedClipID = crosses ? clip.id : nil
+                    let allowed = crosses ? (clip.isReversed ? -1.0 : 1.0) : value
+                    editTime(c) { $0.speed.set(allowed, at: c.sourceNow) }
+                },
                 onToggleAnimated: { editTime(c) { $0.speed.setAnimated(!$0.speed.isAnimated, at: c.sourceNow) } },
                 onToggleKeyframe: { editTime(c) { $0.speed.toggleKeyframe(at: c.sourceNow) } },
                 onSeek: onSeek,
@@ -143,6 +159,22 @@ extension EffectsPanel {
             )
         )
         .help("How fast the clip plays, as a percentage of its source's own speed. The clip lasts as long as its source does at that speed; keyframes (in the source's time) make a speed ramp.")
+    }
+
+    private func reverseRow(_ c: RowContext) -> some View {
+        labelled(
+            ToggleFieldsRow(
+                title: "Reverse",
+                isOn: c.clip.isReversed,
+                help: "Plays the clip backwards: the speed turns negative (100% becomes -100%). A speed can't cross zero, so to play forwards and then backwards, cut the clip with the Blade tool.",
+                onToggle: { on in
+                    speedBlockedClipID = nil
+                    editTime(c) { $0.setReversed(on) }
+                },
+                fields: []
+            ),
+            lane: emptyLane(c)
+        )
     }
 
     private func frameBlendingRow(_ c: RowContext) -> some View {
