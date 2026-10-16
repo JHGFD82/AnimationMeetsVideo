@@ -332,11 +332,26 @@ struct AnimationMeetsVideoApp: App {
             destination = url
         }
         guard let url = destination else { return false }
+        // Only a destination picked in the panel, where replacing it was
+        // confirmed, is cleared; saving onto the open project isn't a replace.
+        let replacesExisting = !isOpenProject(url)
+        if replacesExisting, usesMedia(inside: url) {
+            showAlert(
+                title: "Couldn't Save Project",
+                message: "This project uses media stored inside \u{201C}\(url.lastPathComponent)\u{201D}, so it can't replace it. Choose another name or place."
+            )
+            return false
+        }
 
         do {
             isBusy = true
             defer { isBusy = false }
             do {
+                // Otherwise the old package's media, backups and render
+                // cache would be mixed into this one.
+                if replacesExisting {
+                    try replaceExisting(at: url)
+                }
                 try ProjectStore.preparePackage(at: url)
                 let lock = try lockForProject(at: url)
                 // Imports are copied as they come in, so only Save As copies,
@@ -454,6 +469,15 @@ struct AnimationMeetsVideoApp: App {
             return projectLock
         }
         return try ProjectLock.acquire(at: url)
+    }
+
+    /// Whether any of the project's media lives inside `packageURL`, which
+    /// replacing that package would take away.
+    private func usesMedia(inside packageURL: URL) -> Bool {
+        let folder = packageURL.standardizedFileURL.resolvingSymlinksInPath().path + "/"
+        return project.clips.contains { clip in
+            clip.url.map { $0.standardizedFileURL.resolvingSymlinksInPath().path.hasPrefix(folder) } ?? false
+        }
     }
 
     private func isOpenProject(_ url: URL) -> Bool {

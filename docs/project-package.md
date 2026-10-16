@@ -124,7 +124,11 @@ be undone.
 Saving writes `project.json` and copies nothing, since imports are already
 in place. Save As copies what the old package holds in `Media/` and
 `Reference/` into the new one; media referenced from elsewhere stays where
-it is.
+it is. Saving as a package that already exists, once the save panel's
+replace prompt is confirmed, moves the old package to the Trash first (as
+New Project does), so none of its media, backups or render cache end up in
+the new one. It is refused if the old package is open in another window or
+app, or if the project uses media stored inside it.
 
 **Importing a file again reuses what was made from it.** When an imported
 file matches an asset's reference data in `Reference/` by size and
