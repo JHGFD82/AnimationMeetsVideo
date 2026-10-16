@@ -19,20 +19,15 @@ struct VolumePropertyRow: View {
     var body: some View {
         let level = volume.value(at: time)
         HStack(spacing: 4) {
-            Button {
+            AnimateToggle(name: "volume", isAnimated: volume.isAnimated) {
                 onEdit { $0.setAnimated(!volume.isAnimated, at: time) }
-            } label: {
-                Image(systemName: volume.isAnimated ? "stopwatch.fill" : "stopwatch")
-                    .foregroundStyle(volume.isAnimated ? Design.accent : Design.textTertiary)
             }
-            .buttonStyle(.plain)
-            .help(volume.isAnimated ? "Stop animating volume (keeps the current level)" : "Animate volume")
 
             Text("Volume")
                 .foregroundStyle(Design.textSecondary)
                 .frame(width: 50, alignment: .leading)
 
-            NumericField(value: level, label: AudioLevel.label) { newValue in
+            NumericField(value: level, label: AudioLevel.label, accessibilityName: "Volume level") { newValue in
                 onEdit { $0.set(AudioLevel.clamped(newValue), at: time) }
             }
             .frame(width: 54, alignment: .leading)
@@ -47,12 +42,16 @@ struct VolumePropertyRow: View {
             .controlSize(.mini)
             .frame(minWidth: 40, maxWidth: 90)
             .help("Volume from mute to +6 dB; 0 dB plays the media as it is")
+            .accessibilityLabel("Volume")
+            .accessibilityValue(AudioLevel.label(level))
 
             Spacer(minLength: 4)
 
             if volume.isAnimated {
-                keyframeNavigation
-                if let onShowGraph { graphButton("Volume", action: onShowGraph) }
+                KeyframeNavigator(name: "volume", keyframeTimes: keyframeTimes, time: time, onSeek: onSeek) {
+                    onEdit { $0.toggleKeyframe(at: time) }
+                }
+                if let onShowGraph { GraphEditorButton(name: "volume", action: onShowGraph) }
             }
         }
         .font(Design.Typeface.label)
@@ -60,46 +59,5 @@ struct VolumePropertyRow: View {
             Button("Reset to 0 dB") { onEdit { $0 = AnimatedValue(0.0) } }
                 .disabled(volume == AnimatedValue(0.0))
         }
-    }
-
-    private func graphButton(_ name: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: "chart.xyaxis.line")
-                .foregroundStyle(Design.textSecondary)
-        }
-        .buttonStyle(.plain)
-        .font(.system(size: 9))
-        .help("Open \(name.lowercased())'s graph editor to shape its eases")
-    }
-
-    private var keyframeNavigation: some View {
-        let previous = keyframeTimes.last { $0 < time }
-        let next = keyframeTimes.first { $0 > time }
-        let hasKeyframe = keyframeTimes.contains(time)
-        return HStack(spacing: 2) {
-            Button {
-                if let previous { onSeek(previous) }
-            } label: {
-                Image(systemName: "arrowtriangle.left.fill")
-            }
-            .disabled(previous == nil)
-            .help("Previous keyframe")
-            Button {
-                onEdit { $0.toggleKeyframe(at: time) }
-            } label: {
-                Image(systemName: hasKeyframe ? "diamond.fill" : "diamond")
-                    .foregroundStyle(hasKeyframe ? Design.keyframe : Design.textTertiary)
-            }
-            .help(hasKeyframe ? "Remove the keyframe at the playhead" : "Add a keyframe at the playhead")
-            Button {
-                if let next { onSeek(next) }
-            } label: {
-                Image(systemName: "arrowtriangle.right.fill")
-            }
-            .disabled(next == nil)
-            .help("Next keyframe")
-        }
-        .buttonStyle(.plain)
-        .font(.system(size: 8))
     }
 }

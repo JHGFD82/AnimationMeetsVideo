@@ -50,6 +50,7 @@ struct TransitionsPanel: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Close transitions")
+                .accessibilityLabel("Close transitions")
             }
             .padding(.horizontal, Design.Space.group)
             .padding(.vertical, Design.Space.step)
@@ -106,5 +107,6 @@ private struct TransitionTile: View {
         .onHover { isHovering = $0 }
         .editorAnimation(Design.Motion.select, value: isHovering)
         .help("\(kind.name): drag onto the start or end of a clip")
+        .accessibilityElement(children: .combine)
     }
 }

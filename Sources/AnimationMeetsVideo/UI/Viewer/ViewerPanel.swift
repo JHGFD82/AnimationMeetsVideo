@@ -25,6 +25,10 @@ struct ViewerPanel: View {
                 Design.Surface.well.color
                 if hasContent {
                     picture { PlayerLayerView(player: playback.player, still: playback.still) }
+                        .accessibilityElement()
+                        .accessibilityLabel("Viewer")
+                        .accessibilityValue(playback.currentTime.timecode(frameRate: frameRate))
+                        .accessibilityAddTraits(.isImage)
                 } else {
                     picture { MetalPreviewView() }
                     ContentUnavailableView("No clips yet", systemImage: "film",
@@ -65,6 +69,7 @@ struct ViewerPanel: View {
                 }
                 .keyboardShortcut(.space, modifiers: [])
                 .help("Play/Pause (Space)")
+                .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
                 .disabled(!hasContent)
 
                 // The one number meant to be read from across the desk.

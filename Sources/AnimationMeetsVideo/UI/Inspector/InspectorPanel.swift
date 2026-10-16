@@ -197,6 +197,7 @@ struct InspectorPanel: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Remove transition")
+                    .accessibilityLabel("Remove \(transition.kind.name) at the \(edge == .leading ? "start" : "end")")
                 }
                 Stepper(
                     value: Binding(
@@ -265,6 +266,7 @@ struct InspectorGroup<Content: View>: View {
             Text(title)
                 .font(Design.Typeface.groupTitle)
                 .foregroundStyle(Design.textSecondary)
+                .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: Design.Space.close) {
                 content()
             }

@@ -149,6 +149,45 @@ top, in the ruler. Only clicking or dragging in the ruler moves it, so
 drags on the layers are free for the tools. It lands on frames and stays
 within the timeline.
 
+While playing, only the playhead line and the timeline's timecode follow
+the player (`LivePlayheadRail`, which reads the player's time itself).
+The rest of the editor reads the parked playhead, which catches up when
+playback stops, so playback doesn't redraw every layer on every tick. The
+values shown in property rows and the inspector hold still while playing
+for the same reason.
+
+Zoomed in, the view **follows the playhead** while playing: each time the
+playhead runs off the edge of the view, the view turns a page so it is
+just inside the left edge again (and starting playback with the playhead
+out of view brings it into view). The view options can turn this off.
+Moving the playhead from the keyboard scrolls it to the middle when it
+lands out of view.
+
+### Moving the playhead from the keyboard
+
+- **← / →** step one frame; with Shift, ten. Stepping pauses playback.
+- **↑ / ↓** go to the previous or next edit: any clip's start or end, or
+  the end of the timeline.
+- **Home / End** go to the start and the end.
+- **⌘B** splits at the playhead: the selected clip if the playhead is in
+  it, otherwise every clip the playhead is in, on every layer.
+- **, / .** nudge the selected clip a frame earlier or later; with Shift,
+  ten. A nudge follows the same rules as dragging.
+
+These keys are left to a list or other control that has the keyboard (the
+library's list uses the arrows), and to text being typed. All of them, and
+the timeline's other keys (tools, snapping, zoom, Delete), are listed in
+the **Timeline** menu (`TimelineCommands`) and in
+[accessibility.md](accessibility.md). Keys without a modifier are
+written after the item's name rather than set as menu shortcuts, since a
+menu shortcut would take the key from a text field.
+
+## VoiceOver
+
+Clips, layers, the playhead, sections, keyframes and joined transitions
+are all reachable with VoiceOver, with actions for what dragging does a
+frame at a time. See [accessibility.md](accessibility.md).
+
 ## Sections
 
 A slim lane under the ruler holds the timeline's **sections**: named
@@ -231,8 +270,11 @@ transitions and keyframes don't snap.
 ## Moving and trimming clips
 
 Dragging the middle of a clip moves it; dragging within a few points of
-either edge trims that edge without destroying anything. The rules for where
-a clip may go are in `ClipPlacement.swift`:
+either edge trims that edge without destroying anything. Holding the
+pointer near the left or right edge of the tracks during either drag
+scrolls the timeline that way, faster the closer to the edge
+(`TimelineAutoScroll`), so a clip can be taken past what is in view. The
+rules for where a clip may go are in `ClipPlacement.swift`:
 
 - **Video and nested timelines lock to frames.** Their start and end land
   on whole frames of the timeline's rate, never between two. This uses
@@ -423,4 +465,3 @@ A drag is saved when it ends, as one undo step.
 - Thumbnails of the frames in the transition footage lane.
 - Joining nested timelines, and trimming at a joined cut from the clips
   themselves (the transition box covers the edges; roll the cut instead).
-- Scrolling to follow the playhead during playback.

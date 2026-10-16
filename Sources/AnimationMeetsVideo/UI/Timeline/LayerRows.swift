@@ -62,6 +62,8 @@ struct LayerHeaderRow: View {
                     }
                     .buttonStyle(.plain)
                     .help(isExpanded ? "Hide properties" : "Show properties: transform (P, S, R, T) and volume (L)")
+                    .accessibilityLabel("Properties of \(displayName)")
+                    .accessibilityValue(isExpanded ? "Shown" : "Hidden")
                 } else {
                     Color.clear
                 }
@@ -109,6 +111,8 @@ struct LayerHeaderRow: View {
                 }
                 .buttonStyle(.plain)
                 .help(isAudioExpanded ? "Hide linked audio" : "Show linked audio")
+                .accessibilityLabel("Linked audio of \(displayName)")
+                .accessibilityValue(isAudioExpanded ? "Shown" : "Hidden")
             }
             if let isChannelsExpanded {
                 Button(action: onToggleChannels) {
@@ -120,6 +124,8 @@ struct LayerHeaderRow: View {
                 }
                 .buttonStyle(.plain)
                 .help(isChannelsExpanded ? "Show the sound as one waveform" : "Show each channel (left and right) apart")
+                .accessibilityLabel("Separate channels of \(displayName)")
+                .accessibilityValue(isChannelsExpanded ? "On" : "Off")
             }
         }
         .padding(.horizontal, Design.Space.step)
@@ -150,6 +156,21 @@ struct LayerHeaderRow: View {
             }
             Divider()
             Button("Delete Layer", role: .destructive, action: onDelete)
+        }
+        // A group, so its buttons stay reachable inside it, with the
+        // layer's own actions on the group.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Layer \(number), \(displayName)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityAction { onSelect() }
+        .accessibilityActions {
+            if canMoveUp { Button("Move layer up") { onMove(-1) } }
+            if canMoveDown { Button("Move layer down") { onMove(1) } }
+            Button("Rename layer") {
+                draftName = layer.customName ?? ""
+                isEditingName = true
+            }
+            Button("Delete layer", action: onDelete)
         }
     }
 
@@ -182,6 +203,9 @@ struct PushedClip: Equatable {
 
 struct LayerClipRow: View {
     let layer: TimelineLayer
+    /// The layer's name as the timeline shows it, for VoiceOver.
+    let name: String
+    let frameRate: Double
     let project: EditingProject
     let timelineID: UUID
     let selection: TimelineSelection?
@@ -275,6 +299,7 @@ struct LayerClipRow: View {
                 let joinedLead = project.joinedLead(of: clip, among: layer.clips)
                 ClipBlockView(
                     clip: clip,
+                    frameRate: frameRate,
                     info: info,
                     typeColor: layer.kind == .music ? Design.ClipTone.music.color : Design.ClipTone.of(info, streams: clip.streams).color,
                     hasLinkedAudio: project.hasLinkedAudio(clip),
@@ -362,6 +387,9 @@ struct LayerClipRow: View {
         .dropDestination(for: SceneDragPayload.self) { payloads, location in
             onDropScenes(payloads, CMTime(seconds: max(0, Double(location.x / pixelsPerSecond)), preferredTimescale: 600))
         }
+        // VoiceOver goes through the layers, then into each one's clips.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(name)
     }
 }
 
@@ -379,6 +407,9 @@ struct LayerClipRow: View {
 /// a translucent, outlined ghost of the clip's extent before the trim.
 struct ClipBlockView: View {
     let clip: TimelineClip
+    /// The timeline's rate: VoiceOver reads times as its timecode, and moves
+    /// and trims by its frames.
+    let frameRate: Double
     let info: ResolvedClipInfo?
     let typeColor: Color
     /// Shows a sound badge, and offers to detach the sound.
@@ -465,6 +496,8 @@ struct ClipBlockView: View {
     /// what the block flashes to acknowledge. See `ConfirmFlash`.
     @State private var landedCount = 0
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
+    /// Scrolls the timeline while a move or trim holds the pointer at an edge.
+    @Environment(TimelineAutoScroll.self) private var autoScroll: TimelineAutoScroll?
 
     private let handleWidth: CGFloat = 8
     private let space = "clipBlock"
@@ -626,19 +659,15 @@ struct ClipBlockView: View {
                         if !isLifted {
                             isLifted = true
                             onDragging(true)
+                            autoScroll?.begin()
                         }
-                        var proposed = CMTimeAdd(clip.startOffset, timeDelta(value.translation.width))
-                        let snapped = snapSpan(proposed, clip.trimmedDuration)
-                        if let snapped { proposed = snapped.start }
-                        onSnapIndicator(snapped?.target)
-                        let target = resolveMove(proposed, value.location)
-                        var moved = clip
-                        moved.startOffset = target?.start ?? clip.startOffset
-                        showPreview(moved)
-                        previewTarget = target?.layerID == nil && target?.newLayer == nil ? nil : target
-                        onMovePreview(target)
+                        previewMove(translation: value.translation.width, pointer: value.location)
+                        autoScroll?.track(pointerX: value.location.x) {
+                            previewMove(translation: value.translation.width, pointer: value.location)
+                        }
                     }
                     .onEnded { _ in
+                        autoScroll?.end()
                         isLifted = false
                         onDragging(false)
                         onSnapIndicator(nil)
@@ -715,12 +744,68 @@ struct ClipBlockView: View {
         .frame(height: height, alignment: .topLeading)
         .offset(y: previewTarget?.offsetY ?? 0)
         .coordinateSpace(.named(space))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityName)
+        .accessibilityValue(accessibilityDescription)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityHint("Selects the clip. Its actions move and trim it by a frame.")
+        .accessibilityAction { onSelect() }
+        .accessibilityActions { accessibilityEditActions }
         .onChange(of: clip) { _, _ in
             if pendingDrop != nil {
                 endDrop()
                 // The edit you let go of has arrived: acknowledge it.
                 landedCount += 1
             }
+        }
+    }
+
+    // MARK: VoiceOver
+
+    /// What the clip is: its name and kind.
+    private var accessibilityName: String {
+        let kind = switch info {
+        case .timeline: "nested timeline"
+        case .media(let media) where media.kind == .audio || clip.streams == .audio: "audio clip"
+        case .media: "video clip"
+        case nil: "missing clip"
+        }
+        return "\(info?.name ?? "Unknown"), \(kind)"
+    }
+
+    /// Where it is and what it carries, read after its name.
+    private var accessibilityDescription: String {
+        var parts = [
+            "starts at \(clip.startOffset.timecode(frameRate: frameRate))",
+            "\(clip.trimmedDuration.timecode(frameRate: frameRate)) long",
+        ]
+        if let transition = clip.transitionIn { parts.append("\(transition.kind.name) at the start") }
+        if let transition = clip.transitionOut { parts.append("\(transition.kind.name) at the end") }
+        if hasLinkedAudio { parts.append("with its own sound") }
+        return parts.joined(separator: ", ")
+    }
+
+    /// Moves and trims a frame at a time, and the clip's menu, for VoiceOver.
+    /// They go through the same placement rules as dragging.
+    @ViewBuilder
+    private var accessibilityEditActions: some View {
+        let frame = Timeline.frameDuration(for: frameRate)
+        Button("Move one frame earlier") {
+            onMove(CMTimeMaximum(.zero, CMTimeSubtract(clip.startOffset, frame)), nil)
+        }
+        Button("Move one frame later") { onMove(CMTimeAdd(clip.startOffset, frame), nil) }
+        Button("Trim start one frame earlier") { onTrimStart(CMTimeSubtract(clip.trimStart, frame)) }
+        Button("Trim start one frame later") { onTrimStart(CMTimeAdd(clip.trimStart, frame)) }
+        Button("Trim end one frame earlier") { onTrimEnd(CMTimeSubtract(clip.trimEnd, frame)) }
+        Button("Trim end one frame later") { onTrimEnd(CMTimeAdd(clip.trimEnd, frame)) }
+        if let transition = clip.transitionIn, joinedLead == nil {
+            Button("Remove \(transition.kind.name) at start") { onRemoveTransition(.leading) }
+        }
+        if let transition = clip.transitionOut {
+            Button("Remove \(transition.kind.name) at end") { onRemoveTransition(.trailing) }
+        }
+        if hasLinkedAudio {
+            Button("Detach audio", action: onDetachAudio)
         }
     }
 
@@ -755,6 +840,22 @@ struct ClipBlockView: View {
             topTrailingRadius: endsAtEdge ? radius : 0,
             style: .continuous
         )
+    }
+
+    /// Shows where a move drag `translation` points across, with the
+    /// pointer at `pointer` in window coordinates, would put the clip.
+    /// Counts what the timeline has scrolled under the drag.
+    private func previewMove(translation: CGFloat, pointer: CGPoint) {
+        var proposed = CMTimeAdd(clip.startOffset, timeDelta(translation + (autoScroll?.scrolled ?? 0)))
+        let snapped = snapSpan(proposed, clip.trimmedDuration)
+        if let snapped { proposed = snapped.start }
+        onSnapIndicator(snapped?.target)
+        let target = resolveMove(proposed, pointer)
+        var moved = clip
+        moved.startOffset = target?.start ?? clip.startOffset
+        showPreview(moved)
+        previewTarget = target?.layerID == nil && target?.newLayer == nil ? nil : target
+        onMovePreview(target)
     }
 
     /// The timeline time the blade cuts at for `x` in the row: on a frame.
@@ -923,7 +1024,7 @@ struct ClipBlockView: View {
     /// A trim drag of `edge` moved by `translation` points: previews it.
     private func trimChanged(_ edge: Edge, translation: CGFloat) {
         isTrimming = true
-        var delta = timeDelta(translation)
+        var delta = timeDelta(translation + (autoScroll?.scrolled ?? 0))
         let edgeTime = edge == .leading ? clip.startOffset : clip.endOffset
         let snapped = snapTime(CMTimeAdd(edgeTime, delta))
         if let snapped { delta = CMTimeSubtract(snapped, edgeTime) }
@@ -963,9 +1064,16 @@ struct ClipBlockView: View {
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
                         guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
+                        if !isTrimming { autoScroll?.begin() }
                         trimChanged(edge, translation: value.translation.width)
+                        autoScroll?.track(pointerX: value.location.x) {
+                            trimChanged(edge, translation: value.translation.width)
+                        }
                     }
-                    .onEnded { _ in trimEnded(edge) }
+                    .onEnded { _ in
+                        autoScroll?.end()
+                        trimEnded(edge)
+                    }
             )
             .pointerStyle(.columnResize)
     }

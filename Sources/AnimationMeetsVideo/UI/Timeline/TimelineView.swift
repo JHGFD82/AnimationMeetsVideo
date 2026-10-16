@@ -9,6 +9,12 @@ struct TimelineView: View {
     let selection: TimelineSelection?
     let beatTracks: [UUID: BeatTrack]
     let beatClicks: BeatClickPlayer
+    /// Read only by the playhead and its timecode while playing; see
+    /// `LivePlayheadRail`.
+    let playback: PlaybackModel
+    /// Where the playhead is parked. It doesn't follow playback, which
+    /// would redraw every layer on every tick; it catches up when playback
+    /// stops.
     @Binding var playheadTime: CMTime
     let onScrub: (CMTime) -> Void
     let onSelectClip: (UUID, TimelineClip) -> Void
@@ -74,6 +80,7 @@ struct TimelineView: View {
     /// Area heights when a drag of the boundary between two areas began.
     @State private var boundaryDragStart: [LayerKind: CGFloat]?
     @State private var geometryStore = TimelineGeometryStore()
+    @State private var autoScroll = TimelineAutoScroll()
     /// What the layer names column offers while a clip or media is dragged
     /// over it; nil otherwise.
     @State private var newLayerHover: NewLayerHover?
@@ -101,6 +108,8 @@ struct TimelineView: View {
     /// The section selected in the lane under the ruler, for Delete.
     @State private var selectedSectionID: UUID?
     @AppStorage("snapping") private var snapping = true
+    /// Whether the view pages along with the playhead while playing.
+    @AppStorage("followsPlayhead") private var followsPlayhead = true
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
     /// Where a drag in progress snapped, drawn as a line across the layers.
@@ -255,6 +264,12 @@ struct TimelineView: View {
     /// layout pass (buttons, keys, the slider).
     private var currentViewport: TimelineViewport { viewport(width: trackAreaWidth) }
 
+    /// Where the playhead is now: the player's time while it plays, which
+    /// `playheadTime` doesn't follow, else the parked time.
+    private var livePlayheadTime: CMTime {
+        playback.isPlaying ? playback.player.currentTime() : playheadTime
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Design.Space.step) {
@@ -265,6 +280,7 @@ struct TimelineView: View {
                     ForEach(TimelineTool.allCases) { tool in
                         Image(systemName: tool.systemImage)
                             .help(tool.help)
+                            .accessibilityLabel(tool.name)
                             .tag(tool)
                     }
                 }
@@ -273,9 +289,7 @@ struct TimelineView: View {
                 .fixedSize()
                 .help(tool.help)
                 Spacer()
-                Text(playheadTime.timecode(frameRate: timeline.frameRate))
-                    .font(Design.Typeface.numericSmall)
-                    .foregroundStyle(Design.textSecondary)
+                PlayheadTimecode(playback: playback, parked: playheadTime, frameRate: timeline.frameRate)
                 TimelineZoomSliders(
                     horizontal: zoomFractionBinding,
                     vertical: Binding(
@@ -286,8 +300,10 @@ struct TimelineView: View {
                 ControlGroup {
                     Button { zoomAroundPlayhead(by: 1 / zoomStep) } label: { Image(systemName: "minus.magnifyingglass") }
                         .help("Zoom out (-)")
+                        .accessibilityLabel("Zoom out")
                     Button { zoomAroundPlayhead(by: zoomStep) } label: { Image(systemName: "plus.magnifyingglass") }
                         .help("Zoom in (=)")
+                        .accessibilityLabel("Zoom in")
                 }
                 .fixedSize()
                 Button {
@@ -296,9 +312,11 @@ struct TimelineView: View {
                     Image(systemName: "slider.horizontal.3")
                 }
                 .help("View options")
+                .accessibilityLabel("View options")
                 .popover(isPresented: $showingViewOptions) {
                     ViewOptionsPopover(
                         zoomFraction: zoomFractionBinding, onFit: fitToWindow, areaLayout: $areaLayout,
+                        followsPlayhead: $followsPlayhead,
                         beatLayers: beatLayerChoices, beatLayerID: beatLayerSelection,
                         clickOnBeats: $clickOnBeats, clickFrequency: $beatClickFrequency,
                         onPreviewClick: beatClicks.preview
@@ -309,16 +327,19 @@ struct TimelineView: View {
                 }
                 .toggleStyle(.button)
                 .help(snapping ? "Snapping on: edges snap to clips, the playhead and beat markers (N)" : "Snapping off (N)")
+                .accessibilityLabel("Snapping")
                 Toggle(isOn: $showsTransitions) {
                     Image(systemName: "square.on.square.dashed")
                 }
                 .toggleStyle(.button)
                 .help(showsTransitions ? "Hide transitions" : "Show transitions")
+                .accessibilityLabel("Transitions panel")
                 Toggle(isOn: $showsMeter) {
                     Image(systemName: "chart.bar.fill")
                 }
                 .toggleStyle(.button)
                 .help(showsMeter ? "Hide the audio meter" : "Show the audio meter: every track together, left and right")
+                .accessibilityLabel("Audio meter")
             }
             .padding(.horizontal, Design.Space.rail)
             .padding(.vertical, Design.Space.close)
@@ -338,8 +359,9 @@ struct TimelineView: View {
                 let areaHeights = areaLayout.heights(splitting: areasAvailable)
                 let trackHeight = max(railHeight, geometry.size.height - scrollbarHeight)
                 let frameTime = timeline.snappedToFrame(playheadTime)
-                let playheadX = viewport.x(atSeconds: playheadTime.seconds)
-                let playheadVisible = (-1...(viewport.width + 1)).contains(playheadX)
+                // Built once per layout, not once per area: it walks every
+                // clip and beat.
+                let snapTargets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: drawnBeats(viewport)) : nil
 
                 VStack(alignment: .leading, spacing: 0) {
                     // The time rail: the ruler and the sections under it
@@ -355,6 +377,18 @@ struct TimelineView: View {
                                 .overlay(alignment: .bottom) { RenderStatusStrip(viewport: viewport) }
                                 .contentShape(Rectangle())
                                 .gesture(scrubGesture(in: viewport))
+                                // To VoiceOver the ruler is the playhead:
+                                // adjusting it steps a frame.
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("Playhead")
+                                .accessibilityValue(playheadTime.timecode(frameRate: timeline.frameRate))
+                                .accessibilityAdjustableAction { direction in
+                                    switch direction {
+                                    case .increment: stepPlayhead(byFrames: 1)
+                                    case .decrement: stepPlayhead(byFrames: -1)
+                                    @unknown default: break
+                                    }
+                                }
                         }
                         HStack(spacing: 0) {
                             Text("Sections")
@@ -362,7 +396,7 @@ struct TimelineView: View {
                                 .foregroundStyle(Design.textTertiary)
                                 .padding(.leading, Design.Space.step)
                                 .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
-                            sectionLane(viewport: viewport)
+                            sectionLane(viewport: viewport, targets: snapTargets)
                         }
                     }
                     .background(Design.Surface.raised.color)
@@ -386,7 +420,7 @@ struct TimelineView: View {
                                 },
                                 onResizeEnded: { boundaryDragStart = nil }
                             )
-                            area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, frameTime: frameTime)
+                            area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets)
                         }
                     }
                     .frame(maxHeight: .infinity, alignment: .top)
@@ -428,13 +462,14 @@ struct TimelineView: View {
                         // The playhead and the snap line move far more
                         // often than anything else here, so they are Core
                         // Animation layers rather than SwiftUI shapes.
-                        PlayheadRail(
-                            playheadX: playheadX,
-                            isPlayheadVisible: playheadVisible,
+                        LivePlayheadRail(
+                            playback: playback,
+                            parked: playheadTime,
+                            viewport: viewport,
+                            onLeaveView: followsPlayhead && !viewport.isFitted ? { time in page(to: time) } : nil,
                             snapX: snapIndicator.map { viewport.x(atSeconds: $0.seconds) },
                             height: trackHeight
                         )
-                        .frame(width: viewport.width, height: trackHeight)
                     }
                     .frame(width: viewport.width, height: trackHeight, alignment: .topLeading)
                     .clipped()
@@ -468,6 +503,11 @@ struct TimelineView: View {
         }
         .padding(.top, topPadding)
         .background(KeyPressMonitor(handler: handleKey))
+        .focusedSceneValue(\.timelineActions, actions)
+        .environment(autoScroll)
+        // Again whenever the timeline changes: the closures read its
+        // length, through this view's copy of it.
+        .onChange(of: timeline, initial: true) { _, _ in configureAutoScroll() }
         .onChange(of: selection) { _, newValue in
             if newValue != nil {
                 selectedLayerID = nil
@@ -491,7 +531,7 @@ struct TimelineView: View {
 
     /// One area: its layers' names beside their tracks, scrolling up and
     /// down on its own.
-    private func area(_ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, frameTime: CMTime) -> some View {
+    private func area(_ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, frameTime: CMTime, snapTargets: SnapTargets?) -> some View {
         ScrollView(.vertical) {
             HStack(alignment: .top, spacing: 0) {
                 layerHeaders(kind, frameTime: frameTime)
@@ -510,7 +550,7 @@ struct TimelineView: View {
                         onHover: { hover in if hover != newLayerHover { newLayerHover = hover } },
                         onDrop: { payloads, kind in _ = onDropScenes(payloads, nil, playheadTime, kind) }
                     ))
-                layerTracks(kind, viewport: viewport, frameTime: frameTime)
+                layerTracks(kind, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets)
                     .offset(x: -viewport.scrollX)
                     .frame(width: viewport.width, alignment: .topLeading)
                     .clipped()
@@ -735,16 +775,17 @@ struct TimelineView: View {
 
     /// Every layer's clips and keyframe lanes, laid out across the whole
     /// span in unscrolled coordinates; the caller shifts them into view.
-    private func layerTracks(_ kind: LayerKind, viewport: TimelineViewport, frameTime: CMTime) -> some View {
+    private func layerTracks(_ kind: LayerKind, viewport: TimelineViewport, frameTime: CMTime, snapTargets: SnapTargets?) -> some View {
         let pixelsPerSecond = viewport.pixelsPerSecond
         let contentWidth = viewport.contentWidth
-        let snapTargets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: drawnBeats(viewport)) : nil
         let snapTolerance = snapTolerance(viewport)
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(areaLayers(kind).enumerated()), id: \.element.id) { index, layer in
                 VStack(spacing: 0) {
                     LayerClipRow(
                         layer: layer,
+                        name: project.displayName(of: layer, in: timeline),
+                        frameRate: timeline.frameRate,
                         project: project,
                         timelineID: timelineID,
                         selection: selection,
@@ -893,7 +934,7 @@ struct TimelineView: View {
     /// where it is on screen, or comes to the middle if it was out of view.
     private func zoomAroundPlayhead(to pixelsPerSecond: CGFloat) {
         let viewport = currentViewport
-        let seconds = playheadTime.seconds
+        let seconds = livePlayheadTime.seconds
         let x = viewport.x(atSeconds: seconds)
         let anchorX = (0...viewport.width).contains(x) ? x : viewport.width / 2
         apply(viewport.zoomed(to: pixelsPerSecond, keeping: seconds, atX: anchorX))
@@ -906,6 +947,35 @@ struct TimelineView: View {
     private func apply(_ zoom: (pixelsPerSecond: CGFloat?, scrollX: CGFloat)) {
         zoomedPixelsPerSecond = zoom.pixelsPerSecond
         scrollX = zoom.pixelsPerSecond == nil ? 0 : zoom.scrollX
+    }
+
+    /// Scrolls so `time` sits just inside the left edge: a page turn, as
+    /// when playback runs off the right of the view.
+    private func page(to time: CMTime) {
+        let viewport = currentViewport
+        scrollX = CGFloat(time.seconds) * viewport.pixelsPerSecond - viewport.width * 0.05
+    }
+
+    /// Lets drags at the edges of the tracks scroll them (`TimelineAutoScroll`).
+    private func configureAutoScroll() {
+        autoScroll.scrollBy = { distance in
+            let before = currentViewport.scrollX
+            scrollX = before + distance
+            return currentViewport.scrollX - before
+        }
+        // The tracks start where the names column ends.
+        autoScroll.trackSpan = {
+            let start = geometryStore.namesColumn.maxX
+            return start...(start + trackAreaWidth)
+        }
+    }
+
+    /// Scrolls `time` to the middle of the view if it is out of view.
+    private func reveal(_ time: CMTime) {
+        let viewport = currentViewport
+        let x = viewport.x(atSeconds: time.seconds)
+        guard x < 0 || x > viewport.width else { return }
+        scrollX = CGFloat(time.seconds) * viewport.pixelsPerSecond - viewport.width / 2
     }
 
     private func fitToWindow() {
@@ -942,8 +1012,7 @@ struct TimelineView: View {
         onScrub(timeline.snappedToFrame(snapped ?? time))
     }
 
-    private func sectionLane(viewport: TimelineViewport) -> some View {
-        let targets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: drawnBeats(viewport)) : nil
+    private func sectionLane(viewport: TimelineViewport, targets: SnapTargets?) -> some View {
         let tolerance = snapTolerance(viewport)
         return SectionLane(
             sections: timeline.sections,
@@ -1034,6 +1103,7 @@ struct TimelineView: View {
     /// every visual layer when nothing is selected.
     private func handleKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if let handled = handleNavigationKey(event, flags: flags) { return handled }
         // Delete and Forward Delete, without modifiers.
         if [51, 117].contains(event.keyCode), flags.isDisjoint(with: [.command, .control, .option, .shift]) {
             return deleteSelection()
@@ -1052,6 +1122,11 @@ struct TimelineView: View {
             return false
         }
         switch key {
+        // Shift turns , and . into < and >: ten frames.
+        case ",": return nudgeSelection(byFrames: -1)
+        case ".": return nudgeSelection(byFrames: 1)
+        case "<": return nudgeSelection(byFrames: -10)
+        case ">": return nudgeSelection(byFrames: 10)
         case "=", "+": zoomAroundPlayhead(by: zoomStep); return true
         case "-": zoomAroundPlayhead(by: 1 / zoomStep); return true
         case "\\": fitToWindow(); return true
@@ -1085,6 +1160,119 @@ struct TimelineView: View {
             revealed[layer.id] = shown
         }
         return true
+    }
+
+    // MARK: - Playhead keys and the Timeline menu
+
+    /// What the Timeline menu does in this timeline. See `TimelineCommands`.
+    private var actions: TimelineActions {
+        TimelineActions(
+            togglePlayback: { playback.togglePlayback() },
+            step: { stepPlayhead(byFrames: $0) },
+            goToStart: { parkPlayhead(at: .zero) },
+            goToEnd: { parkPlayhead(at: timeline.duration) },
+            previousEdit: { _ = jumpToEdit(forward: false) },
+            nextEdit: { _ = jumpToEdit(forward: true) },
+            splitAtPlayhead: { _ = splitAtPlayhead() },
+            nudge: { _ = nudgeSelection(byFrames: $0) },
+            deleteSelection: { _ = deleteSelection() },
+            isSnapping: snapping,
+            toggleSnapping: { snapping.toggle() },
+            tool: tool,
+            setTool: { tool = $0 },
+            zoomIn: { zoomAroundPlayhead(by: zoomStep) },
+            zoomOut: { zoomAroundPlayhead(by: 1 / zoomStep) },
+            zoomToFit: { fitToWindow() }
+        )
+    }
+
+    /// ← and → step a frame (ten with Shift), ↑ and ↓ go to the previous or
+    /// next edit, Home and End to the start and end. Nil for other keys.
+    /// False, leaving the key alone, while a list or other control has the
+    /// keyboard, since it uses these keys itself.
+    private func handleNavigationKey(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool? {
+        let left: UInt16 = 123, right: UInt16 = 124, down: UInt16 = 125, up: UInt16 = 126
+        let home: UInt16 = 115, end: UInt16 = 119
+        guard [left, right, down, up, home, end].contains(event.keyCode),
+              flags.isDisjoint(with: [.command, .control, .option])
+        else {
+            return nil
+        }
+        guard !(event.window?.firstResponder is NSControl) else { return false }
+        let frames = flags.contains(.shift) ? 10 : 1
+        switch event.keyCode {
+        case left: stepPlayhead(byFrames: -frames)
+        case right: stepPlayhead(byFrames: frames)
+        case up: return jumpToEdit(forward: false)
+        case down: return jumpToEdit(forward: true)
+        case home: parkPlayhead(at: .zero)
+        default: parkPlayhead(at: timeline.duration)
+        }
+        return true
+    }
+
+    /// Pauses and puts the playhead at `time`, on a frame within the
+    /// timeline.
+    private func parkPlayhead(at time: CMTime) {
+        playback.player.pause()
+        let parked = timeline.snappedToFrame(CMTimeMinimum(CMTimeMaximum(.zero, time), timeline.duration))
+        onScrub(parked)
+        reveal(parked)
+    }
+
+    /// Pauses and moves the playhead `frames` frames, back when negative.
+    private func stepPlayhead(byFrames frames: Int) {
+        let from = timeline.snappedToFrame(livePlayheadTime)
+        parkPlayhead(at: CMTimeAdd(from, CMTimeMultiply(timeline.frameDuration, multiplier: Int32(clamping: frames))))
+    }
+
+    /// Moves the playhead to the nearest clip edge (or the timeline's end)
+    /// after it, or before it. False when there is none that way.
+    @discardableResult
+    private func jumpToEdit(forward: Bool) -> Bool {
+        let now = timeline.snappedToFrame(livePlayheadTime)
+        let edges = timeline.layers.flatMap { $0.clips.flatMap { [$0.startOffset, $0.endOffset] } } + [timeline.duration]
+        let frames = edges.map { timeline.snappedToFrame($0) }
+        guard let target = forward ? frames.filter({ $0 > now }).min() : frames.filter({ $0 < now }).max() else {
+            return false
+        }
+        parkPlayhead(at: target)
+        return true
+    }
+
+    /// Moves the selected clip `frames` frames, later when positive, by the
+    /// same rules as dragging it. False with no clip selected.
+    @discardableResult
+    private func nudgeSelection(byFrames frames: Int) -> Bool {
+        guard let selection, selection.timelineID == timelineID,
+              let clip = timeline.layer(id: selection.layerID)?.clips.first(where: { $0.id == selection.timelineClipID })
+        else {
+            return false
+        }
+        let distance = CMTimeMultiply(timeline.frameDuration, multiplier: Int32(clamping: frames))
+        onMoveClip(selection.layerID, clip.id, nil, CMTimeMaximum(.zero, CMTimeAdd(clip.startOffset, distance)))
+        return true
+    }
+
+    /// Splits at the playhead: the selected clip when the playhead is in
+    /// it, otherwise every clip the playhead is in, on every layer. False
+    /// when it is in none.
+    @discardableResult
+    private func splitAtPlayhead() -> Bool {
+        let time = timeline.snappedToFrame(livePlayheadTime)
+        func contains(_ clip: TimelineClip) -> Bool { time > clip.startOffset && time < clip.endOffset }
+        var targets: [(layerID: UUID, clipID: UUID)] = []
+        if let selection, selection.timelineID == timelineID,
+           let clip = timeline.layer(id: selection.layerID)?.clips.first(where: { $0.id == selection.timelineClipID }),
+           contains(clip) {
+            targets = [(selection.layerID, clip.id)]
+        } else {
+            for layer in timeline.layers {
+                for clip in layer.clips where contains(clip) { targets.append((layer.id, clip.id)) }
+            }
+        }
+        for target in targets { onBladeClip(target.layerID, target.clipID, time) }
+        return !targets.isEmpty
     }
 
     /// Eases the keyframes at the playhead in the property rows that are
@@ -1136,6 +1324,54 @@ struct TimelineView: View {
         return true
     }
 
+}
+
+/// The playhead drawn over the tracks. While playing it follows the player
+/// itself, so only this view redraws on each tick rather than the whole
+/// timeline; parked, it shows `parked`.
+private struct LivePlayheadRail: View {
+    let playback: PlaybackModel
+    let parked: CMTime
+    let viewport: TimelineViewport
+    /// Called with the playhead's time when it leaves the view while
+    /// playing (including when playing starts with it out of view), so the
+    /// timeline can page after it. Nil not to follow.
+    let onLeaveView: ((CMTime) -> Void)?
+    let snapX: CGFloat?
+    let height: CGFloat
+
+    var body: some View {
+        let playing = playback.isPlaying
+        let time = playing ? playback.currentTime : parked
+        let x = viewport.x(atSeconds: time.seconds)
+        // Checked here because this is the one view that sees every tick;
+        // the page turn itself is a scroll of the whole timeline.
+        let leftView = playing && onLeaveView != nil && (x < 0 || x > viewport.width)
+        PlayheadRail(
+            playheadX: x,
+            isPlayheadVisible: (-1...(viewport.width + 1)).contains(x),
+            snapX: snapX,
+            height: height
+        )
+        .frame(width: viewport.width, height: height)
+        .onChange(of: leftView) { _, left in
+            if left { onLeaveView?(time) }
+        }
+    }
+}
+
+/// The playhead's timecode in the timeline's header, following the player
+/// while it plays, like `LivePlayheadRail`.
+private struct PlayheadTimecode: View {
+    let playback: PlaybackModel
+    let parked: CMTime
+    let frameRate: Double
+
+    var body: some View {
+        Text((playback.isPlaying ? playback.currentTime : parked).timecode(frameRate: frameRate))
+            .font(Design.Typeface.numericSmall)
+            .foregroundStyle(Design.textSecondary)
+    }
 }
 
 /// Labels the per-layer columns, beside the ruler — currently just

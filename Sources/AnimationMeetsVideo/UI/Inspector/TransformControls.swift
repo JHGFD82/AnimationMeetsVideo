@@ -21,14 +21,9 @@ struct TransformPropertyRow: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Button {
+            AnimateToggle(name: property.rawValue.lowercased(), isAnimated: isAnimated) {
                 onEdit { $0.setAnimated(property, !isAnimated, at: time) }
-            } label: {
-                Image(systemName: isAnimated ? "stopwatch.fill" : "stopwatch")
-                    .foregroundStyle(isAnimated ? Design.accent : Design.textTertiary)
             }
-            .buttonStyle(.plain)
-            .help(isAnimated ? "Stop animating \(property.rawValue.lowercased()) (keeps the current value)" : "Animate \(property.rawValue.lowercased())")
 
             Text(property.rawValue)
                 .foregroundStyle(Design.textSecondary)
@@ -38,17 +33,19 @@ struct TransformPropertyRow: View {
                 Button {
                     onEdit { $0.scaleLinked.toggle() }
                 } label: {
-                    Image(systemName: "link")
+                    PropertyRowIcon(systemName: "link")
                         .foregroundStyle(transform.scaleLinked ? Design.textPrimary : Design.textTertiary.opacity(0.5))
                 }
                 .buttonStyle(.plain)
                 .help(transform.scaleLinked ? "Width and height scale together" : "Width and height scale separately")
+                .accessibilityLabel("Link width and height")
+                .accessibilityValue(transform.scaleLinked ? "On" : "Off")
             }
 
             let components = transform.components(property, at: time, frameSize: frameSize)
             ForEach(components.indices, id: \.self) { index in
                 if index > 0 { Text(",").foregroundStyle(Design.textTertiary) }
-                NumericField(value: components[index], unit: property.unit) { newValue in
+                NumericField(value: components[index], unit: property.unit, accessibilityName: componentName(index)) { newValue in
                     onEdit { $0.setComponent(index, of: property, to: newValue, at: time, frameSize: frameSize) }
                 }
             }
@@ -56,52 +53,20 @@ struct TransformPropertyRow: View {
             Spacer(minLength: 4)
 
             if isAnimated {
-                keyframeNavigation
-                if let onShowGraph { graphButton(property.rawValue, action: onShowGraph) }
+                KeyframeNavigator(name: property.rawValue.lowercased(), keyframeTimes: keyframeTimes, time: time, onSeek: onSeek) {
+                    onEdit { $0.toggleKeyframe(property, at: time) }
+                }
+                if let onShowGraph { GraphEditorButton(name: property.rawValue.lowercased(), action: onShowGraph) }
             }
         }
         .font(Design.Typeface.label)
     }
 
-    private func graphButton(_ name: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: "chart.xyaxis.line")
-                .foregroundStyle(Design.textSecondary)
-        }
-        .buttonStyle(.plain)
-        .font(.system(size: 9))
-        .help("Open \(name.lowercased())'s graph editor to shape its eases")
-    }
-
-    private var keyframeNavigation: some View {
-        let previous = keyframeTimes.last { $0 < time }
-        let next = keyframeTimes.first { $0 > time }
-        let hasKeyframe = keyframeTimes.contains(time)
-        return HStack(spacing: 2) {
-            Button {
-                if let previous { onSeek(previous) }
-            } label: {
-                Image(systemName: "arrowtriangle.left.fill")
-            }
-            .disabled(previous == nil)
-            .help("Previous keyframe")
-            Button {
-                onEdit { $0.toggleKeyframe(property, at: time) }
-            } label: {
-                Image(systemName: hasKeyframe ? "diamond.fill" : "diamond")
-                    .foregroundStyle(hasKeyframe ? Design.keyframe : Design.textTertiary)
-            }
-            .help(hasKeyframe ? "Remove the keyframe at the playhead" : "Add a keyframe at the playhead")
-            Button {
-                if let next { onSeek(next) }
-            } label: {
-                Image(systemName: "arrowtriangle.right.fill")
-            }
-            .disabled(next == nil)
-            .help("Next keyframe")
-        }
-        .buttonStyle(.plain)
-        .font(.system(size: 8))
+    /// "Position X", or just "Rotation" for a property of one component.
+    private func componentName(_ index: Int) -> String {
+        let names = AnimatedParameter.transform(property).componentNames
+        guard names.count > 1, names.indices.contains(index) else { return property.rawValue }
+        return "\(property.rawValue) \(names[index])"
     }
 }
 

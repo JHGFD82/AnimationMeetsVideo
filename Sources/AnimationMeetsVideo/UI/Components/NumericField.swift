@@ -25,6 +25,9 @@ struct NumericField: View {
     /// How the value reads while not being edited, in place of the number
     /// and unit.
     var label: ((Double) -> String)?
+    /// What the value is, for VoiceOver: "Position X", "Volume". Without
+    /// one, VoiceOver reads only the value.
+    var accessibilityName: String?
     let onCommit: (Double) -> Void
 
     @State private var isEditing = false
@@ -44,6 +47,7 @@ struct NumericField: View {
                 }
                 .frame(minWidth: 44, maxWidth: 70)
                 .focused($isFocused)
+                .accessibilityLabel(accessibilityName ?? "Value")
                 .onAppear { isFocused = true }
                 .onSubmit { commit() }
                 .onExitCommand { isEditing = false }
@@ -51,18 +55,27 @@ struct NumericField: View {
                     if !focused { commit() }
                 }
         } else {
-            Text(label?(value) ?? NumericExpression.format(value, maxFractionDigits: fractionDigits) + unit)
+            let shown = label?(value) ?? NumericExpression.format(value, maxFractionDigits: fractionDigits) + unit
+            Text(shown)
                 .font(Design.Typeface.numericSmall)
                 .foregroundStyle(Design.accent)
                 .lineLimit(1)
                 .fixedSize()
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    draft = NumericExpression.format(value, maxFractionDigits: 3)
-                    isEditing = true
-                }
+                .onTapGesture(perform: beginEditing)
                 .help("Click to type a value. Arithmetic such as 100+25 works.")
+                // A tap gesture alone isn't something VoiceOver can press.
+                .accessibilityLabel(accessibilityName ?? shown)
+                .accessibilityValue(accessibilityName == nil ? "" : shown)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint("Type a value")
+                .accessibilityAction { beginEditing() }
         }
+    }
+
+    private func beginEditing() {
+        draft = NumericExpression.format(value, maxFractionDigits: 3)
+        isEditing = true
     }
 
     private func commit() {
