@@ -114,6 +114,21 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         }
     }
 
+    /// A decoded source frame as a picture to draw, its alpha premultiplied.
+    ///
+    /// Core Image takes a buffer's alpha as premultiplied, but footage with
+    /// alpha (ProRes 4444, HEVC with alpha) decodes with straight alpha,
+    /// which the decoder marks on the buffer. Drawn as it was, every
+    /// partly transparent pixel came out brighter than it should, so soft
+    /// edges glowed, and more so where two such layers overlapped.
+    static func picture(of buffer: CVPixelBuffer) -> CIImage {
+        let image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
+        guard let mode = CVBufferCopyAttachment(buffer, kCVImageBufferAlphaChannelModeKey, nil),
+              CFEqual(mode, kCVImageBufferAlphaChannelMode_StraightAlpha)
+        else { return image }
+        return image.premultiplyingAlpha()
+    }
+
     /// Lets go of the queued requests rather than drawing them first; the
     /// one being drawn finishes as usual.
     func cancelAllPendingVideoCompositionRequests() {
@@ -416,7 +431,7 @@ struct Drawing {
     /// it (Echo). With `trail`, that copy's footage as it is.
     private func sourcePicture(of media: MediaDraw, clip: DrawClip, at time: CMTime, trail: TrackCopy?) -> CIImage? {
         func frame(_ trackID: CMPersistentTrackID) -> CIImage? {
-            source(trackID).map { CIImage(cvPixelBuffer: $0, options: [.colorSpace: NSNull()]) }
+            source(trackID).map(LayeredCompositor.picture(of:))
         }
         func scaled(_ image: CIImage, by strength: Double) -> CIImage {
             guard strength < 1 else { return image }
@@ -595,7 +610,7 @@ struct Drawing {
         switch input {
         case .track(let copy, let base):
             guard let buffer = source(copy.trackID) else { return nil }
-            let image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
+            let image = LayeredCompositor.picture(of: buffer)
             return image.transformed(
                 by: Self.flip(height: image.extent.height).concatenating(base).concatenating(start).concatenating(toOutput)
             )
