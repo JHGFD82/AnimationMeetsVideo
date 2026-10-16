@@ -453,7 +453,9 @@ enum CompositionExporter {
         let canvasMargin = project.canvasMargin
         var cachedKeys: Set<String> = []
         if let cache {
-            cachedKeys = try await substituteCachedRanges(&plan, from: cache, into: composition)
+            cachedKeys = try await substituteCachedRanges(
+                &plan, from: cache, into: composition, frame: frameDuration(for: timeline.frameRate)
+            )
         }
 
         let videoComposition = Self.buildVideoComposition(
@@ -1061,10 +1063,18 @@ enum CompositionExporter {
 
     /// Puts the cached render of each stretch that has one on a track of
     /// its own, and has the stretch show only that. Returns the keys used.
+    ///
+    /// A render can come out a little shorter than its stretch: the
+    /// stretch's ends are clip edges, which at rates such as 29.97 fall
+    /// between the exact frame times, and the render holds whole frames.
+    /// One short by less than a frame is stretched to fit, rather than let
+    /// go, which left the stretch compositing live although the timeline
+    /// showed it rendered.
     private static func substituteCachedRanges(
         _ plan: inout [PlannedRange],
         from cache: RenderCache,
-        into composition: AVMutableComposition
+        into composition: AVMutableComposition,
+        frame: CMTime
     ) async throws -> Set<String> {
         var used: Set<String> = []
         var track: AVMutableCompositionTrack?
@@ -1073,7 +1083,8 @@ enum CompositionExporter {
             guard let file = cache.file(for: segment.key),
                   let info = try? await MediaTrackCache.shared.info(for: file),
                   let video = info.video,
-                  info.videoRange.duration >= segment.range.duration
+                  info.videoRange.duration > .zero,
+                  CMTimeAdd(info.videoRange.duration, frame) > segment.range.duration
             else {
                 continue
             }
@@ -1081,8 +1092,11 @@ enum CompositionExporter {
                 track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
             }
             guard let track else { break }
-            let source = CMTimeRange(start: info.videoRange.start, duration: segment.range.duration)
+            let source = CMTimeRange(start: info.videoRange.start, duration: CMTimeMinimum(info.videoRange.duration, segment.range.duration))
             try track.insertTimeRange(source, of: video, at: segment.range.start)
+            if source.duration < segment.range.duration {
+                track.scaleTimeRange(CMTimeRange(start: segment.range.start, duration: source.duration), toDuration: segment.range.duration)
+            }
             plan[index].clips = [DrawClip(
                 content: .media(MediaDraw(
                     trackID: track.trackID, base: .identity, url: file,

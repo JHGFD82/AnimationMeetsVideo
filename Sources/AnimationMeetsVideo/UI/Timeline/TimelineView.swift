@@ -114,6 +114,7 @@ struct TimelineView: View {
     @AppStorage("followsPlayhead") private var followsPlayhead = true
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
+    @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
     /// Where a drag in progress snapped, drawn as a line across the layers.
     @State private var snapIndicator: CMTime?
 
@@ -1221,7 +1222,8 @@ struct TimelineView: View {
             setTool: { tool = $0 },
             zoomIn: { zoomAroundPlayhead(by: zoomStep) },
             zoomOut: { zoomAroundPlayhead(by: 1 / zoomStep) },
-            zoomToFit: { fitToWindow() }
+            zoomToFit: { fitToWindow() },
+            renderNow: renderer.flatMap { renderer in renderer.canRenderNow ? { renderer.renderNow() } : nil }
         )
     }
 
