@@ -170,4 +170,25 @@ struct RenderProbe {
         #expect(try showsAfter(early, x: 0.2, y: 0.5))
         #expect(try !showsAfter(early, x: 0.8, y: 0.5))
     }
+
+    // MARK: Moves
+
+    @Test func aPushMovesBothPicturesTogether() throws {
+        let right = wipe(.push, 0.5) { $0.direction = .right }
+        #expect(try showsAfter(right, x: 0.25, y: 0.5))
+        #expect(try !showsAfter(right, x: 0.75, y: 0.5))
+        let up = wipe(.push, 0.5) { $0.direction = .up }
+        #expect(try showsAfter(up, x: 0.5, y: 0.75))
+        #expect(try !showsAfter(up, x: 0.5, y: 0.25))
+    }
+
+    @Test func aSplitOpensThePictureBeforeFromTheMiddle() throws {
+        let sideways = wipe(.split, 0.5) { $0.direction = .left }
+        #expect(try showsAfter(sideways, x: 0.5, y: 0.5))
+        #expect(try !showsAfter(sideways, x: 0.1, y: 0.5))
+        #expect(try !showsAfter(sideways, x: 0.9, y: 0.5))
+        let upright = wipe(.split, 0.5) { $0.direction = .down }
+        #expect(try showsAfter(upright, x: 0.5, y: 0.5))
+        #expect(try !showsAfter(upright, x: 0.5, y: 0.05))
+    }
 }

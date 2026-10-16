@@ -187,7 +187,7 @@ struct TransformStage {
     /// through it must be stacked first.
     var fadesGroup: Bool {
         guard groupID != nil else { return false }
-        let fadingKinds: [TransitionKind] = [.crossDissolve, .filmDissolve, .zoom]
+        let fadingKinds: [TransitionKind] = [.crossDissolve, .filmDissolve, .zoom, .spin]
         let edgeKinds = [edges?.leading?.kind, edges?.trailing?.kind].compactMap { $0 }
         return transform.opacity != AnimatedValue(100.0)
             || edgeKinds.contains { fadingKinds.contains($0) || $0.drawsTwoPictures }

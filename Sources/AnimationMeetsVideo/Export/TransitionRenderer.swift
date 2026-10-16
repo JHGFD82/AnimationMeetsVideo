@@ -48,13 +48,70 @@ enum TransitionRenderer {
             // the picture itself.
             let map = matteMap(options.matte, in: bounds)
             return reveal(b, over: a, mask: LayeredCompositor.revealMask(of: map, LumaReveal(progress: p, keysIncoming: true)))
-        case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom:
+        case .push:
+            // Both move together, the next picture pushing the other off.
+            let travel = offset(options.direction, in: bounds)
+            let leaving = a.transformed(by: CGAffineTransform(translationX: travel.dx * p, y: travel.dy * p))
+            let arriving = b.transformed(by: CGAffineTransform(translationX: travel.dx * (p - 1), y: travel.dy * (p - 1)))
+            return arriving.composited(over: leaving).cropped(to: bounds)
+        case .split:
+            // The picture before opens in two halves, sideways for left or
+            // right, up and down for up or down.
+            var first = bounds, second = bounds
+            let shift: CGVector
+            if options.direction.isHorizontal {
+                first.size.width = bounds.width / 2
+                second = first.offsetBy(dx: bounds.width / 2, dy: 0)
+                shift = CGVector(dx: bounds.width / 2 * p, dy: 0)
+            } else {
+                first.size.height = bounds.height / 2
+                second = first.offsetBy(dx: 0, dy: bounds.height / 2)
+                shift = CGVector(dx: 0, dy: bounds.height / 2 * p)
+            }
+            let lower = a.cropped(to: first).transformed(by: CGAffineTransform(translationX: -shift.dx, y: -shift.dy))
+            let upper = a.cropped(to: second).transformed(by: CGAffineTransform(translationX: shift.dx, y: shift.dy))
+            return upper.composited(over: lower).composited(over: b).cropped(to: bounds)
+        case .crossZoom:
+            // The picture before rushes toward the camera and the next one
+            // settles out of the same rush, crossing in the middle.
+            let center = point(options.center, in: bounds)
+            let blur = options.amount * 0.08 * bounds.width * sin(.pi * p)
+            let leaving = zoomBlurred(scaled(a, by: 1 + 3 * p * p, about: center), amount: blur, center: center, in: bounds)
+            let arriving = zoomBlurred(scaled(b, by: 1 + 3 * (1 - p) * (1 - p), about: center), amount: blur, center: center, in: bounds)
+            return mix(leaving, arriving, smoothstep(ramp(p, from: 0.35, to: 0.65)))
+        case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom, .spin:
             // Drawn on the clip alone by the compositor; never asked for.
             return mix(a, b, p)
         }
     }
 
     // MARK: - Helpers
+
+    /// A whole frame's travel in `direction`, in the output's coordinates.
+    static func offset(_ direction: TransitionDirection, in bounds: CGRect) -> CGVector {
+        let step = direction.step
+        // The timeline's frame measures y downward, the output upward.
+        return CGVector(dx: step.dx * bounds.width, dy: -step.dy * bounds.height)
+    }
+
+    /// `image` scaled by `factor` about `center`.
+    static func scaled(_ image: CIImage, by factor: Double, about center: CGPoint) -> CIImage {
+        image.transformed(by: CGAffineTransform(translationX: -center.x, y: -center.y)
+            .concatenating(CGAffineTransform(scaleX: factor, y: factor))
+            .concatenating(CGAffineTransform(translationX: center.x, y: center.y)))
+    }
+
+    /// `image` with a zoom blur of `amount` toward `center`, cut to `bounds`.
+    static func zoomBlurred(_ image: CIImage, amount: Double, center: CGPoint, in bounds: CGRect) -> CIImage {
+        let framed = image.cropped(to: bounds)
+        guard amount > 0.5 else { return framed }
+        return framed.clampedToExtent()
+            .applyingFilter("CIZoomBlur", parameters: [
+                kCIInputCenterKey: CIVector(x: center.x, y: center.y),
+                kCIInputAmountKey: amount,
+            ])
+            .cropped(to: bounds)
+    }
 
     /// A matte wipe's map, filling the output: a video's frame stretched to
     /// it, or fixed noise in small blocks, gray in every channel.

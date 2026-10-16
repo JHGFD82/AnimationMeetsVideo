@@ -55,7 +55,11 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     case grid
     case matteWipe
     case slide
+    case push
+    case split
     case zoom
+    case crossZoom
+    case spin
 
     var id: Self { self }
 
@@ -74,7 +78,11 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .grid: "Grid"
         case .matteWipe: "Matte Wipe"
         case .slide: "Slide"
+        case .push: "Push"
+        case .split: "Split"
         case .zoom: "Zoom"
+        case .crossZoom: "Cross Zoom"
+        case .spin: "Spin"
         }
     }
 
@@ -82,14 +90,15 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         switch self {
         case .crossDissolve, .filmDissolve, .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve: .dissolves
         case .wipe, .iris, .clockWipe, .blinds, .grid, .matteWipe: .wipes
-        case .slide, .zoom: .moves
+        case .slide, .push, .split, .zoom, .crossZoom, .spin: .moves
         }
     }
 
     /// What can be set on it besides its length and curve.
     var settings: [TransitionSetting] {
         switch self {
-        case .wipe, .slide: [.direction]
+        case .wipe, .slide, .push, .split: [.direction]
+        case .crossZoom: [.center, .amount]
         case .iris: [.shape, .center]
         case .clockWipe: [.center]
         case .blinds: [.direction, .count]
@@ -97,7 +106,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .matteWipe: [.matte]
         case .dipToColor: [.color]
         case .blurDissolve: [.amount]
-        case .crossDissolve, .filmDissolve, .additiveDissolve, .channelDissolve, .zoom: []
+        case .crossDissolve, .filmDissolve, .additiveDissolve, .channelDissolve, .zoom, .spin: []
         }
     }
 
@@ -130,7 +139,11 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .grid: "square.grid.3x3"
         case .matteWipe: "circle.hexagongrid"
         case .slide: "rectangle.righthalf.inset.filled.arrow.right"
+        case .push: "rectangle.portrait.arrowtriangle.2.outward"
+        case .split: "rectangle.split.2x1"
         case .zoom: "arrow.up.left.and.arrow.down.right"
+        case .crossZoom: "scope"
+        case .spin: "arrow.trianglehead.2.clockwise.rotate.90"
         }
     }
 
@@ -141,7 +154,8 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     /// key, `LumaReveal`).
     var drawsTwoPictures: Bool {
         switch self {
-        case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom: false
+        case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom, .spin: false
+        case .push, .split, .crossZoom: true
         case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve: true
         case .iris, .clockWipe, .blinds, .grid, .matteWipe: true
         }
@@ -696,7 +710,7 @@ struct EdgeTransitions {
                 CGAffineTransform(translationX: entering ? -dx : dx, y: entering ? -dy : dy)
             )
         case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve,
-             .iris, .clockWipe, .blinds, .grid, .matteWipe:
+             .iris, .clockWipe, .blinds, .grid, .matteWipe, .push, .split, .crossZoom:
             // Drawn from the two pictures by `TransitionRenderer`; the clip
             // itself is placed as usual.
             break
@@ -704,6 +718,18 @@ struct EdgeTransitions {
             let scale = max(v, 0.001)
             effect.transform = effect.transform.concatenating(
                 CGAffineTransform(translationX: -width / 2, y: -height / 2)
+                    .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+                    .concatenating(CGAffineTransform(translationX: width / 2, y: height / 2))
+            )
+            effect.opacity *= v
+        case .spin:
+            // One turn about the frame's center while growing and fading,
+            // clockwise both ways.
+            let scale = max(v, 0.001)
+            let angle = (entering ? -1 : 1) * 2 * Double.pi * (1 - v)
+            effect.transform = effect.transform.concatenating(
+                CGAffineTransform(translationX: -width / 2, y: -height / 2)
+                    .concatenating(CGAffineTransform(rotationAngle: angle))
                     .concatenating(CGAffineTransform(scaleX: scale, y: scale))
                     .concatenating(CGAffineTransform(translationX: width / 2, y: height / 2))
             )

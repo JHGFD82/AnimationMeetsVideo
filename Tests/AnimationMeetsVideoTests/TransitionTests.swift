@@ -126,6 +126,16 @@ private func videoWithSound(url: URL? = nil, duration: Double = 10) -> MediaClip
         #expect(wipeIn.visibleRect == CGRect(x: 0, y: 25, width: 100, height: 25))
     }
 
+    @Test func aSpinTurnsAboutTheCenterWhileFading() {
+        let half = edges(.spin, at: .leading).effect(at: seconds(11))
+        #expect(abs(half.opacity - 0.5) < 0.001)
+        let center = CGPoint(x: 50, y: 25).applying(half.transform)
+        #expect(abs(center.x - 50) < 0.001 && abs(center.y - 25) < 0.001)
+        // Half a turn in: a point right of center is now left of it.
+        let right = CGPoint(x: 90, y: 25).applying(half.transform)
+        #expect(right.x < 50)
+    }
+
     @Test func changingKindKeepsTheSettingsBothOffer() {
         let wipe = ClipTransition(kind: .wipe, duration: seconds(1), options: TransitionOptions(direction: .down))
         #expect(TransitionKind.slide.options(replacing: wipe).direction == .down)
