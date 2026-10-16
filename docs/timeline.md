@@ -261,8 +261,11 @@ transitions and keyframes don't snap.
 ## Moving and trimming clips
 
 Dragging the middle of a clip moves it; dragging within a few points of
-either edge trims that edge without destroying anything. The rules for where
-a clip may go are in `ClipPlacement.swift`:
+either edge trims that edge without destroying anything. Holding the
+pointer near the left or right edge of the tracks during either drag
+scrolls the timeline that way, faster the closer to the edge
+(`TimelineAutoScroll`), so a clip can be taken past what is in view. The
+rules for where a clip may go are in `ClipPlacement.swift`:
 
 - **Video and nested timelines lock to frames.** Their start and end land
   on whole frames of the timeline's rate, never between two. This uses

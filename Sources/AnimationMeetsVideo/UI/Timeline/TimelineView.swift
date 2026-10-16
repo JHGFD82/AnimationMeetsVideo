@@ -80,6 +80,7 @@ struct TimelineView: View {
     /// Area heights when a drag of the boundary between two areas began.
     @State private var boundaryDragStart: [LayerKind: CGFloat]?
     @State private var geometryStore = TimelineGeometryStore()
+    @State private var autoScroll = TimelineAutoScroll()
     /// What the layer names column offers while a clip or media is dragged
     /// over it; nil otherwise.
     @State private var newLayerHover: NewLayerHover?
@@ -491,6 +492,10 @@ struct TimelineView: View {
         .padding(.top, topPadding)
         .background(KeyPressMonitor(handler: handleKey))
         .focusedSceneValue(\.timelineActions, actions)
+        .environment(autoScroll)
+        // Again whenever the timeline changes: the closures read its
+        // length, through this view's copy of it.
+        .onChange(of: timeline, initial: true) { _, _ in configureAutoScroll() }
         .onChange(of: selection) { _, newValue in
             if newValue != nil {
                 selectedLayerID = nil
@@ -935,6 +940,20 @@ struct TimelineView: View {
     private func page(to time: CMTime) {
         let viewport = currentViewport
         scrollX = CGFloat(time.seconds) * viewport.pixelsPerSecond - viewport.width * 0.05
+    }
+
+    /// Lets drags at the edges of the tracks scroll them (`TimelineAutoScroll`).
+    private func configureAutoScroll() {
+        autoScroll.scrollBy = { distance in
+            let before = currentViewport.scrollX
+            scrollX = before + distance
+            return currentViewport.scrollX - before
+        }
+        // The tracks start where the names column ends.
+        autoScroll.trackSpan = {
+            let start = geometryStore.namesColumn.maxX
+            return start...(start + trackAreaWidth)
+        }
     }
 
     /// Scrolls `time` to the middle of the view if it is out of view.

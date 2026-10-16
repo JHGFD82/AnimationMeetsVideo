@@ -471,6 +471,8 @@ struct ClipBlockView: View {
     /// what the block flashes to acknowledge. See `ConfirmFlash`.
     @State private var landedCount = 0
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
+    /// Scrolls the timeline while a move or trim holds the pointer at an edge.
+    @Environment(TimelineAutoScroll.self) private var autoScroll: TimelineAutoScroll?
 
     private let handleWidth: CGFloat = 8
     private let space = "clipBlock"
@@ -632,19 +634,15 @@ struct ClipBlockView: View {
                         if !isLifted {
                             isLifted = true
                             onDragging(true)
+                            autoScroll?.begin()
                         }
-                        var proposed = CMTimeAdd(clip.startOffset, timeDelta(value.translation.width))
-                        let snapped = snapSpan(proposed, clip.trimmedDuration)
-                        if let snapped { proposed = snapped.start }
-                        onSnapIndicator(snapped?.target)
-                        let target = resolveMove(proposed, value.location)
-                        var moved = clip
-                        moved.startOffset = target?.start ?? clip.startOffset
-                        showPreview(moved)
-                        previewTarget = target?.layerID == nil && target?.newLayer == nil ? nil : target
-                        onMovePreview(target)
+                        previewMove(translation: value.translation.width, pointer: value.location)
+                        autoScroll?.track(pointerX: value.location.x) {
+                            previewMove(translation: value.translation.width, pointer: value.location)
+                        }
                     }
                     .onEnded { _ in
+                        autoScroll?.end()
                         isLifted = false
                         onDragging(false)
                         onSnapIndicator(nil)
@@ -761,6 +759,22 @@ struct ClipBlockView: View {
             topTrailingRadius: endsAtEdge ? radius : 0,
             style: .continuous
         )
+    }
+
+    /// Shows where a move drag `translation` points across, with the
+    /// pointer at `pointer` in window coordinates, would put the clip.
+    /// Counts what the timeline has scrolled under the drag.
+    private func previewMove(translation: CGFloat, pointer: CGPoint) {
+        var proposed = CMTimeAdd(clip.startOffset, timeDelta(translation + (autoScroll?.scrolled ?? 0)))
+        let snapped = snapSpan(proposed, clip.trimmedDuration)
+        if let snapped { proposed = snapped.start }
+        onSnapIndicator(snapped?.target)
+        let target = resolveMove(proposed, pointer)
+        var moved = clip
+        moved.startOffset = target?.start ?? clip.startOffset
+        showPreview(moved)
+        previewTarget = target?.layerID == nil && target?.newLayer == nil ? nil : target
+        onMovePreview(target)
     }
 
     /// The timeline time the blade cuts at for `x` in the row: on a frame.
@@ -929,7 +943,7 @@ struct ClipBlockView: View {
     /// A trim drag of `edge` moved by `translation` points: previews it.
     private func trimChanged(_ edge: Edge, translation: CGFloat) {
         isTrimming = true
-        var delta = timeDelta(translation)
+        var delta = timeDelta(translation + (autoScroll?.scrolled ?? 0))
         let edgeTime = edge == .leading ? clip.startOffset : clip.endOffset
         let snapped = snapTime(CMTimeAdd(edgeTime, delta))
         if let snapped { delta = CMTimeSubtract(snapped, edgeTime) }
@@ -969,9 +983,16 @@ struct ClipBlockView: View {
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
                         guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
+                        if !isTrimming { autoScroll?.begin() }
                         trimChanged(edge, translation: value.translation.width)
+                        autoScroll?.track(pointerX: value.location.x) {
+                            trimChanged(edge, translation: value.translation.width)
+                        }
                     }
-                    .onEnded { _ in trimEnded(edge) }
+                    .onEnded { _ in
+                        autoScroll?.end()
+                        trimEnded(edge)
+                    }
             )
             .pointerStyle(.columnResize)
     }
