@@ -73,14 +73,14 @@ import Testing
     }
 
     @Test func theWarpCompiles() {
-        #expect(MorphFlow.canWarp)
+        #expect(MorphFlow.canWarp, "\(MorphFlow.warpError ?? "")")
     }
 
     @Test func theMeasuredMotionPointsTheWayTheShapeMoves() throws {
-        let field = try #require(MorphFlow.field(from: square(atX: 0.35, y: 0.5), to: square(atX: 0.65, y: 0.5), in: bounds))
+        let field = try MorphFlow.measure(from: square(atX: 0.35, y: 0.5), to: square(atX: 0.65, y: 0.5), in: bounds)
         let across = vector(field, x: 0.35, y: 0.5)
         #expect(across.0 > 20, "measured \(across)")
-        let downField = try #require(MorphFlow.field(from: square(atX: 0.5, y: 0.3), to: square(atX: 0.5, y: 0.7), in: bounds))
+        let downField = try MorphFlow.measure(from: square(atX: 0.5, y: 0.3), to: square(atX: 0.5, y: 0.7), in: bounds)
         let down = vector(downField, x: 0.5, y: 0.3)
         // Down the frame is down the output's y.
         #expect(down.1 < -15, "measured \(down)")

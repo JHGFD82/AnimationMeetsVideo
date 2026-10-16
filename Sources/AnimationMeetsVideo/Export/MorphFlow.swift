@@ -11,9 +11,18 @@ enum MorphFlow {
     /// enough that more detail only costs time.
     static let measuringWidth: CGFloat = 512
 
+    struct MeasureError: Error, CustomStringConvertible {
+        var description: String
+    }
+
     /// How far each output point moves from `before` to `after`, in output
     /// points: red across, green up. Nil when Vision can't measure it.
     static func field(from before: CIImage, to after: CIImage, in bounds: CGRect) -> CIImage? {
+        try? measure(from: before, to: after, in: bounds)
+    }
+
+    /// `field`, throwing why it couldn't be measured.
+    static func measure(from before: CIImage, to after: CIImage, in bounds: CGRect) throws -> CIImage {
         let scale = min(1, measuringWidth / max(bounds.width, 1))
         let toSmall = CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY)
             .concatenating(CGAffineTransform(scaleX: scale, y: scale))
@@ -27,13 +36,13 @@ enum MorphFlow {
         do {
             try VNImageRequestHandler(ciImage: a, options: [:]).perform([request])
         } catch {
-            return nil
+            throw MeasureError(description: "Vision: \(error)")
         }
-        guard let buffer = request.results?.first?.pixelBuffer else { return nil }
+        guard let buffer = request.results?.first?.pixelBuffer else { throw MeasureError(description: "Vision gave no flow") }
 
         CVPixelBufferLockBaseAddress(buffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { throw MeasureError(description: "The flow can't be read") }
         let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
         let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
         // Back to output points; Vision measures y downward, the output up.
@@ -62,7 +71,7 @@ enum MorphFlow {
 
     /// Each output point of `image` taken from `amount` times its flow away.
     static func warped(_ image: CIImage, along field: CIImage, by amount: Double, in bounds: CGRect) -> CIImage? {
-        guard let kernel = warpKernel else { return nil }
+        guard let kernel = compiled.kernel else { return nil }
         let reach = max(bounds.width, bounds.height)
         return kernel.apply(
             extent: bounds,
@@ -72,12 +81,17 @@ enum MorphFlow {
     }
 
     /// Whether the warp's kernel compiled here.
-    static var canWarp: Bool { warpKernel != nil }
+    static var canWarp: Bool { compiled.kernel != nil }
 
-    /// Compiled once, the first time a morph is drawn. Nil if Core Image
-    /// can't compile Metal here, and the morph is then a plain dissolve.
-    nonisolated(unsafe) private static let warpKernel: CIKernel? = {
-        let source = """
+    /// Why it didn't, if it didn't.
+    static var warpError: String? { compiled.error }
+
+    /// Compiled once, the first time a morph is drawn: from Metal source,
+    /// or where Core Image can't compile Metal at runtime (as without a
+    /// GPU), from its older kernel language, which it can always run. Nil
+    /// if neither compiles, and the morph is then a plain dissolve.
+    private static let compiled: (kernel: CIKernel?, error: String?) = {
+        let metal = """
         #include <CoreImage/CoreImage.h>
         extern "C" float4 amvFlowWarp(coreimage::sampler image, coreimage::sampler flow, float amount, coreimage::destination dest) {
             float2 d = dest.coord();
@@ -85,6 +99,21 @@ enum MorphFlow {
             return image.sample(image.transform(d + amount * f.xy));
         }
         """
-        return try? CIKernel.kernels(withMetalString: source).first
+        let metalError: String
+        do {
+            if let kernel = try CIKernel.kernels(withMetalString: metal).first { return (kernel, nil) }
+            metalError = "no kernel in the Metal source"
+        } catch {
+            metalError = "\(error)"
+        }
+        let legacy = """
+        kernel vec4 amvFlowWarp(sampler image, sampler flow, float amount) {
+            vec2 d = destCoord();
+            vec4 f = sample(flow, samplerTransform(flow, d));
+            return sample(image, samplerTransform(image, d + amount * f.xy));
+        }
+        """
+        if let kernel = CIKernel(source: legacy) { return (kernel, nil) }
+        return (nil, "Metal: \(metalError); the kernel language one didn't compile either")
     }()
 }
