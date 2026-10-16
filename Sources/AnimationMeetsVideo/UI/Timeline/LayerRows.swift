@@ -577,6 +577,10 @@ struct ClipBlockView: View {
     /// Picked up by a move drag: drawn raised off the track, with an
     /// outline left where it came from.
     @State private var isLifted = false
+    /// While moving, how far the block is drawn from where it will land, so
+    /// it stays under the pointer; an outline marks the landing place. On
+    /// release it goes to zero, and the block settles into its place.
+    @State private var carry: CGSize = .zero
     @State private var isTransitionTarget = false
     @State private var isEffectTarget = false
     /// Where the blade would cut, in the row's coordinates, while hovering.
@@ -654,6 +658,19 @@ struct ClipBlockView: View {
                     }
                     .frame(width: baseWidth, height: height)
                     .offset(x: baseX, y: -(previewTarget?.offsetY ?? 0))
+                    .allowsHitTesting(false)
+
+                // Where it will land if let go now: snapped, on a frame and
+                // clear of other clips, while the block itself follows the
+                // pointer.
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .fill(typeColor.opacity(0.18))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                            .strokeBorder(typeColor, lineWidth: 1.5)
+                    }
+                    .frame(width: liveWidth, height: height)
+                    .offset(x: liveX)
                     .allowsHitTesting(false)
             }
 
@@ -792,6 +809,7 @@ struct ClipBlockView: View {
                 bladeX = time > clip.startOffset && time < clip.endOffset ? time.seconds * pixelsPerSecond : nil
             }
             .offset(x: drawnX)
+            .offset(carry)
             // Measured in window coordinates: the block moves (and resizes)
             // as the preview changes, so in its own coordinates every
             // one-frame step would shrink the translation by a frame and
@@ -805,13 +823,15 @@ struct ClipBlockView: View {
                             onDragging(true)
                             autoScroll?.begin()
                         }
-                        previewMove(translation: value.translation.width, pointer: value.location)
+                        previewMove(translation: value.translation, pointer: value.location)
                         autoScroll?.track(pointerX: value.location.x) {
-                            previewMove(translation: value.translation.width, pointer: value.location)
+                            previewMove(translation: value.translation, pointer: value.location)
                         }
                     }
                     .onEnded { _ in
                         autoScroll?.end()
+                        // From under the pointer into the place it lands.
+                        withAnimation(Design.Motion.respecting(Design.Motion.panel)) { carry = .zero }
                         isLifted = false
                         onDragging(false)
                         onSnapIndicator(nil)
@@ -1016,11 +1036,13 @@ struct ClipBlockView: View {
         )
     }
 
-    /// Shows where a move drag `translation` points across, with the
-    /// pointer at `pointer` in window coordinates, would put the clip.
-    /// Counts what the timeline has scrolled under the drag.
-    private func previewMove(translation: CGFloat, pointer: CGPoint) {
-        var proposed = CMTimeAdd(clip.startOffset, timeDelta(translation + (autoScroll?.scrolled ?? 0)))
+    /// Shows where a move drag `translation` long, with the pointer at
+    /// `pointer` in window coordinates, would put the clip, and keeps the
+    /// block under the pointer. Counts what the timeline has scrolled
+    /// under the drag.
+    private func previewMove(translation: CGSize, pointer: CGPoint) {
+        let across = translation.width + (autoScroll?.scrolled ?? 0)
+        var proposed = CMTimeAdd(clip.startOffset, timeDelta(across))
         let snapped = snapSpan(proposed, clip.placedDuration)
         if let snapped { proposed = snapped.start }
         onSnapIndicator(snapped?.target)
@@ -1030,6 +1052,12 @@ struct ClipBlockView: View {
         showPreview(moved)
         previewTarget = target?.layerID == nil && target?.newLayer == nil ? nil : target
         onMovePreview(target)
+        // The block is drawn at its landing place, moved by this: from
+        // there to where the pointer has carried it.
+        carry = CGSize(
+            width: CMTimeSubtract(clip.startOffset, moved.startOffset).seconds * pixelsPerSecond + across,
+            height: translation.height - (previewTarget?.offsetY ?? 0)
+        )
     }
 
     /// The timeline time the blade cuts at for `x` in the row: on a frame.
