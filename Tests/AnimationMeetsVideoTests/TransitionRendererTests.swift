@@ -229,4 +229,25 @@ struct RenderProbe {
         }
         #expect(before > 0 && after > 0)
     }
+
+    // MARK: Stylized
+
+    @Test func pixelatingTurnsAnEdgeIntoBlocksHalfway() throws {
+        var strong = TransitionKind.pixelate.defaultOptions
+        strong.amount = 1
+        let middle = probe.draw(.pixelate, 0.5, from: probe.halves, to: probe.halves, options: strong)
+        // Blocks about 7 points wide straddle the edge at the middle, so a
+        // point just left of it may turn black and one just right white;
+        // either way each block is one flat value.
+        let values = try (0..<8).map { try probe.pixel(middle, x: 0.40 + Double($0) * 0.025, y: 0.5)[0] }
+        #expect(values.allSatisfy { $0 < 20 || $0 > 235 })
+    }
+
+    @Test func aGlitchIsTheSameEachTimeItPlays() throws {
+        let first = wipe(.glitch, 0.4)
+        let second = wipe(.glitch, 0.4)
+        for (x, y) in [(0.1, 0.1), (0.5, 0.5), (0.9, 0.7)] {
+            #expect(try probe.pixel(first, x: x, y: y) == probe.pixel(second, x: x, y: y))
+        }
+    }
 }

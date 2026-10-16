@@ -63,6 +63,9 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     case flip
     case cube
     case pageCurl
+    case pixelate
+    case ripple
+    case glitch
 
     var id: Self { self }
 
@@ -89,6 +92,9 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .flip: "Flip"
         case .cube: "Cube"
         case .pageCurl: "Page Curl"
+        case .pixelate: "Pixelate"
+        case .ripple: "Ripple"
+        case .glitch: "Glitch"
         }
     }
 
@@ -98,6 +104,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .wipe, .iris, .clockWipe, .blinds, .grid, .matteWipe: .wipes
         case .slide, .push, .split, .zoom, .crossZoom, .spin: .moves
         case .flip, .cube, .pageCurl: .threeD
+        case .pixelate, .ripple, .glitch: .stylized
         }
     }
 
@@ -105,7 +112,8 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     var settings: [TransitionSetting] {
         switch self {
         case .wipe, .slide, .push, .split, .flip, .cube, .pageCurl: [.direction]
-        case .crossZoom: [.center, .amount]
+        case .crossZoom, .ripple: [.center, .amount]
+        case .pixelate, .glitch: [.amount]
         case .iris: [.shape, .center]
         case .clockWipe: [.center]
         case .blinds: [.direction, .count]
@@ -154,6 +162,9 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .flip: "arrow.left.and.right.righttriangle.left.righttriangle.right"
         case .cube: "cube"
         case .pageCurl: "book.pages"
+        case .pixelate: "squareshape.split.3x3"
+        case .ripple: "drop.circle"
+        case .glitch: "tv.badge.wifi"
         }
     }
 
@@ -167,6 +178,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom, .spin: false
         case .push, .split, .crossZoom: true
         case .flip, .cube, .pageCurl: true
+        case .pixelate, .ripple, .glitch: true
         case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve: true
         case .iris, .clockWipe, .blinds, .grid, .matteWipe: true
         }
@@ -722,7 +734,7 @@ struct EdgeTransitions {
             )
         case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve,
              .iris, .clockWipe, .blinds, .grid, .matteWipe, .push, .split, .crossZoom,
-             .flip, .cube, .pageCurl:
+             .flip, .cube, .pageCurl, .pixelate, .ripple, .glitch:
             // Drawn from the two pictures by `TransitionRenderer`; the clip
             // itself is placed as usual.
             break

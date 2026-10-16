@@ -121,6 +121,35 @@ enum TransitionRenderer {
                 kCIInputAngleKey: angle,
                 kCIInputRadiusKey: max(bounds.width, bounds.height) * 0.12,
             ]).cropped(to: bounds)
+        case .pixelate:
+            // Blocks grow to their largest halfway, where the pictures
+            // change, then shrink away. Up to a tenth of the width at full
+            // amount.
+            let block = 1 + options.amount * 0.1 * bounds.width * (1 - abs(2 * p - 1))
+            let picture = mix(a, b, smoothstep(ramp(p, from: 0.45, to: 0.55)))
+            guard block >= 2 else { return picture }
+            return picture.clampedToExtent()
+                .applyingFilter("CIPixellate", parameters: [
+                    kCIInputCenterKey: CIVector(x: bounds.midX, y: bounds.midY),
+                    kCIInputScaleKey: block,
+                ])
+                .cropped(to: bounds)
+        case .ripple:
+            if p <= 0 { return a }
+            if p >= 1 { return b }
+            let center = point(options.center, in: bounds)
+            let shading = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 0.25)).cropped(to: bounds)
+            return a.applyingFilter("CIRippleTransition", parameters: [
+                kCIInputTargetImageKey: b,
+                kCIInputShadingImageKey: shading,
+                kCIInputCenterKey: CIVector(x: center.x, y: center.y),
+                kCIInputExtentKey: CIVector(cgRect: bounds),
+                kCIInputTimeKey: p,
+                kCIInputWidthKey: max(bounds.width, bounds.height) * 0.15,
+                kCIInputScaleKey: options.amount * 0.1 * bounds.width,
+            ]).cropped(to: bounds)
+        case .glitch:
+            return glitched(a, b, progress: p, amount: options.amount, in: bounds)
         case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom, .spin:
             // Drawn on the clip alone by the compositor; never asked for.
             return mix(a, b, p)
@@ -128,6 +157,38 @@ enum TransitionRenderer {
     }
 
     // MARK: - Helpers
+
+    /// The picture before until halfway and the next one after, broken up
+    /// most in the middle: color channels pulled apart sideways and bands
+    /// torn sideways, some of them from the other picture. The breaks
+    /// change 24 times over the transition and are the same every time it
+    /// plays.
+    static func glitched(_ a: CIImage, _ b: CIImage, progress p: Double, amount: Double, in bounds: CGRect) -> CIImage {
+        let intensity = amount * sin(.pi * p)
+        let base = opaque(p < 0.5 ? a : b, in: bounds)
+        guard intensity > 0.001 else { return base }
+        let step = Int(p * 24)
+        var draw = 0
+        func random() -> Double {
+            draw += 1
+            return TransitionMasks.unitRandom(step * 101 + draw)
+        }
+        let shift = bounds.width * 0.02 * intensity
+        let red = scaled(base, red: 1, green: 0, blue: 0).transformed(by: CGAffineTransform(translationX: shift, y: 0))
+        let green = scaled(base, red: 0, green: 1, blue: 0)
+        let blue = scaled(base, red: 0, green: 0, blue: 1).transformed(by: CGAffineTransform(translationX: -shift, y: 0))
+        var output = add(add(green, red), blue).cropped(to: bounds)
+        for _ in 0..<6 {
+            let height = bounds.height * (0.02 + 0.1 * random())
+            let y = bounds.minY + (bounds.height - height) * random()
+            let dx = (random() - 0.5) * 2 * bounds.width * 0.1 * intensity
+            let source = random() < p ? b : a
+            let band = source.cropped(to: CGRect(x: bounds.minX, y: y, width: bounds.width, height: height))
+                .transformed(by: CGAffineTransform(translationX: dx, y: 0))
+            output = band.composited(over: output)
+        }
+        return output.cropped(to: bounds)
+    }
 
     /// `image`, filling `bounds`, turned by `angle` about the middle line
     /// running across the way it moves (an upright line when
