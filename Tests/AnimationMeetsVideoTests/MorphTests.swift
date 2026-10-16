@@ -62,4 +62,36 @@ import Testing
         #expect(try brightness(middle, x: 0.5, y: 0.5) > 120)
         #expect(try brightness(middle, x: 0.5, y: 0.22) < 100)
     }
+
+    /// The red and green of a float image at a point given as fractions of
+    /// the frame from its top left.
+    private func vector(_ image: CIImage, x: Double, y: Double) -> (Float, Float) {
+        var value = [Float](repeating: 0, count: 4)
+        let point = CGRect(x: (bounds.width * x).rounded(), y: (bounds.height * (1 - y)).rounded(), width: 1, height: 1)
+        context.render(image, toBitmap: &value, rowBytes: 16, bounds: point, format: .RGBAf, colorSpace: nil)
+        return (value[0], value[1])
+    }
+
+    @Test func theWarpCompiles() {
+        #expect(MorphFlow.canWarp)
+    }
+
+    @Test func theMeasuredMotionPointsTheWayTheShapeMoves() throws {
+        let field = try #require(MorphFlow.field(from: square(atX: 0.35, y: 0.5), to: square(atX: 0.65, y: 0.5), in: bounds))
+        let across = vector(field, x: 0.35, y: 0.5)
+        #expect(across.0 > 20, "measured \(across)")
+        let downField = try #require(MorphFlow.field(from: square(atX: 0.5, y: 0.3), to: square(atX: 0.5, y: 0.7), in: bounds))
+        let down = vector(downField, x: 0.5, y: 0.3)
+        // Down the frame is down the output's y.
+        #expect(down.1 < -15, "measured \(down)")
+    }
+
+    @Test func theWarpTakesEachPointFromAlongTheField() throws {
+        // Every point moved 40 across: each takes what's 40 to its right.
+        let field = CIImage(color: CIColor(red: 40, green: 0, blue: 0)).cropped(to: bounds)
+        let warped = try #require(MorphFlow.warped(square(atX: 0.5, y: 0.5), along: field, by: 1, in: bounds))
+        let moved = 0.5 - 40 / Double(bounds.width)
+        #expect(try brightness(warped, x: moved, y: 0.5) > 120, "at \(moved)")
+        #expect(try brightness(warped, x: 0.5 + 30 / Double(bounds.width), y: 0.5) < 60)
+    }
 }

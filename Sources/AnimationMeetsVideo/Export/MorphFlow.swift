@@ -71,6 +71,9 @@ enum MorphFlow {
         )
     }
 
+    /// Whether the warp's kernel compiled here.
+    static var canWarp: Bool { warpKernel != nil }
+
     /// Compiled once, the first time a morph is drawn. Nil if Core Image
     /// can't compile Metal here, and the morph is then a plain dissolve.
     nonisolated(unsafe) private static let warpKernel: CIKernel? = {
