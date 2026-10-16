@@ -148,6 +148,27 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         #expect(abs(drawn - expected) < 8)
     }
 
+    @Test func aRenderOfAStretchEndingBetweenFramesIsStillUsed() async throws {
+        // At 29.97 fps the clips' three seconds end between two frames, so
+        // the render holds whole frames that don't add up to the stretch.
+        let sandbox = try await RenderSandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = try sandbox.stackedProject()
+        project.timelines[0].frameRate = 29.97
+        let t = project.rootTimelineID
+        let cache = RenderCache(packageURL: sandbox.packageURL)
+
+        let exported = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t)
+        let needed = exported.segments.filter(\.needsRender)
+        #expect(!needed.isEmpty)
+        for segment in needed {
+            try await SegmentRenderer.render(segment, from: exported, into: cache)
+        }
+
+        let cached = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t, forPreview: true, cache: cache)
+        #expect(cached.cachedKeys == Set(needed.map(\.key)))
+    }
+
     @Test func a422ExportReusesRendersAndA4444ExportDoesNot() async throws {
         let sandbox = try await RenderSandbox()
         defer { sandbox.cleanUp() }

@@ -109,7 +109,10 @@ Limits:
 - **Playback.** When the viewer's composition is built, each piece with a
   render plays it from its own track instead of compositing the layers.
   Renders play through the same compositor at the viewer's quality, which
-  is cheap since there is one layer to draw.
+  is cheap since there is one layer to draw. A render can be a fraction
+  of a frame shorter than its piece, whose ends are clip edges that at
+  rates such as 29.97 fall between frame times; one short by under a
+  frame is stretched to fit.
 - **Background rendering only when idle.** `RenderScheduler` renders one
   piece at a time, starting at the playhead and running to the end, then
   the pieces before it. Any edit, scrub or playback stops the
