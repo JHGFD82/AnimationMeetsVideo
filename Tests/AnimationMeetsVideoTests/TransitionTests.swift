@@ -33,9 +33,9 @@ private func videoWithSound(url: URL? = nil, duration: Double = 10) -> MediaClip
         #expect(clip(project, t, l)?.transitionIn == ClipTransition(kind: .crossDissolve, duration: seconds(1)))
 
         project.setTransitionDuration(seconds(2), at: .leading, of: c, in: t, layer: l)
-        project.setTransition(.wipeLeft, at: .leading, of: c, in: t, layer: l)
+        project.setTransition(.wipe, at: .leading, of: c, in: t, layer: l)
         let transition = try #require(clip(project, t, l)?.transitionIn)
-        #expect(transition.kind == .wipeLeft)
+        #expect(transition.kind == .wipe)
         #expect(transition.duration.seconds == 2)
 
         project.removeTransition(at: .leading, of: c, in: t, layer: l)
@@ -82,9 +82,9 @@ private func videoWithSound(url: URL? = nil, duration: Double = 10) -> MediaClip
 @Suite struct TransitionEffectTests {
     private let frame = CGSize(width: 100, height: 50)
 
-    private func edges(_ kind: TransitionKind, at edge: TransitionEdge) -> EdgeTransitions {
+    private func edges(_ kind: TransitionKind, _ direction: TransitionDirection = .right, at edge: TransitionEdge) -> EdgeTransitions {
         var clip = TimelineClip(source: .media(UUID()), startOffset: seconds(10), trimStart: .zero, trimEnd: seconds(4))
-        clip.setTransition(ClipTransition(kind: kind, duration: seconds(2)), at: edge)
+        clip.setTransition(ClipTransition(kind: kind, duration: seconds(2), options: TransitionOptions(direction: direction)), at: edge)
         return EdgeTransitions(clip: clip, frameSize: frame)!
     }
 
@@ -100,19 +100,36 @@ private func videoWithSound(url: URL? = nil, duration: Double = 10) -> MediaClip
     }
 
     @Test func aWipeRightUncoversFromTheLeftAndCoversFromTheLeft() {
-        let wipeIn = edges(.wipeRight, at: .leading).effect(at: seconds(11))
+        let wipeIn = edges(.wipe, .right, at: .leading).effect(at: seconds(11))
         #expect(wipeIn.visibleRect == CGRect(x: 0, y: 0, width: 50, height: 50))
-        let wipeOut = edges(.wipeRight, at: .trailing).effect(at: seconds(13))
+        let wipeOut = edges(.wipe, .right, at: .trailing).effect(at: seconds(13))
         #expect(wipeOut.visibleRect == CGRect(x: 50, y: 0, width: 50, height: 50))
         // Outside the transition the whole frame shows.
-        #expect(edges(.wipeRight, at: .leading).effect(at: seconds(13)).visibleRect == CGRect(origin: .zero, size: frame))
+        #expect(edges(.wipe, .right, at: .leading).effect(at: seconds(13)).visibleRect == CGRect(origin: .zero, size: frame))
     }
 
     @Test func aSlideRightComesInFromTheLeft() {
-        let start = edges(.slideRight, at: .leading).effect(at: seconds(10))
+        let start = edges(.slide, .right, at: .leading).effect(at: seconds(10))
         #expect(start.transform.tx == -100)
-        let leaving = edges(.slideRight, at: .trailing).effect(at: seconds(14))
+        let leaving = edges(.slide, .right, at: .trailing).effect(at: seconds(14))
         #expect(leaving.transform.tx == 100)
+    }
+
+    @Test func aSlideUpComesInFromBelow() {
+        let start = edges(.slide, .up, at: .leading).effect(at: seconds(10))
+        #expect(start.transform.tx == 0)
+        #expect(start.transform.ty == 50)
+    }
+
+    @Test func aWipeUpUncoversFromTheBottom() {
+        let wipeIn = edges(.wipe, .up, at: .leading).effect(at: seconds(11))
+        #expect(wipeIn.visibleRect == CGRect(x: 0, y: 25, width: 100, height: 25))
+    }
+
+    @Test func changingKindKeepsTheSettingsBothOffer() {
+        let wipe = ClipTransition(kind: .wipe, duration: seconds(1), options: TransitionOptions(direction: .down))
+        #expect(TransitionKind.slide.options(replacing: wipe).direction == .down)
+        #expect(TransitionKind.crossDissolve.options(replacing: wipe) == TransitionKind.crossDissolve.defaultOptions)
     }
 }
 

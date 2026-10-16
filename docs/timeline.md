@@ -403,9 +403,12 @@ label column closes the lane. In the composition, the incoming clip's
 frames before the cut go on a track above the layer's and the outgoing
 clip's frames after it on a track below. Nested timelines don't join.
 
-Kinds: cross dissolve, film dissolve, wipe left/right/up/down, slide
-left/right and zoom. A wipe or slide acts in the frame of the timeline the
-clip is on, after the layer's transform.
+Kinds: cross dissolve, film dissolve, wipe, slide and zoom. A wipe or
+slide moves left, right, up or down, set in the inspector under the
+transition's length; projects saved when each direction was its own kind
+(`wipeLeft`, `slideRight`, ...) load with that direction. A wipe or slide
+acts in the frame of the timeline the clip is on, after the layer's
+transform.
 
 The **film dissolve** shows the following picture brightest parts first:
 it appears wherever it is brighter than a threshold that falls from white

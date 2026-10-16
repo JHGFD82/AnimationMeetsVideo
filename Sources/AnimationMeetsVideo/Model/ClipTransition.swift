@@ -2,26 +2,49 @@ import CoreGraphics
 import CoreMedia
 import Foundation
 
+/// The groups the transitions panel shows its kinds in, by what a kind
+/// does to the pictures.
+enum TransitionCategory: String, CaseIterable, Identifiable {
+    /// The two pictures are blended; nothing moves.
+    case dissolves
+    /// A shape uncovers the next picture; neither picture moves.
+    case wipes
+    /// The pictures move flat on the screen.
+    case moves
+    /// The pictures move in space, in perspective.
+    case threeD
+    /// The pictures themselves are blurred, distorted or broken up.
+    case stylized
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .dissolves: "Dissolves"
+        case .wipes: "Wipes"
+        case .moves: "Moves"
+        case .threeD: "3D"
+        case .stylized: "Stylized"
+        }
+    }
+}
+
 /// The kinds of transition the transitions panel offers. Each one brings a
 /// clip in at its leading edge or takes it out at its trailing edge, over
 /// whatever is showing underneath it: lower layers, or the outgoing clip's
 /// extra frames when two clips on the same layer meet at a cut.
 ///
-/// Every kind but the film dissolve is drawn with the built-in compositor's
-/// opacity, transform and crop. The film dissolve keys on brightness, which
-/// that compositor can't do, so a timeline using one is drawn by
-/// `LayeredCompositor` instead, as is one where a nested timeline fades
-/// over layers of its own that overlap. Preview and export use the same
-/// path, so they match.
+/// Cross dissolve, wipe, slide and zoom are drawn with the built-in
+/// compositor's opacity, transform and crop. The film dissolve keys on
+/// brightness, which that compositor can't do, so a timeline using one is
+/// drawn by `LayeredCompositor` instead, as is one where a nested timeline
+/// fades over layers of its own that overlap. Preview and export use the
+/// same path, so they match.
 enum TransitionKind: String, CaseIterable, Identifiable {
     case crossDissolve
     case filmDissolve
-    case wipeLeft
-    case wipeRight
-    case wipeUp
-    case wipeDown
-    case slideLeft
-    case slideRight
+    case wipe
+    case slide
     case zoom
 
     var id: Self { self }
@@ -30,22 +53,39 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         switch self {
         case .crossDissolve: "Cross Dissolve"
         case .filmDissolve: "Film Dissolve"
-        case .wipeLeft: "Wipe Left"
-        case .wipeRight: "Wipe Right"
-        case .wipeUp: "Wipe Up"
-        case .wipeDown: "Wipe Down"
-        case .slideLeft: "Slide Left"
-        case .slideRight: "Slide Right"
+        case .wipe: "Wipe"
+        case .slide: "Slide"
         case .zoom: "Zoom"
         }
+    }
+
+    var category: TransitionCategory {
+        switch self {
+        case .crossDissolve, .filmDissolve: .dissolves
+        case .wipe: .wipes
+        case .slide, .zoom: .moves
+        }
+    }
+
+    /// What can be set on it besides its length and curve.
+    var settings: [TransitionSetting] {
+        switch self {
+        case .wipe, .slide: [.direction]
+        case .crossDissolve, .filmDissolve, .zoom: []
+        }
+    }
+
+    /// The settings a newly dropped transition gets.
+    var defaultOptions: TransitionOptions {
+        TransitionOptions()
     }
 
     /// The curve a newly dropped transition gets. Moves start and stop
     /// gently; fades and wipes run evenly.
     var defaultCurve: TransitionCurve {
-        switch self {
-        case .slideLeft, .slideRight, .zoom: TransitionCurve(preset: .easyEase)
-        default: .linear
+        switch category {
+        case .moves, .threeD: TransitionCurve(preset: .easyEase)
+        case .dissolves, .wipes, .stylized: .linear
         }
     }
 
@@ -53,14 +93,40 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         switch self {
         case .crossDissolve: "circle.lefthalf.filled"
         case .filmDissolve: "sun.max"
-        case .wipeLeft: "arrow.left.to.line"
-        case .wipeRight: "arrow.right.to.line"
-        case .wipeUp: "arrow.up.to.line"
-        case .wipeDown: "arrow.down.to.line"
-        case .slideLeft: "rectangle.lefthalf.inset.filled.arrow.left"
-        case .slideRight: "rectangle.righthalf.inset.filled.arrow.right"
+        case .wipe: "arrow.right.to.line"
+        case .slide: "rectangle.righthalf.inset.filled.arrow.right"
         case .zoom: "arrow.up.left.and.arrow.down.right"
         }
+    }
+
+    /// The settings this kind starts with when it replaces `previous`:
+    /// the same kind keeps all of them, another keeps those both offer.
+    func options(replacing previous: ClipTransition) -> TransitionOptions {
+        guard previous.kind != self else { return previous.options }
+        var options = defaultOptions
+        let shared = Set(settings).intersection(previous.kind.settings)
+        let old = previous.options
+        if shared.contains(.direction) { options.direction = old.direction }
+        if shared.contains(.color) { options.color = old.color }
+        if shared.contains(.center) { options.center = old.center }
+        if shared.contains(.shape) { options.shape = old.shape }
+        if shared.contains(.count) { options.count = old.count }
+        if shared.contains(.order) { options.order = old.order }
+        if shared.contains(.amount) { options.amount = old.amount }
+        if shared.contains(.matte) { options.matte = old.matte }
+        return options
+    }
+
+    /// Reads a saved kind, including those saved before a wipe's or
+    /// slide's direction became a setting (`"wipeLeft"` is a wipe to the
+    /// left). Nil for a kind this version doesn't know.
+    static func saved(_ name: String) -> (kind: TransitionKind, direction: TransitionDirection?)? {
+        if let kind = TransitionKind(rawValue: name) { return (kind, nil) }
+        for kind in [TransitionKind.wipe, .slide] where name.hasPrefix(kind.rawValue) {
+            let rest = name.dropFirst(kind.rawValue.count).lowercased()
+            if let direction = TransitionDirection(rawValue: String(rest)) { return (kind, direction) }
+        }
+        return nil
     }
 }
 
@@ -78,6 +144,8 @@ struct ClipTransition: Equatable {
     /// `duration` plays before the cut, over the end of that clip. Ignored
     /// when the clip joins none.
     var lead: CMTime = .zero
+    /// Its settings; only those its kind offers are used.
+    var options = TransitionOptions()
 
     /// What a transition is given when it is first dropped on a clip.
     static let defaultDuration = CMTime(value: 1, timescale: 1)
@@ -143,12 +211,13 @@ extension EditingProject {
         }
         let existing = clip.transition(at: edge)
         let curve = existing?.curve ?? kind.defaultCurve
+        let options = existing.map { kind.options(replacing: $0) } ?? kind.defaultOptions
 
         if edge == .leading, let previous = predecessor(joining: clip, among: layer.clips) {
             let duration = existing?.duration ?? ClipTransition.defaultDuration
             let lead = existing.map(\.lead) ?? CMTimeMultiplyByRatio(duration, multiplier: 1, divisor: 2)
             if let fit = fittedJoint(duration: duration, lead: lead, outgoing: previous, incoming: clip, in: timeline) {
-                let transition = ClipTransition(kind: kind, duration: fit.duration, curve: curve, lead: fit.lead)
+                let transition = ClipTransition(kind: kind, duration: fit.duration, curve: curve, lead: fit.lead, options: options)
                 updateClip(clip.id, in: timelineID, layer: layerID) { $0.setTransition(transition, at: .leading) }
                 return
             }
@@ -164,7 +233,7 @@ extension EditingProject {
             duration = fitted > .zero ? fitted : timeline.frameDuration
         }
         updateClip(clip.id, in: timelineID, layer: layerID) {
-            $0.setTransition(ClipTransition(kind: kind, duration: duration, curve: curve), at: edge)
+            $0.setTransition(ClipTransition(kind: kind, duration: duration, curve: curve, options: options), at: edge)
         }
     }
 
@@ -200,6 +269,15 @@ extension EditingProject {
         updateClip(clipID, in: timelineID, layer: layerID) { clip in
             guard var transition = clip.transition(at: edge) else { return }
             transition.curve = curve
+            clip.setTransition(transition, at: edge)
+        }
+    }
+
+    /// Changes a transition's settings, clamped to what each allows.
+    mutating func setTransitionOptions(_ options: TransitionOptions, at edge: TransitionEdge, of clipID: UUID, in timelineID: UUID, layer layerID: UUID) {
+        updateClip(clipID, in: timelineID, layer: layerID) { clip in
+            guard var transition = clip.transition(at: edge) else { return }
+            transition.options = options.clamped
             clip.setTransition(transition, at: edge)
         }
     }
@@ -416,10 +494,18 @@ extension EditingProject {
 /// A clip's transitions placed in the time of the timeline it is on, for
 /// rendering.
 struct EdgeTransitions {
+    /// One of the clip's transitions as it plays.
+    struct Placed {
+        var kind: TransitionKind
+        var duration: CMTime
+        var curve: TransitionCurve
+        var options: TransitionOptions
+    }
+
     var start: CMTime
     var end: CMTime
-    var leading: (kind: TransitionKind, duration: CMTime, curve: TransitionCurve)?
-    var trailing: (kind: TransitionKind, duration: CMTime, curve: TransitionCurve)?
+    var leading: Placed?
+    var trailing: Placed?
     /// Where the way in starts: before the clip when it joins the clip
     /// before, by `lead`.
     var leadingStart: CMTime
@@ -429,10 +515,13 @@ struct EdgeTransitions {
     init?(clip: TimelineClip, frameSize: CGSize, lead: CMTime = .zero) {
         let durations = clip.effectiveTransitionDurations(lead: lead)
         if let transition = clip.transitionIn, CMTimeAdd(durations.leading, lead) > .zero {
-            leading = (transition.kind, CMTimeAdd(durations.leading, lead), transition.curve)
+            leading = Placed(
+                kind: transition.kind, duration: CMTimeAdd(durations.leading, lead),
+                curve: transition.curve, options: transition.options
+            )
         }
         if let transition = clip.transitionOut, durations.trailing > .zero {
-            trailing = (transition.kind, durations.trailing, transition.curve)
+            trailing = Placed(kind: transition.kind, duration: durations.trailing, curve: transition.curve, options: transition.options)
         }
         guard leading != nil || trailing != nil else { return nil }
         start = clip.startOffset
@@ -452,7 +541,7 @@ struct EdgeTransitions {
     }
 
     var hasWipe: Bool {
-        [leading?.kind, trailing?.kind].contains { $0?.isWipe == true }
+        [leading?.kind, trailing?.kind].contains { $0 == .wipe }
     }
 
     var hasLumaReveal: Bool {
@@ -467,13 +556,13 @@ struct EdgeTransitions {
         if let leading {
             let elapsed = CMTimeSubtract(time, leadingStart).seconds / leading.duration.seconds
             if elapsed < 1 {
-                apply(leading.kind, visibility: leading.curve.value(at: elapsed), edge: .leading, to: &effect)
+                apply(leading, visibility: leading.curve.value(at: elapsed), edge: .leading, to: &effect)
             }
         }
         if let trailing {
             let elapsed = 1 - CMTimeSubtract(end, time).seconds / trailing.duration.seconds
             if elapsed > 0 {
-                apply(trailing.kind, visibility: 1 - trailing.curve.value(at: elapsed), edge: .trailing, to: &effect)
+                apply(trailing, visibility: 1 - trailing.curve.value(at: elapsed), edge: .trailing, to: &effect)
             }
         }
         if hasWipe, effect.visibleRect == nil {
@@ -494,11 +583,12 @@ struct EdgeTransitions {
     /// A transition at the leading edge plays it upward, one at the trailing
     /// edge downward, so the motion keeps its direction: a slide to the right
     /// comes in from the left and leaves to the right.
-    private func apply(_ kind: TransitionKind, visibility: Double, edge: TransitionEdge, to effect: inout Effect) {
+    private func apply(_ transition: Placed, visibility: Double, edge: TransitionEdge, to effect: inout Effect) {
         let v = min(max(visibility, 0), 1)
         let width = frameSize.width, height = frameSize.height
         let entering = edge == .leading
-        switch kind {
+        let direction = transition.options.direction
+        switch transition.kind {
         case .crossDissolve:
             effect.opacity *= v
         case .filmDissolve:
@@ -507,13 +597,13 @@ struct EdgeTransitions {
             effect.lumaReveal = entering
                 ? LumaReveal(progress: v, keysIncoming: true)
                 : LumaReveal(progress: 1 - v, keysIncoming: false)
-        case .wipeLeft, .wipeRight, .wipeUp, .wipeDown:
-            // The wipe's edge moves in the named direction both ways: it
-            // uncovers the clip as it comes in and covers it as it leaves.
-            let forward = kind == .wipeRight || kind == .wipeDown
+        case .wipe:
+            // The wipe's edge moves in its direction both ways: it uncovers
+            // the clip as it comes in and covers it as it leaves.
+            let forward = direction == .right || direction == .down
             let shownFromStart = entering == forward
             var rect = CGRect(origin: .zero, size: frameSize)
-            if kind == .wipeLeft || kind == .wipeRight {
+            if direction.isHorizontal {
                 rect.size.width = width * v
                 if !shownFromStart { rect.origin.x = width * (1 - v) }
             } else {
@@ -521,11 +611,11 @@ struct EdgeTransitions {
                 if !shownFromStart { rect.origin.y = height * (1 - v) }
             }
             effect.visibleRect = effect.visibleRect.map { $0.intersection(rect) } ?? rect
-        case .slideLeft, .slideRight:
-            let direction: CGFloat = kind == .slideRight ? 1 : -1
-            let distance = width * (1 - v) * direction
+        case .slide:
+            let step = direction.step
+            let dx = width * (1 - v) * step.dx, dy = height * (1 - v) * step.dy
             effect.transform = effect.transform.concatenating(
-                CGAffineTransform(translationX: entering ? -distance : distance, y: 0)
+                CGAffineTransform(translationX: entering ? -dx : dx, y: entering ? -dy : dy)
             )
         case .zoom:
             let scale = max(v, 0.001)
@@ -557,14 +647,5 @@ struct LumaReveal: Equatable, Sendable {
         let s = Self.softness
         let threshold = (1 + s) - min(max(progress, 0), 1) * (1 + 2 * s)
         return (1 / (2 * s), (s - threshold) / (2 * s))
-    }
-}
-
-private extension TransitionKind {
-    var isWipe: Bool {
-        switch self {
-        case .wipeLeft, .wipeRight, .wipeUp, .wipeDown: true
-        default: false
-        }
     }
 }
