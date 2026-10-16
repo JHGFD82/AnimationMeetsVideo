@@ -179,7 +179,7 @@ struct ChoiceRow<MenuContent: View>: View {
                 .frame(width: 74, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onSelect)
-            Picker(name, selection: Binding(get: { selected }, set: onChoose)) {
+            Picker(name, selection: Binding(get: { selected }, set: { onChoose($0) })) {
                 ForEach(options, id: \.id) { option in
                     Text(option.name).tag(option.id)
                 }
@@ -243,7 +243,7 @@ struct EffectHeaderRow<MenuContent: View>: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(Design.textSecondary)
-            Toggle("", isOn: Binding(get: { effect.enabled }, set: onSetEnabled))
+            Toggle("", isOn: Binding(get: { effect.enabled }, set: { onSetEnabled($0) }))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .controlSize(.small)

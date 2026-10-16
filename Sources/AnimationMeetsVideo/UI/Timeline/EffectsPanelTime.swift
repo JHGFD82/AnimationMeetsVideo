@@ -25,7 +25,7 @@ struct ToggleFieldsRow: View {
     var body: some View {
         HStack(spacing: 4) {
             Color.clear.frame(width: 12)
-            Toggle("", isOn: Binding(get: { isOn }, set: onToggle))
+            Toggle("", isOn: Binding(get: { isOn }, set: { onToggle($0) }))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .controlSize(.small)

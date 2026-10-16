@@ -1066,7 +1066,7 @@ struct ClipBlockView: View {
             Button("Detach Audio", action: onDetachAudio)
         }
         if case .timeline = clip.source {
-            Toggle("Pass Through", isOn: Binding(get: { passesThrough }, set: onSetPassThrough))
+            Toggle("Pass Through", isOn: Binding(get: { passesThrough }, set: { onSetPassThrough($0) }))
         }
         if acceptsEffects {
             Divider()
