@@ -37,7 +37,9 @@ import Testing
         let nested = project.addTimeline(name: "Nested", frameSize: CGSize(width: 1920, height: 1080), frameRate: 24, colorSpace: .rec709)
         project.importClip(media(bright, frames: 48), intoTimeline: nested)
         project.importClip(media(dark, frames: 48), intoTimeline: nested)
-        let placed = try #require(project.embedTimeline(nested, intoTimeline: root))
+        // Called first: #require can't wrap a mutating call.
+        let embedded = project.embedTimeline(nested, intoTimeline: root)
+        let placed = try #require(embedded)
         project.editTransform(of: placed.layerID, in: root) { $0.opacity.set(opacity, at: .zero) }
         return project
     }
