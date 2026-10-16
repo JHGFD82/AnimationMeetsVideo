@@ -116,6 +116,10 @@ drop that makes the timeline longer does not rescale the clips on screen.
   scrollbar under the tracks scroll in time. Plain vertical scrolling moves
   through the layers of the area under the pointer. The ruler stays at the
   top.
+- Editing a clip's Time settings changes the timeline's length, and a
+  fitted view would rescale with it (enormously, for a crawling clip). A
+  time edit instead pins the zoom the view had; **Fit to Window** fits it
+  again.
 - Zoom and scroll are view state: they reset when switching timelines and
   are not saved.
 

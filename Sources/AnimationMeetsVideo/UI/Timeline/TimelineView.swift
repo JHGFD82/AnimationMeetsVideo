@@ -529,7 +529,10 @@ struct TimelineView: View {
         .environment(autoScroll)
         // Again whenever the timeline changes: the closures read its
         // length, through this view's copy of it.
-        .onChange(of: timeline, initial: true) { _, _ in configureAutoScroll() }
+        .onChange(of: timeline, initial: true) { old, new in
+            configureAutoScroll()
+            keepZoomThroughRetiming(from: old, to: new)
+        }
         .onChange(of: selection) { _, newValue in
             if newValue != nil {
                 selectedLayerID = nil
@@ -1026,6 +1029,24 @@ struct TimelineView: View {
         let x = viewport.x(atSeconds: time.seconds)
         guard x < 0 || x > viewport.width else { return }
         scrollX = CGFloat(time.seconds) * viewport.pixelsPerSecond - viewport.width / 2
+    }
+
+    /// Retiming a clip can change the timeline's length enormously (a
+    /// crawling clip), and a fitted view would rescale to match. Time edits
+    /// pin the zoom the view had instead, until Fit is chosen.
+    private func keepZoomThroughRetiming(from old: Timeline, to new: Timeline) {
+        guard zoomedPixelsPerSecond == nil, old.id == new.id, old.duration != new.duration else { return }
+        func times(_ timeline: Timeline) -> [UUID: ClipTime] {
+            Dictionary(timeline.layers.flatMap(\.clips).map { ($0.id, $0.time) }, uniquingKeysWith: { first, _ in first })
+        }
+        guard times(old) != times(new) else { return }
+        zoomedPixelsPerSecond = TimelineViewport(
+            durationSeconds: old.duration.seconds,
+            frameRate: old.frameRate,
+            width: trackAreaWidth,
+            requestedPixelsPerSecond: nil,
+            requestedScrollX: 0
+        ).pixelsPerSecond
     }
 
     private func fitToWindow() {
