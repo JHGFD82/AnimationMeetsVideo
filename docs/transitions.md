@@ -129,10 +129,19 @@ is part of the render cache's key.
   transitions.
 - **Glitch** draws its breaks from a fixed sequence that changes 24 times
   over the transition, so every render of a frame is the same.
-- **Morph** measures optical flow from before to after with Vision, on
-  copies at most 512 points wide, and warps each picture part way along
-  it with a Metal kernel Core Image compiles at runtime (`MorphFlow`).
-  Where either isn't available it is a cross dissolve.
+- **Morph** measures, for each frame, the motion at each point of that
+  frame (`BlockMatchFlow`): the move that best lines up the picture
+  before, looked at back along the share of the move made, with the
+  picture after, looked at forward along the rest. It matches 4-pixel
+  blocks of gray copies 192 points wide, coarse to fine. Where a shape
+  crosses a plain background it prefers the move that lines up what
+  stands out. Each picture is then warped part way along that motion
+  (`MorphFlow`), by a kernel Core Image compiles at runtime from Metal,
+  or from its older kernel language where it can't compile Metal, and
+  the two dissolve. Optical flow such as Vision's isn't used: it gives
+  motion at points of the picture before, which leaves nothing where a
+  shape passes through, and it needs hardware a virtual Mac may lack.
+  If the kernel can't compile, a morph is a cross dissolve.
 
 ### Limits
 
@@ -142,8 +151,11 @@ is part of the render cache's key.
 - Additive Dissolve, Channel Dissolve, Glitch, Flip and Cube draw over
   black where their pictures are transparent, so they are opaque.
 - A Morph between shots that share nothing moves little and looks like
-  a dissolve; it's for matched shots. It measures flow on every frame,
-  so it's the slowest kind to preview until its render is done.
+  a dissolve; it's for matched shots. Its motion is coarse, a block 1/48
+  of the frame wide, so fine detail moving differently from its
+  surroundings blurs rather than moves. It measures motion on every
+  frame, on the CPU, so it's the slowest kind to preview until its
+  render is done.
 
 ## Not yet
 
