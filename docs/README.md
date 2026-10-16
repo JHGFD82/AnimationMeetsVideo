@@ -4,8 +4,9 @@ Design notes for AnimationMeetsVideo. Each document says whether it
 describes something that exists today or a planned design. Unless a
 document says otherwise, treat it as **planned, not implemented**.
 Currently: the package format, the scene-cut browser, media replacement,
-beat detection, layer transforms, audio levels, the timeline view and
-accessibility are implemented (each document lists what remains).
+beat detection, layer transforms, audio levels, the timeline view,
+transitions and accessibility are implemented (each document lists what
+remains).
 
 | Document | Covers |
 | --- | --- |
@@ -14,6 +15,7 @@ accessibility are implemented (each document lists what remains).
 | [layer-transforms.md](layer-transforms.md) | Implemented (core). Position, scale, rotation and opacity per layer, keyframed in the timeline (P, S, R, T) and inspector, and arithmetic in numeric fields. |
 | [effects.md](effects.md) | Planned. Per-clip effect stacks applied in the order listed (Transform, Blending and Color to start), an anchor point on every visual clip, closed nested timelines, adjustment layers with a set reach, the effects panel, and strict project loading. Replaces layer transforms. |
 | [audio.md](audio.md) | Implemented (core). Keyframed layer volume from mute to +6 dB in playback and export, and a meter of the whole mix beside the timeline. |
+| [transitions.md](transitions.md) | Implemented. The 25 transition kinds in five categories, their settings, how each is drawn, and what counts as a kind. |
 | [timeline.md](timeline.md) | Implemented. Zooming and scrolling the timeline, the ruler's tick grouping, the playhead, frame-locked moving and trimming of clips, linked and detached audio, and transitions. |
 | [media-replacement.md](media-replacement.md) | Implemented (core). Replacing a file with a different version ("bait and switch"), the reference data that makes it safe, and how mismatches are handled. |
 | [rendering.md](rendering.md) | Implemented. Drawing the viewer at reduced size (Auto, Full, Half, Quarter), rendering full-size frames in the background when idle, and reusing them in ProRes 422 exports. |
