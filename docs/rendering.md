@@ -75,16 +75,6 @@ Limits:
   brief hitch. Auto changes size during playback only to step down, and
   never on play.
 
-## Footage with alpha (implemented)
-
-Core Image takes a decoded frame's alpha as premultiplied, but ProRes
-4444 and HEVC with alpha decode with straight alpha, which the decoder
-marks on each frame (`kCVImageBufferAlphaChannelModeKey`). The compositor
-premultiplies such frames as it reads them (`LayeredCompositor.picture`),
-in the viewer, renders and export alike. Before it did, partly
-transparent pixels were drawn too bright, so soft edges glowed, the more
-where two layers with alpha overlapped.
-
 ## Render cache (implemented)
 
 - **Segments, not clips.** Every build of the timeline splits it where any
