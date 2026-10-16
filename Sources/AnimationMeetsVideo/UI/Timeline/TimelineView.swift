@@ -772,6 +772,8 @@ struct TimelineView: View {
                 VStack(spacing: 0) {
                     LayerClipRow(
                         layer: layer,
+                        name: project.displayName(of: layer, in: timeline),
+                        frameRate: timeline.frameRate,
                         project: project,
                         timelineID: timelineID,
                         selection: selection,
@@ -1108,6 +1110,11 @@ struct TimelineView: View {
             return false
         }
         switch key {
+        // Shift turns , and . into < and >: ten frames.
+        case ",": return nudgeSelection(byFrames: -1)
+        case ".": return nudgeSelection(byFrames: 1)
+        case "<": return nudgeSelection(byFrames: -10)
+        case ">": return nudgeSelection(byFrames: 10)
         case "=", "+": zoomAroundPlayhead(by: zoomStep); return true
         case "-": zoomAroundPlayhead(by: 1 / zoomStep); return true
         case "\\": fitToWindow(); return true
@@ -1155,6 +1162,7 @@ struct TimelineView: View {
             previousEdit: { _ = jumpToEdit(forward: false) },
             nextEdit: { _ = jumpToEdit(forward: true) },
             splitAtPlayhead: { _ = splitAtPlayhead() },
+            nudge: { _ = nudgeSelection(byFrames: $0) },
             deleteSelection: { _ = deleteSelection() },
             isSnapping: snapping,
             toggleSnapping: { snapping.toggle() },
@@ -1217,6 +1225,20 @@ struct TimelineView: View {
             return false
         }
         parkPlayhead(at: target)
+        return true
+    }
+
+    /// Moves the selected clip `frames` frames, later when positive, by the
+    /// same rules as dragging it. False with no clip selected.
+    @discardableResult
+    private func nudgeSelection(byFrames frames: Int) -> Bool {
+        guard let selection, selection.timelineID == timelineID,
+              let clip = timeline.layer(id: selection.layerID)?.clips.first(where: { $0.id == selection.timelineClipID })
+        else {
+            return false
+        }
+        let distance = CMTimeMultiply(timeline.frameDuration, multiplier: Int32(clamping: frames))
+        onMoveClip(selection.layerID, clip.id, nil, CMTimeMaximum(.zero, CMTimeAdd(clip.startOffset, distance)))
         return true
     }
 

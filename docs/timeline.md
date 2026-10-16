@@ -171,6 +171,8 @@ lands out of view.
 - **Home / End** go to the start and the end.
 - **⌘B** splits at the playhead: the selected clip if the playhead is in
   it, otherwise every clip the playhead is in, on every layer.
+- **, / .** nudge the selected clip a frame earlier or later; with Shift,
+  ten. A nudge follows the same rules as dragging.
 
 These keys are left to a list or other control that has the keyboard (the
 library's list uses the arrows), and to text being typed. All of them, and
@@ -178,6 +180,16 @@ the timeline's other keys (tools, snapping, zoom, Delete), are listed in
 the **Timeline** menu (`TimelineCommands`). Keys without a modifier are
 written after the item's name rather than set as menu shortcuts, since a
 menu shortcut would take the key from a text field.
+
+## VoiceOver
+
+Each layer is a group named as the timeline shows it, holding its clips.
+A clip reads as its name and kind ("Interview, video clip"), then where it
+starts, how long it is in the timeline's timecode, its transitions and
+whether it carries its own sound. Pressing it selects it, so Delete, ⌘B
+and the nudge keys act on it; its actions move it a frame earlier or later,
+trim either end by a frame, remove its transitions and detach its audio,
+by the same rules as dragging.
 
 ## Sections
 

@@ -12,6 +12,8 @@ struct TimelineActions {
     var previousEdit: () -> Void
     var nextEdit: () -> Void
     var splitAtPlayhead: () -> Void
+    /// Moves the selected clip a number of frames, earlier when negative.
+    var nudge: (Int) -> Void
     var deleteSelection: () -> Void
     var isSnapping: Bool
     var toggleSnapping: () -> Void
@@ -73,6 +75,10 @@ struct TimelineCommands: Commands {
 
             Button("Split at Playhead") { actions?.splitAtPlayhead() }
                 .keyboardShortcut("b", modifiers: .command)
+                .disabled(actions == nil)
+            Button("Nudge Clip Earlier  ,") { actions?.nudge(-1) }
+                .disabled(actions == nil)
+            Button("Nudge Clip Later  .") { actions?.nudge(1) }
                 .disabled(actions == nil)
             Button("Delete Selection  ⌫") { actions?.deleteSelection() }
                 .disabled(actions == nil)

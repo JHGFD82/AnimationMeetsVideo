@@ -188,6 +188,9 @@ struct PushedClip: Equatable {
 
 struct LayerClipRow: View {
     let layer: TimelineLayer
+    /// The layer's name as the timeline shows it, for VoiceOver.
+    let name: String
+    let frameRate: Double
     let project: EditingProject
     let timelineID: UUID
     let selection: TimelineSelection?
@@ -281,6 +284,7 @@ struct LayerClipRow: View {
                 let joinedLead = project.joinedLead(of: clip, among: layer.clips)
                 ClipBlockView(
                     clip: clip,
+                    frameRate: frameRate,
                     info: info,
                     typeColor: layer.kind == .music ? Design.ClipTone.music.color : Design.ClipTone.of(info, streams: clip.streams).color,
                     hasLinkedAudio: project.hasLinkedAudio(clip),
@@ -368,6 +372,9 @@ struct LayerClipRow: View {
         .dropDestination(for: SceneDragPayload.self) { payloads, location in
             onDropScenes(payloads, CMTime(seconds: max(0, Double(location.x / pixelsPerSecond)), preferredTimescale: 600))
         }
+        // VoiceOver goes through the layers, then into each one's clips.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(name)
     }
 }
 
@@ -385,6 +392,9 @@ struct LayerClipRow: View {
 /// a translucent, outlined ghost of the clip's extent before the trim.
 struct ClipBlockView: View {
     let clip: TimelineClip
+    /// The timeline's rate: VoiceOver reads times as its timecode, and moves
+    /// and trims by its frames.
+    let frameRate: Double
     let info: ResolvedClipInfo?
     let typeColor: Color
     /// Shows a sound badge, and offers to detach the sound.
@@ -719,12 +729,68 @@ struct ClipBlockView: View {
         .frame(height: height, alignment: .topLeading)
         .offset(y: previewTarget?.offsetY ?? 0)
         .coordinateSpace(.named(space))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityName)
+        .accessibilityValue(accessibilityDescription)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityHint("Selects the clip. Its actions move and trim it by a frame.")
+        .accessibilityAction { onSelect() }
+        .accessibilityActions { accessibilityEditActions }
         .onChange(of: clip) { _, _ in
             if pendingDrop != nil {
                 endDrop()
                 // The edit you let go of has arrived: acknowledge it.
                 landedCount += 1
             }
+        }
+    }
+
+    // MARK: VoiceOver
+
+    /// What the clip is: its name and kind.
+    private var accessibilityName: String {
+        let kind = switch info {
+        case .timeline: "nested timeline"
+        case .media(let media) where media.kind == .audio || clip.streams == .audio: "audio clip"
+        case .media: "video clip"
+        case nil: "missing clip"
+        }
+        return "\(info?.name ?? "Unknown"), \(kind)"
+    }
+
+    /// Where it is and what it carries, read after its name.
+    private var accessibilityDescription: String {
+        var parts = [
+            "starts at \(clip.startOffset.timecode(frameRate: frameRate))",
+            "\(clip.trimmedDuration.timecode(frameRate: frameRate)) long",
+        ]
+        if let transition = clip.transitionIn { parts.append("\(transition.kind.name) at the start") }
+        if let transition = clip.transitionOut { parts.append("\(transition.kind.name) at the end") }
+        if hasLinkedAudio { parts.append("with its own sound") }
+        return parts.joined(separator: ", ")
+    }
+
+    /// Moves and trims a frame at a time, and the clip's menu, for VoiceOver.
+    /// They go through the same placement rules as dragging.
+    @ViewBuilder
+    private var accessibilityEditActions: some View {
+        let frame = Timeline.frameDuration(for: frameRate)
+        Button("Move one frame earlier") {
+            onMove(CMTimeMaximum(.zero, CMTimeSubtract(clip.startOffset, frame)), nil)
+        }
+        Button("Move one frame later") { onMove(CMTimeAdd(clip.startOffset, frame), nil) }
+        Button("Trim start one frame earlier") { onTrimStart(CMTimeSubtract(clip.trimStart, frame)) }
+        Button("Trim start one frame later") { onTrimStart(CMTimeAdd(clip.trimStart, frame)) }
+        Button("Trim end one frame earlier") { onTrimEnd(CMTimeSubtract(clip.trimEnd, frame)) }
+        Button("Trim end one frame later") { onTrimEnd(CMTimeAdd(clip.trimEnd, frame)) }
+        if let transition = clip.transitionIn, joinedLead == nil {
+            Button("Remove \(transition.kind.name) at start") { onRemoveTransition(.leading) }
+        }
+        if let transition = clip.transitionOut {
+            Button("Remove \(transition.kind.name) at end") { onRemoveTransition(.trailing) }
+        }
+        if hasLinkedAudio {
+            Button("Detach audio", action: onDetachAudio)
         }
     }
 
