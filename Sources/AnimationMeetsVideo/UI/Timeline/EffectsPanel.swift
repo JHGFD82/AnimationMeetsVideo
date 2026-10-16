@@ -4,7 +4,8 @@ import SwiftUI
 /// The effects of the selected clip, to the right of the viewer where the
 /// inspector goes, and replacing it while open: the clip's stack, framed by the rows that are pinned in place. Each control
 /// has a lane of keyframes beside it, on a ruler and playhead that span the
-/// clip.
+/// clip; a button in the title hides the lanes, leaving the controls the
+/// panel's whole width.
 struct EffectsPanel: View {
     @Binding var project: EditingProject
     let timelineID: UUID
@@ -16,6 +17,9 @@ struct EffectsPanel: View {
 
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) var graphs: KeyframeGraphHUDs?
+    /// Whether each row shows its keyframe lane, with the ruler and
+    /// playhead over them. Kept between launches.
+    @AppStorage("effectsPanelShowsKeyframeLanes") var showsKeyframeLanes = true
     @State private var renamingEffectID: UUID?
     /// Effects being saved as a preset (nil for the whole stack), while the
     /// name is asked for.
@@ -54,6 +58,12 @@ struct EffectsPanel: View {
                         .truncationMode(.middle)
                 }
                 Spacer()
+                Toggle(isOn: $showsKeyframeLanes) { Image(systemName: "timeline.selection") }
+                    .toggleStyle(.button)
+                    .buttonStyle(.borderless)
+                    .help(showsKeyframeLanes ? "Hide the keyframe timeline" : "Show the keyframe timeline")
+                    .accessibilityLabel("Keyframe timeline")
+                    .accessibilityValue(showsKeyframeLanes ? "Shown" : "Hidden")
             }
             .padding(.horizontal, Design.Space.group)
             .padding(.vertical, Design.Space.step)
@@ -141,23 +151,27 @@ struct EffectsPanel: View {
                         .foregroundStyle(Design.textTertiary)
                         .padding(.leading, 8)
                         .frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
-                    PanelRuler(geometry: geometry, onSeek: onSeek)
-                        .padding(.horizontal, EffectsPanelMetrics.laneInset)
+                    if showsKeyframeLanes {
+                        PanelRuler(geometry: geometry, onSeek: onSeek)
+                            .padding(.horizontal, EffectsPanelMetrics.laneInset)
+                    } else {
+                        Spacer(minLength: 0)
+                    }
                 }
                 .frame(height: PanelRuler.height)
                 .background(Design.Surface.raised.color)
 
                 ScrollView {
                     rows(context)
-                        .overlay(alignment: .topLeading) { playheadLine(context) }
-                        .dropDestination(for: EffectDragPayload.self) { payloads, _ in
+                        .overlay(alignment: .topLeading) { if showsKeyframeLanes { playheadLine(context) } }
+                        .dropDestination(for: ClipDropPayload.self) { payloads, _ in
                             guard let payload = payloads.first else { return false }
-                            addEffect(payload.kind, to: clip)
-                            return true
-                        }
-                        .dropDestination(for: PresetDragPayload.self) { payloads, _ in
-                            guard let payload = payloads.first else { return false }
-                            return applyPreset(payload.presetID, to: clip, at: nil)
+                            if let effect = payload.effect {
+                                addEffect(effect.kind, to: clip)
+                                return true
+                            }
+                            if let preset = payload.preset { return applyPreset(preset.presetID, to: clip, at: nil) }
+                            return false
                         }
                 }
                 .sunken(.sunken)
@@ -218,10 +232,7 @@ struct EffectsPanel: View {
                             lane: emptyLane(c)
                         )
                         if let note {
-                            HStack(spacing: 0) {
-                                EffectNoteRow(note: note).frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
-                                Color.black.opacity(0.12)
-                            }
+                            besideLane(EffectNoteRow(note: note))
                         }
                     }
                 }
@@ -237,14 +248,31 @@ struct EffectsPanel: View {
 
     func labelled<Label: View, Lane: View>(_ label: Label, lane: Lane) -> some View {
         HStack(spacing: 0) {
-            label.frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
-            lane
-                .padding(.horizontal, EffectsPanelMetrics.laneInset)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.black.opacity(0.12))
+            if showsKeyframeLanes {
+                label.frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
+                lane
+                    .padding(.horizontal, EffectsPanelMetrics.laneInset)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.black.opacity(0.12))
+            } else {
+                label.frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .frame(height: EffectsPanelMetrics.rowHeight)
         .overlay(alignment: .bottom) { Rectangle().fill(Design.hairline).frame(height: 0.5) }
+    }
+
+    /// A row with nothing in the lane, such as a note: in the label column
+    /// beside an empty lane, or the whole width with the lanes hidden.
+    func besideLane<Content: View>(_ content: Content) -> some View {
+        HStack(spacing: 0) {
+            if showsKeyframeLanes {
+                content.frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
+                Color.black.opacity(0.12)
+            } else {
+                content.frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 
     func emptyLane(_ c: RowContext) -> some View {
@@ -336,27 +364,26 @@ struct EffectsPanel: View {
             },
             lane: emptyLane(c)
         )
-        .dropDestination(for: EffectMovePayload.self) { payloads, _ in
-            guard let payload = payloads.first, payload.clipID == clip.id,
-                  let index = clip.effects.index(of: effect.id)
-            else { return false }
-            project.moveEffect(payload.effectID, ofClip: clip.id, in: timelineID, toIndex: index)
-            return true
-        }
-        .dropDestination(for: EffectDragPayload.self) { payloads, _ in
+        .dropDestination(for: ClipDropPayload.self) { payloads, _ in
             guard let payload = payloads.first, let index = clip.effects.index(of: effect.id) else { return false }
-            project.addEffect(payload.kind, toClip: clip.id, in: timelineID, at: index)
-            return true
-        }
-        .dropDestination(for: PresetDragPayload.self) { payloads, _ in
-            guard let payload = payloads.first, let index = clip.effects.index(of: effect.id) else { return false }
-            return applyPreset(payload.presetID, to: clip, at: index)
+            if let move = payload.effectMove {
+                guard move.clipID == clip.id else { return false }
+                project.moveEffect(move.effectID, ofClip: clip.id, in: timelineID, toIndex: index)
+                return true
+            }
+            if let added = payload.effect {
+                // Dropped on an effect: it goes in at that place and is
+                // selected, as one dropped below the stack is.
+                if let id = project.addEffect(added.kind, toClip: clip.id, in: timelineID, at: index) {
+                    state.select(effect: id)
+                }
+                return true
+            }
+            if let preset = payload.preset { return applyPreset(preset.presetID, to: clip, at: index) }
+            return false
         }
         if let note {
-            HStack(spacing: 0) {
-                EffectNoteRow(note: note).frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
-                Color.black.opacity(0.12)
-            }
+            besideLane(EffectNoteRow(note: note))
         }
         ForEach(effect.pasteChanges) { change in
             pasteChangeRow(change, of: effect, in: clip)
