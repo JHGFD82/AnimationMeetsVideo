@@ -101,9 +101,30 @@ enum OpticalFlow {
     }
 
     /// The frame between two, or nil when there isn't one to estimate.
+    /// Where Vision or the Metal kernel can't run (a virtual Mac may lack
+    /// the hardware), the motion is measured by block matching instead,
+    /// as a morph's is.
     static func between(_ first: CIImage, _ second: CIImage, fraction: Double) -> CIImage? {
-        guard let field = field(from: first, to: second) else { return nil }
-        return interpolated(from: first, to: second, fraction: fraction, field: field)
+        if let field = field(from: first, to: second),
+           let moved = interpolated(from: first, to: second, fraction: fraction, field: field) {
+            return moved
+        }
+        return matched(first, second, fraction: fraction)
+    }
+
+    /// The frame between two, from motion measured by `BlockMatchFlow` at
+    /// that frame and each frame warped along it by `MorphFlow`.
+    static func matched(_ first: CIImage, _ second: CIImage, fraction: Double) -> CIImage? {
+        let bounds = first.extent.integral
+        guard !bounds.isEmpty, !bounds.isInfinite, bounds.size == second.extent.integral.size else { return nil }
+        let p = min(max(fraction, 0), 1)
+        guard p > 0, p < 1 else { return p <= 0 ? first : second }
+        let aligned = second.transformed(by: CGAffineTransform(translationX: bounds.minX - second.extent.minX, y: bounds.minY - second.extent.minY))
+        guard let field = BlockMatchFlow.field(from: first, to: aligned, progress: p, in: bounds),
+              let leaving = MorphFlow.warped(first, along: field, by: -p, in: bounds),
+              let arriving = MorphFlow.warped(aligned, along: field, by: 1 - p, in: bounds)
+        else { return nil }
+        return TransitionRenderer.mix(leaving, arriving, p).cropped(to: bounds)
     }
 }
 

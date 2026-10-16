@@ -1359,11 +1359,11 @@ private struct Sandbox {
         let message = try await loadingMessage { json in
             editClip(&json) { clip in
                 var transition = clip["transitionIn"] as! [String: Any]
-                transition["kind"] = "spin"
+                transition["kind"] = "swirl"
                 clip["transitionIn"] = transition
             }
         }
-        #expect(message == "The project can't be opened. Unknown transition kind \"spin\" at timelines[0].layers[0].clips[0].transitionIn.kind.")
+        #expect(message == "The project can't be opened. Unknown transition kind \"swirl\" at timelines[0].layers[0].clips[0].transitionIn.kind.")
     }
 
     @Test func aMalformedTimeIsRejectedWithItsPath() async throws {

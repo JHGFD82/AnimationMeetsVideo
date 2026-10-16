@@ -215,14 +215,19 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
 
 extension Timeline {
     /// Exact frame durations for the NTSC-family rates (23.976, 29.97, 59.94)
-    /// rather than rounding them to 24/30/60.
+    /// rather than rounding them to 24/30/60. Other fractional rates, such
+    /// as 12.5, are kept to a thousandth of a frame a second rather than
+    /// rounded to a whole number.
     static func frameDuration(for frameRate: Double) -> CMTime {
         let clamped = min(max(frameRate, 1), 1000)
         let rounded = clamped.rounded()
         if abs(clamped - rounded * 1000 / 1001) < 0.01 {
             return CMTime(value: 1001, timescale: Int32(rounded) * 1000)
         }
-        return CMTime(value: 1, timescale: Int32(rounded))
+        if abs(clamped - rounded) < 0.0005 {
+            return CMTime(value: 1, timescale: Int32(rounded))
+        }
+        return CMTime(value: 1000, timescale: Int32((clamped * 1000).rounded()))
     }
 
     var frameDuration: CMTime { Self.frameDuration(for: frameRate) }
