@@ -88,7 +88,11 @@ import Testing
 
     @Test func theWarpTakesEachPointFromAlongTheField() throws {
         // Every point moved 40 across: each takes what's 40 to its right.
-        let field = CIImage(color: CIColor(red: 40, green: 0, blue: 0)).cropped(to: bounds)
+        let pixel: [Float] = [40, 0, 0, 1]
+        let field = CIImage(
+            bitmapData: pixel.withUnsafeBytes { Data($0) }, bytesPerRow: 16,
+            size: CGSize(width: 1, height: 1), format: .RGBAf, colorSpace: nil
+        ).clampedToExtent().cropped(to: bounds)
         let warped = try #require(MorphFlow.warped(square(atX: 0.5, y: 0.5), along: field, by: 1, in: bounds))
         let moved = 0.5 - 40 / Double(bounds.width)
         #expect(try brightness(warped, x: moved, y: 0.5) > 120, "at \(moved)")
