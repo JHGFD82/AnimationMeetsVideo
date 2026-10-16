@@ -481,6 +481,15 @@ The **browser** at the right end of the timeline has tabs too: **Effects**
 One button in the timeline's header shows or hides it, and opening it
 changes nothing else. Drag an effect onto a clip or into the stack, or
 double-click it to add it to the end of the selected clip's stack.
+Dropped on an effect row, it goes in at that place; dropped anywhere else
+on the stack, or on a clip, it goes at the end. Either way it is selected.
+VoiceOver's Add to the Selected Clip action does what double-clicking
+does.
+
+A clip, the stack and each effect row take every kind of drag they use
+through one drop target, since the app's drags all travel as URLs: with
+one target per kind, only one of them ever received a drop, and effects
+dragged onto a clip or the stack were refused.
 
 The Effects tab is the selected clip's **stack**, framed by pinned rows that can't be
 moved: Time and the anchor point above it, the clip's transitions (if any)

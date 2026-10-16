@@ -577,8 +577,7 @@ struct ClipBlockView: View {
     /// Picked up by a move drag: drawn raised off the track, with an
     /// outline left where it came from.
     @State private var isLifted = false
-    @State private var isTransitionTarget = false
-    @State private var isEffectTarget = false
+    @State private var isDropTarget = false
     /// Where the blade would cut, in the row's coordinates, while hovering.
     @State private var bladeX: CGFloat?
     /// How far a slip drag in progress moves the footage.
@@ -734,8 +733,8 @@ struct ClipBlockView: View {
             .clipShape(shape)
             .overlay {
                 shape.strokeBorder(
-                    isTransitionTarget || isEffectTarget ? Design.accent : isSelected ? Design.textOnColor.opacity(0.95) : typeColor.opacity(0.85),
-                    lineWidth: isTransitionTarget || isEffectTarget ? 2 : isSelected ? 1.5 : 1
+                    isDropTarget ? Design.accent : isSelected ? Design.textOnColor.opacity(0.95) : typeColor.opacity(0.85),
+                    lineWidth: isDropTarget ? 2 : isSelected ? 1.5 : 1
                 )
             }
             // The bevel: lit along the top, shaded along the bottom, so a
@@ -756,31 +755,25 @@ struct ClipBlockView: View {
             .confirmFlash(token: landedCount, color: Design.textOnColor)
             .editorAnimation(Design.Motion.select, value: isSelected)
             .editorAnimation(Design.Motion.select, value: isLifted)
-            .dropDestination(for: TransitionDragPayload.self) { payloads, location in
-                guard acceptsTransitions, let payload = payloads.first else { return false }
-                // The nearer end of the clip gets the transition.
-                let x = drawnX + location.x
-                onSetTransition(payload.kind, x - liveX < liveWidth / 2 ? .leading : .trailing)
+            .dropDestination(for: ClipDropPayload.self) { payloads, location in
+                guard let payload = payloads.first else { return false }
+                if let transition = payload.transition, acceptsTransitions {
+                    // The nearer end of the clip gets the transition.
+                    let x = drawnX + location.x
+                    onSetTransition(transition.kind, x - liveX < liveWidth / 2 ? .leading : .trailing)
+                } else if let effect = payload.effect, acceptsEffects {
+                    onAddEffect(effect.kind)
+                } else if let preset = payload.preset, acceptsEffects {
+                    onApplyPreset(preset.presetID)
+                } else {
+                    return false
+                }
                 onSelect()
                 return true
             } isTargeted: { targeted in
-                isTransitionTarget = targeted && acceptsTransitions
-            }
-            .dropDestination(for: EffectDragPayload.self) { payloads, _ in
-                guard acceptsEffects, let payload = payloads.first else { return false }
-                onAddEffect(payload.kind)
-                onSelect()
-                return true
-            } isTargeted: { targeted in
-                isEffectTarget = targeted && acceptsEffects
-            }
-            .dropDestination(for: PresetDragPayload.self) { payloads, _ in
-                guard acceptsEffects, let payload = payloads.first else { return false }
-                onApplyPreset(payload.presetID)
-                onSelect()
-                return true
-            } isTargeted: { targeted in
-                isEffectTarget = targeted && acceptsEffects
+                // Whether this clip takes what is over it isn't known until
+                // the drop, so it lights for any drag it could take.
+                isDropTarget = targeted && (acceptsTransitions || acceptsEffects)
             }
             .contextMenu { clipMenu }
             .onContinuousHover(coordinateSpace: .named(space)) { phase in

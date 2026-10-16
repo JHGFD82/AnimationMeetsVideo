@@ -19,9 +19,13 @@ struct EffectsLibraryPanel: View {
                             .foregroundStyle(Design.textSecondary)
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 6)], alignment: .leading, spacing: 6) {
                             ForEach(EffectKind.allCases.filter { $0.category == category }) { kind in
+                                // The double-click goes inside the drag: on
+                                // the outside its tap gesture takes the mouse
+                                // down first, and the chip never starts a drag.
                                 EffectLibraryChip(kind: kind)
-                                    .draggable(EffectDragPayload(kind: kind)) { EffectLibraryChip(kind: kind) }
                                     .onTapGesture(count: 2) { addToSelectedClip(kind) }
+                                    .draggable(EffectDragPayload(kind: kind)) { EffectLibraryChip(kind: kind) }
+                                    .accessibilityAction(named: "Add to the selected clip") { addToSelectedClip(kind) }
                             }
                         }
                     }

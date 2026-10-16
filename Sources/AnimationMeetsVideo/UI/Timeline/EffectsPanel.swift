@@ -150,14 +150,14 @@ struct EffectsPanel: View {
                 ScrollView {
                     rows(context)
                         .overlay(alignment: .topLeading) { playheadLine(context) }
-                        .dropDestination(for: EffectDragPayload.self) { payloads, _ in
+                        .dropDestination(for: ClipDropPayload.self) { payloads, _ in
                             guard let payload = payloads.first else { return false }
-                            addEffect(payload.kind, to: clip)
-                            return true
-                        }
-                        .dropDestination(for: PresetDragPayload.self) { payloads, _ in
-                            guard let payload = payloads.first else { return false }
-                            return applyPreset(payload.presetID, to: clip, at: nil)
+                            if let effect = payload.effect {
+                                addEffect(effect.kind, to: clip)
+                                return true
+                            }
+                            if let preset = payload.preset { return applyPreset(preset.presetID, to: clip, at: nil) }
+                            return false
                         }
                 }
                 .sunken(.sunken)
@@ -336,21 +336,23 @@ struct EffectsPanel: View {
             },
             lane: emptyLane(c)
         )
-        .dropDestination(for: EffectMovePayload.self) { payloads, _ in
-            guard let payload = payloads.first, payload.clipID == clip.id,
-                  let index = clip.effects.index(of: effect.id)
-            else { return false }
-            project.moveEffect(payload.effectID, ofClip: clip.id, in: timelineID, toIndex: index)
-            return true
-        }
-        .dropDestination(for: EffectDragPayload.self) { payloads, _ in
+        .dropDestination(for: ClipDropPayload.self) { payloads, _ in
             guard let payload = payloads.first, let index = clip.effects.index(of: effect.id) else { return false }
-            project.addEffect(payload.kind, toClip: clip.id, in: timelineID, at: index)
-            return true
-        }
-        .dropDestination(for: PresetDragPayload.self) { payloads, _ in
-            guard let payload = payloads.first, let index = clip.effects.index(of: effect.id) else { return false }
-            return applyPreset(payload.presetID, to: clip, at: index)
+            if let move = payload.effectMove {
+                guard move.clipID == clip.id else { return false }
+                project.moveEffect(move.effectID, ofClip: clip.id, in: timelineID, toIndex: index)
+                return true
+            }
+            if let added = payload.effect {
+                // Dropped on an effect: it goes in at that place and is
+                // selected, as one dropped below the stack is.
+                if let id = project.addEffect(added.kind, toClip: clip.id, in: timelineID, at: index) {
+                    state.select(effect: id)
+                }
+                return true
+            }
+            if let preset = payload.preset { return applyPreset(preset.presetID, to: clip, at: index) }
+            return false
         }
         if let note {
             HStack(spacing: 0) {
