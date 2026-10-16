@@ -79,6 +79,48 @@ enum TransitionRenderer {
             let leaving = zoomBlurred(scaled(a, by: 1 + 3 * p * p, about: center), amount: blur, center: center, in: bounds)
             let arriving = zoomBlurred(scaled(b, by: 1 + 3 * (1 - p) * (1 - p), about: center), amount: blur, center: center, in: bounds)
             return mix(leaving, arriving, smoothstep(ramp(p, from: 0.35, to: 0.65)))
+        case .flip:
+            // A card turned half over about its middle: the picture before
+            // on its front, the next one on its back.
+            let sign = options.direction == .left || options.direction == .down ? -1.0 : 1.0
+            let angle = sign * .pi * p
+            let card = abs(angle) < .pi / 2
+                ? turned(a, by: angle, horizontally: options.direction.isHorizontal, depth: 0, in: bounds)
+                : turned(b, by: angle - sign * .pi, horizontally: options.direction.isHorizontal, depth: 0, in: bounds)
+            return opaque(card, in: bounds)
+        case .cube:
+            // Two faces of a cube turning a quarter turn about its center,
+            // half the frame's width (or height) behind the screen, so the
+            // pictures travel in the direction set.
+            let horizontal = options.direction.isHorizontal
+            // Turning positively brings the next face in from the right,
+            // or from the top.
+            let sign = options.direction == .left || options.direction == .down ? 1.0 : -1.0
+            let half = (horizontal ? bounds.width : bounds.height) / 2
+            let angle = sign * .pi / 2 * p
+            let leaving = turned(a, by: angle, horizontally: horizontal, depth: half, in: bounds)
+            let arriving = turned(b, by: angle - sign * .pi / 2, horizontally: horizontal, depth: half, in: bounds)
+            return opaque(leaving.composited(over: arriving), in: bounds)
+        case .pageCurl:
+            // The picture before peels away like a page, toward the
+            // direction set.
+            let angle: Double
+            switch options.direction {
+            case .left: angle = 0
+            case .right: angle = .pi
+            case .up: angle = .pi / 2
+            case .down: angle = -.pi / 2
+            }
+            let shading = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 0.25)).cropped(to: bounds)
+            return a.applyingFilter("CIPageCurlTransition", parameters: [
+                kCIInputTargetImageKey: b,
+                "inputBacksideImage": a,
+                kCIInputShadingImageKey: shading,
+                kCIInputExtentKey: CIVector(cgRect: bounds),
+                kCIInputTimeKey: p,
+                kCIInputAngleKey: angle,
+                kCIInputRadiusKey: max(bounds.width, bounds.height) * 0.12,
+            ]).cropped(to: bounds)
         case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom, .spin:
             // Drawn on the clip alone by the compositor; never asked for.
             return mix(a, b, p)
@@ -86,6 +128,37 @@ enum TransitionRenderer {
     }
 
     // MARK: - Helpers
+
+    /// `image`, filling `bounds`, turned by `angle` about the middle line
+    /// running across the way it moves (an upright line when
+    /// `horizontally`), that line `depth` behind the screen, then seen in
+    /// perspective from in front. Nothing when it is edge on or facing
+    /// away.
+    static func turned(_ image: CIImage, by angle: Double, horizontally: Bool, depth: Double, in bounds: CGRect) -> CIImage {
+        let w = Double(bounds.width), h = Double(bounds.height)
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        let camera = 2 * max(w, h)
+        // The picture faces the camera when the axis's normal does.
+        guard cos(angle) > 0.01 else { return CIImage.empty() }
+        func project(_ x: Double, _ y: Double) -> CIVector {
+            // In the picture's own plane, measured from its middle, which
+            // sits `depth` in front of the turning axis.
+            var (px, py, pz) = (x, y, -depth)
+            if horizontally {
+                (px, pz) = (px * cos(angle) + pz * sin(angle), -px * sin(angle) + pz * cos(angle))
+            } else {
+                (py, pz) = (py * cos(angle) + pz * sin(angle), -py * sin(angle) + pz * cos(angle))
+            }
+            let scale = camera / (camera + pz + depth)
+            return CIVector(x: center.x + px * scale, y: center.y + py * scale)
+        }
+        return image.cropped(to: bounds).applyingFilter("CIPerspectiveTransform", parameters: [
+            "inputTopLeft": project(-w / 2, h / 2),
+            "inputTopRight": project(w / 2, h / 2),
+            "inputBottomRight": project(w / 2, -h / 2),
+            "inputBottomLeft": project(-w / 2, -h / 2),
+        ])
+    }
 
     /// A whole frame's travel in `direction`, in the output's coordinates.
     static func offset(_ direction: TransitionDirection, in bounds: CGRect) -> CGVector {

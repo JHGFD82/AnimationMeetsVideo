@@ -60,6 +60,9 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     case zoom
     case crossZoom
     case spin
+    case flip
+    case cube
+    case pageCurl
 
     var id: Self { self }
 
@@ -83,6 +86,9 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .zoom: "Zoom"
         case .crossZoom: "Cross Zoom"
         case .spin: "Spin"
+        case .flip: "Flip"
+        case .cube: "Cube"
+        case .pageCurl: "Page Curl"
         }
     }
 
@@ -91,13 +97,14 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .crossDissolve, .filmDissolve, .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve: .dissolves
         case .wipe, .iris, .clockWipe, .blinds, .grid, .matteWipe: .wipes
         case .slide, .push, .split, .zoom, .crossZoom, .spin: .moves
+        case .flip, .cube, .pageCurl: .threeD
         }
     }
 
     /// What can be set on it besides its length and curve.
     var settings: [TransitionSetting] {
         switch self {
-        case .wipe, .slide, .push, .split: [.direction]
+        case .wipe, .slide, .push, .split, .flip, .cube, .pageCurl: [.direction]
         case .crossZoom: [.center, .amount]
         case .iris: [.shape, .center]
         case .clockWipe: [.center]
@@ -144,6 +151,9 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .zoom: "arrow.up.left.and.arrow.down.right"
         case .crossZoom: "scope"
         case .spin: "arrow.trianglehead.2.clockwise.rotate.90"
+        case .flip: "arrow.left.and.right.righttriangle.left.righttriangle.right"
+        case .cube: "cube"
+        case .pageCurl: "book.pages"
         }
     }
 
@@ -156,6 +166,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         switch self {
         case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom, .spin: false
         case .push, .split, .crossZoom: true
+        case .flip, .cube, .pageCurl: true
         case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve: true
         case .iris, .clockWipe, .blinds, .grid, .matteWipe: true
         }
@@ -710,7 +721,8 @@ struct EdgeTransitions {
                 CGAffineTransform(translationX: entering ? -dx : dx, y: entering ? -dy : dy)
             )
         case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve,
-             .iris, .clockWipe, .blinds, .grid, .matteWipe, .push, .split, .crossZoom:
+             .iris, .clockWipe, .blinds, .grid, .matteWipe, .push, .split, .crossZoom,
+             .flip, .cube, .pageCurl:
             // Drawn from the two pictures by `TransitionRenderer`; the clip
             // itself is placed as usual.
             break

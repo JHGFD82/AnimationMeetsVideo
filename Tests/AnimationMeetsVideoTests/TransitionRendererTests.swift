@@ -191,4 +191,42 @@ struct RenderProbe {
         #expect(try showsAfter(upright, x: 0.5, y: 0.5))
         #expect(try !showsAfter(upright, x: 0.5, y: 0.05))
     }
+
+    // MARK: 3D
+
+    /// Whether the point shows red, the picture before.
+    private func showsBefore(_ image: CIImage, x: Double, y: Double) throws -> Bool {
+        let value = try probe.pixel(image, x: x, y: y)
+        return value[0] > 200 && value[2] < 55
+    }
+
+    @Test func aFlipShowsTheFrontThenTheBack() throws {
+        let early = wipe(.flip, 0.25)
+        #expect(try showsBefore(early, x: 0.5, y: 0.5))
+        // Turned, the card no longer reaches the edge it turns away from.
+        let side = try probe.pixel(early, x: 0.02, y: 0.5)
+        #expect(side.allSatisfy { $0 < 20 })
+        #expect(try showsAfter(wipe(.flip, 0.75), x: 0.5, y: 0.5))
+    }
+
+    @Test func aCubeBringsTheNextFaceInFromTheSideItMovesAwayFrom() throws {
+        let left = wipe(.cube, 0.5) { $0.direction = .left }
+        #expect(try showsBefore(left, x: 0.25, y: 0.5))
+        #expect(try showsAfter(left, x: 0.75, y: 0.5))
+        let up = wipe(.cube, 0.5) { $0.direction = .up }
+        #expect(try showsBefore(up, x: 0.5, y: 0.25))
+        #expect(try showsAfter(up, x: 0.5, y: 0.75))
+    }
+
+    @Test func aPageCurlShowsBothPicturesPartWay() throws {
+        let half = wipe(.pageCurl, 0.5)
+        var before = 0, after = 0
+        for x in [0.1, 0.5, 0.9] {
+            for y in [0.2, 0.8] {
+                if try showsBefore(half, x: x, y: y) { before += 1 }
+                if try showsAfter(half, x: x, y: y) { after += 1 }
+            }
+        }
+        #expect(before > 0 && after > 0)
+    }
 }
