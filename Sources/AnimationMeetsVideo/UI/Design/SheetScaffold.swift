@@ -55,6 +55,8 @@ struct SheetFrame<Content: View, Actions: View>: View {
             .padding(.vertical, Design.Space.group)
             .background(Design.Surface.raised.color)
             .overlay(alignment: .top) { Groove() }
+            // A filled action reads its white title at 4.5:1 or better.
+            .tint(Design.accentFill)
         }
         .frame(width: width)
         .background(Design.Surface.floating.color)

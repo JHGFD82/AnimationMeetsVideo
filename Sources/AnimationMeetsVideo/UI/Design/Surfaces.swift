@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Bevels, grooves and panel fills: how `Design.Surface` becomes pixels.
@@ -91,10 +92,18 @@ extension Design {
     }
 
     /// A clip's body: a tinted block lit from above.
+    ///
+    /// Clip names and badges are drawn on it in `textOnColor`, at least 90%
+    /// strong. Over the track's rows, plain or lit as a drop target, that
+    /// reads at 4.5:1 or better for every tone where the text sits (the
+    /// middle of the block). Unselected it does as it is; selected, the
+    /// brighter fill only managed 3.3:1, so it is shaded by a fifth, the
+    /// same as laying 20% black over it. It stays brighter than unselected,
+    /// and the selected outline still marks it.
     static func clipFill(_ tone: Color, selected: Bool) -> LinearGradient {
         LinearGradient(
             colors: selected
-                ? [tone.opacity(0.92), tone.opacity(0.66)]
+                ? [tone.darkened(to: 0.786).opacity(0.936), tone.darkened(to: 0.725).opacity(0.728)]
                 : [tone.opacity(0.62), tone.opacity(0.4)],
             startPoint: .top,
             endPoint: .bottom
@@ -177,5 +186,20 @@ extension View {
                     .opacity(isSelected ? 1 : 0)
                     .decorative()
             }
+    }
+}
+
+private extension Color {
+    /// This color with its red, green and blue scaled by `fraction`, which
+    /// darkens it without changing its hue.
+    func darkened(to fraction: Double) -> Color {
+        guard let srgb = NSColor(self).usingColorSpace(.sRGB) else { return self }
+        return Color(
+            .sRGB,
+            red: srgb.redComponent * fraction,
+            green: srgb.greenComponent * fraction,
+            blue: srgb.blueComponent * fraction,
+            opacity: srgb.alphaComponent
+        )
     }
 }

@@ -103,7 +103,11 @@ the snap line's arrival.
   `accessibilityValue` of on or off.
 - Anything a drag can do needs a keyboard or menu path too, at least one
   step at a time.
-- Use `Design` text tones, not new greys, so contrast holds.
+- Use `Design` text tones, not new greys, so contrast holds: 4.5:1 for
+  text, checked against what is really under it. Text on a clip's fill is
+  `textOnColor` at 90% or more (`Design.clipFill` is shaded when
+  selected so it holds); a filled button takes `.tint(Design.accentFill)`,
+  since white on the accent itself is 3.2:1.
 - Decoration drawn over a control (a bevel, rim, groove or selection bar)
   is `.decorative()`: no hit testing, so an edge's clicks and drags reach
   the control, and hidden from VoiceOver. `Groove` already is.
