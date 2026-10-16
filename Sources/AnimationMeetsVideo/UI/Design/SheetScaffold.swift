@@ -92,6 +92,7 @@ struct SheetSection<Content: View>: View {
                 Text(title)
                     .font(Design.Typeface.groupTitle)
                     .foregroundStyle(Design.textSecondary)
+                    .accessibilityAddTraits(.isHeader)
             }
             content()
         }

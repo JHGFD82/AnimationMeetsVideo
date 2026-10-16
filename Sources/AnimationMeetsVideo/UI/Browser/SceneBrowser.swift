@@ -136,6 +136,9 @@ struct SceneThumbnail: View {
             RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                 .strokeBorder(Design.bevelEdge, lineWidth: 1)
         }
+        // The row's text says what the scene is; the picture adds nothing
+        // VoiceOver can read.
+        .accessibilityHidden(true)
         .task(id: "\(time.value)/\(time.timescale)|\(offset.value)/\(offset.timescale)|\(url?.path ?? "")") {
             guard let url else { return }
             image = await SceneThumbnailStore.image(url: url, time: CMTimeAdd(time, offset))
@@ -160,6 +163,7 @@ struct SceneRowView: View {
                             .font(Design.Typeface.micro)
                             .foregroundStyle(Design.textTertiary)
                             .help("Boundary set by hand")
+                            .accessibilityLabel("set by hand")
                     }
                 }
                 Text("\(scene.start.compactTimecode(frameRate: clip.frameRate)) · \(scene.duration.formatted)")
@@ -167,6 +171,9 @@ struct SceneRowView: View {
                     .foregroundStyle(Design.textTertiary)
             }
         }
+        // One element per scene: its number, whether a hand-set boundary
+        // starts it, and its start and length.
+        .accessibilityElement(children: .combine)
     }
 }
 

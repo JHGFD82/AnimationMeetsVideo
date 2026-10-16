@@ -45,7 +45,7 @@ struct TransformPropertyRow: View {
             let components = transform.components(property, at: time, frameSize: frameSize)
             ForEach(components.indices, id: \.self) { index in
                 if index > 0 { Text(",").foregroundStyle(Design.textTertiary) }
-                NumericField(value: components[index], unit: property.unit) { newValue in
+                NumericField(value: components[index], unit: property.unit, accessibilityName: componentName(index)) { newValue in
                     onEdit { $0.setComponent(index, of: property, to: newValue, at: time, frameSize: frameSize) }
                 }
             }
@@ -60,6 +60,13 @@ struct TransformPropertyRow: View {
             }
         }
         .font(Design.Typeface.label)
+    }
+
+    /// "Position X", or just "Rotation" for a property of one component.
+    private func componentName(_ index: Int) -> String {
+        let names = AnimatedParameter.transform(property).componentNames
+        guard names.count > 1, names.indices.contains(index) else { return property.rawValue }
+        return "\(property.rawValue) \(names[index])"
     }
 }
 

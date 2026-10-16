@@ -41,6 +41,9 @@ struct AudioMeterView: View {
                 .accessibilityHint("Clears the lamps")
                 Canvas { context, size in draw(meter, in: &context, size: size) }
                     .id(clearedCount)
+                    .accessibilityElement()
+                    .accessibilityLabel("Audio level")
+                    .accessibilityValue("left \(Self.spoken(meter.level[0])), right \(Self.spoken(meter.level[1]))")
             }
         }
         .padding(.vertical, Design.Space.step)
@@ -48,6 +51,11 @@ struct AudioMeterView: View {
         .frame(maxHeight: .infinity)
         .background(Design.Surface.base.color)
         .help("Every audio track together, left and right, in dBFS")
+    }
+
+    /// A level as VoiceOver reads it: "−12 decibels", or "silent".
+    private static func spoken(_ decibels: Double) -> String {
+        decibels <= MeterBallistics.floor ? "silent" : "\(Int(decibels.rounded())) decibels"
     }
 
     private func lamp(_ lit: Bool) -> some View {

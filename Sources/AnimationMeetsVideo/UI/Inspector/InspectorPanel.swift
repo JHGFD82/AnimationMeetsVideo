@@ -266,6 +266,7 @@ struct InspectorGroup<Content: View>: View {
             Text(title)
                 .font(Design.Typeface.groupTitle)
                 .foregroundStyle(Design.textSecondary)
+                .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: Design.Space.close) {
                 content()
             }

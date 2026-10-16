@@ -205,6 +205,13 @@ The rest of the timeline reads the same way:
   one, and actions apply an ease or delete it.
 - **Joined transitions** read their kind, length and curve; pressing
   selects, and actions open the footage, set a curve or remove it.
+- **Property values** in the rows and the inspector read as what they are
+  ("Position X") and their value; pressing one opens it for typing.
+
+Outside the timeline, the viewer reads as an image with the playhead's
+timecode, the audio meter reads each channel's level, library scenes read
+as one line each without their thumbnails, and group titles in the
+inspector and in sheets are headings.
 
 ## Sections
 

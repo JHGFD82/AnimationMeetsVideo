@@ -22,6 +22,10 @@ struct ViewerPanel: View {
                 Design.Surface.well.color
                 if hasContent {
                     picture { PlayerLayerView(player: playback.player, still: playback.still) }
+                        .accessibilityElement()
+                        .accessibilityLabel("Viewer")
+                        .accessibilityValue(playback.currentTime.timecode(frameRate: frameRate))
+                        .accessibilityAddTraits(.isImage)
                 } else {
                     picture { MetalPreviewView() }
                     ContentUnavailableView("No clips yet", systemImage: "film",
