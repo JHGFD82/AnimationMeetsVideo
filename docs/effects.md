@@ -531,8 +531,10 @@ lower or raise it. A press without a drag still opens the field for typing.
 
 ### Keyframes in the panel
 
-The panel has its own ruler and playhead, spanning the selected clip. To
-the right of each control row is its keyframe lane, with the same diamonds
+The panel has its own ruler and playhead, spanning the selected clip. The
+button at the right of the panel's title hides them and the lanes, so the
+controls take the panel's whole width, and shows them again; the choice is
+kept between launches. To the right of each control row is its keyframe lane, with the same diamonds
 and interactions as the timeline's lanes today: click to go to it, drag to
 retime, right-click for ease presets and Delete Keyframe. The panel's
 playhead is the timeline's: scrubbing either moves both.
