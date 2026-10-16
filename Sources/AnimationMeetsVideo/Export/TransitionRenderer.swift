@@ -45,7 +45,9 @@ enum TransitionRenderer {
             return reveal(b, over: a, mask: TransitionMasks.grid(columns: options.count, order: options.order, progress: p, in: bounds))
         case .matteWipe:
             // Brightest parts of the map first, as a film dissolve keys on
-            // the picture itself.
+            // the picture itself. The ends are exact even where the map is
+            // at full brightness.
+            guard p > 0, p < 1 else { return p <= 0 ? a : b }
             let map = matteMap(options.matte, in: bounds)
             return reveal(b, over: a, mask: LayeredCompositor.revealMask(of: map, LumaReveal(progress: p, keysIncoming: true)))
         case .push:

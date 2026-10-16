@@ -218,7 +218,8 @@ struct RenderProbe {
         #expect(try showsAfter(up, x: 0.5, y: 0.75))
     }
 
-    @Test func aPageCurlShowsBothPicturesPartWay() throws {
+    @Test func aPageCurlIsNeitherPictureAloneHalfway() throws {
+        // The curled page and its shaded back cover parts of both.
         let half = wipe(.pageCurl, 0.5)
         var before = 0, after = 0
         for x in [0.1, 0.5, 0.9] {
@@ -227,7 +228,7 @@ struct RenderProbe {
                 if try showsAfter(half, x: x, y: y) { after += 1 }
             }
         }
-        #expect(before > 0 && after > 0)
+        #expect(before < 6 && after < 6)
     }
 
     // MARK: Stylized
