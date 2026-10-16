@@ -242,6 +242,12 @@ a clip may go are in `ClipPlacement.swift`:
   the end (`coveringWholeFrames`), and so are clips in projects saved
   before this. Otherwise its end falls between frames and no neighbor
   can meet it to make a cut.
+- **Changing a timeline's frame rate** moves what is on it onto the new
+  frames (`alignToFrames`): clip edges with pictures, transition lengths,
+  keyframes and sections each go to the nearest frame, so edges that met
+  still meet. Keyframes that land on one frame merge, keeping the later.
+  Rates other than whole numbers and the NTSC family (such as 12.5) are
+  kept exact rather than rounded to a whole number.
 - **Audio moves freely**, to 1/48000 of a second.
 - Clips never start before zero and never overlap on a layer. A moved
   clip lands where it is dropped. Dropped inside another clip, it goes to
