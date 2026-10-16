@@ -6,31 +6,10 @@ import Testing
 
 @MainActor
 @Suite struct AssetAnalysisTests {
+    /// Black for its first half, then white: one cut in the middle.
     private func makeMovie(frames: Int) async throws -> URL {
         let url = FileManager.default.temporaryDirectory.appending(path: "amv-analysis-\(UUID().uuidString).mov")
-        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 64, AVVideoHeightKey: 64,
-        ])
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: 64, kCVPixelBufferHeightKey as String: 64,
-        ])
-        writer.add(input)
-        writer.startWriting()
-        writer.startSession(atSourceTime: .zero)
-        for index in 0..<frames {
-            while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(2)) }
-            var buffer: CVPixelBuffer?
-            CVPixelBufferCreate(nil, 64, 64, kCVPixelFormatType_32BGRA, nil, &buffer)
-            let pixels = try #require(buffer)
-            CVPixelBufferLockBaseAddress(pixels, [])
-            memset(CVPixelBufferGetBaseAddress(pixels), index < frames / 2 ? 0 : 255, CVPixelBufferGetBytesPerRow(pixels) * 64)
-            CVPixelBufferUnlockBaseAddress(pixels, [])
-            adaptor.append(pixels, withPresentationTime: CMTime(value: Int64(index), timescale: 24))
-        }
-        input.markAsFinished()
-        await writer.finishWriting()
+        try await writeMovie(to: url, segments: [(0, frames / 2), (255, frames - frames / 2)])
         return url
     }
 
