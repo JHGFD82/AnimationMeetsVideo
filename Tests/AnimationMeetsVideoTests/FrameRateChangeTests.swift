@@ -19,8 +19,11 @@ import Testing
             name: "Clip", kind: .video, url: nil, duration: seconds(10),
             frameRate: 24, colorSpace: .rec709, codecName: "Stub"
         )
-        let first = try #require(project.importClip(media, intoTimeline: t))
-        let second = try #require(project.placeAsset(media.id, intoTimeline: t))
+        // Called first: #require can't wrap a mutating call.
+        let imported = project.importClip(media, intoTimeline: t)
+        let placed = project.placeAsset(media.id, intoTimeline: t)
+        let first = try #require(imported)
+        let second = try #require(placed)
         // Two clips meeting at a frame of 24 fps that isn't one of 25 fps.
         project.trimClipEnd(first.clipID, in: t, layer: first.layerID, to: CMTime(value: 25, timescale: 24))
         project.moveClip(second.clipID, in: t, layer: second.layerID, onto: first.layerID, to: CMTime(value: 25, timescale: 24))
