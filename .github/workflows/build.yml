@@ -1,0 +1,32 @@
+name: Build and test
+
+# Every push and pull request is built and tested on macOS with full
+# Xcode: the app can't be built anywhere else (SwiftUI's macro plugins
+# aren't in the standalone Command Line Tools), so this is the only place
+# changes made off a Mac get compiled.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # macOS 26 for its Xcode: the viewer uses an API from the macOS 26 SDK
+    # behind an availability check.
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show the toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test
