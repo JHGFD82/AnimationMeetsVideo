@@ -101,4 +101,54 @@ struct RenderProbe {
         let colors = probe.draw(.blurDissolve, 0.5, from: probe.solid(1, 0, 0), to: probe.solid(0, 0, 1))
         #expect(probe.isNear(try probe.pixel(colors, x: 0.5, y: 0.5), [128, 0, 128]))
     }
+
+    // MARK: Wipes
+
+    /// Whether the point shows blue, the picture after, rather than red.
+    private func showsAfter(_ image: CIImage, x: Double, y: Double) throws -> Bool {
+        let value = try probe.pixel(image, x: x, y: y)
+        return value[2] > 200 && value[0] < 55
+    }
+
+    private func wipe(_ kind: TransitionKind, _ progress: Double, _ change: (inout TransitionOptions) -> Void = { _ in }) -> CIImage {
+        var options = kind.defaultOptions
+        change(&options)
+        return probe.draw(kind, progress, from: probe.solid(1, 0, 0), to: probe.solid(0, 0, 1), options: options)
+    }
+
+    @Test func anIrisOpensFromItsCenter() throws {
+        for shape in IrisShape.allCases {
+            let half = wipe(.iris, 0.5) { $0.shape = shape }
+            #expect(try showsAfter(half, x: 0.5, y: 0.5))
+            #expect(try !showsAfter(half, x: 0.02, y: 0.05))
+        }
+        let offCenter = wipe(.iris, 0.2) { $0.center = CGPoint(x: 0.2, y: 0.25) }
+        #expect(try showsAfter(offCenter, x: 0.2, y: 0.25))
+        #expect(try !showsAfter(offCenter, x: 0.8, y: 0.75))
+    }
+
+    @Test func aClockWipeSweepsClockwiseFromTwelve() throws {
+        let quarter = wipe(.clockWipe, 0.3)
+        #expect(try showsAfter(quarter, x: 0.6, y: 0.1))
+        #expect(try !showsAfter(quarter, x: 0.4, y: 0.1))
+        #expect(try !showsAfter(quarter, x: 0.4, y: 0.9))
+    }
+
+    @Test func blindsOpenEachStripFromItsSide() throws {
+        let right = wipe(.blinds, 0.5) { $0.count = 2; $0.direction = .right }
+        #expect(try showsAfter(right, x: 0.1, y: 0.5))
+        #expect(try !showsAfter(right, x: 0.4, y: 0.5))
+        #expect(try showsAfter(right, x: 0.6, y: 0.5))
+        #expect(try !showsAfter(right, x: 0.9, y: 0.5))
+        let up = wipe(.blinds, 0.5) { $0.count = 2; $0.direction = .up }
+        // Each strip opens from its bottom.
+        #expect(try showsAfter(up, x: 0.5, y: 0.9))
+        #expect(try !showsAfter(up, x: 0.5, y: 0.6))
+    }
+
+    @Test func aDiagonalGridTurnsTheTopLeftFirst() throws {
+        let early = wipe(.grid, 0.3) { $0.order = .diagonal }
+        #expect(try showsAfter(early, x: 0.05, y: 0.1))
+        #expect(try !showsAfter(early, x: 0.95, y: 0.9))
+    }
 }

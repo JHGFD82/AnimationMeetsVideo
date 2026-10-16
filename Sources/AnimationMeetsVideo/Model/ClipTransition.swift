@@ -49,6 +49,10 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     case channelDissolve
     case blurDissolve
     case wipe
+    case iris
+    case clockWipe
+    case blinds
+    case grid
     case slide
     case zoom
 
@@ -63,6 +67,10 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .channelDissolve: "Channel Dissolve"
         case .blurDissolve: "Blur Dissolve"
         case .wipe: "Wipe"
+        case .iris: "Iris"
+        case .clockWipe: "Clock Wipe"
+        case .blinds: "Blinds"
+        case .grid: "Grid"
         case .slide: "Slide"
         case .zoom: "Zoom"
         }
@@ -71,7 +79,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     var category: TransitionCategory {
         switch self {
         case .crossDissolve, .filmDissolve, .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve: .dissolves
-        case .wipe: .wipes
+        case .wipe, .iris, .clockWipe, .blinds, .grid: .wipes
         case .slide, .zoom: .moves
         }
     }
@@ -80,6 +88,10 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     var settings: [TransitionSetting] {
         switch self {
         case .wipe, .slide: [.direction]
+        case .iris: [.shape, .center]
+        case .clockWipe: [.center]
+        case .blinds: [.direction, .count]
+        case .grid: [.count, .order]
         case .dipToColor: [.color]
         case .blurDissolve: [.amount]
         case .crossDissolve, .filmDissolve, .additiveDissolve, .channelDissolve, .zoom: []
@@ -109,6 +121,10 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .channelDissolve: "camera.filters"
         case .blurDissolve: "aqi.medium"
         case .wipe: "arrow.right.to.line"
+        case .iris: "circle.dashed"
+        case .clockWipe: "clock"
+        case .blinds: "blinds.vertical.open"
+        case .grid: "square.grid.3x3"
         case .slide: "rectangle.righthalf.inset.filled.arrow.right"
         case .zoom: "arrow.up.left.and.arrow.down.right"
         }
@@ -123,6 +139,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         switch self {
         case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom: false
         case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve: true
+        case .iris, .clockWipe, .blinds, .grid: true
         }
     }
 
@@ -674,7 +691,8 @@ struct EdgeTransitions {
             effect.transform = effect.transform.concatenating(
                 CGAffineTransform(translationX: entering ? -dx : dx, y: entering ? -dy : dy)
             )
-        case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve:
+        case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve,
+             .iris, .clockWipe, .blinds, .grid:
             // Drawn from the two pictures by `TransitionRenderer`; the clip
             // itself is placed as usual.
             break

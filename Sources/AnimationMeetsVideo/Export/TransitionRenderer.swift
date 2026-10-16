@@ -35,6 +35,14 @@ enum TransitionRenderer {
             // Up to 6% of the width at full amount, at its most halfway.
             let radius = 0.06 * bounds.width * options.amount * sin(.pi * p)
             return mix(blurred(a, radius: radius, in: bounds), blurred(b, radius: radius, in: bounds), smoothstep(p))
+        case .iris:
+            return reveal(b, over: a, mask: TransitionMasks.iris(options.shape, center: point(options.center, in: bounds), progress: p, in: bounds))
+        case .clockWipe:
+            return reveal(b, over: a, mask: TransitionMasks.clock(center: point(options.center, in: bounds), progress: p, in: bounds))
+        case .blinds:
+            return reveal(b, over: a, mask: TransitionMasks.blinds(options.direction, count: options.count, progress: p, in: bounds))
+        case .grid:
+            return reveal(b, over: a, mask: TransitionMasks.grid(columns: options.count, order: options.order, progress: p, in: bounds))
         case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom:
             // Drawn on the clip alone by the compositor; never asked for.
             return mix(a, b, p)
@@ -42,6 +50,20 @@ enum TransitionRenderer {
     }
 
     // MARK: - Helpers
+
+    /// `b` where `mask` is white, `a` where it is black.
+    static func reveal(_ b: CIImage, over a: CIImage, mask: CIImage) -> CIImage {
+        b.applyingFilter("CIBlendWithMask", parameters: [
+            kCIInputBackgroundImageKey: a,
+            kCIInputMaskImageKey: mask,
+        ])
+    }
+
+    /// A point given as fractions of the frame from its top left, in the
+    /// output's coordinates, which measure from the bottom left.
+    static func point(_ fraction: CGPoint, in bounds: CGRect) -> CGPoint {
+        CGPoint(x: bounds.minX + fraction.x * bounds.width, y: bounds.minY + (1 - fraction.y) * bounds.height)
+    }
 
     /// `a` blended toward `b` by `t`.
     static func mix(_ a: CIImage, _ b: CIImage, _ t: Double) -> CIImage {
