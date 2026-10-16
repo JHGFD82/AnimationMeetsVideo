@@ -6,7 +6,35 @@ import Testing
 
 /// Writes a small H.264 movie of solid-color frames: `segments` is a list of
 /// (luma, frame count). Lets tests run real decoding without footage.
+///
+/// Movies are written one at a time, and a failed write is tried again: on
+/// CI's virtual Macs the H.264 encoder fails now and then when many tests
+/// write at once, which has nothing to do with what the tests check.
 func writeMovie(to url: URL, segments: [(luma: UInt8, frames: Int)], fps: Int32 = 24) async throws {
+    await MovieWriterGate.shared.enter()
+    var failure = "unknown"
+    for attempt in 1...4 {
+        try? FileManager.default.removeItem(at: url)
+        do {
+            if let error = try await writeMovieOnce(to: url, segments: segments, fps: fps) {
+                failure = error
+            } else {
+                await MovieWriterGate.shared.leave()
+                return
+            }
+        } catch {
+            await MovieWriterGate.shared.leave()
+            throw error
+        }
+        try? await Task.sleep(for: .milliseconds(100 * attempt))
+    }
+    await MovieWriterGate.shared.leave()
+    Issue.record("Couldn't write a test movie after four tries: \(failure)")
+    throw CocoaError(.fileWriteUnknown)
+}
+
+/// One try at `writeMovie`; returns why it failed, or nil once written.
+private func writeMovieOnce(to url: URL, segments: [(luma: UInt8, frames: Int)], fps: Int32) async throws -> String? {
     let width = 128, height = 72
     let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
     let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
@@ -20,13 +48,16 @@ func writeMovie(to url: URL, segments: [(luma: UInt8, frames: Int)], fps: Int32 
         kCVPixelBufferHeightKey as String: height,
     ])
     writer.add(input)
-    writer.startWriting()
+    guard writer.startWriting() else { return writer.error?.localizedDescription ?? "couldn't start" }
     writer.startSession(atSourceTime: .zero)
 
     var frameIndex: Int64 = 0
     for segment in segments {
         for _ in 0..<segment.frames {
-            while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(2)) }
+            while !input.isReadyForMoreMediaData {
+                if writer.status == .failed { return writer.error?.localizedDescription ?? "failed while writing" }
+                try await Task.sleep(for: .milliseconds(2))
+            }
             var buffer: CVPixelBuffer?
             CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_32BGRA, nil, &buffer)
             let pixels = try #require(buffer)
@@ -39,7 +70,30 @@ func writeMovie(to url: URL, segments: [(luma: UInt8, frames: Int)], fps: Int32 
     }
     input.markAsFinished()
     await writer.finishWriting()
-    try #require(writer.status == .completed)
+    return writer.status == .completed ? nil : (writer.error?.localizedDescription ?? "status \(writer.status.rawValue)")
+}
+
+/// Lets one test movie be written at a time.
+private actor MovieWriterGate {
+    static let shared = MovieWriterGate()
+    private var isBusy = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func enter() async {
+        guard isBusy else {
+            isBusy = true
+            return
+        }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func leave() {
+        if waiting.isEmpty {
+            isBusy = false
+        } else {
+            waiting.removeFirst().resume()
+        }
+    }
 }
 
 @Suite struct FrameScorerTests {
