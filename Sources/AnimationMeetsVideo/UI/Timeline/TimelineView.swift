@@ -1002,10 +1002,6 @@ struct TimelineView: View {
         }
     }
 
-    /// P, S, R and T show only position, scale, rotation or opacity (pressing
-    /// the key again hides it); with Shift they add or remove that property
-    /// and keep the others. They act on the selected clip's layer, or on
-    /// every visual layer when nothing is selected.
     private func deleteLayer(_ id: UUID) {
         if selectedLayerID == id { selectedLayerID = nil }
         onDeleteLayer(id)
@@ -1032,6 +1028,10 @@ struct TimelineView: View {
         return true
     }
 
+    /// P, S, R and T show only position, scale, rotation or opacity (pressing
+    /// the key again hides it); with Shift they add or remove that property
+    /// and keep the others. They act on the selected clip's layer, or on
+    /// every visual layer when nothing is selected.
     private func handleKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         // Delete and Forward Delete, without modifiers.

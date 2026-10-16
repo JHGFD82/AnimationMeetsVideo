@@ -239,10 +239,14 @@ final class MediaReplacementController {
 
     /// Cancels `session` if it is still the current one, so a late call for
     /// a session already finished or replaced by the next does nothing.
+    /// The rest of a batch is cancelled with it, and the summary lists
+    /// every file that wasn't replaced.
     func cancel(_ session: ReplacementSession) {
         guard self.session?.id == session.id else { return }
         task?.cancel()
         skipped.append(session.assetName)
+        let project = context?.project.wrappedValue
+        skipped += queue.map { project?.mediaClip(id: $0.assetID)?.name ?? $0.url.lastPathComponent }
         self.session = nil
         queue.removeAll()
         finish()
