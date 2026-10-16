@@ -119,7 +119,7 @@ extension EffectsPanel {
                 indent: 14,
                 components: [clip.speed(atSource: c.sourceNow)],
                 unit: "%",
-                dragRange: { _ in ClipTime.speedRange },
+                dragRange: { _ in -ClipTime.speedRange.upperBound...ClipTime.speedRange.upperBound },
                 isAnimated: speed.isAnimated,
                 isSelected: false,
                 keyframeTimes: speed.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },

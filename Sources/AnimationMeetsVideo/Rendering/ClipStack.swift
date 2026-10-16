@@ -106,9 +106,11 @@ struct ClipStack: @unchecked Sendable {
     /// way at every moment.
     var animatedRanges: [CMTimeRange] {
         let keyframed = (effects.flatMap(\.animatedRanges) + [anchorPoint.animatedRange].compactMap { $0 }).map {
-            CMTimeRange(
-                start: CMTimeAdd(timelineTime(forSource: $0.lowerBound), shift),
-                end: CMTimeAdd(timelineTime(forSource: $0.upperBound), shift)
+            // (A backwards clip plays its later footage first.)
+            let a = timelineTime(forSource: $0.lowerBound), b = timelineTime(forSource: $0.upperBound)
+            return CMTimeRange(
+                start: CMTimeAdd(CMTimeMinimum(a, b), shift),
+                end: CMTimeAdd(CMTimeMaximum(a, b), shift)
             )
         }
         let transitions = (edges?.animatedRanges ?? []).map {

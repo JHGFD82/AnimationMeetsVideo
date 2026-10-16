@@ -74,7 +74,9 @@ struct ClipWaveform: View {
         var x: CGFloat = 0
         while x < band.width {
             let start = fileStart + Double(x) * secondsPerPoint
-            let peak = CGFloat(waveform.peak(from: start, to: start + Double(step) * secondsPerPoint, channel: channel))
+            // Backwards, the file is read toward its start.
+            let end = start + Double(step) * secondsPerPoint
+            let peak = CGFloat(waveform.peak(from: min(start, end), to: max(start, end), channel: channel))
             let half = max(0.5, peak * reach)
             path.addRect(CGRect(x: x, y: middle - half, width: step - 0.6, height: half * 2))
             x += step

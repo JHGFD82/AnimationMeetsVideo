@@ -541,7 +541,7 @@ enum CompositionExporter {
                 // The clip's volume counts in its source time, which a
                 // retimed clip plays through at its speed (at the speed it
                 // starts at, when that is changing).
-                let rate = clip.speed(atSource: clip.trimStart) / 100
+                let rate = abs(clip.speed(atSource: clip.trimStart)) / 100
                 let clipVolume = VolumeStage(
                     id: clip.id,
                     shift: CMTimeAdd(offset, CMTimeSubtract(clip.startOffset, CMTimeMultiplyByFloat64(clip.trimStart, multiplier: 1 / rate))),
@@ -614,7 +614,7 @@ enum CompositionExporter {
                         if silent { placement.includesAudio = false }
                         // A retimed clip's sound is silent, or played at its
                         // new speed with or without its pitch changing.
-                        if clip.isRetimed, clip.time.sound == .mute { placement.includesAudio = false }
+                        if clip.isRetimed, clip.time.sound == .mute || clip.isReversed { placement.includesAudio = false }
                         if placement.includesAudio, hasOwnVolume || clip.isRetimed {
                             let sound = placement.copy()
                             sound.includesVideo = false
@@ -824,14 +824,19 @@ enum CompositionExporter {
 
         func piece(from a: CMTime, to b: CMTime) -> Placement.Piece {
             let first = clip.sourceTime(atTimelineTime: a), last = clip.sourceTime(atTimelineTime: b)
+            // Backwards, a piece is a frame's worth of footage starting at
+            // where the piece starts, so it shows that moment.
             return Placement.Piece(
-                file: CMTimeRange(start: media.fileTime(forSourceTime: first), duration: CMTimeSubtract(last, first)),
+                file: CMTimeRange(start: media.fileTime(forSourceTime: first), duration: CMTimeSubtract(max(first, last), min(first, last))),
                 at: CMTimeAdd(a, offset), duration: CMTimeSubtract(b, a)
             )
         }
         var pieces: [Placement.Piece] = []
-        if clip.time.speed.isAnimated {
-            let step = CMTimeMultiply(frameDuration, multiplier: 4)
+        if clip.isReversed || clip.time.speed.isAnimated {
+            // A composition can't play footage backwards, so backwards
+            // footage is a piece for every frame, each placed after the
+            // one that follows it in the file.
+            let step = clip.isReversed ? frameDuration : CMTimeMultiply(frameDuration, multiplier: 4)
             var cursor = visible.start
             while cursor < visible.end {
                 let end = CMTimeMinimum(CMTimeAdd(cursor, step), visible.end)
