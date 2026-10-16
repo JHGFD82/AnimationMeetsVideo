@@ -87,6 +87,12 @@ final class MediaReplacementController {
         changedMedia.formUnion(ids)
     }
 
+    /// Notes assets already known to be missing, as when opening found them
+    /// gone, so the file check doesn't report them again.
+    func markMissing(_ ids: [UUID]) {
+        missingMedia.formUnion(ids)
+    }
+
     /// One asset's file as found on disk; a nil stamp means it is missing
     /// or can't be read.
     struct FileReading: Sendable {
