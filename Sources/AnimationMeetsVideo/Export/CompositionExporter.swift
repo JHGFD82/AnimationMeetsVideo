@@ -695,10 +695,6 @@ enum CompositionExporter {
                     }
                 case .timeline(let nestedID):
                     guard let nested = project.timeline(id: nestedID) else { continue }
-                    // Every layer drawn through this clip shares its stage,
-                    // which fades them together.
-                    var grouped = stages
-                    grouped[0].groupID = UUID()
                     // Nested time = this timeline's time - clip.startOffset + clip.trimStart.
                     let shift = CMTimeSubtract(clip.startOffset, clip.trimStart)
                     let nestedWindow = CMTimeRange(start: CMTimeSubtract(visible.start, shift), duration: visible.duration)

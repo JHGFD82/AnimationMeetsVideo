@@ -910,6 +910,7 @@ struct ClipBlockView: View {
     private var accessibilityName: String {
         let kind = switch info {
         case .timeline: "nested timeline"
+        case .adjustment: "adjustment clip"
         case .media(let media) where media.kind == .audio || clip.streams == .audio: "audio clip"
         case .media: "video clip"
         case nil: "missing clip"
@@ -921,7 +922,7 @@ struct ClipBlockView: View {
     private var accessibilityDescription: String {
         var parts = [
             "starts at \(clip.startOffset.timecode(frameRate: frameRate))",
-            "\(clip.trimmedDuration.timecode(frameRate: frameRate)) long",
+            "\(clip.placedDuration.timecode(frameRate: frameRate)) long",
         ]
         if let transition = clip.transitionIn { parts.append("\(transition.kind.name) at the start") }
         if let transition = clip.transitionOut { parts.append("\(transition.kind.name) at the end") }
