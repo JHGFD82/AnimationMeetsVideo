@@ -9,8 +9,7 @@ signature.bin` holds each video's change scores, `reference.json` and
 and `project.json` holds scene edits (see [scene-cuts.md](scene-cuts.md)).
 `thumbs/` holds reference pictures. `beats.bin` holds detected beats (see
 [beat-detection.md](beat-detection.md)). The render cache is implemented (see [rendering.md](rendering.md)). Not yet implemented: dense reference frames, a list of backups to restore from (copy one over
-`project.json` by hand for now), and a Finder-visible package type (that
-needs an app bundle that declares the `.amv` type).
+`project.json` by hand for now).
 Step 4 is implemented (see [media-replacement.md](media-replacement.md)):
 `project.json` stores each asset's alignment offset, earlier file paths, the
 file stamp accepted at the last save, and whether its original was forgotten.
@@ -53,6 +52,13 @@ creates, opens or saves a project, which works even when it runs from
 `swift run`. The flag is file metadata that zip, git and some sync
 services drop, so a project copied that way shows as a folder until it's
 next opened.
+
+The app bundle built by `scripts/build-app.sh` also declares the type
+(`com.jhgfd.animationmeetsvideo.project`, extension `.amv`, conforming to
+`com.apple.package`) in `Packaging/Info.plist`. With it installed, every
+`.amv` folder is a single document whether or not its flag survived, and
+double-clicking one, or dropping it on the app's Dock icon, opens it in the
+app. The window asks to save unsaved changes first, as Open does.
 
 Media may be copied into `Media/` or referenced from elsewhere. **Copying
 into the package is the default**, and it happens at import: the file is

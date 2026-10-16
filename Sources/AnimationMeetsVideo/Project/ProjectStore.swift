@@ -1,5 +1,6 @@
 import CoreMedia
 import Foundation
+import UniformTypeIdentifiers
 
 /// On-disk shape of `project.json`. Everything is referenced by stable ID,
 /// times are exact rationals, and the encoder is deterministic, so saving an
@@ -348,6 +349,14 @@ struct MediaCopyCandidate {
 
 enum ProjectStore {
     static let packageExtension = "amv"
+    /// The project type the app bundle declares (`Packaging/Info.plist`).
+    static let packageTypeIdentifier = "com.jhgfd.animationmeetsvideo.project"
+    /// The project package type. Run without the bundle (`swift run`) the
+    /// system doesn't know the declared identifier, so the type is made
+    /// from the extension instead.
+    static let packageType: UTType = UTType(packageTypeIdentifier)
+        ?? UTType(filenameExtension: packageExtension, conformingTo: .package)
+        ?? .package
     static let projectFileName = "project.json"
     static let mediaFolderName = "Media"
     static let referenceFolderName = "Reference"

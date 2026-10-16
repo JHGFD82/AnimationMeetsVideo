@@ -307,6 +307,23 @@ private struct Sandbox {
         #expect(isPackage == true)
     }
 
+    @Test func theAppBundleDeclaresTheProjectType() throws {
+        let plistURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Packaging/Info.plist")
+        let plist = try #require(
+            PropertyListSerialization.propertyList(from: Data(contentsOf: plistURL), format: nil) as? [String: Any]
+        )
+        let declared = try #require((plist["UTExportedTypeDeclarations"] as? [[String: Any]])?.first)
+        #expect(declared["UTTypeIdentifier"] as? String == ProjectStore.packageTypeIdentifier)
+        #expect((declared["UTTypeConformsTo"] as? [String])?.contains("com.apple.package") == true)
+        let tags = declared["UTTypeTagSpecification"] as? [String: Any]
+        #expect(tags?["public.filename-extension"] as? [String] == [ProjectStore.packageExtension])
+        let document = try #require((plist["CFBundleDocumentTypes"] as? [[String: Any]])?.first)
+        #expect(document["LSItemContentTypes"] as? [String] == [ProjectStore.packageTypeIdentifier])
+        #expect(document["LSTypeIsPackage"] as? Bool == true)
+    }
+
     @Test func copiedMediaIsStoredWithRelativePath() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }

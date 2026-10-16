@@ -64,6 +64,9 @@ struct AnimationMeetsVideoApp: App {
     /// sheet doesn't flash up before that.
     @State private var launchChecked = false
     @State private var showsProjectSettings = false
+    /// A project Finder asked to open before launch had tried the last
+    /// one; it's opened instead.
+    @State private var openedAtLaunch: URL?
 
     private static let autosaveInterval: Duration = .seconds(60)
     private static let lastProjectKey = "lastProjectPath"
@@ -101,11 +104,28 @@ struct AnimationMeetsVideoApp: App {
                         }
                     }
                 )
+                // A project opened from Finder (double-click, or dropped on
+                // the Dock icon) comes to this window rather than a new one.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+                .onOpenURL { url in
+                    guard url.isFileURL else { return }
+                    if launchChecked {
+                        Task { await openRequestedProject(url) }
+                    } else {
+                        openedAtLaunch = url
+                    }
+                }
                 .task {
                     TerminationGuard.shared.shouldTerminate = { confirmQuit() }
                     if !launchChecked {
-                        await reopenLastProject()
+                        if openedAtLaunch == nil {
+                            await reopenLastProject()
+                        }
                         launchChecked = true
+                        if let url = openedAtLaunch {
+                            openedAtLaunch = nil
+                            await openRequestedProject(url)
+                        }
                     }
                     while !Task.isCancelled {
                         try? await Task.sleep(for: Self.autosaveInterval)
@@ -161,9 +181,7 @@ struct AnimationMeetsVideoApp: App {
 
     private func createProject() async {
         let panel = NSSavePanel()
-        if let type = UTType(filenameExtension: ProjectStore.packageExtension, conformingTo: .package) {
-            panel.allowedContentTypes = [type]
-        }
+        panel.allowedContentTypes = [ProjectStore.packageType]
         panel.title = "New Project"
         panel.prompt = "Create"
         panel.nameFieldStringValue = "Untitled Project"
@@ -221,9 +239,19 @@ struct AnimationMeetsVideoApp: App {
         }
     }
 
+    /// Opens a project Finder handed over, unless it's the one open.
+    private func openRequestedProject(_ selection: URL) async {
+        let url = ProjectStore.packageURL(forSelection: selection)
+        guard !isOpenProject(url) else { return }
+        guard await confirmDiscardingCurrentProject() else { return }
+        await openProject(at: url)
+    }
+
     private func chooseProjectToOpen() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.folder, .json]
+        // Folders too: a project copied somewhere that dropped its package
+        // flag shows as a folder until it's opened again.
+        panel.allowedContentTypes = [ProjectStore.packageType, .folder, .json]
         panel.allowsMultipleSelection = false
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
@@ -322,9 +350,7 @@ struct AnimationMeetsVideoApp: App {
         var destination = forcePanel ? nil : projectURL
         if destination == nil {
             let panel = NSSavePanel()
-            if let type = UTType(filenameExtension: ProjectStore.packageExtension, conformingTo: .package) {
-                panel.allowedContentTypes = [type]
-            }
+            panel.allowedContentTypes = [ProjectStore.packageType]
             panel.nameFieldStringValue = project.name
             guard panel.runModal() == .OK, var url = panel.url else { return false }
             if url.pathExtension != ProjectStore.packageExtension {

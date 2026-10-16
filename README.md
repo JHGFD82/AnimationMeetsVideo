@@ -37,6 +37,18 @@ Open `Package.swift` in Xcode and run the `AnimationMeetsVideo` scheme, or use:
 swift run
 ```
 
+That runs the app without a bundle, so macOS doesn't know the `.amv`
+project type: double-clicking a project won't open it. To build the app
+as a bundle that declares the type, run:
+
+```sh
+scripts/build-app.sh
+```
+
+It writes `build/AnimationMeetsVideo.app`, ad-hoc signed for the Mac that
+built it. CI builds the same bundle on every push and keeps it as a
+downloadable artifact for 14 days.
+
 ## Planned milestones
 
 0. **Foundation (done).** Editor shell, demo project model, placeholder Metal
