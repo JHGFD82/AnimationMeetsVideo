@@ -76,26 +76,23 @@ import Testing
         #expect(MorphFlow.canWarp, "\(MorphFlow.warpError ?? "")")
     }
 
-    @Test func theMeasuredMotionPointsTheWayTheShapeMoves() throws {
-        // Vision's measure where it runs, block matching where it doesn't.
-        let field = try #require(MorphFlow.field(from: square(atX: 0.35, y: 0.5), to: square(atX: 0.65, y: 0.5), in: bounds))
-        let across = vector(field, x: 0.35, y: 0.5)
-        #expect(across.0 > 20, "measured \(across)")
-        let downField = try #require(MorphFlow.field(from: square(atX: 0.5, y: 0.3), to: square(atX: 0.5, y: 0.7), in: bounds))
-        let down = vector(downField, x: 0.5, y: 0.3)
-        // Down the frame is down the output's y.
-        #expect(down.1 < -15, "measured \(down)")
-    }
-
-    @Test func blockMatchingFindsAMoveAndLeavesPlainAreasStill() throws {
-        let field = try #require(BlockMatchFlow.field(from: square(atX: 0.35, y: 0.5), to: square(atX: 0.65, y: 0.5), in: bounds))
-        let across = vector(field, x: 0.35, y: 0.5)
+    @Test func theMotionIsMeasuredAtThePointsOfTheFrameBeingDrawn() throws {
+        // Halfway, a square moving from 0.35 to 0.65 across is at 0.5,
+        // where neither picture has it.
+        let field = try #require(BlockMatchFlow.field(
+            from: square(atX: 0.35, y: 0.5), to: square(atX: 0.65, y: 0.5), progress: 0.5, in: bounds
+        ))
+        let across = vector(field, x: 0.5, y: 0.5)
         #expect(abs(across.0 - 77) < 20 && abs(across.1) < 10, "measured \(across)")
         let corner = vector(field, x: 0.05, y: 0.1)
         #expect(abs(corner.0) < 1 && abs(corner.1) < 1, "measured \(corner)")
-        let downField = try #require(BlockMatchFlow.field(from: square(atX: 0.5, y: 0.3), to: square(atX: 0.5, y: 0.7), in: bounds))
-        let down = vector(downField, x: 0.5, y: 0.3)
-        #expect(down.1 < -30, "measured \(down)")
+
+        let downField = try #require(BlockMatchFlow.field(
+            from: square(atX: 0.5, y: 0.3), to: square(atX: 0.5, y: 0.7), progress: 0.5, in: bounds
+        ))
+        // Down the frame is down the output's y.
+        let down = vector(downField, x: 0.5, y: 0.5)
+        #expect(abs(down.1 + 51) < 15, "measured \(down)")
     }
 
     @Test func theWarpTakesEachPointFromAlongTheField() throws {

@@ -158,7 +158,7 @@ enum TransitionRenderer {
             // dissolve. The amount scales how far they follow it. Without
             // a measured motion it is a plain dissolve.
             guard p > 0, p < 1 else { return p <= 0 ? a : b }
-            if let field = MorphFlow.field(from: a, to: b, in: bounds),
+            if let field = BlockMatchFlow.field(from: a, to: b, progress: p, in: bounds),
                let leaving = MorphFlow.warped(a, along: field, by: -p * options.amount, in: bounds),
                let arriving = MorphFlow.warped(b, along: field, by: (1 - p) * options.amount, in: bounds) {
                 return mix(leaving, arriving, p)

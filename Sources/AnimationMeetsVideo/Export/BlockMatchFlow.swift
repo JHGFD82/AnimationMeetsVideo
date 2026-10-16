@@ -1,19 +1,28 @@
 import CoreImage
 import Foundation
 
-/// A coarse optical flow for morphs where Vision can't measure one: each
-/// 4-pixel block of a small gray copy of the picture before is matched to
-/// where it fits best in the picture after, coarse to fine over three
-/// sizes, so large moves are found cheaply. Plain areas, which match
-/// anywhere, stay still. Less exact than Vision's, but it runs anywhere and
-/// always gives the same answer.
+/// The motion a morph follows, measured for one frame of it: for each
+/// 4-pixel block of that frame, the move that best lines up the picture
+/// before, looked at back along the move by the share of it already made,
+/// with the picture after, looked at forward along the rest. That is the
+/// motion at each point of the frame being drawn, which a warp needs;
+/// motion measured at each point of the picture before (as optical flow
+/// usually is) leaves nothing where a shape is passing through.
+///
+/// It works on small gray copies, coarse to fine over four sizes so large
+/// moves are found cheaply. Plain areas, which line up with anything, stay
+/// still. It runs anywhere, without a GPU or Vision, and always gives the
+/// same answer.
 enum BlockMatchFlow {
-    /// The finest copy's width; the coarser ones are a half and a quarter.
-    static let width = 96
+    /// The finest copy's width; the coarser ones are a half, a quarter and
+    /// an eighth.
+    static let width = 192
     private static let block = 4
 
-    /// How far each point moves, in output points: red across, green up.
-    static func field(from before: CIImage, to after: CIImage, in bounds: CGRect) -> CIImage? {
+    /// The whole move from `before` to `after` at each point of the frame
+    /// `progress` of the way between them, in output points: red across,
+    /// green up.
+    static func field(from before: CIImage, to after: CIImage, progress: Double, in bounds: CGRect) -> CIImage? {
         guard bounds.width >= 8, bounds.height >= 8 else { return nil }
         let height = max(block * 2, Int((Double(width) * bounds.height / bounds.width).rounded()))
         guard let a = gray(before, width: width, height: height, in: bounds),
@@ -22,11 +31,13 @@ enum BlockMatchFlow {
 
         // Coarse to fine: each level starts from the coarser one's moves,
         // doubled, and looks a little around them.
-        let levels = [(a, b), (a.halved, b.halved), (a.halved.halved, b.halved.halved)]
+        var levels = [(a, b)]
+        for _ in 0..<3 { levels.append((levels[levels.count - 1].0.halved, levels[levels.count - 1].1.halved)) }
         var moves: Moves?
         for (index, level) in levels.enumerated().reversed() {
             let coarsest = index == levels.count - 1
-            moves = match(level.0, level.1, guess: moves, reach: coarsest ? max(level.0.width / 3, 2) : 2)
+            moves = match(level.0, level.1, progress: Float(min(max(progress, 0), 1)), guess: moves,
+                          reach: coarsest ? max(level.0.width / 3, 2) : 2)
         }
         guard let moves else { return nil }
 
@@ -103,10 +114,18 @@ enum BlockMatchFlow {
     }
 
     /// Each block's best move within `reach` of its guess (the coarser
-    /// level's move, doubled). A block whose cost hardly changes with the
-    /// move, being plain, keeps the smallest move.
-    private static func match(_ a: Gray, _ b: Gray, guess: Moves?, reach: Int) -> Moves {
+    /// level's move, doubled).
+    ///
+    /// A move scores by how badly the two pictures differ along it, less a
+    /// quarter of how much what it lines up stands out from each picture's
+    /// average. Where a shape passes over a plain background, "nothing
+    /// moved" lines up background with background as well as the move
+    /// lines up the shape, and this picks the shape. A block that scores
+    /// about as well at its guess, being plain, keeps the guess.
+    private static func match(_ a: Gray, _ b: Gray, progress: Float, guess: Moves?, reach: Int) -> Moves {
         let columns = max(1, a.width / block), rows = max(1, a.height / block)
+        let meanA = a.values.reduce(0, +) / Float(max(a.values.count, 1))
+        let meanB = b.values.reduce(0, +) / Float(max(b.values.count, 1))
         var values: [(dx: Int, dy: Int)] = []
         values.reserveCapacity(columns * rows)
         for row in 0..<rows {
@@ -117,26 +136,31 @@ enum BlockMatchFlow {
                 } ?? (0, 0)
                 let x0 = col * block, y0 = row * block
                 var best = (dx: start.0, dy: start.1)
-                var bestCost = Float.greatestFiniteMagnitude
-                var stillCost: Float = 0
+                var bestScore = Float.greatestFiniteMagnitude
+                var guessScore: Float = 0
                 for dy in (start.1 - reach)...(start.1 + reach) {
                     for dx in (start.0 - reach)...(start.0 + reach) {
-                        var cost: Float = 0
+                        // Back along the share made, forward along the rest.
+                        let backX = Int((progress * Float(dx)).rounded()), backY = Int((progress * Float(dy)).rounded())
+                        var cost: Float = 0, standing: Float = 0
                         for y in y0..<(y0 + block) {
                             for x in x0..<(x0 + block) {
-                                cost += abs(a[x, y] - b[x + dx, y + dy])
+                                let before = a[x - backX, y - backY], after = b[x - backX + dx, y - backY + dy]
+                                cost += abs(before - after)
+                                standing += abs(before - meanA) + abs(after - meanB)
                             }
                         }
-                        if dx == start.0, dy == start.1 { stillCost = cost }
+                        let score = cost - 0.25 * standing
+                        if dx == start.0, dy == start.1 { guessScore = score }
                         // Ties go to the smaller move.
-                        if cost < bestCost - 1e-4 || (abs(cost - bestCost) <= 1e-4 && dx * dx + dy * dy < best.dx * best.dx + best.dy * best.dy) {
-                            bestCost = cost
+                        if score < bestScore - 1e-4
+                            || (abs(score - bestScore) <= 1e-4 && dx * dx + dy * dy < best.dx * best.dx + best.dy * best.dy) {
+                            bestScore = score
                             best = (dx, dy)
                         }
                     }
                 }
-                // A plain block matches everywhere about equally.
-                if stillCost - bestCost < 0.02 * Float(block * block) { best = (start.0, start.1) }
+                if guessScore - bestScore < 0.02 * Float(block * block) { best = (start.0, start.1) }
                 values.append(best)
             }
         }
