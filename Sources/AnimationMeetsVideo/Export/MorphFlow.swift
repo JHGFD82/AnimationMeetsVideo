@@ -16,12 +16,14 @@ enum MorphFlow {
     }
 
     /// How far each output point moves from `before` to `after`, in output
-    /// points: red across, green up. Nil when Vision can't measure it.
+    /// points: red across, green up. Vision's measure where it can make
+    /// one, which needs hardware a virtual Mac may not have, otherwise a
+    /// coarser one by block matching (`BlockMatchFlow`).
     static func field(from before: CIImage, to after: CIImage, in bounds: CGRect) -> CIImage? {
-        try? measure(from: before, to: after, in: bounds)
+        (try? measure(from: before, to: after, in: bounds)) ?? BlockMatchFlow.field(from: before, to: after, in: bounds)
     }
 
-    /// `field`, throwing why it couldn't be measured.
+    /// Vision's measure, throwing why it couldn't make one.
     static func measure(from before: CIImage, to after: CIImage, in bounds: CGRect) throws -> CIImage {
         let scale = min(1, measuringWidth / max(bounds.width, 1))
         let toSmall = CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY)
@@ -57,11 +59,8 @@ enum MorphFlow {
                 pixels[index + 3] = 1
             }
         }
-        let data = pixels.withUnsafeBytes { Data($0) }
-        let field = CIImage(
-            bitmapData: data, bytesPerRow: width * 16, size: CGSize(width: width, height: height),
-            format: .RGBAf, colorSpace: nil
-        )
+        // Vision's rows run from the top, as the bitmap's do.
+        let field = FloatBitmap.image(pixels, width: width, height: height)
         return field
             .samplingLinear()
             .transformed(by: CGAffineTransform(scaleX: bounds.width / CGFloat(width), y: bounds.height / CGFloat(height))
