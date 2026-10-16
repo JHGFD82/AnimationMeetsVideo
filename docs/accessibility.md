@@ -104,6 +104,9 @@ the snap line's arrival.
 - Anything a drag can do needs a keyboard or menu path too, at least one
   step at a time.
 - Use `Design` text tones, not new greys, so contrast holds.
+- Decoration drawn over a control (a bevel, rim, groove or selection bar)
+  is `.decorative()`: no hit testing, so an edge's clicks and drags reach
+  the control, and hidden from VoiceOver. `Groove` already is.
 - Animate through `editorAnimation` or check `Design.Motion.isReduced`.
 
 ## Not implemented yet

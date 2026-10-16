@@ -7,6 +7,11 @@ import SwiftUI
 /// its bottom; a surface you look into is shaded along its top instead.
 /// Keeping that consistent is what lets depth carry meaning rather than
 /// just texture — a bevel in this app always means "you can operate this".
+///
+/// Bevels, rims and grooves are drawn over what they decorate, so each is
+/// drawn with hit testing off, leaving clicks and drags at an edge to the
+/// control underneath, and hidden from VoiceOver, which has nothing to read
+/// in them.
 
 // MARK: - Rails and panels
 
@@ -15,12 +20,13 @@ extension View {
     /// transport. Lit on top, shaded and ruled underneath.
     func rail(_ level: Design.Surface = .raised) -> some View {
         background(level.color)
-            .overlay(alignment: .top) { Design.bevelLight.frame(height: 1) }
+            .overlay(alignment: .top) { Design.bevelLight.frame(height: 1).decorative() }
             .overlay(alignment: .bottom) {
                 VStack(spacing: 0) {
                     Design.bevelShade.frame(height: 1)
                     Design.hairline.frame(height: 1)
                 }
+                .decorative()
             }
     }
 
@@ -41,7 +47,7 @@ extension View {
                     endPoint: .bottom
                 )
                 .frame(height: 4)
-                .allowsHitTesting(false)
+                .decorative()
             }
     }
 
@@ -53,8 +59,14 @@ extension View {
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .strokeBorder(Design.bevelEdge, lineWidth: 1)
+                    .decorative()
             }
             .shadow(color: .black.opacity(0.5), radius: 24, y: 8)
+    }
+
+    /// Drawn for looks alone: it takes no clicks and VoiceOver skips it.
+    func decorative() -> some View {
+        allowsHitTesting(false).accessibilityHidden(true)
     }
 }
 
@@ -104,6 +116,11 @@ struct Groove: View {
     var subtle = false
 
     var body: some View {
+        lines.decorative()
+    }
+
+    @ViewBuilder
+    private var lines: some View {
         let dark = Design.hairline.opacity(subtle ? 0.6 : 1)
         let light = Color.white.opacity(subtle ? 0.03 : 0.06)
         switch axis {
@@ -146,6 +163,7 @@ extension View {
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .strokeBorder(strong ? Design.bevelEdgeStrong : Design.bevelEdge, lineWidth: 1)
+                    .decorative()
             }
     }
 
@@ -157,6 +175,7 @@ extension View {
                 Design.accent
                     .frame(width: 2)
                     .opacity(isSelected ? 1 : 0)
+                    .decorative()
             }
     }
 }

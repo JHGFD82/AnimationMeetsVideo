@@ -198,6 +198,7 @@ struct SheetCallout: View {
         .overlay {
             RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous)
                 .strokeBorder(tone.color.opacity(0.35), lineWidth: 1)
+                .decorative()
         }
     }
 }
