@@ -343,7 +343,7 @@ struct AnimationMeetsVideoApp: App {
                 analysis.markBeatsDiscarded(beatsToDiscard)
                 analysis.dropForgottenReferences(in: saved)
                 // Edits made while saving stay; only the media locations change.
-                history.adopt { $0.applyMediaLocations(from: saved) }
+                history.adoptMediaLocations(of: snapshot, from: saved)
                 project.applyMediaLocations(from: saved)
                 savedProject = saved
                 lastAutosaved = nil

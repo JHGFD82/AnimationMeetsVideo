@@ -43,7 +43,8 @@ MyProject.amv/
   Cache/              disposable, excluded from backup
     Renders/            rendered timeline segments (see rendering.md)
   Backups/            autosaves
-  .lock               single-writer lock (an flock held while the project is open)
+  .lock               single-writer lock (an flock held while the project is open;
+                      skipped on volumes that don't support flock)
 ```
 
 Media may be copied into `Media/` or referenced from elsewhere. **Copying

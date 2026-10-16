@@ -8,6 +8,10 @@ import Foundation
 /// system drops the lock when the process exits or crashes, so a stale lock
 /// file never blocks opening the project. The file's text only says who holds
 /// it, for the error message.
+///
+/// Some volumes, such as certain network shares, don't support `flock` at
+/// all. A project there opens without the lock rather than being reported
+/// as open elsewhere.
 final class ProjectLock {
     let packageURL: URL
     private var descriptor: Int32
@@ -26,11 +30,20 @@ final class ProjectLock {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
 
-        guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
-            let holder = (try? String(contentsOf: lockURL, encoding: .utf8))?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            close(descriptor)
-            throw ProjectStoreError.locked(holder?.isEmpty == false ? holder : nil)
+        if flock(descriptor, LOCK_EX | LOCK_NB) != 0 {
+            let code = errno
+            switch code {
+            case EWOULDBLOCK:
+                let holder = (try? String(contentsOf: lockURL, encoding: .utf8))?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                close(descriptor)
+                throw ProjectStoreError.locked(holder?.isEmpty == false ? holder : nil)
+            case ENOTSUP, EOPNOTSUPP:
+                NSLog("The volume of \(packageURL.path) doesn't support file locks; opening the project without one.")
+            default:
+                close(descriptor)
+                throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+            }
         }
 
         let description = "\(ProcessInfo.processInfo.processName) (process \(ProcessInfo.processInfo.processIdentifier)) on \(ProcessInfo.processInfo.hostName)\n"
