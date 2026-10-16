@@ -10,7 +10,7 @@ extension Notification.Name {
 /// changes").
 extension EffectsPanel {
     func pasteChangeRow(_ change: PasteChange, of effect: Effect, in clip: TimelineClip) -> some View {
-        HStack(spacing: 0) {
+        besideLane(
             HStack(alignment: .top, spacing: 4) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 9))
@@ -29,9 +29,7 @@ extension EffectsPanel {
             .padding(.leading, EffectsPanelMetrics.controlIndent)
             .padding(.trailing, 6)
             .padding(.vertical, 3)
-            .frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
-            Color.black.opacity(0.12)
-        }
+        )
         .overlay(alignment: .bottom) { Rectangle().fill(Design.hairline).frame(height: 0.5) }
     }
 }

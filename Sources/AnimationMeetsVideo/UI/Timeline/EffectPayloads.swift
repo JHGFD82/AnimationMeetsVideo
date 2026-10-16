@@ -157,3 +157,22 @@ struct PresetDragPayload: Transferable {
         )
     }
 }
+
+/// Any of the app's own drags, for a view that takes more than one kind.
+///
+/// Every payload travels as a URL, so SwiftUI sees one content type for
+/// all of them: of several `dropDestination`s on one view only one ever
+/// receives a drop, and a drag of another kind fails to decode there and
+/// is refused. Such a view takes this instead and asks which kind it got.
+struct ClipDropPayload: Transferable {
+    let url: URL
+
+    var transition: TransitionDragPayload? { TransitionDragPayload(url: url) }
+    var effect: EffectDragPayload? { EffectDragPayload(url: url) }
+    var effectMove: EffectMovePayload? { EffectMovePayload(url: url) }
+    var preset: PresetDragPayload? { PresetDragPayload(url: url) }
+
+    static var transferRepresentation: some TransferRepresentation {
+        ProxyRepresentation(exporting: \.url, importing: { ClipDropPayload(url: $0) })
+    }
+}

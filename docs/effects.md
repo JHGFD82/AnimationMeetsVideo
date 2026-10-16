@@ -481,6 +481,15 @@ The **browser** at the right end of the timeline has tabs too: **Effects**
 One button in the timeline's header shows or hides it, and opening it
 changes nothing else. Drag an effect onto a clip or into the stack, or
 double-click it to add it to the end of the selected clip's stack.
+Dropped on an effect row, it goes in at that place; dropped anywhere else
+on the stack, or on a clip, it goes at the end. Either way it is selected.
+VoiceOver's Add to the Selected Clip action does what double-clicking
+does.
+
+A clip, the stack and each effect row take every kind of drag they use
+through one drop target, since the app's drags all travel as URLs: with
+one target per kind, only one of them ever received a drop, and effects
+dragged onto a clip or the stack were refused.
 
 The Effects tab is the selected clip's **stack**, framed by pinned rows that can't be
 moved: Time and the anchor point above it, the clip's transitions (if any)
@@ -522,8 +531,10 @@ lower or raise it. A press without a drag still opens the field for typing.
 
 ### Keyframes in the panel
 
-The panel has its own ruler and playhead, spanning the selected clip. To
-the right of each control row is its keyframe lane, with the same diamonds
+The panel has its own ruler and playhead, spanning the selected clip. The
+button at the right of the panel's title hides them and the lanes, so the
+controls take the panel's whole width, and shows them again; the choice is
+kept between launches. To the right of each control row is its keyframe lane, with the same diamonds
 and interactions as the timeline's lanes today: click to go to it, drag to
 retime, right-click for ease presets and Delete Keyframe. The panel's
 playhead is the timeline's: scrubbing either moves both.
