@@ -32,7 +32,7 @@ struct TransitionDragPayload: Transferable {
 }
 
 /// The transitions that can be dragged onto either end of a clip, shown to
-/// the right of the timeline.
+/// the right of the timeline, grouped by what they do to the pictures.
 struct TransitionsPanel: View {
     let onClose: () -> Void
 
@@ -57,12 +57,22 @@ struct TransitionsPanel: View {
             .rail(.raised)
 
             ScrollView {
-                LazyVGrid(columns: columns, spacing: Design.Space.step) {
-                    ForEach(TransitionKind.allCases) { kind in
-                        TransitionTile(kind: kind)
-                            .draggable(TransitionDragPayload(kind: kind)) {
-                                TransitionTile(kind: kind)
+                VStack(alignment: .leading, spacing: Design.Space.group) {
+                    ForEach(TransitionCategory.allCases) { category in
+                        VStack(alignment: .leading, spacing: Design.Space.close) {
+                            Text(category.name)
+                                .font(Design.Typeface.groupTitle)
+                                .foregroundStyle(Design.textSecondary)
+                                .accessibilityAddTraits(.isHeader)
+                            LazyVGrid(columns: columns, spacing: Design.Space.step) {
+                                ForEach(TransitionKind.allCases.filter { $0.category == category }) { kind in
+                                    TransitionTile(kind: kind)
+                                        .draggable(TransitionDragPayload(kind: kind)) {
+                                            TransitionTile(kind: kind)
+                                        }
+                                }
                             }
+                        }
                     }
                 }
                 .padding(Design.Space.group)

@@ -68,29 +68,80 @@ private struct ProjectFile: Codable {
     /// A transition at one end of a clip. `kind` is a `TransitionKind`
     /// name such as `"crossDissolve"`; an unknown kind is dropped on load.
     /// `curve` is absent for a linear one, `lead` (the part played before
-    /// the cut by a way in joining two clips) when it is zero.
+    /// the cut by a way in joining two clips) when it is zero. The settings
+    /// after them are written only for kinds that offer them: `color` is
+    /// `[r, g, b]` from 0 to 1, `center` `[x, y]` as fractions of the frame
+    /// from its top left, `matte` `"noise"` or the ID of a clip whose frame
+    /// is the map. Kinds saved before a wipe's or slide's direction was a
+    /// setting (`"wipeLeft"`, `"slideRight"`) are read with that direction.
     struct TransitionEntry: Codable {
         var kind: String
         var duration: TimeEntry
         var curve: [CurvePointEntry]?
         var lead: TimeEntry?
+        var direction: String?
+        var color: [Double]?
+        var center: [Double]?
+        var shape: String?
+        var count: Int?
+        var order: String?
+        var amount: Double?
+        var matte: String?
 
         init(_ transition: ClipTransition) {
             kind = transition.kind.rawValue
             duration = TimeEntry(transition.duration)
             curve = transition.curve == .linear ? nil : transition.curve.points.map(CurvePointEntry.init)
             lead = transition.lead == .zero ? nil : TimeEntry(transition.lead)
+            let options = transition.options
+            for setting in transition.kind.settings {
+                switch setting {
+                case .direction: direction = options.direction.rawValue
+                case .color: color = [options.color.red, options.color.green, options.color.blue]
+                case .center: center = [Double(options.center.x), Double(options.center.y)]
+                case .shape: shape = options.shape.rawValue
+                case .count: count = options.count
+                case .order: order = options.order.rawValue
+                case .amount: amount = options.amount
+                case .matte:
+                    switch options.matte {
+                    case .noise: matte = "noise"
+                    case .clip(let id): matte = id.uuidString
+                    }
+                }
+            }
         }
 
-        /// A curve that doesn't run from 0 to 1 is read as linear.
+        /// A curve that doesn't run from 0 to 1 is read as linear; a
+        /// setting that can't be read keeps the kind's default.
         var transition: ClipTransition? {
-            guard let kind = TransitionKind(rawValue: kind), duration.time > .zero else { return nil }
+            guard let saved = TransitionKind.saved(kind), duration.time > .zero else { return nil }
             let points = curve?.map(\.point)
+            var options = saved.kind.defaultOptions
+            if let direction = saved.direction { options.direction = direction }
+            let offered = Set(saved.kind.settings)
+            if offered.contains(.direction), let value = direction.flatMap(TransitionDirection.init(rawValue:)) {
+                options.direction = value
+            }
+            if offered.contains(.color), let value = color, value.count == 3 {
+                options.color = TransitionColor(red: value[0], green: value[1], blue: value[2])
+            }
+            if offered.contains(.center), let value = center, value.count == 2 {
+                options.center = CGPoint(x: value[0], y: value[1])
+            }
+            if offered.contains(.shape), let value = shape.flatMap(IrisShape.init(rawValue:)) { options.shape = value }
+            if offered.contains(.count), let count { options.count = count }
+            if offered.contains(.order), let value = order.flatMap(GridOrder.init(rawValue:)) { options.order = value }
+            if offered.contains(.amount), let amount { options.amount = amount }
+            if offered.contains(.matte), let matte {
+                options.matte = UUID(uuidString: matte).map(MatteSource.clip) ?? .noise
+            }
             return ClipTransition(
-                kind: kind,
+                kind: saved.kind,
                 duration: duration.time,
                 curve: points.flatMap(TransitionCurve.init(points:)) ?? .linear,
-                lead: CMTimeMaximum(.zero, CMTimeMinimum(lead?.time ?? .zero, duration.time))
+                lead: CMTimeMaximum(.zero, CMTimeMinimum(lead?.time ?? .zero, duration.time)),
+                options: options.clamped
             )
         }
     }

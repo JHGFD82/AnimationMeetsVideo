@@ -403,9 +403,11 @@ label column closes the lane. In the composition, the incoming clip's
 frames before the cut go on a track above the layer's and the outgoing
 clip's frames after it on a track below. Nested timelines don't join.
 
-Kinds: cross dissolve, film dissolve, wipe left/right/up/down, slide
-left/right and zoom. A wipe or slide acts in the frame of the timeline the
-clip is on, after the layer's transform.
+There are 25 kinds in five groups (dissolves, wipes, moves, 3D,
+stylized); what each does, its settings (set in the inspector under the
+transition's length) and how it is drawn are in
+[transitions.md](transitions.md). A wipe or slide acts in the frame of
+the timeline the clip is on, after the layer's transform.
 
 The **film dissolve** shows the following picture brightest parts first:
 it appears wherever it is brighter than a threshold that falls from white
@@ -416,12 +418,13 @@ picture looks.
 
 ### Rendering
 
-Everything but the film dissolve is drawn with the built-in compositor's
-opacity, transform and crop (`EdgeTransitions` in `ClipTransition.swift`,
-applied per frame with the layer's keyframes). Keying on brightness needs
-our own compositor, so a timeline with a film dissolve anywhere is drawn by
-`LayeredCompositor` (Core Image) for its whole length, in preview and
-export alike. It stacks the same layers with the same crops, transforms and
+Cross dissolve, wipe, slide, zoom and spin are drawn with the built-in
+compositor's opacity, transform and crop (`EdgeTransitions` in
+`ClipTransition.swift`, applied per frame with the layer's keyframes).
+Keying on brightness, and the kinds drawn from two whole pictures
+([transitions.md](transitions.md#two-pictures)), need our own compositor,
+so a timeline with one anywhere is drawn by `LayeredCompositor` (Core
+Image) for its whole length, in preview and export alike. It stacks the same layers with the same crops, transforms and
 opacities, without color management just like the built-in one, and a test
 checks the two draw the same picture. On a nested timeline the transition
 applies to its composite, as its opacity does: its layers are stacked
@@ -432,8 +435,8 @@ fades over two of its own layers at once is likewise drawn by
 ### Curves
 
 Each transition has a progress curve (`TransitionCurve`): bezier segments
-from (0, 0) to (1, 1), time across, progress up. New slides and zooms get
-Easy Ease, everything else Linear. Presets, named as in After Effects:
+from (0, 0) to (1, 1), time across, progress up. New moves and 3D kinds
+get Easy Ease, everything else Linear. Presets, named as in After Effects:
 
 | Preset | Shape |
 | --- | --- |

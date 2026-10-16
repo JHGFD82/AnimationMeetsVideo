@@ -128,7 +128,8 @@ private struct Sandbox {
         let t = project.timelines.firstIndex { $0.id == project.rootTimelineID }!
         project.timelines[t].layers[0].clips[0].streams = .video
         project.timelines[t].layers[0].clips[0].transitionIn = ClipTransition(
-            kind: .wipeUp, duration: CMTime(value: 1001, timescale: 24000), lead: CMTime(value: 1, timescale: 24000)
+            kind: .wipe, duration: CMTime(value: 1001, timescale: 24000), lead: CMTime(value: 1, timescale: 24000),
+            options: TransitionOptions(direction: .up)
         )
         var curve = TransitionCurve(preset: .easyEase)
         curve.insertPoint(atTime: 0.4)
@@ -143,6 +144,31 @@ private struct Sandbox {
         #expect(clip.streams == .video)
         #expect(clip.transitionIn == saved.transitionIn)
         #expect(clip.transitionOut == saved.transitionOut)
+    }
+
+    @Test func transitionsSavedBeforeDirectionsWereSettingsKeepTheirDirection() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, _) = sandbox.makeProject()
+        let t = project.timelines.firstIndex { $0.id == project.rootTimelineID }!
+        project.timelines[t].layers[0].clips[0].transitionIn = ClipTransition(kind: .wipe, duration: CMTime(value: 1, timescale: 1))
+        project.timelines[t].layers[0].clips[0].transitionOut = ClipTransition(kind: .slide, duration: CMTime(value: 1, timescale: 1))
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+
+        // Rewrite them as an earlier version wrote them.
+        var json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(json.contains("\"direction\" : \"right\""))
+        json = json.replacingOccurrences(of: "\"direction\" : \"right\",", with: "")
+        json = json.replacingOccurrences(of: "\"kind\" : \"wipe\"", with: "\"kind\" : \"wipeLeft\"")
+        json = json.replacingOccurrences(of: "\"kind\" : \"slide\"", with: "\"kind\" : \"slideRight\"")
+        try json.write(to: sandbox.projectJSON, atomically: true, encoding: .utf8)
+
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        let clip = try #require(loaded.project.timeline(id: project.rootTimelineID)?.layers.first?.clips.first { $0.id == clipID })
+        #expect(clip.transitionIn?.kind == .wipe)
+        #expect(clip.transitionIn?.options.direction == .left)
+        #expect(clip.transitionOut?.kind == .slide)
+        #expect(clip.transitionOut?.options.direction == .right)
     }
 
     @Test func linkedClipsWithoutTransitionsWriteNeither() async throws {
