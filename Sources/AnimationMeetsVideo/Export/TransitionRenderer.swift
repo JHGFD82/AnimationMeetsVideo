@@ -150,6 +150,18 @@ enum TransitionRenderer {
             ]).cropped(to: bounds)
         case .glitch:
             return glitched(a, b, progress: p, amount: options.amount, in: bounds)
+        case .morph:
+            // Each picture is pulled part way along the motion between
+            // them, the one before forward and the next one back, and they
+            // dissolve. The amount scales how far they follow it. Without
+            // a measured motion it is a plain dissolve.
+            guard p > 0, p < 1 else { return p <= 0 ? a : b }
+            if let field = MorphFlow.field(from: a, to: b, in: bounds),
+               let leaving = MorphFlow.warped(a, along: field, by: -p * options.amount, in: bounds),
+               let arriving = MorphFlow.warped(b, along: field, by: (1 - p) * options.amount, in: bounds) {
+                return mix(leaving, arriving, p)
+            }
+            return mix(a, b, p)
         case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom, .spin:
             // Drawn on the clip alone by the compositor; never asked for.
             return mix(a, b, p)
