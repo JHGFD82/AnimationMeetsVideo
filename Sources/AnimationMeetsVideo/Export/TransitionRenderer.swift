@@ -43,6 +43,11 @@ enum TransitionRenderer {
             return reveal(b, over: a, mask: TransitionMasks.blinds(options.direction, count: options.count, progress: p, in: bounds))
         case .grid:
             return reveal(b, over: a, mask: TransitionMasks.grid(columns: options.count, order: options.order, progress: p, in: bounds))
+        case .matteWipe:
+            // Brightest parts of the map first, as a film dissolve keys on
+            // the picture itself.
+            let map = matteMap(options.matte, in: bounds)
+            return reveal(b, over: a, mask: LayeredCompositor.revealMask(of: map, LumaReveal(progress: p, keysIncoming: true)))
         case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom:
             // Drawn on the clip alone by the compositor; never asked for.
             return mix(a, b, p)
@@ -50,6 +55,30 @@ enum TransitionRenderer {
     }
 
     // MARK: - Helpers
+
+    /// A matte wipe's map, filling the output: a video's frame stretched to
+    /// it, or fixed noise in small blocks, gray in every channel.
+    static func matteMap(_ source: MatteSource, in bounds: CGRect) -> CIImage {
+        if case .clip(let id) = source, let frame = MatteMaps.shared.image(for: id), frame.extent.width > 0, frame.extent.height > 0 {
+            let extent = frame.extent
+            return frame
+                .transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY)
+                    .concatenating(CGAffineTransform(scaleX: bounds.width / extent.width, y: bounds.height / extent.height))
+                    .concatenating(CGAffineTransform(translationX: bounds.minX, y: bounds.minY)))
+                .cropped(to: bounds)
+        }
+        let block = max(2, bounds.width / 160)
+        let red = CIVector(x: 1, y: 0, z: 0, w: 0)
+        return CIFilter(name: "CIRandomGenerator")!.outputImage!
+            .applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": red, "inputGVector": red, "inputBVector": red,
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+                "inputBiasVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+            ])
+            .samplingNearest()
+            .transformed(by: CGAffineTransform(scaleX: block, y: block).concatenating(CGAffineTransform(translationX: bounds.minX, y: bounds.minY)))
+            .cropped(to: bounds)
+    }
 
     /// `b` where `mask` is white, `a` where it is black.
     static func reveal(_ b: CIImage, over a: CIImage, mask: CIImage) -> CIImage {

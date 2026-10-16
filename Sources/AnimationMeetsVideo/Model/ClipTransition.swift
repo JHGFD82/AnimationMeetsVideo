@@ -53,6 +53,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     case clockWipe
     case blinds
     case grid
+    case matteWipe
     case slide
     case zoom
 
@@ -71,6 +72,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .clockWipe: "Clock Wipe"
         case .blinds: "Blinds"
         case .grid: "Grid"
+        case .matteWipe: "Matte Wipe"
         case .slide: "Slide"
         case .zoom: "Zoom"
         }
@@ -79,7 +81,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     var category: TransitionCategory {
         switch self {
         case .crossDissolve, .filmDissolve, .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve: .dissolves
-        case .wipe, .iris, .clockWipe, .blinds, .grid: .wipes
+        case .wipe, .iris, .clockWipe, .blinds, .grid, .matteWipe: .wipes
         case .slide, .zoom: .moves
         }
     }
@@ -92,6 +94,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .clockWipe: [.center]
         case .blinds: [.direction, .count]
         case .grid: [.count, .order]
+        case .matteWipe: [.matte]
         case .dipToColor: [.color]
         case .blurDissolve: [.amount]
         case .crossDissolve, .filmDissolve, .additiveDissolve, .channelDissolve, .zoom: []
@@ -125,6 +128,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .clockWipe: "clock"
         case .blinds: "blinds.vertical.open"
         case .grid: "square.grid.3x3"
+        case .matteWipe: "circle.hexagongrid"
         case .slide: "rectangle.righthalf.inset.filled.arrow.right"
         case .zoom: "arrow.up.left.and.arrow.down.right"
         }
@@ -139,7 +143,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         switch self {
         case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom: false
         case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve: true
-        case .iris, .clockWipe, .blinds, .grid: true
+        case .iris, .clockWipe, .blinds, .grid, .matteWipe: true
         }
     }
 
@@ -692,7 +696,7 @@ struct EdgeTransitions {
                 CGAffineTransform(translationX: entering ? -dx : dx, y: entering ? -dy : dy)
             )
         case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve,
-             .iris, .clockWipe, .blinds, .grid:
+             .iris, .clockWipe, .blinds, .grid, .matteWipe:
             // Drawn from the two pictures by `TransitionRenderer`; the clip
             // itself is placed as usual.
             break

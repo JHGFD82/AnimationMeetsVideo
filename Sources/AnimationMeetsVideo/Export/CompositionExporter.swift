@@ -389,6 +389,8 @@ enum CompositionExporter {
             throw CompositionError.emptyTimeline
         }
 
+        // Matte wipes' maps are read before drawing starts.
+        await MatteMaps.shared.load(for: project)
         let window = CMTimeRange(start: .zero, duration: timeline.duration)
         let flatLayers = try await $skipsMissingMedia.withValue(forPreview) {
             try await flatten(
@@ -792,6 +794,9 @@ enum CompositionExporter {
                     }
                     if let transition = stage.transitionFrame(at: time) {
                         text += " x\(stageIndex) \(transition.key)"
+                        if case .clip(let id) = transition.options.matte, transition.kind == .matteWipe {
+                            text += " \(MatteMaps.shared.stamp(for: id) ?? "noise")"
+                        }
                     }
                 }
                 text += "\n"

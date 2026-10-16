@@ -151,4 +151,23 @@ struct RenderProbe {
         #expect(try showsAfter(early, x: 0.05, y: 0.1))
         #expect(try !showsAfter(early, x: 0.95, y: 0.9))
     }
+
+    @Test func aMatteWipeOfNoiseRevealsScatteredParts() throws {
+        let half = wipe(.matteWipe, 0.5)
+        var shown = 0
+        for row in 0..<4 {
+            for col in 0..<8 where try showsAfter(half, x: (Double(col) + 0.5) / 8, y: (Double(row) + 0.5) / 4) {
+                shown += 1
+            }
+        }
+        #expect(shown > 4 && shown < 28)
+    }
+
+    @Test func aMatteWipeRevealsTheBrightPartsOfItsMapFirst() throws {
+        let id = UUID()
+        MatteMaps.shared.store(probe.halves, for: id)
+        let early = wipe(.matteWipe, 0.3) { $0.matte = .clip(id) }
+        #expect(try showsAfter(early, x: 0.2, y: 0.5))
+        #expect(try !showsAfter(early, x: 0.8, y: 0.5))
+    }
 }
