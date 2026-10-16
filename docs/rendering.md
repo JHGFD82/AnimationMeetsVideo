@@ -119,7 +119,11 @@ Limits:
   render in progress (it starts over later); rendering resumes after two
   seconds of quiet. It also waits while the Mac is hot (serious or
   critical thermal state) or in Low Power Mode. A piece that fails to
-  render is not retried until the project is reopened. Each finished piece
+  render shows red on the timeline and isn't tried again by itself.
+  **Timeline > Render Now** (Option-Cmd-R) renders what is left at once,
+  from the playhead, without waiting for quiet, a cool Mac or Low Power
+  Mode to end, and tries the failed pieces again; playing, exporting, or
+  any edit or scrub stops it, and rendering goes back to waiting. Each finished piece
   rebuilds the viewer's composition so it is used at once. Rendering
   only happens while paused, so the new player item is seeked to the
   playhead before it is swapped in, and the viewer keeps showing the old
@@ -161,8 +165,8 @@ Limits:
   color detail 4444 is chosen for. Background rendering waits while an
   export runs.
 - **Indicators.** A thin strip along the bottom of the ruler shows each
-  piece as needing a render (orange), rendering (filling in green), or
-  rendered (green); stretches that need no render show nothing. Each clip
+  piece as needing a render (orange), rendering (filling in green),
+  rendered (green) or failed (red); stretches that need no render show nothing. Each clip
   that takes part in a piece still to render has a progress bar along its
   bottom edge until all of its pieces are done. Clips inside a nested
   timeline count toward the nested timeline's clip.

@@ -22,6 +22,8 @@ struct TimelineActions {
     var zoomIn: () -> Void
     var zoomOut: () -> Void
     var zoomToFit: () -> Void
+    /// Renders what still needs it now; nil when nothing does.
+    var renderNow: (() -> Void)?
 }
 
 private struct TimelineActionsKey: FocusedValueKey {
@@ -108,6 +110,12 @@ struct TimelineCommands: Commands {
                 .disabled(actions == nil)
             Button("Zoom to Fit  \\") { actions?.zoomToFit() }
                 .disabled(actions == nil)
+
+            Divider()
+
+            Button("Render Now") { actions?.renderNow?() }
+                .keyboardShortcut("r", modifiers: [.command, .option])
+                .disabled(actions?.renderNow == nil)
         }
     }
 }

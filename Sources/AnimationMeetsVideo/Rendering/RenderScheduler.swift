@@ -8,7 +8,8 @@ import QuartzCore
 /// scrub, playback or export stops the render in progress, and rendering resumes
 /// after `idleSeconds` (two) of quiet, starting at the playhead. It also waits while the Mac is hot or in
 /// Low Power Mode. A finished render bumps `finishedCount`, so the viewer
-/// rebuilds and plays it.
+/// rebuilds and plays it. `renderNow` skips the wait and tries failed
+/// pieces again.
 @MainActor
 @Observable
 final class RenderScheduler {
@@ -18,7 +19,7 @@ final class RenderScheduler {
     }
 
     enum State: Equatable {
-        case pending, rendered
+        case pending, rendered, failed
         case rendering(Double)
     }
 
@@ -36,7 +37,8 @@ final class RenderScheduler {
             job?.cancel()
             segments = []
             rendered = []
-            failed = []
+            failed = [:]
+            isForced = false
             if let packageURL { RenderCache(packageURL: packageURL).removePartials() }
         }
     }
@@ -56,8 +58,12 @@ final class RenderScheduler {
     @ObservationIgnored private var isExporting = false
     @ObservationIgnored private var worker: Task<Void, Never>?
     @ObservationIgnored private var job: Task<Void, Error>?
-    /// Keys that couldn't be rendered, so they aren't tried again and again.
-    @ObservationIgnored private var failed: Set<String> = []
+    /// Keys that couldn't be rendered, with why, so they aren't tried again
+    /// and again; shown on the timeline until `renderNow` tries them again.
+    private(set) var failed: [String: String] = [:]
+    /// Set by `renderNow`: render without waiting for the timeline to be
+    /// quiet, until it is all rendered or something is edited or played.
+    private(set) var isForced = false
 
     /// Takes the plan from the viewer's latest build of `project`.
     func update(project: EditingProject, timelineID: UUID, segments: [RenderSegment]) {
@@ -78,8 +84,22 @@ final class RenderScheduler {
     /// An edit or scrub: stops the render in progress and restarts the wait.
     func noteActivity() {
         lastActivity = CACurrentMediaTime()
+        isForced = false
         job?.cancel()
     }
+
+    /// Renders what still needs it now, starting at the playhead, without
+    /// waiting for two seconds of quiet, a cool Mac or Low Power Mode to
+    /// end, and tries again the pieces that failed. Playing, exporting or
+    /// any edit or scrub still stops it.
+    func renderNow() {
+        failed = [:]
+        isForced = true
+        startWorkerIfNeeded()
+    }
+
+    /// Whether `renderNow` has anything to do.
+    var canRenderNow: Bool { packageURL != nil && segments.contains { $0.needsRender && !rendered.contains($0.key) } }
 
     func setPlaying(_ playing: Bool) {
         isPlaying = playing
@@ -100,7 +120,7 @@ final class RenderScheduler {
     var pending: [RenderSegment] {
         var seen: Set<String> = []
         let waiting = segments.filter { segment in
-            segment.needsRender && !rendered.contains(segment.key) && !failed.contains(segment.key)
+            segment.needsRender && !rendered.contains(segment.key) && failed[segment.key] == nil
                 && seen.insert(segment.key).inserted
         }
         let ahead = waiting.filter { $0.range.end > playhead }
@@ -111,6 +131,7 @@ final class RenderScheduler {
         guard segment.needsRender else { return nil }
         if rendered.contains(segment.key) { return .rendered }
         if let active, active.key == segment.key { return .rendering(active.progress) }
+        if failed[segment.key] != nil { return .failed }
         return .pending
     }
 
@@ -132,9 +153,10 @@ final class RenderScheduler {
     }
 
     private var isIdle: Bool {
+        guard !isPlaying, !isExporting else { return false }
+        if isForced { return true }
         let thermal = ProcessInfo.processInfo.thermalState
-        return !isPlaying && !isExporting
-            && CACurrentMediaTime() - lastActivity >= idleSeconds
+        return CACurrentMediaTime() - lastActivity >= idleSeconds
             && thermal != .serious && thermal != .critical
             && !ProcessInfo.processInfo.isLowPowerModeEnabled
     }
@@ -149,7 +171,10 @@ final class RenderScheduler {
 
     private func work() async {
         while !Task.isCancelled {
-            guard let cache, let next = pending.first else { return }
+            guard let cache, let next = pending.first else {
+                isForced = false
+                return
+            }
             guard isIdle else {
                 try? await Task.sleep(for: .milliseconds(250))
                 continue
@@ -177,7 +202,7 @@ final class RenderScheduler {
             } catch is CancellationError {
             } catch {
                 NSLog("Couldn't render a segment: \(error.localizedDescription)")
-                failed.insert(next.key)
+                failed[next.key] = error.localizedDescription
             }
             active = nil
             job = nil
