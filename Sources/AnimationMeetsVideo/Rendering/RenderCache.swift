@@ -19,7 +19,7 @@ struct RenderSegment: Equatable, @unchecked Sendable {
     static let maxFrames = 96
     /// Bumped when drawing changes in a way the key doesn't capture, so old
     /// renders stop matching.
-    static let formatVersion = 3
+    static let formatVersion = 4
 }
 
 /// Rendered segments in a package's `Cache/Renders/` folder, one ProRes

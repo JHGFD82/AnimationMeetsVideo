@@ -138,7 +138,10 @@ final class PlayerContainerView: NSView {
         nudged = false
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        heldFrame.contents = surface
+        // What is on screen is the still or live frame when one is up,
+        // not the video under it, which may be the picture from before an
+        // edit.
+        heldFrame.contents = stillLayer.isHidden ? surface : stillLayer.contents
         heldFrame.isHidden = false
         CATransaction.commit()
         // The layer doesn't say when it shows a new frame, so check each

@@ -14,6 +14,7 @@ struct LibrarySidebar: View {
     @State private var expandedAssets: Set<UUID> = []
     @State private var sensitivityTarget: SensitivityTarget?
     @State private var previewTarget: ScenePreviewTarget?
+    @State private var presets = PresetsModel()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +36,22 @@ struct LibrarySidebar: View {
             list
         }
         .panelSurface(.base)
+        .alert("Rename Preset", isPresented: Binding(get: { presets.renaming != nil }, set: { if !$0 { presets.renaming = nil } })) {
+            @Bindable var presets = presets
+            TextField("Name", text: $presets.draftName)
+            Button("Rename") { presets.commitRename() }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert(
+            "Preset Problem",
+            isPresented: Binding(get: { presets.errorMessage != nil }, set: { if !$0 { presets.errorMessage = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(presets.errorMessage ?? "")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .presetsChanged)) { _ in presets.reload() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in presets.reload() }
         .alert(
             "Import Failed",
             isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })
@@ -86,10 +103,13 @@ struct LibrarySidebar: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(!project.canEmbed(timeline.id, into: activeTimelineID))
-                        .help("Embed into the active timeline")
+                        .help("Embed into the active timeline, or drag onto an effect that takes an input")
+                        .draggable(TimelineDragPayload(timelineID: timeline.id))
                     }
                 }
             }
+
+            PresetsSection(model: presets)
         }
         .contextMenu(forSelectionType: SceneKey.self) { keys in
             sceneMenu(for: keys)

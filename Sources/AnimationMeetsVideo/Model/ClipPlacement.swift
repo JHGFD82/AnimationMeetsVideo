@@ -74,10 +74,17 @@ extension EditingProject {
     /// and no cut to join with a transition. Under a frame it is left alone.
     func coveringWholeFrames(_ clip: TimelineClip, in timeline: Timeline) -> TimelineClip {
         guard isFrameLocked(clip) else { return clip }
-        let length = timeline.frameAligned(clip.trimmedDuration, .down)
-        guard length > .zero, length != clip.trimmedDuration else { return clip }
+        // A retimed clip's length is found to a few microseconds, so one
+        // meant to be a whole number of frames can come out just short of
+        // it; that is the whole number, not a frame less, unless the
+        // footage runs out first.
+        let nearest = timeline.frameAligned(clip.placedDuration, .nearest)
+        let isNearWhole = abs(CMTimeSubtract(clip.placedDuration, nearest).seconds) < Timeline.abutmentTolerance.seconds
+        let fits = sourceDuration(for: clip.source).map { CMTimeAdd(clip.trimStart, clip.sourceDuration(forPlaced: nearest)) <= $0 } ?? true
+        let length = isNearWhole && fits ? nearest : timeline.frameAligned(clip.placedDuration, .down)
+        guard length > .zero, length != clip.placedDuration else { return clip }
         var aligned = clip
-        aligned.trimEnd = CMTimeAdd(clip.trimStart, length)
+        aligned.trimEnd = CMTimeAdd(clip.trimStart, clip.sourceDuration(forPlaced: length))
         return aligned
     }
 
@@ -93,8 +100,9 @@ extension EditingProject {
     }
 
     /// Puts what is on a timeline back on its frames, after its frame rate
-    /// changed: the edges of clips with pictures, transition lengths,
-    /// keyframes and sections each go to the nearest frame. Edges that met
+    /// changed: the edges of clips with pictures (only the start of a
+    /// retimed one), transition lengths, layer volume keyframes and sections
+    /// each go to the nearest frame. Edges that met
     /// still meet, since they round alike. A clip keeps at least a frame
     /// and no more than its footage; a section keeps at least a frame and
     /// stays clear of the one before. Keyframes that land on one frame
@@ -110,7 +118,11 @@ extension EditingProject {
             var layer = timeline.layers[lIndex]
             layer.clips = layer.clips.map { original in
                 var clip = original
-                if project.isFrameLocked(clip) {
+                if project.isFrameLocked(clip), clip.isRetimed {
+                    // A retimed clip's length follows from its speed, so
+                    // only its start moves.
+                    clip.startOffset = nearest(clip.startOffset)
+                } else if project.isFrameLocked(clip) {
                     let start = nearest(clip.startOffset)
                     var end = CMTimeMaximum(nearest(clip.endOffset), CMTimeAdd(start, frame))
                     if let length = project.sourceDuration(for: clip.source) {
@@ -128,10 +140,8 @@ extension EditingProject {
                 }
                 return clip
             }
-            layer.transform.position.moveKeyframeTimes(nearest)
-            layer.transform.scale.moveKeyframeTimes(nearest)
-            layer.transform.rotation.moveKeyframeTimes(nearest)
-            layer.transform.opacity.moveKeyframeTimes(nearest)
+            // Clips' keyframes count in their source's time, which a new
+            // rate doesn't change; a layer's volume counts in the timeline's.
             layer.volume.moveKeyframeTimes(nearest)
             timelines[tIndex].layers[lIndex] = layer
         }
@@ -178,7 +188,7 @@ extension EditingProject {
         guard let (timeline, moving, sameLayer) = placementContext(id, in: timelineID, layer: layerID) else { return nil }
         let others: [TimelineClip]
         if let targetLayerID, targetLayerID != layerID {
-            guard let target = timeline.layer(id: targetLayerID), layerKind(target.kind, accepts: moving) else { return nil }
+            guard let target = timeline.layer(id: targetLayerID), layer(target, accepts: moving) else { return nil }
             others = target.clips
         } else {
             others = sameLayer
@@ -196,7 +206,7 @@ extension EditingProject {
         guard let next = followers.map(\.startOffset).min() else {
             return ClipMove(start: start, pushFrom: start, push: .zero)
         }
-        var push = CMTimeMaximum(.zero, CMTimeSubtract(CMTimeAdd(start, moving.trimmedDuration), next))
+        var push = CMTimeMaximum(.zero, CMTimeSubtract(CMTimeAdd(start, moving.placedDuration), next))
         // Pushed clips with pictures must stay on frames.
         if push > .zero, followers.contains(where: isFrameLocked) {
             push = timeline.frameAligned(push, .up)
@@ -219,7 +229,7 @@ extension EditingProject {
     /// on the timeline's grid, or nil if there is no gap big enough.
     func freeStart(for moving: TimelineClip, among others: [TimelineClip], in timeline: Timeline, near proposedStart: CMTime) -> CMTime? {
         let locked = isFrameLocked(moving)
-        let length = moving.trimmedDuration
+        let length = moving.placedDuration
         var candidate = timeline.placementTime(CMTimeMaximum(.zero, proposedStart), .nearest, frameLocked: locked)
 
         for _ in 0...others.count {
@@ -245,7 +255,8 @@ extension EditingProject {
     func resolvedTrimStart(of id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime) -> TimelineClip? {
         guard let (timeline, clip, others) = placementContext(id, in: timelineID, layer: layerID) else { return nil }
         let locked = isFrameLocked(clip)
-        var lowest = CMTimeMaximum(.zero, CMTimeSubtract(clip.startOffset, clip.trimStart))
+        // Where the source's own start would play, on the timeline.
+        var lowest = CMTimeMaximum(.zero, clip.timelineTime(forSourceTime: .zero))
         if let previousEnd = others.filter({ $0.endOffset <= clip.startOffset }).map(\.endOffset).max() {
             lowest = CMTimeMaximum(lowest, previousEnd)
         }
@@ -254,11 +265,11 @@ extension EditingProject {
         let upper = timeline.placementTime(highest, .down, frameLocked: locked)
         guard upper >= lower else { return nil }
 
-        let proposedStart = CMTimeAdd(clip.startOffset, CMTimeSubtract(proposedTrimStart, clip.trimStart))
+        let proposedStart = clip.timelineTime(forSourceTime: proposedTrimStart)
         let start = timeline.placementTime(proposedStart, .nearest, frameLocked: locked)
         let newStart = CMTimeMinimum(CMTimeMaximum(start, lower), upper)
         var trimmed = clip
-        trimmed.trimStart = CMTimeAdd(clip.trimStart, CMTimeSubtract(newStart, clip.startOffset))
+        trimmed.trimStart = clip.sourceTime(atTimelineTime: newStart)
         trimmed.startOffset = newStart
         return trimmed
     }
@@ -273,7 +284,8 @@ extension EditingProject {
             return nil
         }
         let locked = isFrameLocked(clip)
-        var highest = CMTimeAdd(clip.startOffset, CMTimeSubtract(sourceDuration, clip.trimStart))
+        // Where the end of the source would play, on the timeline.
+        var highest = clip.timelineTime(forSourceTime: sourceDuration)
         if let nextStart = others.filter({ $0.startOffset >= clip.endOffset }).map(\.startOffset).min() {
             highest = CMTimeMinimum(highest, nextStart)
         }
@@ -282,11 +294,11 @@ extension EditingProject {
         let upper = timeline.placementTime(highest, .down, frameLocked: locked)
         guard upper >= lower else { return nil }
 
-        let proposedEnd = CMTimeAdd(clip.startOffset, CMTimeSubtract(proposedTrimEnd, clip.trimStart))
+        let proposedEnd = clip.timelineTime(forSourceTime: proposedTrimEnd)
         let end = timeline.placementTime(proposedEnd, .nearest, frameLocked: locked)
         let newEnd = CMTimeMinimum(CMTimeMaximum(end, lower), upper)
         var trimmed = clip
-        trimmed.trimEnd = CMTimeAdd(clip.trimStart, CMTimeSubtract(newEnd, clip.startOffset))
+        trimmed.trimEnd = clip.sourceTime(atTimelineTime: newEnd)
         return trimmed
     }
 
@@ -303,8 +315,10 @@ extension EditingProject {
             return nil
         }
         let locked = isFrameLocked(clip)
-        let delta = locked ? timeline.frameAligned(proposedDelta, .nearest) : proposedDelta
-        let minimum = minimumDuration(of: clip, in: timeline)
+        // The drag is in timeline time; a retimed clip's footage moves by
+        // more or less than that.
+        let delta = clip.sourceDelta(forPlacedDelta: locked ? timeline.frameAligned(proposedDelta, .nearest) : proposedDelta)
+        let minimum = clip.isRetimed ? clip.sourceDuration(forPlaced: minimumDuration(of: clip, in: timeline)) : minimumDuration(of: clip, in: timeline)
         var start = CMTimeAdd(clip.trimStart, delta)
         var end = CMTimeAdd(clip.trimEnd, delta)
         if start < .zero { start = .zero }
@@ -323,7 +337,7 @@ extension EditingProject {
         // A shortened clip stays a whole number of frames, kept against the
         // file edge it ran into.
         var length = CMTimeSubtract(end, start)
-        if locked, length != clip.trimmedDuration {
+        if locked, !clip.isRetimed, length != clip.trimmedDuration {
             length = CMTimeMaximum(minimum, timeline.frameAligned(length, .down))
             if start == .zero { end = CMTimeAdd(start, length) } else { start = CMTimeSubtract(end, length) }
         }
@@ -337,6 +351,8 @@ extension EditingProject {
         switch resolvedInfo(for: source) {
         case .media(let clip): clip.duration
         case .timeline(let timeline): timeline.duration
+        // No footage to run out of: as long as anyone would want.
+        case .adjustment: CMTime(value: 36_000, timescale: 1)
         case nil: nil
         }
     }

@@ -34,13 +34,12 @@ enum TransitionCategory: String, CaseIterable, Identifiable {
 /// whatever is showing underneath it: lower layers, or the outgoing clip's
 /// extra frames when two clips on the same layer meet at a cut.
 ///
-/// Cross dissolve, wipe, slide and zoom are drawn with the built-in
-/// compositor's opacity, transform and crop. The film dissolve keys on
-/// brightness, and the rest are drawn from the whole pictures before and
-/// after them (`drawsTwoPictures`), which that compositor can't do, so a
-/// timeline using any of them is drawn by `LayeredCompositor` instead, as
-/// is one where a nested timeline fades over layers of its own that
-/// overlap. Preview and export use the same path, so they match.
+/// They sit below the clip's effect stack and act on its result. Cross
+/// dissolve, wipe, slide, zoom and spin change the clip's own picture
+/// (`EdgeTransitions.Effect`); the film dissolve keys on brightness; the
+/// rest are drawn from the whole pictures before and after them
+/// (`drawsTwoPictures`). All are drawn by `LayeredCompositor`, which the
+/// viewer and export share, so they match.
 enum TransitionKind: String, CaseIterable, Identifiable {
     case crossDissolve
     case filmDissolve
@@ -192,10 +191,10 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     }
 
     /// Whether it is drawn from the two whole pictures, the one before it
-    /// and the one after, by `TransitionRenderer`. Only `LayeredCompositor`
-    /// can draw those; the rest are the built-in compositor's opacity,
-    /// transform and crop on the clip alone (the film dissolve has its own
-    /// key, `LumaReveal`).
+    /// and the one after, by `TransitionRenderer`. The rest change the
+    /// clip's own picture: its opacity, position and crop
+    /// (`EdgeTransitions.Effect`), or for the film dissolve its key
+    /// (`LumaReveal`).
     var drawsTwoPictures: Bool {
         switch self {
         case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom, .spin: false
@@ -223,6 +222,12 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         if shared.contains(.amount) { options.amount = old.amount }
         if shared.contains(.matte) { options.matte = old.matte }
         return options
+    }
+
+    /// Every name a saved kind may have: this version's, and the
+    /// directional ones of before (`saved`).
+    static var savedNames: [String] {
+        allCases.map(\.rawValue) + ["wipeLeft", "wipeRight", "wipeUp", "wipeDown", "slideLeft", "slideRight"]
     }
 
     /// Reads a saved kind, including those saved before a wipe's or
@@ -279,7 +284,7 @@ extension TimelineClip {
     /// the clip before. A trim can leave the stored lengths longer than the
     /// clip; then they share it in proportion, so the two never overlap.
     func effectiveTransitionDurations(lead: CMTime = .zero) -> (leading: CMTime, trailing: CMTime) {
-        let total = trimmedDuration
+        let total = placedDuration
         let leading = transitionIn.map { CMTimeMinimum(CMTimeMaximum(.zero, CMTimeSubtract($0.duration, lead)), total) } ?? .zero
         let trailing = transitionOut.map { CMTimeMinimum($0.duration, total) } ?? .zero
         let sum = CMTimeAdd(leading, trailing)
@@ -336,7 +341,7 @@ extension EditingProject {
             duration = existing.duration
         } else {
             let other = clip.transition(at: edge == .leading ? .trailing : .leading)?.duration ?? .zero
-            let room = CMTimeSubtract(clip.trimmedDuration, other)
+            let room = CMTimeSubtract(clip.placedDuration, other)
             let fitted = timeline.frameAligned(CMTimeMinimum(ClipTransition.defaultDuration, room), .down)
             duration = fitted > .zero ? fitted : timeline.frameDuration
         }
@@ -367,7 +372,7 @@ extension EditingProject {
             }
         }
         let other = clip.transition(at: edge == .leading ? .trailing : .leading)?.duration ?? .zero
-        let room = CMTimeMaximum(timeline.frameDuration, CMTimeSubtract(clip.trimmedDuration, other))
+        let room = CMTimeMaximum(timeline.frameDuration, CMTimeSubtract(clip.placedDuration, other))
         let snapped = timeline.frameAligned(CMTimeMinimum(duration, room), .nearest)
         transition.duration = CMTimeMaximum(timeline.frameDuration, snapped)
         updateClip(clipID, in: timelineID, layer: layerID) { $0.setTransition(transition, at: edge) }
@@ -444,8 +449,10 @@ enum JointEdit: Equatable {
 }
 
 extension EditingProject {
+    /// Retimed clips don't join: their spare footage isn't a length of
+    /// timeline time.
     private func isJoinable(_ clip: TimelineClip) -> Bool {
-        guard case .media = clip.source else { return false }
+        guard case .media = clip.source, !clip.isRetimed else { return false }
         return playsVideo(clip)
     }
 
@@ -483,8 +490,8 @@ extension EditingProject {
         in timeline: Timeline
     ) -> (duration: CMTime, lead: CMTime)? {
         let spare = spareFootage(outgoing: outgoing, incoming: incoming)
-        let before = timeline.frameAligned(CMTimeMinimum(spare.head, outgoing.trimmedDuration), .down)
-        let insideRoom = CMTimeSubtract(incoming.trimmedDuration, incoming.transitionOut?.duration ?? .zero)
+        let before = timeline.frameAligned(CMTimeMinimum(spare.head, outgoing.placedDuration), .down)
+        let insideRoom = CMTimeSubtract(incoming.placedDuration, incoming.transitionOut?.duration ?? .zero)
         let after = timeline.frameAligned(CMTimeMinimum(spare.tail, insideRoom), .down)
         let longest = CMTimeAdd(CMTimeMaximum(.zero, before), CMTimeMaximum(.zero, after))
         let frame = timeline.frameDuration
@@ -502,7 +509,7 @@ extension EditingProject {
         guard let transition = clip.transitionIn, let previous = predecessor(joining: clip, among: clips) else { return nil }
         let spare = spareFootage(outgoing: previous, incoming: clip)
         guard spare.tail > .zero || spare.head > .zero else { return nil }
-        return CMTimeMaximum(.zero, CMTimeMinimum(CMTimeMinimum(transition.lead, spare.head), CMTimeMinimum(previous.trimmedDuration, transition.duration)))
+        return CMTimeMaximum(.zero, CMTimeMinimum(CMTimeMinimum(transition.lead, spare.head), CMTimeMinimum(previous.placedDuration, transition.duration)))
     }
 
     /// The joint at the start of `incomingID`, if its way in joins it to
@@ -601,9 +608,9 @@ extension EditingProject {
 
 /// A clip's transitions placed in the time of the timeline it is on, for
 /// rendering.
-struct EdgeTransitions {
+struct EdgeTransitions: Sendable {
     /// One of the clip's transitions as it plays.
-    struct Placed {
+    struct Placed: Sendable {
         var kind: TransitionKind
         var duration: CMTime
         var curve: TransitionCurve
@@ -641,7 +648,7 @@ struct EdgeTransitions {
     /// What the transitions do to the clip at `time`, in its timeline's
     /// frame: how opaque it is, how it is moved, and the part of the frame
     /// it may show (nil when it isn't wiped).
-    struct Effect {
+    struct Effect: Equatable, Sendable {
         var opacity: Double = 1
         var transform: CGAffineTransform = .identity
         var visibleRect: CGRect?

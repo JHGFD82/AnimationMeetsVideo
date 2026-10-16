@@ -22,6 +22,16 @@ final class PlaybackModel {
             refreshStill()
         }
     }
+    /// Whether the viewer draws motion blur at all. Off, frames are drawn
+    /// without it, paused or playing; export and renders never are.
+    var motionBlurInPreview: Bool {
+        didSet {
+            UserDefaults.standard.set(motionBlurInPreview, forKey: Self.motionBlurKey)
+            drawingOptions.update(motionBlurInPreview: motionBlurInPreview)
+        }
+    }
+    /// What the compositor is asked while it plays (see `DrawingOptions`).
+    let drawingOptions = DrawingOptions()
     /// The size it is drawing at now, which Auto changes while playing.
     private(set) var level: PreviewLevel = .full
     /// Hears from the compositor how long each frame took.
@@ -36,6 +46,13 @@ final class PlaybackModel {
     /// play doesn't swap the composition; this is what keeps paused frames
     /// sharp. Nil while playing, scrubbing, or drawing at full size.
     private(set) var still: CGImage?
+    /// The paused frame drawn from the newest edit, while the player still
+    /// holds the composition from before it. Shown over everything until
+    /// the player item is swapped, so the viewer follows a drag without
+    /// swapping the item at every step.
+    private(set) var liveFrame: CGImage?
+    /// What the viewer shows over the player, if anything.
+    var cover: CGImage? { liveFrame ?? still }
 
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
@@ -48,8 +65,11 @@ final class PlaybackModel {
     @ObservationIgnored private var frameRate: Double = 0
     @ObservationIgnored private var sampling: Task<Void, Never>?
     @ObservationIgnored private var stillTask: Task<Void, Never>?
+    @ObservationIgnored private let liveRenderer = LiveFrameRenderer()
+    @ObservationIgnored private var liveGovernor = LiveGovernor()
 
     private static let qualityKey = "previewQuality"
+    private static let motionBlurKey = "motionBlurInPreview"
 
     init() {
         let player = AVPlayer()
@@ -59,7 +79,11 @@ final class PlaybackModel {
         player.automaticallyWaitsToMinimizeStalling = false
         self.player = player
         quality = UserDefaults.standard.string(forKey: Self.qualityKey).flatMap(PreviewQuality.init(rawValue:)) ?? .auto
+        let blur = UserDefaults.standard.object(forKey: Self.motionBlurKey) as? Bool ?? true
+        motionBlurInPreview = blur
+        drawingOptions.update(motionBlurInPreview: blur)
         beatClicks = BeatClickPlayer(player: player)
+        liveRenderer.onFrame = { [weak self] image, seconds, interactive in self?.receiveLiveFrame(image, seconds: seconds, interactive: interactive) }
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(value: 1, timescale: 30),
             queue: .main
@@ -103,14 +127,47 @@ final class PlaybackModel {
         item.videoComposition = composed.videoComposition(scaledBy: level.scale)
         item.audioMix = composed.audioMix(curves: volumeCurves, meter: mixMeter)
         mixMeter.reset()
-        // An older still may show what was just edited away.
-        clearStill()
+        // The old still stays until the new one is drawn (or turns out not
+        // to be needed): clearing it here would uncover the player's
+        // smaller picture for a moment on every rebuild.
         refreshStill()
+    }
+
+    /// Draws the paused frame from `composed`, the newest edit, over the
+    /// viewer. Does nothing while playing or seeking, which show the
+    /// player itself.
+    ///
+    /// With `interactive` (a value is being dragged) the frame is drawn
+    /// at a size the renderer keeps up with, stepping down to a quarter
+    /// of the pixels when frames take too long and back up when they
+    /// don't (`LiveGovernor`); the frame after the drag is full size.
+    func showLive(_ composed: ComposedTimeline, interactive: Bool = false) {
+        guard !isPlaying, !isSeeking, player.currentItem != nil else { return }
+        if !interactive { liveGovernor.reset() }
+        let scale = interactive ? min(level.scale, liveGovernor.level.scale) : level.scale
+        liveRenderer.submit(.init(composed: composed, scale: scale, time: player.currentTime(), interactive: interactive))
+    }
+
+    private func receiveLiveFrame(_ image: CGImage, seconds: Double, interactive: Bool) {
+        guard !isPlaying, !isSeeking else { return }
+        if interactive { liveGovernor.record(seconds: seconds) }
+        liveFrame = image
+        // A still of what was edited away mustn't show once this goes.
+        clearStill()
+    }
+
+    /// Lets go of the live frame, so the player shows. Done by playing and
+    /// scrubbing, and when there is nothing to show.
+    func clearLive() {
+        liveRenderer.cancel()
+        if liveFrame != nil { liveFrame = nil }
     }
 
     private func playStateChanged(_ playing: Bool) {
         guard playing != isPlaying else { return }
         isPlaying = playing
+        if playing { clearLive() }
+        drawingOptions.update(isPlaying: playing)
         sampling?.cancel()
         sampling = nil
         if playing {
@@ -155,6 +212,7 @@ final class PlaybackModel {
         let wanted = quality.fixedLevel ?? governor.level
         guard wanted != level else { return }
         level = wanted
+        drawingOptions.update(isQuarterSize: wanted == .quarter)
         if let item = player.currentItem, let composed {
             item.videoComposition = composed.videoComposition(scaledBy: wanted.scale)
         }
@@ -202,6 +260,7 @@ final class PlaybackModel {
     func seek(to time: CMTime) {
         currentTime = time
         pendingSeek = time
+        clearLive()
         clearStill()
         guard !isSeeking else { return }
         isSeeking = true

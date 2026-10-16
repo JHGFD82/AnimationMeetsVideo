@@ -29,6 +29,8 @@ struct ViewOptionsPopover: View {
             Groove()
 
             SheetSection("Areas") {
+                Toggle("Sections row", isOn: $areaLayout.showsSections)
+                    .toggleStyle(.checkbox)
                 ForEach(TimelineAreaLayout.order) { kind in
                     HStack(spacing: Design.Space.step) {
                         Toggle(kind.name, isOn: Binding(

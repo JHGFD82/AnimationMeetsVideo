@@ -2,369 +2,6 @@ import CoreMedia
 import Foundation
 import UniformTypeIdentifiers
 
-/// On-disk shape of `project.json`. Everything is referenced by stable ID,
-/// times are exact rationals, and the encoder is deterministic, so saving an
-/// unchanged project produces byte-identical output.
-private struct ProjectFile: Codable {
-    static let currentVersion = 1
-
-    /// Exact rational time written as `"value/timescale s"` with no space,
-    /// for example `"1001/24000s"`. A whole number of seconds may be written
-    /// as `"5s"`.
-    struct TimeEntry: Codable {
-        var time: CMTime
-
-        init(_ time: CMTime) {
-            self.time = time
-        }
-
-        init(from decoder: Decoder) throws {
-            let text = try decoder.singleValueContainer().decode(String.self)
-            guard text.hasSuffix("s") else {
-                throw ProjectStoreError.invalidTime(text)
-            }
-            let body = text.dropLast()
-            let parts = body.split(separator: "/", omittingEmptySubsequences: false)
-            switch parts.count {
-            case 1:
-                guard let value = Int64(parts[0]) else { throw ProjectStoreError.invalidTime(text) }
-                time = CMTime(value: value, timescale: 1)
-            case 2:
-                guard let value = Int64(parts[0]), let timescale = Int32(parts[1]), timescale > 0 else {
-                    throw ProjectStoreError.invalidTime(text)
-                }
-                time = CMTime(value: value, timescale: timescale)
-            default:
-                throw ProjectStoreError.invalidTime(text)
-            }
-        }
-
-        func encode(to encoder: Encoder) throws {
-            var container = encoder.singleValueContainer()
-            try container.encode("\(time.value)/\(time.timescale)s")
-        }
-    }
-
-    struct SourceEntry: Codable {
-        enum Kind: String, Codable { case media, timeline }
-        var kind: Kind
-        var id: UUID
-    }
-
-    struct ClipEntry: Codable {
-        var id: UUID
-        var source: SourceEntry
-        var startOffset: TimeEntry
-        var trimStart: TimeEntry
-        var trimEnd: TimeEntry
-        var autoMatteEnabled: Bool
-        /// `"video"` or `"audio"` once a video's sound is detached; absent
-        /// while the clip plays everything its file has.
-        var streams: String?
-        var transitionIn: TransitionEntry?
-        var transitionOut: TransitionEntry?
-    }
-
-    /// A transition at one end of a clip. `kind` is a `TransitionKind`
-    /// name such as `"crossDissolve"`; an unknown kind is dropped on load.
-    /// `curve` is absent for a linear one, `lead` (the part played before
-    /// the cut by a way in joining two clips) when it is zero. The settings
-    /// after them are written only for kinds that offer them: `color` is
-    /// `[r, g, b]` from 0 to 1, `center` `[x, y]` as fractions of the frame
-    /// from its top left, `matte` `"noise"` or the ID of a clip whose frame
-    /// is the map. Kinds saved before a wipe's or slide's direction was a
-    /// setting (`"wipeLeft"`, `"slideRight"`) are read with that direction.
-    struct TransitionEntry: Codable {
-        var kind: String
-        var duration: TimeEntry
-        var curve: [CurvePointEntry]?
-        var lead: TimeEntry?
-        var direction: String?
-        var color: [Double]?
-        var center: [Double]?
-        var shape: String?
-        var count: Int?
-        var order: String?
-        var amount: Double?
-        var matte: String?
-
-        init(_ transition: ClipTransition) {
-            kind = transition.kind.rawValue
-            duration = TimeEntry(transition.duration)
-            curve = transition.curve == .linear ? nil : transition.curve.points.map(CurvePointEntry.init)
-            lead = transition.lead == .zero ? nil : TimeEntry(transition.lead)
-            let options = transition.options
-            for setting in transition.kind.settings {
-                switch setting {
-                case .direction: direction = options.direction.rawValue
-                case .color: color = [options.color.red, options.color.green, options.color.blue]
-                case .center: center = [Double(options.center.x), Double(options.center.y)]
-                case .shape: shape = options.shape.rawValue
-                case .count: count = options.count
-                case .order: order = options.order.rawValue
-                case .amount: amount = options.amount
-                case .matte:
-                    switch options.matte {
-                    case .noise: matte = "noise"
-                    case .clip(let id): matte = id.uuidString
-                    }
-                }
-            }
-        }
-
-        /// A curve that doesn't run from 0 to 1 is read as linear; a
-        /// setting that can't be read keeps the kind's default.
-        var transition: ClipTransition? {
-            guard let saved = TransitionKind.saved(kind), duration.time > .zero else { return nil }
-            let points = curve?.map(\.point)
-            var options = saved.kind.defaultOptions
-            if let direction = saved.direction { options.direction = direction }
-            let offered = Set(saved.kind.settings)
-            if offered.contains(.direction), let value = direction.flatMap(TransitionDirection.init(rawValue:)) {
-                options.direction = value
-            }
-            if offered.contains(.color), let value = color, value.count == 3 {
-                options.color = TransitionColor(red: value[0], green: value[1], blue: value[2])
-            }
-            if offered.contains(.center), let value = center, value.count == 2 {
-                options.center = CGPoint(x: value[0], y: value[1])
-            }
-            if offered.contains(.shape), let value = shape.flatMap(IrisShape.init(rawValue:)) { options.shape = value }
-            if offered.contains(.count), let count { options.count = count }
-            if offered.contains(.order), let value = order.flatMap(GridOrder.init(rawValue:)) { options.order = value }
-            if offered.contains(.amount), let amount { options.amount = amount }
-            if offered.contains(.matte), let matte {
-                options.matte = UUID(uuidString: matte).map(MatteSource.clip) ?? .noise
-            }
-            return ClipTransition(
-                kind: saved.kind,
-                duration: duration.time,
-                curve: points.flatMap(TransitionCurve.init(points:)) ?? .linear,
-                lead: CMTimeMaximum(.zero, CMTimeMinimum(lead?.time ?? .zero, duration.time)),
-                options: options.clamped
-            )
-        }
-    }
-
-    /// One point of a transition curve, in fractions of the transition.
-    /// Handles are `[dx, dy]` offsets from the point; absent for none.
-    struct CurvePointEntry: Codable {
-        var time: Double
-        var value: Double
-        var `in`: [Double]?
-        var out: [Double]?
-
-        init(_ point: TransitionCurve.Point) {
-            time = point.time
-            value = point.value
-            `in` = point.inHandle.map { [Double($0.dx), Double($0.dy)] }
-            out = point.outHandle.map { [Double($0.dx), Double($0.dy)] }
-        }
-
-        var point: TransitionCurve.Point {
-            func vector(_ pair: [Double]?) -> CGVector? {
-                guard let pair, pair.count == 2 else { return nil }
-                return CGVector(dx: pair[0], dy: pair[1])
-            }
-            return TransitionCurve.Point(time: time, value: value, inHandle: vector(`in`), outHandle: vector(out))
-        }
-    }
-
-    /// One keyframe. Vector values are written as `[x, y]`. Eases are
-    /// absent on linear sides.
-    struct KeyframeEntry<Value: Codable>: Codable {
-        var time: TimeEntry
-        var value: Value
-        var easeIn: EaseEntry?
-        var easeOut: EaseEntry?
-    }
-
-    /// A keyframe side's temporal ease (`KeyframeEase`).
-    struct EaseEntry: Codable {
-        var influence: Double
-        var speed: Double
-
-        init(_ ease: KeyframeEase) {
-            influence = ease.influence
-            speed = ease.speed
-        }
-
-        var ease: KeyframeEase { KeyframeEase(influence: influence, speed: speed) }
-    }
-
-    /// A property's value, or its keyframes when animated.
-    struct PropertyEntry<Value: Codable>: Codable {
-        var value: Value?
-        var keyframes: [KeyframeEntry<Value>]?
-
-        init<V: Interpolatable>(_ property: AnimatedValue<V>, encode: (V) -> Value) {
-            if property.isAnimated {
-                keyframes = property.keyframes.map {
-                    KeyframeEntry(
-                        time: TimeEntry($0.time), value: encode($0.value),
-                        easeIn: $0.easeIn.map(EaseEntry.init), easeOut: $0.easeOut.map(EaseEntry.init)
-                    )
-                }
-            } else {
-                value = encode(property.value)
-            }
-        }
-
-        func property<V: Interpolatable>(default fallback: V, decode: (Value) -> V?) -> AnimatedValue<V> {
-            let frames = (keyframes ?? []).compactMap { entry in
-                decode(entry.value).map {
-                    Keyframe(time: entry.time.time, value: $0, easeIn: entry.easeIn?.ease, easeOut: entry.easeOut?.ease)
-                }
-            }
-            return AnimatedValue(value.flatMap(decode) ?? frames.first?.value ?? fallback, keyframes: frames)
-        }
-    }
-
-    /// Each property is absent while it has its default value.
-    struct TransformEntry: Codable {
-        /// Offset of the layer's center from the frame's center, in pixels.
-        var position: PropertyEntry<[Double]>?
-        /// Percent.
-        var scale: PropertyEntry<[Double]>?
-        /// Degrees clockwise.
-        var rotation: PropertyEntry<Double>?
-        /// Percent.
-        var opacity: PropertyEntry<Double>?
-        /// Absent while linked.
-        var scaleLinked: Bool?
-
-        init?(_ transform: LayerTransform) {
-            guard transform != .identity else { return nil }
-            let identity = LayerTransform.identity
-            let vector: (Vector2) -> [Double] = { [$0.x, $0.y] }
-            position = transform.position == identity.position ? nil : PropertyEntry(transform.position, encode: vector)
-            scale = transform.scale == identity.scale ? nil : PropertyEntry(transform.scale, encode: vector)
-            rotation = transform.rotation == identity.rotation ? nil : PropertyEntry(transform.rotation) { $0 }
-            opacity = transform.opacity == identity.opacity ? nil : PropertyEntry(transform.opacity) { $0 }
-            scaleLinked = transform.scaleLinked ? nil : false
-        }
-
-        var transform: LayerTransform {
-            let identity = LayerTransform.identity
-            let vector: ([Double]) -> Vector2? = { $0.count == 2 ? Vector2(x: $0[0], y: $0[1]) : nil }
-            let number: (Double) -> Double? = { $0 }
-            return LayerTransform(
-                position: position?.property(default: identity.position.value, decode: vector) ?? identity.position,
-                scale: scale?.property(default: identity.scale.value, decode: vector) ?? identity.scale,
-                rotation: rotation?.property(default: identity.rotation.value, decode: number) ?? identity.rotation,
-                opacity: opacity?.property(default: identity.opacity.value, decode: number) ?? identity.opacity,
-                scaleLinked: scaleLinked ?? true
-            )
-        }
-    }
-
-    struct LayerEntry: Codable {
-        var id: UUID
-        var customName: String?
-        /// `LayerKind`'s raw value. Absent in projects saved before layers
-        /// had kinds, which get one from their clips on load.
-        var kind: String?
-        var clips: [ClipEntry]
-        /// Absent while the layer is untransformed.
-        var transform: TransformEntry?
-        /// Decibels; absent while at 0 and not animated.
-        var volume: PropertyEntry<Double>?
-    }
-
-    struct TimelineEntry: Codable {
-        var id: UUID
-        var name: String
-        var width: Double
-        var height: Double
-        var frameRate: Double
-        var colorSpace: String
-        var layers: [LayerEntry]
-        /// Absent while the timeline has no sections.
-        var sections: [SectionEntry]?
-    }
-
-    struct SectionEntry: Codable {
-        var id: UUID
-        var name: String
-        var start: TimeEntry
-        var end: TimeEntry
-    }
-
-    struct RegionEntry: Codable {
-        var id: UUID
-        var start: TimeEntry
-        var end: TimeEntry
-        var value: Double
-    }
-
-    struct SceneEditsEntry: Codable {
-        var sensitivity: Double?
-        var regions: [RegionEntry]
-        var manualCuts: [TimeEntry]
-        var ignoredCuts: [TimeEntry]
-
-        init(_ edits: SceneEdits) {
-            sensitivity = edits.sensitivity
-            regions = edits.regions.map { RegionEntry(id: $0.id, start: TimeEntry($0.start), end: TimeEntry($0.end), value: $0.value) }
-            manualCuts = edits.manualCuts.map(TimeEntry.init)
-            ignoredCuts = edits.ignoredCuts.map(TimeEntry.init)
-        }
-
-        var edits: SceneEdits {
-            SceneEdits(
-                sensitivity: sensitivity,
-                regions: regions.map { SensitivityRegion(id: $0.id, start: $0.start.time, end: $0.end.time, value: $0.value) },
-                manualCuts: manualCuts.map(\.time),
-                ignoredCuts: ignoredCuts.map(\.time)
-            )
-        }
-    }
-
-    struct AssetEntry: Codable {
-        var id: UUID
-        var name: String
-        /// Relative to the package when the file is inside it, otherwise an
-        /// absolute path.
-        var path: String
-        /// Absent when the person hasn't edited the scene list.
-        var sceneEdits: SceneEditsEntry?
-        /// Absent when the file is aligned with the original.
-        var alignmentOffset: TimeEntry?
-        /// Absent when the asset has never been replaced.
-        var previousPaths: [String]?
-        /// Absent in files written before replacement existed.
-        var fileStamp: FileStamp?
-        /// Absent unless the original was forgotten.
-        var referenceForgotten: Bool?
-        /// What the file was when last saved (a `MediaKind` name, its
-        /// length, rate, codec, `ProjectColorSpace` name and whether it
-        /// has sound), so an asset whose file can't be opened stays in the
-        /// project, offline, rather than being dropped. Absent in files
-        /// written before this.
-        var kind: String?
-        var duration: TimeEntry?
-        var frameRate: Double?
-        var codec: String?
-        var colorSpace: String?
-        var hasAudio: Bool?
-    }
-
-    var formatVersion: Int
-    var id: UUID
-    var name: String
-    var rootTimelineID: UUID
-    /// Absent in files written before scene detection; reads as balanced.
-    var defaultSensitivity: Double?
-    /// Absent while imports are copied into the package (the default).
-    var copiesMediaOnImport: Bool?
-    var assets: [AssetEntry]
-    var timelines: [TimelineEntry]
-}
-
-private struct ProjectFileHeader: Decodable {
-    var formatVersion: Int?
-}
-
 struct ProjectLoadResult {
     var project: EditingProject
     /// Media files referenced by the project that couldn't be opened. Their
@@ -906,6 +543,7 @@ enum ProjectStore {
             switch source {
             case .media(let id): mediaIDs.contains(id) ? ProjectFile.SourceEntry(kind: .media, id: id) : nil
             case .timeline(let id): timelineIDs.contains(id) ? ProjectFile.SourceEntry(kind: .timeline, id: id) : nil
+            case .adjustment: ProjectFile.SourceEntry(kind: .adjustment, id: nil)
             }
         }
 
@@ -933,11 +571,20 @@ enum ProjectStore {
                                 autoMatteEnabled: clip.autoMatteEnabled,
                                 streams: clip.streams == .videoAndAudio ? nil : clip.streams.rawValue,
                                 transitionIn: clip.transitionIn.map(ProjectFile.TransitionEntry.init),
-                                transitionOut: clip.transitionOut.map(ProjectFile.TransitionEntry.init)
+                                transitionOut: clip.transitionOut.map(ProjectFile.TransitionEntry.init),
+                                anchorPoint: clip.anchorPoint == AnimatedValue(Vector2.zero)
+                                    ? nil : ProjectFile.PropertyEntry(clip.anchorPoint) { [$0.x, $0.y] },
+                                effects: clip.effects.isEmpty ? nil : clip.effects.map(ProjectFile.EffectEntry.init),
+                                volume: clip.volume == AnimatedValue(0.0) ? nil : ProjectFile.PropertyEntry(clip.volume) { $0 },
+                                passThrough: clip.passThrough ? true : nil,
+                                time: ProjectFile.ClipTimeEntry(clip.time),
+                                shutter: ProjectFile.ShutterEntry(clip.shutter)
                             )
                         },
-                        transform: ProjectFile.TransformEntry(layer.transform),
-                        volume: layer.volume == AnimatedValue(0.0) ? nil : ProjectFile.PropertyEntry(layer.volume) { $0 }
+                        volume: layer.kind.isAudio && layer.volume != AnimatedValue(0.0)
+                            ? ProjectFile.PropertyEntry(layer.volume) { $0 } : nil,
+                        adjustment: layer.isAdjustment ? true : nil,
+                        reach: layer.isAdjustment ? layer.reach : nil
                     )
                 },
                 sections: timeline.sections.isEmpty ? nil : timeline.sections.map { section in
@@ -956,6 +603,7 @@ enum ProjectStore {
             rootTimelineID: project.rootTimelineID,
             defaultSensitivity: project.defaultSensitivity == SceneDetector.balancedSensitivity ? nil : project.defaultSensitivity,
             copiesMediaOnImport: project.copiesMediaOnImport ? nil : false,
+            canvasMargin: project.canvasMargin == EditingProject.defaultCanvasMargin ? nil : project.canvasMargin,
             assets: urlClips.map { clip in
                 ProjectFile.AssetEntry(
                     id: clip.id,
@@ -993,14 +641,23 @@ enum ProjectStore {
         let fileURL = projectFile ?? packageURL.appending(path: projectFileName)
         let data = try Data(contentsOf: fileURL)
 
-        let version = try JSONDecoder().decode(ProjectFileHeader.self, from: data).formatVersion
+        let version = (try? JSONDecoder().decode(ProjectFileHeader.self, from: data))?.formatVersion
         guard let version, version >= 1 else {
             throw ProjectStoreError.unsupportedVersion(nil)
         }
-        guard version <= ProjectFile.currentVersion else {
+        // Older files aren't migrated, and newer ones can't be read.
+        guard version == ProjectFile.currentVersion else {
             throw ProjectStoreError.unsupportedVersion(version)
         }
-        let file = try JSONDecoder().decode(ProjectFile.self, from: data)
+        let file: ProjectFile
+        do {
+            try StrictJSON.validate(data, against: ProjectFile.shape)
+            file = try JSONDecoder().decode(ProjectFile.self, from: data)
+        } catch let problem as JSONShapeError {
+            throw ProjectStoreError.invalidFile(problem.sentence)
+        } catch let problem as DecodingError {
+            throw ProjectStoreError.invalidFile(problem.sentenceForProject)
+        }
 
         var importedClips: [UUID: MediaClip] = [:]
         var orderedIDs: [UUID] = []
@@ -1037,20 +694,22 @@ enum ProjectStore {
 
         func resolveSource(_ entry: ProjectFile.SourceEntry) -> ClipSource? {
             switch entry.kind {
-            case .media: importedClips[entry.id] != nil ? .media(entry.id) : nil
-            case .timeline: timelineIDs.contains(entry.id) ? .timeline(entry.id) : nil
+            case .media: entry.id.flatMap { importedClips[$0] != nil ? ClipSource.media($0) : nil }
+            case .timeline: entry.id.flatMap { timelineIDs.contains($0) ? ClipSource.timeline($0) : nil }
+            case .adjustment: .adjustment
             }
         }
 
         let timelines: [Timeline] = file.timelines.map { entry in
-            Timeline(
+            let layerIDs = Set(entry.layers.map(\.id))
+            return Timeline(
                 id: entry.id,
                 name: entry.name,
                 layers: entry.layers.map { layerEntry in
                     TimelineLayer(
                         id: layerEntry.id,
                         customName: layerEntry.customName,
-                        kind: layerEntry.kind.flatMap(LayerKind.init(rawValue:)) ?? .video,
+                        kind: LayerKind(rawValue: layerEntry.kind) ?? .video,
                         clips: layerEntry.clips.compactMap { clipEntry in
                             guard let source = resolveSource(clipEntry.source) else { return nil }
                             return TimelineClip(
@@ -1062,11 +721,21 @@ enum ProjectStore {
                                 autoMatteEnabled: clipEntry.autoMatteEnabled,
                                 streams: clipEntry.streams.flatMap(ClipStreams.init(rawValue:)) ?? .videoAndAudio,
                                 transitionIn: clipEntry.transitionIn?.transition,
-                                transitionOut: clipEntry.transitionOut?.transition
+                                transitionOut: clipEntry.transitionOut?.transition,
+                                anchorPoint: clipEntry.anchorPoint?.property(default: .zero) {
+                                    $0.count == 2 ? Vector2(x: $0[0], y: $0[1]) : nil
+                                } ?? AnimatedValue(Vector2.zero),
+                                effects: (clipEntry.effects ?? []).compactMap(\.effect),
+                                volume: clipEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0),
+                                passThrough: clipEntry.passThrough ?? false,
+                                time: clipEntry.time?.time ?? ClipTime(),
+                                shutter: clipEntry.shutter?.shutter ?? ClipShutter()
                             )
                         },
-                        transform: layerEntry.transform?.transform ?? .identity,
-                        volume: layerEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0)
+                        volume: layerEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0),
+                        isAdjustment: layerEntry.adjustment ?? false,
+                        // A reach that names no layer of this timeline reaches every layer below.
+                        reach: (layerEntry.adjustment ?? false) ? layerEntry.reach.flatMap { layerIDs.contains($0) ? $0 : nil } : nil
                     )
                 },
                 frameSize: CGSize(width: entry.width, height: entry.height),
@@ -1091,11 +760,10 @@ enum ProjectStore {
             timelines: timelines,
             rootTimelineID: rootID,
             defaultSensitivity: file.defaultSensitivity ?? SceneDetector.balancedSensitivity,
-            copiesMediaOnImport: file.copiesMediaOnImport ?? true
+            copiesMediaOnImport: file.copiesMediaOnImport ?? true,
+            canvasMargin: file.canvasMargin ?? EditingProject.defaultCanvasMargin
         )
         project.alignClipLengthsToFrames()
-        let unkinded = file.timelines.flatMap(\.layers).filter { $0.kind == nil }.map(\.id)
-        project.inferLayerKinds(of: Set(unkinded))
         var scores: [UUID: ChangeScoreTrack] = [:]
         var references: [UUID: AssetReference] = [:]
         var beats: [UUID: BeatTrack] = [:]
@@ -1155,6 +823,9 @@ enum ProjectStoreError: LocalizedError {
     case noTimelines
     case notAProject(String)
     case unsupportedVersion(Int?)
+    /// A project file with something in it this version doesn't recognize,
+    /// and where (see `StrictJSON`).
+    case invalidFile(String)
     case invalidTime(String)
     case locked(String?)
 
@@ -1165,11 +836,15 @@ enum ProjectStoreError: LocalizedError {
         case .notAProject(let name):
             "“\(name)” isn't an Animation Meets Video project (no project.json inside)."
         case .unsupportedVersion(let version):
-            if let version {
+            if let version, version > ProjectFile.currentVersion {
                 "This project was saved by a newer version of the app (format version \(version))."
+            } else if let version {
+                "This project uses format version \(version), which this version of the app can't open."
             } else {
                 "This project file has no supported format version."
             }
+        case .invalidFile(let detail):
+            "The project can't be opened. \(detail)"
         case .locked(let holder):
             if let holder {
                 "This project is already open in \(holder). Close it there first."
@@ -1178,6 +853,32 @@ enum ProjectStoreError: LocalizedError {
             }
         case .invalidTime(let text):
             "“\(text)” isn't a valid time. Use a rational number of seconds such as 1001/24000s or 5s."
+        }
+    }
+}
+
+extension DecodingError {
+    /// A decoding failure that got past `StrictJSON`, which should not
+    /// happen, worded like its errors.
+    var sentenceForProject: String {
+        func path(_ codingPath: [CodingKey]) -> String {
+            var text = ""
+            for key in codingPath {
+                if let index = key.intValue {
+                    text += "[\(index)]"
+                } else {
+                    text = StrictJSON.join(text, key.stringValue)
+                }
+            }
+            return text.isEmpty ? "the top level of the file" : text
+        }
+        switch self {
+        case .keyNotFound(let key, let context):
+            return "Missing \"\(key.stringValue)\" at \(path(context.codingPath))."
+        case .typeMismatch(_, let context), .valueNotFound(_, let context), .dataCorrupted(let context):
+            return "\(context.debugDescription) at \(path(context.codingPath))."
+        @unknown default:
+            return "The file couldn't be read."
         }
     }
 }

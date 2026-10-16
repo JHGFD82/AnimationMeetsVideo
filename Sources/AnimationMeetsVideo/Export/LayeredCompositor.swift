@@ -5,58 +5,59 @@ import Foundation
 import os
 import QuartzCore
 
-/// One stretch of a timeline for `LayeredCompositor`: the video tracks
-/// showing, top first, each with how it is placed.
+/// One stretch of a timeline for `LayeredCompositor`: the clips drawn in
+/// it, top first, as a tree (see `DrawClip`).
 final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
-    struct Layer {
-        let trackID: CMPersistentTrackID
-        let animation: PlacementAnimation
-    }
-
     let timeRange: CMTimeRange
     let enablePostProcessing = false
     let containsTweening = true
     let requiredSourceTrackIDs: [NSValue]?
-    let passthroughTrackID = kCMPersistentTrackID_Invalid
-    let layers: [Layer]
+    /// The track whose frames are the stretch's frames as they are, for one
+    /// picture that needs no drawing; invalid otherwise.
+    let passthroughTrackID: CMPersistentTrackID
+    let clips: [DrawClip]
     /// The timeline's frame size. The player may draw smaller than this.
     let renderSize: CGSize
     let colorSpace: ProjectColorSpace
+    /// How far past the frame, as a fraction of its size on each side,
+    /// pictures that are moved off it are kept for later steps.
+    let canvasMargin: Double
     /// Told how long each frame took, when the viewer is watching.
     let meter: RenderMeter?
+    /// What the viewer asks of drawing while it plays; nil to draw everything
+    /// at full quality, as export does.
+    let options: DrawingOptions?
 
-    init(timeRange: CMTimeRange, layers: [Layer], renderSize: CGSize, colorSpace: ProjectColorSpace, meter: RenderMeter? = nil) {
+    init(
+        timeRange: CMTimeRange, clips: [DrawClip], passthrough: CMPersistentTrackID = kCMPersistentTrackID_Invalid,
+        renderSize: CGSize, colorSpace: ProjectColorSpace, canvasMargin: Double = EditingProject.defaultCanvasMargin,
+        meter: RenderMeter? = nil, options: DrawingOptions? = nil
+    ) {
         self.timeRange = timeRange
-        self.layers = layers
+        self.clips = clips
+        passthroughTrackID = passthrough
         self.renderSize = renderSize
         self.colorSpace = colorSpace
+        self.canvasMargin = canvasMargin
         self.meter = meter
-        requiredSourceTrackIDs = layers.map { NSNumber(value: $0.trackID) }
+        self.options = options
+        requiredSourceTrackIDs = Set(clips.flatMap(\.allTrackIDs)).sorted().map { NSNumber(value: $0) }
     }
 }
 
-/// Draws a timeline with Core Image on the GPU through Metal. The viewer
-/// always uses it, since it can draw at a reduced size; export uses it only
-/// for what the built-in compositor can't draw: a film dissolve, which keys
-/// on brightness, and a nested timeline fading over layers of its own that
-/// overlap. Everything else is drawn as the built-in compositor would: each
-/// layer's crop, transform and opacity, bottom layer first, over black.
+/// Draws a timeline with Core Image on the GPU through Metal, for the viewer
+/// and for export alike. Each clip goes through its stack and then its
+/// transitions and is drawn over the clips below it; a nested timeline is
+/// drawn first on transparency, as one picture, unless it passes through.
 ///
-/// The layers of a nested timeline are stacked by themselves first, and the
-/// opacity and transitions of the clip that holds it then fade the result
-/// as one picture, so its layers don't show through each other.
+/// Geometry is worked out in each timeline's frame, in pixels with the
+/// origin at the top left and y down, as AVFoundation does; Core Image's
+/// origin is at the bottom left, so each picture is flipped into that space
+/// and back out. The viewer may ask for a smaller size: every picture is
+/// then drawn straight to it, rather than drawing full size and scaling.
 ///
-/// A transition drawn from two whole pictures (`TransitionRenderer`) gets
-/// what's under its clip and the clip over that, as the pictures before
-/// and after it, and its result replaces both.
-///
-/// AVFoundation's transforms measure from the top left and Core Image's
-/// from the bottom left, so each layer is flipped into the transform's
-/// space and back out.
-///
-/// Like the built-in compositor it works on the frames' encoded values,
-/// without color management, so the two draw the same picture and the
-/// film dissolve keys on brightness as it looks rather than as light.
+/// It works on the frames' encoded values, without color management, so
+/// the film dissolve keys on brightness as it looks rather than as light.
 class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     private let context: CIContext = {
         let options: [CIContextOption: Any] = [
@@ -97,7 +98,7 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                 guard let instruction = request.videoCompositionInstruction as? LayeredInstruction,
                       let output = request.renderContext.newPixelBuffer()
                 else {
-                    request.finish(with: CompositionError.exportFailed("A frame of the timeline couldn't be drawn."))
+                    request.finish(with: CompositionError.exportFailed("A frame couldn't be drawn."))
                     return
                 }
                 let started = CACurrentMediaTime()
@@ -119,124 +120,28 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         generation.withLock { $0 += 1 }
     }
 
-    /// One layer's frame, cropped and placed in the output.
-    private struct Drawn {
-        let animation: PlacementAnimation
-        let image: CIImage
-    }
-
-    /// The frame at `time`: layers stacked bottom first over black.
+    /// The frame at `time`: the instruction's clips from the bottom up over
+    /// black.
     static func compose(
         _ instruction: LayeredInstruction,
         at time: CMTime,
         outputSize: CGSize,
-        frame: (CMPersistentTrackID) -> CVPixelBuffer?
+        frame: @escaping (CMPersistentTrackID) -> CVPixelBuffer?
     ) -> CIImage {
         let renderSize = instruction.renderSize
         let bounds = CGRect(origin: .zero, size: outputSize)
         // The render context may be smaller than the timeline's frame, as
         // when the player draws at a reduced size.
-        let toOutput = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: renderSize.height)
-            .concatenating(CGAffineTransform(
-                scaleX: renderSize.width > 0 ? outputSize.width / renderSize.width : 1,
-                y: renderSize.height > 0 ? outputSize.height / renderSize.height : 1
-            ))
-
-        let drawn = instruction.layers.compactMap { layer -> Drawn? in
-            guard let buffer = frame(layer.trackID) else { return nil }
-            let animation = layer.animation
-            var image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
-            let sourceHeight = image.extent.height
-            if let crop = animation.cropRectangle(at: time) {
-                image = image.cropped(to: CGRect(x: crop.minX, y: sourceHeight - crop.maxY, width: crop.width, height: crop.height))
-            }
-            let fromSource = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: sourceHeight)
-            image = image.transformed(by: fromSource.concatenating(animation.transform(at: time)).concatenating(toOutput))
-            return Drawn(animation: animation, image: image)
-        }
-        let black = CIImage(color: .black).cropped(to: bounds)
-        return stack(drawn[...], depth: 0, at: time, over: black, in: bounds).cropped(to: bounds)
-    }
-
-    /// `layers`, top first, stacked bottom first over `background`. Layers
-    /// drawn through the same nested timeline `depth` levels in are stacked
-    /// by themselves, over nothing, and the result is faded as one picture
-    /// by the clip that holds the nested timeline.
-    private static func stack(_ layers: ArraySlice<Drawn>, depth: Int, at time: CMTime, over background: CIImage, in bounds: CGRect) -> CIImage {
-        var output = background
-        var end = layers.endIndex
-        while end > layers.startIndex {
-            let bottom = layers[end - 1]
-            let groups = bottom.animation.groups
-            guard depth < groups.count else {
-                output = draw(
-                    bottom.image, opacity: bottom.animation.ownOpacity(at: time),
-                    reveal: bottom.animation.ownLumaReveal(at: time),
-                    transition: bottom.animation.ownTransitionFrame(at: time), over: output, in: bounds
-                )
-                end -= 1
-                continue
-            }
-            // A nested timeline's layers come out of flattening together.
-            let group = groups[depth]
-            var start = end - 1
-            while start > layers.startIndex {
-                let above = layers[start - 1].animation.groups
-                guard depth < above.count, above[depth] == group else { break }
-                start -= 1
-            }
-            let inside = stack(layers[start..<end], depth: depth + 1, at: time, over: CIImage.empty(), in: bounds)
-            let stage = bottom.animation.stage(ofGroup: group)
-            output = draw(
-                inside, opacity: Float(stage?.opacity(at: time) ?? 1),
-                reveal: stage?.lumaReveal(at: time), transition: stage?.transitionFrame(at: time),
-                over: output, in: bounds
-            )
-            end = start
-        }
-        return output
-    }
-
-    /// `image` drawn over `below`: faded, keyed by a film dissolve, and
-    /// when a transition drawn from two whole pictures plays, drawn by it
-    /// between what's underneath and the image over it.
-    private static func draw(
-        _ image: CIImage,
-        opacity: Float,
-        reveal: LumaReveal?,
-        transition: TransitionFrame?,
-        over below: CIImage,
-        in bounds: CGRect
-    ) -> CIImage {
-        let together = fade(image, opacity: opacity, reveal: reveal, over: below).composited(over: below)
-        guard let transition else { return together }
-        return TransitionRenderer.draw(
-            transition,
-            from: transition.entering ? below : together,
-            to: transition.entering ? together : below,
-            in: bounds
+        let scale = renderSize.width > 0 ? outputSize.width / renderSize.width : 1
+        let drawing = Drawing(
+            time: time,
+            scale: CGSize(width: scale, height: renderSize.height > 0 ? outputSize.height / renderSize.height : 1),
+            canvasMargin: instruction.canvasMargin,
+            options: instruction.options,
+            source: frame
         )
-    }
-
-    /// `image` at `opacity`, keyed by a film dissolve against `below`, what
-    /// it is drawn over.
-    private static func fade(_ image: CIImage, opacity: Float, reveal: LumaReveal?, over below: CIImage) -> CIImage {
-        var image = image
-        if opacity < 1 {
-            image = image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
-        }
-        if let reveal {
-            // On the way in the clip is the following picture; on the way
-            // out it is what's underneath, and the clip stays where that
-            // hasn't come through yet.
-            var mask = Self.revealMask(of: reveal.keysIncoming ? image : below, reveal)
-            if !reveal.keysIncoming { mask = mask.applyingFilter("CIColorInvert") }
-            image = image.applyingFilter("CIBlendWithMask", parameters: [
-                kCIInputBackgroundImageKey: CIImage.empty(),
-                kCIInputMaskImageKey: mask,
-            ])
-        }
-        return image
+        let black = CIImage(color: .black).cropped(to: bounds)
+        return drawing.draw(instruction.clips, frame: renderSize, over: black, outer: .identity).cropped(to: bounds)
     }
 
     /// White where the picture is bright enough to show through by now,
@@ -257,6 +162,508 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                 "inputMaxComponents": CIVector(x: 1, y: 1, z: 1, w: 1),
             ])
     }
+}
+
+/// How the clips of a pass-through nested timeline are placed in the
+/// timeline it passes through to: from their own frame into that one.
+struct OuterPlacement {
+    var matrix = CGAffineTransform.identity
+    var opacity = 1.0
+    /// Whether the clips are those of a pass-through nested timeline,
+    /// drawn straight into the timeline above. An adjustment layer in one
+    /// reaches no further than that nested timeline's own layers.
+    var passesThrough = false
+
+    static let identity = OuterPlacement()
+}
+
+/// Draws one frame: the clips of a timeline, then those of the timelines
+/// nested in them.
+struct Drawing {
+    var time: CMTime
+    /// Output pixels per frame pixel, in each direction.
+    let scale: CGSize
+    /// How far past a frame's edges pictures are kept, as a fraction of its
+    /// size.
+    let canvasMargin: Double
+    /// What the viewer asks of drawing while it plays, if it is the viewer.
+    var options: DrawingOptions?
+    /// The decoded frame of a composition track at `time`.
+    let source: (CMPersistentTrackID) -> CVPixelBuffer?
+
+    /// The same drawing at another moment.
+    func at(_ time: CMTime) -> Drawing {
+        var moved = self
+        moved.time = time
+        return moved
+    }
+
+    /// `clips` (top first) drawn bottom first over `output`, which holds
+    /// the timeline whose frame is `frameSize`, in output pixels with the
+    /// origin at the bottom left. Clips of a nested timeline that passes
+    /// through are drawn here too, `outer` placing them.
+    func draw(_ clips: [DrawClip], frame frameSize: CGSize, over output: CIImage, outer: OuterPlacement) -> CIImage {
+        var output = output
+        for clip in clips.reversed() {
+            output = draw(clip, frame: frameSize, over: output, outer: outer)
+        }
+        return output
+    }
+
+    private func draw(_ clip: DrawClip, frame frameSize: CGSize, over output: CIImage, outer: OuterPlacement) -> CIImage {
+        if case .adjustment(let adjustment) = clip.content {
+            return drawAdjustment(
+                clip, adjustment, resolved: clip.stack.resolve(atRoot: time), frame: frameSize, over: output, outer: outer
+            )
+        }
+        // Which moment a nested timeline's pictures are drawn at is the
+        // drawing's own time; so a group is drawn through `at`.
+        guard var picture = finishedPicture(clip, at: time, frame: frameSize, over: output, outer: outer) else { return output }
+        let shutter = clip.stack.shutter
+
+        // Motion blur: the finished clip drawn at moments across the shutter
+        // and averaged. The viewer draws fewer while playing.
+        if let blur = shutter.motionBlur?.clamped {
+            let samples = options.map { $0.motionBlurSamples(wanted: blur.samples) } ?? blur.samples
+            let open = clip.stack.frameDuration.seconds > 0 ? clip.stack.frameDuration.seconds : 1.0 / 24
+            let shutterSeconds = open * blur.angle / 360
+            if samples > 1, shutterSeconds > 0 {
+                let weight = CGFloat(1) / CGFloat(samples)
+                var sum: CIImage?
+                for index in 0..<samples {
+                    let moment = CMTimeAdd(time, CMTime(seconds: shutterSeconds * ((Double(index) + 0.5) / Double(samples) - 0.5), preferredTimescale: 240_000))
+                    guard let sample = finishedPicture(clip, at: moment, frame: frameSize, over: output, outer: outer) else { continue }
+                    // The matrix works on colors before they are multiplied by
+                    // alpha, so scaling alpha alone scales the picture.
+                    let scaled = sample.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: weight)])
+                    sum = sum.map { scaled.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: $0]) } ?? scaled
+                }
+                if let sum { picture = sum }
+            }
+        }
+
+        // Trails: copies of the finished clip from earlier moments, under it,
+        // the furthest first.
+        if case .media(let media) = clip.content, !media.trails.isEmpty {
+            var under: CIImage?
+            for trail in media.trails.reversed() {
+                let moment = CMTimeSubtract(time, trail.delay)
+                guard let copy = finishedPicture(clip, at: moment, frame: frameSize, over: output, outer: outer, trail: trail) else { continue }
+                let faded = trail.strength == 1 ? copy : copy.applyingFilter("CIColorMatrix", parameters: [
+                    "inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(trail.strength)),
+                ])
+                under = under.map { faded.composited(over: $0) } ?? faded
+            }
+            if let under { picture = picture.composited(over: under) }
+        }
+        let together = picture.composited(over: output)
+        // A transition drawn from two whole pictures takes what's under the
+        // clip and the clip over it, and its result replaces both.
+        guard let transition = clip.stack.transitionFrame(atRoot: time) else { return together }
+        let bounds = CGRect(x: 0, y: 0, width: frameSize.width * scale.width, height: frameSize.height * scale.height)
+        return TransitionRenderer.draw(
+            transition,
+            from: transition.entering ? output : together,
+            to: transition.entering ? together : output,
+            in: bounds
+        )
+    }
+
+    /// The clip as it finishes, at root time `time`: its picture put into the
+    /// frame, run through its stack and its transitions, before it is drawn
+    /// over what is below. With `trail` the footage is that copy's.
+    private func finishedPicture(
+        _ clip: DrawClip,
+        at time: CMTime,
+        frame frameSize: CGSize,
+        over output: CIImage,
+        outer: OuterPlacement,
+        trail: TrackCopy? = nil
+    ) -> CIImage? {
+        let resolved = clip.stack.resolve(atRoot: time)
+        let transition = resolved.transition
+        // From the frame's pixels (origin top left) to output pixels.
+        let toOutput = Self.flip(height: frameSize.height).concatenating(CGAffineTransform(scaleX: scale.width, y: scale.height))
+        /// A transform of the frame's pixels as one of output pixels.
+        func inOutput(_ matrix: CGAffineTransform) -> CGAffineTransform {
+            toOutput.inverted().concatenating(matrix).concatenating(toOutput)
+        }
+
+        // What places the clip's own frame in the one it is drawn into (a
+        // pass-through or pushed nested timeline) is applied to the picture
+        // first, and each move after it is turned to work in the placed
+        // frame. That is the same picture as applying it last, and it means
+        // blending and grading work at the size the picture ends up. A
+        // placement that can't be undone is applied last.
+        let start = outer.matrix.isInvertibleMatrix ? outer.matrix : .identity
+        let startInverse = start.inverted()
+        func placed(_ matrix: CGAffineTransform) -> CGAffineTransform {
+            start == .identity ? matrix : startInverse.concatenating(matrix).concatenating(start)
+        }
+
+        // The stack, which a nested timeline's leading move is taken out of
+        // when it is pushed into the layers inside.
+        var steps = resolved.steps
+        var opacity = 1.0
+        // Whether the transition's move is already part of the matrix pushed
+        // into a nested timeline's layers.
+        var transitionPushed = false
+
+        // The picture, put into the frame.
+        var picture: CIImage
+        switch clip.content {
+        case .adjustment:
+            return nil
+        case .media(let media):
+            guard let image = sourcePicture(of: media, clip: clip, at: time, trail: trail) else { return nil }
+            picture = image.transformed(
+                by: Self.flip(height: image.extent.height).concatenating(media.base).concatenating(start).concatenating(toOutput)
+            )
+        case .group(let group):
+            let placement = resolved.placement
+            if group.passThrough {
+                // The nested layers go straight into this timeline, each
+                // placed as the group is. Only what works layer by layer
+                // applies: wipes and the film dissolve need one picture.
+                let combined = OuterPlacement(
+                    matrix: group.toOuter
+                        .concatenating(placement.matrix)
+                        .concatenating(transition?.transform ?? .identity)
+                        .concatenating(outer.matrix),
+                    opacity: placement.opacity * (transition?.opacity ?? 1) * outer.opacity,
+                    passesThrough: true
+                )
+                return at(time).draw(group.children, frame: frameSize, over: output, outer: combined)
+            }
+            if group.pushesTransforms, placement.matrix.isInvertibleMatrix {
+                // The nested layers are drawn at the size they end up, with
+                // the group's move applied to each of them over
+                // transparency, rather than drawn at the nested frame's size
+                // and enlarged. That is the same picture where every step
+                // inside is per pixel, and keeps detail a smaller nested
+                // frame would lose. Opacity stays on the whole.
+                var geometry = group.toOuter
+                if case .place(let matrix, let factor)? = steps.first {
+                    geometry = geometry.concatenating(matrix)
+                    opacity *= factor
+                    steps.removeFirst()
+                }
+                if steps.isEmpty, let transition {
+                    geometry = geometry.concatenating(transition.transform)
+                    transitionPushed = true
+                }
+                geometry = geometry.concatenating(start)
+                let layers = at(time).draw(group.children, frame: frameSize, over: .empty(), outer: OuterPlacement(matrix: geometry, opacity: 1))
+                picture = Self.limited(layers, toNestedFrame: group.frameSize, through: geometry.concatenating(toOutput))
+            } else {
+                let nestedBounds = CGRect(x: 0, y: 0, width: group.frameSize.width * scale.width, height: group.frameSize.height * scale.height)
+                let nested = at(time).draw(group.children, frame: group.frameSize, over: .empty(), outer: .identity).cropped(to: nestedBounds)
+                let toFrame = CGAffineTransform(scaleX: 1 / scale.width, y: 1 / scale.height)
+                    .concatenating(Self.flip(height: group.frameSize.height))
+                    .concatenating(group.toOuter)
+                picture = nested.transformed(by: toFrame.concatenating(start).concatenating(toOutput))
+            }
+        }
+
+        // The stack. Opacity waits until something needs the picture's own
+        // alpha, so consecutive moves stay one transform.
+        picture = runStack(
+            steps, on: picture, opacity: &opacity, backdrop: output, clip: clip, frame: frameSize,
+            start: start, inOutput: inOutput, placed: placed
+        )
+        func settleOpacity() {
+            guard opacity != 1 else { return }
+            picture = picture.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
+            opacity = 1
+        }
+
+        // Then the transitions, then, for a placement that couldn't be
+        // applied first, the placement.
+        if let transition {
+            if !transitionPushed { picture = picture.transformed(by: inOutput(placed(transition.transform))) }
+            opacity *= transition.opacity
+        }
+        if start == .identity, outer.matrix != .identity { picture = picture.transformed(by: inOutput(outer.matrix)) }
+        opacity *= outer.opacity
+
+        if var visible = transition?.visibleRect {
+            // In the clip's own frame; a pass-through group places it in
+            // the frame it passes to.
+            visible = visible.applying(outer.matrix)
+            picture = picture.cropped(to: CGRect(
+                x: visible.minX * scale.width, y: (frameSize.height - visible.maxY) * scale.height,
+                width: visible.width * scale.width, height: visible.height * scale.height
+            ))
+        }
+        settleOpacity()
+        if let reveal = transition?.lumaReveal {
+            // On the way in the clip is the following picture; on the way
+            // out it is what's underneath, and the clip stays where that
+            // hasn't come through yet.
+            var mask = LayeredCompositor.revealMask(of: reveal.keysIncoming ? picture : output, reveal)
+            if !reveal.keysIncoming { mask = mask.applyingFilter("CIColorInvert") }
+            picture = picture.applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: CIImage.empty(),
+                kCIInputMaskImageKey: mask,
+            ])
+        }
+        return picture
+    }
+
+    /// A media clip's picture at root time `time`, before anything is done
+    /// to it: the frame it is at, mixed with the next by how far between
+    /// the two the moment falls (Blend), with earlier frames layered under
+    /// it (Echo). With `trail`, that copy's footage as it is.
+    private func sourcePicture(of media: MediaDraw, clip: DrawClip, at time: CMTime, trail: TrackCopy?) -> CIImage? {
+        func frame(_ trackID: CMPersistentTrackID) -> CIImage? {
+            source(trackID).map { CIImage(cvPixelBuffer: $0, options: [.colorSpace: NSNull()]) }
+        }
+        func scaled(_ image: CIImage, by strength: Double) -> CIImage {
+            guard strength < 1 else { return image }
+            return image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(strength))])
+        }
+        guard var image = frame(trail?.trackID ?? media.trackID) else { return nil }
+        if trail != nil { return image }
+
+        if let next = media.nextFrame, media.frameDuration.seconds > 0, let later = frame(next.trackID) {
+            // How far past the frame the moment is in the file.
+            let local = clip.stack.localTime(atRoot: time)
+            let position = (clip.stack.sourceTime(atLocal: local).seconds + media.alignmentOffset.seconds) / media.frameDuration.seconds
+            let fraction = position - (position + 1e-6).rounded(.down)
+            if fraction > 0.01 {
+                // Optical Flow moves the frames along the motion between
+                // them. It costs too much to do while the viewer plays or
+                // is drawing for display; renders and export do (they draw
+                // without options). Where it can't be done, it fades.
+                if media.opticalFlow, options == nil, let moved = OpticalFlow.between(image, later, fraction: fraction) {
+                    image = moved
+                } else {
+                    image = scaled(later, by: fraction).composited(over: image)
+                }
+            }
+        }
+        var under: CIImage?
+        for echo in media.echoes.reversed() {
+            guard let earlier = frame(echo.trackID) else { continue }
+            let faded = scaled(earlier, by: echo.strength)
+            under = under.map { faded.composited(over: $0) } ?? faded
+        }
+        if let under { image = image.composited(over: under) }
+        return image
+    }
+
+    /// An adjustment clip: its stack is run on the layers it reaches drawn
+    /// together over what is below them (`output`), and the result is mixed
+    /// into what is below by how much the reached layers cover:
+    ///
+    /// 1. Below: `output`, the layers under the reach.
+    /// 2. With: the reached layers drawn over it, as usual.
+    /// 3. Adjusted: the stack run on With. A Blending step's backdrop is With.
+    /// 4. Coverage: the alpha of the reached layers alone over transparency;
+    ///    the whole frame when it reaches every layer below.
+    /// 5. Result: Below mixed toward Adjusted by Coverage.
+    ///
+    /// Inside a pass-through nested timeline it reaches no further than that
+    /// timeline's own layers, so only they are adjusted, and drawn over
+    /// `output` as they are.
+    private func drawAdjustment(
+        _ clip: DrawClip,
+        _ adjustment: AdjustmentDraw,
+        resolved: ResolvedClip,
+        frame frameSize: CGSize,
+        over output: CIImage,
+        outer: OuterPlacement
+    ) -> CIImage {
+        let passes = outer.passesThrough
+        let transition = resolved.transition
+        guard !resolved.steps.isEmpty || transition != nil else {
+            return draw(adjustment.reached, frame: frameSize, over: output, outer: outer)
+        }
+        let toOutput = Self.flip(height: frameSize.height).concatenating(CGAffineTransform(scaleX: scale.width, y: scale.height))
+        func inOutput(_ matrix: CGAffineTransform) -> CGAffineTransform {
+            toOutput.inverted().concatenating(matrix).concatenating(toOutput)
+        }
+        let start = outer.matrix.isInvertibleMatrix ? outer.matrix : .identity
+        let startInverse = start.inverted()
+        func placed(_ matrix: CGAffineTransform) -> CGAffineTransform {
+            start == .identity ? matrix : startInverse.concatenating(matrix).concatenating(start)
+        }
+
+        let with = draw(adjustment.reached, frame: frameSize, over: passes ? .empty() : output, outer: outer)
+        var opacity = 1.0
+        var adjusted = runStack(
+            resolved.steps, on: with, opacity: &opacity, backdrop: with, clip: clip, frame: frameSize,
+            start: start, inOutput: inOutput, placed: placed
+        )
+        if let transition {
+            adjusted = adjusted.transformed(by: inOutput(placed(transition.transform)))
+            opacity *= transition.opacity
+        }
+        opacity *= outer.opacity
+
+        let bounds = CGRect(x: 0, y: 0, width: frameSize.width * scale.width, height: frameSize.height * scale.height)
+        if passes {
+            if opacity != 1 {
+                adjusted = adjusted.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
+            }
+            return adjusted.composited(over: output)
+        }
+        var coverage = adjustment.reachesAll
+            ? CIImage(color: .white).cropped(to: bounds)
+            : draw(adjustment.reached, frame: frameSize, over: .empty(), outer: outer)
+        if var visible = transition?.visibleRect {
+            visible = visible.applying(outer.matrix)
+            coverage = coverage.cropped(to: CGRect(
+                x: visible.minX * scale.width, y: (frameSize.height - visible.maxY) * scale.height,
+                width: visible.width * scale.width, height: visible.height * scale.height
+            ))
+        }
+        if opacity != 1 {
+            coverage = coverage.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
+        }
+        return adjusted.applyingFilter("CIBlendWithAlphaMask", parameters: [
+            kCIInputBackgroundImageKey: output,
+            kCIInputMaskImageKey: coverage,
+        ]).cropped(to: bounds.union(output.extent.isInfinite ? bounds : output.extent))
+    }
+
+    /// The steps of a clip's stack run on `picture`, in output pixels.
+    /// Opacity the steps ask for is left in `opacity` for the caller.
+    private func runStack(
+        _ steps: [ResolvedStep],
+        on initial: CIImage,
+        opacity: inout Double,
+        backdrop: CIImage,
+        clip: DrawClip,
+        frame frameSize: CGSize,
+        start: CGAffineTransform,
+        inOutput: (CGAffineTransform) -> CGAffineTransform,
+        placed: (CGAffineTransform) -> CGAffineTransform
+    ) -> CIImage {
+        var picture = initial
+        var kept: [UUID: CIImage] = [:]
+        func settleOpacity() {
+            guard opacity != 1 else { return }
+            picture = picture.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
+            opacity = 1
+        }
+        for step in steps {
+            switch step {
+            case .place(let matrix, let factor):
+                picture = picture.transformed(by: inOutput(placed(matrix)))
+                opacity *= factor
+            case .mark(let id):
+                settleOpacity()
+                kept[id] = picture
+            case .color(let ops):
+                // Grading doesn't depend on where a pixel is, so it doesn't
+                // wait for the opacity either.
+                let canvas = canvasRect(of: frameSize)
+                if let graded = ColorProcessor.grade(picture, ops, in: clip.stack.colorSpace, over: picture.extent.intersection(canvas)) {
+                    picture = graded
+                }
+            case .matte(let effectID, let mode, let amount):
+                settleOpacity()
+                guard let input = clip.inputs[effectID], let matte = matteImage(input, frame: frameSize, start: start) else { continue }
+                picture = cut(picture, by: matte, mode: mode, amount: amount, frame: frameSize)
+            case .blend(let mode, let amount, let against):
+                settleOpacity()
+                let other: CIImage
+                if let against {
+                    guard let earlier = kept[against] else { continue }
+                    other = earlier
+                } else {
+                    other = backdrop
+                }
+                let canvas = canvasRect(of: frameSize)
+                var region = picture.extent.intersection(canvas)
+                if against != nil { region = region.union(other.extent.intersection(canvas)) }
+                if let blended = BlendProcessor.blend(
+                    picture, with: other, mode: mode, amount: amount, keepsBackdrop: against != nil, over: region
+                ) {
+                    picture = blended
+                }
+            }
+        }
+        return picture
+    }
+
+    /// An effect's input as a picture in the clip's frame, in output pixels:
+    /// fitted into the frame and left there, whatever later steps do.
+    private func matteImage(_ input: InputDraw, frame frameSize: CGSize, start: CGAffineTransform) -> CIImage? {
+        let toOutput = Self.flip(height: frameSize.height).concatenating(CGAffineTransform(scaleX: scale.width, y: scale.height))
+        switch input {
+        case .track(let copy, let base):
+            guard let buffer = source(copy.trackID) else { return nil }
+            let image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
+            return image.transformed(
+                by: Self.flip(height: image.extent.height).concatenating(base).concatenating(start).concatenating(toOutput)
+            )
+        case .group(let group):
+            let bounds = CGRect(x: 0, y: 0, width: group.frameSize.width * scale.width, height: group.frameSize.height * scale.height)
+            let nested = draw(group.children, frame: group.frameSize, over: .empty(), outer: .identity).cropped(to: bounds)
+            let toFrame = CGAffineTransform(scaleX: 1 / scale.width, y: 1 / scale.height)
+                .concatenating(Self.flip(height: group.frameSize.height))
+                .concatenating(group.toOuter)
+            return nested.transformed(by: toFrame.concatenating(start).concatenating(toOutput))
+        }
+    }
+
+    /// `picture` shown only where `matte` says: its alpha or its brightness,
+    /// inverted for the inverted modes, and mixed in by `amount`.
+    private func cut(_ picture: CIImage, by matte: CIImage, mode: MatteMode, amount: Double, frame frameSize: CGSize) -> CIImage {
+        let canvas = canvasRect(of: frameSize)
+        // Outside the matte's own picture it is empty.
+        var mask = matte.composited(over: CIImage(color: .clear).cropped(to: canvas)).cropped(to: canvas)
+        let weight = CGFloat(amount) * (mode.isInverted ? -1 : 1)
+        let bias = mode.isInverted ? 1 : 1 - CGFloat(amount)
+        let alphaVector: CIVector
+        if mode.usesLuma {
+            // Brightness is what is left of the picture over black.
+            mask = mask.composited(over: CIImage(color: .black).cropped(to: canvas))
+            alphaVector = CIVector(x: 0.2126 * weight, y: 0.7152 * weight, z: 0.0722 * weight, w: 0)
+        } else {
+            alphaVector = CIVector(x: 0, y: 0, z: 0, w: weight)
+        }
+        mask = mask.applyingFilter("CIColorMatrix", parameters: [
+            "inputAVector": alphaVector,
+            "inputBiasVector": CIVector(x: 0, y: 0, z: 0, w: bias),
+        ])
+        return picture.applyingFilter("CIBlendWithAlphaMask", parameters: [
+            kCIInputBackgroundImageKey: CIImage.empty(),
+            kCIInputMaskImageKey: mask,
+        ])
+    }
+
+    /// The frame and the margin round it that pictures are kept in, in
+    /// output pixels.
+    private func canvasRect(of frameSize: CGSize) -> CGRect {
+        CGRect(x: 0, y: 0, width: frameSize.width * scale.width, height: frameSize.height * scale.height)
+            .insetBy(dx: -frameSize.width * scale.width * canvasMargin, dy: -frameSize.height * scale.height * canvasMargin)
+    }
+
+    /// `image` kept to the nested timeline's frame (`nested`, in its own
+    /// pixels from the top left) as it lies after `matrix`, which takes
+    /// those pixels to output pixels: cropped when the frame stays upright,
+    /// masked when it is turned.
+    static func limited(_ image: CIImage, toNestedFrame nested: CGSize, through matrix: CGAffineTransform) -> CIImage {
+        let frame = CGRect(origin: .zero, size: nested)
+        if abs(matrix.b) < 1e-6, abs(matrix.c) < 1e-6 {
+            return image.cropped(to: frame.applying(matrix))
+        }
+        let mask = CIImage(color: .white).cropped(to: frame).transformed(by: matrix)
+        return image.applyingFilter("CISourceInCompositing", parameters: [kCIInputBackgroundImageKey: mask])
+    }
+
+    /// Flips between top-left and bottom-left origins in a frame
+    /// `height` high.
+    static func flip(height: CGFloat) -> CGAffineTransform {
+        CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: height)
+    }
+}
+
+private extension CGAffineTransform {
+    var isInvertibleMatrix: Bool { abs(a * d - b * c) > 1e-9 }
 }
 
 /// The viewer's compositor for SDR timelines. Frames are decoded into 8-bit

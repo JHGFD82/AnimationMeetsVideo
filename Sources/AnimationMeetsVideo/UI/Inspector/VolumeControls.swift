@@ -27,7 +27,7 @@ struct VolumePropertyRow: View {
                 .foregroundStyle(Design.textSecondary)
                 .frame(width: 50, alignment: .leading)
 
-            NumericField(value: level, label: AudioLevel.label, accessibilityName: "Volume level") { newValue in
+            NumericField(value: level, label: AudioLevel.label, dragStep: 1, dragRange: AudioLevel.range, accessibilityName: "Volume level") { newValue in
                 onEdit { $0.set(AudioLevel.clamped(newValue), at: time) }
             }
             .frame(width: 54, alignment: .leading)

@@ -131,7 +131,7 @@ extension EditingProject {
                 TimelineClip(source: .media(assetID), startOffset: .zero, trimStart: scene.start, trimEnd: scene.end),
                 in: timeline
             )
-            guard layerKind(timeline.layers[lIndex].kind, accepts: clip),
+            guard layer(timeline.layers[lIndex], accepts: clip),
                   let placed = freeStart(for: clip, among: clips, in: timeline, near: cursor)
             else { return nil }
             clip.startOffset = placed

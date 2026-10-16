@@ -62,7 +62,7 @@ final class MixLevelMeter: @unchecked Sendable {
         left: (UnsafeMutablePointer<Float>, Int), right: (UnsafeMutablePointer<Float>, Int),
         frames: Int, sampleRate: Double, start: Double, track: Int
     ) {
-        guard track < Self.maximumTracks, frames > 0, sampleRate > 0 else { return }
+        guard track < Self.maximumTracks, frames > 0, sampleRate > 0, start.isFinite else { return }
         var frame = 0
         while frame < frames {
             let window = Self.window(at: start + Double(frame) / sampleRate)
@@ -93,6 +93,8 @@ final class MixLevelMeter: @unchecked Sendable {
 
     /// The loudest of the `span` windows ending at `seconds`.
     func reading(at seconds: Double, span: Int = 2) -> Reading {
+        // A player between items has no valid time, which is NaN.
+        guard seconds.isFinite else { return .silent }
         let last = Self.window(at: seconds)
         return entries.withLock { entries in
             var reading = Reading()

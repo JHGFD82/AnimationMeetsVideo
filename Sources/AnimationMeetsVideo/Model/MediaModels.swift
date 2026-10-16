@@ -14,6 +14,13 @@ struct EditingProject: Identifiable, Equatable {
     /// Whether imported media is copied into the package's `Media/` folder
     /// (the default) or referenced where it is.
     var copiesMediaOnImport = true
+    /// How much of the frame, on each side, an intermediate image keeps of
+    /// the picture moved off the frame, as a fraction of its width and
+    /// height. See `defaultCanvasMargin`.
+    var canvasMargin = EditingProject.defaultCanvasMargin
+
+    /// Half a frame on each side: twice the frame's area.
+    static let defaultCanvasMargin = 0.5
 
     static var empty: EditingProject {
         let main = Timeline(
@@ -48,6 +55,8 @@ struct EditingProject: Identifiable, Equatable {
 
     func resolvedInfo(for source: ClipSource) -> ResolvedClipInfo? {
         switch source {
+        case .adjustment:
+            return .adjustment
         case .media(let mediaID):
             guard let clip = mediaClip(id: mediaID) else { return nil }
             return .media(clip)
@@ -122,12 +131,18 @@ struct EditingProject: Identifiable, Equatable {
         return !visited.contains(targetTimelineID)
     }
 
-    private func collectNestedTimelineIDs(startingFrom timelineID: UUID, visited: inout Set<UUID>) {
+    func collectNestedTimelineIDs(startingFrom timelineID: UUID, visited: inout Set<UUID>) {
         guard visited.insert(timelineID).inserted, let timeline = timeline(id: timelineID) else { return }
         for layer in timeline.layers {
             for clip in layer.clips {
                 if case .timeline(let nestedID) = clip.source {
                     collectNestedTimelineIDs(startingFrom: nestedID, visited: &visited)
+                }
+                // A timeline used as an effect's input is inside this one too.
+                for effect in clip.effects {
+                    if case .timeline(let inputID)? = effect.input?.source {
+                        collectNestedTimelineIDs(startingFrom: inputID, visited: &visited)
+                    }
                 }
             }
         }
@@ -194,8 +209,7 @@ struct EditingProject: Identifiable, Equatable {
         else {
             return
         }
-        let sourceTime = CMTimeAdd(clip.trimStart, CMTimeSubtract(time, clip.startOffset))
-        Self.split(&timelines[tIndex].layers[lIndex].clips, id: id, at: sourceTime)
+        Self.split(&timelines[tIndex].layers[lIndex].clips, id: id, at: clip.sourceTime(atTimelineTime: time), startingSecondAt: time)
     }
 
     /// Removes a clip from its layer. The layer stays, even when empty.
@@ -208,10 +222,14 @@ struct EditingProject: Identifiable, Equatable {
         timelines[tIndex].layers[lIndex].clips.removeAll { $0.id == id }
     }
 
-    /// Removes a layer and every clip on it.
+    /// Removes a layer and every clip on it. An adjustment layer that
+    /// reached down to it goes back to reaching every layer below.
     mutating func deleteLayer(_ layerID: UUID, in timelineID: UUID) {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return }
         timelines[tIndex].layers.removeAll { $0.id == layerID }
+        for l in timelines[tIndex].layers.indices where timelines[tIndex].layers[l].reach == layerID {
+            timelines[tIndex].layers[l].reach = nil
+        }
     }
 
     mutating func split(_ id: UUID, in timelineID: UUID, layer layerID: UUID, at time: CMTime) {
@@ -316,7 +334,7 @@ struct EditingProject: Identifiable, Equatable {
 
     /// Replaces a clip and moves every clip after it on the layer by as
     /// much as its end moved.
-    private mutating func applyRipple(_ trimmed: TimelineClip, in timelineID: UUID, layer layerID: UUID) {
+    mutating func applyRipple(_ trimmed: TimelineClip, in timelineID: UUID, layer layerID: UUID) {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
               let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == trimmed.id })
@@ -328,7 +346,15 @@ struct EditingProject: Identifiable, Equatable {
         for index in timelines[tIndex].layers[lIndex].clips.indices where index != cIndex {
             let start = timelines[tIndex].layers[lIndex].clips[index].startOffset
             if start >= originalEnd {
-                timelines[tIndex].layers[lIndex].clips[index].startOffset = CMTimeAdd(start, shift)
+                // A clip that met this one's end (give or take the rounding
+                // of a retimed end) still meets it, on the frame the end
+                // is at: a retimed end can be a few microseconds off its
+                // frame, which `closingSlivers` covers when building, but
+                // the next clip stays on a frame.
+                let abuts = CMTimeSubtract(start, originalEnd) < Timeline.abutmentTolerance
+                let follower = timelines[tIndex].layers[lIndex].clips[index]
+                let meeting = isFrameLocked(follower) ? timelines[tIndex].frameAligned(trimmed.endOffset, .nearest) : trimmed.endOffset
+                timelines[tIndex].layers[lIndex].clips[index].startOffset = abuts ? meeting : CMTimeAdd(start, shift)
             }
         }
         timelines[tIndex].layers[lIndex].clips[cIndex] = trimmed
@@ -344,17 +370,17 @@ struct EditingProject: Identifiable, Equatable {
         timelines[tIndex].layers[lIndex].clips[cIndex] = clip
     }
 
-    private static func split(_ clips: inout [TimelineClip], id: UUID, at time: CMTime) {
+    /// Splits at source time `time`. The second half starts at
+    /// `startingSecondAt` in the timeline, or where that source time plays.
+    private static func split(_ clips: inout [TimelineClip], id: UUID, at time: CMTime, startingSecondAt secondStartTime: CMTime? = nil) {
         guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
         let clip = clips[index]
         guard time > clip.trimStart, time < clip.trimEnd else { return }
-        // The split point is in trim-relative coordinates; convert it to how
-        // far into the clip's absolute placement that point falls, so the
-        // second half starts exactly where the first half now ends — no gap
-        // introduced by splitting, even though either half can be dragged
-        // apart afterward.
-        let offsetIntoClip = CMTimeSubtract(time, clip.trimStart)
-        let secondStart = CMTimeAdd(clip.startOffset, offsetIntoClip)
+        // The split point is in source time; convert it to where that point
+        // plays in the timeline, so the second half starts exactly where the
+        // first half now ends — no gap introduced by splitting, even though
+        // either half can be dragged apart afterward.
+        let secondStart = secondStartTime ?? clip.timelineTime(forSourceTime: time)
         // The first half keeps the way in, the second the way out.
         var first = clip
         first.id = UUID()
@@ -366,6 +392,39 @@ struct EditingProject: Identifiable, Equatable {
         second.trimStart = time
         second.transitionIn = nil
         clips.replaceSubrange(index...index, with: [first, second])
+    }
+}
+
+extension Timeline {
+    /// Clips on a layer closer than this are taken to meet: the end of a
+    /// retimed clip can't be found closer than the rounding of source
+    /// time (4 µs), and a gap that small shows as a black frame.
+    static let abutmentTolerance = CMTime(value: 1, timescale: 1000)
+
+    /// The same timeline with every gap between clips on a layer smaller
+    /// than `abutmentTolerance` closed, by moving the later clip to the
+    /// earlier one's end.
+    func closingSlivers() -> Timeline {
+        var copy = self
+        for layer in copy.layers.indices {
+            let clips = copy.layers[layer].clips.sorted { $0.startOffset < $1.startOffset }
+            var previousEnd: CMTime?
+            var result: [TimelineClip] = []
+            for var clip in clips {
+                if let previousEnd {
+                    let gap = CMTimeSubtract(clip.startOffset, previousEnd)
+                    if gap > .zero, gap < Self.abutmentTolerance { clip.startOffset = previousEnd }
+                }
+                previousEnd = clip.endOffset
+                result.append(clip)
+            }
+            // Keep the layer's own order of clips.
+            let moved = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0.startOffset) })
+            for index in copy.layers[layer].clips.indices {
+                copy.layers[layer].clips[index].startOffset = moved[copy.layers[layer].clips[index].id] ?? copy.layers[layer].clips[index].startOffset
+            }
+        }
+        return copy
     }
 }
 
@@ -413,13 +472,18 @@ struct TimelineLayer: Identifiable, Equatable {
     /// takes. See `LayerKind`.
     var kind: LayerKind = .video
     var clips: [TimelineClip]
-    /// Position, scale, rotation and opacity, keyframed in this timeline's
-    /// time. Ignored for layers with no pictures.
-    var transform = LayerTransform.identity
-    /// The volume of everything the layer plays, in decibels (see
-    /// `AudioLevel`), keyframed in this timeline's time. Ignored for layers
-    /// with no sound.
+    /// The volume of everything a Sound or Music layer plays, applied after
+    /// each clip's own, in decibels (see `AudioLevel`), keyframed in this
+    /// timeline's time. Video layers have none, only their clips do.
     var volume = AnimatedValue(0.0)
+    /// Whether the layer holds adjustment clips (and only them), whose
+    /// stacks are applied to the layers below. See docs/effects.md,
+    /// "Adjustment layers". The layer is a video layer in every other way.
+    var isAdjustment = false
+    /// For an adjustment layer: the lowest layer its effect reaches, stored
+    /// as that layer's ID rather than a count so it stays put as layers are
+    /// added and moved. Nil reaches every layer below.
+    var reach: UUID?
 
     var duration: CMTime {
         clips.map(\.endOffset).max(by: { $0.seconds < $1.seconds }) ?? .zero
@@ -429,6 +493,9 @@ struct TimelineLayer: Identifiable, Equatable {
 enum ClipSource: Equatable {
     case media(UUID)
     case timeline(UUID)
+    /// No picture of its own: its effect stack is applied to the layers
+    /// below it. Only on an adjustment layer.
+    case adjustment
 }
 
 /// A placement of a clip (raw media or a nested timeline) on a layer, with
@@ -451,13 +518,34 @@ struct TimelineClip: Identifiable, Equatable {
     /// Brings the clip in at its start, and takes it out at its end.
     var transitionIn: ClipTransition?
     var transitionOut: ClipTransition?
+    /// The point scale and rotation turn about: an offset from the center of
+    /// the clip's fitted picture, in timeline pixels at 100% scale. Keyframed
+    /// in the clip's source time, like everything on the clip. Clips with no
+    /// pictures have none.
+    var anchorPoint = AnimatedValue(Vector2.zero)
+    /// What is done to the picture, top to bottom (see `Effect`).
+    var effects: [Effect] = []
+    /// The volume of the clip's sound, in decibels (see `AudioLevel`),
+    /// keyframed in the clip's source time. Clips with no sound have none.
+    var volume = AnimatedValue(0.0)
+    /// For a nested timeline: draw its layers straight into the timeline
+    /// it is placed in instead of as one picture (see docs/effects.md).
+    var passThrough = false
+    /// What the clip does to time (speed, frame blending, echo and sound),
+    /// above its stack. See `ClipTime`.
+    var time = ClipTime()
+    /// What it does with its finished picture (motion blur and trails),
+    /// below its transitions. See `ClipShutter`.
+    var shutter = ClipShutter()
 
+    /// The length of the part of the source the clip plays. How long it lasts
+    /// on the timeline is `placedDuration`, which differs when it is retimed.
     var trimmedDuration: CMTime {
         CMTimeSubtract(trimEnd, trimStart)
     }
 
     var endOffset: CMTime {
-        CMTimeAdd(startOffset, trimmedDuration)
+        CMTimeAdd(startOffset, placedDuration)
     }
 }
 
@@ -474,11 +562,13 @@ enum ClipStreams: String {
 enum ResolvedClipInfo {
     case media(MediaClip)
     case timeline(Timeline)
+    case adjustment
 
     var name: String {
         switch self {
         case .media(let clip): clip.name
         case .timeline(let timeline): timeline.name
+        case .adjustment: "Adjustment"
         }
     }
 
@@ -486,6 +576,7 @@ enum ResolvedClipInfo {
         switch self {
         case .media(let clip): clip.kind.systemImage
         case .timeline: "rectangle.stack"
+        case .adjustment: "slider.horizontal.below.rectangle"
         }
     }
 
@@ -493,6 +584,7 @@ enum ResolvedClipInfo {
         switch self {
         case .media(let clip): clip.formatSummary
         case .timeline(let timeline): "Nested Timeline · \(timeline.timebaseSummary)"
+        case .adjustment: "Adjustment · applies its effects to the layers below"
         }
     }
 
@@ -500,6 +592,7 @@ enum ResolvedClipInfo {
         switch self {
         case .media(let clip): clip.kind == .video
         case .timeline(let timeline): !timeline.layers.isEmpty
+        case .adjustment: true
         }
     }
 
@@ -507,6 +600,7 @@ enum ResolvedClipInfo {
         switch self {
         case .media(let clip): clip.colorSpace.isHDR
         case .timeline(let timeline): timeline.colorSpace.isHDR
+        case .adjustment: false
         }
     }
 }

@@ -21,8 +21,11 @@ enum BlockMatchFlow {
 
     /// The whole move from `before` to `after` at each point of the frame
     /// `progress` of the way between them, in output points: red across,
-    /// green up.
-    static func field(from before: CIImage, to after: CIImage, progress: Double, in bounds: CGRect) -> CIImage? {
+    /// green up. `reach` is how far the coarsest search looks, as a share
+    /// of the width: a third for a morph, whose shapes cross the frame;
+    /// less between neighboring frames of footage, where a far match in a
+    /// repeating texture would only be wrong.
+    static func field(from before: CIImage, to after: CIImage, progress: Double, in bounds: CGRect, reach: Double = 1.0 / 3) -> CIImage? {
         guard bounds.width >= 8, bounds.height >= 8 else { return nil }
         let height = max(block * 2, Int((Double(width) * bounds.height / bounds.width).rounded()))
         guard let a = gray(before, width: width, height: height, in: bounds),
@@ -37,7 +40,7 @@ enum BlockMatchFlow {
         for (index, level) in levels.enumerated().reversed() {
             let coarsest = index == levels.count - 1
             moves = match(level.0, level.1, progress: Float(min(max(progress, 0), 1)), guess: moves,
-                          reach: coarsest ? max(level.0.width / 3, 2) : 2)
+                          reach: coarsest ? max(Int(Double(level.0.width) * reach), 2) : 2)
         }
         guard let moves else { return nil }
 

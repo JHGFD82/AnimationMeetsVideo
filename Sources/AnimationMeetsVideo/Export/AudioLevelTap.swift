@@ -4,15 +4,22 @@ import Foundation
 import MediaToolbox
 import os
 
-/// One layer whose volume a composition audio track plays through: the
-/// layer itself, then each layer of the timelines it is nested in.
+/// One volume a composition audio track plays through: a clip's own (which
+/// counts in the clip's source time) or a Sound or Music layer's fader
+/// (which counts in its timeline's time), then those of the clips and
+/// layers of the timelines it is nested in.
 struct VolumeStage: Equatable, Sendable {
-    let layerID: UUID
-    /// Root time minus this layer's timeline time.
+    /// The ID of the clip or the layer.
+    let id: UUID
+    /// Root time minus the time the volume's keyframes count in, when they
+    /// count at the root's pace.
     let shift: CMTime
+    /// How much faster the keyframes' time passes than the root's: a retimed
+    /// clip's volume counts in its source time, which plays at its speed.
+    var rate: Double = 1
 }
 
-/// Every layer's volume curve, shared between the editor and the audio
+/// Every clip's and layer's volume curve, shared between the editor and the audio
 /// taps playing it. The editor swaps in new curves as volumes are edited;
 /// the taps read whichever set is current as each buffer plays, so a change
 /// is heard at once without rebuilding the player.
@@ -23,12 +30,18 @@ final class VolumeCurves: @unchecked Sendable {
         self.curves.withLock { $0 = curves }
     }
 
-    /// The curves of every layer of `project` that isn't at 0 dB throughout.
+    /// The curves of every clip and Sound or Music layer of `project` that
+    /// isn't at 0 dB throughout, by ID.
     static func of(_ project: EditingProject) -> [UUID: AnimatedValue<Double>] {
         var curves: [UUID: AnimatedValue<Double>] = [:]
         for timeline in project.timelines {
-            for layer in timeline.layers where layer.volume != AnimatedValue(0.0) {
-                curves[layer.id] = layer.volume
+            for layer in timeline.layers {
+                if layer.kind.isAudio, layer.volume != AnimatedValue(0.0) {
+                    curves[layer.id] = layer.volume
+                }
+                for clip in layer.clips where clip.volume != AnimatedValue(0.0) {
+                    curves[clip.id] = clip.volume
+                }
             }
         }
         return curves
@@ -45,8 +58,9 @@ final class VolumeCurves: @unchecked Sendable {
         let time = CMTime(seconds: seconds, preferredTimescale: 96_000)
         var gain: Float = 1
         for stage in stages {
-            guard let curve = current[stage.layerID] else { continue }
-            gain *= AudioLevel.gain(decibels: curve.value(at: CMTimeSubtract(time, stage.shift)))
+            guard let curve = current[stage.id] else { continue }
+            let local = CMTimeSubtract(time, stage.shift)
+            gain *= AudioLevel.gain(decibels: curve.value(at: stage.rate == 1 ? local : CMTimeMultiplyByFloat64(local, multiplier: stage.rate)))
         }
         return gain
     }
@@ -57,13 +71,16 @@ final class VolumeCurves: @unchecked Sendable {
 enum AudioLevelTap {
     /// An audio mix with a tap on each of `tracks`.
     static func audioMix(
-        for tracks: [(track: AVAssetTrack, stages: [VolumeStage])],
+        for tracks: [(track: AVAssetTrack, stages: [VolumeStage], pitch: AVAudioTimePitchAlgorithm?)],
         curves: VolumeCurves,
         meter: MixLevelMeter?
     ) -> AVAudioMix {
         let mix = AVMutableAudioMix()
         mix.inputParameters = tracks.enumerated().compactMap { index, entry in
             let parameters = AVMutableAudioMixInputParameters(track: entry.track)
+            // How retimed sound is played: at the new speed at its own pitch
+            // (spectral), or like tape (varispeed).
+            if let pitch = entry.pitch { parameters.audioTimePitchAlgorithm = pitch }
             let context = TapContext(stages: entry.stages, curves: curves, meter: meter, meterIndex: index)
             guard let tap = makeTap(context) else { return nil }
             parameters.audioTapProcessor = tap

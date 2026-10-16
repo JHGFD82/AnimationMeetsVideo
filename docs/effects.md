@@ -1,9 +1,10 @@
 # Effects
 
-Status: **planned, not implemented**. This replaces the layer transforms
-in [layer-transforms.md](layer-transforms.md): transforms move from layers
-to clips and become effects. Keyframes, easing, the graph editor and
-arithmetic in numeric fields carry over unchanged.
+Status: **built** (see [Building it](#building-it) for each step and what
+it leaves out). This replaces the layer
+transforms in [layer-transforms.md](layer-transforms.md): transforms move
+from layers to clips and become effects. Keyframes, easing, the graph
+editor and arithmetic in numeric fields carry over unchanged.
 
 ## Guiding principle: gravity
 
@@ -132,9 +133,10 @@ New Transform effects list them in this order. Each control is one step:
   later scales and rotations turn the picture about its own anchor, wherever
   the picture now is. Scale and rotation leave it where it is, since it is
   the point they turn about. As a result, Position, Scale and Rotation give
-  the same picture in any order within a Transform effect. Order matters
-  across effects with other steps between them, and when an effect doesn't
-  move the anchor.
+  the same picture in any order within a Transform effect, as long as
+  Scale is uniform: a stretch (x and y apart) works along the screen's axes,
+  so it doesn't commute with a turn. Order matters across effects with
+  other steps between them, and when an effect doesn't move the anchor.
 - **Moves Anchor** (in the effect's ⋯ menu, checked by default): unchecked,
   the effect's Position moves the picture but leaves the anchor at its spot
   in the frame. Later scales and rotations then turn the picture about that
@@ -209,6 +211,23 @@ footage gets replaced):
   SDR, PQ and HLG timelines (one like ACEScct), not on the timeline's own
   encoding. On a timeline's stored values the same Contrast would look
   different on PQ than on HLG or Rec. 709.
+
+## Mattes
+
+The second category is **Mattes**, effects that take an input (see
+[Inputs](#inputs)). **Matte** cuts the clip with its input.
+
+- **Mode** picks what is read from the input: **Alpha** shows the clip
+  where the input is opaque, **Luma** where it is bright (Rec. 709 weights,
+  over black where the input has no picture), and **Inverted Alpha** and
+  **Inverted Luma** the opposite. Gray is a partial cut.
+- **Amount** mixes the cut in, 0% to 100%. At 0% the step does nothing.
+- The input is fitted into the frame and stays there. Outside its own
+  picture it is empty: transparent for Alpha, black for Luma.
+- Without an input, or when the input's media is missing, the effect does
+  nothing and is dimmed with a note in the stack.
+- Drawing: a Matte step ends a run of moves, like a Blending step, since it
+  needs the picture as it is at that point.
 
 ## How a clip is drawn
 
@@ -320,6 +339,27 @@ works on frames already chosen:
   source time like all others. Speed decides how much source time passes,
   so the clip's length on the timeline follows from it: dragging the
   clip's end trims the source, it never stretches the clip.
+
+  How long a ramp lasts is the integral of 100 / speed over the source
+  time it plays, taken from the curve itself (its eases included, speed
+  clamped to 1%...10000%). `SpeedIntegral` computes it once per speed curve
+  with adaptive Gauss-Kronrod and keeps the edges of its cells and the
+  integral up to each, so a lookup finds its cell by binary search and
+  integrates only the part of it before the query, and the inverse
+  (timeline time to source time) solves inside one cell by Newton's method
+  with a bisection fallback. The accuracy budget, in seconds of timeline
+  time: each piece between keyframes within 1e-8 of the true integral
+  (`pieceTolerance`, split among its cells), a query inside a cell within
+  another 1e-8, the curve read at exact `Double` times rather than a CMTime
+  grid, and the inverse within 1e-9 of its target. All of it sits far below
+  the 1/240000 s a placed time is rounded to. Tests check it against a
+  separate reference (its own Bézier, a fine partition cut at the clamp's
+  kinks, adaptive Gauss-Kronrod), for whole pieces, partial cells, cell
+  edges and the inverse, on curves that stress it (1% to 10000% in half a
+  second, sharp and full-width handles, overshoot past the clamp). An
+  earlier fixed 24-step Simpson sum read 5% to 3000% over 40 s as 16.3 s
+  for 8.54 s; project files saved with it keep their stored times, so a
+  ramped clip's end moves to the true length, and nothing migrates them.
 - **Frame Blending**: Off, Blend (mix the two nearest frames when the
   speed doesn't land on whole frames), or Optical Flow (build in-between
   frames from Vision's optical flow). Optical Flow is too slow to draw
@@ -362,7 +402,7 @@ rendered in the background like everything else.
 Some effects take a second picture: a matte that cuts the clip, a map that
 displaces it, a source for a light wrap. That picture comes from the
 **browser**, not the timeline. It is dragged from the browser into the
-effect's drop zone in the effects panel. It can be a media clip, a still,
+effect's drop zone in the effects panel. It can be a media clip
 or a nested timeline, and it never takes up a layer: it belongs to the
 clip, as part of the step.
 
@@ -430,15 +470,19 @@ this matches other apps' adjustment layers.
 
 ## The effects panel
 
-The effects panel opens at the right end of the timeline, where the
-transitions panel goes, and replaces it while open. The two have buttons
-side by side in the timeline's header.
+The area to the right of the viewer has two tabs, **Inspector** and
+**Effects** (the effects panel), and a button in the timeline's header
+shows or hides it. Picking a tab is the only thing that changes it, apart
+from applying an effect to the selected clip, which shows the Effects tab.
+The Effects tab is resizable by its left edge.
 
-Top: the **library**, grouped by category, Foundations first. Drag an
-effect onto a clip, or double-click it to add it to the end of the selected
-clip's stack.
+The **browser** at the right end of the timeline has tabs too: **Effects**
+(the library, grouped by category, Foundations first) and **Transitions**.
+One button in the timeline's header shows or hides it, and opening it
+changes nothing else. Drag an effect onto a clip or into the stack, or
+double-click it to add it to the end of the selected clip's stack.
 
-Below: the selected clip's **stack**, framed by pinned rows that can't be
+The Effects tab is the selected clip's **stack**, framed by pinned rows that can't be
 moved: Time and the anchor point above it, the clip's transitions (if any)
 and Shutter below it, in the order they are drawn. Clicking a transition
 row selects it, as clicking it on the timeline does.
@@ -456,7 +500,6 @@ row selects it, as clicking it on the timeline does.
   reorder within their effect.
 - The Delete key deletes the selected effect or control.
 - The panel opens with **Shift-E** or its button in the timeline's header.
-  The transitions panel keeps its button; opening either closes the other.
 
 ### Changing values by dragging
 
@@ -643,24 +686,210 @@ goes away with the built-in compositor. In its place:
 
 In order, each step usable on its own:
 
-1. **Model and saving**: anchor point, stacks and volume on clips, layer
-   transforms and video layers' volume removed, format version 2, strict
-   loading with path errors.
-2. **Compositor**: the tree with closed nested timelines and Pass Through,
-   Transform steps with folding and Moves Anchor, transitions below the
-   stack, one compositor for viewer and export, the new render key.
-3. **Effects panel**: library, stack editing, keyframe lanes and playhead,
-   dragging values, clip volume.
-   Remove the timeline's property rows and the inspector's transform
-   section.
-4. **Blending**: one Metal kernel per mode, using the formula above, and
-   Against.
-5. **Color**, with its working spaces.
-6. **Reading aids**: dimming, thumbnails, Show Up to Here.
-7. **Pushing transforms into nested timelines.**
-8. **Adjustment layers** with reach.
-9. **Time and Shutter**: constant speed with its three Sound choices,
-   Blend, Echo, Motion Blur and Trails.
-10. **Inputs**, with the first effect that takes one (a matte).
-11. **Speed ramps and Optical Flow.**
-12. **Copy, paste and presets**, with paste changes and the export check.
+1. **Model and saving** (done): anchor point, stacks and volume on clips,
+   layer transforms and video layers' volume removed, format version 2,
+   strict loading with path errors. The renderer already draws a clip's
+   Transform steps (folded into one matrix per clip, through the existing
+   compositors); there is no editing UI for stacks until step 3, so the
+   timeline's property rows and the inspector's transform section are gone
+   for now and a stack can only be written in `project.json`. Clip volume
+   is set in the inspector.
+2. **Compositor** (done): the tree with closed nested timelines and Pass
+   Through, Transform steps with folding and Moves Anchor, transitions below
+   the stack, one compositor for viewer and export, the new render key.
+   The model has `passThrough` on a nested clip and saves it; the toggle
+   in the clip's menu comes with the panel in step 3. Pass Through applies
+   a nested clip's Position, Scale, Rotation, Opacity and its dissolve,
+   slide and zoom to each layer inside (a Blending step inside a pass-through
+   group that has its own placement blends in the placed frame).
+3. **Effects panel** (done): library, stack editing, keyframe lanes and
+   playhead, dragging values, clip volume. The timeline's property rows and
+   the inspector's transform section were removed in step 1. The panel
+   shows what exists so far: Pass Through, the anchor point, the stack,
+   the transitions and Volume; Time and Shutter, Against, dimming,
+   thumbnails and Show Up to Here come with their steps, and copy, paste
+   and presets with step 12. It is resizable by its left edge. Moving or
+   dropping an effect, deleting it (Delete) and duplicating it (⌘D) are
+   undoable, and a value drag is one undo step.
+4. **Blending** (done): one Metal kernel per mode, using the formula above,
+   and Against. The kernels (`BlendKernels`, compiled from source at run
+   time) run inside the Core Image graph as an image processor
+   (`BlendProcessor`), over the part of the picture within the canvas. They
+   are checked against a separate restatement of the formulas for every
+   mode. A step blends with the backdrop as it was drawn when the clip's
+   turn came; a layer inside a pass-through nested clip is placed first,
+   so it blends with what is under it where it lands. The
+   panel's Against row lists the effects above the step; one that is gone or
+   below shows "Unavailable" and the step does nothing (dimming and notes
+   come with step 6). A stretch with a Blending step is rendered in the
+   background like other costly stretches.
+5. **Color** (done), with its working spaces. One Metal kernel
+   (`ColorKernels`) grades a run of Color steps in the order listed,
+   converting between encoded values, linear light and the log curve only
+   when a step needs a different one. Linear light is scaled so 1.0 is
+   reference white (100% on Rec. 709, 203 nits on PQ, a 75% signal on HLG)
+   and the log curve is ACEScct's. Exposure is in stops, Temperature and Tint
+   run -100...100 (up to half a stop of red against blue, and of green
+   against red and blue), Contrast and Saturation are percentages, and Lift,
+   Gamma and Gain have four values (all, then red, green and blue). Contrast
+   pivots about mid gray; Lift adds to the blacks, fading to nothing at white
+   (the log curve's value for 1.0); Gamma bends the tones between them. A run
+   of Position, Scale, Rotation, Opacity and Color steps is one move and
+   one grade, since neither depends on the other. Checked against a
+   double-precision restatement of the math in each space, and for the same
+   light giving the same result in every space.
+6. **Reading aids** (done): dimming, thumbnails, Show Up to Here. A control
+   at its default, a disabled control or effect, and an effect whose
+   controls are all no-ops are drawn faded. A Blending step is faded with a
+   note when its Against effect is gone or below it, when it is on the
+   bottom clip of a nested timeline (nothing under it), or when the clip
+   passes through, as are Color and anything else that needs one picture
+   (and wipes and the film dissolve among the transitions); an Opacity on a
+   pass-through clip only gets a note, since it still applies, to each
+   layer inside. Each effect row shows a thumbnail of the clip after it, at
+   the playhead, refreshed about a third of a second after the playhead
+   stops or the stack changes. Thumbnails draw the clip's own picture
+   through the stack up to that effect over black, so what is under the clip
+   isn't drawn and a Blending step blends with black. Show Up to Here is in
+   each effect's ⋯ menu: the viewer builds the project with that clip's
+   stack cut after the effect and its transitions dropped, shows a banner
+   with a way back, and background renders wait; export is never affected.
+7. **Pushing transforms into nested timelines** (done). A closed nested
+   clip's leading Position, Scale and Rotation (with its transition's move,
+   when nothing follows) are applied to each layer inside, drawn over
+   transparency in the outer frame, and the result is limited to the nested
+   frame (cropped, or masked when it is turned), with the nested clip's
+   opacity on the whole. Core Image already folds plain moves through
+   composites, so the difference shows when a pixel step (Blending or Color)
+   sits inside: those run as their own passes, and would otherwise run at
+   the nested frame's size and be enlarged. To get that, a layer's placement
+   in the frame it is drawn into (here, and for pass-through) is applied to
+   its picture first, and its own moves are conjugated to work in the placed
+   frame, which is the same picture. `EffectKind.dependsOnPixelSize` (false
+   for every effect so far) stops the push at a nested timeline holding an
+   effect whose result changes with pixel size.
+8. **Adjustment layers** with reach (done). An adjustment layer is a video
+   layer flagged `isAdjustment`, holding adjustment clips (`ClipSource.adjustment`:
+   no media, any length, and keyframes count from the clip's own start). The
+   timeline header's button adds one at the top of the stack, spanning the
+   timeline, and its header menu sets Reach to every layer below or down to
+   any layer under it. Reach is saved as the layer's ID (`reach`, written only
+   when it isn't every layer below), goes back to every layer below when that
+   layer is deleted, and reaches nothing, with a note in the panel, when the
+   layer is moved above the adjustment. A bracket along the adjustment
+   layer's left edge spans the layers it reaches. Drawing follows the
+   Below / With / Adjusted / Coverage / Result steps above: the tree gives
+   each adjustment the clips of the layers it reaches (`DrawClip.assembled`,
+   lowest adjustment first, so one reaching down to another gets it as it is
+   adjusted), the layers are drawn once over Below and once alone for their
+   alpha, and the result is a Core Image alpha-mask blend of Adjusted over
+   Below. Reaching every layer below uses a full-frame coverage. Inside a
+   pass-through nested clip an adjustment adjusts only that timeline's
+   layers, which then go over what is there. An adjustment's Opacity,
+   dissolve, slide and wipe act on the coverage and the adjusted picture; the
+   film dissolve isn't applied to it. A stretch where one plays is rendered
+   in the background, and the timeline is cut where it starts and ends.
+   Adjustment layers take only adjustment clips and other layers none.
+9. **Time and Shutter** (done): speed with its three Sound choices, Blend,
+   Echo, Motion Blur and Trails. A clip's `time` (speed, frame blending, echo,
+   sound) and `shutter` (motion blur, trails) are on the clip, set from its
+   menu and in the effects panel's pinned Time rows (above the anchor point)
+   and Shutter rows (below the transitions). `trimmedDuration` is still the
+   source range's length; the new `placedDuration` is how long that lasts on
+   the timeline, and `timelineTime(forSourceTime:)` and
+   `sourceTime(atTimelineTime:)` map between the two for constant speeds
+   (exactly, for whole percents) and for ramps (by integrating the reciprocal
+   speed). Trimming, splitting, moving, slipping, waveforms, beat markers
+   and the panel's keyframe lanes all go through them. Retiming a clip
+   (`editTime`) keeps its end on a frame and moves the clips after it by as
+   much as its end moved. Retimed clips don't join transitions. In the
+   composition a retimed clip's footage is a piece scaled to its length on
+   the track (`scaleTimeRange`), or for a ramp a piece every four frames,
+   each at the speed it has there. Blend adds a track of the same footage one
+   source frame later and mixes the two by how far between frames the moment
+   falls; Echo and Trails add tracks of the footage later by each copy's
+   delay, so each moment has the earlier one to show. They're
+   drawn only where all their tracks have frames, so the timeline is cut
+   where they start and end. Echo layers the earlier source frames under
+   the current one before the stack (time is above it); Trails draw the
+   finished clip, stack and transitions evaluated at the earlier moment,
+   under the current finished clip. Motion Blur draws the finished clip at
+   that many moments across the shutter (`frameDuration × angle / 360`,
+   centered on the frame) and averages them. While playing, the viewer
+   draws two, or none at Quarter quality, and Motion Blur in Preview
+   (the viewer's camera menu, remembered per Mac) turns it off there;
+   `DrawingOptions` carries this to the compositor without rebuilding
+   anything. Sound at other speeds is the host's audio time-pitch algorithm
+   (Keep Pitch is `.spectral`, Change Pitch `.varispeed`) on a track of its
+   own, or no track for Mute. A clip's volume keeps counting in source time
+   through its speed (at the speed it starts at, for a ramp). Speed
+   keyframes are in source time and can be set now (stopwatch and graph in
+   the panel). Not yet drawn: Time (speed, blend, echo, sound) and trails on a
+   nested timeline's clip, whose Time rows aren't offered
+10. **Inputs**, with the first effect that takes one (a matte) (done). The
+    Matte effect and its Mode and Amount; an input is footage or a nested
+    timeline dropped on the effect's drop zone, with Offset and Loop. Footage
+    gets a track of its own in the composition that starts with the clip
+    (holding its last frame, or looping), and a timeline is drawn as one
+    picture. The project file writes it as the effect's `input`
+    (`asset` or `timeline`, `offset`, `loops`), allowed only on effects that
+    take one. Missing footage leaves the effect dimmed and is reported
+    with the asset, and inputs count as uses of the media when it is
+    replaced. Not yet: stills are not a media kind, so an input is video
+    footage or a timeline
+11. **Speed ramps and Optical Flow** (done). Ramps came with step 9 (keyframed
+    speed, with its eases and graph, integrated into the clip's length and
+    drawn as a piece every four frames); this step checks them against
+    footage and adds Optical Flow. Vision's `VNGenerateOpticalFlowRequest`
+    estimates the motion from a frame to the next one on a copy at most 640
+    pixels wide (accuracy High), and a Metal kernel (`interpolate_flow`)
+    moves both full-size frames along it, the first back by the fraction
+    and the second forward by the rest, and mixes them. It is drawn only
+    when the compositor has no `DrawingOptions`, which is how background
+    renders and export draw, so the viewer fades (Blend) while it plays or
+    is paused on an unrendered stretch and shows the optical result once
+    the stretch is rendered (a note under the Frames row says so). Where
+    Vision or the Metal kernel can't run (a virtual Mac may lack the
+    hardware), the motion is measured by block matching and the frames
+    warped as a morph's are (see [transitions.md](transitions.md#two-pictures)),
+    with the search kept to about a sixth of the width, since a far match
+    in a repeating texture would only be wrong.
+    Frames of different sizes fade.
+    The flow is estimated again for each frame drawn between the same two
+    source frames, which slow motion repeats; a cache of fields is the first
+    thing to add if renders prove slow. Vision's flow runs a little short of
+    large motions, so a frame is closer to its neighbors than the true
+    in-between one when the footage moves fast
+12. **Copy, paste and presets**, with paste changes and the export check
+    (done). An `EffectBundle` is a set of effects taken from a clip's stack
+    with their keyframe times counted from the source clip's trim start
+    (`origin`), what their inputs and Against were called, and nothing
+    else; `paste` puts one into a clip at an index or in place of the whole
+    stack, giving every effect and control new IDs, shifting keyframes by
+    the difference between the two clips' trim starts, numbering names that
+    were automatic, and recording a `PasteChange` on the effect for each
+    thing that didn't come along (`inputLeftBehind`, `againstReset`,
+    `keyframesOutside` with its count, on the start or end side). Copy and
+    paste work on the one effect selected in the panel (⋯ menu or
+    Command-C and Command-V, which paste below it, or at the end of the
+    stack with none selected); a clip's menu on the timeline has Copy
+    Effects (the whole stack) and Paste Effects (replacing the stack).
+    Presets are `PresetStore`'s files, one JSON each, with a `formatVersion`
+    of their own and the effects as a project writes them (plus, for what
+    was left behind, `inputName` and `againstName`), with times from the
+    start of the clip. They are checked as strictly as a project, so a bad
+    one is listed in the browser's Presets section with the path of the
+    problem and skipped. Save as Preset and Save Whole Stack as Preset are in
+    the effect's ⋯ menu; presets are dragged onto a clip's block or into the
+    stack, renamed, shown in the Finder, or moved to the Trash from the
+    browser. Unresolved changes are saved on the effect as `pasteChanges`;
+    flagged effects get a marked edge and the changes listed under their
+    name with Mark Resolved, and a flagged clip a warning mark on its
+    block. The toolbar shows how many there are across the timelines the
+    export draws (`timelineIDsDrawn`: nested ones and ones used as inputs)
+    and opens the Paste Changes list, which Export opens too, instead of
+    exporting, until nothing is left; Accept All resolves them all and
+    carries on with the export. Go To selects the clip on its timeline and
+    opens the effects panel at the effect. Not yet: selecting several
+    effects at once, so copying several means copying the stack and
+    deleting what isn't wanted

@@ -31,12 +31,12 @@ import Testing
         let curves = VolumeCurves([inner: AnimatedValue(6.0), outer: fade])
         // The outer timeline's time is the root's; the inner one starts 5 s in.
         let stages = [
-            VolumeStage(layerID: inner, shift: CMTime(value: 5, timescale: 1)),
-            VolumeStage(layerID: outer, shift: .zero),
+            VolumeStage(id: inner, shift: CMTime(value: 5, timescale: 1)),
+            VolumeStage(id: outer, shift: .zero),
         ]
         #expect(abs(curves.gain(through: stages, at: 1) - AudioLevel.gain(decibels: 6 - 10)) < 0.0001)
         #expect(abs(curves.gain(through: stages, at: 3) - AudioLevel.gain(decibels: 6 - 20)) < 0.0001)
-        #expect(curves.gain(through: [VolumeStage(layerID: UUID(), shift: .zero)], at: 1) == 1)
+        #expect(curves.gain(through: [VolumeStage(id: UUID(), shift: .zero)], at: 1) == 1)
     }
 
     @Test func detachedSoundKeepsItsVolume() throws {
@@ -47,10 +47,12 @@ import Testing
         )
         let imported = project.importClip(media, intoTimeline: project.rootTimelineID)
         let ids = try #require(imported)
-        project.editVolume(of: ids.layerID, in: project.rootTimelineID) { $0.set(-6, at: .zero) }
+        project.editClip(ids.clipID, in: project.rootTimelineID) { $0.volume.set(-6, at: .zero) }
         let detached = project.detachAudio(in: project.rootTimelineID, layer: ids.layerID)
         let soundID = try #require(detached)
-        #expect(project.timeline(id: project.rootTimelineID)?.layer(id: soundID)?.volume.value == -6)
+        let sound = try #require(project.timeline(id: project.rootTimelineID)?.layer(id: soundID)?.clips.first)
+        #expect(sound.volume.value == -6)
+        #expect(sound.effects.isEmpty)
     }
 
     /// Plays a constant tone through the composition's audio mix the way an
@@ -152,5 +154,13 @@ import Testing
         }
         #expect(abs(meter.reading(at: 1.01).rms.x - 0.5 * Float(2).squareRoot()) < 0.001)
         #expect(meter.reading(at: 5) == .silent)
+    }
+}
+
+@Suite struct MixLevelMeterInvalidTimeTests {
+    @Test func aPlayerWithNoValidTimeReadsAsSilent() {
+        let meter = MixLevelMeter()
+        #expect(meter.reading(at: .nan) == .silent)
+        #expect(meter.reading(at: .infinity) == .silent)
     }
 }

@@ -1,17 +1,14 @@
 # Layer transforms and keyframes
 
-Status: **implemented (core)**: position, scale, rotation and opacity per
-visual layer, keyframed with linear interpolation, edited in the timeline
-and the inspector, rendered in the preview and in exports, and saved in
-`project.json`. Typed arithmetic works in every numeric field. The model,
-keyframe math, expression parser, saving and the built composition are unit
-tested. The timeline and inspector controls are compile-checked but have not
-been exercised on screen. What is not built is listed under
-[Not implemented yet](#not-implemented-yet).
-
-Planned: [effects.md](effects.md) replaces layer transforms with per-clip
-effect stacks. Keyframes, easing, the graph editor and arithmetic in
-numeric fields carry over.
+Status: **replaced** by [effects.md](effects.md). Layers no longer have a
+transform: position, scale, rotation and opacity are the controls of the
+Transform effect on a clip, and the timeline's property rows and the
+inspector's transform section (P, S, R and T) are gone. Everything this
+document says about **keyframes, eases, the graph editor and arithmetic in
+numeric fields** still holds, and applies to effect controls, the anchor
+point and volume. The sections on layer properties below describe how the
+layer transform worked and are kept for reference until the effects panel
+replaces them.
 
 ## Properties
 

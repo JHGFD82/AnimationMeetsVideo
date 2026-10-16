@@ -49,6 +49,31 @@ private final class Harness {
 
 @MainActor
 @Suite struct ProjectHistoryTests {
+    @Test func aGestureIsOneStepHoweverLongItTakes() {
+        let h = Harness()
+        h.edit { $0.name = "Before" }
+        h.history.beginGesture()
+        // Far apart in time, and several changes: still one step.
+        h.edit(after: 5) { $0.name = "A" }
+        h.edit(after: 5) { $0.name = "B" }
+        h.edit(after: 5) { $0.name = "C" }
+        h.history.endGesture(h.project)
+        h.closeEventGroup()
+        h.undo()
+        #expect(h.project.name == "Before")
+    }
+
+    @Test func aGesturePutBackLeavesNoStep() {
+        let h = Harness()
+        h.edit { $0.name = "Before" }
+        h.undoManager.removeAllActions()
+        h.history.beginGesture()
+        h.edit(after: 1) { $0.name = "Moved" }
+        h.edit(after: 1) { $0.name = "Before" }
+        h.history.endGesture(h.project)
+        #expect(!h.undoManager.canUndo)
+    }
+
     @Test func undoRestoresPreviousProjectAndRedoReappliesIt() {
         let h = Harness()
         h.edit { $0.name = "First" }

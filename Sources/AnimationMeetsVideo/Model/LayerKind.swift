@@ -31,13 +31,19 @@ extension EditingProject {
         isAudioOnly(clip) == kind.isAudio
     }
 
+    /// Whether a layer takes a clip: its kind does, and an adjustment layer
+    /// takes only adjustment clips, which no other layer takes.
+    func layer(_ layer: TimelineLayer, accepts clip: TimelineClip) -> Bool {
+        layer.isAdjustment == (clip.source == .adjustment) && layerKind(layer.kind, accepts: clip)
+    }
+
     /// A clip of sound alone: an audio file, or sound detached from a video.
     /// Decided by what the clip is, not by whether its file has a sound
     /// track, so a silent audio file still belongs on an audio layer.
     func isAudioOnly(_ clip: TimelineClip) -> Bool {
         switch resolvedInfo(for: clip.source) {
         case .media(let media): media.kind == .audio || clip.streams == .audio
-        case .timeline, nil: false
+        case .timeline, .adjustment, nil: false
         }
     }
 
@@ -83,7 +89,8 @@ extension EditingProject {
             return nil
         }
         let clip = timelines[tIndex].layers[lIndex].clips.remove(at: cIndex)
-        let layer = TimelineLayer(customName: nil, kind: kind, clips: [clip])
+        var layer = TimelineLayer(customName: nil, kind: kind, clips: [clip])
+        layer.isAdjustment = clip.source == .adjustment
         timelines[tIndex].layers.insert(layer, at: 0)
         return layer.id
     }

@@ -22,6 +22,11 @@ struct TimelineEditorSurface<Library: View>: View {
     @State private var playheadTime: CMTime = .zero
     @State private var trimPreview = TrimPreviewModel()
     @State private var buildTask: Task<Void, Never>?
+    /// Where the player item rebuild is. Edits that arrive while one is
+    /// building wait their turn (see `rebuildPlayerItem`).
+    @State private var buildPhase: BuildPhase = .idle
+    @State private var rebuildQueued = false
+    @State private var buildID = UUID()
     @State private var buildError: String?
     /// A render finished while playing; its rebuild waits for a pause,
     /// since swapping the item mid-play freezes the picture.
@@ -29,16 +34,84 @@ struct TimelineEditorSurface<Library: View>: View {
     /// As tall as the person makes it, not as tall as its layers need: its
     /// areas share whatever height it has and scroll the rest.
     @AppStorage("timelineHeight") private var timelineHeight: Double = 280
-    @AppStorage("showsTransitionsPanel") private var showsTransitions = false
+    /// The browser at the right end of the timeline, and which tab it is on.
+    @AppStorage("showsBrowserPanel") private var showsBrowser = false
+    @AppStorage("browserTab") private var browserTab = BrowserTab.effects
+    /// The area beside the viewer, and which tab it is on. The tab only
+    /// changes when the person picks one or an effect is applied.
+    @AppStorage("showsSidePanel") private var showsSidePanel = true
+    @AppStorage("sidePanelTab") private var sideTab = SidePanelTab.inspector
+    @AppStorage("effectsPanelWidth") private var effectsPanelWidth = 640.0
+    @State private var effectsState = EffectsPanelState()
     @AppStorage("showsAudioMeter") private var showsMeter = false
     /// The graph editors this surface has open, one HUD per parameter.
     @State private var graphs = KeyframeGraphHUDs()
+
+    /// A value is being dragged, so the viewer waits (`rebuildDeferred`).
+    @State private var isGesturing = false
+    @State private var rebuildDeferred = false
+
+    /// How many effects the selected clip has, to notice one being applied.
+    private struct AppliedEffects: Equatable {
+        var clipID: UUID
+        var count: Int
+    }
+
+    private var appliedEffects: AppliedEffects? {
+        selectedTimelineClip.map { AppliedEffects(clipID: $0.id, count: $0.effects.count) }
+    }
+
+    private enum BuildPhase { case idle, building, settling }
+
+    /// How long edits must pause before the player item is swapped. Until
+    /// then the viewer shows frames drawn from each edit (`showLive`).
+    private let settleDelay = Duration.milliseconds(300)
 
     private let minTimelineHeight: CGFloat = 140
     private let minTopAreaHeight: CGFloat = 220
 
     private var timeline: Timeline? {
         project.timeline(id: timelineID)
+    }
+
+    /// The widest the effects panel gets, so the viewer keeps room.
+    private func effectsMaxWidth(in available: CGFloat) -> CGFloat {
+        max(EffectsPanelResizeHandle.minimumWidth, available * 0.55)
+    }
+
+    private func effectsWidth(in available: CGFloat) -> CGFloat {
+        min(max(CGFloat(effectsPanelWidth), EffectsPanelResizeHandle.minimumWidth), effectsMaxWidth(in: available))
+    }
+
+    /// The clip and effect Show Up to Here is showing, while the effect
+    /// is still there.
+    private var partialView: EffectsPanelState.ShowUpTo? {
+        guard let showing = effectsState.showUpTo,
+              project.hasEffect(showing.effectID, ofClip: showing.clipID, in: timelineID)
+        else {
+            return nil
+        }
+        return showing
+    }
+
+    /// The project as the viewer draws it: the real one, except while Show
+    /// Up to Here is on, when one clip is cut short. Export and renders
+    /// always use the real one.
+    private var viewedProject: EditingProject {
+        guard let showing = partialView else { return project }
+        return project.showing(upTo: showing.effectID, ofClip: showing.clipID, in: timelineID)
+    }
+
+    private var compositionKey: CompositionKey { CompositionKey(project: viewedProject) }
+
+    /// What the viewer's banner says while Show Up to Here is on.
+    private var partialBanner: String? {
+        guard let showing = partialView,
+              let effect = project.clipAndLayer(showing.clipID, in: timelineID)?.clip.effects.first(where: { $0.id == showing.effectID })
+        else {
+            return nil
+        }
+        return "Showing up to \(effect.displayName)"
     }
 
     private var selectedTimelineClip: TimelineClip? {
@@ -86,21 +159,58 @@ struct TimelineEditorSurface<Library: View>: View {
                         frameRate: timeline?.frameRate ?? 24,
                         buildError: buildError,
                         offlineNotice: offlineNotice,
-                        trimPreview: trimPreview
+                        trimPreview: trimPreview,
+                        banner: partialBanner,
+                        onClearBanner: { effectsState.showUpTo = nil }
                     )
-                    InspectorPanel(
-                        project: $project,
-                        timelineID: timelineID,
-                        selection: selection,
-                        info: selectedInfo,
-                        timelineClip: selectedTimelineClip,
-                        playheadTime: playheadTime,
-                        onSeek: { time in scrub(to: time) },
-                        onDeleteSelection: { selection = nil }
-                    )
-                    .frame(width: 280)
-                    .grooved(.leading)
+                    if showsSidePanel {
+                        VStack(spacing: 0) {
+                            PanelTabBar(
+                                tabs: SidePanelTab.allCases, selection: $sideTab, title: \.title,
+                                onClose: { showsSidePanel = false }, closeHelp: "Hide the inspector and effects"
+                            )
+                            switch sideTab {
+                            case .inspector:
+                                InspectorPanel(
+                                    project: $project,
+                                    timelineID: timelineID,
+                                    selection: selection,
+                                    info: selectedInfo,
+                                    timelineClip: selectedTimelineClip,
+                                    playheadTime: playheadTime,
+                                    onSeek: { time in scrub(to: time) },
+                                    onDeleteSelection: { selection = nil }
+                                )
+                            case .effects:
+                                EffectsPanel(
+                                    project: $project,
+                                    timelineID: timelineID,
+                                    selection: selection,
+                                    playheadTime: playheadTime,
+                                    state: effectsState,
+                                    onSeek: { time in scrub(to: time) },
+                                    onSelectTransition: { edge in
+                                        if let selection {
+                                            self.selection = TimelineSelection(
+                                                timelineID: selection.timelineID, layerID: selection.layerID,
+                                                timelineClipID: selection.timelineClipID, transitionEdge: edge
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        .frame(width: sideTab == .effects ? effectsWidth(in: geometry.size.width) : 280)
+                        .overlay(alignment: .leading) {
+                            if sideTab == .effects {
+                                EffectsPanelResizeHandle(width: $effectsPanelWidth, maxWidth: effectsMaxWidth(in: geometry.size.width))
+                            }
+                        }
+                        .grooved(.leading)
+                        .transition(.move(edge: .trailing))
+                    }
                 }
+                .editorAnimation(Design.Motion.panel, value: showsSidePanel)
                 .frame(maxHeight: .infinity)
 
                 TimelineResizeHandle(
@@ -117,32 +227,55 @@ struct TimelineEditorSurface<Library: View>: View {
                             .grooved(.leading)
                             .transition(.move(edge: .trailing))
                     }
-                    if showsTransitions {
-                        TransitionsPanel(onClose: { showsTransitions = false })
-                            .frame(width: 220)
-                            .grooved(.leading)
-                            .transition(.move(edge: .trailing))
+                    if showsBrowser {
+                        BrowserPanel(
+                            project: $project, timelineID: timelineID, selection: selection,
+                            state: effectsState, tab: $browserTab, onClose: { showsBrowser = false }
+                        )
+                        .frame(width: 280)
+                        .grooved(.leading)
+                        .transition(.move(edge: .trailing))
                     }
                 }
                 .frame(height: resolvedTimelineHeight)
-                .editorAnimation(Design.Motion.panel, value: showsTransitions)
+                .editorAnimation(Design.Motion.panel, value: showsBrowser)
                 .editorAnimation(Design.Motion.panel, value: showsMeter)
             }
         }
         .environment(graphs)
-        // Everything that follows the project is worked out here, once per
-        // edit, rather than in `body`, which also runs for selection and
-        // playhead changes.
-        .onChange(of: project, initial: true) { old, new in
-            graphs.update(project: new)
-            // Volumes aren't part of the composition: the player's audio
-            // taps read them as they play, so an edit is heard without a
-            // rebuild.
-            playback.volumeCurves.replace(with: VolumeCurves.of(new))
-            if CompositionKey(project: old) != CompositionKey(project: new) {
+        .onReceive(NotificationCenter.default.publisher(for: .revealEffect)) { note in
+            if let id = note.object as? UUID { effectsState.select(effect: id) }
+        }
+        // Applying an effect shows the effects list; nothing else does.
+        .onChange(of: appliedEffects) { old, new in
+            if let old, let new, old.clipID == new.clipID, new.count > old.count {
+                showsSidePanel = true
+                sideTab = .effects
+            }
+        }
+        // While a value is dragged the viewer follows it at a size that
+        // keeps up, and the player item is swapped when the mouse is
+        // released. A change to speed alone waits for that.
+        .onReceive(NotificationCenter.default.publisher(for: .valueGestureDidBegin)) { _ in
+            isGesturing = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .valueGestureDidEnd)) { _ in
+            isGesturing = false
+            if rebuildDeferred {
+                rebuildDeferred = false
                 renderer?.noteActivity()
                 rebuildPlayerItem()
             }
+        }
+        .onChange(of: project, initial: true) { _, project in
+            graphs.update(project: project)
+            // Volumes aren't part of the composition: the player's audio
+            // taps read them as they play, so an edit is heard without a
+            // rebuild. Worked out here, once per edit, rather than in
+            // `body`, which also runs for selection and playhead changes.
+            playback.volumeCurves.replace(with: VolumeCurves.of(project))
+            // Show Up to Here lets go of an effect that is gone.
+            if effectsState.showUpTo != nil, partialView == nil { effectsState.showUpTo = nil }
         }
         .onChange(of: playheadTime, initial: true) { _, time in graphs.playhead = time }
         .onAppear {
@@ -158,6 +291,16 @@ struct TimelineEditorSurface<Library: View>: View {
             playback.player.pause()
             playheadTime = .zero
             rebuildPlayerItem(resetPosition: true)
+        }
+        .onChange(of: compositionKey) { old, new in
+            renderer?.noteActivity()
+            if isGesturing, new.differsOnlyInSpeed(from: old) {
+                // Retiming is judged by playing, not by the frame at the
+                // playhead: wait for the mouse to be released.
+                rebuildDeferred = true
+            } else {
+                rebuildPlayerItem()
+            }
         }
         // Wherever it stops, playing or scrubbing, is where rendering starts.
         .onChange(of: playheadTime) { _, time in
@@ -186,6 +329,10 @@ struct TimelineEditorSurface<Library: View>: View {
             }
         }
         .onChange(of: renderer?.packageURL) { _, _ in
+            rebuildPlayerItem()
+        }
+        // Motion blur on or off in the viewer redraws what it shows.
+        .onChange(of: playback.motionBlurInPreview) { _, _ in
             rebuildPlayerItem()
         }
         // The file check found media gone or back.
@@ -242,9 +389,6 @@ struct TimelineEditorSurface<Library: View>: View {
                 onTrimClipEnd: { layerID, clipID, newTrimEnd in
                     project.trimClipEnd(clipID, in: timelineID, layer: layerID, to: newTrimEnd)
                 },
-                onEditTransform: { layerID, change in
-                    project.editTransform(of: layerID, in: timelineID, change)
-                },
                 onEditVolume: { layerID, change in
                     project.editVolume(of: layerID, in: timelineID, change)
                 },
@@ -283,8 +427,16 @@ struct TimelineEditorSurface<Library: View>: View {
                     project.setTransitionDuration(duration, at: edge, of: clipID, in: timelineID, layer: layerID)
                 },
                 onEditProject: { change in change(&project) },
-                showsTransitions: $showsTransitions,
-                showsMeter: $showsMeter
+                showsBrowser: $showsBrowser,
+                showsSidePanel: $showsSidePanel,
+                showsEffects: Binding(
+                    get: { showsSidePanel && sideTab == .effects },
+                    set: { on in
+                        if on { showsSidePanel = true; sideTab = .effects } else { sideTab = .inspector }
+                    }
+                ),
+                showsMeter: $showsMeter,
+                effectsState: effectsState
             )
         } else {
             ContentUnavailableView("No Timeline Selected", systemImage: "timeline.selection")
@@ -345,27 +497,97 @@ struct TimelineEditorSurface<Library: View>: View {
     /// Rebuilds the player item from the current project. Keeps the
     /// position and play state the player has when the build *finishes*,
     /// not when it started, so edits made during playback don't jump back.
+    ///
+    /// A rebuild is never cancelled by the next edit, or a fast drag would
+    /// cancel every build before it finished and nothing would draw until
+    /// the drag ended. An edit that arrives during a build is queued and
+    /// built when the current one is done. While paused, each finished
+    /// build also draws the frame under the playhead over the viewer
+    /// (`showLive`), so the picture follows the edit; the player item
+    /// itself is swapped only once edits have paused for `settleDelay`,
+    /// and the live frame is held over the swap so nothing blinks.
     private func rebuildPlayerItem(resetPosition: Bool = false) {
-        buildTask?.cancel()
+        if resetPosition {
+            buildTask?.cancel()
+            buildTask = nil
+            buildID = UUID()
+            buildPhase = .idle
+            rebuildQueued = false
+            playback.clearLive()
+        }
         guard let timeline, timeline.layers.contains(where: { !$0.clips.isEmpty }) else {
+            buildTask?.cancel()
+            buildTask = nil
+            buildID = UUID()
+            buildPhase = .idle
+            rebuildQueued = false
+            playback.clearLive()
             playback.player.replaceCurrentItem(with: nil)
             buildError = nil
             renderer?.update(project: project, timelineID: timelineID, segments: [])
             return
         }
-        let project = self.project
+        switch buildPhase {
+        case .building:
+            rebuildQueued = true
+            return
+        case .settling:
+            // Waiting out the delay with an item built: this edit replaces it.
+            buildTask?.cancel()
+        case .idle:
+            break
+        }
+        let project = self.viewedProject
+        let isPartial = partialView != nil
+        let realProject = self.project
         let tID = timelineID
         let player = playback.player
         let playback = playback
         let frameRate = timeline.frameRate
         let renderer = renderer
+        let id = UUID()
+        buildID = id
+        buildPhase = .building
+        rebuildQueued = false
+        /// Ends this build, starting the queued one if there is one. A
+        /// build replaced since it began leaves things to its successor.
+        func finish() {
+            guard buildID == id else { return }
+            buildTask = nil
+            buildPhase = .idle
+            if rebuildQueued {
+                rebuildQueued = false
+                rebuildPlayerItem()
+            }
+        }
         buildTask = Task {
             do {
                 let composed = try await CompositionExporter.buildComposedTimeline(
-                    for: project, timelineID: tID, forPreview: true, meter: playback.meter, cache: renderer?.cache
+                    for: project, timelineID: tID, forPreview: true, meter: playback.meter, options: playback.drawingOptions,
+                    cache: isPartial ? nil : renderer?.cache
                 )
-                guard !Task.isCancelled else { return }
-                renderer?.update(project: project, timelineID: tID, segments: composed.segments)
+                guard buildID == id else { return }
+                // A clip cut short isn't what renders are for.
+                renderer?.update(project: realProject, timelineID: tID, segments: isPartial ? [] : composed.segments)
+                let wasPaused = player.timeControlStatus == .paused
+                if wasPaused, !resetPosition, player.currentItem != nil {
+                    playback.showLive(composed, interactive: isGesturing)
+                    if isGesturing {
+                        // The item is swapped when the drag ends.
+                        rebuildDeferred = true
+                        finish()
+                        return
+                    }
+                    buildPhase = .settling
+                    if rebuildQueued {
+                        // Newer edits are already waiting; this one is only worth its frame.
+                        finish()
+                        return
+                    }
+                    try await Task.sleep(for: settleDelay)
+                    guard buildID == id else { return }
+                    buildPhase = .building
+                }
                 let item = AVPlayerItem(asset: composed.composition)
                 playback.prepare(item, with: composed, frameRate: frameRate)
                 if player.timeControlStatus == .paused {
@@ -374,8 +596,13 @@ struct TimelineEditorSurface<Library: View>: View {
                     // `PlayerContainerView` covers the gap until it draws.
                     let resumeTime = resetPosition ? playheadTime : player.currentTime()
                     _ = await item.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
-                    guard !Task.isCancelled else { return }
+                    guard buildID == id else { return }
                     player.replaceCurrentItem(with: item)
+                    // The live frame stays over the new item: the picture
+                    // the video and an image make aren't pixel for pixel
+                    // the same, so changing from one to the other after
+                    // an edit shows as a blink. Playing or scrubbing
+                    // takes it away.
                 } else {
                     let resumeTime = resetPosition ? playheadTime : player.currentTime()
                     player.replaceCurrentItem(with: item)
@@ -383,16 +610,35 @@ struct TimelineEditorSurface<Library: View>: View {
                     player.play()
                 }
                 buildError = nil
+                finish()
             } catch is CancellationError {
+                finish()
             } catch {
-                guard !Task.isCancelled else { return }
-                if let compositionError = error as? CompositionError, case .emptyTimeline = compositionError {
-                    player.replaceCurrentItem(with: nil)
-                    buildError = nil
-                } else {
-                    buildError = error.localizedDescription
+                playback.clearLive()
+                if buildID == id {
+                    if let compositionError = error as? CompositionError, case .emptyTimeline = compositionError {
+                        player.replaceCurrentItem(with: nil)
+                        buildError = nil
+                    } else {
+                        buildError = error.localizedDescription
+                    }
                 }
+                finish()
             }
+        }
+    }
+}
+
+/// What the area beside the viewer shows.
+enum SidePanelTab: String, CaseIterable, Identifiable {
+    case inspector, effects
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .inspector: "Inspector"
+        case .effects: "Effects"
         }
     }
 }
@@ -456,5 +702,33 @@ struct TimelineResizeHandle: View {
                     dragStartHeight = nil
                 }
         )
+    }
+}
+
+/// The strip along the effects panel's left edge that resizes it.
+struct EffectsPanelResizeHandle: View {
+    static let minimumWidth: CGFloat = 480
+
+    @Binding var width: Double
+    let maxWidth: CGFloat
+    @State private var startWidth: Double?
+
+    var body: some View {
+        Color.clear
+            .frame(width: 6)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { value in
+                        let start = startWidth ?? width
+                        startWidth = start
+                        width = min(max(start - Double(value.translation.width), Double(Self.minimumWidth)), Double(maxWidth))
+                    }
+                    .onEnded { _ in startWidth = nil }
+            )
+            .help("Drag to resize the effects panel")
     }
 }

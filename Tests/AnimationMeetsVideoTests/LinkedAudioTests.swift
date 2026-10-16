@@ -37,7 +37,7 @@ private func videoWithSound(url: URL? = nil, duration: Double = 10) -> MediaClip
         #expect(sound.startOffset == picture.startOffset && sound.trimStart == picture.trimStart && sound.trimEnd == picture.trimEnd)
         #expect(project.playsVideo(picture) && !project.playsAudio(picture))
         #expect(project.playsAudio(sound) && !project.playsVideo(sound))
-        #expect(!layers[1].isVisual(in: project))
+        #expect(!project.hasEffectStack(sound))
         #expect(!project.isFrameLocked(sound))
         // Nothing left to detach.
         #expect(project.detachAudio(in: timelineID, layer: ids.layerID) == nil)

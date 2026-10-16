@@ -90,13 +90,14 @@ when each wipe and slide direction was its own kind (`wipeLeft`,
 
 ## Rendering
 
+Every transition is drawn by `LayeredCompositor`, in the viewer and in
+export, below the clip's effect stack (see [effects.md](effects.md)).
+
 ### On the clip alone
 
-Cross Dissolve, Wipe, Slide, Zoom and Spin are the built-in compositor's
-opacity, transform and crop on the clip (`EdgeTransitions.effect`), so a
-timeline that uses only these plays and exports without our compositor.
-The film dissolve keys on brightness (`LumaReveal`), which needs
-`LayeredCompositor`.
+Cross Dissolve, Wipe, Slide, Zoom and Spin set the opacity, transform and
+crop of the clip's finished picture (`EdgeTransitions.effect`). The film
+dissolve keys it on brightness (`LumaReveal`).
 
 ### Two pictures
 
@@ -110,10 +111,11 @@ whole pictures:
 - On a way out, before is the clip over what's under it and after is
   what's under it.
 
-`TransitionRenderer` draws the frame between them, which replaces both.
-A timeline using any of these is drawn by `LayeredCompositor`, as with
-the film dissolve, and each frame's transition state (`TransitionFrame`)
-is part of the render cache's key.
+`TransitionRenderer` draws the frame between them, which replaces both
+(`Drawing` in `LayeredCompositor.swift`, after the clip's shutter). Each
+frame's transition state (`TransitionFrame`) is part of the render
+cache's key. On a pass-through nested clip, before is what's under it
+and after is its layers drawn over that.
 
 - **Wipes** draw a mask with Core Graphics (`TransitionMasks`), at most
   640 points wide and scaled up smoothly, and show the picture after
@@ -146,8 +148,9 @@ is part of the render cache's key.
 ### Limits
 
 - A transition drawn from two pictures acts on the whole frame of the
-  output, even on a layer inside a nested timeline or on a clip scaled
-  down by its layer's transform.
+  timeline the clip is in, even on a clip its stack has scaled down.
+- It is drawn after the clip's Shutter, so motion blur covers the clip's
+  own motion but not the transition's.
 - Additive Dissolve, Channel Dissolve, Glitch, Flip and Cube draw over
   black where their pictures are transparent, so they are opaque.
 - A Morph between shots that share nothing moves little and looks like

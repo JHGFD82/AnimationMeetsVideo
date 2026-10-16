@@ -33,7 +33,6 @@ struct TimelineView: View {
     let onApplyJointEdit: (UUID, UUID, JointEdit) -> Void
     let onTrimClipStart: (UUID, UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, UUID, CMTime) -> Void
-    let onEditTransform: (UUID, (inout LayerTransform) -> Void) -> Void
     let onEditVolume: (UUID, (inout AnimatedValue<Double>) -> Void) -> Void
     let onSetTransition: (UUID, UUID, TransitionKind, TransitionEdge) -> Void
     let onRemoveTransition: (UUID, UUID, TransitionEdge) -> Void
@@ -56,8 +55,13 @@ struct TimelineView: View {
     let onSetTransitionDuration: (UUID, UUID, TransitionEdge, CMTime) -> Void
     /// Applies a change to the project, for the section lane.
     let onEditProject: ((inout EditingProject) -> Void) -> Void
-    @Binding var showsTransitions: Bool
+    @Binding var showsBrowser: Bool
+    @Binding var showsSidePanel: Bool
+    @Binding var showsEffects: Bool
     @Binding var showsMeter: Bool
+    /// What is selected in the effects panel, which gets the Delete key
+    /// while it has something selected.
+    let effectsState: EffectsPanelState
 
     /// The chosen zoom, or nil while the whole timeline is fitted to the
     /// window. Kept in points per second, not relative to the fit, so
@@ -65,8 +69,6 @@ struct TimelineView: View {
     @State private var zoomedPixelsPerSecond: CGFloat?
     @State private var scrollX: CGFloat = 0
     @State private var trackAreaWidth: CGFloat = 800
-    /// The transform properties shown under each layer, by layer ID.
-    @State private var revealed: [UUID: Set<TransformProperty>] = [:]
     /// Layers showing their volume under their clips.
     @State private var volumeRevealed: Set<UUID> = []
     /// Layers showing their video clips' linked audio.
@@ -121,7 +123,6 @@ struct TimelineView: View {
     @AppStorage("beatClickFrequency") private var beatClickFrequency = 1000.0
 
     private let rulerHeight: CGFloat = 28
-    private let propertyRowHeight: CGFloat = 22
     /// Two points: the groove between layers is a dark cut with a lit edge
     /// under it, which needs a row of pixels each. The header column and
     /// the track area both lay this out, so layer positions stay aligned.
@@ -145,7 +146,6 @@ struct TimelineView: View {
         clipRowHeight(of: layer)
             + (shownJoint(in: layer) != nil ? TransitionFootageLane.height : 0)
             + (showsLinkedAudio(of: layer) ? audioLaneHeight(of: layer) : 0)
-            + CGFloat(shownProperties(of: layer).count) * propertyRowHeight
             + (showsVolume(of: layer) ? VolumeLane.height : 0)
             + separatorHeight
     }
@@ -199,25 +199,25 @@ struct TimelineView: View {
     }
     private let zoomStep: CGFloat = 1.5
 
-    /// Wider while property rows are showing, to fit their values.
+    /// Wider while a volume row is showing, to fit its values.
     private var labelColumnWidth: CGFloat {
-        timeline.layers.contains { !shownProperties(of: $0).isEmpty || showsVolume(of: $0) } ? 300 : 150
+        timeline.layers.contains { showsVolume(of: $0) } ? 300 : 150
     }
 
     private func showsVolume(of layer: TimelineLayer) -> Bool {
+        volumeRevealed.contains(layer.id) && hasProperties(layer)
+    }
+
+    /// Whether the layer's clips draw their volume across them: while L is
+    /// on, for every layer with sound.
+    private func showsVolumeLines(of layer: TimelineLayer) -> Bool {
         volumeRevealed.contains(layer.id) && project.layerPlaysAudio(layer)
     }
 
-    /// Whether the layer has any property rows to show: transforms on
-    /// layers with pictures, volume on layers with sound.
+    /// Whether the layer has a volume row to show: Sound and Music layers
+    /// have a layer volume, video layers only their clips'.
     private func hasProperties(_ layer: TimelineLayer) -> Bool {
-        layer.isVisual(in: project) || project.layerPlaysAudio(layer)
-    }
-
-    /// The layer's shown properties, in standard order. Audio layers have none.
-    private func shownProperties(of layer: TimelineLayer) -> [TransformProperty] {
-        guard let set = revealed[layer.id], !set.isEmpty else { return [] }
-        return TransformProperty.allCases.filter(set.contains)
+        layer.kind.isAudio && project.layerPlaysAudio(layer)
     }
 
     private var beatLayerChoices: [(id: UUID, name: String)] {
@@ -328,12 +328,31 @@ struct TimelineView: View {
                 .toggleStyle(.button)
                 .help(snapping ? "Snapping on: edges snap to clips, the playhead and beat markers (N)" : "Snapping off (N)")
                 .accessibilityLabel("Snapping")
-                Toggle(isOn: $showsTransitions) {
-                    Image(systemName: "square.on.square.dashed")
+                Toggle(isOn: $areaLayout.showsSections) {
+                    Image(systemName: "rectangle.split.3x1")
                 }
                 .toggleStyle(.button)
-                .help(showsTransitions ? "Hide transitions" : "Show transitions")
-                .accessibilityLabel("Transitions panel")
+                .help(areaLayout.showsSections ? "Hide the sections row" : "Show the sections row")
+                .accessibilityLabel("Sections row")
+                Toggle(isOn: $showsBrowser) {
+                    Image(systemName: "square.grid.2x2")
+                }
+                .toggleStyle(.button)
+                .help(showsBrowser ? "Hide the effects and transitions browser" : "Show the effects and transitions browser")
+                .accessibilityLabel("Effects and transitions browser")
+                Button {
+                    addAdjustmentLayer()
+                } label: {
+                    Image(systemName: "slider.horizontal.below.rectangle")
+                }
+                .help("New adjustment layer: effects applied to the layers below it")
+                .accessibilityLabel("New adjustment layer")
+                Toggle(isOn: $showsSidePanel) {
+                    Image(systemName: "sidebar.right")
+                }
+                .toggleStyle(.button)
+                .help(showsSidePanel ? "Hide the inspector and effects" : "Show the inspector and effects (⇧E for the selected clip's effects)")
+                .accessibilityLabel("Inspector and effects")
                 Toggle(isOn: $showsMeter) {
                     Image(systemName: "chart.bar.fill")
                 }
@@ -350,7 +369,7 @@ struct TimelineView: View {
                 let viewport = viewport(width: geometry.size.width - labelColumnWidth)
                 let scrollbarHeight = viewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
                 let shownAreas = areaLayout.shown
-                let railHeight = rulerHeight + SectionLane.height + separatorHeight
+                let railHeight = rulerHeight + (areaLayout.showsSections ? SectionLane.height : 0) + separatorHeight
                 // Whatever height the timeline is given goes to the areas,
                 // split by their shares: a taller timeline shows more
                 // layers, it doesn't make them taller.
@@ -390,13 +409,15 @@ struct TimelineView: View {
                                     }
                                 }
                         }
-                        HStack(spacing: 0) {
-                            Text("Sections")
-                                .font(Design.Typeface.micro)
-                                .foregroundStyle(Design.textTertiary)
-                                .padding(.leading, Design.Space.step)
-                                .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
-                            sectionLane(viewport: viewport, targets: snapTargets)
+                        if areaLayout.showsSections {
+                            HStack(spacing: 0) {
+                                Text("Sections")
+                                    .font(Design.Typeface.micro)
+                                    .foregroundStyle(Design.textTertiary)
+                                    .padding(.leading, Design.Space.step)
+                                    .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
+                                sectionLane(viewport: viewport, targets: snapTargets)
+                            }
                         }
                     }
                     .background(Design.Surface.raised.color)
@@ -678,7 +699,7 @@ struct TimelineView: View {
                         height: clipRowHeight(of: layer),
                         canMoveUp: index > 0,
                         canMoveDown: index < layers.count - 1,
-                        isExpanded: hasProperties(layer) ? !shownProperties(of: layer).isEmpty || showsVolume(of: layer) : nil,
+                        isExpanded: hasProperties(layer) ? showsVolume(of: layer) : nil,
                         onToggleExpanded: { toggleExpanded(layer) },
                         isAudioExpanded: project.layerHasLinkedAudio(layer) ? showsLinkedAudio(of: layer) : nil,
                         onToggleAudio: { toggleLinkedAudio(layer) },
@@ -695,7 +716,8 @@ struct TimelineView: View {
                             selectedSectionID = nil
                             onSelectLayer()
                         },
-                        onDelete: { deleteLayer(layer.id) }
+                        onDelete: { deleteLayer(layer.id) },
+                        reach: reachMenu(for: layer)
                     )
                     if shownJoint(in: layer) != nil {
                         HStack {
@@ -720,22 +742,6 @@ struct TimelineView: View {
                                 Button("Detach Audio") { onDetachAudio(layer.id, nil) }
                             }
                     }
-                    ForEach(shownProperties(of: layer)) { property in
-                        TransformPropertyRow(
-                            property: property,
-                            transform: layer.transform,
-                            time: frameTime,
-                            frameSize: timeline.frameSize,
-                            onEdit: { change in onEditTransform(layer.id, change) },
-                            onSeek: onScrub,
-                            onShowGraph: graphs.map { graphs in
-                                { graphs.show(ParameterKey(timelineID: timelineID, layerID: layer.id, parameter: .transform(property))) }
-                            }
-                        )
-                        .padding(.leading, 30)
-                        .padding(.trailing, 8)
-                        .frame(height: propertyRowHeight)
-                    }
                     if showsVolume(of: layer) {
                         VolumePropertyRow(
                             volume: layer.volume,
@@ -743,7 +749,7 @@ struct TimelineView: View {
                             onEdit: { change in onEditVolume(layer.id, change) },
                             onSeek: onScrub,
                             onShowGraph: graphs.map { graphs in
-                                { graphs.show(ParameterKey(timelineID: timelineID, layerID: layer.id, parameter: .volume)) }
+                                { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
                             }
                         )
                         .padding(.leading, 30)
@@ -763,6 +769,45 @@ struct TimelineView: View {
                 .zIndex(isDragged ? 1 : 0)
             }
             Color.clear.frame(height: newLayerRowHeight)
+        }
+        .overlay(alignment: .topLeading) { reachBrackets(of: layers) }
+    }
+
+    /// The reach choices of an adjustment layer: every layer below it, or
+    /// down to any one of them.
+    private func reachMenu(for layer: TimelineLayer) -> ReachMenu? {
+        guard layer.isAdjustment, let index = timeline.layers.firstIndex(where: { $0.id == layer.id }) else { return nil }
+        return ReachMenu(
+            current: layer.reach,
+            options: timeline.layers[(index + 1)...].map { ($0.id, project.displayName(of: $0, in: timeline)) },
+            summary: project.reachDescription(of: layer, in: timeline),
+            onChoose: { bottom in onEditProject { $0.setReach(of: layer.id, in: timelineID, toLayer: bottom) } }
+        )
+    }
+
+    /// A bracket at the left edge of each adjustment layer in the area,
+    /// spanning the layers it reaches (in the same area), so what an
+    /// adjustment affects can be read off the stack.
+    private func reachBrackets(of layers: [TimelineLayer]) -> some View {
+        let tops = tops(of: layers)
+        return ZStack(alignment: .topLeading) {
+            ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
+                if layer.isAdjustment {
+                    let reached = project.reachedLayers(of: layer, in: timeline)
+                    let last = reached.last.flatMap { target in layers.firstIndex { $0.id == target.id } }
+                    let bottom = (last ?? index)
+                    let y0 = tops[index]
+                    let y1 = tops[bottom] + blockHeight(of: layers[bottom]) - separatorHeight
+                    RoundedRectangle(cornerRadius: 1, style: .continuous)
+                        .fill(Design.ClipTone.adjustment.color.opacity(reached.isEmpty ? 0.35 : 0.9))
+                        .frame(width: 3, height: max(4, y1 - y0))
+                        .offset(x: 1, y: y0)
+                        .help(reached.isEmpty && layer.reach != nil
+                            ? "Reaches nothing: the layer it reached down to is above it"
+                            : "Reaches: \(project.reachDescription(of: layer, in: timeline))")
+                        .allowsHitTesting(false)
+                }
+            }
         }
     }
 
@@ -827,7 +872,31 @@ struct TimelineView: View {
                         onSnapIndicator: { snapIndicator = $0 },
                         onTrimPreview: onTrimPreview,
                         onApplyJointEdit: { clipID, edit in onApplyJointEdit(layer.id, clipID, edit) },
-                        onSetTransitionDuration: { clipID, edge, duration in onSetTransitionDuration(layer.id, clipID, edge, duration) }
+                        onSetTransitionDuration: { clipID, edge, duration in onSetTransitionDuration(layer.id, clipID, edge, duration) },
+                        onAddEffect: { clipID, kind in
+                            onEditProject { $0.addEffect(kind, toClip: clipID, in: timelineID) }
+                        },
+                        onApplyPreset: { clipID, presetID in
+                            guard let preset = try? PresetStore.read(PresetStore.fileURL(presetID)) else { return }
+                            onEditProject { $0.paste(preset.bundle, ontoClip: clipID, in: timelineID) }
+                        },
+                        onCopyEffects: { clipID in
+                            EffectClipboard.shared.bundle = project.bundle(ofEffects: nil, fromClip: clipID, in: timelineID)
+                        },
+                        onPasteEffects: { clipID in
+                            guard let bundle = EffectClipboard.shared.bundle else { return }
+                            onEditProject { $0.paste(bundle, ontoClip: clipID, in: timelineID, replacingStack: true) }
+                        },
+                        onSetPassThrough: { clipID, value in
+                            onEditProject { $0.editClip(clipID, in: timelineID) { $0.passThrough = value } }
+                        },
+                        showsVolumeLines: showsVolumeLines(of: layer),
+                        onEditTime: { clipID, change in
+                            onEditProject { $0.editTime(ofClip: clipID, in: timelineID, layer: layer.id, change) }
+                        },
+                        onEditClip: { clipID, change in
+                            onEditProject { $0.editClip(clipID, in: timelineID, change) }
+                        }
                     )
                     // Recorded for drags that cross areas; see
                     // `TimelineGeometryStore`.
@@ -864,26 +933,6 @@ struct TimelineView: View {
                             visibleX: viewport.visibleContentX,
                             onSelectClip: { clip in onSelectClip(layer.id, clip) },
                             onDetachAudio: { clipID in onDetachAudio(layer.id, [clipID]) }
-                        )
-                    }
-                    ForEach(shownProperties(of: layer)) { property in
-                        KeyframeLane(
-                            marks: layer.transform[components: property].marks,
-                            currentTime: frameTime,
-                            pixelsPerSecond: pixelsPerSecond,
-                            width: contentWidth,
-                            height: propertyRowHeight,
-                            snap: { timeline.snappedToFrame($0) },
-                            onSeek: onScrub,
-                            onMove: { from, to in
-                                onEditTransform(layer.id) { $0.moveKeyframe(property, at: from, to: to) }
-                            },
-                            onDelete: { time in
-                                onEditTransform(layer.id) { $0.removeKeyframe(property, at: time) }
-                            },
-                            onEase: { time, preset in
-                                onEditTransform(layer.id) { $0[components: property].applyEase(preset, at: time) }
-                            }
                         )
                     }
                     if showsVolume(of: layer) {
@@ -1058,16 +1107,18 @@ struct TimelineView: View {
         if channelsRevealed.contains(layer.id) { channelsRevealed.remove(layer.id) } else { channelsRevealed.insert(layer.id) }
     }
 
-    /// The disclosure arrow shows every property the layer has (the four
-    /// transform properties if it has pictures, volume if it has sound),
-    /// or hides them all.
+    /// The disclosure arrow shows the layer's volume row, or hides it.
     private func toggleExpanded(_ layer: TimelineLayer) {
-        let showing = !shownProperties(of: layer).isEmpty || showsVolume(of: layer)
-        revealed[layer.id] = !showing && layer.isVisual(in: project) ? Set(TransformProperty.allCases) : []
-        if !showing && project.layerPlaysAudio(layer) {
-            volumeRevealed.insert(layer.id)
-        } else {
-            volumeRevealed.remove(layer.id)
+        if showsVolume(of: layer) { volumeRevealed.remove(layer.id) } else { volumeRevealed.insert(layer.id) }
+    }
+
+    /// Puts an adjustment layer at the top of the stack and selects its clip.
+    private func addAdjustmentLayer() {
+        var created: (layerID: UUID, clipID: UUID)?
+        onEditProject { created = $0.addAdjustmentLayer(to: timelineID, from: .zero) }
+        // Selection goes by ID; the view hasn't seen the new clip yet.
+        if let created {
+            onSelectClip(created.layerID, TimelineClip(id: created.clipID, source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: .zero))
         }
     }
 
@@ -1079,6 +1130,8 @@ struct TimelineView: View {
     /// Delete removes the selected layer, else the selected transition,
     /// else the selected clip.
     private func deleteSelection() -> Bool {
+        // The effects panel has the key while something in it is selected.
+        if showsEffects, effectsState.hasSelection { return false }
         if let selectedSectionID, timeline.sections.contains(where: { $0.id == selectedSectionID }) {
             onEditProject { $0.deleteSection(selectedSectionID, in: timelineID) }
             self.selectedSectionID = nil
@@ -1132,6 +1185,10 @@ struct TimelineView: View {
         case "\\": fitToWindow(); return true
         default: break
         }
+        if key == "e", flags == .shift {
+            showsEffects.toggle()
+            return true
+        }
         if key == "n", !flags.contains(.shift) {
             snapping.toggle()
             return true
@@ -1140,26 +1197,8 @@ struct TimelineView: View {
             tool = chosen
             return true
         }
-        if key == "l" { return toggleVolumeRows(adding: flags.contains(.shift)) }
-        guard let property = TransformProperty(shortcutKey: key) else { return false }
-        let targets: [TimelineLayer]
-        if let selection, selection.timelineID == timelineID, let layer = timeline.layer(id: selection.layerID) {
-            targets = layer.isVisual(in: project) ? [layer] : []
-        } else {
-            targets = timeline.layers.filter { $0.isVisual(in: project) }
-        }
-        guard !targets.isEmpty else { return false }
-        for layer in targets {
-            var shown = revealed[layer.id] ?? []
-            if flags.contains(.shift) {
-                if shown.contains(property) { shown.remove(property) } else { shown.insert(property) }
-            } else {
-                shown = shown == [property] && !showsVolume(of: layer) ? [] : [property]
-                volumeRevealed.remove(layer.id)
-            }
-            revealed[layer.id] = shown
-        }
-        return true
+        if key == "l" { return toggleVolumeRows() }
+        return false
     }
 
     // MARK: - Playhead keys and the Timeline menu
@@ -1287,11 +1326,16 @@ struct TimelineView: View {
             layers = timeline.layers
         }
         var eased = false
-        for layer in layers {
-            for property in shownProperties(of: layer) where layer.transform.hasKeyframe(property, at: time) {
-                onEditTransform(layer.id) { $0[components: property].applyEase(preset, at: time) }
+        // With the effects panel open, the selected clip's controls count.
+        if showsEffects, let selection, selection.timelineID == timelineID,
+           let clip = project.clipAndLayer(selection.timelineClipID, in: timelineID)?.clip {
+            var copy = clip
+            if copy.easeKeyframes(atTimelineTime: time, preset) {
+                onEditProject { $0.editClip(clip.id, in: timelineID) { $0 = copy } }
                 eased = true
             }
+        }
+        for layer in layers {
             if showsVolume(of: layer), layer.volume.keyframe(at: time) != nil {
                 onEditVolume(layer.id) { $0.applyEase(preset, at: time) }
                 eased = true
@@ -1300,11 +1344,11 @@ struct TimelineView: View {
         return eased
     }
 
-    /// L shows only volume (pressing it again hides it), as levels in After
-    /// Effects; with Shift it adds or removes volume and keeps the
-    /// transform properties shown. Acts on the selected clip's layer, or on
-    /// every layer with sound when nothing is selected.
-    private func toggleVolumeRows(adding: Bool) -> Bool {
+    /// L shows volume, as levels in After Effects (pressing it again hides
+    /// it): each clip's as a line across it, and a Sound or Music layer's as
+    /// a row under it. Acts on the selected clip's layer, or on every layer
+    /// with sound when nothing is selected.
+    private func toggleVolumeRows() -> Bool {
         let targets: [TimelineLayer]
         if let selection, selection.timelineID == timelineID, let layer = timeline.layer(id: selection.layerID) {
             targets = project.layerPlaysAudio(layer) ? [layer] : []
@@ -1312,14 +1356,9 @@ struct TimelineView: View {
             targets = timeline.layers.filter { project.layerPlaysAudio($0) }
         }
         guard !targets.isEmpty else { return false }
+        let hiding = targets.allSatisfy { volumeRevealed.contains($0.id) }
         for layer in targets {
-            let onlyVolume = showsVolume(of: layer) && shownProperties(of: layer).isEmpty
-            if adding {
-                if showsVolume(of: layer) { volumeRevealed.remove(layer.id) } else { volumeRevealed.insert(layer.id) }
-            } else {
-                revealed[layer.id] = []
-                if onlyVolume { volumeRevealed.remove(layer.id) } else { volumeRevealed.insert(layer.id) }
-            }
+            if hiding { volumeRevealed.remove(layer.id) } else { volumeRevealed.insert(layer.id) }
         }
         return true
     }

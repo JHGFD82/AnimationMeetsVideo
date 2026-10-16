@@ -9,7 +9,7 @@ extension EditingProject {
     func playsVideo(_ clip: TimelineClip) -> Bool {
         switch resolvedInfo(for: clip.source) {
         case .media(let media): media.kind == .video && clip.streams != .audio
-        case .timeline: true
+        case .timeline, .adjustment: true
         case nil: false
         }
     }
@@ -20,7 +20,7 @@ extension EditingProject {
         switch resolvedInfo(for: clip.source) {
         case .media(let media): media.hasAudio && clip.streams != .video
         case .timeline: true
-        case nil: false
+        case .adjustment, nil: false
         }
     }
 
@@ -59,11 +59,14 @@ extension EditingProject {
             audio.transitionIn = nil
             audio.transitionOut = nil
             audio.autoMatteEnabled = false
+            audio.effects = []
+            audio.anchorPoint = AnimatedValue(Vector2.zero)
             audioClips.append(audio)
         }
         guard !audioClips.isEmpty else { return nil }
-        // The sound keeps the volume it played at.
-        let layer = TimelineLayer(customName: nil, kind: .sound, clips: audioClips, volume: timelines[tIndex].layers[lIndex].volume)
+        // The sound keeps the volume it played at: each clip's own, which
+        // copying the clip carried over.
+        let layer = TimelineLayer(customName: nil, kind: .sound, clips: audioClips)
         timelines[tIndex].layers.insert(layer, at: lIndex + 1)
         return layer.id
     }

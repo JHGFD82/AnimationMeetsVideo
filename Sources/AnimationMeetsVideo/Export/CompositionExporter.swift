@@ -54,7 +54,7 @@ struct ComposedTimeline: @unchecked Sendable {
     /// Keys of the segments drawn from the render cache.
     var cachedKeys: Set<String> = []
     /// Each audio track, with the layers whose volumes it plays through.
-    var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage])] = []
+    var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage], pitch: AVAudioTimePitchAlgorithm?)] = []
 
     /// A mix that plays each audio track at its layers' volumes, read from
     /// `curves` as it plays, and measures the result into `meter`.
@@ -138,228 +138,192 @@ private actor MediaTrackCache {
     }
 }
 
-/// A layer's transform as seen from the root timeline: one nesting level of
-/// a placement's animation.
-struct TransformStage {
-    var transform: LayerTransform
-    /// Center of the frame of the timeline the layer is in.
-    var center: CGPoint
-    /// Root time minus that timeline's time.
-    var shift: CMTime
-    /// Fits that timeline's frame into the frame of the next stage out
-    /// (identity at the root).
-    var toOuter: CGAffineTransform
-    /// The transitions of the clip placed on the layer, in that timeline's
-    /// time, applied after the layer's own transform.
-    var edges: EdgeTransitions? = nil
-    /// Set when the clip placed on the layer is a nested timeline: one ID
-    /// for every layer drawn through it, so its opacity and transitions
-    /// can fade them together as one picture. Made afresh for each build.
-    var groupID: UUID? = nil
-
-    /// `inner` carried out through this stage: the layer's transform, the
-    /// clip's transitions, then into the next stage's frame.
-    func outward(_ inner: CGAffineTransform, at time: CMTime) -> CGAffineTransform {
-        placed(inner, at: CMTimeSubtract(time, shift)).concatenating(toOuter)
+/// One piece of media placed at an absolute time in the root timeline.
+private final class Placement {
+    /// A stretch of the file played over a stretch of root time. They are
+    /// the same length unless the clip is retimed, when the file is played
+    /// faster or slower.
+    struct Piece {
+        var file: CMTimeRange
+        var at: CMTime
+        var duration: CMTime
     }
 
-    /// How opaque the stage makes what it holds at root time `time`: its
-    /// layer's opacity and its clip's fades.
-    func opacity(at time: CMTime) -> Double {
-        let local = CMTimeSubtract(time, shift)
-        let fade = edges?.effect(at: local).opacity ?? 1
-        return transform.opacityFraction(at: local) * fade
-    }
-
-    /// The film dissolve the stage's clip plays at root time `time`, if any.
-    func lumaReveal(at time: CMTime) -> LumaReveal? {
-        edges?.effect(at: CMTimeSubtract(time, shift)).lumaReveal
-    }
-
-    /// The transition drawn from two whole pictures that the stage's clip
-    /// plays at root time `time`, if any.
-    func transitionFrame(at time: CMTime) -> TransitionFrame? {
-        edges?.transitionFrame(at: CMTimeSubtract(time, shift))
-    }
-
-    /// Whether the stage is a nested timeline that can be less than opaque,
-    /// or whose transitions draw it as a whole picture, so the layers drawn
-    /// through it must be stacked first.
-    var fadesGroup: Bool {
-        guard groupID != nil else { return false }
-        let fadingKinds: [TransitionKind] = [.crossDissolve, .filmDissolve, .zoom, .spin]
-        let edgeKinds = [edges?.leading?.kind, edges?.trailing?.kind].compactMap { $0 }
-        return transform.opacity != AnimatedValue(100.0)
-            || edgeKinds.contains { fadingKinds.contains($0) || $0.drawsTwoPictures }
-    }
-
-    /// `inner` in this stage's own frame at its own time `local`.
-    fileprivate func placed(_ inner: CGAffineTransform, at local: CMTime) -> CGAffineTransform {
-        let layered = inner.concatenating(transform.affineTransform(at: local, center: center))
-        guard let edges else { return layered }
-        return layered.concatenating(edges.effect(at: local).transform)
-    }
-}
-
-/// Where a placement is drawn and how opaque it is at each root time: its
-/// own fit, then each enclosing layer's transform from innermost out.
-struct PlacementAnimation {
-    /// Orients and fits the media into the frame of its own timeline.
-    var base: CGAffineTransform
-    var stages: [TransformStage]
-
-    func transform(at time: CMTime) -> CGAffineTransform {
-        stages.reduce(base) { result, stage in stage.outward(result, at: time) }
-    }
-
-    func opacity(at time: CMTime) -> Float {
-        Float(stages.reduce(1.0) { $0 * $1.opacity(at: time) })
-    }
-
-    /// The opacity of the layer itself, leaving out the nested timelines
-    /// it is drawn through, which `LayeredCompositor` applies to each of
-    /// them as a whole.
-    func ownOpacity(at time: CMTime) -> Float {
-        Float(stages.filter { $0.groupID == nil }.reduce(1.0) { $0 * $1.opacity(at: time) })
-    }
-
-    /// The nested timelines the layer is drawn through, outermost first.
-    var groups: [UUID] {
-        stages.reversed().compactMap(\.groupID)
-    }
-
-    func stage(ofGroup id: UUID) -> TransformStage? {
-        stages.first { $0.groupID == id }
-    }
-
-    /// Whether a film dissolve plays, which only `LayeredCompositor` can draw.
-    var hasLumaReveal: Bool {
-        stages.contains { $0.edges?.hasLumaReveal == true }
-    }
-
-    /// The film dissolve playing at `time`, innermost first, if any.
-    func lumaReveal(at time: CMTime) -> LumaReveal? {
-        stages.lazy.compactMap { $0.lumaReveal(at: time) }.first
-    }
-
-    /// The film dissolve playing on the layer itself, leaving out those of
-    /// the nested timelines it is drawn through.
-    func ownLumaReveal(at time: CMTime) -> LumaReveal? {
-        stages.lazy.filter { $0.groupID == nil }.compactMap { $0.lumaReveal(at: time) }.first
-    }
-
-    /// Whether a transition plays that is drawn from two whole pictures.
-    var drawsTransitionsOnTwoPictures: Bool {
-        stages.contains { $0.edges?.drawsTwoPictures == true }
-    }
-
-    /// Whether only `LayeredCompositor` can draw it: a film dissolve, or a
-    /// transition drawn from two whole pictures.
-    var needsLayeredCompositor: Bool {
-        hasLumaReveal || drawsTransitionsOnTwoPictures
-    }
-
-    /// The transition drawn from two whole pictures playing on the layer
-    /// itself, leaving out those of the nested timelines it is drawn through.
-    func ownTransitionFrame(at time: CMTime) -> TransitionFrame? {
-        stages.lazy.filter { $0.groupID == nil }.compactMap { $0.transitionFrame(at: time) }.first
-    }
-
-    /// Whether a wipe ever crops the media, so a crop must be set.
-    var hasCrop: Bool {
-        stages.contains { $0.edges?.hasWipe == true }
-    }
-
-    /// The part of the media's own frame (before orientation) to draw at
-    /// `time`: each wipe's visible part of its timeline's frame, mapped back
-    /// through everything that places the media there. Nil without wipes.
-    func cropRectangle(at time: CMTime) -> CGRect? {
-        var crop: CGRect?
-        var inner = base
-        for stage in stages {
-            let local = CMTimeSubtract(time, stage.shift)
-            let placed = stage.placed(inner, at: local)
-            if let visible = stage.edges?.effect(at: local).visibleRect {
-                // A transform scaled to nothing shows nothing anyway.
-                if abs(placed.a * placed.d - placed.b * placed.c) > 1e-9 {
-                    let rect = visible.applying(placed.inverted())
-                    crop = crop.map { $0.intersection(rect) } ?? rect
-                }
-            }
-            inner = placed.concatenating(stage.toOuter)
-        }
-        if let cropped = crop, cropped.isNull { return .zero }
-        return crop
-    }
-
-    /// Root-time ranges where some stage is between keyframes, in order and
-    /// not overlapping. Outside them the transform and opacity are constant.
-    var animatedRanges: [CMTimeRange] {
-        let ranges = stages.flatMap { stage in
-            let keyframed = stage.transform.animatedRanges.map { range in
-                CMTimeRange(start: CMTimeAdd(range.lowerBound, stage.shift), end: CMTimeAdd(range.upperBound, stage.shift))
-            }
-            let transitions = (stage.edges?.animatedRanges ?? []).map { range in
-                CMTimeRange(start: CMTimeAdd(range.start, stage.shift), duration: range.duration)
-            }
-            return keyframed + transitions
-        }
-        var merged: [CMTimeRange] = []
-        for range in ranges.sorted(by: { $0.start < $1.start }) {
-            if let last = merged.last, range.start <= last.end {
-                merged[merged.count - 1] = CMTimeRange(start: last.start, end: CMTimeMaximum(last.end, range.end))
-            } else {
-                merged.append(range)
-            }
-        }
-        return merged
-    }
-}
-
-/// One piece of media placed at an absolute time in the root timeline, with
-/// the animation that places it in the root's render space.
-private struct Placement {
     let info: MediaTrackInfo
-    let sourceRange: CMTimeRange
-    let start: CMTime
-    let animation: PlacementAnimation
+    /// In order, one after the other.
+    let pieces: [Piece]
     /// Which of the file's streams to use; detached audio and its picture
     /// each play only one.
-    let includesVideo: Bool
-    let includesAudio: Bool
-    /// The clip in the built timeline it belongs to: the clip itself, or
-    /// the nested timeline's clip it is drawn through.
-    let owner: UUID
+    var includesVideo: Bool
+    var includesAudio: Bool
+
+    /// Where the picture ended up in the composition, set when its track is
+    /// built; nil if the file has none there.
+    var trackID = kCMPersistentTrackID_Invalid
+    var drawRange: CMTimeRange?
+    /// The file time drawn at the start of `drawRange`.
+    var drawSourceStart = CMTime.zero
+
+    init(info: MediaTrackInfo, pieces: [Piece], includesVideo: Bool, includesAudio: Bool) {
+        self.info = info
+        self.pieces = pieces
+        self.includesVideo = includesVideo
+        self.includesAudio = includesAudio
+    }
+
+    /// Footage played unchanged: `file` starting at `at`.
+    convenience init(info: MediaTrackInfo, file: CMTimeRange, at: CMTime, includesVideo: Bool, includesAudio: Bool) {
+        self.init(info: info, pieces: [Piece(file: file, at: at, duration: file.duration)], includesVideo: includesVideo, includesAudio: includesAudio)
+    }
+
+    func copy() -> Placement {
+        Placement(info: info, pieces: pieces, includesVideo: includesVideo, includesAudio: includesAudio)
+    }
+
+    /// The same footage later in root time by `delay`, and later in the file
+    /// by `fileShift`.
+    func shifted(by delay: CMTime = .zero, inFileBy fileShift: CMTime = .zero) -> Placement {
+        Placement(
+            info: info,
+            pieces: pieces.map { Piece(file: CMTimeRange(start: CMTimeAdd($0.file.start, fileShift), duration: $0.file.duration), at: CMTimeAdd($0.at, delay), duration: $0.duration) },
+            includesVideo: includesVideo, includesAudio: includesAudio
+        )
+    }
+
+    /// The first moment of root time the placement plays from.
+    var start: CMTime { pieces.first?.at ?? .zero }
+}
+
+/// What else is built from a clip's footage besides the clip itself: the
+/// frame after, for Blend, and the footage earlier, for Echo and Trails.
+private struct PlacementExtras {
+    var next: Placement?
+    var opticalFlow = false
+    var echoes: [(placement: Placement, strength: Double)] = []
+    var trails: [(placement: Placement, strength: Double)] = []
+    var frameDuration = CMTime.zero
+    var alignmentOffset = CMTime.zero
 }
 
 /// An ordered run of non-overlapping placements that share composition
-/// tracks. Nested timelines are flattened into extra layers of the root.
-private struct FlatLayer {
+/// tracks.
+private final class TrackHost {
     var placements: [Placement] = []
-    /// The layer it came from, then the layers that timeline is nested
-    /// in, whose volumes all apply to its sound.
+    /// The volumes the track plays through: the clip's own if it has one,
+    /// the layer's if it has one, then those of the clips and layers of the
+    /// timelines it is nested in.
     var volume: [VolumeStage] = []
+    /// How the sound is retimed, when it is; nil to leave it to AVFoundation.
+    var pitch: AVAudioTimePitchAlgorithm?
+
+    init(placements: [Placement] = [], volume: [VolumeStage] = [], pitch: AVAudioTimePitchAlgorithm? = nil) {
+        self.placements = placements
+        self.volume = volume
+        self.pitch = pitch
+    }
 }
 
-private struct VideoSegment {
-    let timeRange: CMTimeRange
-    let animation: PlacementAnimation
-    let sourceURL: URL
-    /// The file time drawn at `timeRange.start`.
-    let sourceStart: CMTime
+/// A picture an effect takes, on its way to being an `InputDraw`.
+private enum BuildInput {
+    case track(Placement, base: CGAffineTransform)
+    case group(frameSize: CGSize, toOuter: CGAffineTransform, children: [BuildNode])
+}
+
+/// A clip on its way to being a `DrawClip`, once the composition's tracks
+/// exist.
+private final class BuildNode {
+    enum Content {
+        case media(Placement, base: CGAffineTransform, extras: PlacementExtras)
+        case group(frameSize: CGSize, toOuter: CGAffineTransform, passThrough: Bool, children: [BuildNode])
+        case adjustment(reachedLayerIDs: Set<UUID>, reachesAll: Bool)
+    }
+
+    let content: Content
+    let stack: ClipStack
+    /// Where the clip is drawn in root time, for a group or an adjustment.
+    /// A picture's is where its track puts it.
+    let range: CMTimeRange
     let owner: UUID
+    /// The layer of its timeline the clip is on.
+    let layerID: UUID
+    /// The pictures its effects take, by the ID of the effect.
+    let inputs: [UUID: BuildInput]
+
+    init(content: Content, stack: ClipStack, range: CMTimeRange, owner: UUID, layerID: UUID, inputs: [UUID: BuildInput] = [:]) {
+        self.content = content
+        self.stack = stack
+        self.range = range
+        self.owner = owner
+        self.layerID = layerID
+        self.inputs = inputs
+    }
+
+    /// The inputs, drawn from tracks that now exist; one the file has no
+    /// frames for is left out.
+    func frozenInputs() -> [UUID: InputDraw] {
+        inputs.compactMapValues { input -> InputDraw? in
+            switch input {
+            case .track(let placement, let base):
+                guard let range = placement.drawRange else { return nil }
+                return InputDraw.track(TrackCopy(trackID: placement.trackID, range: range, strength: 1), base: base)
+            case .group(let frameSize, let toOuter, let children):
+                let drawn = children.compactMap { $0.frozen() }
+                guard !drawn.isEmpty else { return nil }
+                return InputDraw.group(GroupDraw(frameSize: frameSize, toOuter: toOuter, passThrough: false, children: drawn))
+            }
+        }
+    }
+
+    /// Nil for a picture the file has no frames for.
+    func frozen() -> DrawClip? {
+        switch content {
+        case .media(let placement, let base, let extras):
+            guard let range = placement.drawRange else { return nil }
+            let url = placement.info.asset.url
+            func copy(_ extra: Placement, _ strength: Double) -> TrackCopy? {
+                extra.drawRange.map {
+                    TrackCopy(trackID: extra.trackID, range: $0, strength: strength, delay: CMTimeSubtract($0.start, range.start))
+                }
+            }
+            return DrawClip(
+                content: .media(MediaDraw(
+                    trackID: placement.trackID, base: base, url: url,
+                    sourceStart: placement.drawSourceStart, segmentStart: range.start,
+                    frameDuration: extras.frameDuration, alignmentOffset: extras.alignmentOffset,
+                    nextFrame: extras.next.flatMap { copy($0, 1) },
+                    opticalFlow: extras.opticalFlow,
+                    echoes: extras.echoes.compactMap { copy($0.placement, $0.strength) },
+                    trails: extras.trails.compactMap { copy($0.placement, $0.strength) }
+                )),
+                stack: stack, range: range, owner: owner, layerID: layerID, inputs: frozenInputs()
+            )
+        case .adjustment(let reachedLayerIDs, let reachesAll):
+            return DrawClip(
+                content: .adjustment(AdjustmentDraw(reachedLayerIDs: reachedLayerIDs, reachesAll: reachesAll)),
+                stack: stack, range: range, owner: owner, layerID: layerID, inputs: frozenInputs()
+            )
+        case .group(let frameSize, let toOuter, let passThrough, let children):
+            let drawn = children.compactMap { $0.frozen() }
+            guard !drawn.isEmpty else { return nil }
+            return DrawClip(
+                content: .group(GroupDraw(
+                    frameSize: frameSize, toOuter: toOuter, passThrough: passThrough, children: drawn,
+                    pushesTransforms: !drawn.contains { $0.everyClip.contains { $0.stack.dependsOnPixelSize } }
+                )),
+                stack: stack, range: range, owner: owner, layerID: layerID, inputs: frozenInputs()
+            )
+        }
+    }
 }
 
-/// A stretch of the timeline with the layers that show in it, top first.
+/// A stretch of the timeline with the clips drawn in it, top first.
 private struct PlannedRange {
     var range: CMTimeRange
-    var shown: [(layer: VideoLayer, segment: VideoSegment)]
+    var clips: [DrawClip]
     var segment: RenderSegment
-}
-
-private struct VideoLayer {
-    let track: AVMutableCompositionTrack
-    let segments: [VideoSegment]
+    /// The track whose frames are the stretch's as they are, when that is
+    /// all it is.
+    var passthrough: CMPersistentTrackID?
 }
 
 enum CompositionExporter {
@@ -375,16 +339,22 @@ enum CompositionExporter {
         await MediaTrackCache.shared.forget(url)
     }
 
-    /// With `forPreview` every frame is drawn by `LayeredCompositor`, so the
-    /// viewer can draw it at a reduced size and `meter` hears how long each
-    /// frame took. Segments already rendered into `cache` play from there.
+    /// With `forPreview` the viewer may draw at a reduced size, so every
+    /// stretch is drawn by the compositor, which has `meter` hear how long
+    /// each frame took. Segments already rendered into `cache` play from
+    /// there.
     static func buildComposedTimeline(
         for project: EditingProject,
         timelineID: UUID,
         forPreview: Bool = false,
         meter: RenderMeter? = nil,
+        options: DrawingOptions? = nil,
         cache: RenderCache? = nil
     ) async throws -> ComposedTimeline {
+        // Slivers of gap between clips (a retimed clip's end can't be found
+        // closer than a few microseconds) would draw black frames.
+        var project = project
+        for index in project.timelines.indices { project.timelines[index] = project.timelines[index].closingSlivers() }
         guard let timeline = project.timeline(id: timelineID), !timeline.layers.isEmpty else {
             throw CompositionError.emptyTimeline
         }
@@ -392,65 +362,70 @@ enum CompositionExporter {
         // Matte wipes' maps are read before drawing starts.
         await MatteMaps.shared.load(for: project)
         let window = CMTimeRange(start: .zero, duration: timeline.duration)
-        let flatLayers = try await $skipsMissingMedia.withValue(forPreview) {
+        var hosts: [TrackHost] = []
+        let nodes = try await $skipsMissingMedia.withValue(forPreview) {
             try await flatten(
                 project: project,
                 timelineID: timelineID,
                 visiting: [],
                 window: window,
                 offset: .zero,
-                outer: [],
                 outerVolume: [],
-                toOuter: .identity,
-                rootClipID: nil
+                rootClipID: nil,
+                hosts: &hosts
             )
         }
 
         let composition = AVMutableComposition()
-        var videoLayers: [VideoLayer] = []
-        var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage])] = []
+        var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage], pitch: AVAudioTimePitchAlgorithm?)] = []
         /// A stretch of some source's picture, to fill time after the last clip.
         var filler: (track: AVAssetTrack, range: CMTimeRange)?
 
-        for flat in flatLayers {
+        for host in hosts {
             var videoTrack: AVMutableCompositionTrack?
             var audioTrack: AVMutableCompositionTrack?
-            var segments: [VideoSegment] = []
 
-            for placement in flat.placements {
+            for placement in host.placements {
                 let info = placement.info
                 if let sourceVideo = info.video, placement.includesVideo {
-                    let range = placement.sourceRange.intersection(info.videoRange)
-                    if range.isValid, range.duration > .zero {
+                    var playing: CMTimeRange?
+                    for piece in placement.pieces {
+                        guard let (file, at, length) = piece.within(info.videoRange) else { continue }
                         if videoTrack == nil {
                             videoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
                         }
-                        let at = CMTimeAdd(placement.start, CMTimeSubtract(range.start, placement.sourceRange.start))
-                        try videoTrack?.insertTimeRange(range, of: sourceVideo, at: at)
-                        if filler == nil { filler = (sourceVideo, range) }
-                        segments.append(VideoSegment(
-                            timeRange: CMTimeRange(start: at, duration: range.duration), animation: placement.animation,
-                            sourceURL: info.asset.url, sourceStart: range.start, owner: placement.owner
-                        ))
+                        try videoTrack?.insertTimeRange(file, of: sourceVideo, at: at)
+                        // Retimed footage plays faster or slower than it was
+                        // shot.
+                        if length != file.duration {
+                            videoTrack?.scaleTimeRange(CMTimeRange(start: at, duration: file.duration), toDuration: length)
+                        }
+                        if filler == nil { filler = (sourceVideo, file) }
+                        if playing == nil { placement.drawSourceStart = file.start }
+                        let played = CMTimeRange(start: at, duration: length)
+                        playing = playing.map { $0.union(played) } ?? played
+                    }
+                    if let playing {
+                        placement.trackID = videoTrack?.trackID ?? kCMPersistentTrackID_Invalid
+                        placement.drawRange = playing
                     }
                 }
                 if let sourceAudio = info.audio, placement.includesAudio {
-                    let range = placement.sourceRange.intersection(info.audioRange)
-                    if range.isValid, range.duration > .zero {
+                    for piece in placement.pieces {
+                        guard let (file, at, length) = piece.within(info.audioRange) else { continue }
                         if audioTrack == nil {
                             audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
                         }
-                        let at = CMTimeAdd(placement.start, CMTimeSubtract(range.start, placement.sourceRange.start))
-                        try audioTrack?.insertTimeRange(range, of: sourceAudio, at: at)
+                        try audioTrack?.insertTimeRange(file, of: sourceAudio, at: at)
+                        if length != file.duration {
+                            audioTrack?.scaleTimeRange(CMTimeRange(start: at, duration: file.duration), toDuration: length)
+                        }
                     }
                 }
             }
 
-            if let videoTrack {
-                videoLayers.append(VideoLayer(track: videoTrack, segments: segments))
-            }
             if let audioTrack {
-                audioTracks.append((audioTrack, flat.volume))
+                audioTracks.append((audioTrack, host.volume, host.pitch))
             }
         }
 
@@ -469,10 +444,13 @@ enum CompositionExporter {
             track.scaleTimeRange(CMTimeRange(start: gap.start, duration: piece.duration), toDuration: gap.duration)
         }
 
+        let tree = nodes.compactMap { $0.frozen() }
         var plan = planRanges(
-            layers: videoLayers, overallDuration: composition.duration,
-            frameSize: timeline.frameSize, frameRate: timeline.frameRate, colorSpace: timeline.colorSpace
+            tree: tree, overallDuration: composition.duration, allowsPassthrough: !forPreview,
+            frameSize: timeline.frameSize, frameRate: timeline.frameRate, colorSpace: timeline.colorSpace,
+            canvasMargin: project.canvasMargin
         )
+        let canvasMargin = project.canvasMargin
         var cachedKeys: Set<String> = []
         if let cache {
             cachedKeys = try await substituteCachedRanges(&plan, from: cache, into: composition)
@@ -480,12 +458,14 @@ enum CompositionExporter {
 
         let videoComposition = Self.buildVideoComposition(
             plan: plan,
-            hasLayers: !videoLayers.isEmpty,
+            hasPictures: !tree.isEmpty,
             renderSize: timeline.frameSize,
             frameRate: timeline.frameRate,
             colorSpace: timeline.colorSpace,
-            layered: forPreview,
-            meter: meter
+            forPreview: forPreview,
+            canvasMargin: canvasMargin,
+            meter: meter,
+            options: options
         )
         return ComposedTimeline(
             composition: composition, videoComposition: videoComposition,
@@ -493,24 +473,23 @@ enum CompositionExporter {
         )
     }
 
-    /// Resolves a timeline (recursively expanding nested timelines) into flat
-    /// layers of media placements at absolute root-timeline times, top layer
-    /// first. `window` is the visible range in this timeline's own time,
-    /// `offset` maps this timeline's time to root time, `outer` holds the
-    /// transforms of the layers this timeline is nested in (innermost
-    /// first), `outerVolume` their volumes the same way, and `toOuter` fits this timeline's frame into the frame of
-    /// the innermost of them.
+    /// Resolves a timeline into the clips drawn in it, top layer first,
+    /// with a nested timeline's clips inside its own, and collects the
+    /// media that makes up the composition's tracks in `hosts`. `window` is
+    /// the visible range in this timeline's own time, `offset` maps this
+    /// timeline's time to root time, and `outerVolume` holds the volumes of
+    /// the clips and layers this timeline is nested in (innermost first).
     private static func flatten(
         project: EditingProject,
         timelineID: UUID,
         visiting: Set<UUID>,
         window: CMTimeRange,
         offset: CMTime,
-        outer: [TransformStage],
         outerVolume: [VolumeStage],
-        toOuter: CGAffineTransform,
-        rootClipID: UUID?
-    ) async throws -> [FlatLayer] {
+        rootClipID: UUID?,
+        silent: Bool = false,
+        hosts: inout [TrackHost]
+    ) async throws -> [BuildNode] {
         guard !visiting.contains(timelineID) else {
             throw CompositionError.cyclicTimeline
         }
@@ -519,40 +498,164 @@ enum CompositionExporter {
         visiting.insert(timelineID)
 
         let center = CGPoint(x: timeline.frameSize.width / 2, y: timeline.frameSize.height / 2)
-        var result: [FlatLayer] = []
+        var result: [BuildNode] = []
+        /// The layers below an adjustment layer that its effect reaches.
+        func reach(of layer: TimelineLayer) -> (layers: Set<UUID>, all: Bool) {
+            guard let index = timeline.layers.firstIndex(where: { $0.id == layer.id }) else { return ([], false) }
+            let below = timeline.layers[(index + 1)...]
+            guard let bottom = layer.reach, let bottomIndex = timeline.layers.firstIndex(where: { $0.id == bottom }) else {
+                return (Set(below.map(\.id)), true)
+            }
+            // Reaching down to a layer that is above it reaches nothing.
+            guard bottomIndex > index else { return ([], false) }
+            return (Set(timeline.layers[(index + 1)...bottomIndex].map(\.id)), false)
+        }
         for layer in timeline.layers {
-            let layerStage = TransformStage(transform: layer.transform, center: center, shift: offset, toOuter: toOuter)
-            let volume = [VolumeStage(layerID: layer.id, shift: offset)] + outerVolume
+            // Sound and Music layers act as a fader over their clips' own
+            // volumes; video layers have no volume of their own.
+            let layerVolume = layer.kind.isAudio ? [VolumeStage(id: layer.id, shift: offset)] : []
+            let volume = layerVolume + outerVolume
             let clips = layer.clips.sorted(by: { $0.startOffset < $1.startOffset })
-            var own = FlatLayer(volume: volume)
+            let own = TrackHost(volume: volume)
             // The incoming clip's frames before a joined cut, on a track of
             // their own above the layer's, so they can overlap the outgoing
             // clip that is still playing there.
-            var overlay = FlatLayer()
+            let overlay = TrackHost()
             // Frames shown under a transition at a cut, on a track of their
             // own below the layer's so the two can overlap.
-            var underlay = FlatLayer()
-            var nestedLayers: [FlatLayer] = []
+            let underlay = TrackHost()
+            // The sound of clips with a volume of their own, each on a track
+            // of its own to be played through that volume.
+            var clipSound: [TrackHost] = []
+            // The footage again, for frame blending, echo and trails.
+            var copyHosts: [TrackHost] = []
+            var nestedHosts: [TrackHost] = []
+            var overlayNodes: [BuildNode] = [], ownNodes: [BuildNode] = [], underlayNodes: [BuildNode] = []
 
             for clip in clips {
-                var stage = layerStage
-                let lead = project.joinedLead(of: clip, among: clips) ?? .zero
-                if project.playsVideo(clip) {
-                    stage.edges = EdgeTransitions(clip: clip, frameSize: timeline.frameSize, lead: lead)
+                func stack(of clip: TimelineClip, edges: EdgeTransitions? = nil) -> ClipStack {
+                    ClipStack(clip: clip, center: center, shift: offset, edges: edges, colorSpace: timeline.colorSpace, frameDuration: timeline.frameDuration)
                 }
-                let stages = [stage] + outer
+                // The clip's volume counts in its source time, which a
+                // retimed clip plays through at its speed (at the speed it
+                // starts at, when that is changing).
+                let rate = clip.speed(atSource: clip.trimStart) / 100
+                let clipVolume = VolumeStage(
+                    id: clip.id,
+                    shift: CMTimeAdd(offset, CMTimeSubtract(clip.startOffset, CMTimeMultiplyByFloat64(clip.trimStart, multiplier: 1 / rate))),
+                    rate: rate
+                )
+                let hasOwnVolume = clip.volume != AnimatedValue(0.0)
+                let lead = project.joinedLead(of: clip, among: clips) ?? .zero
+                var clipStack = stack(of: clip)
+                if project.playsVideo(clip) {
+                    clipStack.edges = EdgeTransitions(clip: clip, frameSize: timeline.frameSize, lead: lead)
+                }
                 let placed = CMTimeRange(start: CMTimeSubtract(clip.startOffset, lead), end: clip.endOffset)
                 let visible = placed.intersection(window)
                 guard visible.isValid, visible.duration > .zero else { continue }
+                let owner = rootClipID ?? clip.id
+
+                // The pictures its effects take come from the browser, not
+                // the timeline: footage on tracks of its own, or a nested
+                // timeline drawn as one picture.
+                var inputs: [UUID: BuildInput] = [:]
+                for effect in clip.effects where effect.enabled && effect.kind.takesInput {
+                    guard let input = effect.input else { continue }
+                    switch input.source {
+                    case .asset(let assetID):
+                        if let (placement, base) = try await inputPlacement(
+                            assetID, input: input, clip: clip, visible: visible,
+                            project: project, frameSize: timeline.frameSize, offset: offset
+                        ) {
+                            copyHosts.append(TrackHost(placements: [placement]))
+                            inputs[effect.id] = .track(placement, base: base)
+                        }
+                    case .timeline(let nestedID):
+                        guard let nested = project.timeline(id: nestedID) else { continue }
+                        guard !visiting.contains(nestedID) else { throw CompositionError.cyclicTimeline }
+                        var inner: [TrackHost] = []
+                        let children = try await flatten(
+                            project: project, timelineID: nestedID, visiting: visiting,
+                            window: CMTimeRange(
+                                start: CMTimeAdd(input.offset, CMTimeSubtract(visible.start, clip.startOffset)), duration: visible.duration
+                            ),
+                            offset: CMTimeAdd(offset, CMTimeSubtract(clip.startOffset, input.offset)),
+                            outerVolume: [], rootClipID: owner, silent: true, hosts: &inner
+                        )
+                        nestedHosts += inner
+                        if !children.isEmpty {
+                            inputs[effect.id] = .group(
+                                frameSize: nested.frameSize, toOuter: fitTransform(from: nested.frameSize, to: timeline.frameSize), children: children
+                            )
+                        }
+                    }
+                }
 
                 switch clip.source {
-                case .media:
-                    if let placement = try await mediaPlacement(
-                        of: clip, from: clip.trimStart, at: clip.startOffset, for: clip.trimmedDuration,
-                        project: project, frameSize: timeline.frameSize, window: window, offset: offset, stages: stages,
-                        owner: rootClipID ?? clip.id, includesVideo: clip.streams != .audio, includesAudio: clip.streams != .video
-                    ) {
+                case .media(let mediaID):
+                    let main: (Placement, CGAffineTransform)?
+                    if clip.isRetimed {
+                        main = try await retimedPlacement(
+                            of: clip, project: project, frameSize: timeline.frameSize, frameDuration: timeline.frameDuration,
+                            window: window, offset: offset,
+                            includesVideo: clip.streams != .audio, includesAudio: clip.streams != .video
+                        )
+                    } else {
+                        main = try await mediaPlacement(
+                            of: clip, from: clip.trimStart, at: clip.startOffset, for: clip.trimmedDuration,
+                            project: project, frameSize: timeline.frameSize, window: window, offset: offset,
+                            includesVideo: clip.streams != .audio, includesAudio: clip.streams != .video
+                        )
+                    }
+                    if let (placement, base) = main {
+                        if silent { placement.includesAudio = false }
+                        // A retimed clip's sound is silent, or played at its
+                        // new speed with or without its pitch changing.
+                        if clip.isRetimed, clip.time.sound == .mute { placement.includesAudio = false }
+                        if placement.includesAudio, hasOwnVolume || clip.isRetimed {
+                            let sound = placement.copy()
+                            sound.includesVideo = false
+                            let pitch: AVAudioTimePitchAlgorithm? = clip.isRetimed ? (clip.time.sound == .changePitch ? .varispeed : .spectral) : nil
+                            clipSound.append(TrackHost(placements: [sound], volume: [clipVolume] + volume, pitch: pitch))
+                            placement.includesAudio = false
+                        }
                         own.placements.append(placement)
+                        if placement.includesVideo {
+                            let media = project.mediaClip(id: mediaID)
+                            var extras = PlacementExtras(
+                                frameDuration: Timeline.frameDuration(for: media.map { $0.frameRate > 0 ? $0.frameRate : timeline.frameRate } ?? timeline.frameRate),
+                                alignmentOffset: media?.alignmentOffset ?? .zero
+                            )
+                            func copy(_ delay: CMTime, inFileBy fileShift: CMTime = .zero) -> Placement {
+                                let copy = placement.shifted(by: delay, inFileBy: fileShift)
+                                copy.includesAudio = false
+                                copyHosts.append(TrackHost(placements: [copy]))
+                                return copy
+                            }
+                            // Blend mixes the frame the footage is at with the
+                            // one after it.
+                            if clip.time.frameBlending != .off {
+                                extras.next = copy(.zero, inFileBy: extras.frameDuration)
+                                extras.opticalFlow = clip.time.frameBlending == .opticalFlow
+                            }
+                            // Echo and trails are the footage again, later in
+                            // time, so each moment has an earlier one to show.
+                            if let echo = clip.time.echo?.clamped {
+                                extras.echoes = (1...echo.count).map { k in
+                                    (copy(CMTimeMultiply(echo.delay, multiplier: Int32(k))), pow(echo.decay, Double(k)))
+                                }
+                            }
+                            if let trails = clip.shutter.trails?.clamped {
+                                extras.trails = (1...trails.count).map { k in
+                                    (copy(CMTimeMultiply(trails.delay, multiplier: Int32(k))), pow(trails.decay, Double(k)))
+                                }
+                            }
+                            ownNodes.append(BuildNode(
+                                content: .media(placement, base: base, extras: extras), stack: clipStack, range: .invalid,
+                                owner: owner, layerID: layer.id, inputs: inputs
+                            ))
+                        }
                     }
                     // Where this clip meets its neighbor at a cut, the
                     // neighbor's frames beyond its trim play underneath the
@@ -562,68 +665,94 @@ enum CompositionExporter {
                     // cut, playing this clip's frames before its in point.
                     // Without spare frames there is nothing to show, and the
                     // transition plays over the layers below.
-                    let durations = stage.edges == nil ? (leading: CMTime.zero, trailing: CMTime.zero) : clip.effectiveTransitionDurations(lead: lead)
-                    let neighborStages = [layerStage] + outer
-                    if lead > .zero, let placement = try await mediaPlacement(
+                    let durations = clipStack.edges == nil ? (leading: CMTime.zero, trailing: CMTime.zero) : clip.effectiveTransitionDurations(lead: lead)
+                    if lead > .zero, let (placement, base) = try await mediaPlacement(
                         of: clip, from: CMTimeSubtract(clip.trimStart, lead), at: CMTimeSubtract(clip.startOffset, lead), for: lead,
-                        project: project, frameSize: timeline.frameSize, window: window, offset: offset, stages: stages,
-                        owner: rootClipID ?? clip.id, includesVideo: true, includesAudio: false
+                        project: project, frameSize: timeline.frameSize, window: window, offset: offset,
+                        includesVideo: true, includesAudio: false
                     ) {
                         overlay.placements.append(placement)
+                        overlayNodes.append(BuildNode(content: .media(placement, base: base, extras: PlacementExtras()), stack: clipStack, range: .invalid, owner: owner, layerID: layer.id))
                     }
                     if durations.leading > .zero, let previous = project.predecessor(joining: clip, among: clips),
-                       let placement = try await mediaPlacement(
+                       let (placement, base) = try await mediaPlacement(
                            of: previous, from: previous.trimEnd, at: clip.startOffset, for: durations.leading,
                            project: project, frameSize: timeline.frameSize, window: window, offset: offset,
-                           stages: neighborStages, owner: rootClipID ?? clip.id, includesVideo: true, includesAudio: false
+                           includesVideo: true, includesAudio: false
                        ) {
                         underlay.placements.append(placement)
+                        underlayNodes.append(BuildNode(content: .media(placement, base: base, extras: PlacementExtras()), stack: stack(of: previous), range: .invalid, owner: owner, layerID: layer.id))
                     }
                     if durations.trailing > .zero, let next = project.successor(joining: clip, among: clips),
-                       let placement = try await mediaPlacement(
+                       let (placement, base) = try await mediaPlacement(
                            of: next, from: CMTimeSubtract(next.trimStart, durations.trailing),
                            at: CMTimeSubtract(clip.endOffset, durations.trailing), for: durations.trailing,
                            project: project, frameSize: timeline.frameSize, window: window, offset: offset,
-                           stages: neighborStages, owner: rootClipID ?? clip.id, includesVideo: true, includesAudio: false
+                           includesVideo: true, includesAudio: false
                        ) {
                         underlay.placements.append(placement)
+                        underlayNodes.append(BuildNode(content: .media(placement, base: base, extras: PlacementExtras()), stack: stack(of: next), range: .invalid, owner: owner, layerID: layer.id))
                     }
                 case .timeline(let nestedID):
                     guard let nested = project.timeline(id: nestedID) else { continue }
-                    // Every layer drawn through this clip shares its stage,
-                    // which fades them together.
-                    var grouped = stages
-                    grouped[0].groupID = UUID()
                     // Nested time = this timeline's time - clip.startOffset + clip.trimStart.
                     let shift = CMTimeSubtract(clip.startOffset, clip.trimStart)
                     let nestedWindow = CMTimeRange(start: CMTimeSubtract(visible.start, shift), duration: visible.duration)
-                    nestedLayers += try await flatten(
+                    var inner: [TrackHost] = []
+                    let children = try await flatten(
                         project: project,
                         timelineID: nestedID,
                         visiting: visiting,
                         window: nestedWindow,
                         offset: CMTimeAdd(offset, shift),
-                        outer: grouped,
-                        outerVolume: volume,
-                        toOuter: fitTransform(from: nested.frameSize, to: timeline.frameSize),
-                        rootClipID: rootClipID ?? clip.id
+                        outerVolume: [clipVolume] + volume,
+                        rootClipID: owner,
+                        silent: silent,
+                        hosts: &inner
                     )
+                    nestedHosts += inner
+                    guard !children.isEmpty else { continue }
+                    ownNodes.append(BuildNode(
+                        content: .group(
+                            frameSize: nested.frameSize, toOuter: fitTransform(from: nested.frameSize, to: timeline.frameSize),
+                            passThrough: clip.passThrough, children: children
+                        ),
+                        stack: clipStack,
+                        range: CMTimeRange(start: CMTimeAdd(visible.start, offset), duration: visible.duration),
+                        owner: owner,
+                        layerID: layer.id,
+                        inputs: inputs
+                    ))
+                case .adjustment:
+                    // No picture: its stack is applied to the layers it
+                    // reaches while it plays.
+                    let reached = reach(of: layer)
+                    ownNodes.append(BuildNode(
+                        content: .adjustment(reachedLayerIDs: reached.layers, reachesAll: reached.all),
+                        stack: clipStack,
+                        range: CMTimeRange(start: CMTimeAdd(visible.start, offset), duration: visible.duration),
+                        owner: owner,
+                        layerID: layer.id,
+                        inputs: inputs
+                    ))
                 }
             }
 
-            if !overlay.placements.isEmpty { result.append(overlay) }
-            if !own.placements.isEmpty { result.append(own) }
-            if !underlay.placements.isEmpty { result.append(underlay) }
-            result += nestedLayers
+            result += overlayNodes + ownNodes + underlayNodes
+            hosts += [overlay, own, underlay].filter { !$0.placements.isEmpty }
+            hosts += clipSound
+            hosts += copyHosts
+            hosts += nestedHosts
         }
         return result
     }
 
     /// A media clip's frames from `sourceStart` (in its asset's original
     /// time) placed at `placedStart` in the timeline for `duration`, cut to
-    /// the window. Nil when it falls outside the window, the clip isn't
-    /// media, or its file is missing. Frames past either end of the file
-    /// are dropped when the tracks are built.
+    /// the window, with the transform that orients and fits them into the
+    /// timeline's frame. Nil when it falls outside the window, the clip
+    /// isn't media, or its file is missing. Frames past either end of the
+    /// file are dropped when the tracks are built.
     private static func mediaPlacement(
         of clip: TimelineClip,
         from sourceStart: CMTime,
@@ -633,11 +762,9 @@ enum CompositionExporter {
         frameSize: CGSize,
         window: CMTimeRange,
         offset: CMTime,
-        stages: [TransformStage],
-        owner: UUID,
         includesVideo: Bool,
         includesAudio: Bool
-    ) async throws -> Placement? {
+    ) async throws -> (Placement, CGAffineTransform)? {
         guard case .media(let mediaID) = clip.source,
               let media = project.mediaClip(id: mediaID), let url = media.url
         else {
@@ -661,15 +788,59 @@ enum CompositionExporter {
         let wanted = CMTimeRange(start: media.fileTime(forSourceTime: CMTimeAdd(sourceStart, intoClip)), duration: visible.duration)
         let base = info.orientedTransform
             .concatenating(fitTransform(from: info.orientedSize, to: frameSize))
-        return Placement(
+        let placement = Placement(
             info: info,
-            sourceRange: wanted,
-            start: CMTimeAdd(visible.start, offset),
-            animation: PlacementAnimation(base: base, stages: stages),
+            file: wanted,
+            at: CMTimeAdd(visible.start, offset),
             includesVideo: includesVideo,
-            includesAudio: includesAudio,
-            owner: owner
+            includesAudio: includesAudio
         )
+        return (placement, base)
+    }
+
+    /// A retimed media clip's footage, cut to the window: one piece playing
+    /// the file at the clip's speed, or for a speed that changes, a piece
+    /// for every few frames each at the speed it has there.
+    private static func retimedPlacement(
+        of clip: TimelineClip,
+        project: EditingProject,
+        frameSize: CGSize,
+        frameDuration: CMTime,
+        window: CMTimeRange,
+        offset: CMTime,
+        includesVideo: Bool,
+        includesAudio: Bool
+    ) async throws -> (Placement, CGAffineTransform)? {
+        guard case .media(let mediaID) = clip.source,
+              let media = project.mediaClip(id: mediaID), let url = media.url
+        else {
+            return nil
+        }
+        let visible = CMTimeRange(start: clip.startOffset, end: clip.endOffset).intersection(window)
+        guard visible.isValid, visible.duration > .zero else { return nil }
+        let info = try await MediaTrackCache.shared.info(for: url)
+
+        func piece(from a: CMTime, to b: CMTime) -> Placement.Piece {
+            let first = clip.sourceTime(atTimelineTime: a), last = clip.sourceTime(atTimelineTime: b)
+            return Placement.Piece(
+                file: CMTimeRange(start: media.fileTime(forSourceTime: first), duration: CMTimeSubtract(last, first)),
+                at: CMTimeAdd(a, offset), duration: CMTimeSubtract(b, a)
+            )
+        }
+        var pieces: [Placement.Piece] = []
+        if clip.time.speed.isAnimated {
+            let step = CMTimeMultiply(frameDuration, multiplier: 4)
+            var cursor = visible.start
+            while cursor < visible.end {
+                let end = CMTimeMinimum(CMTimeAdd(cursor, step), visible.end)
+                pieces.append(piece(from: cursor, to: end))
+                cursor = end
+            }
+        } else {
+            pieces = [piece(from: visible.start, to: visible.end)]
+        }
+        let base = info.orientedTransform.concatenating(fitTransform(from: info.orientedSize, to: frameSize))
+        return (Placement(info: info, pieces: pieces, includesVideo: includesVideo, includesAudio: includesAudio), base)
     }
 
     /// Scales `source` to fit inside `target` (aspect-preserving) and centers it.
@@ -682,24 +853,51 @@ enum CompositionExporter {
         ))
     }
 
-    /// Splits the timeline where any layer's segment starts or ends, and a
-    /// layer shows in a stretch only where one of its segments covers all
-    /// of it (top layer first). Stretches that need rendering are cut into
-    /// pieces of at most `RenderSegment.maxFrames` frames.
+    /// Splits the timeline where any picture starts or ends, and each
+    /// stretch draws the clips whose pictures cover all of it (top first).
+    /// Stretches that need rendering are cut into pieces of at most
+    /// `RenderSegment.maxFrames` frames.
     private static func planRanges(
-        layers: [VideoLayer],
+        tree: [DrawClip],
         overallDuration: CMTime,
+        allowsPassthrough: Bool,
         frameSize: CGSize,
         frameRate: Double,
-        colorSpace: ProjectColorSpace
+        colorSpace: ProjectColorSpace,
+        canvasMargin: Double
     ) -> [PlannedRange] {
         var breakpoints: [CMTime] = [.zero]
-        for layer in layers {
-            for segment in layer.segments {
-                breakpoints.append(segment.timeRange.start)
-                breakpoints.append(segment.timeRange.end)
+        // Wherever a picture, a nested timeline or an adjustment starts or
+        // ends, something about the drawing changes.
+        func collect(_ clips: [DrawClip]) {
+            for clip in clips {
+                breakpoints.append(clip.range.start)
+                breakpoints.append(clip.range.end)
+                switch clip.content {
+                case .group(let group):
+                    collect(group.children)
+                case .media(let media):
+                    // Where its other tracks start and end, so each stretch
+                    // has them throughout or not at all.
+                    for copy in [media.nextFrame].compactMap({ $0 }) + media.echoes + media.trails {
+                        breakpoints.append(copy.range.start)
+                        breakpoints.append(copy.range.end)
+                    }
+                case .adjustment:
+                    break
+                }
+                for input in clip.inputs.values {
+                    switch input {
+                    case .track(let copy, _):
+                        breakpoints.append(copy.range.start)
+                        breakpoints.append(copy.range.end)
+                    case .group(let group):
+                        collect(group.children)
+                    }
+                }
             }
         }
+        collect(tree)
         breakpoints = breakpoints.filter { $0 > .zero && $0 < overallDuration }
         breakpoints.append(.zero)
         breakpoints.sort()
@@ -711,25 +909,42 @@ enum CompositionExporter {
         for index in 0..<(breakpoints.count - 1) {
             let whole = CMTimeRange(start: breakpoints[index], end: breakpoints[index + 1])
             guard whole.duration > .zero else { continue }
-            let shown = layers.compactMap { layer -> (layer: VideoLayer, segment: VideoSegment)? in
-                guard let segment = layer.segments.first(where: { $0.timeRange.start <= whole.start && $0.timeRange.end >= whole.end }) else {
-                    return nil
-                }
-                return (layer, segment)
-            }
-            let owners = Set(shown.map(\.segment.owner))
-            // One layer drawn the same way throughout plays straight from
-            // its file; stacking or anything changing over time is rendered.
-            let needsRender = whole.duration >= frame && (shown.count > 1 || shown.contains { item in
-                item.segment.animation.animatedRanges.contains { animated in
-                    let overlap = animated.intersection(whole)
+            let clips = DrawClip.assembled(tree.compactMap { $0.pruned(to: whole) })
+            let leaves = clips.flatMap(\.leaves)
+            let owners = Set(clips.map(\.owner))
+
+            // One picture drawn the same way throughout plays from its file;
+            // stacking it with others, or anything changing over time, is
+            // rendered.
+            let animated = clips.contains { clip in
+                clip.animatedRanges.contains { range in
+                    let overlap = range.intersection(whole)
                     return overlap.isValid && overlap.duration > .zero
                 }
-            })
+            }
+            let changesPixels = clips.contains { clip in clip.everyClip.contains { $0.stack.resolve(atRoot: whole.start).changesPixels } }
+            // Frames mixed from several, earlier copies, and motion blur
+            // draw a clip more than once.
+            let drawsTwice = clips.contains { clip in
+                clip.everyClip.contains { clip in
+                    if case .media(let media) = clip.content, media.nextFrame != nil || !media.echoes.isEmpty || !media.trails.isEmpty { return true }
+                    return clip.stack.shutter.motionBlur != nil
+                }
+            }
+            let needsRender = whole.duration >= frame && (leaves.count > 1 || animated || changesPixels || drawsTwice)
+
+            // A single picture with nothing done to it and no fitting is the
+            // stretch's frames as they are.
+            var straight: CMPersistentTrackID?
+            if allowsPassthrough, !needsRender, clips.count == 1, case .media(let media) = clips[0].content,
+               media.base == .identity, clips[0].stack.isNoOp(over: whole, frame: frame) {
+                straight = media.trackID
+            }
             guard needsRender else {
                 plan.append(PlannedRange(
-                    range: whole, shown: shown,
-                    segment: RenderSegment(range: whole, key: "", needsRender: false, clipIDs: owners)
+                    range: whole, clips: clips,
+                    segment: RenderSegment(range: whole, key: "", needsRender: false, clipIDs: owners),
+                    passthrough: straight
                 ))
                 continue
             }
@@ -737,12 +952,13 @@ enum CompositionExporter {
             while start < whole.end {
                 let range = CMTimeRange(start: start, end: CMTimeMinimum(CMTimeAdd(start, piece), whole.end))
                 let key = renderKey(
-                    for: range, shown: shown, frame: frame,
-                    frameSize: frameSize, frameRate: frameRate, colorSpace: colorSpace
+                    for: range, clips: clips, frame: frame,
+                    frameSize: frameSize, frameRate: frameRate, colorSpace: colorSpace, canvasMargin: canvasMargin
                 )
                 plan.append(PlannedRange(
-                    range: range, shown: shown,
-                    segment: RenderSegment(range: range, key: key, needsRender: true, clipIDs: owners)
+                    range: range, clips: clips,
+                    segment: RenderSegment(range: range, key: key, needsRender: true, clipIDs: owners),
+                    passthrough: nil
                 ))
                 start = range.end
             }
@@ -750,58 +966,96 @@ enum CompositionExporter {
         return plan
     }
 
-    /// A hash of everything that decides a stretch's frames: each layer's
-    /// file, its version on disk and the file time it starts at, and how it
-    /// is drawn on every frame. Where the stretch sits in the timeline is
-    /// left out, so moving it keeps its render.
+    /// A hash of everything that decides a stretch's frames: each picture's
+    /// file, its version on disk and the file time it starts at, and what
+    /// is done to it on every frame, in the structure the clips are nested
+    /// in. Where the stretch sits in the timeline is left out, so moving it
+    /// keeps its render.
     private static func renderKey(
         for range: CMTimeRange,
-        shown: [(layer: VideoLayer, segment: VideoSegment)],
+        clips: [DrawClip],
         frame: CMTime,
         frameSize: CGSize,
         frameRate: Double,
-        colorSpace: ProjectColorSpace
+        colorSpace: ProjectColorSpace,
+        canvasMargin: Double
     ) -> String {
         func number(_ value: Double) -> String { String(format: "%.5f", value) }
+        func matrix(_ t: CGAffineTransform) -> String { [t.a, t.b, t.c, t.d, t.tx, t.ty].map(number).joined(separator: " ") }
         let frames = Int((range.duration.seconds / frame.seconds).rounded(.up))
-        var text = "v\(RenderSegment.formatVersion) \(number(frameSize.width))x\(number(frameSize.height)) \(number(frameRate)) \(colorSpace.rawValue) \(frames)\n"
-        // Group IDs are made afresh on every build, so the nested timelines
-        // are numbered in the order they first appear instead.
-        var groupNumbers: [UUID: Int] = [:]
-        for (_, segment) in shown {
-            let stamp = FileStamp(url: segment.sourceURL)
-            let fileStart = CMTimeAdd(segment.sourceStart, CMTimeSubtract(range.start, segment.timeRange.start))
-            let animation = segment.animation
-            let groups = animation.groups.map { id -> String in
-                if let number = groupNumbers[id] { return String(number) }
-                groupNumbers[id] = groupNumbers.count
-                return String(groupNumbers.count - 1)
+        var text = "v\(RenderSegment.formatVersion) \(number(frameSize.width))x\(number(frameSize.height)) \(number(frameRate)) \(colorSpace.rawValue) \(number(canvasMargin)) \(frames)\n"
+
+        func describe(_ clip: DrawClip) {
+            switch clip.content {
+            case .media(let media):
+                let stamp = FileStamp(url: media.url)
+                let fileStart = CMTimeAdd(media.sourceStart, CMTimeSubtract(range.start, media.segmentStart))
+                text += "L \(media.url.path) \(stamp?.byteCount ?? -1) \(number(stamp?.modified ?? 0)) \(number(fileStart.seconds)) \(matrix(media.base))\n"
+                // What is done to the footage's time, which the picture
+                // depends on beyond the file time it starts at.
+                text += "T \(number(media.frameDuration.seconds)) \(number(media.alignmentOffset.seconds)) next:\(media.nextFrame != nil) flow:\(media.opticalFlow)"
+                text += " echo:" + media.echoes.map { "\(number($0.strength))@\(number($0.delay.seconds))" }.joined(separator: ",")
+                text += " trails:" + media.trails.map { "\(number($0.strength))@\(number($0.delay.seconds))" }.joined(separator: ",") + "\n"
+            case .group(let group):
+                text += "G \(number(group.frameSize.width))x\(number(group.frameSize.height)) \(matrix(group.toOuter)) \(group.passThrough ? "pass" : "closed")\n"
+            case .adjustment(let adjustment):
+                text += "A \(adjustment.reachesAll ? "all" : "some")\n"
             }
-            text += "\(segment.sourceURL.path) \(stamp?.byteCount ?? -1) \(number(stamp?.modified ?? 0)) \(number(fileStart.seconds)) g\(groups.joined(separator: ","))\n"
+            if let blur = clip.stack.shutter.motionBlur {
+                text += "B \(number(blur.angle)) \(blur.samples) \(number(clip.stack.frameDuration.seconds))\n"
+            }
             for index in 0..<frames {
                 let time = CMTimeAdd(range.start, CMTimeMultiply(frame, multiplier: Int32(index)))
-                let t = animation.transform(at: time)
-                // Each stage's opacity, since a nested timeline's is applied
-                // to its layers together rather than to each.
-                let opacities = animation.stages.map { $0.opacity(at: time) }
-                text += ([t.a, t.b, t.c, t.d, t.tx, t.ty].map { Double($0) } + opacities).map(number).joined(separator: " ")
-                if let crop = animation.cropRectangle(at: time) {
-                    text += " c" + [crop.minX, crop.minY, crop.width, crop.height].map(number).joined(separator: " ")
+                let resolved = clip.stack.resolve(atRoot: time)
+                // Retimed, the file time each frame comes from isn't a
+                // straight line from where the stretch starts.
+                if clip.stack.retimed != nil {
+                    text += "s \(number(clip.stack.sourceTime(atLocal: clip.stack.localTime(atRoot: time)).seconds)) "
                 }
-                for (stageIndex, stage) in animation.stages.enumerated() {
-                    if let reveal = stage.lumaReveal(at: time) {
-                        text += " r\(stageIndex) \(number(reveal.progress)) \(reveal.keysIncoming)"
+                for step in resolved.steps {
+                    switch step {
+                    case .place(let m, let opacity): text += "p \(matrix(m)) \(number(opacity))"
+                    case .mark(let id): text += "m \(id.uuidString)"
+                    case .matte(let effect, let mode, let amount): text += "k \(effect.uuidString) \(mode.rawValue) \(number(amount))"
+                    case .blend(let mode, let amount, let against): text += "b \(mode.rawValue) \(number(amount)) \(against?.uuidString ?? "-")"
+                    case .color(let ops):
+                        text += "g \(clip.stack.colorSpace.rawValue) " + ops.map { op in
+                            "\(op.kind.rawValue):" + (0..<4).map { number(Double(op.value[$0])) }.joined(separator: ",")
+                        }.joined(separator: " ")
                     }
-                    if let transition = stage.transitionFrame(at: time) {
-                        text += " x\(stageIndex) \(transition.key)"
-                        if case .clip(let id) = transition.options.matte, transition.kind == .matteWipe {
-                            text += " \(MatteMaps.shared.stamp(for: id) ?? "noise")"
-                        }
+                    text += " "
+                }
+                if let transition = resolved.transition {
+                    text += "t \(number(transition.opacity)) \(matrix(transition.transform))"
+                    if let visible = transition.visibleRect {
+                        text += " c" + [visible.minX, visible.minY, visible.width, visible.height].map(number).joined(separator: " ")
+                    }
+                    if let reveal = transition.lumaReveal {
+                        text += " r\(number(reveal.progress)) \(reveal.keysIncoming)"
+                    }
+                }
+                if let drawn = clip.stack.transitionFrame(atRoot: time) {
+                    text += " x \(drawn.key)"
+                    if drawn.kind == .matteWipe, case .clip(let id) = drawn.options.matte {
+                        text += " \(MatteMaps.shared.stamp(for: id) ?? "noise")"
                     }
                 }
                 text += "\n"
             }
+            switch clip.content {
+            case .group(let group):
+                text += "(\n"
+                group.children.forEach(describe)
+                text += ")\n"
+            case .adjustment(let adjustment):
+                text += "(\n"
+                adjustment.reached.forEach(describe)
+                text += ")\n"
+            case .media:
+                break
+            }
         }
+        clips.forEach(describe)
         return SHA256.hash(data: Data(text.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
     }
 
@@ -829,138 +1083,51 @@ enum CompositionExporter {
             guard let track else { break }
             let source = CMTimeRange(start: info.videoRange.start, duration: segment.range.duration)
             try track.insertTimeRange(source, of: video, at: segment.range.start)
-            let rendered = VideoLayer(track: track, segments: [])
-            let drawn = VideoSegment(
-                timeRange: segment.range, animation: PlacementAnimation(base: .identity, stages: []),
-                sourceURL: file, sourceStart: source.start, owner: UUID()
-            )
-            plan[index].shown = [(rendered, drawn)]
+            plan[index].clips = [DrawClip(
+                content: .media(MediaDraw(
+                    trackID: track.trackID, base: .identity, url: file,
+                    sourceStart: source.start, segmentStart: segment.range.start
+                )),
+                stack: .none, range: segment.range, owner: UUID()
+            )]
             cache.markUsed(segment.key)
             used.insert(segment.key)
         }
         return used
     }
 
-    /// The per-stretch layer stacking instructions. Gaps produce empty
-    /// instructions, which render black.
+    /// The per-stretch drawing instructions. Gaps are stretches with
+    /// nothing to draw, which render black.
     private static func buildVideoComposition(
         plan: [PlannedRange],
-        hasLayers: Bool,
+        hasPictures: Bool,
         renderSize: CGSize,
         frameRate: Double,
         colorSpace: ProjectColorSpace,
-        layered: Bool,
-        meter: RenderMeter?
+        forPreview: Bool,
+        canvasMargin: Double,
+        meter: RenderMeter?,
+        options: DrawingOptions?
     ) -> AVMutableVideoComposition? {
-        guard hasLayers else { return nil }
+        guard hasPictures else { return nil }
 
-        let frame = frameDuration(for: frameRate)
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = renderSize
-        videoComposition.frameDuration = frame
-
-        // The built-in compositor draws everything else exactly; for export
-        // only a film dissolve, a transition drawn from two whole pictures,
-        // or a nested timeline fading over layers of its own that overlap
-        // needs ours, so it is used just for timelines with one.
-        let needsLayered = plan.contains { planned in
-            let animations = planned.shown.map(\.segment.animation)
-            return animations.contains(where: \.needsLayeredCompositor) || fadesGroupTogether(animations)
-        }
-        if layered || needsLayered {
-            // The viewer draws SDR timelines in 8 bits, which decodes cheaper.
-            videoComposition.customVideoCompositorClass = layered && colorSpace == .rec709
-                ? SDRLayeredCompositor.self : LayeredCompositor.self
-            videoComposition.instructions = plan.map { planned in
-                LayeredInstruction(
-                    timeRange: planned.range,
-                    layers: planned.shown.map { LayeredInstruction.Layer(trackID: $0.layer.track.trackID, animation: $0.segment.animation) },
-                    renderSize: renderSize, colorSpace: colorSpace, meter: meter
-                )
-            }
-            return videoComposition
-        }
-
+        videoComposition.frameDuration = frameDuration(for: frameRate)
+        // The viewer draws SDR timelines in 8 bits, which decodes cheaper.
+        videoComposition.customVideoCompositorClass = forPreview && colorSpace == .rec709
+            ? SDRLayeredCompositor.self : LayeredCompositor.self
         videoComposition.instructions = plan.map { planned in
-            let instruction = AVMutableVideoCompositionInstruction()
-            instruction.timeRange = planned.range
-            instruction.layerInstructions = planned.shown.map { shown in
-                let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: shown.layer.track)
-                applyAnimation(shown.segment.animation, to: layerInstruction, in: planned.range, frame: frame)
-                return layerInstruction
-            }
-            return instruction
+            LayeredInstruction(
+                timeRange: planned.range, clips: planned.clips, passthrough: planned.passthrough ?? kCMPersistentTrackID_Invalid,
+                renderSize: renderSize, colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options
+            )
         }
         return videoComposition
     }
 
-    /// Whether two of `animations` are drawn through the same nested
-    /// timeline while it may fade. The built-in compositor fades each layer
-    /// on its own, so they would show through each other; only
-    /// `LayeredCompositor` fades them as one picture.
-    static func fadesGroupTogether(_ animations: [PlacementAnimation]) -> Bool {
-        var seen: Set<UUID> = []
-        for animation in animations {
-            for stage in animation.stages {
-                guard stage.fadesGroup, let id = stage.groupID else { continue }
-                if !seen.insert(id).inserted { return true }
-            }
-        }
-        return false
-    }
-
     private static func frameDuration(for frameRate: Double) -> CMTime {
         Timeline.frameDuration(for: frameRate)
-    }
-
-    /// Sets the transform and opacity at the start of `range`, then again on
-    /// every frame where a keyframed stage is changing. The built-in
-    /// compositor holds each value until the next one, so the result is
-    /// exact at every rendered frame. Matrix ramps aren't used because they
-    /// blend matrix entries, which shrinks a layer midway through a turn.
-    static func applyAnimation(
-        _ animation: PlacementAnimation,
-        to instruction: AVMutableVideoCompositionLayerInstruction,
-        in range: CMTimeRange,
-        frame: CMTime
-    ) {
-        var lastTransform = animation.transform(at: range.start)
-        var lastOpacity = animation.opacity(at: range.start)
-        let crops = animation.hasCrop
-        var lastCrop = crops ? animation.cropRectangle(at: range.start) : nil
-        instruction.setTransform(lastTransform, at: range.start)
-        instruction.setOpacity(lastOpacity, at: range.start)
-        if let lastCrop { instruction.setCropRectangle(lastCrop, at: range.start) }
-        guard frame.seconds > 0 else { return }
-
-        var lastSet = range.start
-        for animated in animation.animatedRanges {
-            // One frame past the last keyframe, so the final value lands.
-            let span = CMTimeRange(start: animated.start, end: CMTimeAdd(animated.end, frame)).intersection(range)
-            guard span.isValid, span.duration > .zero else { continue }
-            var index = Int64((span.start.seconds / frame.seconds).rounded(.up))
-            while true {
-                let time = CMTime(value: index * frame.value, timescale: frame.timescale)
-                guard time < span.end else { break }
-                index += 1
-                guard time > lastSet else { continue }
-                lastSet = time
-                let transform = animation.transform(at: time)
-                let opacity = animation.opacity(at: time)
-                if transform != lastTransform {
-                    instruction.setTransform(transform, at: time)
-                    lastTransform = transform
-                }
-                if opacity != lastOpacity {
-                    instruction.setOpacity(opacity, at: time)
-                    lastOpacity = opacity
-                }
-                if crops, let crop = animation.cropRectangle(at: time), crop != lastCrop {
-                    instruction.setCropRectangle(crop, at: time)
-                    lastCrop = crop
-                }
-            }
-        }
     }
 
     /// Cancelling the calling task cancels the export, deletes the partial
@@ -1021,5 +1188,79 @@ enum CompositionExporter {
             throw CompositionError.exportFailed(error.localizedDescription)
         }
         return composed.cachedKeys.count
+    }
+}
+
+private extension Placement.Piece {
+    /// The part of the piece the file has frames for, where it plays in
+    /// root time, and for how long: the piece itself unless the file runs
+    /// out at one end, when the footage that is left plays for the share of
+    /// the piece's time it has the share of the piece's file for. Nil when
+    /// none of it is in the file.
+    func within(_ available: CMTimeRange) -> (file: CMTimeRange, at: CMTime, length: CMTime)? {
+        let kept = file.intersection(available)
+        guard kept.isValid, kept.duration > .zero else { return nil }
+        guard kept != file else { return (file, at, duration) }
+        let ratio = file.duration.seconds > 0 ? duration.seconds / file.duration.seconds : 1
+        let skipped = CMTimeSubtract(kept.start, file.start)
+        return (
+            kept,
+            duration == file.duration ? CMTimeAdd(at, skipped) : CMTimeAdd(at, CMTimeMultiplyByFloat64(skipped, multiplier: ratio)),
+            duration == file.duration ? kept.duration : CMTimeMultiplyByFloat64(kept.duration, multiplier: ratio)
+        )
+    }
+}
+
+extension CompositionExporter {
+    /// The footage an effect takes, for the stretch of the timeline `visible`
+    /// where its clip is: it starts with the clip, `input.offset` into itself,
+    /// and plays at its own speed. At its end it holds its last frame, or
+    /// plays again from its start when it loops. Nil when the asset has no
+    /// file or no pictures.
+    fileprivate static func inputPlacement(
+        _ assetID: UUID,
+        input: EffectInput,
+        clip: TimelineClip,
+        visible: CMTimeRange,
+        project: EditingProject,
+        frameSize: CGSize,
+        offset: CMTime
+    ) async throws -> (Placement, CGAffineTransform)? {
+        guard let media = project.mediaClip(id: assetID), media.kind == .video, let url = media.url else { return nil }
+        let info = try await MediaTrackCache.shared.info(for: url)
+        guard info.video != nil, media.duration > .zero else { return nil }
+
+        let frame = Timeline.frameDuration(for: media.frameRate > 0 ? media.frameRate : 24)
+        let length = media.duration
+        var position = CMTimeAdd(input.offset, CMTimeSubtract(visible.start, clip.startOffset))
+        var left = visible.duration
+        var at = CMTimeAdd(visible.start, offset)
+        var pieces: [Placement.Piece] = []
+        if input.loops {
+            position = CMTime(seconds: position.seconds.truncatingRemainder(dividingBy: length.seconds), preferredTimescale: 240_000)
+        }
+        while left > .zero, pieces.count < 4000 {
+            if position < length {
+                let span = CMTimeMinimum(left, CMTimeSubtract(length, position))
+                pieces.append(Placement.Piece(
+                    file: CMTimeRange(start: media.fileTime(forSourceTime: position), duration: span), at: at, duration: span
+                ))
+                left = CMTimeSubtract(left, span)
+                at = CMTimeAdd(at, span)
+                position = CMTimeAdd(position, span)
+            } else if !input.loops {
+                // Past the end: its last frame, held for what remains.
+                let last = CMTimeMaximum(.zero, CMTimeSubtract(length, frame))
+                pieces.append(Placement.Piece(
+                    file: CMTimeRange(start: media.fileTime(forSourceTime: last), duration: frame), at: at, duration: left
+                ))
+                left = .zero
+            } else {
+                position = .zero
+            }
+        }
+        guard !pieces.isEmpty else { return nil }
+        let base = info.orientedTransform.concatenating(fitTransform(from: info.orientedSize, to: frameSize))
+        return (Placement(info: info, pieces: pieces, includesVideo: true, includesAudio: false), base)
     }
 }

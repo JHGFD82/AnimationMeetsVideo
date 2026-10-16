@@ -155,113 +155,124 @@ extension AnimatedValue where Value: KeyframeComponents {
     }
 }
 
-/// A layer property that can be keyframed: a transform property or the
-/// layer's volume.
+/// A value that can be keyframed: a layer's volume, or something on a clip:
+/// its volume, its anchor point or one of an effect's controls.
 enum AnimatedParameter: Hashable {
-    case transform(TransformProperty)
-    case volume
+    case layerVolume(layerID: UUID)
+    case clipVolume(clipID: UUID)
+    case anchorPoint(clipID: UUID)
+    case speed(clipID: UUID)
+    case control(ControlKind, clipID: UUID, effectID: UUID, controlID: UUID)
 
     var name: String {
         switch self {
-        case .transform(let property): property.rawValue
-        case .volume: "Volume"
+        case .layerVolume, .clipVolume: "Volume"
+        case .speed: "Speed"
+        case .anchorPoint: "Anchor Point"
+        case .control(let kind, _, _, _): kind.name
         }
     }
 
     /// The names of its components, for a graph's legend.
     var componentNames: [String] {
         switch self {
-        case .transform(.position): ["X", "Y"]
-        case .transform(.scale): ["Width", "Height"]
-        case .transform(let property): [property.rawValue]
-        case .volume: ["Level"]
+        case .layerVolume, .clipVolume: ["Level"]
+        case .speed: ["Speed"]
+        case .anchorPoint: ["x", "y"]
+        case .control(let kind, _, _, _): kind.componentNames
         }
     }
 
-    /// Added to each stored component to show it as the editor does:
-    /// position is shown absolute in the frame.
+    /// Added to each stored component to show it as the editor does. Every
+    /// parameter is shown as stored.
     func displayOffset(frameSize: CGSize) -> [Double] {
-        switch self {
-        case .transform(.position): [frameSize.width / 2, frameSize.height / 2]
-        default: componentNames.map { _ in 0 }
-        }
+        componentNames.map { _ in 0 }
     }
 
-    /// A stored component limited to what the property allows.
+    /// A stored component limited to what the parameter allows.
     func clamped(_ component: Double) -> Double {
         switch self {
-        case .transform(.opacity): min(max(component, 0), 100)
-        case .volume: AudioLevel.clamped(component)
-        default: component
+        case .layerVolume, .clipVolume: AudioLevel.clamped(component)
+        case .speed: min(max(component, ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound)
+        case .anchorPoint: component
+        case .control(let kind, _, _, _): kind.clamped(component)
         }
     }
 
     /// A shown value with its unit.
     func label(_ shown: Double) -> String {
         switch self {
-        case .volume: AudioLevel.label(shown)
-        case .transform(let property): NumericExpression.format(shown, maxFractionDigits: 1) + property.unit
+        case .layerVolume, .clipVolume: AudioLevel.label(shown)
+        case .speed: NumericExpression.format(shown, maxFractionDigits: 1) + "%"
+        case .anchorPoint: NumericExpression.format(shown, maxFractionDigits: 1) + " px"
+        case .control(let kind, _, _, _): kind.label(shown)
         }
     }
 }
 
-/// One parameter of one layer of one timeline.
+/// One parameter in one timeline.
 struct ParameterKey: Hashable {
     var timelineID: UUID
-    var layerID: UUID
     var parameter: AnimatedParameter
 }
 
-extension LayerTransform {
-    subscript(components property: TransformProperty) -> AnimatedValue<ComponentValue> {
-        get {
-            switch property {
-            case .position: position.asComponents
-            case .scale: scale.asComponents
-            case .rotation: rotation.asComponents
-            case .opacity: opacity.asComponents
-            }
-        }
-        set {
-            switch property {
-            case .position: position = AnimatedValue(components: newValue)
-            case .scale: scale = AnimatedValue(components: newValue)
-            case .rotation: rotation = AnimatedValue(components: newValue)
-            case .opacity: opacity = AnimatedValue(components: newValue)
-            }
-        }
-    }
-}
-
-extension TimelineLayer {
-    subscript(components parameter: AnimatedParameter) -> AnimatedValue<ComponentValue> {
-        get {
-            switch parameter {
-            case .transform(let property): transform[components: property]
-            case .volume: volume.asComponents
-            }
-        }
-        set {
-            switch parameter {
-            case .transform(let property): transform[components: property] = newValue
-            case .volume: volume = AnimatedValue(components: newValue)
-            }
-        }
-    }
-}
-
 extension EditingProject {
-    /// The parameter's keyframes as components, or nil when its layer is gone.
+    /// The parameter's keyframes as components, or nil when what holds it
+    /// is gone (or it is a choice, which has none).
     func components(of key: ParameterKey) -> AnimatedValue<ComponentValue>? {
-        timeline(id: key.timelineID)?.layer(id: key.layerID)?[components: key.parameter]
+        guard let timeline = timeline(id: key.timelineID) else { return nil }
+        switch key.parameter {
+        case .layerVolume(let layerID):
+            return timeline.layer(id: layerID)?.volume.asComponents
+        case .clipVolume(let clipID):
+            return clipAndLayer(clipID, in: key.timelineID)?.clip.volume.asComponents
+        case .anchorPoint(let clipID):
+            return clipAndLayer(clipID, in: key.timelineID)?.clip.anchorPoint.asComponents
+        case .speed(let clipID):
+            return clipAndLayer(clipID, in: key.timelineID)?.clip.time.speed.asComponents
+        case .control(_, let clipID, let effectID, let controlID):
+            let control = clipAndLayer(clipID, in: key.timelineID)?.clip.effects
+                .first { $0.id == effectID }?.controls.first { $0.id == controlID }
+            return control.flatMap { $0.kind.isChoice ? nil : $0.number }
+        }
     }
 
     mutating func editComponents(of key: ParameterKey, _ change: (inout AnimatedValue<ComponentValue>) -> Void) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == key.timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == key.layerID })
-        else {
-            return
+        guard let tIndex = timelines.firstIndex(where: { $0.id == key.timelineID }) else { return }
+        switch key.parameter {
+        case .layerVolume(let layerID):
+            guard let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }) else { return }
+            var components = timelines[tIndex].layers[lIndex].volume.asComponents
+            change(&components)
+            timelines[tIndex].layers[lIndex].volume = AnimatedValue(components: components)
+        case .clipVolume(let clipID):
+            editClip(clipID, in: key.timelineID) { clip in
+                var components = clip.volume.asComponents
+                change(&components)
+                clip.volume = AnimatedValue(components: components)
+            }
+        case .anchorPoint(let clipID):
+            editClip(clipID, in: key.timelineID) { clip in
+                var components = clip.anchorPoint.asComponents
+                change(&components)
+                clip.anchorPoint = AnimatedValue(components: components)
+            }
+        case .speed(let clipID):
+            guard let layerID = clipAndLayer(clipID, in: key.timelineID)?.layer.id else { return }
+            editTime(ofClip: clipID, in: key.timelineID, layer: layerID) { time in
+                var components = time.speed.asComponents
+                change(&components)
+                time.speed = AnimatedValue(components: components)
+            }
+        case .control(_, let clipID, let effectID, let controlID):
+            editClip(clipID, in: key.timelineID) { clip in
+                guard let e = clip.effects.firstIndex(where: { $0.id == effectID }),
+                      let c = clip.effects[e].controls.firstIndex(where: { $0.id == controlID })
+                else {
+                    return
+                }
+                change(&clip.effects[e].controls[c].number)
+            }
         }
-        change(&timelines[tIndex].layers[lIndex][components: key.parameter])
     }
 }

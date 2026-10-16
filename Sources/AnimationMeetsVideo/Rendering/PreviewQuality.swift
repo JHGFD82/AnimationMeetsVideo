@@ -51,8 +51,8 @@ enum PreviewLevel: Int, Comparable {
 
     static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 
-    fileprivate var smaller: Self? { Self(rawValue: rawValue + 1) }
-    fileprivate var larger: Self? { Self(rawValue: rawValue - 1) }
+    var smaller: Self? { Self(rawValue: rawValue + 1) }
+    var larger: Self? { Self(rawValue: rawValue - 1) }
 }
 
 /// Chooses the level for Auto while playing. Playback that falls behind
@@ -129,5 +129,44 @@ struct PreviewGovernor {
         stepUpOnPause = nil
         lastChange = time
         behindSamples = 0
+    }
+}
+
+/// Chooses the size of the frames drawn while a value is being dragged.
+/// Each frame is timed: one that takes longer than `budget` steps the size
+/// down a level at once (a level down draws a quarter of the pixels), and
+/// frames that would still fit in half the budget at the next size up,
+/// several in a row, step it back up. It starts each drag at full size.
+struct LiveGovernor {
+    private(set) var level: PreviewLevel = .full
+    private var fastFrames = 0
+
+    /// How long a frame may take for the picture to feel like it follows
+    /// the pointer.
+    static let budget = 0.1
+    /// Fast frames in a row before the size goes back up.
+    static let stepUpAfter = 4
+
+    mutating func record(seconds: Double) {
+        if seconds > Self.budget {
+            fastFrames = 0
+            if let smaller = level.smaller { level = smaller }
+            return
+        }
+        // A larger level draws four times the pixels.
+        guard let larger = level.larger, seconds * 4 < Self.budget * 0.5 else {
+            fastFrames = 0
+            return
+        }
+        fastFrames += 1
+        if fastFrames >= Self.stepUpAfter {
+            level = larger
+            fastFrames = 0
+        }
+    }
+
+    mutating func reset() {
+        level = .full
+        fastFrames = 0
     }
 }

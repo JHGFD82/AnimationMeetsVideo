@@ -12,7 +12,7 @@ import Testing
         #expect(Timeline.frameDuration(for: 29.97) == CMTime(value: 1001, timescale: 30_000))
     }
 
-    @Test func changingTheRateMovesClipsKeyframesAndSectionsOntoTheNewFrames() throws {
+    @Test func changingTheRateMovesClipsLayerKeyframesAndSectionsOntoTheNewFrames() throws {
         var project = EditingProject.empty
         let t = project.rootTimelineID
         let media = MediaClip(
@@ -27,9 +27,9 @@ import Testing
         // Two clips meeting at a frame of 24 fps that isn't one of 25 fps.
         project.trimClipEnd(first.clipID, in: t, layer: first.layerID, to: CMTime(value: 25, timescale: 24))
         project.moveClip(second.clipID, in: t, layer: second.layerID, onto: first.layerID, to: CMTime(value: 25, timescale: 24))
-        project.editTransform(of: first.layerID, in: t) { transform in
-            transform.opacity.setAnimated(true, at: CMTime(value: 1, timescale: 24))
-        }
+        let tIndex = try #require(project.timelines.firstIndex { $0.id == t })
+        let lIndex = try #require(project.timelines[tIndex].layers.firstIndex { $0.id == first.layerID })
+        project.timelines[tIndex].layers[lIndex].volume.setAnimated(true, at: CMTime(value: 1, timescale: 24))
         project.addSection(in: t, from: CMTime(value: 1, timescale: 24), to: CMTime(value: 25, timescale: 24))
 
         let timeline = try #require(project.timeline(id: t))
@@ -42,7 +42,7 @@ import Testing
         #expect(clips.count == 2)
         #expect(clips.allSatisfy { onFrame($0.startOffset) && onFrame($0.endOffset) })
         #expect(clips[0].endOffset == clips[1].startOffset)
-        #expect(try #require(updated.layer(id: first.layerID)).transform.opacity.keyframes.allSatisfy { onFrame($0.time) })
+        #expect(try #require(updated.layer(id: first.layerID)).volume.keyframes.allSatisfy { onFrame($0.time) })
         #expect(updated.sections.allSatisfy { onFrame($0.start) && onFrame($0.end) && $0.duration >= frame })
     }
 }

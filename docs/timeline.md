@@ -9,9 +9,11 @@ with a trackpad. What is not built is listed under
 
 The timeline sits under the library, viewer and inspector and spans the
 full width of the window: a label column on the left (layer number and
-name, and transform property rows when shown), and the track area on the
-right with the ruler across its top. The transitions panel, opened with the
-button in the timeline's header, takes its place at the right end.
+name, and its volume row when shown), and the track area on the
+right with the ruler across its top. The browser (effects and
+transitions in tabs, [effects.md](effects.md#the-effects-panel)) takes the
+right end when its button in the header is on. The inspector and the
+effects list are tabs of the area beside the viewer.
 
 The timeline is as tall as the person makes it with the grip between it and
 the viewer, whatever its layers need; it remembers that height. Under the
@@ -199,11 +201,15 @@ exports as black, so a timeline can be made longer than its footage (a
 hidden track holds one frame of a source stretched over that time, since a
 composition otherwise ends with its last media).
 
-- Drag across empty space in the lane to make a section over that range;
-  double-click empty space to make one five seconds long. A new section is
-  named "Section N" and its name opens for typing at once.
-- Double-click a section (or use its right-click menu) to rename it;
-  leaving the name empty keeps the old one.
+- Double-click empty space in the lane to make a section five seconds
+  long (dragging across empty space no longer draws one, which happened by
+  accident). A new section is named "Section N" and its name opens for
+  typing at once.
+- Double-click a section (or use its right-click menu) to rename it, as
+  with a file: the name is selected, Return or a click anywhere else saves
+  it, Escape cancels, and leaving it empty keeps the old name.
+- The sections button in the timeline toolbar (or the view options) shows
+  or hides the whole row.
 - Drag a section to move it and its edges to resize it.
 - Click a section to select it, then Delete removes it (also in its menu).
   Selecting a section clears any clip or layer selection.
@@ -241,8 +247,8 @@ is being edited.
   its bottom half the incoming one; the cut stays and the transition gets
   different footage to blend.
 
-P, S, R and T show transform properties, which is why slip is Y, as in
-Premiere.
+Slip is Y, as in Premiere. (P, S, R and T showed layer transforms, which
+moved onto clips; see [effects.md](effects.md).)
 
 ## Snapping
 
@@ -407,7 +413,7 @@ There are 25 kinds in five groups (dissolves, wipes, moves, 3D,
 stylized); what each does, its settings (set in the inspector under the
 transition's length) and how it is drawn are in
 [transitions.md](transitions.md). A wipe or slide acts in the frame of
-the timeline the clip is on, after the layer's transform.
+the timeline the clip is on, after the clip's effect stack.
 
 The **film dissolve** shows the following picture brightest parts first:
 it appears wherever it is brighter than a threshold that falls from white
@@ -418,19 +424,19 @@ picture looks.
 
 ### Rendering
 
-Cross dissolve, wipe, slide, zoom and spin are drawn with the built-in
-compositor's opacity, transform and crop (`EdgeTransitions` in
-`ClipTransition.swift`, applied per frame with the layer's keyframes).
-Keying on brightness, and the kinds drawn from two whole pictures
-([transitions.md](transitions.md#two-pictures)), need our own compositor,
-so a timeline with one anywhere is drawn by `LayeredCompositor` (Core
-Image) for its whole length, in preview and export alike. It stacks the same layers with the same crops, transforms and
-opacities, without color management just like the built-in one, and a test
-checks the two draw the same picture. On a nested timeline the transition
-applies to its composite, as its opacity does: its layers are stacked
-first and then faded or keyed together. A timeline where a nested timeline
-fades over two of its own layers at once is likewise drawn by
-`LayeredCompositor`.
+Transitions sit below a clip's effect stack: the compositor draws the clip
+through its stack, then applies the transition. Cross dissolve, wipe,
+slide, zoom and spin set the clip's opacity, transform and crop in the
+frame of the timeline the clip is on (`EdgeTransitions` in
+`ClipTransition.swift`, evaluated per frame). The film dissolve keys on
+brightness, on the clip's picture or on what is drawn under it. The rest
+are drawn from two whole pictures, what's under the clip and the clip over
+it ([transitions.md](transitions.md#two-pictures)). All of it is drawn by
+`LayeredCompositor` (Core Image), in preview and export alike, without
+color management. A nested timeline is one picture, so a transition on it
+applies to the whole; on a pass-through nested clip everything but the
+wipe and the film dissolve applies: moves and fades to each layer inside,
+two-picture kinds to the layers as drawn over what's under them.
 
 ### Curves
 
@@ -460,6 +466,61 @@ the layer is at least 30 points tall, its points and handles appear:
 - Right-click a point to delete it or toggle its corner.
 
 A drag is saved when it ends, as one undo step.
+
+## Retimed clips
+
+A clip's speed (percent of its source's own) decides how long it lasts: the
+block is as long as its source range takes at that speed, and a clock mark
+shows it is retimed. A clip block no longer shows its duration. Instead a
+retimed one reads its speed along the second line of the bar: a `|`, a
+space and the speed at the start and at each speed keyframe, where the
+keyframe plays. Between two points whose speeds differ (a ramp) a stretched
+arrow runs from one to the next; between equal speeds there is none. (A
+hard change, with no ramp, would show no arrow either, but speed keyframes
+always ramp for now.) Badges (effects, sound, time, shutter) sit at the end
+of the name line. Dragging its end trims the source, never stretching the
+clip; changing the speed moves the clips after it on the layer by as much as
+its end moved, as trimming does. Speed, frame blending, echo and the sound
+choice are in the clip's menu and the effects panel's Time rows; motion blur
+and trails (a camera aperture mark) are under Shutter. See
+[effects.md](effects.md#time-and-shutter).
+
+### Rounding and gaps
+
+A clip's end is exclusive: a clip that ends at frame 50 and one that starts
+at frame 50 meet; one that starts at 51 leaves a one-frame gap. At a fixed
+speed a clip's length is exact. Under a speed ramp, where the source time
+for a moment is found by searching and stored to 1/240000 s, a clip's end
+is only known to a few microseconds, so these rules apply:
+
+- **1 ms is the tolerance** for "the same place": about 3% of a frame at
+  30 fps, far above the 4 µs of error and far below anything a person
+  could mean. It is `Timeline.abutmentTolerance`.
+- A retimed clip's length within 1 ms of a whole number of frames is that
+  number; otherwise trimming it back to whole frames rounds down.
+- A clip that met a retimed clip's end before an edit still meets it after
+  (it moves to the frame the end is at).
+- Building a composition closes any gap between clips under 1 ms, so a
+  microsecond of difference never draws a black frame.
+- A gap of a frame or more is a real gap, and is never closed for you.
+
+## Adjustment layers
+
+The adjustment button in the timeline's header adds an **adjustment layer**
+at the top of the stack. It lives in the Video area, holds adjustment clips
+and nothing else, and is named "Adjustment 1" and so on. An adjustment clip
+has no picture: its effect stack (edited in the effects panel, like any
+clip's) is applied to the layers below it while it plays. Its layer's header
+menu has **Reach**: all layers below, or down to a chosen one. A bracket
+along the layer's left edge shows the layers it reaches, faded when it reaches
+none. See [effects.md](effects.md#adjustment-layers).
+
+## Clip badges and menus
+
+A clip with effects shows a small badge with how many, and a nested clip
+that passes through shows a mark. Dragging an effect from the effects panel
+onto a clip adds it to the end of the clip's stack. The clip's menu has
+**Pass Through** for nested clips.
 
 ## Not implemented yet
 
