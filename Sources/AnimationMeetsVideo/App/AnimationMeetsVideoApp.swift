@@ -253,6 +253,7 @@ struct AnimationMeetsVideoApp: App {
         do {
             try ProjectStore.validatePackage(at: url)
             let lock = try lockForProject(at: url)
+            ProjectStore.markAsPackage(url)
             let saved = try await ProjectStore.load(from: url)
             // Work an autosave holds that was never saved, as after quitting
             // without saving or a crash, is offered back.

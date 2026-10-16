@@ -47,6 +47,13 @@ MyProject.amv/
                       skipped on volumes that don't support flock)
 ```
 
+Finder and the open and save panels show the package as one item, not a
+folder to browse into. The app sets the folder's package flag whenever it
+creates, opens or saves a project, which works even when it runs from
+`swift run`. The flag is file metadata that zip, git and some sync
+services drop, so a project copied that way shows as a folder until it's
+next opened.
+
 Media may be copied into `Media/` or referenced from elsewhere. **Copying
 into the package is the default**, and it happens at import: the file is
 copied first and the copy is what the project imports. The project's

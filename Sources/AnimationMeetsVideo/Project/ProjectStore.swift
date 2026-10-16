@@ -392,6 +392,18 @@ enum ProjectStore {
         if !fileManager.fileExists(atPath: ignoreURL.path) {
             try "\(cacheFolderName)/\n\(backupsFolderName)/\n\(lockFileName)\n".write(to: ignoreURL, atomically: true, encoding: .utf8)
         }
+        markAsPackage(packageURL)
+    }
+
+    /// Sets the folder's package flag, so Finder and open and save panels
+    /// show it as one item even where no installed app declares `.amv`.
+    /// The flag is file metadata that some copies drop (zip, git, some
+    /// sync services), so it's set again on every open and save.
+    static func markAsPackage(_ packageURL: URL) {
+        var url = packageURL
+        var values = URLResourceValues()
+        values.isPackage = true
+        try? url.setResourceValues(values)
     }
 
     // MARK: Reference data

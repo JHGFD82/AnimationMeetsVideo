@@ -303,6 +303,8 @@ private struct Sandbox {
         }
         let ignore = try String(contentsOf: sandbox.packageURL.appending(path: ".gitignore"), encoding: .utf8)
         #expect(ignore.contains("Cache/"))
+        let isPackage = try sandbox.packageURL.resourceValues(forKeys: [.isPackageKey]).isPackage
+        #expect(isPackage == true)
     }
 
     @Test func copiedMediaIsStoredWithRelativePath() async throws {
