@@ -41,6 +41,9 @@ Follow Google's change-description conventions for every commit.
     external display), `Replacement/`, and `Components/` for shared controls.
   Put new UI code in the folder of the area that uses it, one main view per
   file; keep non-UI logic out of `UI/`.
+- New UI follows the rules in `docs/accessibility.md`: drawn or gesture-
+  driven views need an accessibility element with actions, icon-only
+  buttons need labels, and anything a drag does needs a keyboard path.
 - Design docs live in `docs/` (start at `docs/README.md`). Each states whether
   it describes existing or planned behavior; keep them in sync with the code.
 - Building requires full Xcode (SwiftUI macro plugins are missing from the

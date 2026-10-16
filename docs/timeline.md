@@ -177,41 +177,16 @@ lands out of view.
 These keys are left to a list or other control that has the keyboard (the
 library's list uses the arrows), and to text being typed. All of them, and
 the timeline's other keys (tools, snapping, zoom, Delete), are listed in
-the **Timeline** menu (`TimelineCommands`). Keys without a modifier are
+the **Timeline** menu (`TimelineCommands`) and in
+[accessibility.md](accessibility.md). Keys without a modifier are
 written after the item's name rather than set as menu shortcuts, since a
 menu shortcut would take the key from a text field.
 
 ## VoiceOver
 
-Each layer is a group named as the timeline shows it, holding its clips.
-A clip reads as its name and kind ("Interview, video clip"), then where it
-starts, how long it is in the timeline's timecode, its transitions and
-whether it carries its own sound. Pressing it selects it, so Delete, ⌘B
-and the nudge keys act on it; its actions move it a frame earlier or later,
-trim either end by a frame, remove its transitions and detach its audio,
-by the same rules as dragging.
-
-The rest of the timeline reads the same way:
-
-- **The ruler** is the playhead: its value is the playhead's timecode, and
-  adjusting it (VO-Up and VO-Down) steps a frame.
-- **Area titles** are headings ("Sound area, 2 layers").
-- **Layer headers** are groups named "Layer 2, Music 1", holding their
-  toggles. Pressing one selects the layer; its actions move it up or
-  down, rename it and delete it.
-- **Sections** read their name and span; pressing selects, and actions
-  rename and delete.
-- **Keyframes** read their time and ease; pressing moves the playhead to
-  one, and actions apply an ease or delete it.
-- **Joined transitions** read their kind, length and curve; pressing
-  selects, and actions open the footage, set a curve or remove it.
-- **Property values** in the rows and the inspector read as what they are
-  ("Position X") and their value; pressing one opens it for typing.
-
-Outside the timeline, the viewer reads as an image with the playhead's
-timecode, the audio meter reads each channel's level, library scenes read
-as one line each without their thumbnails, and group titles in the
-inspector and in sheets are headings.
+Clips, layers, the playhead, sections, keyframes and joined transitions
+are all reachable with VoiceOver, with actions for what dragging does a
+frame at a time. See [accessibility.md](accessibility.md).
 
 ## Sections
 
