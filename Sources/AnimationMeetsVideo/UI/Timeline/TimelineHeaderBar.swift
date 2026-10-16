@@ -80,7 +80,8 @@ struct TimelineSettingsSheet: View {
             subtitle: isCreating
                 ? "The frame size and rate everything on this timeline is composited to."
                 : "Clips keep their own footage; changing these re-composites them to the new frame.",
-            width: Design.SheetWidth.standard
+            width: Design.SheetWidth.standard,
+            scrollsContent: true
         ) {
             SheetSection {
                 SheetRow("Name") {

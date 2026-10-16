@@ -319,6 +319,8 @@ struct ScenePreviewSheet: View {
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
         }
+        // Done is its only way out, so Escape closes it too.
+        .onExitCommand { dismiss() }
         .onDisappear { model.stop() }
     }
 }

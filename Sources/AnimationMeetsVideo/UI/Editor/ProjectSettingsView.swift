@@ -16,7 +16,8 @@ struct ProjectSettingsView: View {
         SheetFrame(
             title: "Project Settings",
             subtitle: "These apply to the whole project. Changes are made together when you save them, and can be undone.",
-            width: Design.SheetWidth.standard
+            width: Design.SheetWidth.standard,
+            scrollsContent: true
         ) {
             SheetSection {
                 SheetRow("Name") {

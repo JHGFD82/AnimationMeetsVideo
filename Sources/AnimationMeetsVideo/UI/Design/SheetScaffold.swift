@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// One shape for every dialog in the editor.
@@ -11,26 +12,83 @@ import SwiftUI
 /// dialog has to decide is its content.
 ///
 /// Reading order is top to bottom, left to right: what this is, what you
-/// can change, what happens next. Actions sit at the bottom right with the
-/// confirming one last, the way every other macOS dialog puts them.
+/// can change, what happens next. The frame puts the actions in the footer,
+/// trailing; it doesn't order them or give them keys. Each dialog lists the
+/// confirming action last, as macOS dialogs do, and marks it
+/// `.keyboardShortcut(.defaultAction)`, and its cancelling one
+/// `.cancelAction`. A dialog with one action that closes it handles Escape
+/// itself (`onExitCommand`).
+///
+/// Text: titles, subtitles, labels and notes are display text, shown as
+/// given (`Text(verbatim:)`), never looked up as localization keys. The app
+/// isn't localized; when it is, callers pass localized strings, which keeps
+/// names that come from the project, such as a file's, out of any lookup.
 struct SheetFrame<Content: View, Actions: View>: View {
     let title: String
     /// One line on what the dialog is for, or why it appeared. Worth
     /// writing: it is the only place a dialog can explain itself.
     var subtitle: String?
     var width: CGFloat = Design.SheetWidth.standard
+    /// Scrolls the content between the title and the footer when it would
+    /// be taller than the screen leaves room for, so the actions stay in
+    /// reach. For long forms; content that already scrolls (a `List`, a
+    /// `ScrollView`) bounds itself and leaves this off.
+    var scrollsContent = false
+    /// False for a dialog with no actions, which then ends at its content.
+    private let showsFooter: Bool
     @ViewBuilder let content: () -> Content
     @ViewBuilder let actions: () -> Actions
+
+    /// The title block's and footer's heights, measured, which scrolling
+    /// content leaves room for.
+    @State private var titleHeight: CGFloat = 0
+    @State private var footerHeight: CGFloat = 0
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        width: CGFloat = Design.SheetWidth.standard,
+        scrollsContent: Bool = false,
+        @ViewBuilder content: @escaping () -> Content,
+        @ViewBuilder actions: @escaping () -> Actions
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.width = width
+        self.scrollsContent = scrollsContent
+        self.showsFooter = true
+        self.content = content
+        self.actions = actions
+    }
+
+    fileprivate init(
+        title: String,
+        subtitle: String?,
+        width: CGFloat,
+        scrollsContent: Bool,
+        showsFooter: Bool,
+        @ViewBuilder content: @escaping () -> Content,
+        @ViewBuilder actions: @escaping () -> Actions
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.width = width
+        self.scrollsContent = scrollsContent
+        self.showsFooter = showsFooter
+        self.content = content
+        self.actions = actions
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title)
+                Text(verbatim: title)
                     .font(Design.Typeface.title)
                     .foregroundStyle(Design.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
                 if let subtitle {
-                    Text(subtitle)
+                    Text(verbatim: subtitle)
                         .font(Design.Typeface.body)
                         .foregroundStyle(Design.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -40,44 +98,78 @@ struct SheetFrame<Content: View, Actions: View>: View {
             .padding(.horizontal, Design.Space.sheet)
             .padding(.vertical, Design.Space.group + 2)
             .rail(.raised)
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { titleHeight = $0 }
 
-            VStack(alignment: .leading, spacing: Design.Space.group + 2) {
-                content()
+            if scrollsContent {
+                ScrollView {
+                    contentStack
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(maxHeight: maxContentHeight)
+                .panelSurface(.floating)
+            } else {
+                contentStack
+                    .panelSurface(.floating)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Design.Space.sheet)
-            .panelSurface(.floating)
 
-            HStack(spacing: Design.Space.step) {
-                actions()
+            if showsFooter {
+                // Side by side, or stacked when long titles wouldn't fit.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Design.Space.step) { actions() }
+                    VStack(alignment: .trailing, spacing: Design.Space.step) { actions() }
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.horizontal, Design.Space.sheet)
+                .padding(.vertical, Design.Space.group)
+                .background(Design.Surface.raised.color)
+                .overlay(alignment: .top) { Groove() }
+                // A filled action reads its white title at 4.5:1 or better.
+                .tint(Design.accentFill)
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { footerHeight = $0 }
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.horizontal, Design.Space.sheet)
-            .padding(.vertical, Design.Space.group)
-            .background(Design.Surface.raised.color)
-            .overlay(alignment: .top) { Groove() }
-            // A filled action reads its white title at 4.5:1 or better.
-            .tint(Design.accentFill)
         }
         .frame(width: width)
         .background(Design.Surface.floating.color)
     }
+
+    private var contentStack: some View {
+        VStack(alignment: .leading, spacing: Design.Space.group + 2) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Design.Space.sheet)
+    }
+
+    /// How tall scrolling content may grow: what the screen the dialog is
+    /// on leaves once the title and footer are placed, less room for the
+    /// title bar the sheet hangs from and a margin above the Dock.
+    private var maxContentHeight: CGFloat {
+        let screen = NSApp.keyWindow?.screen ?? NSScreen.main
+        let available = screen?.visibleFrame.height ?? 800
+        return max(160, available - titleHeight - footerHeight - 120)
+    }
 }
 
 extension SheetFrame where Actions == EmptyView {
+    /// A dialog with no actions: it has no footer and ends at its content.
     init(
         title: String,
         subtitle: String? = nil,
         width: CGFloat = Design.SheetWidth.standard,
+        scrollsContent: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
-        self.init(title: title, subtitle: subtitle, width: width, content: content) { EmptyView() }
+        self.init(
+            title: title, subtitle: subtitle, width: width, scrollsContent: scrollsContent,
+            showsFooter: false, content: content
+        ) { EmptyView() }
     }
 }
 
 /// A labelled group of options inside a sheet. The heading is a plain
-/// sentence-case word, not a tracked-out all-caps label — the rule above it
-/// is what separates the group.
+/// sentence-case word, not a tracked-out all-caps label. Groups are set
+/// apart by the sheet's spacing; a dialog that wants a rule between two
+/// places a `Groove()` there itself.
 struct SheetSection<Content: View>: View {
     let title: String?
     var spacing: CGFloat = Design.Space.step
@@ -92,9 +184,10 @@ struct SheetSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: spacing) {
             if let title {
-                Text(title)
+                Text(verbatim: title)
                     .font(Design.Typeface.groupTitle)
                     .foregroundStyle(Design.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
             }
             content()
@@ -105,7 +198,7 @@ struct SheetSection<Content: View>: View {
 
 /// One option: its name in the label column, its control in the rest.
 /// Every sheet uses the same column width, so controls line up down a
-/// dialog and across the app.
+/// dialog and across the app. A long name wraps in its column.
 ///
 /// The label is only seen, not tied to the controls for VoiceOver, since a
 /// row may hold several. Each control names itself: give it its own label
@@ -130,9 +223,11 @@ struct SheetRow<Content: View>: View {
 
     var body: some View {
         HStack(alignment: alignment, spacing: Design.Space.group) {
-            Text(label)
+            Text(verbatim: label)
                 .font(Design.Typeface.body)
                 .foregroundStyle(Design.textSecondary)
+                .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(width: Design.Space.sheetLabelColumn, alignment: .trailing)
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -154,7 +249,7 @@ struct SheetNote: View {
         HStack(alignment: .top, spacing: Design.Space.group) {
             Color.clear.frame(width: Design.Space.sheetLabelColumn, height: 1)
                 .accessibilityHidden(true)
-            Text(text)
+            Text(verbatim: text)
                 .font(Design.Typeface.label)
                 .foregroundStyle(Design.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -208,7 +303,7 @@ struct SheetCallout: View {
         HStack(alignment: .top, spacing: Design.Space.step) {
             Image(systemName: tone.symbol)
                 .foregroundStyle(tone.color)
-            Text(text)
+            Text(verbatim: text)
                 .font(Design.Typeface.body)
                 .foregroundStyle(Design.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)

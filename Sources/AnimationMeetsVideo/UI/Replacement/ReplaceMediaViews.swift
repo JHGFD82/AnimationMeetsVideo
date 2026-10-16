@@ -135,6 +135,8 @@ struct ReplaceMediaSheet: View {
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
             }
+            // Its one action closes it, so Escape does too.
+            .onExitCommand { controller.cancel(session) }
         case .ready(let analysis):
             ReplaceMediaDetails(
                 session: session, analysis: analysis, controller: controller,
@@ -184,7 +186,7 @@ private struct ReplaceMediaDetails: View {
     }
 
     var body: some View {
-        SheetFrame(title: title, subtitle: subtitle, width: Design.SheetWidth.wide) {
+        SheetFrame(title: title, subtitle: subtitle, width: Design.SheetWidth.wide, scrollsContent: true) {
             if !analysis.hasReference {
                 SheetCallout(.warning, "The original's reference data isn't available, so the new file can't be compared with it. Check the alignment yourself.")
             }
