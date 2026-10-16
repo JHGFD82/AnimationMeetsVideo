@@ -215,7 +215,7 @@ struct InspectorPanel: View {
                         .font(Design.Typeface.numericSmall)
                         .foregroundStyle(Design.textSecondary)
                 }
-                TransitionSettingsControls(transition: transition) { options in
+                TransitionSettingsControls(transition: transition, videos: project.clips.filter { $0.kind == .video }) { options in
                     project.setTransitionOptions(options, at: edge, of: clip.id, in: timelineID, layer: selection.layerID)
                 }
                 Menu("Curve: \(transition.curve.preset?.name ?? "Custom")") {

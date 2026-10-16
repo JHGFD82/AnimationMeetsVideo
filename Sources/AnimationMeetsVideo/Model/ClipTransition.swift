@@ -127,6 +127,23 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         }
     }
 
+    /// What its amount setting controls, in the inspector.
+    var amountName: String {
+        switch self {
+        case .blurDissolve, .crossZoom: "Blur"
+        case .pixelate: "Block size"
+        case .ripple: "Wave height"
+        case .glitch: "Intensity"
+        case .morph: "Motion"
+        default: "Amount"
+        }
+    }
+
+    /// What its count setting counts, in the inspector.
+    var countName: String {
+        self == .grid ? "Columns" : "Strips"
+    }
+
     /// The settings a newly dropped transition gets.
     var defaultOptions: TransitionOptions {
         var options = TransitionOptions()

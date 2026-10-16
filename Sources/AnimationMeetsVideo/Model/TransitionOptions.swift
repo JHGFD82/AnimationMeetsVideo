@@ -80,7 +80,7 @@ enum GridOrder: String, CaseIterable, Identifiable, Sendable {
 
 /// What a matte wipe reads its map from: generated noise, or a frame of a
 /// video in the project.
-enum MatteSource: Equatable, Sendable {
+enum MatteSource: Hashable, Sendable {
     case noise
     case clip(UUID)
 }
