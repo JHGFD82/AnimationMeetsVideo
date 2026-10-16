@@ -356,18 +356,63 @@ private struct Sandbox {
         #expect(text.contains(sandbox.mediaURL.path))
     }
 
-    @Test func missingMediaIsReportedAndItsClipsDropped() async throws {
+    @Test func missingMediaIsReportedAndKeptOffline() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
-        let (project, _, _) = sandbox.makeProject()
+        let (project, clipID, assetID) = sandbox.makeProject()
         try await ProjectStore.save(project, to: sandbox.packageURL)
         try FileManager.default.removeItem(at: sandbox.mediaURL)
 
         let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
 
         #expect(loaded.missingMedia.count == 1)
-        #expect(loaded.project.clips.isEmpty)
-        #expect(loaded.project.timelines[0].layers.allSatisfy { $0.clips.isEmpty })
+        #expect(loaded.offlineMedia == [assetID])
+        // The asset keeps what the project saved about it, and its clip stays.
+        let asset = try #require(loaded.project.mediaClip(id: assetID))
+        #expect(asset.kind == .video)
+        #expect(asset.duration == CMTime(seconds: 10, preferredTimescale: 600))
+        #expect(asset.url?.path == sandbox.mediaURL.path)
+        #expect(loaded.project.timelines[0].layers.contains { $0.clips.contains { $0.id == clipID } })
+    }
+
+    @Test func savingWithMediaOfflineKeepsItsClips() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, clipID, assetID) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        try FileManager.default.removeItem(at: sandbox.mediaURL)
+
+        // Opened while the file is gone, saved, then opened with it back.
+        let offline = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        try await ProjectStore.save(offline.project, to: sandbox.packageURL)
+        try Data("not really video".utf8).write(to: sandbox.mediaURL)
+        let back = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        #expect(back.offlineMedia.isEmpty)
+        #expect(back.project.mediaClip(id: assetID) != nil)
+        #expect(back.project.timelines[0].layers.contains { $0.clips.contains { $0.id == clipID } })
+    }
+
+    @Test func offlineMediaInOldFilesCoversItsClips() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        // A file saved before assets recorded what they were.
+        var json = try JSONSerialization.jsonObject(with: Data(contentsOf: sandbox.projectJSON)) as! [String: Any]
+        var assets = json["assets"] as! [[String: Any]]
+        for key in ["kind", "duration", "frameRate", "codec", "colorSpace", "hasAudio"] { assets[0][key] = nil }
+        json["assets"] = assets
+        try JSONSerialization.data(withJSONObject: json).write(to: sandbox.projectJSON)
+        try FileManager.default.removeItem(at: sandbox.mediaURL)
+
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        let asset = try #require(loaded.project.mediaClip(id: assetID))
+        // On a video layer, and long enough for the clip's trim.
+        #expect(asset.kind == .video)
+        let clip = try #require(loaded.project.timelines[0].layers.first?.clips.first)
+        #expect(asset.duration >= clip.trimEnd)
     }
 
     @Test func packageURLAcceptsPackageOrProjectFile() {

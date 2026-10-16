@@ -215,8 +215,34 @@ change:
   project as it was when it started.
 - If the new file does not parse, keep the in-memory project and show the
   error. The app does not overwrite the file itself, but the next save will.
-- Media the new file lists that can't be opened is dropped from the
-  timelines, as when opening a project.
+- Media the new file lists that can't be opened stays in the project,
+  offline, as when opening a project (see "Offline media" below).
+
+### Offline media
+
+A file that can't be opened when a project is opened or reloaded, as when
+a drive isn't plugged in, doesn't take its asset or clips with it: dropping
+them would lose them for good at the next save. Each asset in
+`project.json` records what its file was (`kind`, `duration`,
+`frameRate`, `codec`, `colorSpace`, `hasAudio`), and an asset whose file
+is gone is rebuilt from those (`ProjectStore.offlineClip`). Files saved
+before these fields existed fall back to the original's reference data,
+unless the asset has since been replaced, and then to how its clips use
+it; the length always covers its clips, so their trims stay valid.
+
+While a file is offline:
+
+- The library says **File missing**, and opening warns once with the
+  names. The file check keeps watching for it.
+- The viewer plays its clips as gaps and says which files are offline, so
+  the rest of the timeline can still be watched.
+- Export and background renders stop with the file's name instead of
+  writing a gap.
+- Analysis waits for it rather than recording a failure.
+- Saving writes the asset and its clips back unchanged.
+
+When the file is back, the viewer rebuilds and analysis resumes on their
+own.
 
 A diff engine is not needed for this. Stable IDs and deterministic output
 make a structural comparison cheap. A visual diff is only useful later for a

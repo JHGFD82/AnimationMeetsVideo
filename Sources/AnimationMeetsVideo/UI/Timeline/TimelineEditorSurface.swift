@@ -12,6 +12,9 @@ struct TimelineEditorSurface<Library: View>: View {
     @Binding var selection: TimelineSelection?
     let playback: PlaybackModel
     let analysis: AssetAnalysis
+    /// Assets whose file is missing. Their clips play as gaps, and the
+    /// viewer rebuilds when one comes back.
+    var offlineMedia: Set<UUID> = []
     @ViewBuilder let library: () -> Library
     /// Renders in the background; absent in windows that don't render.
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
@@ -49,6 +52,20 @@ struct TimelineEditorSurface<Library: View>: View {
         return layer.clips.first { $0.id == selection.timelineClipID }
     }
 
+    /// Says which of the files this timeline plays are offline, if any.
+    private var offlineNotice: String? {
+        guard let timeline, !offlineMedia.isEmpty else { return nil }
+        let used = Set(timeline.layers.flatMap(\.clips).compactMap { clip -> UUID? in
+            if case .media(let id) = clip.source { return id }
+            return nil
+        })
+        let names = project.clips.filter { offlineMedia.contains($0.id) && used.contains($0.id) }.map(\.name)
+        guard let first = names.first else { return nil }
+        return names.count == 1
+            ? "\u{201C}\(first)\u{201D} is offline: its clips play as gaps."
+            : "\(names.count) media files are offline: their clips play as gaps."
+    }
+
     private var selectedInfo: ResolvedClipInfo? {
         guard let selectedTimelineClip else { return nil }
         return project.resolvedInfo(for: selectedTimelineClip.source)
@@ -70,6 +87,7 @@ struct TimelineEditorSurface<Library: View>: View {
                         frameSize: timeline?.frameSize ?? CGSize(width: 16, height: 9),
                         frameRate: timeline?.frameRate ?? 24,
                         buildError: buildError,
+                        offlineNotice: offlineNotice,
                         trimPreview: trimPreview
                     )
                     InspectorPanel(
@@ -161,6 +179,10 @@ struct TimelineEditorSurface<Library: View>: View {
             }
         }
         .onChange(of: renderer?.packageURL) { _, _ in
+            rebuildPlayerItem()
+        }
+        // The file check found media gone or back.
+        .onChange(of: offlineMedia) { _, _ in
             rebuildPlayerItem()
         }
         .onChange(of: playback.currentTime) { _, newValue in
@@ -378,9 +400,13 @@ extension TimelineEditorSurface where Library == EmptyView {
         timelineID: Binding<UUID>,
         selection: Binding<TimelineSelection?>,
         playback: PlaybackModel,
-        analysis: AssetAnalysis
+        analysis: AssetAnalysis,
+        offlineMedia: Set<UUID> = []
     ) {
-        self.init(project: project, timelineID: timelineID, selection: selection, playback: playback, analysis: analysis) {
+        self.init(
+            project: project, timelineID: timelineID, selection: selection,
+            playback: playback, analysis: analysis, offlineMedia: offlineMedia
+        ) {
             EmptyView()
         }
     }

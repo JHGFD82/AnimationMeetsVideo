@@ -53,7 +53,10 @@ struct EditorView: View {
                 analysis: analysis,
                 renderer: renderer
             )
-            TimelineEditorSurface(project: $project, timelineID: activeTimeline, selection: $selection, playback: playback, analysis: analysis) {
+            TimelineEditorSurface(
+                project: $project, timelineID: activeTimeline, selection: $selection,
+                playback: playback, analysis: analysis, offlineMedia: replacement.missingMedia
+            ) {
                 LibrarySidebar(
                     project: $project, activeTimelineID: activeTimeline, selection: $selection,
                     analysis: analysis, replacement: replacement, packageURL: packageURL
@@ -84,6 +87,8 @@ struct EditorView: View {
             analysis.analyzeMissing(in: project)
         }
         .onChange(of: undoManager) { _, _ in connectHistory() }
+        // A file that comes back can be analyzed again.
+        .onChange(of: replacement.missingMedia) { _, _ in analysis.retryUnavailable(in: project) }
     }
 
     /// The timeline being edited, read against the current project: the

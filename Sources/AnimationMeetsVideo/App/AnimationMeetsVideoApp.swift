@@ -278,6 +278,7 @@ struct AnimationMeetsVideoApp: App {
             analysis.analyzeMissing(in: result.project)
             replacement.reset()
             replacement.markChanged(result.changedMedia)
+            replacement.markMissing(result.offlineMedia)
             if !result.changedMedia.isEmpty {
                 replacement.notice = .init(
                     title: "Media Changed Since Last Saved",
@@ -288,7 +289,7 @@ struct AnimationMeetsVideoApp: App {
                 let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
                 showAlert(
                     title: "Some Media Couldn't Be Opened",
-                    message: "These files are missing or unreadable, so their clips were removed from the timelines:\n\n\(names)"
+                    message: "These files are missing or unreadable:\n\n\(names)\n\nTheir clips stay in the project and play as gaps until the files are back. Put them back, or Control-click one in the Clips list and choose \u{201C}Replace Media…\u{201D}."
                 )
             }
         } catch {
@@ -396,11 +397,12 @@ struct AnimationMeetsVideoApp: App {
                 analysis.analyzeMissing(in: result.project)
                 replacement.reset()
                 replacement.markChanged(result.changedMedia)
+                replacement.markMissing(result.offlineMedia)
                 if !result.missingMedia.isEmpty {
                     let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
                     showAlert(
                         title: "Some Media Couldn't Be Opened",
-                        message: "These files are missing or unreadable, so their clips were removed from the timelines:\n\n\(names)"
+                        message: "These files are missing or unreadable:\n\n\(names)\n\nTheir clips stay in the project and play as gaps until the files are back. Put them back, or Control-click one in the Clips list and choose \u{201C}Replace Media…\u{201D}."
                     )
                 }
             } catch {

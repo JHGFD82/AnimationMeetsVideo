@@ -24,6 +24,8 @@ enum ProResPreset: String, CaseIterable, Identifiable {
 enum CompositionError: LocalizedError {
     case emptyTimeline
     case cyclicTimeline
+    /// A clip's file isn't there; carries the asset's name.
+    case missingMedia(String)
     case incompatiblePreset
     case noExportSession
     case exportFailed(String)
@@ -32,6 +34,7 @@ enum CompositionError: LocalizedError {
         switch self {
         case .emptyTimeline: "The timeline has no clips to export."
         case .cyclicTimeline: "This timeline embeds itself, directly or indirectly."
+        case .missingMedia(let name): "\u{201C}\(name)\u{201D} is missing, so the timeline can't be exported. Put the file back, or replace it from the library."
         case .incompatiblePreset: "The selected ProRes preset can't export this timeline."
         case .noExportSession: "Could not create an export session."
         case .exportFailed(let reason): reason
@@ -335,6 +338,12 @@ private struct VideoLayer {
 }
 
 enum CompositionExporter {
+    /// Set while building for the viewer: a clip whose file is missing is
+    /// left out, as a gap, so the rest of the timeline can still be
+    /// watched. Export and background renders stop on it instead
+    /// (`CompositionError.missingMedia`), so a gap is never written out.
+    @TaskLocal private static var skipsMissingMedia = false
+
     /// Drops what was read from the file at `url`, for when it was replaced
     /// or changed on disk.
     static func forgetCachedMedia(at url: URL) async {
@@ -356,17 +365,19 @@ enum CompositionExporter {
         }
 
         let window = CMTimeRange(start: .zero, duration: timeline.duration)
-        let flatLayers = try await flatten(
-            project: project,
-            timelineID: timelineID,
-            visiting: [],
-            window: window,
-            offset: .zero,
-            outer: [],
-            outerVolume: [],
-            toOuter: .identity,
-            rootClipID: nil
-        )
+        let flatLayers = try await $skipsMissingMedia.withValue(forPreview) {
+            try await flatten(
+                project: project,
+                timelineID: timelineID,
+                visiting: [],
+                window: window,
+                offset: .zero,
+                outer: [],
+                outerVolume: [],
+                toOuter: .identity,
+                rootClipID: nil
+            )
+        }
 
         let composition = AVMutableComposition()
         var videoLayers: [VideoLayer] = []
@@ -608,7 +619,18 @@ enum CompositionExporter {
         let visible = CMTimeRange(start: placedStart, duration: duration).intersection(window)
         guard visible.isValid, visible.duration > .zero else { return nil }
         let intoClip = CMTimeSubtract(visible.start, placedStart)
-        let info = try await MediaTrackCache.shared.info(for: url)
+        let info: MediaTrackInfo
+        do {
+            info = try await MediaTrackCache.shared.info(for: url)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // A file that is there but unreadable is a real failure; one
+            // that is gone is offline media (see `skipsMissingMedia`).
+            guard !FileManager.default.fileExists(atPath: url.path) else { throw error }
+            if skipsMissingMedia { return nil }
+            throw CompositionError.missingMedia(media.name)
+        }
         let wanted = CMTimeRange(start: media.fileTime(forSourceTime: CMTimeAdd(sourceStart, intoClip)), duration: visible.duration)
         let base = info.orientedTransform
             .concatenating(fitTransform(from: info.orientedSize, to: frameSize))
