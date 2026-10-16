@@ -83,6 +83,18 @@ struct JoinedTransitionBridge: View {
             return true
         } isTargeted: { isDropTarget = $0 }
         .help("\(transition.kind.name) joining two clips: drag a side to resize it about its center, double-click to adjust its footage")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(transition.kind.name) joining two clips")
+        .accessibilityValue("\(transition.duration.formatted) long, \(transition.curve.preset?.name ?? "custom curve")")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { onSelect() }
+        .accessibilityActions {
+            Button("Edit footage", action: onEdit)
+            ForEach(TransitionCurve.Preset.allCases) { preset in
+                Button("Use \(preset.name) curve") { onSetCurve(TransitionCurve(preset: preset)) }
+            }
+            Button("Remove \(transition.kind.name)", action: onRemove)
+        }
         .offset(x: x)
     }
 

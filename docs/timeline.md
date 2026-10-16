@@ -191,6 +191,21 @@ and the nudge keys act on it; its actions move it a frame earlier or later,
 trim either end by a frame, remove its transitions and detach its audio,
 by the same rules as dragging.
 
+The rest of the timeline reads the same way:
+
+- **The ruler** is the playhead: its value is the playhead's timecode, and
+  adjusting it (VO-Up and VO-Down) steps a frame.
+- **Area titles** are headings ("Sound area, 2 layers").
+- **Layer headers** are groups named "Layer 2, Music 1", holding their
+  toggles. Pressing one selects the layer; its actions move it up or
+  down, rename it and delete it.
+- **Sections** read their name and span; pressing selects, and actions
+  rename and delete.
+- **Keyframes** read their time and ease; pressing moves the playhead to
+  one, and actions apply an ease or delete it.
+- **Joined transitions** read their kind, length and curve; pressing
+  selects, and actions open the footage, set a curve or remove it.
+
 ## Sections
 
 A slim lane under the ruler holds the timeline's **sections**: named

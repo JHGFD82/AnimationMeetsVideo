@@ -377,6 +377,18 @@ struct TimelineView: View {
                                 .overlay(alignment: .bottom) { RenderStatusStrip(viewport: viewport) }
                                 .contentShape(Rectangle())
                                 .gesture(scrubGesture(in: viewport))
+                                // To VoiceOver the ruler is the playhead:
+                                // adjusting it steps a frame.
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("Playhead")
+                                .accessibilityValue(playheadTime.timecode(frameRate: timeline.frameRate))
+                                .accessibilityAdjustableAction { direction in
+                                    switch direction {
+                                    case .increment: stepPlayhead(byFrames: 1)
+                                    case .decrement: stepPlayhead(byFrames: -1)
+                                    @unknown default: break
+                                    }
+                                }
                         }
                         HStack(spacing: 0) {
                             Text("Sections")

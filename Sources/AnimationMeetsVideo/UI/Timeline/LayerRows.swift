@@ -157,6 +157,21 @@ struct LayerHeaderRow: View {
             Divider()
             Button("Delete Layer", role: .destructive, action: onDelete)
         }
+        // A group, so its buttons stay reachable inside it, with the
+        // layer's own actions on the group.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Layer \(number), \(displayName)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityAction { onSelect() }
+        .accessibilityActions {
+            if canMoveUp { Button("Move layer up") { onMove(-1) } }
+            if canMoveDown { Button("Move layer down") { onMove(1) } }
+            Button("Rename layer") {
+                draftName = layer.customName ?? ""
+                isEditingName = true
+            }
+            Button("Delete layer", action: onDelete)
+        }
     }
 
     private func commitRename() {
