@@ -10,8 +10,9 @@ import Foundation
 /// Every kind but the film dissolve is drawn with the built-in compositor's
 /// opacity, transform and crop. The film dissolve keys on brightness, which
 /// that compositor can't do, so a timeline using one is drawn by
-/// `LayeredCompositor` instead. Preview and export use the same path, so
-/// they match.
+/// `LayeredCompositor` instead, as is one where a nested timeline fades
+/// over layers of its own that overlap. Preview and export use the same
+/// path, so they match.
 enum TransitionKind: String, CaseIterable, Identifiable {
     case crossDissolve
     case filmDissolve

@@ -375,9 +375,11 @@ our own compositor, so a timeline with a film dissolve anywhere is drawn by
 `LayeredCompositor` (Core Image) for its whole length, in preview and
 export alike. It stacks the same layers with the same crops, transforms and
 opacities, without color management just like the built-in one, and a test
-checks the two draw the same picture. On a nested timeline the key applies
-to each of its layers separately rather than to its composite, as opacity
-already does.
+checks the two draw the same picture. On a nested timeline the transition
+applies to its composite, as its opacity does: its layers are stacked
+first and then faded or keyed together. A timeline where a nested timeline
+fades over two of its own layers at once is likewise drawn by
+`LayeredCompositor`.
 
 ### Curves
 

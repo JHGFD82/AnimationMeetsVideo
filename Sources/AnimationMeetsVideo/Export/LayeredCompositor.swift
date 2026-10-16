@@ -2,6 +2,7 @@ import AVFoundation
 import CoreImage
 import CoreMedia
 import Foundation
+import os
 import QuartzCore
 
 /// One stretch of a timeline for `LayeredCompositor`: the video tracks
@@ -36,10 +37,14 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
 
 /// Draws a timeline with Core Image on the GPU through Metal. The viewer
 /// always uses it, since it can draw at a reduced size; export uses it only
-/// for a film dissolve, which keys on brightness and so can't be drawn by
-/// the built-in compositor. Everything else is drawn as the built-in
-/// compositor would: each layer's crop, transform and opacity, bottom layer
-/// first, over black.
+/// for what the built-in compositor can't draw: a film dissolve, which keys
+/// on brightness, and a nested timeline fading over layers of its own that
+/// overlap. Everything else is drawn as the built-in compositor would: each
+/// layer's crop, transform and opacity, bottom layer first, over black.
+///
+/// The layers of a nested timeline are stacked by themselves first, and the
+/// opacity and transitions of the clip that holds it then fade the result
+/// as one picture, so its layers don't show through each other.
 ///
 /// AVFoundation's transforms measure from the top left and Core Image's
 /// from the bottom left, so each layer is flipped into the transform's
@@ -58,6 +63,9 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         return MetalDevice.shared.map { CIContext(mtlDevice: $0, options: options) } ?? CIContext(options: options)
     }()
     private let queue = DispatchQueue(label: "LayeredCompositor", qos: .userInitiated)
+    /// Bumped when the player gives up on the requests it has made, as on
+    /// a seek: those still queued are let go undrawn.
+    private let generation = OSAllocatedUnfairLock(initialState: 0)
 
     /// The format frames are decoded into and drawn in. Half floats keep
     /// HDR sources and timelines intact.
@@ -75,12 +83,17 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {}
 
     func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
+        let requestedIn = generation.withLock { $0 }
         queue.async { [self] in
+            guard generation.withLock({ $0 }) == requestedIn else {
+                request.finishCancelledRequest()
+                return
+            }
             autoreleasepool {
                 guard let instruction = request.videoCompositionInstruction as? LayeredInstruction,
                       let output = request.renderContext.newPixelBuffer()
                 else {
-                    request.finish(with: CompositionError.exportFailed("The film dissolve couldn't be drawn."))
+                    request.finish(with: CompositionError.exportFailed("A frame of the timeline couldn't be drawn."))
                     return
                 }
                 let started = CACurrentMediaTime()
@@ -96,8 +109,16 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         }
     }
 
+    /// Lets go of the queued requests rather than drawing them first; the
+    /// one being drawn finishes as usual.
     func cancelAllPendingVideoCompositionRequests() {
-        queue.sync {}
+        generation.withLock { $0 += 1 }
+    }
+
+    /// One layer's frame, cropped and placed in the output.
+    private struct Drawn {
+        let animation: PlacementAnimation
+        let image: CIImage
     }
 
     /// The frame at `time`: layers stacked bottom first over black.
@@ -117,9 +138,8 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                 y: renderSize.height > 0 ? outputSize.height / renderSize.height : 1
             ))
 
-        var output = CIImage(color: .black).cropped(to: bounds)
-        for layer in instruction.layers.reversed() {
-            guard let buffer = frame(layer.trackID) else { continue }
+        let drawn = instruction.layers.compactMap { layer -> Drawn? in
+            guard let buffer = frame(layer.trackID) else { return nil }
             let animation = layer.animation
             var image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
             let sourceHeight = image.extent.height
@@ -128,25 +148,70 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             }
             let fromSource = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: sourceHeight)
             image = image.transformed(by: fromSource.concatenating(animation.transform(at: time)).concatenating(toOutput))
-
-            let opacity = CGFloat(animation.opacity(at: time))
-            if opacity < 1 {
-                image = image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity)])
-            }
-            if let reveal = animation.lumaReveal(at: time) {
-                // On the way in the clip is the following picture; on the way
-                // out it is what's underneath, and the clip stays where that
-                // hasn't come through yet.
-                var mask = Self.revealMask(of: reveal.keysIncoming ? image : output, reveal)
-                if !reveal.keysIncoming { mask = mask.applyingFilter("CIColorInvert") }
-                image = image.applyingFilter("CIBlendWithMask", parameters: [
-                    kCIInputBackgroundImageKey: CIImage.empty(),
-                    kCIInputMaskImageKey: mask,
-                ])
-            }
-            output = image.composited(over: output)
+            return Drawn(animation: animation, image: image)
         }
-        return output.cropped(to: bounds)
+        let black = CIImage(color: .black).cropped(to: bounds)
+        return stack(drawn[...], depth: 0, at: time, over: black).cropped(to: bounds)
+    }
+
+    /// `layers`, top first, stacked bottom first over `background`. Layers
+    /// drawn through the same nested timeline `depth` levels in are stacked
+    /// by themselves, over nothing, and the result is faded as one picture
+    /// by the clip that holds the nested timeline.
+    private static func stack(_ layers: ArraySlice<Drawn>, depth: Int, at time: CMTime, over background: CIImage) -> CIImage {
+        var output = background
+        var end = layers.endIndex
+        while end > layers.startIndex {
+            let bottom = layers[end - 1]
+            let groups = bottom.animation.groups
+            guard depth < groups.count else {
+                let faded = fade(
+                    bottom.image, opacity: bottom.animation.ownOpacity(at: time),
+                    reveal: bottom.animation.ownLumaReveal(at: time), over: output
+                )
+                output = faded.composited(over: output)
+                end -= 1
+                continue
+            }
+            // A nested timeline's layers come out of flattening together.
+            let group = groups[depth]
+            var start = end - 1
+            while start > layers.startIndex {
+                let above = layers[start - 1].animation.groups
+                guard depth < above.count, above[depth] == group else { break }
+                start -= 1
+            }
+            let inside = stack(layers[start..<end], depth: depth + 1, at: time, over: CIImage.empty())
+            let stage = bottom.animation.stage(ofGroup: group)
+            let faded = fade(
+                inside, opacity: Float(stage?.opacity(at: time) ?? 1),
+                reveal: stage?.lumaReveal(at: time), over: output
+            )
+            output = faded.composited(over: output)
+            end = start
+        }
+        return output
+    }
+
+    /// `image` at `opacity`, keyed by a film dissolve against `below`, what
+    /// it is drawn over.
+    private static func fade(_ image: CIImage, opacity: Float, reveal: LumaReveal?, over below: CIImage) -> CIImage {
+        var image = image
+        if opacity < 1 {
+            image = image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
+        }
+        if let reveal {
+            // On the way in the clip is the following picture; on the way
+            // out it is what's underneath, and the clip stays where that
+            // hasn't come through yet.
+            var mask = Self.revealMask(of: reveal.keysIncoming ? image : below, reveal)
+            if !reveal.keysIncoming { mask = mask.applyingFilter("CIColorInvert") }
+            image = image.applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: CIImage.empty(),
+                kCIInputMaskImageKey: mask,
+            ])
+        }
+        return image
     }
 
     /// White where the picture is bright enough to show through by now,
