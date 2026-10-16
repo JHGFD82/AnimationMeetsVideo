@@ -30,3 +30,14 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+      - name: Build the app bundle
+        run: |
+          scripts/build-app.sh build
+          # Zipped with ditto: the artifact upload drops the executable bit.
+          ditto -c -k --keepParent build/AnimationMeetsVideo.app build/AnimationMeetsVideo.zip
+      - name: Upload the app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnimationMeetsVideo-app
+          path: build/AnimationMeetsVideo.zip
+          retention-days: 14

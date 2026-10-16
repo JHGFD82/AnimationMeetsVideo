@@ -48,5 +48,8 @@ Follow Google's change-description conventions for every commit.
   it describes existing or planned behavior; keep them in sync with the code.
 - CI (`.github/workflows/build.yml`) builds and tests every push on a
   macOS runner; check it when a change couldn't be built locally.
+- `scripts/build-app.sh` wraps the executable into `AnimationMeetsVideo.app`
+  with `Packaging/Info.plist`, which declares the `.amv` project type; keep
+  its type identifier in sync with `ProjectStore.packageTypeIdentifier`.
 - Building requires full Xcode (SwiftUI macro plugins are missing from the
   standalone Command Line Tools).
