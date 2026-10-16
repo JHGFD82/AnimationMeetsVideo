@@ -10,6 +10,8 @@ struct ProjectSettingsView: View {
     @State private var name = ""
     @State private var copiesMediaOnImport = true
 
+    private static let importNote = "The import dialog starts with this choice and can still change it for one import. Off, imported files stay where they are and the project refers to them in place."
+
     var body: some View {
         SheetFrame(
             title: "Project Settings",
@@ -26,8 +28,9 @@ struct ProjectSettingsView: View {
             SheetSection("Importing") {
                 SheetRow("Media files", alignment: .center) {
                     Toggle("Copy into the project", isOn: $copiesMediaOnImport)
+                        .accessibilityHint(Self.importNote)
                 }
-                SheetNote("The import dialog starts with this choice and can still change it for one import. Off, imported files stay where they are and the project refers to them in place.")
+                SheetNote(Self.importNote)
             }
         } actions: {
             Button("Cancel", role: .cancel) { dismiss() }

@@ -111,6 +111,11 @@ the snap line's arrival.
 - Decoration drawn over a control (a bevel, rim, groove or selection bar)
   is `.decorative()`: no hit testing, so an edge's clicks and drags reach
   the control, and hidden from VoiceOver. `Groove` already is.
+- In a sheet, a `SheetRow`'s label is only seen. Each control in the row
+  names itself (its own label, hidden with `.labelsHidden()`, or an
+  `accessibilityLabel`) and a `SheetNote` it depends on is also its
+  `accessibilityHint`. A `SheetCallout` reads as its severity and message
+  ("Warning: …"); the sheet's title is a header.
 - Animate through `editorAnimation` or check `Design.Motion.isReduced`.
 
 ## Not implemented yet

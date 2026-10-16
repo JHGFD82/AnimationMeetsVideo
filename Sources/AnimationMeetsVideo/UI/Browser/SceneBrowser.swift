@@ -298,9 +298,13 @@ struct ScenePreviewSheet: View {
                     value: Binding(get: { model.position }, set: { model.seek(to: $0) }),
                     in: target.scene.start.seconds...max(target.scene.end.seconds, target.scene.start.seconds + 0.001)
                 )
+                .accessibilityLabel("Position in the scene")
+                .accessibilityValue(CMTime(seconds: model.position, preferredTimescale: 600).compactTimecode(frameRate: frameRate))
                 Text(CMTime(seconds: model.position, preferredTimescale: 600).compactTimecode(frameRate: frameRate))
                     .font(Design.Typeface.numericSmall)
                     .foregroundStyle(Design.textPrimary)
+                    // The slider reads it as its value.
+                    .accessibilityHidden(true)
             }
         } actions: {
             Button("Split here") {
@@ -394,10 +398,15 @@ struct SensitivitySheet: View {
                     Text("Fewer cuts")
                         .font(Design.Typeface.label)
                         .foregroundStyle(Design.textTertiary)
+                        .accessibilityHidden(true)
                     Slider(value: $draft, in: 0...1)
+                        .accessibilityLabel("Sensitivity")
+                        .accessibilityValue("\(Int((draft * 100).rounded())) percent, \(preview.count) scene\(preview.count == 1 ? "" : "s")")
+                        .accessibilityHint("Higher finds more cuts")
                     Text("More cuts")
                         .font(Design.Typeface.label)
                         .foregroundStyle(Design.textTertiary)
+                        .accessibilityHidden(true)
                 }
                 HStack(spacing: Design.Space.tight) {
                     Text("\(currentScenes.count)")

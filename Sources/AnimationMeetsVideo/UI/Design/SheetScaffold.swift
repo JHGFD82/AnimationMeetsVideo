@@ -28,6 +28,7 @@ struct SheetFrame<Content: View, Actions: View>: View {
                 Text(title)
                     .font(Design.Typeface.title)
                     .foregroundStyle(Design.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
                 if let subtitle {
                     Text(subtitle)
                         .font(Design.Typeface.body)
@@ -105,6 +106,12 @@ struct SheetSection<Content: View>: View {
 /// One option: its name in the label column, its control in the rest.
 /// Every sheet uses the same column width, so controls line up down a
 /// dialog and across the app.
+///
+/// The label is only seen, not tied to the controls for VoiceOver, since a
+/// row may hold several. Each control names itself: give it its own label
+/// (a text field's or picker's, hidden with `.labelsHidden()` where the
+/// row's label shows instead, or `.accessibilityLabel`), and put a note's
+/// instruction on the controls it is about with `.accessibilityHint`.
 struct SheetRow<Content: View>: View {
     /// The one label column every sheet shares. Lives on `Design` rather
     /// than here so `SheetNote` can line up with it without naming
@@ -134,7 +141,8 @@ struct SheetRow<Content: View>: View {
 }
 
 /// Explanatory text under a control, in the control's column so it reads as
-/// belonging to it rather than to the group.
+/// belonging to it rather than to the group. VoiceOver reads it where it is;
+/// an instruction the control needs goes on the control too, as its hint.
 struct SheetNote: View {
     let text: String
 
@@ -145,6 +153,7 @@ struct SheetNote: View {
     var body: some View {
         HStack(alignment: .top, spacing: Design.Space.group) {
             Color.clear.frame(width: Design.Space.sheetLabelColumn, height: 1)
+                .accessibilityHidden(true)
             Text(text)
                 .font(Design.Typeface.label)
                 .foregroundStyle(Design.textSecondary)
@@ -155,7 +164,8 @@ struct SheetNote: View {
 }
 
 /// A line that needs attention inside a sheet: a mismatch found, a check
-/// that failed, a warning about what a replacement will lose.
+/// that failed, a warning about what a replacement will lose. VoiceOver
+/// reads it as one line, its severity first ("Warning: …").
 struct SheetCallout: View {
     enum Tone {
         case info, warning, danger
@@ -173,6 +183,15 @@ struct SheetCallout: View {
             case .info: "info.circle"
             case .warning: "exclamationmark.triangle"
             case .danger: "xmark.octagon"
+            }
+        }
+
+        /// What the color and symbol say, in words.
+        var severity: String {
+            switch self {
+            case .info: String(localized: "Note", comment: "Severity of an information callout, read before its message")
+            case .warning: String(localized: "Warning", comment: "Severity of a warning callout, read before its message")
+            case .danger: String(localized: "Error", comment: "Severity of an error callout, read before its message")
             }
         }
     }
@@ -202,5 +221,8 @@ struct SheetCallout: View {
                 .strokeBorder(tone.color.opacity(0.35), lineWidth: 1)
                 .decorative()
         }
+        // One announcement, severity then message, and not the symbol's name.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "\(tone.severity): \(text)"))
     }
 }

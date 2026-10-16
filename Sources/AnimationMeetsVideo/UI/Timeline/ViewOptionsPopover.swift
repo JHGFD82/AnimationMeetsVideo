@@ -20,6 +20,8 @@ struct ViewOptionsPopover: View {
         VStack(alignment: .leading, spacing: Design.Space.group + 2) {
             SheetSection("Zoom") {
                 Slider(value: $zoomFraction, in: 0...1)
+                    .accessibilityLabel("Zoom")
+                    .accessibilityValue("\(Int((zoomFraction * 100).rounded())) percent")
                 Button("Fit to window", action: onFit)
                     .help("Also on the \\ key")
                 Toggle("Follow the playhead while playing", isOn: $followsPlayhead)
@@ -50,6 +52,8 @@ struct ViewOptionsPopover: View {
                         )
                         .disabled(!areaLayout.isShown(kind))
                         .help("Layer height in the \(kind.name.lowercased()) area; pinch up and down over it to change it too")
+                        .accessibilityLabel("\(kind.name) layer height")
+                        .accessibilityValue("\(Int(areaLayout.layerHeight(kind).rounded())) points")
                     }
                 }
             }
@@ -76,13 +80,17 @@ struct ViewOptionsPopover: View {
                             Text("Pitch")
                                 .font(Design.Typeface.label)
                                 .foregroundStyle(Design.textSecondary)
+                                .accessibilityHidden(true)
                             Slider(value: $clickFrequency, in: BeatClickPlayer.frequencyRange, step: 10) { editing in
                                 if !editing { onPreviewClick() }
                             }
+                            .accessibilityLabel("Click pitch")
+                            .accessibilityValue("\(Int(clickFrequency)) hertz")
                             Text("\(Int(clickFrequency)) Hz")
                                 .font(Design.Typeface.numericSmall)
                                 .foregroundStyle(Design.textPrimary)
                                 .frame(width: 52, alignment: .trailing)
+                                .accessibilityHidden(true)
                             Button(action: onPreviewClick) {
                                 Image(systemName: "speaker.wave.2")
                             }
