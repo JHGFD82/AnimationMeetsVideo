@@ -36,6 +36,9 @@ struct NumericField: View {
     var dragStep: Double?
     /// What dragging keeps the value within.
     var dragRange: ClosedRange<Double>?
+    /// What the value is, for VoiceOver: "Position X", "Volume". Without
+    /// one, VoiceOver reads only the value.
+    var accessibilityName: String?
     let onCommit: (Double) -> Void
 
     @Environment(\.projectHistory) private var history
@@ -59,6 +62,7 @@ struct NumericField: View {
                 .frame(minWidth: 44, maxWidth: 70)
                 .focused($isFocused)
                 .background(OutsideClickMonitor(onOutsideClick: commit))
+                .accessibilityLabel(accessibilityName ?? "Value")
                 .onAppear { isFocused = true }
                 .onSubmit { commit() }
                 .onExitCommand { isEditing = false }
@@ -66,16 +70,14 @@ struct NumericField: View {
                     if !focused { commit() }
                 }
         } else {
-            Text(label?(value) ?? NumericExpression.format(value, maxFractionDigits: fractionDigits) + unit)
+            let shown = label?(value) ?? NumericExpression.format(value, maxFractionDigits: fractionDigits) + unit
+            Text(shown)
                 .font(Design.Typeface.numericSmall)
                 .foregroundStyle(Design.accent)
                 .lineLimit(1)
                 .fixedSize()
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    draft = NumericExpression.format(value, maxFractionDigits: 3)
-                    isEditing = true
-                }
+                .onTapGesture(perform: beginEditing)
                 .simultaneousGesture(dragStep.map { step in
                     DragGesture(minimumDistance: 3, coordinateSpace: .global)
                         .onChanged { _ in beginDrag(step: step) }
@@ -84,7 +86,18 @@ struct NumericField: View {
                 .help(dragStep == nil
                     ? "Click to type a value. Arithmetic such as 100+25 works."
                     : "Click to type a value (arithmetic such as 100+25 works), or drag to change it. Shift for ten times as fast, Option for a tenth.")
+                // A tap gesture alone isn't something VoiceOver can press.
+                .accessibilityLabel(accessibilityName ?? shown)
+                .accessibilityValue(accessibilityName == nil ? "" : shown)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint("Type a value")
+                .accessibilityAction { beginEditing() }
         }
+    }
+
+    private func beginEditing() {
+        draft = NumericExpression.format(value, maxFractionDigits: 3)
+        isEditing = true
     }
 
     private func beginDrag(step: Double) {

@@ -24,6 +24,8 @@ enum ProResPreset: String, CaseIterable, Identifiable {
 enum CompositionError: LocalizedError {
     case emptyTimeline
     case cyclicTimeline
+    /// A clip's file isn't there; carries the asset's name.
+    case missingMedia(String)
     case incompatiblePreset
     case noExportSession
     case exportFailed(String)
@@ -32,6 +34,7 @@ enum CompositionError: LocalizedError {
         switch self {
         case .emptyTimeline: "The timeline has no clips to export."
         case .cyclicTimeline: "This timeline embeds itself, directly or indirectly."
+        case .missingMedia(let name): "\u{201C}\(name)\u{201D} is missing, so the timeline can't be exported. Put the file back, or replace it from the library."
         case .incompatiblePreset: "The selected ProRes preset can't export this timeline."
         case .noExportSession: "Could not create an export session."
         case .exportFailed(let reason): reason
@@ -324,6 +327,12 @@ private struct PlannedRange {
 }
 
 enum CompositionExporter {
+    /// Set while building for the viewer: a clip whose file is missing is
+    /// left out, as a gap, so the rest of the timeline can still be
+    /// watched. Export and background renders stop on it instead
+    /// (`CompositionError.missingMedia`), so a gap is never written out.
+    @TaskLocal private static var skipsMissingMedia = false
+
     /// Drops what was read from the file at `url`, for when it was replaced
     /// or changed on disk.
     static func forgetCachedMedia(at url: URL) async {
@@ -350,18 +359,22 @@ enum CompositionExporter {
             throw CompositionError.emptyTimeline
         }
 
+        // Matte wipes' maps are read before drawing starts.
+        await MatteMaps.shared.load(for: project)
         let window = CMTimeRange(start: .zero, duration: timeline.duration)
         var hosts: [TrackHost] = []
-        let nodes = try await flatten(
-            project: project,
-            timelineID: timelineID,
-            visiting: [],
-            window: window,
-            offset: .zero,
-            outerVolume: [],
-            rootClipID: nil,
-            hosts: &hosts
-        )
+        let nodes = try await $skipsMissingMedia.withValue(forPreview) {
+            try await flatten(
+                project: project,
+                timelineID: timelineID,
+                visiting: [],
+                window: window,
+                offset: .zero,
+                outerVolume: [],
+                rootClipID: nil,
+                hosts: &hosts
+            )
+        }
 
         let composition = AVMutableComposition()
         var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage], pitch: AVAudioTimePitchAlgorithm?)] = []
@@ -682,6 +695,10 @@ enum CompositionExporter {
                     }
                 case .timeline(let nestedID):
                     guard let nested = project.timeline(id: nestedID) else { continue }
+                    // Every layer drawn through this clip shares its stage,
+                    // which fades them together.
+                    var grouped = stages
+                    grouped[0].groupID = UUID()
                     // Nested time = this timeline's time - clip.startOffset + clip.trimStart.
                     let shift = CMTimeSubtract(clip.startOffset, clip.trimStart)
                     let nestedWindow = CMTimeRange(start: CMTimeSubtract(visible.start, shift), duration: visible.duration)
@@ -760,7 +777,18 @@ enum CompositionExporter {
         let visible = CMTimeRange(start: placedStart, duration: duration).intersection(window)
         guard visible.isValid, visible.duration > .zero else { return nil }
         let intoClip = CMTimeSubtract(visible.start, placedStart)
-        let info = try await MediaTrackCache.shared.info(for: url)
+        let info: MediaTrackInfo
+        do {
+            info = try await MediaTrackCache.shared.info(for: url)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // A file that is there but unreadable is a real failure; one
+            // that is gone is offline media (see `skipsMissingMedia`).
+            guard !FileManager.default.fileExists(atPath: url.path) else { throw error }
+            if skipsMissingMedia { return nil }
+            throw CompositionError.missingMedia(media.name)
+        }
         let wanted = CMTimeRange(start: media.fileTime(forSourceTime: CMTimeAdd(sourceStart, intoClip)), duration: visible.duration)
         let base = info.orientedTransform
             .concatenating(fitTransform(from: info.orientedSize, to: frameSize))
@@ -1008,6 +1036,12 @@ enum CompositionExporter {
                     }
                     if let reveal = transition.lumaReveal {
                         text += " r\(number(reveal.progress)) \(reveal.keysIncoming)"
+                    }
+                }
+                if let drawn = clip.stack.transitionFrame(atRoot: time) {
+                    text += " x \(drawn.key)"
+                    if drawn.kind == .matteWipe, case .clip(let id) = drawn.options.matte {
+                        text += " \(MatteMaps.shared.stamp(for: id) ?? "noise")"
                     }
                 }
                 text += "\n"

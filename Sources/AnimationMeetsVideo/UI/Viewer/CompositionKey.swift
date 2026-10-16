@@ -22,7 +22,7 @@ struct CompositionKey: Equatable {
             copy.name = ""
             for index in copy.layers.indices {
                 copy.layers[index].customName = nil
-                // Volume is applied as the sound plays (`AudioLevels`),
+                // Volume is applied as the sound plays (`AudioLevelTap`),
                 // without rebuilding the player.
                 copy.layers[index].volume = AnimatedValue(0.0)
                 for clip in copy.layers[index].clips.indices {

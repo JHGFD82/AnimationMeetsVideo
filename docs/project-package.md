@@ -9,8 +9,7 @@ signature.bin` holds each video's change scores, `reference.json` and
 and `project.json` holds scene edits (see [scene-cuts.md](scene-cuts.md)).
 `thumbs/` holds reference pictures. `beats.bin` holds detected beats (see
 [beat-detection.md](beat-detection.md)). The render cache is implemented (see [rendering.md](rendering.md)). Not yet implemented: dense reference frames, a list of backups to restore from (copy one over
-`project.json` by hand for now), and a Finder-visible package type (that
-needs an app bundle that declares the `.amv` type).
+`project.json` by hand for now).
 Step 4 is implemented (see [media-replacement.md](media-replacement.md)):
 `project.json` stores each asset's alignment offset, earlier file paths, the
 file stamp accepted at the last save, and whether its original was forgotten.
@@ -43,8 +42,23 @@ MyProject.amv/
   Cache/              disposable, excluded from backup
     Renders/            rendered timeline segments (see rendering.md)
   Backups/            autosaves
-  .lock               single-writer lock (an flock held while the project is open)
+  .lock               single-writer lock (an flock held while the project is open;
+                      skipped on volumes that don't support flock)
 ```
+
+Finder and the open and save panels show the package as one item, not a
+folder to browse into. The app sets the folder's package flag whenever it
+creates, opens or saves a project, which works even when it runs from
+`swift run`. The flag is file metadata that zip, git and some sync
+services drop, so a project copied that way shows as a folder until it's
+next opened.
+
+The app bundle built by `scripts/build-app.sh` also declares the type
+(`com.jhgfd.animationmeetsvideo.project`, extension `.amv`, conforming to
+`com.apple.package`) in `Packaging/Info.plist`. With it installed, every
+`.amv` folder is a single document whether or not its flag survived, and
+double-clicking one, or dropping it on the app's Dock icon, opens it in the
+app. The window asks to save unsaved changes first, as Open does.
 
 Media may be copied into `Media/` or referenced from elsewhere. **Copying
 into the package is the default**, and it happens at import: the file is
@@ -123,7 +137,11 @@ be undone.
 Saving writes `project.json` and copies nothing, since imports are already
 in place. Save As copies what the old package holds in `Media/` and
 `Reference/` into the new one; media referenced from elsewhere stays where
-it is.
+it is. Saving as a package that already exists, once the save panel's
+replace prompt is confirmed, moves the old package to the Trash first (as
+New Project does), so none of its media, backups or render cache end up in
+the new one. It is refused if the old package is open in another window or
+app, or if the project uses media stored inside it.
 
 **Importing a file again reuses what was made from it.** When an imported
 file matches an asset's reference data in `Reference/` by size and
@@ -222,8 +240,34 @@ change:
   project as it was when it started.
 - If the new file does not parse, keep the in-memory project and show the
   error. The app does not overwrite the file itself, but the next save will.
-- Media the new file lists that can't be opened is dropped from the
-  timelines, as when opening a project.
+- Media the new file lists that can't be opened stays in the project,
+  offline, as when opening a project (see "Offline media" below).
+
+### Offline media
+
+A file that can't be opened when a project is opened or reloaded, as when
+a drive isn't plugged in, doesn't take its asset or clips with it: dropping
+them would lose them for good at the next save. Each asset in
+`project.json` records what its file was (`kind`, `duration`,
+`frameRate`, `codec`, `colorSpace`, `hasAudio`), and an asset whose file
+is gone is rebuilt from those (`ProjectStore.offlineClip`). Files saved
+before these fields existed fall back to the original's reference data,
+unless the asset has since been replaced, and then to how its clips use
+it; the length always covers its clips, so their trims stay valid.
+
+While a file is offline:
+
+- The library says **File missing**, and opening warns once with the
+  names. The file check keeps watching for it.
+- The viewer plays its clips as gaps and says which files are offline, so
+  the rest of the timeline can still be watched.
+- Export and background renders stop with the file's name instead of
+  writing a gap.
+- Analysis waits for it rather than recording a failure.
+- Saving writes the asset and its clips back unchanged.
+
+When the file is back, the viewer rebuilds and analysis resumes on their
+own.
 
 A diff engine is not needed for this. Stable IDs and deterministic output
 make a structural comparison cheap. A visual diff is only useful later for a

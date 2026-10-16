@@ -57,10 +57,16 @@ struct AnimationMeetsVideoApp: App {
     @State private var fileMonitor = ProjectFileMonitor()
     /// True while the project file is being written or reloaded.
     @State private var isBusy = false
+    /// The latest save asked for. Each save waits for the one before, so
+    /// two never write the package at once.
+    @State private var saveInProgress: Task<Bool, Never>?
     /// Set once launch has tried to reopen the last project, so the start
     /// sheet doesn't flash up before that.
     @State private var launchChecked = false
     @State private var showsProjectSettings = false
+    /// A project Finder asked to open before launch had tried the last
+    /// one; it's opened instead.
+    @State private var openedAtLaunch: URL?
 
     private static let autosaveInterval: Duration = .seconds(60)
     private static let lastProjectKey = "lastProjectPath"
@@ -98,11 +104,28 @@ struct AnimationMeetsVideoApp: App {
                         }
                     }
                 )
+                // A project opened from Finder (double-click, or dropped on
+                // the Dock icon) comes to this window rather than a new one.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+                .onOpenURL { url in
+                    guard url.isFileURL else { return }
+                    if launchChecked {
+                        Task { await openRequestedProject(url) }
+                    } else {
+                        openedAtLaunch = url
+                    }
+                }
                 .task {
                     TerminationGuard.shared.shouldTerminate = { confirmQuit() }
                     if !launchChecked {
-                        await reopenLastProject()
+                        if openedAtLaunch == nil {
+                            await reopenLastProject()
+                        }
                         launchChecked = true
+                        if let url = openedAtLaunch {
+                            openedAtLaunch = nil
+                            await openRequestedProject(url)
+                        }
                     }
                     while !Task.isCancelled {
                         try? await Task.sleep(for: Self.autosaveInterval)
@@ -143,6 +166,7 @@ struct AnimationMeetsVideoApp: App {
                 .keyboardShortcut("j", modifiers: [.command])
                 .disabled(projectURL == nil)
             }
+            TimelineCommands()
         }
     }
 
@@ -157,9 +181,7 @@ struct AnimationMeetsVideoApp: App {
 
     private func createProject() async {
         let panel = NSSavePanel()
-        if let type = UTType(filenameExtension: ProjectStore.packageExtension, conformingTo: .package) {
-            panel.allowedContentTypes = [type]
-        }
+        panel.allowedContentTypes = [ProjectStore.packageType]
         panel.title = "New Project"
         panel.prompt = "Create"
         panel.nameFieldStringValue = "Untitled Project"
@@ -217,9 +239,19 @@ struct AnimationMeetsVideoApp: App {
         }
     }
 
+    /// Opens a project Finder handed over, unless it's the one open.
+    private func openRequestedProject(_ selection: URL) async {
+        let url = ProjectStore.packageURL(forSelection: selection)
+        guard !isOpenProject(url) else { return }
+        guard await confirmDiscardingCurrentProject() else { return }
+        await openProject(at: url)
+    }
+
     private func chooseProjectToOpen() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.folder, .json]
+        // Folders too: a project copied somewhere that dropped its package
+        // flag shows as a folder until it's opened again.
+        panel.allowedContentTypes = [ProjectStore.packageType, .folder, .json]
         panel.allowsMultipleSelection = false
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
@@ -249,6 +281,7 @@ struct AnimationMeetsVideoApp: App {
         do {
             try ProjectStore.validatePackage(at: url)
             let lock = try lockForProject(at: url)
+            ProjectStore.markAsPackage(url)
             let saved = try await ProjectStore.load(from: url)
             // Work an autosave holds that was never saved, as after quitting
             // without saving or a crash, is offered back.
@@ -278,6 +311,7 @@ struct AnimationMeetsVideoApp: App {
             analysis.analyzeMissing(in: result.project)
             replacement.reset()
             replacement.markChanged(result.changedMedia)
+            replacement.markMissing(result.offlineMedia)
             if !result.changedMedia.isEmpty {
                 replacement.notice = .init(
                     title: "Media Changed Since Last Saved",
@@ -288,7 +322,7 @@ struct AnimationMeetsVideoApp: App {
                 let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
                 showAlert(
                     title: "Some Media Couldn't Be Opened",
-                    message: "These files are missing or unreadable, so their clips were removed from the timelines:\n\n\(names)"
+                    message: "These files are missing or unreadable:\n\n\(names)\n\nTheir clips stay in the project and play as gaps until the files are back. Put them back, or Control-click one in the Clips list and choose \u{201C}Replace Media…\u{201D}."
                 )
             }
         } catch {
@@ -296,15 +330,27 @@ struct AnimationMeetsVideoApp: App {
         }
     }
 
-    /// Returns whether the project was saved.
+    /// Returns whether the project was saved. A save asked for while
+    /// another runs (pressing Save twice, or quitting during a save) starts
+    /// once that one is done.
     @discardableResult
     private func saveProject(forcePanel: Bool = false) async -> Bool {
+        let previous = saveInProgress
+        let save = Task {
+            _ = await previous?.value
+            return await performSave(forcePanel: forcePanel)
+        }
+        saveInProgress = save
+        let saved = await save.value
+        if saveInProgress == save { saveInProgress = nil }
+        return saved
+    }
+
+    private func performSave(forcePanel: Bool) async -> Bool {
         var destination = forcePanel ? nil : projectURL
         if destination == nil {
             let panel = NSSavePanel()
-            if let type = UTType(filenameExtension: ProjectStore.packageExtension, conformingTo: .package) {
-                panel.allowedContentTypes = [type]
-            }
+            panel.allowedContentTypes = [ProjectStore.packageType]
             panel.nameFieldStringValue = project.name
             guard panel.runModal() == .OK, var url = panel.url else { return false }
             if url.pathExtension != ProjectStore.packageExtension {
@@ -313,17 +359,45 @@ struct AnimationMeetsVideoApp: App {
             destination = url
         }
         guard let url = destination else { return false }
+        // Only a destination picked in the panel, where replacing it was
+        // confirmed, is cleared; saving onto the open project isn't a replace.
+        let replacesExisting = !isOpenProject(url)
+        if replacesExisting, usesMedia(inside: url) {
+            showAlert(
+                title: "Couldn't Save Project",
+                message: "This project uses media stored inside \u{201C}\(url.lastPathComponent)\u{201D}, so it can't replace it. Choose another name or place."
+            )
+            return false
+        }
 
         do {
             isBusy = true
             defer { isBusy = false }
             do {
+                // Otherwise the old package's media, backups and render
+                // cache would be mixed into this one.
+                if replacesExisting {
+                    try replaceExisting(at: url)
+                }
                 try ProjectStore.preparePackage(at: url)
                 let lock = try lockForProject(at: url)
                 // Imports are copied as they come in, so only Save As copies,
                 // carrying along what the previous package holds.
                 let isNewLocation = projectURL.map { !isSamePackage($0, url) } ?? true
                 guard let copying = isNewLocation ? chooseMediaToCopy(for: project, into: url) : [] else { return false }
+                // Results finished while saving somewhere new would go into
+                // the old package after its reference data was copied, so
+                // they are held until the save is done.
+                if isNewLocation {
+                    analysis.packageURL = nil
+                }
+                defer {
+                    if isNewLocation {
+                        let package = projectURL
+                        analysis.packageURL = package
+                        Task { await analysis.writeHeldResults() }
+                    }
+                }
                 let snapshot = project
                 let scoresToSave = analysis.unsavedTracks
                 let referencesToSave = analysis.unsavedReferences
@@ -343,7 +417,7 @@ struct AnimationMeetsVideoApp: App {
                 analysis.markBeatsDiscarded(beatsToDiscard)
                 analysis.dropForgottenReferences(in: saved)
                 // Edits made while saving stay; only the media locations change.
-                history.adopt { $0.applyMediaLocations(from: saved) }
+                history.adoptMediaLocations(of: snapshot, from: saved)
                 project.applyMediaLocations(from: saved)
                 savedProject = saved
                 lastAutosaved = nil
@@ -396,11 +470,12 @@ struct AnimationMeetsVideoApp: App {
                 analysis.analyzeMissing(in: result.project)
                 replacement.reset()
                 replacement.markChanged(result.changedMedia)
+                replacement.markMissing(result.offlineMedia)
                 if !result.missingMedia.isEmpty {
                     let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
                     showAlert(
                         title: "Some Media Couldn't Be Opened",
-                        message: "These files are missing or unreadable, so their clips were removed from the timelines:\n\n\(names)"
+                        message: "These files are missing or unreadable:\n\n\(names)\n\nTheir clips stay in the project and play as gaps until the files are back. Put them back, or Control-click one in the Clips list and choose \u{201C}Replace Media…\u{201D}."
                     )
                 }
             } catch {
@@ -421,6 +496,15 @@ struct AnimationMeetsVideoApp: App {
             return projectLock
         }
         return try ProjectLock.acquire(at: url)
+    }
+
+    /// Whether any of the project's media lives inside `packageURL`, which
+    /// replacing that package would take away.
+    private func usesMedia(inside packageURL: URL) -> Bool {
+        let folder = packageURL.standardizedFileURL.resolvingSymlinksInPath().path + "/"
+        return project.clips.contains { clip in
+            clip.url.map { $0.standardizedFileURL.resolvingSymlinksInPath().path.hasPrefix(folder) } ?? false
+        }
     }
 
     private func isOpenProject(_ url: URL) -> Bool {

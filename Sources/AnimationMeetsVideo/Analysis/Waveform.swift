@@ -53,23 +53,58 @@ struct Waveform: Sendable, Equatable {
     /// The envelope of each channel of interleaved samples, normalized
     /// together to the loudest window of any channel.
     static func envelope(ofInterleaved samples: [Float], channelCount: Int, sampleRate: Double) -> Waveform {
-        let channelCount = max(1, channelCount)
-        let window = max(1, Int(sampleRate / peaksPerSecond))
-        let frames = samples.count / channelCount
-        var channels = [[Float]](repeating: [], count: channelCount)
-        for channel in channels.indices { channels[channel].reserveCapacity(frames / window + 1) }
-        var frame = 0
-        while frame < frames {
-            let end = min(frames, frame + window)
-            for channel in 0..<channelCount {
-                var loudest: Float = 0
-                for index in frame..<end { loudest = max(loudest, abs(samples[index * channelCount + channel])) }
-                channels[channel].append(loudest)
-            }
-            frame = end
+        var collector = PeakCollector(channelCount: channelCount, sampleRate: sampleRate)
+        samples.withUnsafeBufferPointer { collector.add(interleaved: $0) }
+        return collector.waveform()
+    }
+
+    /// Collects each channel's loudest sample in every window as samples
+    /// arrive, so a long file's sound is never held whole: only the peaks
+    /// are kept.
+    struct PeakCollector {
+        let channelCount: Int
+        let window: Int
+        private var channels: [[Float]]
+        private var loudest: [Float]
+        /// Frames in the window being collected.
+        private var filled = 0
+
+        init(channelCount: Int, sampleRate: Double) {
+            self.channelCount = max(1, channelCount)
+            window = max(1, Int(sampleRate / Waveform.peaksPerSecond))
+            channels = [[Float]](repeating: [], count: self.channelCount)
+            loudest = [Float](repeating: 0, count: self.channelCount)
         }
-        let top = channels.flatMap { $0 }.max() ?? 0
-        return Waveform(channels: top > 0 ? channels.map { $0.map { $0 / top } } : channels)
+
+        /// Takes whole frames of interleaved samples; a partial frame at the
+        /// end is ignored.
+        mutating func add(interleaved samples: UnsafeBufferPointer<Float>) {
+            let frames = samples.count / channelCount
+            for frame in 0..<frames {
+                for channel in 0..<channelCount {
+                    loudest[channel] = max(loudest[channel], abs(samples[frame * channelCount + channel]))
+                }
+                filled += 1
+                if filled == window { closeWindow() }
+            }
+        }
+
+        private mutating func closeWindow() {
+            for channel in 0..<channelCount {
+                channels[channel].append(loudest[channel])
+                loudest[channel] = 0
+            }
+            filled = 0
+        }
+
+        /// Everything collected, the last part-filled window included,
+        /// normalized together to the loudest window of any channel.
+        func waveform() -> Waveform {
+            var collector = self
+            if collector.filled > 0 { collector.closeWindow() }
+            let top = collector.channels.flatMap { $0 }.max() ?? 0
+            return Waveform(channels: top > 0 ? collector.channels.map { $0.map { $0 / top } } : collector.channels)
+        }
     }
 
     /// Reads the first audio track of a file. Cancelling stops the read.
@@ -98,21 +133,23 @@ struct Waveform: Sendable, Equatable {
             guard reader.canAdd(output) else { return Waveform(peaks: []) }
             reader.add(output)
             guard reader.startReading() else { return Waveform(peaks: []) }
-            var samples: [Float] = []
+            var collector = PeakCollector(channelCount: channelCount, sampleRate: sampleRate)
+            var chunk: [Float] = []
             while let buffer = output.copyNextSampleBuffer() {
                 if isCancelled() {
                     reader.cancelReading()
                     throw CancellationError()
                 }
                 guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
-                let length = CMBlockBufferGetDataLength(block)
-                var chunk = [Float](repeating: 0, count: length / MemoryLayout<Float>.size)
+                let count = CMBlockBufferGetDataLength(block) / MemoryLayout<Float>.size
+                guard count > 0 else { continue }
+                if chunk.count != count { chunk = [Float](repeating: 0, count: count) }
                 let status = chunk.withUnsafeMutableBytes {
                     CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!)
                 }
-                if status == kCMBlockBufferNoErr { samples.append(contentsOf: chunk) }
+                if status == kCMBlockBufferNoErr { chunk.withUnsafeBufferPointer { collector.add(interleaved: $0) } }
             }
-            return envelope(ofInterleaved: samples, channelCount: channelCount, sampleRate: sampleRate)
+            return collector.waveform()
         }
     }
 }

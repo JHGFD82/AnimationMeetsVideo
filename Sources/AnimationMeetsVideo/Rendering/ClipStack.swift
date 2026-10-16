@@ -75,6 +75,12 @@ struct ClipStack: @unchecked Sendable {
         )
     }
 
+    /// The transition drawn from two whole pictures playing at root time
+    /// `time`, if any (`TransitionRenderer`).
+    func transitionFrame(atRoot time: CMTime) -> TransitionFrame? {
+        edges?.transitionFrame(at: localTime(atRoot: time))
+    }
+
     /// The clip's source time at `local` in its timeline.
     func sourceTime(atLocal local: CMTime) -> CMTime {
         retimed?.sourceTime(atTimelineTime: local) ?? CMTimeSubtract(local, sourceShift)

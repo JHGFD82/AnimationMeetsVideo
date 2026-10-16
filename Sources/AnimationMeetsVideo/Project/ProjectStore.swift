@@ -1,11 +1,15 @@
 import CoreMedia
 import Foundation
+import UniformTypeIdentifiers
 
 struct ProjectLoadResult {
     var project: EditingProject
-    /// Media files referenced by the project that couldn't be opened; clips
-    /// using them were dropped from the timelines.
+    /// Media files referenced by the project that couldn't be opened. Their
+    /// assets and clips stay in the project, offline (see `offlineMedia`).
     var missingMedia: [URL]
+    /// The assets whose file couldn't be opened, kept from what the project
+    /// saved about them so that saving doesn't lose them or their clips.
+    var offlineMedia: [UUID] = []
     /// Assets whose file differs from the one the project last accepted, so
     /// it was swapped outside the app and needs a sync check.
     var changedMedia: [UUID] = []
@@ -33,6 +37,14 @@ struct MediaCopyCandidate {
 
 enum ProjectStore {
     static let packageExtension = "amv"
+    /// The project type the app bundle declares (`Packaging/Info.plist`).
+    static let packageTypeIdentifier = "com.jhgfd.animationmeetsvideo.project"
+    /// The project package type. Run without the bundle (`swift run`) the
+    /// system doesn't know the declared identifier, so the type is made
+    /// from the extension instead.
+    static let packageType: UTType = UTType(packageTypeIdentifier)
+        ?? UTType(filenameExtension: packageExtension, conformingTo: .package)
+        ?? .package
     static let projectFileName = "project.json"
     static let mediaFolderName = "Media"
     static let referenceFolderName = "Reference"
@@ -77,6 +89,18 @@ enum ProjectStore {
         if !fileManager.fileExists(atPath: ignoreURL.path) {
             try "\(cacheFolderName)/\n\(backupsFolderName)/\n\(lockFileName)\n".write(to: ignoreURL, atomically: true, encoding: .utf8)
         }
+        markAsPackage(packageURL)
+    }
+
+    /// Sets the folder's package flag, so Finder and open and save panels
+    /// show it as one item even where no installed app declares `.amv`.
+    /// The flag is file metadata that some copies drop (zip, git, some
+    /// sync services), so it's set again on every open and save.
+    static func markAsPackage(_ packageURL: URL) {
+        var url = packageURL
+        var values = URLResourceValues()
+        values.isPackage = true
+        try? url.setResourceValues(values)
     }
 
     // MARK: Reference data
@@ -589,7 +613,13 @@ enum ProjectStore {
                     alignmentOffset: clip.alignmentOffset == .zero ? nil : ProjectFile.TimeEntry(clip.alignmentOffset),
                     previousPaths: clip.previousPaths.isEmpty ? nil : clip.previousPaths,
                     fileStamp: clip.acceptedStamp,
-                    referenceForgotten: clip.referenceForgotten ? true : nil
+                    referenceForgotten: clip.referenceForgotten ? true : nil,
+                    kind: clip.kind.rawValue,
+                    duration: ProjectFile.TimeEntry(clip.duration),
+                    frameRate: clip.frameRate,
+                    codec: clip.codecName,
+                    colorSpace: clip.colorSpace.rawValue,
+                    hasAudio: clip.hasAudio
                 )
             },
             timelines: timelines
@@ -632,26 +662,32 @@ enum ProjectStore {
         var importedClips: [UUID: MediaClip] = [:]
         var orderedIDs: [UUID] = []
         var missingMedia: [URL] = []
+        var offlineMedia: [UUID] = []
         var changedMedia: [UUID] = []
         for asset in file.assets {
             let url = asset.path.hasPrefix("/")
                 ? URL(fileURLWithPath: asset.path)
                 : packageURL.appending(path: asset.path)
+            var clip: MediaClip
             do {
-                var clip = try await importMedia(url)
-                clip.id = asset.id
-                clip.name = asset.name
-                clip.sceneEdits = asset.sceneEdits?.edits ?? SceneEdits()
-                clip.alignmentOffset = asset.alignmentOffset?.time ?? .zero
-                clip.previousPaths = asset.previousPaths ?? []
-                clip.referenceForgotten = asset.referenceForgotten ?? false
-                clip.acceptedStamp = asset.fileStamp ?? FileStamp(url: url)
+                clip = try await importMedia(url)
                 if let saved = asset.fileStamp, saved != FileStamp(url: url) { changedMedia.append(asset.id) }
-                importedClips[asset.id] = clip
-                orderedIDs.append(asset.id)
             } catch {
+                // Kept, offline: dropping it would lose its clips for good at
+                // the next save, as when a drive simply isn't plugged in.
                 missingMedia.append(url)
+                offlineMedia.append(asset.id)
+                clip = offlineClip(for: asset, at: url, in: packageURL, timelines: file.timelines)
             }
+            clip.id = asset.id
+            clip.name = asset.name
+            clip.sceneEdits = asset.sceneEdits?.edits ?? SceneEdits()
+            clip.alignmentOffset = asset.alignmentOffset?.time ?? .zero
+            clip.previousPaths = asset.previousPaths ?? []
+            clip.referenceForgotten = asset.referenceForgotten ?? false
+            clip.acceptedStamp = asset.fileStamp ?? FileStamp(url: url)
+            importedClips[asset.id] = clip
+            orderedIDs.append(asset.id)
         }
 
         let timelineIDs = Set(file.timelines.map(\.id))
@@ -740,7 +776,46 @@ enum ProjectStore {
             if hasThumbnails(for: id, in: packageURL) { thumbnailed.insert(id) }
             references[id] = readReference(for: id, in: packageURL)
         }
-        return ProjectLoadResult(project: project, missingMedia: missingMedia, changedMedia: changedMedia, changeScores: scores, beats: beats, references: references, assetsWithThumbnails: thumbnailed)
+        return ProjectLoadResult(project: project, missingMedia: missingMedia, offlineMedia: offlineMedia, changedMedia: changedMedia, changeScores: scores, beats: beats, references: references, assetsWithThumbnails: thumbnailed)
+    }
+}
+
+extension ProjectStore {
+    /// An asset whose file couldn't be opened, described from what the
+    /// project saved about it; for files saved before that, from the
+    /// original's reference data (unless the asset has since been
+    /// replaced), and failing that from how its clips use it. Its length
+    /// always covers its clips, so their trims stay valid.
+    fileprivate static func offlineClip(
+        for asset: ProjectFile.AssetEntry,
+        at url: URL,
+        in packageURL: URL,
+        timelines: [ProjectFile.TimelineEntry]
+    ) -> MediaClip {
+        let replaced = !(asset.previousPaths ?? []).isEmpty || asset.alignmentOffset != nil
+        let reference = asset.referenceForgotten == true || replaced
+            ? nil : readReference(for: asset.id, in: packageURL)?.metadata
+        let layers = timelines.flatMap(\.layers)
+        let uses = layers.flatMap(\.clips).filter { $0.source.kind == .media && $0.source.id == asset.id }
+        let longestUse = uses.map(\.trimEnd.time).max() ?? .zero
+        let onVideoLayer = layers.contains { layer in
+            layer.kind != LayerKind.sound.rawValue && layer.kind != LayerKind.music.rawValue
+                && layer.clips.contains { $0.source.kind == .media && $0.source.id == asset.id }
+        }
+        let kind = asset.kind.flatMap(MediaKind.init(rawValue:))
+            ?? reference.map { $0.isVideo ? MediaKind.video : .audio }
+            ?? (onVideoLayer ? .video : .audio)
+        let duration = asset.duration?.time ?? reference?.duration ?? longestUse
+        return MediaClip(
+            name: asset.name,
+            kind: kind,
+            url: url,
+            duration: CMTimeMaximum(duration, longestUse),
+            frameRate: asset.frameRate ?? reference?.frameRate ?? 0,
+            colorSpace: asset.colorSpace.flatMap(ProjectColorSpace.init(rawValue:)) ?? .rec709,
+            codecName: asset.codec ?? reference?.codecName ?? "Offline",
+            hasAudio: asset.hasAudio ?? reference?.hasAudio ?? (kind == .audio || uses.contains { $0.streams == ClipStreams.audio.rawValue })
+        )
     }
 }
 

@@ -6,6 +6,9 @@ struct ViewerPanel: View {
     let frameSize: CGSize
     let frameRate: Double
     let buildError: String?
+    /// Which files are missing, shown at the foot of the picture while
+    /// their clips play as gaps.
+    var offlineNotice: String?
     /// A slipped clip's first and last frames, shown over the picture.
     let trimPreview: TrimPreviewModel
     /// Says the picture isn't the finished timeline, with a way back
@@ -26,6 +29,10 @@ struct ViewerPanel: View {
                 Design.Surface.well.color
                 if hasContent {
                     picture { PlayerLayerView(player: playback.player, still: playback.cover) }
+                        .accessibilityElement()
+                        .accessibilityLabel("Viewer")
+                        .accessibilityValue(playback.currentTime.timecode(frameRate: frameRate))
+                        .accessibilityAddTraits(.isImage)
                 } else {
                     picture { MetalPreviewView() }
                     ContentUnavailableView("No clips yet", systemImage: "film",
@@ -49,6 +56,16 @@ struct ViewerPanel: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.top, 10)
                 }
+                if let offlineNotice {
+                    Label(offlineNotice, systemImage: "externaldrive.badge.exclamationmark")
+                        .font(Design.Typeface.label)
+                        .foregroundStyle(Design.textPrimary)
+                        .padding(.horizontal, Design.Space.step)
+                        .padding(.vertical, Design.Space.tight)
+                        .beveledChip(fill: Design.statusWarning.opacity(0.28))
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, Design.Space.group)
+                }
                 if let buildError {
                     Label(buildError, systemImage: "exclamationmark.triangle.fill")
                         .font(Design.Typeface.body)
@@ -70,6 +87,7 @@ struct ViewerPanel: View {
                 }
                 .keyboardShortcut(.space, modifiers: [])
                 .help("Play/Pause (Space)")
+                .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
                 .disabled(!hasContent)
 
                 // The one number meant to be read from across the desk.

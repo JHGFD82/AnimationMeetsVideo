@@ -69,9 +69,13 @@ enum Design {
 
     // MARK: - Ink
 
+    /// Text tones keep at least 4.5:1 contrast (WCAG AA for small text) on
+    /// every surface from `well` to `overlay`; most labels here are 10 or
+    /// 11 points. `textTertiary` falls a little short on `floating`, so
+    /// sheets use `textSecondary` for their notes.
     static let textPrimary = hex(0xE6E9EE)
-    static let textSecondary = hex(0x99A2AE)
-    static let textTertiary = hex(0x6B7684)
+    static let textSecondary = hex(0xA8B1BD)
+    static let textTertiary = hex(0x939EAC)
     /// On a saturated fill — a selected clip, a prominent button.
     static let textOnColor = hex(0xF7F9FC)
 

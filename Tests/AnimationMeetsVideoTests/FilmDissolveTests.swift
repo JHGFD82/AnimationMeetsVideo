@@ -88,6 +88,22 @@ import Testing
         #expect(abs(try await gray(of: darkComposed, at: seconds(3.5)) - 20) < 15)
     }
 
+    @Test func aDipToBlackGoesThroughBlackBetweenTheClips() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "amv-dip-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let movies = try await makeMovies(dir, incomingLuma: 230)
+        let project = try project(under: movies.under, incoming: movies.incoming, kind: .dipToColor)
+        let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
+        #expect(composed.videoComposition?.customVideoCompositorClass == LayeredCompositor.self)
+
+        // Gray, then black halfway, then the incoming clip.
+        #expect(abs(try await gray(of: composed, at: seconds(0.5)) - 128) < 15)
+        #expect(try await gray(of: composed, at: seconds(2)) < 15)
+        #expect(abs(try await gray(of: composed, at: seconds(3.5)) - 230) < 15)
+    }
+
     @Test func aHalfSizeClipSitsInItsCornerAndAFilmDissolveElsewhereChangesNothingHere() async throws {
         let dir = FileManager.default.temporaryDirectory.appending(path: "amv-film-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

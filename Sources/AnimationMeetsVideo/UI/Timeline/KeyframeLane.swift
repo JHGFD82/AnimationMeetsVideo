@@ -152,6 +152,27 @@ private struct KeyframeDiamond: View {
                 Button("Delete Keyframe", role: .destructive) { onDelete(time) }
             }
             .help(time.formatted)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Keyframe at \(time.formatted)")
+            .accessibilityValue(easeDescription)
+            .accessibilityAddTraits(isAtPlayhead ? [.isButton, .isSelected] : .isButton)
+            .accessibilityHint("Moves the playhead to it")
+            .accessibilityAction { onSeek(time) }
+            .accessibilityActions {
+                ForEach(KeyframeEase.Preset.allCases) { preset in
+                    Button(preset.name) { onEase(time, preset) }
+                }
+                Button("Delete keyframe") { onDelete(time) }
+            }
+    }
+
+    private var easeDescription: String {
+        switch (mark.easedIn, mark.easedOut) {
+        case (false, false): "linear"
+        case (true, false): "eased in"
+        case (false, true): "eased out"
+        case (true, true): "eased in and out"
+        }
     }
 
     private func target(_ translation: CGFloat) -> CMTime {

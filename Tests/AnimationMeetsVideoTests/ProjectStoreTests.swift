@@ -270,7 +270,8 @@ private struct Sandbox {
         let t = project.timelines.firstIndex { $0.id == project.rootTimelineID }!
         project.timelines[t].layers[0].clips[0].streams = .video
         project.timelines[t].layers[0].clips[0].transitionIn = ClipTransition(
-            kind: .wipeUp, duration: CMTime(value: 1001, timescale: 24000), lead: CMTime(value: 1, timescale: 24000)
+            kind: .wipe, duration: CMTime(value: 1001, timescale: 24000), lead: CMTime(value: 1, timescale: 24000),
+            options: TransitionOptions(direction: .up)
         )
         var curve = TransitionCurve(preset: .easyEase)
         curve.insertPoint(atTime: 0.4)
@@ -285,6 +286,31 @@ private struct Sandbox {
         #expect(clip.streams == .video)
         #expect(clip.transitionIn == saved.transitionIn)
         #expect(clip.transitionOut == saved.transitionOut)
+    }
+
+    @Test func transitionsSavedBeforeDirectionsWereSettingsKeepTheirDirection() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, _) = sandbox.makeProject()
+        let t = project.timelines.firstIndex { $0.id == project.rootTimelineID }!
+        project.timelines[t].layers[0].clips[0].transitionIn = ClipTransition(kind: .wipe, duration: CMTime(value: 1, timescale: 1))
+        project.timelines[t].layers[0].clips[0].transitionOut = ClipTransition(kind: .slide, duration: CMTime(value: 1, timescale: 1))
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+
+        // Rewrite them as an earlier version wrote them.
+        var json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(json.contains("\"direction\" : \"right\""))
+        json = json.replacingOccurrences(of: "\"direction\" : \"right\",", with: "")
+        json = json.replacingOccurrences(of: "\"kind\" : \"wipe\"", with: "\"kind\" : \"wipeLeft\"")
+        json = json.replacingOccurrences(of: "\"kind\" : \"slide\"", with: "\"kind\" : \"slideRight\"")
+        try json.write(to: sandbox.projectJSON, atomically: true, encoding: .utf8)
+
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        let clip = try #require(loaded.project.timeline(id: project.rootTimelineID)?.layers.first?.clips.first { $0.id == clipID })
+        #expect(clip.transitionIn?.kind == .wipe)
+        #expect(clip.transitionIn?.options.direction == .left)
+        #expect(clip.transitionOut?.kind == .slide)
+        #expect(clip.transitionOut?.options.direction == .right)
     }
 
     @Test func linkedClipsWithoutTransitionsWriteNeither() async throws {
@@ -429,6 +455,25 @@ private struct Sandbox {
         }
         let ignore = try String(contentsOf: sandbox.packageURL.appending(path: ".gitignore"), encoding: .utf8)
         #expect(ignore.contains("Cache/"))
+        let isPackage = try sandbox.packageURL.resourceValues(forKeys: [.isPackageKey]).isPackage
+        #expect(isPackage == true)
+    }
+
+    @Test func theAppBundleDeclaresTheProjectType() throws {
+        let plistURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Packaging/Info.plist")
+        let plist = try #require(
+            PropertyListSerialization.propertyList(from: Data(contentsOf: plistURL), format: nil) as? [String: Any]
+        )
+        let declared = try #require((plist["UTExportedTypeDeclarations"] as? [[String: Any]])?.first)
+        #expect(declared["UTTypeIdentifier"] as? String == ProjectStore.packageTypeIdentifier)
+        #expect((declared["UTTypeConformsTo"] as? [String])?.contains("com.apple.package") == true)
+        let tags = declared["UTTypeTagSpecification"] as? [String: Any]
+        #expect(tags?["public.filename-extension"] as? [String] == [ProjectStore.packageExtension])
+        let document = try #require((plist["CFBundleDocumentTypes"] as? [[String: Any]])?.first)
+        #expect(document["LSItemContentTypes"] as? [String] == [ProjectStore.packageTypeIdentifier])
+        #expect(document["LSTypeIsPackage"] as? Bool == true)
     }
 
     @Test func copiedMediaIsStoredWithRelativePath() async throws {
@@ -482,18 +527,63 @@ private struct Sandbox {
         #expect(text.contains(sandbox.mediaURL.path))
     }
 
-    @Test func missingMediaIsReportedAndItsClipsDropped() async throws {
+    @Test func missingMediaIsReportedAndKeptOffline() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
-        let (project, _, _) = sandbox.makeProject()
+        let (project, clipID, assetID) = sandbox.makeProject()
         try await ProjectStore.save(project, to: sandbox.packageURL)
         try FileManager.default.removeItem(at: sandbox.mediaURL)
 
         let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
 
         #expect(loaded.missingMedia.count == 1)
-        #expect(loaded.project.clips.isEmpty)
-        #expect(loaded.project.timelines[0].layers.allSatisfy { $0.clips.isEmpty })
+        #expect(loaded.offlineMedia == [assetID])
+        // The asset keeps what the project saved about it, and its clip stays.
+        let asset = try #require(loaded.project.mediaClip(id: assetID))
+        #expect(asset.kind == .video)
+        #expect(asset.duration == CMTime(seconds: 10, preferredTimescale: 600))
+        #expect(asset.url?.path == sandbox.mediaURL.path)
+        #expect(loaded.project.timelines[0].layers.contains { $0.clips.contains { $0.id == clipID } })
+    }
+
+    @Test func savingWithMediaOfflineKeepsItsClips() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, clipID, assetID) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        try FileManager.default.removeItem(at: sandbox.mediaURL)
+
+        // Opened while the file is gone, saved, then opened with it back.
+        let offline = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        try await ProjectStore.save(offline.project, to: sandbox.packageURL)
+        try Data("not really video".utf8).write(to: sandbox.mediaURL)
+        let back = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        #expect(back.offlineMedia.isEmpty)
+        #expect(back.project.mediaClip(id: assetID) != nil)
+        #expect(back.project.timelines[0].layers.contains { $0.clips.contains { $0.id == clipID } })
+    }
+
+    @Test func offlineMediaInOldFilesCoversItsClips() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, assetID) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        // A file saved before assets recorded what they were.
+        var json = try JSONSerialization.jsonObject(with: Data(contentsOf: sandbox.projectJSON)) as! [String: Any]
+        var assets = json["assets"] as! [[String: Any]]
+        for key in ["kind", "duration", "frameRate", "codec", "colorSpace", "hasAudio"] { assets[0][key] = nil }
+        json["assets"] = assets
+        try JSONSerialization.data(withJSONObject: json).write(to: sandbox.projectJSON)
+        try FileManager.default.removeItem(at: sandbox.mediaURL)
+
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        let asset = try #require(loaded.project.mediaClip(id: assetID))
+        // On a video layer, and long enough for the clip's trim.
+        #expect(asset.kind == .video)
+        let clip = try #require(loaded.project.timelines[0].layers.first?.clips.first)
+        #expect(asset.duration >= clip.trimEnd)
     }
 
     @Test func packageURLAcceptsPackageOrProjectFile() {

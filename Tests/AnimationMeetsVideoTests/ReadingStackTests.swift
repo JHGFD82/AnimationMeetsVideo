@@ -107,7 +107,7 @@ import Testing
         // A wipe and the film dissolve can't be drawn per layer.
         project.editClip(placed.clipID, in: project.rootTimelineID) { $0.passThrough = true }
         let clip = project.clipAndLayer(placed.clipID, in: project.rootTimelineID)!.clip
-        #expect(project.note(for: ClipTransition(kind: .wipeLeft, duration: CMTime(value: 1, timescale: 1)), of: clip)?.dims == true)
+        #expect(project.note(for: ClipTransition(kind: .wipe, duration: CMTime(value: 1, timescale: 1)), of: clip)?.dims == true)
         #expect(project.note(for: ClipTransition(kind: .filmDissolve, duration: CMTime(value: 1, timescale: 1)), of: clip)?.dims == true)
         #expect(project.note(for: ClipTransition(kind: .crossDissolve, duration: CMTime(value: 1, timescale: 1)), of: clip) == nil)
     }

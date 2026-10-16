@@ -92,6 +92,7 @@ struct SheetSection<Content: View>: View {
                 Text(title)
                     .font(Design.Typeface.groupTitle)
                     .foregroundStyle(Design.textSecondary)
+                    .accessibilityAddTraits(.isHeader)
             }
             content()
         }
@@ -144,7 +145,7 @@ struct SheetNote: View {
             Color.clear.frame(width: Design.Space.sheetLabelColumn, height: 1)
             Text(text)
                 .font(Design.Typeface.label)
-                .foregroundStyle(Design.textTertiary)
+                .foregroundStyle(Design.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

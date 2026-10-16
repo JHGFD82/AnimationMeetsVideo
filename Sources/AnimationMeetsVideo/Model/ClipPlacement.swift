@@ -97,6 +97,63 @@ extension EditingProject {
         }
     }
 
+    /// Puts what is on a timeline back on its frames, after its frame rate
+    /// changed: the edges of clips with pictures (only the start of a
+    /// retimed one), transition lengths, layer volume keyframes and sections
+    /// each go to the nearest frame. Edges that met
+    /// still meet, since they round alike. A clip keeps at least a frame
+    /// and no more than its footage; a section keeps at least a frame and
+    /// stays clear of the one before. Keyframes that land on one frame
+    /// merge, keeping the later. Audio clips stay where they are.
+    mutating func alignToFrames(timeline id: UUID) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == id }) else { return }
+        let project = self
+        let timeline = timelines[tIndex]
+        let frame = timeline.frameDuration
+        func nearest(_ time: CMTime) -> CMTime { CMTimeMaximum(.zero, timeline.frameAligned(time, .nearest)) }
+
+        for lIndex in timeline.layers.indices {
+            var layer = timeline.layers[lIndex]
+            layer.clips = layer.clips.map { original in
+                var clip = original
+                if project.isFrameLocked(clip), clip.isRetimed {
+                    // A retimed clip's length follows from its speed, so
+                    // only its start moves.
+                    clip.startOffset = nearest(clip.startOffset)
+                } else if project.isFrameLocked(clip) {
+                    let start = nearest(clip.startOffset)
+                    var end = CMTimeMaximum(nearest(clip.endOffset), CMTimeAdd(start, frame))
+                    if let length = project.sourceDuration(for: clip.source) {
+                        let footage = timeline.frameAligned(CMTimeSubtract(length, clip.trimStart), .down)
+                        end = CMTimeMinimum(end, CMTimeAdd(start, CMTimeMaximum(frame, footage)))
+                    }
+                    clip.startOffset = start
+                    clip.trimEnd = CMTimeAdd(clip.trimStart, CMTimeSubtract(end, start))
+                }
+                for edge in [TransitionEdge.leading, .trailing] {
+                    guard var transition = clip.transition(at: edge) else { continue }
+                    transition.duration = CMTimeMaximum(frame, nearest(transition.duration))
+                    transition.lead = CMTimeMinimum(nearest(transition.lead), transition.duration)
+                    clip.setTransition(transition, at: edge)
+                }
+                return clip
+            }
+            // Clips' keyframes count in their source's time, which a new
+            // rate doesn't change; a layer's volume counts in the timeline's.
+            layer.volume.moveKeyframeTimes(nearest)
+            timelines[tIndex].layers[lIndex] = layer
+        }
+
+        var previousEnd = CMTime.zero
+        timelines[tIndex].sections = timeline.sections.map { original in
+            var section = original
+            section.start = CMTimeMaximum(nearest(section.start), previousEnd)
+            section.end = CMTimeMaximum(nearest(section.end), CMTimeAdd(section.start, frame))
+            previousEnd = section.end
+            return section
+        }
+    }
+
     private func placementContext(_ id: UUID, in timelineID: UUID, layer layerID: UUID)
         -> (timeline: Timeline, clip: TimelineClip, others: [TimelineClip])?
     {

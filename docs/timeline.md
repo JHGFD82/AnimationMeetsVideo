@@ -151,6 +151,45 @@ top, in the ruler. Only clicking or dragging in the ruler moves it, so
 drags on the layers are free for the tools. It lands on frames and stays
 within the timeline.
 
+While playing, only the playhead line and the timeline's timecode follow
+the player (`LivePlayheadRail`, which reads the player's time itself).
+The rest of the editor reads the parked playhead, which catches up when
+playback stops, so playback doesn't redraw every layer on every tick. The
+values shown in property rows and the inspector hold still while playing
+for the same reason.
+
+Zoomed in, the view **follows the playhead** while playing: each time the
+playhead runs off the edge of the view, the view turns a page so it is
+just inside the left edge again (and starting playback with the playhead
+out of view brings it into view). The view options can turn this off.
+Moving the playhead from the keyboard scrolls it to the middle when it
+lands out of view.
+
+### Moving the playhead from the keyboard
+
+- **← / →** step one frame; with Shift, ten. Stepping pauses playback.
+- **↑ / ↓** go to the previous or next edit: any clip's start or end, or
+  the end of the timeline.
+- **Home / End** go to the start and the end.
+- **⌘B** splits at the playhead: the selected clip if the playhead is in
+  it, otherwise every clip the playhead is in, on every layer.
+- **, / .** nudge the selected clip a frame earlier or later; with Shift,
+  ten. A nudge follows the same rules as dragging.
+
+These keys are left to a list or other control that has the keyboard (the
+library's list uses the arrows), and to text being typed. All of them, and
+the timeline's other keys (tools, snapping, zoom, Delete), are listed in
+the **Timeline** menu (`TimelineCommands`) and in
+[accessibility.md](accessibility.md). Keys without a modifier are
+written after the item's name rather than set as menu shortcuts, since a
+menu shortcut would take the key from a text field.
+
+## VoiceOver
+
+Clips, layers, the playhead, sections, keyframes and joined transitions
+are all reachable with VoiceOver, with actions for what dragging does a
+frame at a time. See [accessibility.md](accessibility.md).
+
 ## Sections
 
 A slim lane under the ruler holds the timeline's **sections**: named
@@ -237,8 +276,11 @@ transitions and keyframes don't snap.
 ## Moving and trimming clips
 
 Dragging the middle of a clip moves it; dragging within a few points of
-either edge trims that edge without destroying anything. The rules for where
-a clip may go are in `ClipPlacement.swift`:
+either edge trims that edge without destroying anything. Holding the
+pointer near the left or right edge of the tracks during either drag
+scrolls the timeline that way, faster the closer to the edge
+(`TimelineAutoScroll`), so a clip can be taken past what is in view. The
+rules for where a clip may go are in `ClipPlacement.swift`:
 
 - **Video and nested timelines lock to frames.** Their start and end land
   on whole frames of the timeline's rate, never between two. This uses
@@ -248,6 +290,12 @@ a clip may go are in `ClipPlacement.swift`:
   the end (`coveringWholeFrames`), and so are clips in projects saved
   before this. Otherwise its end falls between frames and no neighbor
   can meet it to make a cut.
+- **Changing a timeline's frame rate** moves what is on it onto the new
+  frames (`alignToFrames`): clip edges with pictures, transition lengths,
+  keyframes and sections each go to the nearest frame, so edges that met
+  still meet. Keyframes that land on one frame merge, keeping the later.
+  Rates other than whole numbers and the NTSC family (such as 12.5) are
+  kept exact rather than rounded to a whole number.
 - **Audio moves freely**, to 1/48000 of a second.
 - Clips never start before zero and never overlap on a layer. A moved
   clip lands where it is dropped. Dropped inside another clip, it goes to
@@ -361,9 +409,11 @@ label column closes the lane. In the composition, the incoming clip's
 frames before the cut go on a track above the layer's and the outgoing
 clip's frames after it on a track below. Nested timelines don't join.
 
-Kinds: cross dissolve, film dissolve, wipe left/right/up/down, slide
-left/right and zoom. A wipe or slide acts in the frame of the timeline the
-clip is on, after the clip's effect stack.
+There are 25 kinds in five groups (dissolves, wipes, moves, 3D,
+stylized); what each does, its settings (set in the inspector under the
+transition's length) and how it is drawn are in
+[transitions.md](transitions.md). A wipe or slide acts in the frame of
+the timeline the clip is on, after the clip's effect stack.
 
 The **film dissolve** shows the following picture brightest parts first:
 it appears wherever it is brighter than a threshold that falls from white
@@ -375,20 +425,24 @@ picture looks.
 ### Rendering
 
 Transitions sit below a clip's effect stack: the compositor draws the clip
-through its stack, then applies the transition's opacity, transform and
-crop in the frame of the timeline the clip is on (`EdgeTransitions` in
+through its stack, then applies the transition. Cross dissolve, wipe,
+slide, zoom and spin set the clip's opacity, transform and crop in the
+frame of the timeline the clip is on (`EdgeTransitions` in
 `ClipTransition.swift`, evaluated per frame). The film dissolve keys on
-brightness, on the clip's picture or on what is drawn under it. All of it
-is drawn by `LayeredCompositor` (Core Image), in preview and export alike,
-without color management. A nested timeline is one picture, so a
-transition on it applies to the whole; on a pass-through nested clip only
-its dissolve, slide and zoom apply, to each layer inside.
+brightness, on the clip's picture or on what is drawn under it. The rest
+are drawn from two whole pictures, what's under the clip and the clip over
+it ([transitions.md](transitions.md#two-pictures)). All of it is drawn by
+`LayeredCompositor` (Core Image), in preview and export alike, without
+color management. A nested timeline is one picture, so a transition on it
+applies to the whole; on a pass-through nested clip everything but the
+wipe and the film dissolve applies: moves and fades to each layer inside,
+two-picture kinds to the layers as drawn over what's under them.
 
 ### Curves
 
 Each transition has a progress curve (`TransitionCurve`): bezier segments
-from (0, 0) to (1, 1), time across, progress up. New slides and zooms get
-Easy Ease, everything else Linear. Presets, named as in After Effects:
+from (0, 0) to (1, 1), time across, progress up. New moves and 3D kinds
+get Easy Ease, everything else Linear. Presets, named as in After Effects:
 
 | Preset | Shape |
 | --- | --- |
@@ -475,4 +529,3 @@ onto a clip adds it to the end of the clip's stack. The clip's menu has
 - Thumbnails of the frames in the transition footage lane.
 - Joining nested timelines, and trimming at a joined cut from the clips
   themselves (the transition box covers the edges; roll the cut instead).
-- Scrolling to follow the playhead during playback.

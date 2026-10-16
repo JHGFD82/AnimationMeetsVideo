@@ -190,6 +190,16 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
         keyframes = Self.normalized(keyframes)
     }
 
+    /// Moves every keyframe to `move(time)`, with its eases. Keyframes that
+    /// land on the same time merge, keeping the later one.
+    mutating func moveKeyframeTimes(_ move: (CMTime) -> CMTime) {
+        keyframes = Self.normalized(keyframes.map { keyframe in
+            var moved = keyframe
+            moved.time = move(keyframe.time)
+            return moved
+        })
+    }
+
     /// Sorted, keeping the last of any keyframes that share a time.
     private static func normalized(_ keyframes: [Keyframe<Value>]) -> [Keyframe<Value>] {
         var result: [Keyframe<Value>] = []

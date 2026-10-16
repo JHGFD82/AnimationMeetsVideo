@@ -28,6 +28,7 @@ struct LibrarySidebar: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Import media")
+                .accessibilityLabel("Import media")
             }
             .padding(.horizontal, Design.Space.group)
             .padding(.vertical, Design.Space.step)
@@ -159,6 +160,11 @@ struct LibrarySidebar: View {
                     .font(Design.Typeface.label)
                     .foregroundStyle(Design.textTertiary)
             }
+        } else if replacement.missingMedia.contains(clip.id) {
+            Text("File missing")
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.statusWarning)
+                .help("Its clips play as gaps until the file is back. Control-click to replace it.")
         } else if let failure = analysis.failures[clip.id] {
             Text("Scene detection failed")
                 .font(Design.Typeface.label)

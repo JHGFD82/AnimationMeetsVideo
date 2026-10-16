@@ -12,6 +12,9 @@ struct TimelineEditorSurface<Library: View>: View {
     @Binding var selection: TimelineSelection?
     let playback: PlaybackModel
     let analysis: AssetAnalysis
+    /// Assets whose file is missing. Their clips play as gaps, and the
+    /// viewer rebuilds when one comes back.
+    var offlineMedia: Set<UUID> = []
     @ViewBuilder let library: () -> Library
     /// Renders in the background; absent in windows that don't render.
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
@@ -120,6 +123,20 @@ struct TimelineEditorSurface<Library: View>: View {
         return layer.clips.first { $0.id == selection.timelineClipID }
     }
 
+    /// Says which of the files this timeline plays are offline, if any.
+    private var offlineNotice: String? {
+        guard let timeline, !offlineMedia.isEmpty else { return nil }
+        let used = Set(timeline.layers.flatMap(\.clips).compactMap { clip -> UUID? in
+            if case .media(let id) = clip.source { return id }
+            return nil
+        })
+        let names = project.clips.filter { offlineMedia.contains($0.id) && used.contains($0.id) }.map(\.name)
+        guard let first = names.first else { return nil }
+        return names.count == 1
+            ? "\u{201C}\(first)\u{201D} is offline: its clips play as gaps."
+            : "\(names.count) media files are offline: their clips play as gaps."
+    }
+
     private var selectedInfo: ResolvedClipInfo? {
         guard let selectedTimelineClip else { return nil }
         return project.resolvedInfo(for: selectedTimelineClip.source)
@@ -141,6 +158,7 @@ struct TimelineEditorSurface<Library: View>: View {
                         frameSize: timeline?.frameSize ?? CGSize(width: 16, height: 9),
                         frameRate: timeline?.frameRate ?? 24,
                         buildError: buildError,
+                        offlineNotice: offlineNotice,
                         trimPreview: trimPreview,
                         banner: partialBanner,
                         onClearBanner: { effectsState.showUpTo = nil }
@@ -251,6 +269,11 @@ struct TimelineEditorSurface<Library: View>: View {
         }
         .onChange(of: project, initial: true) { _, project in
             graphs.update(project: project)
+            // Volumes aren't part of the composition: the player's audio
+            // taps read them as they play, so an edit is heard without a
+            // rebuild. Worked out here, once per edit, rather than in
+            // `body`, which also runs for selection and playhead changes.
+            playback.volumeCurves.replace(with: VolumeCurves.of(project))
             // Show Up to Here lets go of an effect that is gone.
             if effectsState.showUpTo != nil, partialView == nil { effectsState.showUpTo = nil }
         }
@@ -279,16 +302,16 @@ struct TimelineEditorSurface<Library: View>: View {
                 rebuildPlayerItem()
             }
         }
-        // Volumes aren't part of the composition: the player's audio taps
-        // read them as they play, so an edit is heard without a rebuild.
-        .onChange(of: VolumeCurves.of(project), initial: true) { _, curves in
-            playback.volumeCurves.replace(with: curves)
-        }
         // Wherever it stops, playing or scrubbing, is where rendering starts.
         .onChange(of: playheadTime) { _, time in
             renderer?.playhead = time
         }
         .onChange(of: playback.isPlaying) { _, playing in
+            // The parked playhead doesn't follow playback (see
+            // `TimelineView.playheadTime`); it catches up where it stopped.
+            // Its time, not the player's: a seek just asked for (stepping a
+            // frame pauses, then seeks) is there at once.
+            if !playing { playheadTime = playback.currentTime }
             renderer?.setPlaying(playing)
             if !playing, renderRebuildPending {
                 renderRebuildPending = false
@@ -312,10 +335,9 @@ struct TimelineEditorSurface<Library: View>: View {
         .onChange(of: playback.motionBlurInPreview) { _, _ in
             rebuildPlayerItem()
         }
-        .onChange(of: playback.currentTime) { _, newValue in
-            if playback.isPlaying {
-                playheadTime = newValue
-            }
+        // The file check found media gone or back.
+        .onChange(of: offlineMedia) { _, _ in
+            rebuildPlayerItem()
         }
         .onAppear {
             rebuildPlayerItem(resetPosition: true)
@@ -335,6 +357,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 selection: selection,
                 beatTracks: analysis.beats,
                 beatClicks: playback.beatClicks,
+                playback: playback,
                 playheadTime: $playheadTime,
                 onScrub: { time in scrub(to: time) },
                 onSelectClip: { layerID, clip in
@@ -626,9 +649,13 @@ extension TimelineEditorSurface where Library == EmptyView {
         timelineID: Binding<UUID>,
         selection: Binding<TimelineSelection?>,
         playback: PlaybackModel,
-        analysis: AssetAnalysis
+        analysis: AssetAnalysis,
+        offlineMedia: Set<UUID> = []
     ) {
-        self.init(project: project, timelineID: timelineID, selection: selection, playback: playback, analysis: analysis) {
+        self.init(
+            project: project, timelineID: timelineID, selection: selection,
+            playback: playback, analysis: analysis, offlineMedia: offlineMedia
+        ) {
             EmptyView()
         }
     }

@@ -31,20 +31,30 @@ struct TransitionDragPayload: Transferable {
     }
 }
 
-/// The transitions that can be dragged onto either end of a clip: a tab of
-/// the browser panel.
+/// The transitions that can be dragged onto either end of a clip, grouped
+/// by what they do to the pictures: a tab of the browser panel.
 struct TransitionsPanel: View {
     private let columns = [GridItem(.adaptive(minimum: 84), spacing: 8)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
-                LazyVGrid(columns: columns, spacing: Design.Space.step) {
-                    ForEach(TransitionKind.allCases) { kind in
-                        TransitionTile(kind: kind)
-                            .draggable(TransitionDragPayload(kind: kind)) {
-                                TransitionTile(kind: kind)
+                VStack(alignment: .leading, spacing: Design.Space.group) {
+                    ForEach(TransitionCategory.allCases) { category in
+                        VStack(alignment: .leading, spacing: Design.Space.close) {
+                            Text(category.name)
+                                .font(Design.Typeface.groupTitle)
+                                .foregroundStyle(Design.textSecondary)
+                                .accessibilityAddTraits(.isHeader)
+                            LazyVGrid(columns: columns, spacing: Design.Space.step) {
+                                ForEach(TransitionKind.allCases.filter { $0.category == category }) { kind in
+                                    TransitionTile(kind: kind)
+                                        .draggable(TransitionDragPayload(kind: kind)) {
+                                            TransitionTile(kind: kind)
+                                        }
+                                }
                             }
+                        }
                     }
                 }
                 .padding(Design.Space.group)
@@ -89,5 +99,6 @@ private struct TransitionTile: View {
         .onHover { isHovering = $0 }
         .editorAnimation(Design.Motion.select, value: isHovering)
         .help("\(kind.name): drag onto the start or end of a clip")
+        .accessibilityElement(children: .combine)
     }
 }

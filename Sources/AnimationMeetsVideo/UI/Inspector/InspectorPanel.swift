@@ -198,6 +198,7 @@ struct InspectorPanel: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Remove transition")
+                    .accessibilityLabel("Remove \(transition.kind.name) at the \(edge == .leading ? "start" : "end")")
                 }
                 Stepper(
                     value: Binding(
@@ -214,6 +215,9 @@ struct InspectorPanel: View {
                     Text("\(frames) frames")
                         .font(Design.Typeface.numericSmall)
                         .foregroundStyle(Design.textSecondary)
+                }
+                TransitionSettingsControls(transition: transition, videos: project.clips.filter { $0.kind == .video }) { options in
+                    project.setTransitionOptions(options, at: edge, of: clip.id, in: timelineID, layer: selection.layerID)
                 }
                 Menu("Curve: \(transition.curve.preset?.name ?? "Custom")") {
                     ForEach(TransitionCurve.Preset.allCases) { preset in
@@ -266,6 +270,7 @@ struct InspectorGroup<Content: View>: View {
             Text(title)
                 .font(Design.Typeface.groupTitle)
                 .foregroundStyle(Design.textSecondary)
+                .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: Design.Space.close) {
                 content()
             }

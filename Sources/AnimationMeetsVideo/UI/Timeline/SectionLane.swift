@@ -70,6 +70,8 @@ struct SectionLane: View {
             stopClickMonitor()
         }
         .help("Sections: double-click empty space to add one, double-click one to rename it")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Sections")
     }
 
     /// `section` as the project has it, drawn as `shown` (the draft while
@@ -138,6 +140,15 @@ struct SectionLane: View {
         .contextMenu {
             Button("Rename…") { beginRename(section.id, name: section.name) }
             Button("Delete Section", role: .destructive) { onDelete(section.id) }
+        }
+        .accessibilityElement(children: editingID == section.id ? .contain : .ignore)
+        .accessibilityLabel("Section \(section.name)")
+        .accessibilityValue("from \(section.start.formatted) to \(section.end.formatted)")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { onSelect(section.id) }
+        .accessibilityActions {
+            Button("Rename section") { beginRename(section.id, name: section.name) }
+            Button("Delete section") { onDelete(section.id) }
         }
         .offset(x: minX, y: 2)
     }

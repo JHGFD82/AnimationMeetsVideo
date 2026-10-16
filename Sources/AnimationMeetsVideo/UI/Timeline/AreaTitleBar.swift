@@ -52,5 +52,8 @@ struct AreaTitleBar: View {
             including: isResizable ? .all : .subviews
         )
         .help(isResizable ? "Drag to resize the \(kind.name.lowercased()) area against the one above" : "")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(kind.name) area, \(layerCount) \(layerCount == 1 ? "layer" : "layers")")
+        .accessibilityAddTraits(.isHeader)
     }
 }

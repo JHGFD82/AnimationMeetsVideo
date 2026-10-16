@@ -1,0 +1,43 @@
+name: Build and test
+
+# Every push and pull request is built and tested on macOS with full
+# Xcode: the app can't be built anywhere else (SwiftUI's macro plugins
+# aren't in the standalone Command Line Tools), so this is the only place
+# changes made off a Mac get compiled.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # macOS 26 for its Xcode: the viewer uses an API from the macOS 26 SDK
+    # behind an availability check.
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show the toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test
+      - name: Build the app bundle
+        run: |
+          scripts/build-app.sh build
+          # Zipped with ditto: the artifact upload drops the executable bit.
+          ditto -c -k --keepParent build/AnimationMeetsVideo.app build/AnimationMeetsVideo.zip
+      - name: Upload the app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnimationMeetsVideo-app
+          path: build/AnimationMeetsVideo.zip
+          retention-days: 14

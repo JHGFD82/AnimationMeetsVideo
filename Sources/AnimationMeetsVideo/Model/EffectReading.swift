@@ -88,10 +88,13 @@ extension EditingProject {
     /// A note on one of a clip's transitions, when Pass Through can't draw it.
     func note(for transition: ClipTransition, of clip: TimelineClip) -> EffectNote? {
         guard passesThrough(clip) else { return nil }
+        // A wipe crops and a film dissolve keys one picture. Moves and
+        // fades apply to each layer, and the transitions drawn from two
+        // whole pictures take the layers as drawn over what's under them.
         switch transition.kind {
-        case .wipeLeft, .wipeRight, .wipeUp, .wipeDown, .filmDissolve:
+        case .wipe, .filmDissolve:
             return EffectNote(text: "Pass Through can't apply this: it needs one combined picture.", dims: true)
-        case .crossDissolve, .slideLeft, .slideRight, .zoom:
+        default:
             return nil
         }
     }

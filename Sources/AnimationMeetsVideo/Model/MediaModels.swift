@@ -107,12 +107,18 @@ struct EditingProject: Identifiable, Equatable {
         return timeline.id
     }
 
+    /// Changes a timeline's settings. A new frame rate also moves what is
+    /// on the timeline onto its frames; see `alignToFrames(timeline:)`.
     mutating func updateTimelineSettings(_ id: UUID, name: String, frameSize: CGSize, frameRate: Double, colorSpace: ProjectColorSpace) {
         guard let index = timelines.firstIndex(where: { $0.id == id }) else { return }
+        let oldFrame = timelines[index].frameDuration
         timelines[index].name = name
         timelines[index].frameSize = frameSize
         timelines[index].frameRate = frameRate
         timelines[index].colorSpace = colorSpace
+        if timelines[index].frameDuration != oldFrame {
+            alignToFrames(timeline: id)
+        }
     }
 
     /// A timeline can't be embedded into itself or into any timeline it
