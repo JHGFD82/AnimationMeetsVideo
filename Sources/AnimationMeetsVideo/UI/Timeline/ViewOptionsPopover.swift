@@ -6,6 +6,8 @@ struct ViewOptionsPopover: View {
     let onFit: () -> Void
     /// Which areas show, and each one's layer height.
     @Binding var areaLayout: TimelineAreaLayout
+    /// Whether the view pages along with the playhead while playing.
+    @Binding var followsPlayhead: Bool
     /// Layers with beats, as (layer ID, name), in timeline order.
     let beatLayers: [(id: UUID, name: String)]
     @Binding var beatLayerID: UUID?
@@ -20,6 +22,8 @@ struct ViewOptionsPopover: View {
                 Slider(value: $zoomFraction, in: 0...1)
                 Button("Fit to window", action: onFit)
                     .help("Also on the \\ key")
+                Toggle("Follow the playhead while playing", isOn: $followsPlayhead)
+                    .help("When zoomed in, the view turns a page each time playback runs off its edge")
             }
 
             Groove()

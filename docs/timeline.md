@@ -156,6 +156,13 @@ playback stops, so playback doesn't redraw every layer on every tick. The
 values shown in property rows and the inspector hold still while playing
 for the same reason.
 
+Zoomed in, the view **follows the playhead** while playing: each time the
+playhead runs off the edge of the view, the view turns a page so it is
+just inside the left edge again (and starting playback with the playhead
+out of view brings it into view). The view options can turn this off.
+Moving the playhead from the keyboard scrolls it to the middle when it
+lands out of view.
+
 ### Moving the playhead from the keyboard
 
 - **← / →** step one frame; with Shift, ten. Stepping pauses playback.
@@ -438,4 +445,3 @@ A drag is saved when it ends, as one undo step.
 - Thumbnails of the frames in the transition footage lane.
 - Joining nested timelines, and trimming at a joined cut from the clips
   themselves (the transition box covers the edges; roll the cut instead).
-- Scrolling to follow the playhead during playback.

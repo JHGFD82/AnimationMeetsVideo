@@ -107,6 +107,8 @@ struct TimelineView: View {
     /// The section selected in the lane under the ruler, for Delete.
     @State private var selectedSectionID: UUID?
     @AppStorage("snapping") private var snapping = true
+    /// Whether the view pages along with the playhead while playing.
+    @AppStorage("followsPlayhead") private var followsPlayhead = true
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
     /// Where a drag in progress snapped, drawn as a line across the layers.
@@ -313,6 +315,7 @@ struct TimelineView: View {
                 .popover(isPresented: $showingViewOptions) {
                     ViewOptionsPopover(
                         zoomFraction: zoomFractionBinding, onFit: fitToWindow, areaLayout: $areaLayout,
+                        followsPlayhead: $followsPlayhead,
                         beatLayers: beatLayerChoices, beatLayerID: beatLayerSelection,
                         clickOnBeats: $clickOnBeats, clickFrequency: $beatClickFrequency,
                         onPreviewClick: beatClicks.preview
@@ -450,6 +453,7 @@ struct TimelineView: View {
                             playback: playback,
                             parked: playheadTime,
                             viewport: viewport,
+                            onLeaveView: followsPlayhead && !viewport.isFitted ? { time in page(to: time) } : nil,
                             snapX: snapIndicator.map { viewport.x(atSeconds: $0.seconds) },
                             height: trackHeight
                         )
@@ -926,6 +930,21 @@ struct TimelineView: View {
         scrollX = zoom.pixelsPerSecond == nil ? 0 : zoom.scrollX
     }
 
+    /// Scrolls so `time` sits just inside the left edge: a page turn, as
+    /// when playback runs off the right of the view.
+    private func page(to time: CMTime) {
+        let viewport = currentViewport
+        scrollX = CGFloat(time.seconds) * viewport.pixelsPerSecond - viewport.width * 0.05
+    }
+
+    /// Scrolls `time` to the middle of the view if it is out of view.
+    private func reveal(_ time: CMTime) {
+        let viewport = currentViewport
+        let x = viewport.x(atSeconds: time.seconds)
+        guard x < 0 || x > viewport.width else { return }
+        scrollX = CGFloat(time.seconds) * viewport.pixelsPerSecond - viewport.width / 2
+    }
+
     private func fitToWindow() {
         zoomedPixelsPerSecond = nil
         scrollX = 0
@@ -1157,7 +1176,9 @@ struct TimelineView: View {
     /// timeline.
     private func parkPlayhead(at time: CMTime) {
         playback.player.pause()
-        onScrub(timeline.snappedToFrame(CMTimeMinimum(CMTimeMaximum(.zero, time), timeline.duration)))
+        let parked = timeline.snappedToFrame(CMTimeMinimum(CMTimeMaximum(.zero, time), timeline.duration))
+        onScrub(parked)
+        reveal(parked)
     }
 
     /// Pauses and moves the playhead `frames` frames, back when negative.
@@ -1259,12 +1280,20 @@ private struct LivePlayheadRail: View {
     let playback: PlaybackModel
     let parked: CMTime
     let viewport: TimelineViewport
+    /// Called with the playhead's time when it leaves the view while
+    /// playing (including when playing starts with it out of view), so the
+    /// timeline can page after it. Nil not to follow.
+    let onLeaveView: ((CMTime) -> Void)?
     let snapX: CGFloat?
     let height: CGFloat
 
     var body: some View {
-        let time = playback.isPlaying ? playback.currentTime : parked
+        let playing = playback.isPlaying
+        let time = playing ? playback.currentTime : parked
         let x = viewport.x(atSeconds: time.seconds)
+        // Checked here because this is the one view that sees every tick;
+        // the page turn itself is a scroll of the whole timeline.
+        let leftView = playing && onLeaveView != nil && (x < 0 || x > viewport.width)
         PlayheadRail(
             playheadX: x,
             isPlayheadVisible: (-1...(viewport.width + 1)).contains(x),
@@ -1272,6 +1301,9 @@ private struct LivePlayheadRail: View {
             height: height
         )
         .frame(width: viewport.width, height: height)
+        .onChange(of: leftView) { _, left in
+            if left { onLeaveView?(time) }
+        }
     }
 }
 
