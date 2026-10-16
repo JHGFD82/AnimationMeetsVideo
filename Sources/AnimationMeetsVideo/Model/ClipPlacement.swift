@@ -76,12 +76,12 @@ extension EditingProject {
         guard isFrameLocked(clip) else { return clip }
         // A retimed clip's length is found to a few microseconds, so one
         // meant to be a whole number of frames can come out just short of
-        // it; that is the whole number, not a frame less. A clip at its own
-        // speed is rounded down, so it never runs past its footage.
+        // it; that is the whole number, not a frame less, unless the
+        // footage runs out first.
         let nearest = timeline.frameAligned(clip.placedDuration, .nearest)
-        let isNearWhole = clip.isRetimed
-            && abs(CMTimeSubtract(clip.placedDuration, nearest).seconds) < Timeline.abutmentTolerance.seconds
-        let length = isNearWhole ? nearest : timeline.frameAligned(clip.placedDuration, .down)
+        let isNearWhole = abs(CMTimeSubtract(clip.placedDuration, nearest).seconds) < Timeline.abutmentTolerance.seconds
+        let fits = sourceDuration(for: clip.source).map { CMTimeAdd(clip.trimStart, clip.sourceDuration(forPlaced: nearest)) <= $0 } ?? true
+        let length = isNearWhole && fits ? nearest : timeline.frameAligned(clip.placedDuration, .down)
         guard length > .zero, length != clip.placedDuration else { return clip }
         var aligned = clip
         aligned.trimEnd = CMTimeAdd(clip.trimStart, clip.sourceDuration(forPlaced: length))

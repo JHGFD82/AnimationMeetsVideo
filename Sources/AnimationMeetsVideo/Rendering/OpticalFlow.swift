@@ -113,14 +113,16 @@ enum OpticalFlow {
     }
 
     /// The frame between two, from motion measured by `BlockMatchFlow` at
-    /// that frame and each frame warped along it by `MorphFlow`.
+    /// that frame and each frame warped along it by `MorphFlow`. The search
+    /// reaches about a sixth of the width, plenty from one frame to the
+    /// next.
     static func matched(_ first: CIImage, _ second: CIImage, fraction: Double) -> CIImage? {
         let bounds = first.extent.integral
         guard !bounds.isEmpty, !bounds.isInfinite, bounds.size == second.extent.integral.size else { return nil }
         let p = min(max(fraction, 0), 1)
         guard p > 0, p < 1 else { return p <= 0 ? first : second }
         let aligned = second.transformed(by: CGAffineTransform(translationX: bounds.minX - second.extent.minX, y: bounds.minY - second.extent.minY))
-        guard let field = BlockMatchFlow.field(from: first, to: aligned, progress: p, in: bounds),
+        guard let field = BlockMatchFlow.field(from: first, to: aligned, progress: p, in: bounds, reach: 1.0 / 12),
               let leaving = MorphFlow.warped(first, along: field, by: -p, in: bounds),
               let arriving = MorphFlow.warped(aligned, along: field, by: 1 - p, in: bounds)
         else { return nil }

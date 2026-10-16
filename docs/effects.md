@@ -851,7 +851,9 @@ In order, each step usable on its own:
     the stretch is rendered (a note under the Frames row says so). Where
     Vision or the Metal kernel can't run (a virtual Mac may lack the
     hardware), the motion is measured by block matching and the frames
-    warped as a morph's are (see [transitions.md](transitions.md#two-pictures)).
+    warped as a morph's are (see [transitions.md](transitions.md#two-pictures)),
+    with the search kept to about a sixth of the width, since a far match
+    in a repeating texture would only be wrong.
     Frames of different sizes fade.
     The flow is estimated again for each frame drawn between the same two
     source frames, which slow motion repeats; a cache of fields is the first
