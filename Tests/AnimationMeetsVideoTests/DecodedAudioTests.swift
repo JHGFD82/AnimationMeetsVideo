@@ -326,3 +326,88 @@ struct FakeSource: DecodedAudioSource {
 
     func cancel() { cancelled.isSet = true }
 }
+
+// MARK: - Cancellation
+
+/// Twelve seconds of clicks in reader-sized buffers.
+private func clickBuffers() throws -> [CMSampleBuffer] {
+    let rate = BeatDetector.sampleRate
+    let audio = clicks(seconds: 12, first: 0.1, rate: rate)
+    return try stride(from: 0, to: audio.count, by: 4_096).map { chunk in
+        try pcmBuffer(Array(audio[chunk..<min(chunk + 4_096, audio.count)]), at: CMTime(value: CMTimeValue(chunk), timescale: CMTimeScale(rate)))
+    }
+}
+
+private final class Switch: @unchecked Sendable {
+    var isOn = false
+}
+
+@Suite struct BeatCancellationTests {
+    @Test func cancellingAtTheEndOfTheAudioIsNotAResult() throws {
+        var source = FakeSource(buffers: try clickBuffers())
+        let cancelled = Switch()
+        let count = source.buffers.count
+        // Turns on as the source runs out, after every buffer was read.
+        source.willHandOut = { if $0 == count { cancelled.isOn = true } }
+
+        #expect(throws: CancellationError.self) {
+            _ = try BeatDetector.analyze(&source, duration: 12, isCancelled: { cancelled.isOn }, progress: { _ in })
+        }
+        #expect(source.cancelled.isSet)
+    }
+
+    @Test func cancellingPartWayStopsReading() throws {
+        var source = FakeSource(buffers: try clickBuffers())
+        let cancelled = Switch()
+        source.willHandOut = { if $0 == 10 { cancelled.isOn = true } }
+
+        #expect(throws: CancellationError.self) {
+            _ = try BeatDetector.analyze(&source, duration: 12, isCancelled: { cancelled.isOn }, progress: { _ in })
+        }
+        // The switch turned on while the eleventh went out; none after it.
+        #expect(source.handedOut == 11)
+        #expect(source.cancelled.isSet)
+    }
+
+    @Test func trackingChecksInAsItGoesAndStopsWhenTold() throws {
+        let analyzer = OnsetAnalyzer()
+        clicks(seconds: 30, first: 0.1, rate: BeatDetector.sampleRate).withUnsafeBufferPointer { analyzer.append($0) }
+        var checks = 0
+        _ = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) { checks += 1 }
+        #expect(checks > 20)
+
+        for stopAt in [1, checks / 2, checks] {
+            var seen = 0
+            #expect(throws: CancellationError.self, "stopping at check \(stopAt)") {
+                _ = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) {
+                    seen += 1
+                    if seen == stopAt { throw CancellationError() }
+                }
+            }
+        }
+    }
+
+    @Test func aReadThatStoppedEarlyIsAFailureNotAnEmptyResult() throws {
+        // Nothing read and no cancellation asked for: as a reader that was
+        // cancelled or failed elsewhere would look.
+        var source = FakeSource(buffers: [], failure: BeatDetector.DetectionError.readerFailed("reading stopped before the end"))
+        #expect(throws: BeatDetector.DetectionError.self) {
+            _ = try BeatDetector.analyze(&source, duration: 12, isCancelled: { false }, progress: { _ in })
+        }
+
+        var partial = FakeSource(buffers: Array(try clickBuffers().prefix(20)), failure: BeatDetector.DetectionError.readerFailed("stopped"))
+        #expect(throws: BeatDetector.DetectionError.self) {
+            _ = try BeatDetector.analyze(&partial, duration: 12, isCancelled: { false }, progress: { _ in })
+        }
+    }
+
+    @Test func detectingInACancelledTaskThrowsCancellation() async throws {
+        let url = try await writeMovie([(start: 0, samples: clicks(seconds: 6, first: 0.1))])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await BeatDetector.detect(url: url)
+        }
+        await #expect(throws: CancellationError.self) { _ = try await task.value }
+    }
+}

@@ -83,7 +83,11 @@ shown in the browser; it can be retried by reopening the project. So is
 one whose decoded audio is damaged (a buffer that isn't the mono float
 PCM asked for, has the wrong number of bytes for its samples, or can't
 be copied) or whose read stops before the end: those are never saved as
-an empty result.
+an empty result. Cancelling (when the asset leaves the project or the
+project closes) is checked before reading starts, before every buffer
+(so also at the end of the audio), while a gap is filled, through the
+tempo and beat passes, and before the result is returned; it always ends
+in `CancellationError`, with the reader cancelled.
 
 ## Beats are stored per asset, in the asset's time
 
