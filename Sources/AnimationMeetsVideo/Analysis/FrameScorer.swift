@@ -14,12 +14,13 @@ enum FrameScorer {
 
     enum ScoringError: LocalizedError {
         case noVideoTrack
-        case readerFailed(String)
+        /// `underlying` is what the reader reported, kept so the cause can be told apart.
+        case readerFailed(String, underlying: (any Error)? = nil)
 
         var errorDescription: String? {
             switch self {
             case .noVideoTrack: "The file has no video track to analyze."
-            case .readerFailed(let reason): "Couldn't read the video: \(reason)"
+            case .readerFailed(let reason, _): "Couldn't read the video: \(reason)"
             }
         }
     }
@@ -59,7 +60,7 @@ enum FrameScorer {
             guard reader.canAdd(output) else { throw ScoringError.readerFailed("unsupported video format") }
             reader.add(output)
             guard reader.startReading() else {
-                throw ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
+                throw ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error", underlying: reader.error)
             }
 
             var times: [Int64] = []
@@ -95,7 +96,7 @@ enum FrameScorer {
             }
 
             if reader.status == .failed {
-                throw ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
+                throw ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error", underlying: reader.error)
             }
             progress(1)
             return ChangeScoreTrack(timescale: timescale, times: times, scores: scores)

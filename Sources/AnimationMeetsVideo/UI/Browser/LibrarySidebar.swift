@@ -165,16 +165,11 @@ struct LibrarySidebar: View {
                 .font(Design.Typeface.label)
                 .foregroundStyle(Design.statusWarning)
                 .help("Its clips play as gaps until the file is back. Control-click to replace it.")
-        } else if let failure = analysis.failures[clip.id] {
-            Text("Scene detection failed")
+        } else if let failure = analysis.firstFailure(for: clip.id) {
+            Text(failure.title)
                 .font(Design.Typeface.label)
                 .foregroundStyle(Design.statusWarning)
-                .help(failure)
-        } else if let failure = analysis.beatFailures[clip.id] {
-            Text("Beat detection failed")
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.statusWarning)
-                .help(failure)
+                .help(failure.detail)
         } else if let beats = analysis.beats[clip.id], !beats.isEmpty {
             HStack(spacing: Design.Space.tight) {
                 Text(clip.kind.rawValue)
@@ -217,6 +212,12 @@ struct LibrarySidebar: View {
                         analysis.reanalyze(clip, in: project)
                     }
                     .disabled(analysis.progress[clip.id] != nil)
+                    if analysis.firstFailure(for: clip.id) != nil {
+                        Button("Retry Failed Analysis") {
+                            analysis.retryFailures(for: clip.id, in: project)
+                        }
+                        .disabled(analysis.progress[clip.id] != nil)
+                    }
                     Divider()
                     ReplaceMediaMenuItems(
                         clip: clip, project: $project, analysis: analysis,

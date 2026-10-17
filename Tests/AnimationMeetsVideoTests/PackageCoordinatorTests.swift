@@ -116,7 +116,14 @@ import Testing
         try ProjectStore.writeBeats(.none(), for: droppedBeats, in: source, source: stamp)
         let analysis = analysis(holdingFirstWriteWith: gate)
         analysis.backend.detectBeats = { _, _ in .none() }
-        analysis.reset(beats: [droppedBeats: .none()], sources: AnalysisSources(beats: [droppedBeats: stamp]), packageURL: source)
+        // Only `scored` has anything left to analyze, so its write is the held one.
+        analysis.reset(
+            tracks: [droppedBeats: ChangeScoreTrack(timescale: 600, times: [0], scores: [1])],
+            thumbnailed: [droppedBeats],
+            beats: [droppedBeats: .none()],
+            sources: AnalysisSources(scores: [droppedBeats: stamp], beats: [droppedBeats: stamp]),
+            packageURL: source
+        )
         analysis.update(with: video)
         try await settle { gate.arrived == 1 }
 

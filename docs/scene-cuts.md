@@ -168,6 +168,28 @@ New scores and reference data are written on the next save. A project that was n
 nowhere to put them yet, so they are recomputed after reopening if the
 project was closed before saving.
 
+## Failures and retries
+
+A stage that can't finish is recorded per asset and stage
+(`AssetAnalysis.stageFailures`) as an `AnalysisFailure`: the stage, a kind,
+the system's message, and the file it ran on. The kinds are a missing file,
+permission denied, unsupported media (no suitable track, or a format that
+can't be decoded), damaged media, a result that could not be saved into the
+project (`persistenceFailures`, which doesn't stop the result from being
+used), an interruption, and anything else. A file that is missing is not a
+failure: the asset waits for it and is tried again when its file changes or
+`retryUnavailable` is called.
+
+A failure belongs to the file it happened on, so it is dropped when the
+asset's file changes (and, for beats, when the sound is gone). It is
+otherwise kept, so a broken file isn't analyzed again on every change.
+`retry(_:for:in:)` tries one stage of one asset again without resetting
+anything else, and `retryFailures(for:in:)` all its failed stages; the
+asset's context menu offers "Retry Failed Analysis". Retrying never
+captures the original: for an asset whose original is forgotten or whose
+file was replaced, retrying the reference or its pictures is refused and
+the failure stays.
+
 ## In the browser
 
 Implemented:

@@ -106,7 +106,7 @@ enum ReferenceCapture {
             guard reader.canAdd(output) else { throw FrameScorer.ScoringError.readerFailed("unsupported audio format") }
             reader.add(output)
             guard reader.startReading() else {
-                throw FrameScorer.ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
+                throw FrameScorer.ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error", underlying: reader.error)
             }
 
             let perWindow = sampleRate / AudioEnvelope.windowsPerSecond
@@ -156,7 +156,7 @@ enum ReferenceCapture {
                 }
             }
             if reader.status == .failed {
-                throw FrameScorer.ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
+                throw FrameScorer.ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error", underlying: reader.error)
             }
             if inWindow > 0 {
                 levels.append(AudioEnvelope.level(forRMS: (energy / Double(perWindow)).squareRoot()))

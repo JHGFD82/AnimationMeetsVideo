@@ -37,17 +37,46 @@ final class AssetAnalysis {
             }
         }
     }
-    private(set) var failures: [UUID: String] = [:]
+    /// Why a stage produced nothing, by asset and stage. Cleared when the
+    /// file it ran on changes, and by `retry`.
+    private(set) var stageFailures: [AssetStage: AnalysisFailure] = [:]
+    /// Results that exist but could not be written into the project. They
+    /// are kept and written with the next save or `writeHeldResults`.
+    private(set) var persistenceFailures: [AssetStage: AnalysisFailure] = [:]
+
+    struct AssetStage: Hashable, Sendable {
+        var id: UUID
+        var stage: Stage
+    }
+
+    func failure(_ stage: Stage, for id: UUID) -> AnalysisFailure? {
+        stageFailures[AssetStage(id: id, stage: stage)]
+    }
+
+    /// The first failure of any stage, in the order the stages run.
+    func firstFailure(for id: UUID) -> AnalysisFailure? {
+        [Stage.reference, .scenes, .pictures, .beats].lazy.compactMap { self.failure($0, for: id) }.first
+    }
+
+    private func messages(of stage: Stage) -> [UUID: String] {
+        var result: [UUID: String] = [:]
+        for (key, failure) in stageFailures where key.stage == stage { result[key.id] = failure.message }
+        return result
+    }
+
+    /// The scene-detection, reference and beat failures by asset, as text.
+    var failures: [UUID: String] { messages(of: .scenes) }
+    var referenceFailures: [UUID: String] { messages(of: .reference) }
+    var beatFailures: [UUID: String] { messages(of: .beats) }
+
     /// Reference data captured at import. Never re-captured for an asset that
     /// has it, so it keeps describing the original after the file is replaced.
     private(set) var references: [UUID: AssetReference] = [:]
-    private(set) var referenceFailures: [UUID: String] = [:]
     /// Assets whose reference pictures are captured, in memory or on disk.
     private(set) var thumbnailed: Set<UUID> = []
     /// Beats found in each asset's audio, in the asset's own time. An empty
     /// track means the audio was analyzed and no steady beat was found.
     private(set) var beats: [UUID: BeatTrack] = [:]
-    private(set) var beatFailures: [UUID: String] = [:]
 
     /// What `update(with:)` looks at for each asset, so views can call it
     /// again when any of it changes. A job whose input no longer matches is
@@ -235,7 +264,7 @@ final class AssetAnalysis {
     @ObservationIgnored private var pendingInvalidations: [Invalidation: Int] = [:]
     /// Retirements that could not be made durable, by asset. While one is
     /// listed, the outdated result could come back when the project is reopened.
-    private(set) var invalidationFailures: [Invalidation: String] = [:]
+    private(set) var invalidationFailures: [Invalidation: AnalysisFailure] = [:]
 
     /// Which file each asset's scores, beats, or failure to find them, came
     /// from. Scores and beats describe the file the asset uses now, so they
@@ -243,7 +272,6 @@ final class AssetAnalysis {
     /// has no source.
     @ObservationIgnored private var scoreSources: [UUID: ResultSource] = [:]
     @ObservationIgnored private var beatSources: [UUID: ResultSource] = [:]
-    @ObservationIgnored private var thumbnailFailures: Set<UUID> = []
     /// Assets whose file was gone when their job ran, with the file that was
     /// missing. They aren't queued again, or recorded as failed, until
     /// `retryUnavailable` says files may be back or the asset gets another file.
@@ -294,7 +322,8 @@ final class AssetAnalysis {
         waiting = []
         progress = [:]
         stages = [:]
-        failures = [:]
+        stageFailures = [:]
+        persistenceFailures = [:]
         dirtyScores = [:]
         dirtyReferences = [:]
         dirtyBeats = [:]
@@ -302,13 +331,10 @@ final class AssetAnalysis {
         heldPictures = [:]
         pendingInvalidations = [:]
         invalidationFailures = [:]
-        thumbnailFailures = []
         checkedPackage = []
         loading = [:]
         rejectedResults = [:]
         invalidationTasks = [:]
-        referenceFailures = [:]
-        beatFailures = [:]
         scoreSources = [:]
         beatSources = [:]
         latestProject = nil
@@ -352,15 +378,15 @@ final class AssetAnalysis {
                 unavailable[clip.id] = nil
             }
             guard owners[clip.id] == nil else { continue }
-            let wantsScores = clip.kind == .video && tracks[clip.id] == nil && failures[clip.id] == nil
+            let wantsScores = clip.kind == .video && tracks[clip.id] == nil && failure(.scenes, for: clip.id) == nil
             // Reference data describes the original, so it is never taken
             // from a file that replaced it.
             let canCapture = input.canCaptureReference
-            let wantsReference = canCapture && references[clip.id] == nil && referenceFailures[clip.id] == nil
+            let wantsReference = canCapture && references[clip.id] == nil && failure(.reference, for: clip.id) == nil
             // Pictures are chosen from the scores, so they need scores to exist or be coming.
             let wantsThumbnails = clip.kind == .video && canCapture && !thumbnailed.contains(clip.id)
-                && !thumbnailFailures.contains(clip.id) && (wantsScores || tracks[clip.id] != nil)
-            let wantsBeats = clip.hasAudio && beats[clip.id] == nil && beatFailures[clip.id] == nil
+                && failure(.pictures, for: clip.id) == nil && (wantsScores || tracks[clip.id] != nil)
+            let wantsBeats = clip.hasAudio && beats[clip.id] == nil && failure(.beats, for: clip.id) == nil
             guard wantsScores || wantsReference || wantsThumbnails || wantsBeats else { continue }
             nextToken += 1
             let lease = Lease(generation: generation, id: clip.id, token: nextToken)
@@ -440,12 +466,18 @@ final class AssetAnalysis {
     /// found again. A result with no known source is dropped too.
     private func discardStaleResults(of clip: MediaClip, file: AnalyzedFile) {
         let id = clip.id
-        if tracks[id] != nil || failures[id] != nil, scoreSources[id]?.matches(file) != true {
+        if tracks[id] != nil, scoreSources[id]?.matches(file) != true {
             discardResult(.scores, of: id)
         }
-        if beats[id] != nil || beatFailures[id] != nil,
-           beatSources[id]?.matches(file) != true || !clip.hasAudio {
+        if beats[id] != nil, beatSources[id]?.matches(file) != true || !clip.hasAudio {
             discardResult(.beats, of: id)
+        }
+        // A failure belongs to the file it happened on: with another file, or
+        // without sound for beats, it says nothing, and the stage may be tried.
+        for stage in [Stage.reference, .scenes, .pictures, .beats] {
+            guard let failure = failure(stage, for: id) else { continue }
+            let sameFile = failure.file.map { ResultSource(path: $0.path, stamp: $0.stamp).matches(file) } ?? false
+            if !sameFile || (stage == .beats && !clip.hasAudio) { stageFailures[AssetStage(id: id, stage: stage)] = nil }
         }
     }
 
@@ -456,12 +488,12 @@ final class AssetAnalysis {
         switch kind {
         case .scores:
             tracks[id] = nil
-            failures[id] = nil
+            stageFailures[AssetStage(id: id, stage: .scenes)] = nil
             scoreSources[id] = nil
             dirtyScores[id] = nil
         case .beats:
             beats[id] = nil
-            beatFailures[id] = nil
+            stageFailures[AssetStage(id: id, stage: .beats)] = nil
             beatSources[id] = nil
             dirtyBeats[id] = nil
         }
@@ -484,7 +516,9 @@ final class AssetAnalysis {
             guard epoch == packageEpoch, pendingInvalidations[key] == revision else { return }
             invalidationTasks[key] = nil
             if let failure {
-                invalidationFailures[key] = failure
+                invalidationFailures[key] = AnalysisFailure(
+                    stage: key.kind == .scores ? .scenes : .beats, error: failure, file: nil, kind: .persistence
+                )
             } else {
                 pendingInvalidations[key] = nil
                 invalidationFailures[key] = nil
@@ -503,6 +537,30 @@ final class AssetAnalysis {
         guard !unavailable.isEmpty else { return }
         unavailable = [:]
         update(with: project)
+    }
+
+    /// Tries one stage again for one asset, without touching anything else:
+    /// its failure is cleared, and so is the asset's wait for a missing file,
+    /// so a file that came back is tried too. Reading the original and its
+    /// pictures are refused, and the failure kept, for an asset whose
+    /// original is forgotten or whose file was replaced: those describe the
+    /// original, and are never captured from whatever file is there now.
+    /// Returns whether the stage was queued to be tried.
+    @discardableResult
+    func retry(_ stage: Stage, for id: UUID, in project: EditingProject) -> Bool {
+        guard let clip = project.clips.first(where: { $0.id == id }) else { return false }
+        if stage == .reference || stage == .pictures, !Self.input(of: clip).canCaptureReference { return false }
+        stageFailures[AssetStage(id: id, stage: stage)] = nil
+        unavailable[id] = nil
+        update(with: project)
+        return true
+    }
+
+    /// Tries every failed stage of an asset again.
+    func retryFailures(for id: UUID, in project: EditingProject) {
+        for stage in [Stage.reference, .scenes, .pictures, .beats] where failure(stage, for: id) != nil {
+            retry(stage, for: id, in: project)
+        }
     }
 
     /// For a person's explicit "re-detect": the stored score goes, from
@@ -609,26 +667,26 @@ final class AssetAnalysis {
         for (id, entry) in held.scores {
             guard unchanged else { return }
             let source = held.sources.scores[id]
-            await persist(\.dirtyScores, id, entry.revision, to: package, epoch: epoch) {
+            await persist(\.dirtyScores, .scenes, id, entry.revision, to: package, epoch: epoch) {
                 try ProjectStore.writeChangeScores(entry.value, for: id, in: $0, source: source)
             }
         }
         for (id, entry) in held.references {
             guard unchanged else { return }
-            await persist(\.dirtyReferences, id, entry.revision, to: package, epoch: epoch) {
+            await persist(\.dirtyReferences, .reference, id, entry.revision, to: package, epoch: epoch) {
                 try ProjectStore.writeReference(entry.value, for: id, in: $0)
             }
         }
         for (id, entry) in held.pictures {
             guard unchanged else { return }
-            await persist(\.dirtyPictures, id, entry.revision, to: package, epoch: epoch) {
+            await persist(\.dirtyPictures, .pictures, id, entry.revision, to: package, epoch: epoch) {
                 try ProjectStore.writeThumbnails(entry.value, for: id, in: $0)
             }
         }
         for (id, entry) in held.beats {
             guard unchanged else { return }
             let source = held.sources.beats[id]
-            await persist(\.dirtyBeats, id, entry.revision, to: package, epoch: epoch) {
+            await persist(\.dirtyBeats, .beats, id, entry.revision, to: package, epoch: epoch) {
                 try ProjectStore.writeBeats(entry.value, for: id, in: $0, source: source)
             }
         }
@@ -643,7 +701,8 @@ final class AssetAnalysis {
         for clip in saved.clips where clip.referenceForgotten {
             let id = clip.id
             references[id] = nil
-            referenceFailures[id] = nil
+            stageFailures[AssetStage(id: id, stage: .reference)] = nil
+            stageFailures[AssetStage(id: id, stage: .pictures)] = nil
             dirtyReferences[id] = nil
             dirtyPictures[id] = nil
             heldPictures[id] = nil
@@ -688,84 +747,76 @@ final class AssetAnalysis {
         }
         if job.wantsReference {
             let proceed = await runStage(
-                .reference, lease: lease,
+                .reference, lease: lease, file: job.file,
                 work: { [backend] progress in try await backend.captureReference(job.url, progress) },
                 commit: { reference in
                     references[id] = reference
                     let revision = markDirty(\.dirtyReferences, id)
-                    await persist(\.dirtyReferences, id, revision, to: packageURL, epoch: packageEpoch) {
+                    await persist(\.dirtyReferences, .reference, id, revision, to: packageURL, epoch: packageEpoch) {
                         try ProjectStore.writeReference(reference, for: id, in: $0)
                     }
-                },
-                failed: { referenceFailures[id] = $0 }
+                }
             )
             guard proceed else { return }
         }
         if job.wantsScores {
             let proceed = await runStage(
-                .scenes, lease: lease,
+                .scenes, lease: lease, file: job.file,
                 work: { [backend] progress in try await backend.scoreFrames(job.url, progress) },
                 commit: { track in
                     tracks[id] = track
                     scoreSources[id] = source
                     let revision = markDirty(\.dirtyScores, id)
-                    await persist(\.dirtyScores, id, revision, to: packageURL, epoch: packageEpoch) {
+                    await persist(\.dirtyScores, .scenes, id, revision, to: packageURL, epoch: packageEpoch) {
                         try ProjectStore.writeChangeScores(track, for: id, in: $0, source: job.file.stamp)
                     }
-                },
-                failed: {
-                    failures[id] = $0
-                    scoreSources[id] = source
                 }
             )
             guard proceed else { return }
         }
         if job.wantsThumbnails, let track = tracks[id] {
             let proceed = await runStage(
-                .pictures, lease: lease,
+                .pictures, lease: lease, file: job.file,
                 work: { [backend] progress in try await backend.capturePictures(job.url, track, progress) },
                 commit: { pictures in
                     heldPictures[id] = pictures
                     thumbnailed.insert(id)
                     let revision = markDirty(\.dirtyPictures, id)
-                    await persist(\.dirtyPictures, id, revision, to: packageURL, epoch: packageEpoch) {
+                    await persist(\.dirtyPictures, .pictures, id, revision, to: packageURL, epoch: packageEpoch) {
                         try ProjectStore.writeThumbnails(pictures, for: id, in: $0)
                     }
-                },
-                failed: { _ in thumbnailFailures.insert(id) }
+                }
             )
             guard proceed else { return }
         }
         if job.wantsBeats {
             _ = await runStage(
-                .beats, lease: lease,
+                .beats, lease: lease, file: job.file,
                 work: { [backend] progress in try await backend.detectBeats(job.url, progress) },
                 commit: { track in
                     beats[id] = track
                     beatSources[id] = source
                     pendingInvalidations[Invalidation(kind: .beats, id: id)] = nil
                     let revision = markDirty(\.dirtyBeats, id)
-                    await persist(\.dirtyBeats, id, revision, to: packageURL, epoch: packageEpoch) {
+                    await persist(\.dirtyBeats, .beats, id, revision, to: packageURL, epoch: packageEpoch) {
                         try ProjectStore.writeBeats(track, for: id, in: $0, source: job.file.stamp)
                     }
-                },
-                failed: {
-                    beatFailures[id] = $0
-                    beatSources[id] = source
                 }
             )
         }
     }
 
     /// One stage of a job. `commit` runs only while the lease is held, and
-    /// the lease is checked again before the next stage. Returns whether the
-    /// job should go on: false once it was replaced or cancelled.
+    /// the lease is checked again before the next stage. A failure is recorded
+    /// with the file it happened on; a file that vanished means the asset is
+    /// unavailable rather than failed. Returns whether the job should go on:
+    /// false once it was replaced or cancelled.
     private func runStage<Result: Sendable>(
         _ stage: Stage,
         lease: Lease,
+        file: AnalyzedFile,
         work: (@escaping @Sendable (Double) -> Void) async throws -> Result,
-        commit: (Result) async -> Void,
-        failed: (String) -> Void
+        commit: (Result) async -> Void
     ) async -> Bool {
         guard stillValid(lease), !Task.isCancelled else { return false }
         stages[lease.id] = stage
@@ -780,15 +831,20 @@ final class AssetAnalysis {
             return stillValid(lease)
         } catch {
             guard isCurrent(lease) else { return false }
-            if error is CancellationError {
-                // Cancelled by reset, which ends the lease too. Anything else
-                // is recorded rather than retried, so it can't loop.
-                if Task.isCancelled { return false }
-                failed("The analysis was interrupted.")
-            } else {
-                failed(error.localizedDescription)
-            }
+            // Cancelled by reset, which ends the lease too. A cancellation
+            // from anywhere else is recorded rather than retried, so it
+            // can't loop.
+            if error is CancellationError, Task.isCancelled { return false }
+            record(AnalysisFailure(stage: stage, error: error, file: file), for: lease.id)
             return true
+        }
+    }
+
+    private func record(_ failure: AnalysisFailure, for id: UUID) {
+        if failure.kind == .missingFile {
+            if let file = failure.file { unavailable[id] = file }
+        } else {
+            stageFailures[AssetStage(id: id, stage: failure.stage)] = failure
         }
     }
 
@@ -814,6 +870,7 @@ final class AssetAnalysis {
     /// longer active, or one that fails, leaves the result waiting.
     private func persist(
         _ keyPath: ReferenceWritableKeyPath<AssetAnalysis, [UUID: Int]>,
+        _ stage: Stage,
         _ id: UUID,
         _ revision: Int,
         to package: URL?,
@@ -821,30 +878,26 @@ final class AssetAnalysis {
         _ body: @escaping @Sendable (URL) throws -> Void
     ) async {
         guard let package else { return }
-        let written = await attempt(on: package, body)
-        if written, epoch == packageEpoch { acknowledge(keyPath, id, revision) }
+        let failure = await attemptReporting(on: package, body)
+        guard epoch == packageEpoch else { return }
+        let key = AssetStage(id: id, stage: stage)
+        if let failure {
+            persistenceFailures[key] = AnalysisFailure(stage: stage, error: failure, file: nil, kind: .persistence)
+        } else {
+            persistenceFailures[key] = nil
+            acknowledge(keyPath, id, revision)
+        }
     }
 
     /// Runs package work off the main actor. Nil when it worked, otherwise
     /// what went wrong.
-    private func attemptReporting(on package: URL, _ body: @escaping @Sendable (URL) throws -> Void) async -> String? {
+    private func attemptReporting(on package: URL, _ body: @escaping @Sendable (URL) throws -> Void) async -> (any Error)? {
         do {
             try await backend.perform(package, body)
             return nil
         } catch {
             NSLog("Couldn't change the project package: \(error.localizedDescription)")
-            return error.localizedDescription
-        }
-    }
-
-    /// Runs package work off the main actor. False when it failed.
-    private func attempt(on package: URL, _ body: @escaping @Sendable (URL) throws -> Void) async -> Bool {
-        do {
-            try await backend.perform(package, body)
-            return true
-        } catch {
-            NSLog("Couldn't write analysis results into the project: \(error.localizedDescription)")
-            return false
+            return error
         }
     }
 }

@@ -191,12 +191,13 @@ enum BeatDetector {
 
     enum DetectionError: LocalizedError {
         case noAudioTrack
-        case readerFailed(String)
+        /// `underlying` is what the reader reported, kept so the cause can be told apart.
+        case readerFailed(String, underlying: (any Error)? = nil)
 
         var errorDescription: String? {
             switch self {
             case .noAudioTrack: "The file has no audio track to analyze."
-            case .readerFailed(let reason): "Couldn't read the audio: \(reason)"
+            case .readerFailed(let reason, _): "Couldn't read the audio: \(reason)"
             }
         }
     }
@@ -240,7 +241,7 @@ enum BeatDetector {
             guard reader.canAdd(output) else { throw DetectionError.readerFailed("unsupported audio format") }
             reader.add(output)
             guard reader.startReading() else {
-                throw DetectionError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
+                throw DetectionError.readerFailed(reader.error?.localizedDescription ?? "unknown error", underlying: reader.error)
             }
 
             let analyzer = OnsetAnalyzer()
@@ -276,7 +277,7 @@ enum BeatDetector {
             }
 
             if reader.status == .failed {
-                throw DetectionError.readerFailed(reader.error?.localizedDescription ?? "unknown error")
+                throw DetectionError.readerFailed(reader.error?.localizedDescription ?? "unknown error", underlying: reader.error)
             }
             progress(1)
 

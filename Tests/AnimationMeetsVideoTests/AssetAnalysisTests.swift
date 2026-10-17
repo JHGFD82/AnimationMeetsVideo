@@ -889,21 +889,28 @@ final class Gate: @unchecked Sendable {
         scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [9]) }
         analysis.reset(packageURL: package)
         // A slow disk: something ahead of the read in the package's queue.
+        let started = Mutex(0)
         let slow = Task {
-            try await PackageCoordinator.shared.run(on: [package]) { usleep(400_000) }
+            try await PackageCoordinator.shared.run(on: [package]) { _ = started.increment(); usleep(400_000) }
         }
-        try await Task.sleep(for: .milliseconds(20))
+        try await settle { started.value == 1 }
 
         analysis.update(with: video)
-        var heartbeats = 0
-        let start = ContinuousClock.now
+        // The main actor keeps turning while the read waits: no gap between
+        // turns comes near the 0.4 seconds a blocked main actor would show.
+        var longestGap = Duration.zero
+        var last = ContinuousClock.now
+        let start = last
         while analysis.isLoadingSaved, ContinuousClock.now - start < .seconds(5) {
-            heartbeats += 1
             try await Task.sleep(for: .milliseconds(10))
+            let now = ContinuousClock.now
+            longestGap = max(longestGap, now - last)
+            last = now
         }
         try await slow.value
 
-        #expect(heartbeats >= 20)
+        #expect(longestGap < .milliseconds(250))
+        #expect(ContinuousClock.now - start > .milliseconds(200))
         #expect(analysis.tracks[id]?.scores == [1])
     }
 
@@ -924,6 +931,179 @@ final class Gate: @unchecked Sendable {
         try await settle { analysis.tracks[id]?.scores == [9] && analysis.progress.isEmpty && !analysis.isLoadingSaved }
 
         #expect(counter.value == 1)
+    }
+
+    // MARK: Structured failures and retries
+
+    @Test func failuresAreSortedIntoKinds() {
+        let cases: [(any Error, AnalysisFailure.Kind)] = [
+            (CocoaError(.fileNoSuchFile), .missingFile),
+            (CocoaError(.fileReadNoSuchFile), .missingFile),
+            (NSError(domain: NSPOSIXErrorDomain, code: Int(ENOENT)), .missingFile),
+            (CocoaError(.fileReadNoPermission), .permissionDenied),
+            (NSError(domain: NSPOSIXErrorDomain, code: Int(EACCES)), .permissionDenied),
+            (CocoaError(.fileReadCorruptFile), .corruptMedia),
+            (FrameScorer.ScoringError.noVideoTrack, .unsupportedMedia),
+            (BeatDetector.DetectionError.noAudioTrack, .unsupportedMedia),
+            (NSError(domain: AVFoundationErrorDomain, code: AVError.fileFormatNotRecognized.rawValue), .unsupportedMedia),
+            (NSError(domain: AVFoundationErrorDomain, code: AVError.fileFailedToParse.rawValue), .corruptMedia),
+            (FrameScorer.ScoringError.readerFailed("x", underlying: CocoaError(.fileReadNoPermission)), .permissionDenied),
+            (FrameScorer.ScoringError.readerFailed("unsupported video format"), .unsupportedMedia),
+            (NSError(domain: "other", code: 1, userInfo: [NSUnderlyingErrorKey: CocoaError(.fileNoSuchFile)]), .missingFile),
+            (CancellationError(), .interrupted),
+            (NSError(domain: "other", code: 1), .other),
+        ]
+        for (error, kind) in cases {
+            #expect(AnalysisFailure.kind(of: error) == kind, "\(error)")
+        }
+    }
+
+    @Test func aFailureNamesItsStageAndTheFileItRanOn() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        scoring(analysis) { throw FrameScorer.ScoringError.noVideoTrack }
+        analysis.update(with: video)
+        try await settle { analysis.failure(.scenes, for: id) != nil && analysis.progress.isEmpty }
+
+        let failure = try #require(analysis.failure(.scenes, for: id))
+        #expect(failure.stage == .scenes)
+        #expect(failure.kind == .unsupportedMedia)
+        #expect(failure.file?.stamp == stampA)
+        #expect(failure.title == "Scene detection failed")
+    }
+
+    @Test func aFileThatVanishesMidRunIsUnavailableNotFailed() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        scoring(analysis) { throw CocoaError(.fileNoSuchFile) }
+        analysis.update(with: video)
+        try await settle { analysis.progress.isEmpty }
+
+        #expect(analysis.failure(.scenes, for: id) == nil)
+        // It waits for the file; an asset given another file is tried at once.
+        let counter = Mutex(0)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(counter.increment())]) }
+        analysis.update(with: video)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(counter.value == 0)
+        analysis.update(with: stamped(video, stampB))
+        try await settle { analysis.tracks[id] != nil && analysis.progress.isEmpty }
+    }
+
+    @Test func aFailureIsDroppedWhenItsFileChanges() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        let counter = Mutex(0)
+        scoring(analysis) {
+            if counter.increment() == 1 { throw FrameScorer.ScoringError.noVideoTrack }
+            return ChangeScoreTrack(timescale: 600, times: [0], scores: [4])
+        }
+        analysis.update(with: video)
+        try await settle { analysis.failure(.scenes, for: id) != nil && analysis.progress.isEmpty }
+
+        analysis.update(with: video)
+        #expect(analysis.failure(.scenes, for: id) != nil)
+
+        analysis.update(with: stamped(video, stampB))
+        #expect(analysis.failure(.scenes, for: id) == nil)
+        try await settle { analysis.tracks[id]?.scores == [4] && analysis.progress.isEmpty }
+    }
+
+    @Test func aFailedStageCanBeRetriedWithoutResettingAnythingElse() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id], hasAudio: true), stampA)
+        let beatAttempts = Mutex(0)
+        let scored = Mutex(0)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(scored.increment())]) }
+        analysis.backend.captureReference = { _, _ in throw FrameScorer.ScoringError.noVideoTrack }
+        analysis.backend.detectBeats = { _, _ in
+            if beatAttempts.increment() == 1 { throw BeatDetector.DetectionError.noAudioTrack }
+            return BeatTrack.none()
+        }
+        analysis.update(with: video)
+        try await settle { analysis.failure(.beats, for: id) != nil && analysis.progress.isEmpty }
+        let track = analysis.tracks[id]
+
+        #expect(analysis.retry(.beats, for: id, in: video))
+        try await settle { analysis.beats[id] != nil && analysis.progress.isEmpty }
+
+        #expect(scored.value == 1)
+        #expect(analysis.tracks[id] == track)
+        #expect(analysis.failure(.reference, for: id) != nil)
+    }
+
+    @Test func aPictureFailureCanBeRetried() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        let attempts = Mutex(0)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        analysis.backend.capturePictures = { _, _, _ in
+            if attempts.increment() == 1 { throw CocoaError(.fileReadCorruptFile) }
+            return ReferenceThumbnails(frames: [])
+        }
+        analysis.backend.captureReference = { _, _ in throw NSError(domain: "test", code: 1) }
+        analysis.update(with: video)
+        try await settle { analysis.failure(.pictures, for: id) != nil && analysis.progress.isEmpty }
+        #expect(analysis.failure(.pictures, for: id)?.kind == .corruptMedia)
+
+        analysis.retry(.pictures, for: id, in: video)
+        try await settle { analysis.thumbnailed.contains(id) && analysis.progress.isEmpty }
+    }
+
+    @Test func theOriginalIsNeverRecapturedFromAReplacementEvenOnRetry() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        var video = stamped(project(ids: [id]), stampA)
+        let captures = Mutex(0)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        analysis.backend.captureReference = { _, _ in captures.increment(); throw NSError(domain: "test", code: 1) }
+        analysis.update(with: video)
+        try await settle { analysis.failure(.reference, for: id) != nil && analysis.progress.isEmpty }
+        #expect(captures.value == 1)
+
+        video.clips[0].previousPaths = ["/elsewhere/original.mov"]
+        video.clips[0].acceptedStamp = stampB
+        analysis.update(with: video)
+        #expect(!analysis.retry(.reference, for: id, in: video))
+        #expect(!analysis.retry(.pictures, for: id, in: video))
+        try await settle { analysis.progress.isEmpty }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(captures.value == 1)
+        #expect(analysis.references[id] == nil)
+    }
+
+    @Test func aResultThatCannotBeWrittenIsReportedAndKept() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        let failing = Mutex(1)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [3]) }
+        analysis.backend.perform = { package, body in
+            if failing.value == 1 { throw CocoaError(.fileWriteNoPermission) }
+            try body(package)
+        }
+        analysis.reset(packageURL: package)
+        analysis.update(with: video)
+        try await settle { analysis.progress.isEmpty && analysis.tracks[id] != nil }
+
+        let failure = try #require(analysis.persistenceFailures[.init(id: id, stage: .scenes)])
+        #expect(failure.kind == .persistence)
+        #expect(analysis.unsavedTracks[id] != nil)
+        // The result is still usable; the failure is not an analysis failure.
+        #expect(analysis.failure(.scenes, for: id) == nil)
+
+        failing.increment()
+        await analysis.writeHeldResults()
+        #expect(analysis.persistenceFailures[.init(id: id, stage: .scenes)] == nil)
+        #expect(analysis.unsavedTracks.isEmpty)
     }
 
     @Test func progressThatIsNotANumberOrOutOfRangeNeverReachesTheUI() async throws {
