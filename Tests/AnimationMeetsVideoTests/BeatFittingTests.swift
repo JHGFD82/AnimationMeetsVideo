@@ -122,6 +122,46 @@ private func section(_ kind: BeatSection.Kind, _ start: Double, _ end: Double, p
         #expect(worstError(filled.beats, truth) < 0.001)
     }
 
+    @Test func doublingAndHalvingWorkOnTheBeatsAndLeaveTheEdges() throws {
+        let truth = steadyBeats(bpm: 120, from: 0.25, to: 30)
+        let onsets = curve(beats: truth, seconds: 31)
+        var map = BeatMap(sections: [section(.consistent, 0, 30, pins: [(truth[4], 1), (truth[36], 1)])])
+        map = try BeatFitting.fill(map, section: map.sections[0].id, curve: onsets, sampleRate: rate, duration: time(31))
+        let filled = map.sections[0]
+
+        let doubled = BeatFitting.doubled(filled, curve: onsets, sampleRate: rate)
+        #expect(doubled.beats.count == 2 * filled.beats.count)
+        #expect(doubled.start == filled.start && doubled.end == filled.end)
+        // Halving the double keeps the pinned beats' side: the beats again.
+        let halved = BeatFitting.halved(doubled)
+        let halvedTimes: [CMTime] = halved.beats.map(\.time)
+        let filledTimes: [CMTime] = filled.beats.map(\.time)
+        #expect(halvedTimes == filledTimes)
+    }
+
+    @Test func halvingIsRefusedWhenItWouldDropAPinnedBeat() {
+        var beats = (0..<12).map { MappedBeat(time: time(Double($0) * 0.5)) }
+        beats[2].isPinned = true
+        beats[5].isPinned = true
+        let section = BeatSection(kind: .consistent, start: .zero, end: time(6), isConfirmed: true, beats: beats)
+        #expect(BeatFitting.halvingParity(of: section) == nil)
+        // Too slow is refused too: 40 BPM would become 20.
+        let slow = BeatSection(kind: .consistent, start: .zero, end: time(20), isConfirmed: true,
+                               beats: (0..<8).map { MappedBeat(time: time(Double($0) * 1.5)) })
+        #expect(BeatFitting.halvingParity(of: slow) == nil)
+    }
+
+    @Test func refillingLeavesTheEdgesWhereTheyAre() throws {
+        let truth = steadyBeats(bpm: 120, from: 1.1, to: 30)
+        let onsets = curve(beats: truth, seconds: 31)
+        var map = BeatMap(sections: [section(.consistent, 0.8, 20, pins: [(truth[1], 1), (truth[17], 1)])])
+        map = try BeatFitting.fill(map, section: map.sections[0].id, curve: onsets, sampleRate: rate, duration: time(31))
+        map.moveEdge(.end, of: map.sections[0].id, to: time(25), duration: time(31), snap: .zero)
+        let edges = (map.sections[0].start, map.sections[0].end)
+        map = try BeatFitting.fill(map, section: map.sections[0].id, curve: onsets, sampleRate: rate, duration: time(31), tempo: 240)
+        #expect(map.sections[0].start == edges.0 && map.sections[0].end == edges.1)
+    }
+
     @Test func aTypedTempoOverridesTheCount() throws {
         let truth = steadyBeats(bpm: 90, from: 0.2, to: 20)
         let onsets = curve(beats: truth, seconds: 20)

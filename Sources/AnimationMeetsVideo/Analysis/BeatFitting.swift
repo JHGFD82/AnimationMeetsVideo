@@ -112,7 +112,11 @@ enum BeatFitting {
         case .consistent:
             let filled = try fillConsistent(section, curve: curve, sampleRate: sampleRate, tempo: tempo)
             map.sections[index] = filled.section
-            snapEdges(of: index, in: &map, period: filled.period, sampleRate: sampleRate, duration: duration)
+            // Only the first fill moves the edges: after that they are where
+            // the person left them.
+            if !section.isConfirmed {
+                snapEdges(of: index, in: &map, period: filled.period, sampleRate: sampleRate, duration: duration)
+            }
         case .ramp:
             map.sections[index] = try fillRamp(
                 section, before: neighbour(of: index, in: map, step: -1), after: neighbour(of: index, in: map, step: 1),
@@ -405,6 +409,53 @@ enum BeatFitting {
         fit(from: last, direction: 1) { $0 < end }
         guard denominator > 0 else { return rough }
         return min(max(numerator / denominator, period - reach), period + reach)
+    }
+
+    // MARK: Doubling and halving
+
+    /// The slowest tempo halving may give, in beats per minute.
+    static let slowestHalved = BeatTracker.minimumBPM / 2
+    /// The fastest tempo doubling may give.
+    static let fastestDoubled = BeatTracker.maximumBPM * 2
+
+    /// Twice the tempo, done on the beats themselves rather than by fitting
+    /// again, so nothing else moves: a beat half way between each two, and
+    /// half a beat past each end where the section reaches. The new beats
+    /// snap onto onsets like any other.
+    static func doubled(_ section: BeatSection, curve: OnsetCurve, sampleRate: Double) -> BeatSection {
+        let times = section.beats.map(\.time.seconds)
+        guard times.count >= 2, let period = medianGap(of: times), 60 / period * 2 <= fastestDoubled else { return section }
+        var added = zip(times, times.dropFirst()).map { ($0 + $1) / 2 }
+        if times[0] - period / 2 >= section.start.seconds { added.append(times[0] - period / 2) }
+        if times[times.count - 1] + period / 2 < section.end.seconds { added.append(times[times.count - 1] + period / 2) }
+        let aligned = aligned(curve, to: section.pinnedBeats.map(\.time.seconds))
+        var result = section
+        result.beats += snapped(added.map { MappedBeat(time: time($0, sampleRate: sampleRate)) }, curve: aligned, sampleRate: sampleRate)
+        result.normalize()
+        return result
+    }
+
+    /// Which beats halving keeps, every other one: those level with the
+    /// pinned beats, or with the downbeats when nothing is pinned. Nil when
+    /// halving can't keep them all (pinned beats on both sides of the
+    /// split), when too few beats are left, or when the tempo would fall
+    /// below `slowestHalved`.
+    static func halvingParity(of section: BeatSection) -> Int? {
+        let beats = section.beats
+        guard beats.count >= 3, let period = medianGap(of: beats.map(\.time.seconds)), 60 / period / 2 >= slowestHalved else { return nil }
+        let pinned = Set(beats.indices.filter { beats[$0].isPinned }.map { $0 % 2 })
+        if pinned.count > 1 { return nil }
+        if let parity = pinned.first { return parity }
+        let downbeats = beats.indices.filter { beats[$0].isDownbeat }
+        return downbeats.filter { $0 % 2 == 1 }.count > downbeats.count / 2 ? 1 : 0
+    }
+
+    /// Half the tempo: every other beat, as `halvingParity` picks.
+    static func halved(_ section: BeatSection) -> BeatSection {
+        guard let parity = halvingParity(of: section) else { return section }
+        var result = section
+        result.beats = section.beats.indices.filter { $0 % 2 == parity }.map { section.beats[$0] }
+        return result
     }
 
     // MARK: Ramps

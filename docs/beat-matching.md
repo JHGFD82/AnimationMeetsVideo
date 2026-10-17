@@ -66,8 +66,13 @@ step.
 3. **Confirm.** The number of beats between the anchors comes from a rough
    tempo estimate. Dividing the time between the anchors by that number
    gives the exact period. The panel shows the tempo with two decimals; the
-   person can type a tempo or halve or double it, which changes the count
-   between the anchors, not the anchors.
+   person can type a tempo, which fills again at it. **×2** and **÷2** work
+   on the beats themselves instead of fitting again, so nothing else moves:
+   ×2 puts a beat half way between each two (and half a beat past each end
+   where the section reaches), snapped like any other; ÷2 keeps every
+   other beat, on the side of the pinned beats (or of the downbeats when
+   none is pinned). ÷2 is refused when pinned beats sit on both sides, so
+   halving would drop one, or below 30 BPM; ×2 above 400.
 4. **Fill.** Beats are laid out at that period across the whole section.
    - *Steady by click*: that grid is the result. Nothing is moved by
      detection.
@@ -171,9 +176,10 @@ start, and draws them before marking any:
   selected section's start and end to the playhead, so none of it needs a
   drag. The same are buttons in the panel.
 
-Then each consistent section is marked as above, one after another. Once a
-consistent section is filled its edges snap to its first and last beats,
-so neighbouring sections meet on a beat.
+Then each consistent section is marked as above, one after another. The
+first time a consistent section is filled its edges snap to its first and
+last beats, so neighbouring sections meet on a beat. Filling it again
+(reanalyzing, or at a typed tempo) leaves the edges where they are.
 
 ### Ramps
 
