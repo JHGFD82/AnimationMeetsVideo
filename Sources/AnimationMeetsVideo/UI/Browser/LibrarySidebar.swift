@@ -387,9 +387,9 @@ struct LibrarySidebar: View {
                         if let existing = ProjectStore.existingCopy(of: url, in: packageURL, excluding: usedPaths) {
                             source = existing
                         } else {
-                            madeCopy = try await Task.detached(priority: .userInitiated) {
+                            madeCopy = try await PackageCoordinator.shared.run(on: [packageURL]) {
                                 try ProjectStore.copyIntoPackage(url, packageURL: packageURL)
-                            }.value
+                            }
                             source = madeCopy ?? url
                         }
                     }

@@ -263,7 +263,7 @@ import Testing
 }
 
 /// A step that stays suspended until the test lets it finish.
-private final class Gate: @unchecked Sendable {
+final class Gate: @unchecked Sendable {
     private let lock = NSLock()
     private var continuations: [CheckedContinuation<Void, Never>] = []
     private var isOpen = false
@@ -612,7 +612,7 @@ private final class Gate: @unchecked Sendable {
     }
 }
 
-private final class Mutex: @unchecked Sendable {
+final class Mutex: @unchecked Sendable {
     private let lock = NSLock()
     private var stored: Int
     init(_ value: Int) { stored = value }

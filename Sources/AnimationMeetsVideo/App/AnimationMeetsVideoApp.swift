@@ -129,7 +129,7 @@ struct AnimationMeetsVideoApp: App {
                     }
                     while !Task.isCancelled {
                         try? await Task.sleep(for: Self.autosaveInterval)
-                        autosave()
+                        await autosave()
                     }
                 }
         }
@@ -532,11 +532,14 @@ struct AnimationMeetsVideoApp: App {
     /// Writes a recovery copy into the package's `Backups/` folder. Only for
     /// projects that have been saved once (there is no package before that),
     /// and only when something changed since the last save or autosave.
-    private func autosave() {
+    private func autosave() async {
         guard let url = projectURL, hasUnsavedChanges, project != lastAutosaved else { return }
+        let snapshot = project
         do {
-            try ProjectStore.writeBackup(of: project, in: url)
-            lastAutosaved = project
+            try await PackageCoordinator.shared.run(on: [url]) {
+                try ProjectStore.writeBackup(of: snapshot, in: url)
+            }
+            lastAutosaved = snapshot
         } catch {
             NSLog("Autosave failed: \(error.localizedDescription)")
         }

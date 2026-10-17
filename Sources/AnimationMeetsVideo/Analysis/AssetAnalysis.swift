@@ -92,8 +92,8 @@ final class AssetAnalysis {
         var scoreFrames: @Sendable (URL, @escaping Progress) async throws -> ChangeScoreTrack
         var capturePictures: @Sendable (URL, ChangeScoreTrack, @escaping Progress) async throws -> ReferenceThumbnails
         var detectBeats: @Sendable (URL, @escaping Progress) async throws -> BeatTrack
-        /// Runs `body` against the package. Everything that touches package
-        /// files goes through here, so it happens in the order it was asked.
+        /// Runs `body` against the package, through the `PackageCoordinator`
+        /// so it happens in the order it was asked, relative to saves too.
         var perform: @Sendable (URL, @escaping @Sendable (URL) throws -> Void) async throws -> Void
 
         static let live = Backend(
@@ -105,7 +105,7 @@ final class AssetAnalysis {
                 )
             },
             detectBeats: { try await BeatDetector.detect(url: $0, progress: $1) },
-            perform: { package, body in try await PackageWriter.shared.perform(on: package, body) }
+            perform: { package, body in try await PackageCoordinator.shared.run(on: [package]) { try body(package) } }
         )
     }
 
@@ -648,15 +648,6 @@ final class AssetAnalysis {
             NSLog("Couldn't write analysis results into the project: \(error.localizedDescription)")
             return false
         }
-    }
-}
-
-/// Runs package file work one piece at a time, in the order asked.
-actor PackageWriter {
-    static let shared = PackageWriter()
-
-    func perform(on package: URL, _ body: @Sendable (URL) throws -> Void) throws {
-        try body(package)
     }
 }
 
