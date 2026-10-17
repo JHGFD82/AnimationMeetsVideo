@@ -100,7 +100,10 @@ save, and is reported by `AssetAnalysis.invalidationFailures`; saving fails
 rather than leave an outdated score that could come back. While it is
 pending, a read of the package does not bring the score back into memory.
 A new score for the asset replaces the pending retirement, so a later retry
-can't delete it. Opening another project carries out pending retirements in
+can't delete it, and it is written only once any retirement of the old score
+already under way has finished, so that delete can't land after the write;
+the file is checked against the accepted stamp after that wait, last
+before the score is kept. Opening another project carries out pending retirements in
 the old package; reopening the same one keeps them pending.
 
 ### Three levels of sensitivity

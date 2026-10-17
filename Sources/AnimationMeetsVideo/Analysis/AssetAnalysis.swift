@@ -682,7 +682,8 @@ final class AssetAnalysis {
     /// Waits out a retirement of the asset's result of this kind that is
     /// already under way: it may not have reached the package's queue yet,
     /// and its delete must not land after the new result's write. Returns
-    /// whether the job still owns the asset afterwards.
+    /// whether the job still owns the asset afterwards. Used by `runStage`
+    /// before it looks at the file for the last time.
     private func awaitRetirement(_ kind: AnalysisKind, lease: Lease) async -> Bool {
         let key = Invalidation(kind: kind, id: lease.id)
         while let running = invalidationTasks[key] { await running.task.value }
@@ -691,8 +692,8 @@ final class AssetAnalysis {
 
     /// A new result replaces whatever the package held, so a retirement still
     /// pending for the old one is no longer wanted: run after the new write,
-    /// it would delete that. Called once none is under way (see
-    /// `awaitRetirement`), so none starts before the write is queued.
+    /// it would delete that. Called, before any suspension, once none is
+    /// under way (see `runStage`), so none starts before the write is queued.
     private func supersedeInvalidation(_ kind: AnalysisKind, of id: UUID) {
         let key = Invalidation(kind: kind, id: id)
         pendingInvalidations[key] = nil
@@ -1091,8 +1092,8 @@ final class AssetAnalysis {
                     try track.validate()
                     return track
                 },
+                retiring: .scores,
                 commit: { track in
-                    guard await awaitRetirement(.scores, lease: lease) else { return }
                     tracks[id] = track
                     scoreSources[id] = source
                     supersedeInvalidation(.scores, of: id)
@@ -1130,8 +1131,8 @@ final class AssetAnalysis {
             _ = await runStage(
                 .beats, lease: lease, file: job.file, url: job.url, observed: seen.stamp,
                 work: { [backend] progress in try await backend.detectBeats(job.url, progress) },
+                retiring: .beats,
                 commit: { track in
-                    guard await awaitRetirement(.beats, lease: lease) else { return }
                     beats[id] = track
                     beatSources[id] = source
                     supersedeInvalidation(.beats, of: id)
@@ -1148,7 +1149,9 @@ final class AssetAnalysis {
     /// the lease is checked again before the next stage. A failure is recorded
     /// with the file it happened on; a file that vanished means the asset is
     /// unavailable rather than failed. Returns whether the job should go on:
-    /// false once it was replaced or cancelled, or the file is gone.
+    /// false once it was replaced or cancelled, or the file is gone. With
+    /// `retiring`, a retirement of the old result still under way is waited
+    /// out first, so the file is still looked at last before `commit`.
     private func runStage<Result: Sendable>(
         _ stage: Stage,
         lease: Lease,
@@ -1156,6 +1159,7 @@ final class AssetAnalysis {
         url: URL,
         observed: FileStamp?,
         work: (@escaping @Sendable (Double) -> Void) async throws -> Result,
+        retiring: AnalysisKind? = nil,
         commit: (Result) async -> Void
     ) async -> Bool {
         guard stillValid(lease), !Task.isCancelled else { return false }
@@ -1168,9 +1172,17 @@ final class AssetAnalysis {
             let result = try await work(relay.report)
             guard stillValid(lease), !Task.isCancelled else { return false }
             // Looked at again: a file that changed while it was read gave a
-            // result for neither version.
-            let after = await backend.observeFile(url)
-            guard stillValid(lease), !Task.isCancelled else { return false }
+            // result for neither version. A retirement may start while the
+            // file is looked at (a failed one is retried by any write), so
+            // both are done until none is under way when the look ends.
+            var after: FileObservation
+            repeat {
+                if let retiring {
+                    guard await awaitRetirement(retiring, lease: lease), !Task.isCancelled else { return false }
+                }
+                after = await backend.observeFile(url)
+                guard stillValid(lease), !Task.isCancelled else { return false }
+            } while retiring.map { invalidationTasks[Invalidation(kind: $0, id: lease.id)] != nil } ?? false
             // Gone meanwhile: offline, like a file missing from the start.
             guard after.exists else {
                 unavailable[lease.id] = file
