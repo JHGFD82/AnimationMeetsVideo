@@ -153,7 +153,7 @@ shown layer's beats (see [timeline.md](timeline.md#snapping)).
 
 ## Hearing the beats
 
-Below the picker, **Click on beats** plays a short tone on each marker of
+Below the picker, **Tick on beats** plays a short tone on each marker of
 the chosen layer while the timeline plays, so the markers can be checked
 by ear. It is off, and can't be turned on, while the picker is at None.
 When on, a **Pitch** slider (200–2000 Hz, 1000 by default) sets the tone
@@ -161,8 +161,9 @@ and a **Volume** slider (80% by default) its level; letting go of either
 slider, or the speaker button beside them, plays one tone as a preview.
 The settings are remembered across launches in user defaults, not saved
 with the project, and are shared with the beat match panel
-(`ClickToneControls`). A beat marked as a downbeat clicks an octave higher;
-detected beats have no measures, so they all click at the set pitch.
+(`ClickToneControls`); both places call the tone a tick. A beat marked as
+a downbeat ticks an octave higher; detected beats have no measures, so
+they all tick at the set pitch.
 
 `BeatClickPlayer`, owned by `PlaybackModel` next to the shared `AVPlayer`,
 does the playing. It does not fire tones from a time observer, which would

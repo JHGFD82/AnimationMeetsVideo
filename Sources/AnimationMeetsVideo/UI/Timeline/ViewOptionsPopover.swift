@@ -75,7 +75,7 @@ struct ViewOptionsPopover: View {
                             Text(layer.name).tag(UUID?.some(layer.id))
                         }
                     }
-                    Toggle("Click on beats", isOn: $clickOnBeats)
+                    Toggle("Tick on beats", isOn: $clickOnBeats)
                         .disabled(beatLayerID == nil)
                     if clickOnBeats {
                         ClickToneControls(frequency: $clickFrequency, volume: $clickVolume, onPreview: onPreviewClick)

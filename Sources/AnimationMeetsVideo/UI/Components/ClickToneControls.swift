@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Where the beat click's settings are remembered. The timeline's view
+/// Where the beat tick's settings are remembered. The timeline's view
 /// options and the beat match panel share them, so there is one tick.
 enum ClickToneSettings {
     static let frequencyKey = "beatClickFrequency"
@@ -9,7 +9,7 @@ enum ClickToneSettings {
     static let defaultVolume = 0.8
 }
 
-/// The beat click's pitch and volume, with a button to hear it. Letting go
+/// The beat tick's pitch and volume, with a button to hear it. Letting go
 /// of either slider plays one tick too.
 struct ClickToneControls: View {
     @Binding var frequency: Double
@@ -24,22 +24,22 @@ struct ClickToneControls: View {
                 Slider(value: $frequency, in: BeatClickPlayer.frequencyRange, step: 10) { editing in
                     if !editing { onPreview() }
                 }
-                .accessibilityLabel("Click pitch")
+                .accessibilityLabel("Tick pitch")
                 .accessibilityValue("\(Int(frequency)) hertz")
                 reading("\(Int(frequency)) Hz")
                 Button(action: onPreview) {
                     Image(systemName: "speaker.wave.2")
                 }
                 .buttonStyle(.borderless)
-                .help("Preview the click")
-                .accessibilityLabel("Preview the click")
+                .help("Preview the tick")
+                .accessibilityLabel("Preview the tick")
             }
             HStack(spacing: Design.Space.close) {
                 label("Volume")
                 Slider(value: $volume, in: 0...1) { editing in
                     if !editing { onPreview() }
                 }
-                .accessibilityLabel("Click volume")
+                .accessibilityLabel("Tick volume")
                 .accessibilityValue("\(Int((volume * 100).rounded())) percent")
                 reading("\(Int((volume * 100).rounded()))%")
                 // Keeps the sliders the same length.
