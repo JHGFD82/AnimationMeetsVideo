@@ -91,10 +91,13 @@ struct AnalysisProvenance: Codable, Equatable, Sendable {
                 "tightness=\(BeatTracker.tightness)", "minimum=\(BeatTracker.minimumSeconds)",
                 "tempoWindow=\(BeatTracker.tempoWindowSeconds)", "tempoHop=\(BeatTracker.tempoHopSeconds)",
                 "glide=\(BeatTracker.tempoGlide)", "jump=\(BeatTracker.tempoJump)", "sudden=\(BeatTracker.suddenChange)",
+                "periodicity=\(BeatTracker.Confidence.minimumPeriodicity)", "agreement=\(BeatTracker.Confidence.minimumAgreement)",
+                "supported=\(BeatTracker.Confidence.minimumSupportedShare)x\(BeatTracker.Confidence.minimumSupportedIntervals)",
             ]
             // 2: the FFT's packed DC and Nyquist values no longer count
-            // toward onsets. 3: the tempo is the beats' median gap.
-            return (settings.joined(separator: ";"), 3)
+            // toward onsets. 3: the tempo is the beats' median gap. 4: beats
+            // without a steady pulse are rejected.
+            return (settings.joined(separator: ";"), 4)
         }
     }
 

@@ -495,6 +495,8 @@ enum BeatTracker {
         var frames: [Int]
         /// The typical tempo of these beats (see `beatsPerMinute(ofFrames:framesPerSecond:)`).
         var beatsPerMinute: Double
+        /// Why the beats were taken for a steady pulse.
+        var confidence: Confidence
     }
 
     static let minimumBPM = 60.0
@@ -538,7 +540,8 @@ enum BeatTracker {
     }
 
     /// The beats of an onset curve, or nil when it holds no steady beat
-    /// (including a curve too short to tell). Throws `InputError`, before
+    /// (including a curve too short to tell, and one whose beats fall short
+    /// of `Confidence.isSteadyBeat`). Throws `InputError`, before
     /// doing any work, when the frame rate isn't finite and positive or a
     /// value isn't finite and nonnegative: those would trap in the
     /// conversions to frame counts or poison every score.
@@ -560,7 +563,83 @@ enum BeatTracker {
         let frames = chain(onsets, periods: periods)
         let kept = trimmed(frames, onsets: onsets)
         guard let tempo = beatsPerMinute(ofFrames: kept, framesPerSecond: framesPerSecond) else { return nil }
-        return Result(frames: kept, beatsPerMinute: tempo)
+        // The chain lays a regular string of beats over any sound at all,
+        // noise and speech included, so it is kept only if it is a pulse.
+        let confidence = confidence(of: kept, onsets: onsets, periodicity: periods.periodicity)
+        guard confidence.isSteadyBeat else { return nil }
+        return Result(frames: kept, beatsPerMinute: tempo, confidence: confidence)
+    }
+
+    /// How sure the tracker is that the beats are a real pulse rather than
+    /// a regular chain laid over sound with none.
+    ///
+    /// The thresholds were set from synthetic material (click tracks,
+    /// drum patterns loud and quiet, white and wandering noise, speech-like
+    /// syllables, isolated and random clicks, a dither-level floor) and
+    /// from 20-second excerpts of real recordings: full mixes, instrument
+    /// and vocal stems, a crowd track, a near-silent stem and film dialogue.
+    /// Non-rhythmic material scored a periodicity of at most 0.4 and an
+    /// agreement of at most 2 (noise) or a periodicity of at most 0.22
+    /// (speech), while full mixes scored at least 0.7 and 2.5. Single
+    /// instrument stems spread across 0.2–0.9, so a weakly rhythmic stem
+    /// may be rejected.
+    struct Confidence: Equatable {
+        /// The onset curve's autocorrelation coefficient at the period
+        /// chosen for each stretch, the median over the stretches that
+        /// aren't silent: about 0 for noise, 1 for a perfectly repeating pulse.
+        var periodicity: Double
+        /// How many gaps between consecutive beats have an onset at both ends.
+        var supportedIntervals: Int
+        /// The onset strength at the beats over that at the same beats moved
+        /// a quarter, half and three quarters of the way to the next one:
+        /// near 1.5 for noise, where the chain only finds the local bumps.
+        var agreement: Double
+        /// The beats, for `supportedShare`.
+        var intervals: Int
+
+        /// The share of intervals with an onset at both ends.
+        var supportedShare: Double { intervals > 0 ? Double(supportedIntervals) / Double(intervals) : 0 }
+
+        static let minimumPeriodicity = 0.45
+        static let minimumAgreement = 2.0
+        static let minimumSupportedShare = 0.5
+        /// A beat needs a few bars' worth of evidence, not two transients.
+        static let minimumSupportedIntervals = 4
+
+        /// The onsets repeat at the tempo, the beats sit on onsets rather than
+        /// between them, and they do so across several intervals.
+        var isSteadyBeat: Bool {
+            periodicity >= Self.minimumPeriodicity && agreement >= Self.minimumAgreement
+                && supportedShare >= Self.minimumSupportedShare && supportedIntervals >= Self.minimumSupportedIntervals
+        }
+    }
+
+    /// The largest onset within this many frames of a beat counts as its
+    /// onset; peaks are a frame or two wide and beats land within a frame.
+    private static let onsetReach = 2
+    /// An onset counts as supporting a beat at this many times the curve's
+    /// RMS, which `prepared` scales to 1.
+    private static let supportLevel: Float = 1
+
+    private static func confidence(of frames: [Int], onsets: [Float], periodicity: Double) -> Confidence {
+        func onset(near frame: Int) -> Float {
+            let low = max(0, frame - onsetReach), high = min(onsets.count - 1, frame + onsetReach)
+            guard low <= high else { return 0 }
+            return onsets[low...high].max() ?? 0
+        }
+        let supported = frames.map { onset(near: $0) >= supportLevel }
+        let intervals = zip(supported, supported.dropFirst()).filter { $0 && $1 }.count
+
+        var onBeat = 0.0, offBeat = 0.0
+        for (beat, next) in zip(frames, frames.dropFirst()) {
+            onBeat += Double(onset(near: beat))
+            let gap = Double(next - beat)
+            offBeat += [0.25, 0.5, 0.75].map { Double(onset(near: beat + Int((gap * $0).rounded()))) }.reduce(0, +) / 3
+        }
+        let agreement = offBeat > 0 ? onBeat / offBeat : (onBeat > 0 ? .infinity : 0)
+        return Confidence(
+            periodicity: periodicity, supportedIntervals: intervals, agreement: agreement, intervals: max(0, frames.count - 1)
+        )
     }
 
     /// The tempo the beats themselves keep, from the median of the gaps
@@ -605,6 +684,8 @@ enum BeatTracker {
     struct Periods {
         var main: [Double]
         var alternative: [Double?]
+        /// See `Confidence.periodicity`.
+        var periodicity: Double
     }
 
     /// The periods at every frame (see `Periods`). Each stretch
@@ -739,7 +820,34 @@ enum BeatTracker {
                 alternative[frame] = Double(frame) < middle ? after : before
             }
         }
-        return Periods(main: perFrame, alternative: alternative)
+        let periodicity = Self.periodicity(of: blurred, starts: starts, length: length, periods: periods)
+        return Periods(main: perFrame, alternative: alternative, periodicity: periodicity)
+    }
+
+    /// See `Confidence.periodicity`. The coefficient is taken at the whole
+    /// lags either side of each stretch's refined period, the better of the two.
+    private static func periodicity(of curve: [Float], starts: [Int], length: Int, periods: [Double]) -> Double {
+        var coefficients: [Double] = []
+        curve.withUnsafeBufferPointer { buffer in
+            let base = buffer.baseAddress!
+            for (start, period) in zip(starts, periods) {
+                var mean: Float = 0, meanSquare: Float = 0
+                vDSP_meanv(base + start, 1, &mean, vDSP_Length(length))
+                vDSP_measqv(base + start, 1, &meanSquare, vDSP_Length(length))
+                let variance = Double(meanSquare) - Double(mean) * Double(mean)
+                guard variance > 1e-9 else { continue }
+                let best = [Int(period.rounded(.down)), Int(period.rounded(.up))].map { lag -> Double in
+                    let overlap = length - lag
+                    guard lag > 0, overlap > 0 else { return 0 }
+                    var sum: Float = 0
+                    vDSP_dotpr(base + start, 1, base + start + lag, 1, &sum, vDSP_Length(overlap))
+                    return (Double(sum) / Double(overlap) - Double(mean) * Double(mean)) / variance
+                }.max() ?? 0
+                coefficients.append(best)
+            }
+        }
+        guard !coefficients.isEmpty else { return 0 }
+        return coefficients.sorted()[coefficients.count / 2]
     }
 
     /// The curve smoothed with a small Gaussian (a deviation of 1.5 frames).

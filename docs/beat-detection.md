@@ -43,14 +43,37 @@ its beats, following the tempo where it ramps or changes:
    by Dynamic Programming"): each beat should land on a strong onset and
    about one local period after the previous one. Weak beats at the very
    start and end are trimmed.
-7. The tempo reported is that of the beats kept: 60 over the median gap
+7. The chain lays a regular string of beats over any sound, so it is then
+   checked for a real pulse (`BeatTracker.Confidence`), and rejected
+   unless all of these hold:
+   - **Periodicity contrast** of at least 0.45: the onset curve's
+     autocorrelation coefficient at the period chosen for each stretch,
+     the median over stretches that aren't silent (about 0 for noise, 1
+     for a pulse that repeats exactly).
+   - **Agreement** of at least 2: the onset strength at the beats over
+     that at the same beats moved a quarter, half and three quarters of
+     the way to the next. Noise, where the chain only finds local bumps,
+     comes to about 1.5.
+   - **Support across intervals**: at least half the gaps between beats,
+     and at least 4, have an onset of the curve's RMS or more within two
+     frames of both ends.
+
+   The thresholds come from synthetic material (click tracks, drum
+   patterns loud and quiet, white and wandering noise, speech-like
+   syllables, isolated and random clicks, a dither-level floor) and
+   20-second excerpts of real recordings (full mixes, instrument and
+   vocal stems, a crowd track, a near-silent stem, film dialogue).
+   Non-rhythmic material scored a periodicity of at most 0.4 and full
+   mixes at least 0.7; single instrument stems ranged from 0.2 to 0.9,
+   so a weakly rhythmic stem on its own may get no beats.
+8. The tempo reported is that of the beats kept: 60 over the median gap
    between consecutive beats (the mean of the middle two for an even
    count). It matches the markers even where the chain took the period
    from the other side of a jump, ignores a few missed or doubled beats,
    and for a tempo that changes is the one held for the most beats.
 
-Audio shorter than 4 seconds, or with no usable onsets, gives an **empty
-result**. That is saved like any other result, so the file is not analyzed
+Audio shorter than 4 seconds, with no usable onsets, or without a steady
+pulse (noise, speech, a few isolated hits) gives an **empty result**. That is saved like any other result, so the file is not analyzed
 again every time the project opens. An unreadable file is a failure and is
 shown in the browser; it can be retried by reopening the project.
 
