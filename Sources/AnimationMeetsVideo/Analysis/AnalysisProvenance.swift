@@ -93,8 +93,8 @@ struct AnalysisProvenance: Codable, Equatable, Sendable {
                 "glide=\(BeatTracker.tempoGlide)", "jump=\(BeatTracker.tempoJump)", "sudden=\(BeatTracker.suddenChange)",
             ]
             // 2: the FFT's packed DC and Nyquist values no longer count
-            // toward onsets.
-            return (settings.joined(separator: ";"), 2)
+            // toward onsets. 3: the tempo is the beats' median gap.
+            return (settings.joined(separator: ";"), 3)
         }
     }
 

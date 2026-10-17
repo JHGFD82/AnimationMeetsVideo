@@ -125,6 +125,49 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         #expect(around.allSatisfy { beat in times.contains { abs($0 - beat) < 0.05 } })
     }
 
+    /// The tempo of the median gap between `seconds`.
+    private func medianTempo(_ seconds: [Double]) -> Double {
+        let gaps = zip(seconds.dropFirst(), seconds).map { $0 - $1 }.sorted()
+        let middle = gaps.count / 2
+        let median = gaps.count.isMultiple(of: 2) ? (gaps[middle - 1] + gaps[middle]) / 2 : gaps[middle]
+        return 60 / median
+    }
+
+    @Test func theTempoIsTheOneTheBeatsKeepAcrossAnAbruptChange() throws {
+        // A third at 100 BPM, then 150: most beats are at 150.
+        let length = 30.0
+        let times = clickTimes(seconds: length, first: 0.2) { $0 < 10 ? 100 : 150 }
+        let (beats, result) = try trackBeats(clicks(at: times, seconds: length, sampleRate: BeatDetector.sampleRate))
+
+        #expect(abs(result.beatsPerMinute - 150) < 3)
+        #expect(abs(result.beatsPerMinute - medianTempo(beats)) < 1e-6)
+        let track = try BeatTrack(timescale: Int32(BeatDetector.sampleRate),
+                                  times: result.frames.map { OnsetAnalyzer.centerSample(ofFrame: $0) },
+                                  beatsPerMinute: result.beatsPerMinute)
+        let range = try #require(track.tempoRange)
+        #expect(range.contains(result.beatsPerMinute))
+    }
+
+    @Test func theTempoMatchesTheBeatsWhereTheChainTookTheOtherPeriod() throws {
+        // Around the change the chain may step with the period from either
+        // side; the tempo reported still comes from the steps it took.
+        let length = 30.0
+        let times = clickTimes(seconds: length, first: 0.2) { $0 < 15 ? 100 : 150 }
+        let (beats, result) = try trackBeats(clicks(at: times, seconds: length, sampleRate: BeatDetector.sampleRate))
+
+        #expect(abs(result.beatsPerMinute - medianTempo(beats)) < 1e-6)
+        let around = zip(beats.dropFirst(), beats).filter { $1 > 12 && $0 < 18 }.map { 60 / ($0 - $1) }
+        #expect(around.contains { abs($0 - 100) < 5 })
+        #expect(around.contains { abs($0 - 150) < 5 })
+    }
+
+    @Test func theTempoOfFramesIsTheirMedianGap() {
+        let rate = 100.0
+        #expect(BeatTracker.beatsPerMinute(ofFrames: [0, 50, 100, 200], framesPerSecond: rate) == 120)
+        #expect(BeatTracker.beatsPerMinute(ofFrames: [0, 50, 150, 200, 300], framesPerSecond: rate) == 80)
+        #expect(BeatTracker.beatsPerMinute(ofFrames: [10], framesPerSecond: rate) == nil)
+    }
+
     @Test func aSteadyTempoStaysSteady() throws {
         let length = 40.0
         let times = clickTimes(seconds: length, first: 0.3) { _ in 120 }

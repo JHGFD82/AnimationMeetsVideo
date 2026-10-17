@@ -43,6 +43,11 @@ its beats, following the tempo where it ramps or changes:
    by Dynamic Programming"): each beat should land on a strong onset and
    about one local period after the previous one. Weak beats at the very
    start and end are trimmed.
+7. The tempo reported is that of the beats kept: 60 over the median gap
+   between consecutive beats (the mean of the middle two for an even
+   count). It matches the markers even where the chain took the period
+   from the other side of a jump, ignores a few missed or doubled beats,
+   and for a tempo that changes is the one held for the most beats.
 
 Audio shorter than 4 seconds, or with no usable onsets, gives an **empty
 result**. That is saved like any other result, so the file is not analyzed
@@ -131,7 +136,7 @@ while scrubbing, and are not part of the export.
 | version | UInt32 (2) |
 | timescale | Int32 |
 | beat count | UInt32 |
-| tempo (median over the beats) | Float32 bit pattern |
+| tempo (from the median gap between beats) | Float32 bit pattern |
 | beat times | Int64 each |
 
 All integers are little endian. Version 1 files hold beats fitted to one

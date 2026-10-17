@@ -16,8 +16,8 @@ struct BeatTrack: Equatable, Sendable {
     let timescale: Int32
     /// Beat positions in `timescale` units, strictly increasing.
     let times: [Int64]
-    /// The typical tempo; 0 exactly when no beat was found, otherwise
-    /// positive. Finite, and stays so when saved as a 32-bit float.
+    /// The typical tempo, from the median gap between the beats; 0 exactly
+    /// when no beat was found, otherwise positive. Finite, and stays so when saved as a 32-bit float.
     let beatsPerMinute: Double
 
     var isEmpty: Bool { times.isEmpty }
@@ -493,7 +493,7 @@ enum BeatTracker {
     struct Result {
         /// Envelope frame of each beat.
         var frames: [Int]
-        /// The typical tempo: the median over the beats.
+        /// The typical tempo of these beats (see `beatsPerMinute(ofFrames:framesPerSecond:)`).
         var beatsPerMinute: Double
     }
 
@@ -559,9 +559,24 @@ enum BeatTracker {
         }
         let frames = chain(onsets, periods: periods)
         let kept = trimmed(frames, onsets: onsets)
-        guard kept.count >= 2 else { return nil }
-        let tempos = kept.map { 60 * framesPerSecond / periods.main[$0] }.sorted()
-        return Result(frames: kept, beatsPerMinute: tempos[tempos.count / 2])
+        guard let tempo = beatsPerMinute(ofFrames: kept, framesPerSecond: framesPerSecond) else { return nil }
+        return Result(frames: kept, beatsPerMinute: tempo)
+    }
+
+    /// The tempo the beats themselves keep, from the median of the gaps
+    /// between consecutive beats (the mean of the middle two for an even
+    /// count). It describes the markers, wherever the chain followed the
+    /// alternative period or strayed from the estimate. The median ignores
+    /// a few missed or doubled beats, and for a tempo that changes it is
+    /// the tempo held for the most beats. Nil with no positive gap.
+    static func beatsPerMinute(ofFrames frames: [Int], framesPerSecond: Double) -> Double? {
+        let gaps = zip(frames.dropFirst(), frames).map { $0 - $1 }.filter { $0 > 0 }.sorted()
+        guard !gaps.isEmpty else { return nil }
+        let middle = gaps.count / 2
+        let median = gaps.count.isMultiple(of: 2)
+            ? (Double(gaps[middle - 1]) + Double(gaps[middle])) / 2
+            : Double(gaps[middle])
+        return 60 * framesPerSecond / median
     }
 
     /// Keeps only what stands out from the surrounding second, then scales
