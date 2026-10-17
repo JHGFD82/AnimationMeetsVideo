@@ -94,8 +94,12 @@ struct BeatMatchWaveform: View {
             let x0 = session.x(of: loop.lowerBound), x1 = session.x(of: loop.upperBound)
             context.fill(Path(CGRect(x: x0, y: waveTop, width: x1 - x0, height: waveRect.height)), with: .color(Design.accent.opacity(0.08)))
         }
-        drawWave(in: &context, rect: waveRect)
-        drawBeats(in: &context, rect: waveRect)
+        // Each layer is held to its own area, whatever the samples say.
+        context.drawLayer { layer in
+            layer.clip(to: Path(waveRect))
+            drawWave(in: &layer, rect: waveRect)
+            drawBeats(in: &layer, rect: waveRect)
+        }
         let x = session.x(of: session.playhead)
         var line = Path()
         line.move(to: CGPoint(x: x, y: 0))
@@ -126,7 +130,9 @@ struct BeatMatchWaveform: View {
 
     private func drawWave(in context: inout GraphicsContext, rect: CGRect) {
         guard let audio = session.audio, rect.height > 0 else { return }
-        let middle = rect.midY, half = rect.height / 2 * 0.92
+        // Scaled to the song's loudest sample, so it fills the area and
+        // never runs past it.
+        let middle = rect.midY, half = rect.height / 2 * 0.92 / CGFloat(audio.peak)
         let samplesPerPoint = session.secondsPerPoint * audio.sampleRate
         let color = Design.ClipTone.music.color
         if let level = audio.level(forSamplesPerPoint: samplesPerPoint) {

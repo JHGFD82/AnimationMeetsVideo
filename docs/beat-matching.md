@@ -223,7 +223,9 @@ the pinned one), and wraps positions into the measure.
    editing, then sections. **Built** (`UI/BeatMatch/`): opened from a Music
    clip's menu or the inspector. The step's instructions and controls sit
    left of the waveform, and resizing the panel keeps the same stretch of
-   song in view. While it is open the editor is darkened
+   song in view. The waveform is drawn to the song's loudest sample and
+   clipped to its area, and the panel's size is the window's alone (the
+   hosting view only sets its minimum). While it is open the editor is darkened
    and disabled, the Timeline menu rests, and a click on the editor brings
    the panel back; its undo is the editor's. Keys: Space plays, M drops a
    beat or anchor at the playhead, ← → nudge the selected beat (⌥ one

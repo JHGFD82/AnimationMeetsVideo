@@ -17,6 +17,9 @@ struct BeatMatchAudio: Sendable {
     let curve: OnsetCurve
     /// Loudest and quietest sample per bucket, for drawing zoomed out.
     let levels: [WaveLevel]
+    /// The largest sample, either way; decoded audio can go past 1. The
+    /// waveform is drawn to it, so it always fits.
+    let peak: Float
 
     /// The onset curve's hop: 2.9 ms frames, against detection's 11.6.
     static let onsetHop = 64
@@ -59,6 +62,9 @@ struct BeatMatchAudio: Sendable {
             levels.append(WaveLevel(samplesPerBucket: size, low: low, high: high))
         }
         self.levels = levels
+        let top = levels.first.map { max($0.high.max() ?? 0, -($0.low.min() ?? 0)) }
+            ?? samples.map(abs).max() ?? 0
+        peak = max(top, 1e-6)
     }
 
     /// Reads the first audio track of `url`. `alignment` is the asset's

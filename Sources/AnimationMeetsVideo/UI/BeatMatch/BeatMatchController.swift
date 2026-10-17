@@ -54,7 +54,10 @@ final class BeatMatchController {
         panel.isMovableByWindowBackground = false
         panel.contentMinSize = NSSize(width: 820, height: 340)
         panel.title = "Beat Match: \(asset.name)"
-        panel.contentView = BeatMatchHostingView(rootView: BeatMatchView(session: session) { [weak self] in self?.close() })
+        let host = BeatMatchHostingView(rootView: BeatMatchView(session: session) { [weak self] in self?.close() })
+        // The panel's size is the person's; the view fills whatever it is.
+        host.sizingOptions = [.minSize]
+        panel.contentView = host
         if let frame = editorWindow?.frame {
             panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.midY - panel.frame.height / 2))
         } else {
