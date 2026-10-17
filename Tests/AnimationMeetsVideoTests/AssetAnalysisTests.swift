@@ -911,7 +911,7 @@ final class Gate: @unchecked Sendable {
         let id = UUID()
         let box = ProjectBox(stamped(project(ids: [id], hasAudio: true), stampA))
         scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1]) }
-        analysis.backend.detectBeats = { _, _ in await gate.wait(); return BeatTrack(timescale: 1000, times: [1], beatsPerMinute: 120) }
+        analysis.backend.detectBeats = { _, _ in await gate.wait(); return try BeatTrack(timescale: 1000, times: [1], beatsPerMinute: 120) }
         logging(analysis, id, log)
         analysis.reset(packageURL: package)
         analysis.projectSource = { box.project }

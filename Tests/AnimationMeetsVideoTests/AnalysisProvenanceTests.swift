@@ -7,7 +7,7 @@ import Testing
     private let stamp = FileStamp(byteCount: 100, modified: 1)
     private let other = FileStamp(byteCount: 200, modified: 2)
     private let track = ChangeScoreTrack(timescale: 600, times: [0, 25], scores: [0, 200])
-    private let beats = BeatTrack(timescale: 1000, times: [100, 600], beatsPerMinute: 120)
+    private let beats = try! BeatTrack(timescale: 1000, times: [100, 600], beatsPerMinute: 120)
 
     private func makePackage() throws -> URL {
         let package = FileManager.default.temporaryDirectory.appending(path: "amv-prov-\(UUID().uuidString).amv")

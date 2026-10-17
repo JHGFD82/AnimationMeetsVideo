@@ -194,7 +194,7 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
 
     // MARK: BeatTrack
 
-    private let sample = BeatTrack(timescale: 1000, times: [0, 500, 1000, 1500, 2000], beatsPerMinute: 120)
+    private let sample = try! BeatTrack(timescale: 1000, times: [0, 500, 1000, 1500, 2000], beatsPerMinute: 120)
 
     @Test func beatsInARangeIncludeTheStartAndExcludeTheEnd() {
         let beats = sample.beats(from: CMTime(value: 500, timescale: 1000), to: CMTime(value: 1500, timescale: 1000))
@@ -229,10 +229,11 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
     }
 
     @Test func theTempoRangeSpansARampButNotASteadyBeat() throws {
-        #expect(BeatTrack(timescale: 1000, times: Array(stride(from: 0, to: 20_000, by: 500)), beatsPerMinute: 120).tempoRange == 120...120)
+        let steady = try BeatTrack(timescale: 1000, times: Array(stride(from: 0, to: 20_000, by: 500)), beatsPerMinute: 120)
+        #expect(steady.tempoRange == 120...120)
 
         let times = clickTimes(seconds: 40, first: 0, bpm: { 90 + 50 * $0 / 40 })
-        let ramp = BeatTrack(timescale: 1000, times: times.map { Int64($0 * 1000) }, beatsPerMinute: 115)
+        let ramp = try BeatTrack(timescale: 1000, times: times.map { Int64($0 * 1000) }, beatsPerMinute: 115)
         let range = try #require(ramp.tempoRange)
         #expect(abs(range.lowerBound - 95) < 5)
         #expect(abs(range.upperBound - 135) < 5)
@@ -242,6 +243,69 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         #expect(throws: BeatTrackError.self) { try BeatTrack(decoding: Data("nonsense".utf8)) }
         #expect(throws: BeatTrackError.self) { try BeatTrack(decoding: sample.encoded().dropLast(3)) }
         #expect(throws: BeatTrackError.self) { try BeatTrack(decoding: Data()) }
+    }
+
+    /// A version 2 beat file with the given header and times, valid or not.
+    private func beatFile(timescale: Int32 = 1000, count: UInt32? = nil, tempo: Float = 120, times: [Int64]) -> Data {
+        var data = Data("AMVB".utf8)
+        func append<T: FixedWidthInteger>(_ value: T) {
+            withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
+        }
+        append(UInt32(2))
+        append(timescale)
+        append(count ?? UInt32(times.count))
+        append(tempo.bitPattern)
+        for time in times { append(time) }
+        return data
+    }
+
+    private func isInvalid(_ data: Data) -> Bool {
+        do {
+            _ = try BeatTrack(decoding: data)
+            return false
+        } catch BeatTrackError.invalidData {
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    @Test func corruptValuesAreRejectedAsInvalid() {
+        #expect(isInvalid(beatFile(times: [0, 1000, 500])), "unsorted")
+        #expect(isInvalid(beatFile(times: [0, 500, 500])), "duplicate")
+        #expect(isInvalid(beatFile(timescale: 0, times: [0, 500])))
+        #expect(isInvalid(beatFile(timescale: -1000, times: [0, 500])))
+        #expect(isInvalid(beatFile(tempo: .nan, times: [0, 500])))
+        #expect(isInvalid(beatFile(tempo: .infinity, times: [0, 500])))
+        #expect(isInvalid(beatFile(tempo: -120, times: [0, 500])))
+        #expect(isInvalid(beatFile(tempo: 0, times: [0, 500])), "beats without a tempo")
+        #expect(isInvalid(beatFile(tempo: 120, times: [])), "a tempo without beats")
+    }
+
+    @Test func aCountThatDisagreesWithTheDataIsTruncation() {
+        #expect(throws: BeatTrackError.truncated) { try BeatTrack(decoding: self.beatFile(count: 3, times: [0, 500])) }
+        #expect(throws: BeatTrackError.truncated) { try BeatTrack(decoding: self.beatFile(count: .max, times: [0, 500])) }
+        #expect(throws: BeatTrackError.truncated) { try BeatTrack(decoding: self.beatFile(count: 1, times: [0, 500])) }
+    }
+
+    @Test func constructionEnforcesTheSameInvariants() {
+        #expect(throws: BeatTrackError.self) { try BeatTrack(timescale: 1000, times: [5, 5], beatsPerMinute: 120) }
+        #expect(throws: BeatTrackError.self) { try BeatTrack(timescale: 1000, times: [0, 500], beatsPerMinute: -.infinity) }
+        #expect(throws: BeatTrackError.self) { try BeatTrack(timescale: 1000, times: [0, 500], beatsPerMinute: 1e300) }
+        #expect(throws: BeatTrackError.self) { try BeatTrack(timescale: 0, times: [], beatsPerMinute: 0) }
+        #expect(BeatTrack.none(timescale: 0).timescale > 0)
+    }
+
+    @Test func extremeTimesRoundTripWithoutOverflow() throws {
+        let times: [Int64] = [.min, .min + 1, -1, 0, 1, .max - 1, .max]
+        let track = try BeatTrack(timescale: 1, times: times, beatsPerMinute: 60)
+
+        let decoded = try BeatTrack(decoding: track.encoded())
+
+        #expect(decoded == track)
+        // The gaps between these overflow an Int64; the range just has to come out without trapping.
+        let range = try #require(decoded.tempoRange)
+        #expect(range.lowerBound > 0)
     }
 
     // MARK: Timeline markers
@@ -531,7 +595,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
     @Test func beatsAreSavedInReferenceAndLoadedBack() async throws {
         let (root, package, project, assetID) = try makePackage()
         defer { try? FileManager.default.removeItem(at: root) }
-        let track = BeatTrack(timescale: 1000, times: [100, 600, 1100], beatsPerMinute: 120)
+        let track = try BeatTrack(timescale: 1000, times: [100, 600, 1100], beatsPerMinute: 120)
 
         try await ProjectStore.save(
             project, to: package, beats: [assetID: track], sources: AnalysisSources(beats: [assetID: mediaStamp(in: root)])

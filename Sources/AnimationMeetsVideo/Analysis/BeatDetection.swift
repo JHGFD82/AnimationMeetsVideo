@@ -7,35 +7,68 @@ import Foundation
 /// what beat detection saves; where the beats land on the timeline is worked
 /// out from the clip's placement, so moving or trimming a clip needs no
 /// re-detection.
+///
+/// The initializer checks every invariant and the properties can't be
+/// changed afterwards, so a track in hand is always one the searches and
+/// tempo arithmetic below can rely on.
 struct BeatTrack: Equatable, Sendable {
-    /// Units per second for `times`.
-    var timescale: Int32
-    /// Beat positions in `timescale` units, ascending.
-    var times: [Int64]
-    /// The typical tempo, the median over the beats; 0 when no beat was found.
-    var beatsPerMinute: Double
+    /// Units per second for `times`; positive.
+    let timescale: Int32
+    /// Beat positions in `timescale` units, strictly increasing.
+    let times: [Int64]
+    /// The typical tempo; 0 exactly when no beat was found, otherwise
+    /// positive. Finite, and stays so when saved as a 32-bit float.
+    let beatsPerMinute: Double
 
     var isEmpty: Bool { times.isEmpty }
+
+    /// Throws `BeatTrackError.invalidData` unless the values meet the
+    /// invariants documented on the properties.
+    init(timescale: Int32, times: [Int64], beatsPerMinute: Double) throws {
+        guard timescale > 0 else { throw BeatTrackError.invalidData("the timescale isn't positive") }
+        guard times.count <= Int(UInt32.max) else { throw BeatTrackError.invalidData("there are too many beats") }
+        guard zip(times, times.dropFirst()).allSatisfy({ $0 < $1 }) else {
+            throw BeatTrackError.invalidData("the beat times don't strictly increase")
+        }
+        let saved = Float(beatsPerMinute)
+        guard beatsPerMinute.isFinite, saved.isFinite, beatsPerMinute >= 0 else {
+            throw BeatTrackError.invalidData("the tempo isn't a finite, nonnegative number")
+        }
+        guard times.isEmpty ? beatsPerMinute == 0 : saved > 0 else {
+            throw BeatTrackError.invalidData("the tempo doesn't match whether there are beats")
+        }
+        self.timescale = timescale
+        self.times = times
+        self.beatsPerMinute = beatsPerMinute
+    }
 
     /// The slowest and fastest tempo the beats keep up for a few beats,
     /// leaving out the slowest and fastest tenth so one odd gap doesn't
     /// count. Nil with too few beats to tell.
     var tempoRange: ClosedRange<Double>? {
         guard times.count >= 6 else { return nil }
-        let gaps = zip(times.dropFirst(), times).map { Double($0 - $1) / Double(timescale) }
+        let gaps = zip(times.dropFirst(), times).map { Self.distance(from: $1, to: $0) / Double(timescale) }
         let steady = (0...(gaps.count - 4)).map { index -> Double in
             gaps[index..<(index + 4)].sorted()[1...2].reduce(0, +) / 2
         }
-        let tempos = steady.filter { $0 > 0 }.map { 60 / $0 }.sorted()
+        let tempos = steady.filter { $0 > 0 }.map { 60 / $0 }.filter(\.isFinite).sorted()
         guard !tempos.isEmpty else { return nil }
         let low = tempos[tempos.count / 10], high = tempos[tempos.count - 1 - tempos.count / 10]
         return low...high
     }
 
+    /// `end - start` as a Double, exact where it fits in an Int64 and close
+    /// where the subtraction would overflow.
+    private static func distance(from start: Int64, to end: Int64) -> Double {
+        let (difference, overflow) = end.subtractingReportingOverflow(start)
+        return overflow ? Double(end) - Double(start) : Double(difference)
+    }
+
     /// Nothing was found. Saved like any other result so the audio is not
     /// analyzed again every time the project opens.
     static func none(timescale: Int32 = 1000) -> BeatTrack {
-        BeatTrack(timescale: timescale, times: [], beatsPerMinute: 0)
+        // A positive timescale is the only invariant an empty track can break.
+        try! BeatTrack(timescale: max(timescale, 1), times: [], beatsPerMinute: 0)
     }
 
     /// Beats from `start` up to but not including `end`, in asset time.
@@ -58,7 +91,8 @@ struct BeatTrack: Equatable, Sendable {
     private static let version: UInt32 = 2
 
     /// Compact binary form: a header, then every beat time. All integers are
-    /// little endian; the tempo is a 32-bit float's bit pattern.
+    /// little endian; the tempo is a 32-bit float's bit pattern. The
+    /// initializer guarantees the count fits its field.
     func encoded() -> Data {
         var data = Data(Self.magic)
         func append<T: FixedWidthInteger>(_ value: T) {
@@ -72,17 +106,14 @@ struct BeatTrack: Equatable, Sendable {
         return data
     }
 
-    init(timescale: Int32, times: [Int64], beatsPerMinute: Double) {
-        self.timescale = timescale
-        self.times = times
-        self.beatsPerMinute = beatsPerMinute
-    }
-
+    /// Throws `BeatTrackError` when the data isn't a beat file of this
+    /// version, is cut short or too long, or holds values that break the
+    /// track's invariants (`invalidData`).
     init(decoding data: Data) throws {
         var offset = 0
         func read<T: FixedWidthInteger>(_ type: T.Type) throws -> T {
             let size = MemoryLayout<T>.size
-            guard offset + size <= data.count else { throw BeatTrackError.truncated }
+            guard data.count - offset >= size else { throw BeatTrackError.truncated }
             var value: T = 0
             _ = withUnsafeMutableBytes(of: &value) { data.copyBytes(to: $0, from: (data.startIndex + offset)..<(data.startIndex + offset + size)) }
             offset += size
@@ -98,12 +129,13 @@ struct BeatTrack: Equatable, Sendable {
         let timescale = try read(Int32.self)
         let count = Int(try read(UInt32.self))
         let tempo = Float(bitPattern: try read(UInt32.self))
-        guard timescale > 0, data.count - offset == count * 8 else { throw BeatTrackError.truncated }
+        let (byteCount, overflow) = count.multipliedReportingOverflow(by: MemoryLayout<Int64>.size)
+        guard !overflow, data.count - offset == byteCount else { throw BeatTrackError.truncated }
 
         var times: [Int64] = []
         times.reserveCapacity(count)
         for _ in 0..<count { times.append(try read(Int64.self)) }
-        self.init(timescale: timescale, times: times, beatsPerMinute: Double(tempo))
+        try self.init(timescale: timescale, times: times, beatsPerMinute: Double(tempo))
     }
 }
 
@@ -127,16 +159,19 @@ extension RandomAccessCollection {
     }
 }
 
-enum BeatTrackError: LocalizedError {
+enum BeatTrackError: LocalizedError, Equatable {
     case notABeatFile
     case unsupportedVersion(UInt32)
     case truncated
+    /// The values break one of `BeatTrack`'s invariants; says which.
+    case invalidData(String)
 
     var errorDescription: String? {
         switch self {
         case .notABeatFile: "This isn't a beat data file."
         case .unsupportedVersion(let version): "Beat data version \(version) isn't supported."
         case .truncated: "The beat data file is damaged."
+        case .invalidData(let reason): "The beat data is invalid: \(reason)."
         }
     }
 }
@@ -285,7 +320,7 @@ enum BeatDetector {
             guard let beats = BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) else {
                 return .none(timescale: Int32(sampleRate))
             }
-            return BeatTrack(
+            return try BeatTrack(
                 timescale: Int32(sampleRate),
                 times: beats.frames.map { origin + OnsetAnalyzer.centerSample(ofFrame: $0) },
                 beatsPerMinute: beats.beatsPerMinute

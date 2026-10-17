@@ -37,7 +37,7 @@ import Testing
         analysis.backend.scoreFrames = { _, _ in ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 7]) }
         analysis.backend.captureReference = { _, _ in throw NSError(domain: "test", code: 1) }
         analysis.backend.capturePictures = { _, _, _ in ReferenceThumbnails(frames: []) }
-        analysis.backend.detectBeats = { _, _ in BeatTrack(timescale: 1000, times: [100, 600], beatsPerMinute: 120) }
+        analysis.backend.detectBeats = { _, _ in try BeatTrack(timescale: 1000, times: [100, 600], beatsPerMinute: 120) }
         analysis.backend.perform = { package, body in
             let isFirst = first.increment() == 1
             try await PackageCoordinator.shared.run(on: [package]) {
