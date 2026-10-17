@@ -53,7 +53,9 @@ private func clip(_ frame: Int) -> CMTime { CMTime(value: Int64(frame), timescal
         #expect(cuts.count == 1)
         #expect(abs(cuts[0] - 1.0) <= 1.0 / 600)
         // After the cut, frames are 1/12 s apart, not 1/24.
-        #expect(abs(Double(track.times[26] - track.times[25]) / Double(track.timescale) - 1.0 / 12) <= 1.0 / 600)
+        // Split up: Swift 6.3 can't type-check it as one expression in time.
+        let gap: Double = Double(track.times[26] - track.times[25]) / Double(track.timescale)
+        #expect(abs(gap - 1.0 / 12) <= 1.0 / 600)
         expectAscending(track)
     }
 
