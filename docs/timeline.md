@@ -345,6 +345,13 @@ rules for where a clip may go are in `ClipPlacement.swift`:
   can't make a clip shorter than one frame (a twentieth of a second for
   audio).
 
+A video clip shows its footage along it once its layer leaves room for a
+band of pictures at least 22 points tall: one thumbnail per tile, each the
+frame played where the tile starts (retimed and reversed clips included),
+under an 18-point band of the clip's colour that holds its name, so the
+name keeps its contrast. Only the drawn part of a clip is tiled, and the
+pictures come from the same in-memory store as the browser's.
+
 A clip being moved is drawn picked up: raised and shadowed, at its own
 size, and **where it will land** under these rules (snapped, on a frame,
 at a clip's nearer edge), on whatever layer it is over, so the clip itself

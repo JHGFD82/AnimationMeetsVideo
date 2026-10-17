@@ -136,6 +136,8 @@ struct ClipBlockView: View {
     @Environment(TimelineAutoScroll.self) private var autoScroll: TimelineAutoScroll?
 
     private let handleWidth: CGFloat = 8
+    /// The band along the top of a clip showing pictures that holds its name.
+    private static let labelBand: CGFloat = 18
     private let space = "clipBlock"
     /// How wide a transition must be drawn before its curve can be edited
     /// on the clip; zoom in to get there.
@@ -170,6 +172,14 @@ struct ClipBlockView: View {
         // clip zoomed wider than the window is drawn as a slice, and a
         // rounded slice would put a corner in the middle of the clip.
         let shape = blockShape(drawnX: drawnX, drawnWidth: drawnWidth, liveX: liveX, liveWidth: liveWidth)
+        // A video clip on a layer tall enough shows its footage under a band
+        // of its colour that holds its name, so the name keeps its contrast.
+        let pictures: MediaClip? = {
+            guard case .media(let media)? = info, media.kind == .video,
+                  height - Self.labelBand >= ClipThumbnails.minimumHeight
+            else { return nil }
+            return media
+        }()
 
         ZStack(alignment: .topLeading) {
             if isTrimming {
@@ -248,9 +258,18 @@ struct ClipBlockView: View {
                 .padding(.leading, -(drawnX > liveX ? Design.Space.step : Design.Space.close))
             }
             .padding(.leading, drawnX > liveX ? Design.Space.step : Design.Space.close)
-            .frame(width: drawnWidth, height: height, alignment: .leading)
+            .padding(.top, pictures == nil ? 0 : 2)
+            .frame(width: drawnWidth, height: height, alignment: pictures == nil ? .leading : .topLeading)
             .background {
                 Design.clipFill(typeColor, selected: isSelected)
+                    .overlay(alignment: .bottomLeading) {
+                        if let pictures {
+                            ClipThumbnails(
+                                clip: shown, media: pictures, pixelsPerSecond: pixelsPerSecond,
+                                liveX: liveX, drawnX: drawnX, width: drawnWidth, height: height - Self.labelBand
+                            )
+                        }
+                    }
                     .overlay(alignment: .leading) { waveform(of: shown, drawnX: drawnX, liveX: liveX, width: drawnWidth) }
                     .overlay(alignment: .leading) { volumeLine(of: shown, drawnX: drawnX, liveX: liveX, width: drawnWidth) }
             }
