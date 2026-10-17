@@ -52,6 +52,13 @@ struct SceneCoverage: Equatable, Sendable {
 
     var isComplete: Bool { uncovered.isEmpty && !usable.isEmpty }
 
+    /// Stretches with no footage between two stretches that have some: empty
+    /// edits inside the file, as opposed to the footage simply starting
+    /// late or ending early, which `uncovered` also lists.
+    var internalGaps: [CMTimeRange] {
+        zip(usable, usable.dropFirst()).map { CMTimeRange(start: $0.end, end: $1.start) }
+    }
+
     /// The scenes cut down to `trim`, in original time, for work on a clip
     /// that uses only part of the asset. A scene partly inside is cut at the
     /// trim; one wholly outside is left out.
@@ -64,6 +71,20 @@ struct SceneCoverage: Equatable, Sendable {
 }
 
 enum SceneDomain {
+    /// `[0, duration)` of a file with `emptySpans` (in `timescale` units)
+    /// taken out, ascending, in the file's time.
+    static func footage(duration: CMTime, emptySpans: [ChangeScoreTrack.EmptySpan], timescale: Int32) -> [CMTimeRange] {
+        var ranges: [CMTimeRange] = []
+        var cursor = CMTime.zero
+        for span in emptySpans {
+            let start = CMTime(value: span.start, timescale: timescale), end = CMTime(value: span.end, timescale: timescale)
+            if CMTimeCompare(cursor, start) < 0 { ranges.append(CMTimeRange(start: cursor, end: CMTimeMinimum(start, duration))) }
+            cursor = CMTimeMaximum(cursor, end)
+        }
+        if CMTimeCompare(cursor, duration) < 0 { ranges.append(CMTimeRange(start: cursor, end: duration)) }
+        return ranges.filter { CMTimeCompare($0.start, $0.end) < 0 }
+    }
+
     /// `[a.start, a.end) ∩ [b.start, b.end)`, or nil when empty. `b.end` nil
     /// means unbounded.
     static func intersection(_ a: CMTimeRange, start: CMTime, end: CMTime?) -> CMTimeRange? {

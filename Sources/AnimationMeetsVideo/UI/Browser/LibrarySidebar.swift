@@ -200,12 +200,14 @@ struct LibrarySidebar: View {
 
     /// Says what the file the asset uses now can't play of the original's
     /// time, when it can't.
-    static func coverageNote(_ coverage: SceneCoverage?) -> String? {
+    static func coverageNote(_ coverage: SceneCoverage?, replaced: Bool) -> String? {
         guard let coverage else { return nil }
-        if coverage.hasNoOverlap { return "The replacement doesn't overlap the original's time, so there are no scenes." }
+        if coverage.hasNoOverlap {
+            return replaced ? "The replacement doesn't overlap the original's time, so there are no scenes." : "The file has no footage, so there are no scenes."
+        }
         guard !coverage.uncovered.isEmpty else { return nil }
         let spans = coverage.uncovered.map { "\(Self.timecode($0.start.seconds))–\(Self.timecode($0.end.seconds))" }
-        return "The replacement has no footage for \(spans.joined(separator: ", "))."
+        return "\(replaced ? "The replacement has" : "The file has") no footage for \(spans.joined(separator: ", "))."
     }
 
     private static func timecode(_ seconds: Double) -> String {
@@ -225,7 +227,7 @@ struct LibrarySidebar: View {
                     .tag(key)
                     .draggable(dragPayload(for: key))
             }
-            if let note = Self.coverageNote(project.sceneCoverage(ofAsset: clip.id, track: analysis.tracks[clip.id])) {
+            if let note = Self.coverageNote(project.sceneCoverage(ofAsset: clip.id, track: analysis.tracks[clip.id]), replaced: clip.wasReplaced) {
                 Text(note)
                     .font(Design.Typeface.label)
                     .foregroundStyle(Design.statusWarning)

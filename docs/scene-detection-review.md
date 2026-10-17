@@ -90,7 +90,11 @@ end; the boundary properties run over 400 seeded random tracks each.
   tie); the shot belongs to the one after it.
 - **Greedy merge**: cuts 0.3 s apart in a chain keep only the strongest, even
   when the outer two are 0.6 s apart.
-- **Late-start filler frame (not accepted as a limitation; open).** For a
+- **Late-start filler frame (fixed; the description below is of the defect).**
+  Fixed: samples inside an empty stretch of the track's edit list are not
+  frames, the first real frame after one is the scoring baseline (it scores
+  0 and keeps its real timestamp), and the stretches are saved with the
+  scores. See "Empty stretches" in [scene-cuts.md](scene-cuts.md). For a
   file whose first picture comes after an empty stretch, the reader emits a
   synthetic black frame at time 0 (luma 16, no duration) to fill it. The
   scorer takes it as a frame, so the first real frame is scored against

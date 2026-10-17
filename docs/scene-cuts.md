@@ -207,6 +207,37 @@ says which time has no footage (or that the file doesn't overlap the
 original at all, in which case there are no scenes). Cuts outside the
 usable stretch are dropped, never clamped into cuts at its ends.
 
+## Empty stretches
+
+An edit list can leave a stretch of a file with no footage: the second
+before a late first picture, or a gap between two pieces. The reader fills
+such a stretch with black samples of its own. They are not frames of the
+file, and are identified from the track's edit list
+(`AVAssetTrackSegment.isEmpty`, in the same time as the samples), never from
+how a sample looks, so real black footage and real zero-length frames are
+unaffected.
+
+- Samples inside an empty stretch are skipped.
+- The first real frame after an empty stretch, at the start or in the
+  middle, begins again: it scores 0 and keeps its real presentation time
+  (nothing is shifted to zero). **No change is scored across an empty
+  stretch**, so a jump between the footage on its two sides is not a cut
+  candidate; that is the whole gap-boundary behavior.
+- The stretches are saved with the scores (`signature.bin` version 2 appends
+  them; version 1 files load with none) and checked on load: ascending,
+  apart, and holding no frame.
+- They are not playable footage for scenes. `SceneCoverage` lists footage
+  as separate stretches; a late start is leading uncovered time, and an
+  empty stretch between two pieces of footage is an `internalGaps` entry,
+  distinct from footage that merely ends early.
+
+The scoring algorithm is now version 2. Scores of the file in use made by
+version 1 are made again (they may hold a cut at the first picture of a late
+file). The original's saved scores made by version 1 stay usable for
+aligning a replacement: they can't be made again without the original, and
+are never made from a replacement. Their one difference is that possible
+extra cut, one of the several that cut matching needs.
+
 ## Failures and retries
 
 A stage that can't finish is recorded per asset and stage

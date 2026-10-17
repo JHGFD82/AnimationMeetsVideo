@@ -103,7 +103,7 @@ import Testing
         #expect(coverage.scenes.isEmpty)
         #expect(coverage.hasNoOverlap)
         #expect(coverage.uncovered == [range(0, 10)])
-        #expect(LibrarySidebar.coverageNote(coverage) != nil)
+        #expect(LibrarySidebar.coverageNote(coverage, replaced: true) != nil)
     }
 
     @Test func aReplacementBeforeTheOriginalHasNoScenesEither() throws {

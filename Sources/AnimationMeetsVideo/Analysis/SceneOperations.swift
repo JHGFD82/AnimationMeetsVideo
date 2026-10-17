@@ -100,8 +100,11 @@ extension EditingProject {
         guard let clip = mediaClip(id: assetID) else { return nil }
         let mapping = clip.timeMapping
         let cuts = SceneDetector.cuts(in: track, defaultSensitivity: defaultSensitivity, edits: clip.sceneEdits, mapping: mapping)
-        let footage = mapping.original(fromFile: CMTimeRange(start: .zero, end: clip.duration))
-        let usable = SceneDomain.intersection(footage, start: .zero, end: clip.originalDomainEnd).map { [$0] } ?? []
+        // The file's footage: its whole length except the empty stretches its
+        // edit list leaves (the scores know them), which are never playable.
+        let footage = SceneDomain.footage(duration: clip.duration, emptySpans: track?.emptySpans ?? [], timescale: track?.timescale ?? 1)
+            .map(mapping.original(fromFile:))
+        let usable = footage.compactMap { SceneDomain.intersection($0, start: .zero, end: clip.originalDomainEnd) }
         return SceneCoverage(
             scenes: SceneDetector.scenes(from: cuts, over: usable),
             usable: usable,

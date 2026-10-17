@@ -28,11 +28,32 @@ enum OriginalScoresUnavailable: Error, Equatable, Sendable {
     /// (or were saved by a version that did not keep them separately), and
     /// the scores of the current file are not the original's.
     case notCaptured
+    /// Saved, but the file is damaged.
+    case damaged
+    /// Saved with settings this version can't use.
+    case incompatible
+    /// Saved, but not shown to come from the original (no usable record, or
+    /// a record naming another file than the saved reference does).
+    case unverified
 
     var sentence: String {
         switch self {
         case .forgotten: "The original was forgotten, so its cuts can't be matched."
         case .notCaptured: "The original's cuts weren't saved, so they can't be matched."
+        case .damaged: "The original's saved cuts are damaged, so they can't be matched."
+        case .incompatible: "The original's saved cuts were made in a way this version can't use, so they can't be matched."
+        case .unverified: "The original's saved cuts can't be shown to be the original's, so they aren't used."
+        }
+    }
+}
+
+extension AnalysisRejection {
+    /// How a rejected original-scores file is told apart from a missing one.
+    var originalScoresReason: OriginalScoresUnavailable {
+        switch self {
+        case .damaged: .damaged
+        case .differentSettings, .differentAlgorithm: .incompatible
+        case .noProvenance, .invalidated, .differentFile, .unverifiable: .unverified
         }
     }
 }
@@ -60,7 +81,9 @@ struct AnalysisProvenance: Codable, Equatable, Sendable {
     static func current(for kind: AnalysisKind) -> (settings: String, algorithm: Int) {
         switch kind {
         case .scores, .originalScores:
-            return ("sample=\(FrameScorer.sampleWidth)x\(FrameScorer.sampleHeight)", 1)
+            // 2: footage in an empty edit is no longer scored as a frame, so
+            // a late-start file no longer reads as cut at its first picture.
+            return ("sample=\(FrameScorer.sampleWidth)x\(FrameScorer.sampleHeight)", 2)
         case .beats:
             let settings = [
                 "rate=\(BeatDetector.sampleRate)", "window=\(OnsetAnalyzer.windowSize)", "hop=\(OnsetAnalyzer.hopSize)",
@@ -71,6 +94,18 @@ struct AnalysisProvenance: Codable, Equatable, Sendable {
             ]
             return (settings.joined(separator: ";"), 1)
         }
+    }
+
+    /// Whether a record made with `algorithm` can still be used. Current-file
+    /// results must have been made by the current algorithm, so they are
+    /// made again. The original's scores can't be: the original may be gone,
+    /// and they are never made from a replacement. Those made by the
+    /// algorithm before keep working for aligning a replacement; the one
+    /// difference, a spurious cut at the first picture of a file that started
+    /// late, is one cut among the several that matching needs.
+    static func accepts(algorithm: Int, for kind: AnalysisKind) -> Bool {
+        let current = Self.current(for: kind).algorithm
+        return kind == .originalScores ? (1...current).contains(algorithm) : algorithm == current
     }
 
     static func digest(of data: Data) -> String {

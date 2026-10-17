@@ -46,6 +46,10 @@ enum FrameScorer {
         }
         let duration = try await asset.load(.duration).seconds
         let timescale = max(try await track.load(.naturalTimeScale), 600)
+        // Where the track's edit list has no footage. The reader fills such a
+        // stretch with a black sample of its own; it is not a frame of the
+        // file, and the edit list, not how the sample looks, says so.
+        let empty = EmptySegments(ranges: try await track.load(.segments).filter(\.isEmpty).map(\.timeMapping.target))
 
         let handedOver = HandedOver(value: track)
         return try await SampleReading.run { isCancelled in
@@ -68,6 +72,7 @@ enum FrameScorer {
             var previous: [UInt8] = []
             var current: [UInt8] = []
             var lastReported = -1.0
+            var lastPresentation: CMTime?
 
             while let sample = output.copyNextSampleBuffer() {
                 if isCancelled() {
@@ -75,8 +80,11 @@ enum FrameScorer {
                     throw CancellationError()
                 }
                 guard let pixels = CMSampleBufferGetImageBuffer(sample) else { continue }
+                let presentation = CMSampleBufferGetPresentationTimeStamp(sample)
+                // Not footage: neither a frame nor a baseline.
+                if empty.contains(presentation) { continue }
                 let time = CMTimeConvertScale(
-                    CMSampleBufferGetPresentationTimeStamp(sample),
+                    presentation,
                     timescale: timescale,
                     method: .roundHalfAwayFromZero
                 )
@@ -85,6 +93,11 @@ enum FrameScorer {
                 if time.value < 0 || (times.last.map { time.value <= $0 } ?? false) { continue }
                 copyLuma(from: pixels, into: &current)
 
+                // The first real frame after an empty stretch, at the start
+                // or in the middle, begins again: no change is scored
+                // across it.
+                if empty.separates(lastPresentation, presentation) { previous = [] }
+                lastPresentation = presentation
                 scores.append(previous.isEmpty ? 0 : meanAbsoluteDifference(previous, current))
                 times.append(time.value)
                 swap(&previous, &current)
@@ -102,7 +115,7 @@ enum FrameScorer {
                 throw ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error", underlying: reader.error)
             }
             progress(1)
-            return ChangeScoreTrack(timescale: timescale, times: times, scores: scores)
+            return ChangeScoreTrack(timescale: timescale, times: times, scores: scores, emptySpans: empty.spans(timescale: timescale))
         }
     }
 
@@ -134,5 +147,38 @@ enum FrameScorer {
             total += abs(Int(a[i]) - Int(b[i]))
         }
         return UInt8(min((Double(total) / Double(a.count)).rounded(), 255))
+    }
+}
+
+/// The stretches of a track's time (in the time of its samples) that its edit
+/// list leaves empty.
+struct EmptySegments: Sendable {
+    var ranges: [CMTimeRange]
+
+    /// Whether `time` is in an empty stretch (its end is the first moment of
+    /// footage after it).
+    func contains(_ time: CMTime) -> Bool {
+        ranges.contains { CMTimeCompare(time, $0.start) >= 0 && CMTimeCompare(time, $0.end) < 0 }
+    }
+
+    /// Whether an empty stretch lies wholly between the previous frame and
+    /// this one. With no previous frame, one that ends at or before this
+    /// frame counts: the start of the footage.
+    func separates(_ previous: CMTime?, _ time: CMTime) -> Bool {
+        ranges.contains { range in
+            CMTimeCompare(range.end, time) <= 0 && (previous.map { CMTimeCompare(range.start, $0) >= 0 } ?? true)
+        }
+    }
+
+    func spans(timescale: Int32) -> [ChangeScoreTrack.EmptySpan] {
+        ranges
+            .map { range in
+                ChangeScoreTrack.EmptySpan(
+                    start: max(CMTimeConvertScale(range.start, timescale: timescale, method: .roundHalfAwayFromZero).value, 0),
+                    end: CMTimeConvertScale(range.end, timescale: timescale, method: .roundHalfAwayFromZero).value
+                )
+            }
+            .filter { $0.end > $0.start }
+            .sorted { $0.start < $1.start }
     }
 }

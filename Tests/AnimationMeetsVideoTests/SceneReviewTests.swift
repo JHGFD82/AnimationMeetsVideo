@@ -100,28 +100,6 @@ private func clip(_ frame: Int) -> CMTime { CMTime(value: Int64(frame), timescal
         expectAscending(track)
     }
 
-    @Test func aFileThatStartsLateHasAFillerFrameAtZeroInItsScoresToday() async throws {
-        // The reader fills the empty stretch before the first picture with a
-        // black frame at 0 (luma 16, no duration). It is not part of the
-        // footage, but it is scored as a frame. Recorded; see the next test.
-        let frames = SceneFixture.constantRate(count: 48, start: CMTime(value: 1, timescale: 1), color: twoShots(24))
-        let (track, _) = try await SceneFixture.score(frames)
-        #expect(track.frameCount == 49)
-        #expect(track.times[0] == 0)
-        #expect(track.times[1] == 600)
-    }
-
-    @Test func theFillerFrameDoesNotMakeACutAtTheStartOfTheFootage() async throws {
-        // One bright shot that starts a second in. There is no scene change
-        // at 1 s: the footage begins there. Scored against the black filler,
-        // its first frame reads as a hard cut at every sensitivity.
-        let frames = SceneFixture.constantRate(count: 48, start: CMTime(value: 1, timescale: 1)) { _ in SceneFixture.gray(150) }
-        let (track, _) = try await SceneFixture.score(frames)
-        withKnownIssue("the first real frame is scored against a synthetic black frame") {
-            #expect(cutTimes(track, sensitivity: 0).isEmpty)
-        }
-    }
-
     @Test func scenesFromARealFileCoverTheAssetWithoutGapsOrOverlaps() async throws {
         let (track, duration) = try await SceneFixture.score(SceneFixture.constantRate(count: 96) { index in
             index < 24 ? SceneFixture.gray(30) : (index < 60 ? SceneFixture.gray(220) : SceneFixture.gray(110))

@@ -187,7 +187,8 @@ private func frames(_ cuts: [CMTime]) -> [Int64] { cuts.map(\.value) }
     @Test func usesOneByteOfScorePerFrame() {
         let frames = 1_000
         let track = ChangeScoreTrack(timescale: 1, times: (0..<Int64(frames)).map { $0 }, scores: Array(repeating: 0, count: frames))
-        #expect(track.encoded().count == 4 + 4 + 4 + 4 + frames * 9)
+        // Header, then 9 bytes a frame, then the (empty) list of empty spans.
+        #expect(track.encoded().count == 4 + 4 + 4 + 4 + frames * 9 + 4)
     }
 
     @Test func rejectsOtherFilesAndDamage() throws {

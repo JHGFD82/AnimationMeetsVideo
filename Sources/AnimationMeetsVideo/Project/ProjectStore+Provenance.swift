@@ -103,7 +103,7 @@ extension ProjectStore {
         guard let record = readProvenance(for: assetID, in: packageURL)[kind] else { return .rejected(.noProvenance) }
         if record.invalidated { return .rejected(.invalidated) }
         let current = AnalysisProvenance.current(for: kind)
-        if record.algorithm != current.algorithm { return .rejected(.differentAlgorithm) }
+        if !AnalysisProvenance.accepts(algorithm: record.algorithm, for: kind) { return .rejected(.differentAlgorithm) }
         if record.settings != current.settings { return .rejected(.differentSettings) }
         if record.digest != AnalysisProvenance.digest(of: data) { return .rejected(.damaged) }
         guard let source = record.source, let identity else { return .rejected(.unverifiable) }

@@ -302,7 +302,8 @@ struct AnimationMeetsVideoApp: App {
             analysis.reset(
                 tracks: result.changeScores, references: result.references,
                 thumbnailed: result.assetsWithThumbnails, beats: result.beats,
-                originalScores: result.originalScores, sources: result.analysisSources, packageURL: url
+                originalScores: result.originalScores, sources: result.analysisSources,
+                rejected: result.rejectedAnalysis, packageURL: url
             )
             analysis.update(with: result.project)
             replacement.reset()
@@ -455,7 +456,8 @@ struct AnimationMeetsVideoApp: App {
                 analysis.reset(
                     tracks: result.changeScores, references: result.references,
                     thumbnailed: result.assetsWithThumbnails, beats: result.beats,
-                originalScores: result.originalScores, sources: result.analysisSources, packageURL: url
+                originalScores: result.originalScores, sources: result.analysisSources,
+                    rejected: result.rejectedAnalysis, packageURL: url
                 )
                 analysis.update(with: result.project)
                 replacement.reset()

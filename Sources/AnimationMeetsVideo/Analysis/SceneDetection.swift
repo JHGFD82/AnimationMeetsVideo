@@ -12,6 +12,16 @@ struct ChangeScoreTrack: Equatable, Sendable {
     /// `scores[i]` is the picture change from frame `i - 1` to frame `i`,
     /// scaled so 255 is a completely different picture. `scores[0]` is 0.
     var scores: [UInt8]
+    /// Stretches of the file's time that hold no footage (empty edits, such
+    /// as the second before a late first picture), in `timescale` units,
+    /// ascending and apart. No frame lies in one, and no change is scored
+    /// across one: the first frame after it scores 0.
+    var emptySpans: [EmptySpan] = []
+
+    struct EmptySpan: Equatable, Sendable {
+        var start: Int64
+        var end: Int64
+    }
 
     var frameCount: Int { times.count }
 
@@ -22,10 +32,12 @@ struct ChangeScoreTrack: Equatable, Sendable {
     // MARK: Serialization
 
     private static let magic: [UInt8] = Array("AMVS".utf8)
-    private static let version: UInt32 = 1
+    /// 2 adds the empty spans after the scores. Version 1 files have none.
+    private static let version: UInt32 = 2
 
     /// Compact binary form: a header, then every frame time, then the scores
-    /// (one byte per frame). All integers are little endian.
+    /// (one byte per frame), then the empty spans: a count and a start and
+    /// end each. All integers are little endian.
     func encoded() -> Data {
         var data = Data(Self.magic)
         func append<T: FixedWidthInteger>(_ value: T) {
@@ -36,14 +48,20 @@ struct ChangeScoreTrack: Equatable, Sendable {
         append(UInt32(times.count))
         for time in times { append(time) }
         data.append(contentsOf: scores)
+        append(UInt32(emptySpans.count))
+        for span in emptySpans {
+            append(span.start)
+            append(span.end)
+        }
         return data
     }
 
-    init(timescale: Int32, times: [Int64], scores: [UInt8]) {
+    init(timescale: Int32, times: [Int64], scores: [UInt8], emptySpans: [EmptySpan] = []) {
         precondition(times.count == scores.count, "one score per frame")
         self.timescale = timescale
         self.times = times
         self.scores = scores
+        self.emptySpans = emptySpans
     }
 
     init(decoding data: Data) throws {
@@ -62,16 +80,25 @@ struct ChangeScoreTrack: Equatable, Sendable {
         }
         offset = Self.magic.count
         let version = try read(UInt32.self)
-        guard version == Self.version else { throw ChangeScoreTrackError.unsupportedVersion(version) }
+        guard version == 1 || version == 2 else { throw ChangeScoreTrackError.unsupportedVersion(version) }
         let timescale = try read(Int32.self)
         let count = Int(try read(UInt32.self))
-        guard timescale > 0, data.count - offset == count * 9 else { throw ChangeScoreTrackError.truncated }
+        guard timescale > 0, data.count - offset >= count * 9 else { throw ChangeScoreTrackError.truncated }
 
         var times: [Int64] = []
         times.reserveCapacity(count)
         for _ in 0..<count { times.append(try read(Int64.self)) }
-        let scores = [UInt8](data[(data.startIndex + offset)...])
-        self.init(timescale: timescale, times: times, scores: scores)
+        let scores = [UInt8](data[(data.startIndex + offset)..<(data.startIndex + offset + count)])
+        offset += count
+        var spans: [EmptySpan] = []
+        if version == 1 {
+            guard offset == data.count else { throw ChangeScoreTrackError.truncated }
+        } else {
+            let spanCount = Int(try read(UInt32.self))
+            guard data.count - offset == spanCount * 16 else { throw ChangeScoreTrackError.truncated }
+            for _ in 0..<spanCount { spans.append(EmptySpan(start: try read(Int64.self), end: try read(Int64.self))) }
+        }
+        self.init(timescale: timescale, times: times, scores: scores, emptySpans: spans)
         try validate()
     }
 
@@ -80,11 +107,14 @@ struct ChangeScoreTrack: Equatable, Sendable {
     /// - `timescale` is positive;
     /// - frame times are not negative and strictly increase (a frame whose
     ///   time repeats or goes back is an error, not something to sort away);
-    /// - the first frame has no previous frame, so its score is 0.
+    /// - the first frame has no previous frame, so its score is 0;
+    /// - empty spans start at or after 0, are not empty themselves, ascend
+    ///   without overlapping, and contain no frame.
     /// Every score value, 0 to 255, is valid. An empty track is valid.
     func validate() throws {
         guard timescale > 0 else { throw ChangeScoreTrackError.invalid("The time scale isn't positive.") }
         guard times.count == scores.count else { throw ChangeScoreTrackError.invalid("Frames and scores don't match.") }
+        try validateEmptySpans()
         guard let first = times.first else { return }
         guard first >= 0 else { throw ChangeScoreTrackError.invalid("A frame time is negative.") }
         for index in 1..<max(times.count, 1) where times[index] <= times[index - 1] {
@@ -95,6 +125,19 @@ struct ChangeScoreTrack: Equatable, Sendable {
             )
         }
         guard scores[0] == 0 else { throw ChangeScoreTrackError.invalid("The first frame has a score.") }
+    }
+
+    private func validateEmptySpans() throws {
+        var previousEnd: Int64 = 0
+        for span in emptySpans {
+            guard span.start >= previousEnd, span.end > span.start else {
+                throw ChangeScoreTrackError.invalid("The empty stretches are out of order or overlap.")
+            }
+            previousEnd = span.end
+        }
+        for time in times where emptySpans.contains(where: { time >= $0.start && time < $0.end }) {
+            throw ChangeScoreTrackError.invalid("A frame lies in an empty stretch.")
+        }
     }
 }
 

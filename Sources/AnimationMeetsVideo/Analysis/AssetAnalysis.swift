@@ -350,6 +350,7 @@ final class AssetAnalysis {
         beats: [UUID: BeatTrack] = [:],
         originalScores: [UUID: ChangeScoreTrack] = [:],
         sources: AnalysisSources = AnalysisSources(),
+        rejected: [UUID: [AnalysisKind: AnalysisRejection]] = [:],
         packageURL: URL? = nil
     ) {
         worker?.cancel()
@@ -374,7 +375,7 @@ final class AssetAnalysis {
         checkedPackage = []
         loading = [:]
         changedFiles = [:]
-        rejectedResults = [:]
+        rejectedResults = rejected
         invalidationTasks = [:]
         scoreSources = [:]
         beatSources = [:]
@@ -513,9 +514,12 @@ final class AssetAnalysis {
         let forgotten = (projectSource?() ?? latestProject)?.clips.first { $0.id == id }?.referenceForgotten ?? false
         guard !forgotten else { return }
         if references[id] == nil, let reference = saved.reference { references[id] = reference }
-        if originalScores[id] == nil, case .valid(let track, let source) = saved.originalScores {
+        switch saved.originalScores {
+        case .valid(let track, let source) where originalScores[id] == nil:
             originalScores[id] = track
             originalSources[id] = source
+        case .rejected(let reason): rejectedResults[id, default: [:]][.originalScores] = reason
+        default: break
         }
         if saved.hasThumbnails { thumbnailed.insert(id) }
     }
@@ -634,7 +638,8 @@ final class AssetAnalysis {
             keepAsOriginal(track, of: id, source: file.stamp)
             return .success(track)
         }
-        return .failure(.notCaptured)
+        // Saved but unusable is not the same as never saved.
+        return .failure(rejectedResults[id]?[.originalScores]?.originalScoresReason ?? .notCaptured)
     }
 
     /// A problem saving this asset's results, or retiring outdated ones, that
