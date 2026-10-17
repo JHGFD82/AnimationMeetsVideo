@@ -1,0 +1,98 @@
+# Scene detection and splitting: review findings
+
+Status: **review notes** for existing behavior, with the tests that measure
+it (`SceneReviewTests.swift`, fixtures in `SceneFixtures.swift`). Nothing
+here changed detection thresholds or splitting code. Tests marked as known
+issues assert what should happen and are wrapped in `withKnownIssue`; the
+suite fails when a defect is fixed, as a reminder to remove the wrapper.
+
+Scope read: `FrameScorer`, `ChangeScoreTrack`, `SceneDetector` (cuts and
+scenes), `SceneEdits`, `EditingProject.addScenes` and `scenes(ofAsset:)`,
+`split`, `coveringWholeFrames`, and the undo history. Fixtures are real
+H.264 movies decoded by `FrameScorer`, so timestamps are measured end to
+end; the boundary properties run over 400 seeded random tracks each.
+
+## Confirmed correct (measured)
+
+- **Hard cuts** score about 163/255 and are found at the first frame of the
+  new shot, exactly.
+- **Variable frame rate**: times are the real presentation times (a cut after
+  a 24 to 12 fps change is at 1.000 s; later frames are 1/12 s apart).
+- **Dropped frames**: the cut keeps its real time; frame count drops by two.
+- **Timebase**: with the file's own timescale (30000 for NTSC) a cut is
+  exactly 30030/30000. A file written at 600 units a second rounds by under
+  half a tick (0.83 ms).
+- **Late start** (a first picture one second into the movie): times are on
+  the asset's timeline, the cut is at 2.0 s of 3.0 s, and the last frame
+  ends where the asset does.
+- **Boundaries**: automatic cuts are strictly ascending, inside the track,
+  on real frame times, and never closer than 0.4 s to each other. Scenes
+  always start at 0, end at the asset's duration, abut exactly, and have
+  positive length, including with manual cuts in different timescales.
+- **Fades and dissolves** are not split at the default sensitivity.
+- **Splitting a clip** leaves no gap or overlap and footage continuous
+  across the cut, drops the transitions at the cut, and keeps picture and
+  sound together (they are one clip). Adding scenes and splitting each
+  undo and redo as one step.
+- **Scenes on a timeline of another frame rate** (24 fps footage on a 30 fps
+  timeline): clips abut on the timeline, nothing is repeated in the footage,
+  at most one timeline frame is left out where a scene end was trimmed back
+  to a whole frame.
+
+## Defects
+
+1. **Replacement media is not mapped into original time. (High; follows
+   from scores describing the current file.)** Scores are in the current
+   file's time, but scenes, manual cuts, ignored cuts and trims are in
+   original time, and the file is read at `original + alignmentOffset`.
+   `scenes(ofAsset:)` uses the cut times as they are. For a replacement
+   aligned 2 s later, a cut at 5 s of the file becomes a scene boundary at
+   5 s of original time, which plays file time 7 s. Fix: subtract
+   `alignmentOffset` from detected cuts (and add it when snapping a
+   hand-placed cut to a frame, `nearestFrameTime`), and decide what the
+   scene range covers when the file is shorter or longer than the original.
+2. **Sustained motion gets a cut on the last frame. (Medium.)** A plateau has
+   no peak, except that `i + 1 == frameCount` counts the end as lower, so
+   any shot whose change stays over the threshold (a pan of a busy picture
+   scores 30 to 57 a frame) ends in a one-frame scene at every sensitivity
+   tried. A genuine mid-track plateau gets no cut at all, so the behavior
+   depends on where the track ends.
+3. **A fade is split mid-way at high sensitivity. (Low.)** At 0.8 and above a
+   steady 13/14 per frame fade yields a cut in the middle; the document
+   says a slow dissolve isn't split.
+4. **A single flash frame is a scene change. (Medium.)** The change into and
+   out of the flash both score about 115; the stronger-wins merge keeps the
+   later one, so a cut lands on the frame after the flash.
+5. **Scenes at the two ends can be shorter than the minimum. (Low.)** The
+   0.4 s rule applies between cuts only; a cut 3 frames in or 2 frames from
+   the end is kept.
+6. **Frame times are not validated on load. (Low.)** `ChangeScoreTrack(decoding:)`
+   accepts times that go backwards or repeat; `autoCuts` then returns
+   unsorted cuts. The score file now has a digest, so this only matters for
+   a file written by something else.
+
+## Limitations by design, recorded
+
+- **Luma only**: red to green at equal brightness scores 20/255 and is
+  missed at the default sensitivity.
+- **Short shots merge**: a 3-frame shot yields one cut (the earlier on a
+  tie); the shot belongs to the one after it.
+- **Greedy merge**: cuts 0.3 s apart in a chain keep only the strongest, even
+  when the outer two are 0.6 s apart.
+- **Late-start phantom frame**: the reader reports a frame at 0 for the
+  empty stretch before a late first picture; it is scored against the first
+  real frame (26/255 in the fixture), which reads as a cut at high
+  sensitivity.
+- **Scene thresholds** (0.4 to 0.03 of 255) were not changed; sensitivity 0.5
+  needs about 28/255.
+
+## Not covered
+
+- Playback-speed changes on timeline clips: `addScenes` creates 1x clips and
+  `split` is covered by `BladeRetimeTests`; no new test here.
+- Original scores for aligning a later replacement: the replacement flow
+  reads `analysis.tracks[asset]` as the original's scores. Since scores now
+  describe the current file, after a first replacement a second one aligns
+  against the first replacement's scores, with no offset composed. The
+  decision for original scores is to store them separately; not built.
+- Cross-dissolve and fade detection quality beyond "not cut by default".

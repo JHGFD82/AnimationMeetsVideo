@@ -74,7 +74,7 @@ private func writeMovieOnce(to url: URL, segments: [(luma: UInt8, frames: Int)],
 }
 
 /// Lets one test movie be written at a time.
-private actor MovieWriterGate {
+actor MovieWriterGate {
     static let shared = MovieWriterGate()
     private var isBusy = false
     private var waiting: [CheckedContinuation<Void, Never>] = []

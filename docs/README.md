@@ -16,6 +16,7 @@ accessibility are implemented (each document lists what remains).
 | [audio.md](audio.md) | Implemented (core). Keyframed layer volume from mute to +6 dB in playback and export, and a meter of the whole mix beside the timeline. |
 | [transitions.md](transitions.md) | Implemented. The 25 transition kinds in five categories, their settings, how each is drawn, and what counts as a kind. |
 | [timeline.md](timeline.md) | Implemented. Zooming and scrolling the timeline, the ruler's tick grouping, the playhead, frame-locked moving and trimming of clips, linked and detached audio, and transitions. |
+| [scene-detection-review.md](scene-detection-review.md) | Review notes. Measured behavior of scene detection and splitting on real decoded fixtures, the defects found, and the tests that pin them. |
 | [media-replacement.md](media-replacement.md) | Implemented (core). Replacing a file with a different version ("bait and switch"), the reference data that makes it safe, and how mismatches are handled. |
 | [rendering.md](rendering.md) | Implemented. Drawing the viewer at reduced size (Auto, Full, Half, Quarter), rendering full-size frames in the background when idle, and reusing them in ProRes 422 exports. |
 | [accessibility.md](accessibility.md) | Implemented (core). Keyboard access to the playhead and clips, VoiceOver across the timeline, inspector, viewer and library, text contrast and reduced motion, the rules new UI follows, and what remains. |
