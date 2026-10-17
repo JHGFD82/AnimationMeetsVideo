@@ -396,7 +396,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
             name: url.lastPathComponent, kind: .audio, url: url,
             duration: CMTime(seconds: 12, preferredTimescale: 600), frameRate: 0,
             colorSpace: .rec709, codecName: "Test", hasAudio: hasAudio,
-            acceptedStamp: stamp ?? self.stamp
+            acceptedStamp: stamp ?? FileStamp(url: url) ?? self.stamp
         )]
         return project
     }
@@ -446,7 +446,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         let project = project(url: url, hasAudio: true)
         let id = project.clips[0].id
         let analysis = AssetAnalysis()
-        analysis.reset(beats: [id: .none()], sources: AnalysisSources(beats: [id: stamp]))
+        analysis.reset(beats: [id: .none()], sources: AnalysisSources(beats: [id: project.clips[0].acceptedStamp!]))
 
         analysis.update(with: project)
 
@@ -471,7 +471,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         #expect(analysis.progress.isEmpty)
 
         project.clips[0].url = newURL
-        project.clips[0].acceptedStamp = otherStamp
+        project.clips[0].acceptedStamp = FileStamp(url: newURL)
         analysis.update(with: project)
 
         #expect(analysis.beats[id] == nil)

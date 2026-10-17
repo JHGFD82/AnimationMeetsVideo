@@ -154,8 +154,9 @@ final class AssetAnalysis {
         /// beats are checked against `identity`; the reference and its pictures
         /// are looked for only when `includingReference`.
         var readSaved: @Sendable (_ package: URL, _ id: UUID, _ identity: FileStamp?, _ includingReference: Bool) async -> SavedAnalysis
-        /// Whether the media file is there, asked away from the main actor.
-        var fileExists: @Sendable (URL) async -> Bool
+        /// Whether the media file is there and what it looks like right now,
+        /// asked away from the main actor.
+        var observeFile: @Sendable (URL) async -> FileObservation
         /// Runs `body` against the package, through the `PackageCoordinator`
         /// so it happens in the order it was asked, relative to saves too.
         var perform: @Sendable (URL, @escaping @Sendable (URL) throws -> Void) async throws -> Void
@@ -182,14 +183,22 @@ final class AssetAnalysis {
                 }
                 return read ?? SavedAnalysis()
             },
-            fileExists: { url in
-                await Task.detached(priority: .utility) { FileManager.default.fileExists(atPath: url.path) }.value
+            observeFile: { url in
+                await Task.detached(priority: .utility) {
+                    FileObservation(exists: FileManager.default.fileExists(atPath: url.path), stamp: FileStamp(url: url))
+                }.value
             },
             perform: { package, body in try await PackageCoordinator.shared.run(on: [package]) { try body(package) } }
         )
     }
 
     @ObservationIgnored var backend = Backend.live
+
+    /// A media file as seen on disk, as opposed to as the project accepted it.
+    struct FileObservation: Sendable {
+        var exists: Bool
+        var stamp: FileStamp?
+    }
 
     /// What a package held for one asset when it was read.
     struct SavedAnalysis: Sendable {
@@ -282,6 +291,24 @@ final class AssetAnalysis {
     /// that read. Nothing is decided about such an asset until the read is
     /// back, so a result already on disk is not analyzed a second time.
     @ObservationIgnored private var loading: [UUID: Int] = [:]
+    /// Assets whose file on disk differs from the one the project accepted:
+    /// it was changed outside the app. No current-file analysis is made, or
+    /// cached results used, for them until the change is accepted (which
+    /// changes the accepted stamp) or `retry` asks to look again, so nothing
+    /// is ever recorded as computed from a file it was not computed from.
+    private(set) var changedFiles: [UUID: ChangedFile] = [:]
+
+    struct ChangedFile: Equatable, Sendable {
+        var accepted: FileStamp?
+        var observed: FileStamp?
+    }
+
+    /// Whether a file on disk contradicts the stamp the project accepted.
+    /// With either side unknown there is nothing to contradict.
+    private static func contradicts(accepted: FileStamp?, observed: FileStamp?) -> Bool {
+        guard let accepted, let observed else { return false }
+        return accepted != observed
+    }
     /// Why saved results were not used, by asset, as of the last read.
     private(set) var rejectedResults: [UUID: [AnalysisKind: AnalysisRejection]] = [:]
     @ObservationIgnored private var invalidationTasks: [Invalidation: Task<Void, Never>] = [:]
@@ -333,6 +360,7 @@ final class AssetAnalysis {
         invalidationFailures = [:]
         checkedPackage = []
         loading = [:]
+        changedFiles = [:]
         rejectedResults = [:]
         invalidationTasks = [:]
         scoreSources = [:]
@@ -361,9 +389,12 @@ final class AssetAnalysis {
         latestProject = project
         let present = Set(project.clips.map(\.id))
         for id in owners.keys where !present.contains(id) { revoke(id) }
+        for id in changedFiles.keys where !present.contains(id) { changedFiles[id] = nil }
         for clip in project.clips {
             let input = Self.input(of: clip)
             if let owner = owners[clip.id], owner.input != input { revoke(clip.id) }
+            // A change that has been accepted since is a new file to the analysis.
+            if let changed = changedFiles[clip.id], changed.accepted != clip.acceptedStamp { changedFiles[clip.id] = nil }
             guard let url = clip.url, let file = input.file else { continue }
             // Even while a job runs, so outdated results stop showing at once.
             discardStaleResults(of: clip, file: file)
@@ -377,7 +408,7 @@ final class AssetAnalysis {
                 if missing == file { continue }
                 unavailable[clip.id] = nil
             }
-            guard owners[clip.id] == nil else { continue }
+            guard owners[clip.id] == nil, changedFiles[clip.id] == nil else { continue }
             let wantsScores = clip.kind == .video && tracks[clip.id] == nil && failure(.scenes, for: clip.id) == nil
             // Reference data describes the original, so it is never taken
             // from a file that replaced it.
@@ -421,10 +452,21 @@ final class AssetAnalysis {
         loading[id] = token
         let expectedGeneration = generation, epoch = packageEpoch
         let identity = clip.acceptedStamp, includingReference = !clip.referenceForgotten
+        let url = clip.url
         let earlier = invalidationTasks.filter { $0.key.id == id }.map(\.value)
         Task {
             for task in earlier { await task.value }
-            let saved = await backend.readSaved(package, id, identity, includingReference)
+            var saved = await backend.readSaved(package, id, identity, includingReference)
+            // Results fit the file the project accepted; if the file on disk
+            // is not that one they say nothing about it.
+            var seen: FileObservation?
+            if let url { seen = await backend.observeFile(url) }
+            if let seen, seen.exists, Self.contradicts(accepted: identity, observed: seen.stamp),
+               generation == expectedGeneration, loading[id] == token {
+                changedFiles[id] = ChangedFile(accepted: identity, observed: seen.stamp)
+                saved.scores = .absent
+                saved.beats = .absent
+            }
             guard generation == expectedGeneration, loading[id] == token else { return }
             loading[id] = nil
             if epoch == packageEpoch { publish(saved, for: id) }
@@ -536,6 +578,7 @@ final class AssetAnalysis {
     func retryUnavailable(in project: EditingProject) {
         guard !unavailable.isEmpty else { return }
         unavailable = [:]
+        changedFiles = [:]
         update(with: project)
     }
 
@@ -552,6 +595,7 @@ final class AssetAnalysis {
         if stage == .reference || stage == .pictures, !Self.input(of: clip).canCaptureReference { return false }
         stageFailures[AssetStage(id: id, stage: stage)] = nil
         unavailable[id] = nil
+        changedFiles[id] = nil
         update(with: project)
         return true
     }
@@ -739,15 +783,21 @@ final class AssetAnalysis {
         defer { release(lease) }
         let source = ResultSource(path: job.file.path, stamp: job.file.stamp)
         // An offline file can't be analyzed, and isn't a failure: it waits.
-        let present = await backend.fileExists(job.url)
+        let seen = await backend.observeFile(job.url)
         guard stillValid(lease) else { return }
-        guard present else {
+        guard seen.exists else {
             if let file = owners[id]?.input.file { unavailable[id] = file }
+            return
+        }
+        // The file is not the one the project accepted: nothing is analyzed
+        // from it, and nothing is recorded under the old identity.
+        if Self.contradicts(accepted: job.file.stamp, observed: seen.stamp) {
+            changedFiles[id] = ChangedFile(accepted: job.file.stamp, observed: seen.stamp)
             return
         }
         if job.wantsReference {
             let proceed = await runStage(
-                .reference, lease: lease, file: job.file,
+                .reference, lease: lease, file: job.file, url: job.url, observed: seen.stamp,
                 work: { [backend] progress in try await backend.captureReference(job.url, progress) },
                 commit: { reference in
                     references[id] = reference
@@ -761,7 +811,7 @@ final class AssetAnalysis {
         }
         if job.wantsScores {
             let proceed = await runStage(
-                .scenes, lease: lease, file: job.file,
+                .scenes, lease: lease, file: job.file, url: job.url, observed: seen.stamp,
                 work: { [backend] progress in try await backend.scoreFrames(job.url, progress) },
                 commit: { track in
                     tracks[id] = track
@@ -776,7 +826,7 @@ final class AssetAnalysis {
         }
         if job.wantsThumbnails, let track = tracks[id] {
             let proceed = await runStage(
-                .pictures, lease: lease, file: job.file,
+                .pictures, lease: lease, file: job.file, url: job.url, observed: seen.stamp,
                 work: { [backend] progress in try await backend.capturePictures(job.url, track, progress) },
                 commit: { pictures in
                     heldPictures[id] = pictures
@@ -791,7 +841,7 @@ final class AssetAnalysis {
         }
         if job.wantsBeats {
             _ = await runStage(
-                .beats, lease: lease, file: job.file,
+                .beats, lease: lease, file: job.file, url: job.url, observed: seen.stamp,
                 work: { [backend] progress in try await backend.detectBeats(job.url, progress) },
                 commit: { track in
                     beats[id] = track
@@ -815,6 +865,8 @@ final class AssetAnalysis {
         _ stage: Stage,
         lease: Lease,
         file: AnalyzedFile,
+        url: URL,
+        observed: FileStamp?,
         work: (@escaping @Sendable (Double) -> Void) async throws -> Result,
         commit: (Result) async -> Void
     ) async -> Bool {
@@ -827,6 +879,14 @@ final class AssetAnalysis {
         do {
             let result = try await work(relay.report)
             guard stillValid(lease), !Task.isCancelled else { return false }
+            // Looked at again: a file that changed while it was read gave a
+            // result for neither version.
+            let after = await backend.observeFile(url)
+            guard stillValid(lease), !Task.isCancelled else { return false }
+            if after.stamp != observed {
+                changedFiles[lease.id] = ChangedFile(accepted: file.stamp, observed: after.stamp)
+                return false
+            }
             await commit(result)
             return stillValid(lease)
         } catch {

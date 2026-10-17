@@ -204,6 +204,7 @@ import Testing
         let replacement = try await makeMovie(frames: 96)
         defer { try? FileManager.default.removeItem(at: replacement) }
         video.clips[0].url = replacement
+        video.clips[0].acceptedStamp = FileStamp(url: replacement)
         analysis.update(with: video)
         analysis.reanalyze(video.clips[0], in: video)
         try await waitUntilIdle(analysis, expecting: 1)
@@ -1104,6 +1105,85 @@ final class Gate: @unchecked Sendable {
         await analysis.writeHeldResults()
         #expect(analysis.persistenceFailures[.init(id: id, stage: .scenes)] == nil)
         #expect(analysis.unsavedTracks.isEmpty)
+    }
+
+    // MARK: Observed identity
+
+    /// Makes the disk show `stamp()` for the asset's file, whatever the project accepted.
+    private func observing(_ analysis: AssetAnalysis, _ stamp: @escaping @Sendable () -> FileStamp?) {
+        analysis.backend.observeFile = { _ in AssetAnalysis.FileObservation(exists: true, stamp: stamp()) }
+    }
+
+    @Test func aFileChangedOutsideTheAppIsNotAnalyzedUntilTheChangeIsAccepted() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        let scored = Mutex(0)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(scored.increment())]) }
+        analysis.backend.captureReference = { _, _ in throw NSError(domain: "test", code: 1) }
+        // On disk the file is already the other version.
+        observing(analysis) { self.stampB }
+        analysis.reset(packageURL: package)
+        analysis.update(with: video)
+        try await settle { analysis.changedFiles[id] != nil && analysis.progress.isEmpty }
+
+        #expect(scored.value == 0)
+        #expect(analysis.tracks[id] == nil)
+        #expect(analysis.changedFiles[id] == AssetAnalysis.ChangedFile(accepted: stampA, observed: stampB))
+
+        // Accepting the change makes it the file the project means.
+        analysis.update(with: stamped(video, stampB))
+        try await settle { analysis.tracks[id] != nil && analysis.progress.isEmpty }
+        #expect(analysis.changedFiles[id] == nil)
+        // Nothing was recorded under the old identity.
+        guard case .valid(_, let source) = ProjectStore.readVerifiedChangeScores(for: id, in: package, identity: stampB) else {
+            Issue.record("the result is not recorded for the accepted file")
+            return
+        }
+        #expect(source == stampB)
+        #expect({ if case .valid = ProjectStore.readVerifiedChangeScores(for: id, in: package, identity: stampA) { true } else { false } }() == false)
+    }
+
+    @Test func aFileThatChangesWhileItIsReadGivesNoResult() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let log = PackageLog()
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        let calls = Mutex(0)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        // As accepted when the job starts, different once it has been read.
+        observing(analysis) { calls.increment() == 1 ? self.stampA : self.stampB }
+        logging(analysis, id, log)
+        analysis.reset(packageURL: package)
+        analysis.update(with: video)
+        try await settle { analysis.changedFiles[id] != nil && analysis.progress.isEmpty }
+
+        #expect(analysis.tracks[id] == nil)
+        #expect(log.everHeldScores.isEmpty)
+    }
+
+    @Test func savedResultsAreNotUsedForAFileThatChangedOutsideTheApp() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
+        try ProjectStore.writeReference(reference(), for: id, in: package)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [9]) }
+        observing(analysis) { self.stampB }
+        analysis.reset(packageURL: package)
+        analysis.update(with: video)
+        try await settle { !analysis.isLoadingSaved && analysis.progress.isEmpty }
+
+        #expect(analysis.tracks[id] == nil)
+        #expect(analysis.changedFiles[id] != nil)
+        // The original's reference does not depend on the current file.
+        #expect(analysis.references[id] != nil)
     }
 
     @Test func progressThatIsNotANumberOrOutOfRangeNeverReachesTheUI() async throws {

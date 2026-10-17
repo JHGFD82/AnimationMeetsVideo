@@ -83,7 +83,15 @@ was computed from (the one the project accepted), the analysis settings, an
 algorithm version, and a digest of the score file. A score is loaded only
 when all of that still applies. A score with no record, as saved by an
 earlier version, is not assumed to belong to the current file and is
-computed again. A retired score is deleted; if the file can't be deleted its
+computed again. The accepted stamp says which file the project means; the file on disk is
+also looked at, before analysis and cache use and again before a result is
+committed. If it differs from the accepted stamp the file was changed
+outside the app: no current-file analysis is made, saved scores and beats
+are not used, and the asset is listed in `AssetAnalysis.changedFiles` until
+the change is accepted or the person asks to look again. A result is never
+recorded under the old stamp for a file that has changed. (Size and
+modification time are a heuristic: a change that keeps both escapes it.)
+A retired score is deleted; if the file can't be deleted its
 record is marked invalidated instead, so it is still rejected. If neither
 can be done the retirement stays pending, is retried with the next write or
 save, and is reported by `AssetAnalysis.invalidationFailures`; saving fails
