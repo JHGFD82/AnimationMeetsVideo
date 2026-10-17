@@ -135,7 +135,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: movie) }
         let video = project(with: [movie])
         let id = video.clips[0].id
-        let saved = ChangeScoreTrack(timescale: 600, times: [0], scores: [0])
+        let saved = ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 0])
         let reference = try await ReferenceCapture.capture(url: movie)
         let analysis = AssetAnalysis()
 
@@ -176,7 +176,7 @@ import Testing
         let id = video.clips[0].id
         let analysis = AssetAnalysis()
         analysis.reset(
-            tracks: [id: ChangeScoreTrack(timescale: 600, times: [0], scores: [0])],
+            tracks: [id: ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 0])],
             references: [id: try await ReferenceCapture.capture(url: movie)],
             thumbnailed: [id], sources: sources(of: video)
         )
@@ -242,7 +242,7 @@ import Testing
         video.clips[0].previousPaths = ["/elsewhere/original.mov"]
         let analysis = AssetAnalysis()
         analysis.reset(
-            tracks: [video.clips[0].id: ChangeScoreTrack(timescale: 600, times: [0], scores: [0])],
+            tracks: [video.clips[0].id: ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 0])],
             sources: sources(of: video)
         )
 
@@ -330,7 +330,7 @@ final class Gate: @unchecked Sendable {
     }
 
     private func track(_ marker: UInt8) -> ChangeScoreTrack {
-        ChangeScoreTrack(timescale: 600, times: [0], scores: [marker])
+        ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, marker])
     }
 
     private func reference() -> AssetReference {
@@ -370,7 +370,7 @@ final class Gate: @unchecked Sendable {
         let gate = Gate()
         let analysis = AssetAnalysis()
         let id = UUID()
-        scoring(analysis) { await gate.wait(); return ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        scoring(analysis) { await gate.wait(); return ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1]) }
         analysis.update(with: project(ids: [id]))
         try await settle { gate.arrived == 1 }
 
@@ -389,7 +389,7 @@ final class Gate: @unchecked Sendable {
         let writeGate = Gate()
         let analysis = AssetAnalysis()
         let id = UUID()
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1]) }
         analysis.backend.perform = { package, body in await writeGate.wait(); try body(package) }
         analysis.reset(packageURL: package)
         analysis.update(with: project(ids: [id]))
@@ -398,7 +398,7 @@ final class Gate: @unchecked Sendable {
         // The same asset ID in the next project, with its own dirty result.
         analysis.reset(tracks: [:], packageURL: nil)
         analysis.backend.perform = { _, _ in }
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [2]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 2]) }
         analysis.update(with: project(ids: [id]))
         try await settle { analysis.tracks[id] != nil && analysis.progress.isEmpty }
         let before = analysis.unsavedTracks
@@ -408,7 +408,7 @@ final class Gate: @unchecked Sendable {
         try await Task.sleep(for: .milliseconds(100))
 
         #expect(analysis.unsavedTracks == before)
-        #expect(analysis.tracks[id]?.scores == [2])
+        #expect(analysis.tracks[id]?.scores == [0, 2])
         #expect(analysis.stages == stages)
     }
 
@@ -420,7 +420,7 @@ final class Gate: @unchecked Sendable {
         let id = UUID()
         let video = project(ids: [id])
         let revisionCount = Mutex(0)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(revisionCount.increment())]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(revisionCount.increment())]) }
         // Only the first write is held back.
         analysis.backend.perform = { package, body in
             if writeGate.arrived == 0 { await writeGate.wait() }
@@ -434,13 +434,13 @@ final class Gate: @unchecked Sendable {
         analysis.reanalyze(video.clips[0], in: video)
         #expect(analysis.unsavedTracks.isEmpty)
         writeGate.open()
-        try await settle { analysis.tracks[id]?.scores == [2] && analysis.progress.isEmpty }
+        try await settle { analysis.tracks[id]?.scores == [0, 2] && analysis.progress.isEmpty }
         try await Task.sleep(for: .milliseconds(100))
 
         // The older write's acknowledgement did not disturb the newer result.
-        #expect(analysis.tracks[id]?.scores == [2])
+        #expect(analysis.tracks[id]?.scores == [0, 2])
         #expect(analysis.unsavedTracks.isEmpty)
-        #expect(ProjectStore.readChangeScores(for: id, in: package)?.scores == [2])
+        #expect(ProjectStore.readChangeScores(for: id, in: package)?.scores == [0, 2])
     }
 
     @Test func savingOnlyMarksWhatTheSaveContained() async throws {
@@ -448,16 +448,16 @@ final class Gate: @unchecked Sendable {
         let id = UUID()
         let video = project(ids: [id])
         let counter = Mutex(0)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(counter.increment())]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(counter.increment())]) }
         analysis.update(with: video)
         try await settle { analysis.tracks[id] != nil && analysis.progress.isEmpty }
         let snapshot = analysis.unsavedResults()
 
         analysis.reanalyze(video.clips[0], in: video)
-        try await settle { analysis.tracks[id]?.scores == [2] && analysis.progress.isEmpty }
+        try await settle { analysis.tracks[id]?.scores == [0, 2] && analysis.progress.isEmpty }
         analysis.markSaved(snapshot)
 
-        #expect(analysis.unsavedTracks[id]?.scores == [2])
+        #expect(analysis.unsavedTracks[id]?.scores == [0, 2])
     }
 
     @Test func redetectingWhileScoringKeepsOnlyTheReplacement() async throws {
@@ -469,7 +469,7 @@ final class Gate: @unchecked Sendable {
         scoring(analysis) {
             let attempt = counter.increment()
             if attempt == 1 { await gate.wait() }
-            return ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(attempt)])
+            return ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(attempt)])
         }
         analysis.update(with: video)
         try await settle { gate.arrived == 1 }
@@ -479,7 +479,7 @@ final class Gate: @unchecked Sendable {
         try await settle { analysis.progress.isEmpty && analysis.tracks[id] != nil }
         try await Task.sleep(for: .milliseconds(50))
 
-        #expect(analysis.tracks[id]?.scores == [2])
+        #expect(analysis.tracks[id]?.scores == [0, 2])
         #expect(counter.value == 2)
     }
 
@@ -490,13 +490,13 @@ final class Gate: @unchecked Sendable {
         let video = project(ids: [id])
         try ProjectStore.writeChangeScores(track(1), for: id, in: package)
         let analysis = AssetAnalysis()
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [9]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 9]) }
         analysis.reset(packageURL: package)
 
         analysis.reanalyze(video.clips[0], in: video)
         try await settle { analysis.tracks[id] != nil && analysis.progress.isEmpty }
 
-        #expect(analysis.tracks[id]?.scores == [9])
+        #expect(analysis.tracks[id]?.scores == [0, 9])
     }
 
     @Test func aFailedRedetectionLeavesNoOldScoreToReload() async throws {
@@ -526,7 +526,7 @@ final class Gate: @unchecked Sendable {
         scoring(analysis) {
             let attempt = counter.increment()
             if attempt == 1 { await gate.wait() }
-            return ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(attempt)])
+            return ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(attempt)])
         }
         analysis.update(with: video)
         try await settle { gate.arrived == 1 }
@@ -537,7 +537,7 @@ final class Gate: @unchecked Sendable {
         try await settle { analysis.progress.isEmpty && analysis.tracks[id] != nil }
         try await Task.sleep(for: .milliseconds(50))
 
-        #expect(analysis.tracks[id]?.scores == [2])
+        #expect(analysis.tracks[id]?.scores == [0, 2])
     }
 
     @Test func removingAnAssetDropsItsRunningJob() async throws {
@@ -545,7 +545,7 @@ final class Gate: @unchecked Sendable {
         let analysis = AssetAnalysis()
         let id = UUID()
         var video = project(ids: [id])
-        scoring(analysis) { await gate.wait(); return ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        scoring(analysis) { await gate.wait(); return ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1]) }
         analysis.update(with: video)
         try await settle { gate.arrived == 1 }
 
@@ -563,7 +563,7 @@ final class Gate: @unchecked Sendable {
         let analysis = AssetAnalysis()
         let id = UUID()
         var video = project(ids: [id])
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1]) }
         let captured = reference()
         analysis.backend.captureReference = { _, _ in await gate.wait(); return captured }
         analysis.update(with: video)
@@ -600,7 +600,7 @@ final class Gate: @unchecked Sendable {
         scoring(analysis) {
             let attempt = counter.increment()
             await gate.wait()
-            return ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(attempt)])
+            return ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(attempt)])
         }
         analysis.update(with: video)
         try await settle { gate.arrived == 1 }
@@ -609,7 +609,7 @@ final class Gate: @unchecked Sendable {
         gate.open()
         try await settle { analysis.progress.isEmpty && analysis.tracks[id] != nil }
 
-        #expect(analysis.tracks[id]?.scores == [2])
+        #expect(analysis.tracks[id]?.scores == [0, 2])
     }
 
     // MARK: Provenance and durable retirement
@@ -627,11 +627,11 @@ final class Gate: @unchecked Sendable {
         let analysis = AssetAnalysis()
         let id = UUID()
         let video = stamped(project(ids: [id]), stampA)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [5]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 5]) }
 
         analysis.reset(tracks: [id: track(1)])
         analysis.update(with: video)
-        try await settle { analysis.tracks[id]?.scores == [5] && analysis.progress.isEmpty }
+        try await settle { analysis.tracks[id]?.scores == [0, 5] && analysis.progress.isEmpty }
     }
 
     @Test func scoresFromTheSameFileAreKept() async throws {
@@ -639,14 +639,14 @@ final class Gate: @unchecked Sendable {
         let id = UUID()
         let video = stamped(project(ids: [id]), stampA)
         let scored = Mutex(0)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(scored.increment())]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(scored.increment())]) }
         analysis.reset(tracks: [id: track(1)], sources: AnalysisSources(scores: [id: stampA]))
 
         analysis.update(with: video)
         try await settle { analysis.progress.isEmpty }
 
         #expect(scored.value == 0)
-        #expect(analysis.tracks[id]?.scores == [1])
+        #expect(analysis.tracks[id]?.scores == [0, 1])
     }
 
     @Test func replacingTheFileRetiresItsScoresAndFindsThemAgain() async throws {
@@ -654,13 +654,13 @@ final class Gate: @unchecked Sendable {
         let id = UUID()
         let video = stamped(project(ids: [id]), stampA)
         let counter = Mutex(0)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(counter.increment())]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(counter.increment())]) }
         analysis.update(with: video)
         try await settle { analysis.tracks[id] != nil && analysis.progress.isEmpty }
 
         analysis.update(with: stamped(video, stampB))
         #expect(analysis.tracks[id] == nil)
-        try await settle { analysis.tracks[id]?.scores == [2] && analysis.progress.isEmpty }
+        try await settle { analysis.tracks[id]?.scores == [0, 2] && analysis.progress.isEmpty }
     }
 
     @Test func aRetiredBeatFileThatCannotBeDeletedStaysRetiredAfterReopening() async throws {
@@ -788,7 +788,7 @@ final class Gate: @unchecked Sendable {
         scoring(analysis) {
             let attempt = counter.increment()
             if attempt == 1 { await gate.wait() }
-            return ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(attempt)])
+            return ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(attempt)])
         }
         logging(analysis, id, log)
         analysis.reset(packageURL: package)
@@ -801,9 +801,9 @@ final class Gate: @unchecked Sendable {
         gate.open()
         try await settle { analysis.progress.isEmpty && analysis.tracks[id] != nil }
 
-        #expect(analysis.tracks[id]?.scores == [2])
+        #expect(analysis.tracks[id]?.scores == [0, 2])
         #expect(counter.value == 2)
-        #expect(!log.everHeldScores.contains([1]))
+        #expect(!log.everHeldScores.contains([0, 1]))
     }
 
     @Test func removingAudioDuringBeatDetectionPublishesNoBeats() async throws {
@@ -814,7 +814,7 @@ final class Gate: @unchecked Sendable {
         let analysis = AssetAnalysis()
         let id = UUID()
         let box = ProjectBox(stamped(project(ids: [id], hasAudio: true), stampA))
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1]) }
         analysis.backend.detectBeats = { _, _ in await gate.wait(); return BeatTrack(timescale: 1000, times: [1], beatsPerMinute: 120) }
         logging(analysis, id, log)
         analysis.reset(packageURL: package)
@@ -836,7 +836,7 @@ final class Gate: @unchecked Sendable {
         let analysis = AssetAnalysis()
         let id = UUID()
         let box = ProjectBox(stamped(project(ids: [id]), stampA))
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1]) }
         let captured = reference()
         analysis.backend.captureReference = { _, _ in await gate.wait(); return captured }
         analysis.projectSource = { box.project }
@@ -862,7 +862,7 @@ final class Gate: @unchecked Sendable {
         let video = stamped(project(ids: [id]), stampA)
         try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
         let analysis = AssetAnalysis()
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [9]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 9]) }
         let live = analysis.backend
         analysis.backend.readSaved = { package, id, identity, includingReference in
             await gate.wait()
@@ -887,7 +887,7 @@ final class Gate: @unchecked Sendable {
         let video = stamped(project(ids: [id]), stampA)
         try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
         let analysis = AssetAnalysis()
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [9]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 9]) }
         observing(analysis) { self.stampA }
         analysis.reset(packageURL: package)
         // A slow disk: an operation ahead of the read in the package's queue,
@@ -909,7 +909,7 @@ final class Gate: @unchecked Sendable {
         gate.open()
         try await slow.value
         try await settle { !analysis.isLoadingSaved }
-        #expect(analysis.tracks[id]?.scores == [1])
+        #expect(analysis.tracks[id]?.scores == [0, 1])
     }
 
     @Test func aScoreRetiredWhileAReadWasQueuedIsNotReadBack() async throws {
@@ -920,13 +920,13 @@ final class Gate: @unchecked Sendable {
         try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
         let analysis = AssetAnalysis()
         let counter = Mutex(0)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(8 + counter.increment())]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(8 + counter.increment())]) }
         analysis.reset(packageURL: package)
         analysis.update(with: video)
 
         // Re-detect before the first read is back.
         analysis.reanalyze(video.clips[0], in: video)
-        try await settle { analysis.tracks[id]?.scores == [9] && analysis.progress.isEmpty && !analysis.isLoadingSaved }
+        try await settle { analysis.tracks[id]?.scores == [0, 9] && analysis.progress.isEmpty && !analysis.isLoadingSaved }
 
         #expect(counter.value == 1)
     }
@@ -982,7 +982,7 @@ final class Gate: @unchecked Sendable {
         #expect(analysis.failure(.scenes, for: id) == nil)
         // It waits for the file; an asset given another file is tried at once.
         let counter = Mutex(0)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(counter.increment())]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(counter.increment())]) }
         analysis.update(with: video)
         try await Task.sleep(for: .milliseconds(50))
         #expect(counter.value == 0)
@@ -997,7 +997,7 @@ final class Gate: @unchecked Sendable {
         let counter = Mutex(0)
         scoring(analysis) {
             if counter.increment() == 1 { throw FrameScorer.ScoringError.noVideoTrack }
-            return ChangeScoreTrack(timescale: 600, times: [0], scores: [4])
+            return ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 4])
         }
         analysis.update(with: video)
         try await settle { analysis.failure(.scenes, for: id) != nil && analysis.progress.isEmpty }
@@ -1007,7 +1007,7 @@ final class Gate: @unchecked Sendable {
 
         analysis.update(with: stamped(video, stampB))
         #expect(analysis.failure(.scenes, for: id) == nil)
-        try await settle { analysis.tracks[id]?.scores == [4] && analysis.progress.isEmpty }
+        try await settle { analysis.tracks[id]?.scores == [0, 4] && analysis.progress.isEmpty }
     }
 
     @Test func aFailedStageCanBeRetriedWithoutResettingAnythingElse() async throws {
@@ -1016,7 +1016,7 @@ final class Gate: @unchecked Sendable {
         let video = stamped(project(ids: [id], hasAudio: true), stampA)
         let beatAttempts = Mutex(0)
         let scored = Mutex(0)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(scored.increment())]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(scored.increment())]) }
         analysis.backend.captureReference = { _, _ in throw FrameScorer.ScoringError.noVideoTrack }
         analysis.backend.detectBeats = { _, _ in
             if beatAttempts.increment() == 1 { throw BeatDetector.DetectionError.noAudioTrack }
@@ -1039,7 +1039,7 @@ final class Gate: @unchecked Sendable {
         let id = UUID()
         let video = stamped(project(ids: [id]), stampA)
         let attempts = Mutex(0)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1]) }
         analysis.backend.capturePictures = { _, _, _ in
             if attempts.increment() == 1 { throw CocoaError(.fileReadCorruptFile) }
             return ReferenceThumbnails(frames: [])
@@ -1058,7 +1058,7 @@ final class Gate: @unchecked Sendable {
         let id = UUID()
         var video = stamped(project(ids: [id]), stampA)
         let captures = Mutex(0)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1]) }
         analysis.backend.captureReference = { _, _ in captures.increment(); throw NSError(domain: "test", code: 1) }
         analysis.update(with: video)
         try await settle { analysis.failure(.reference, for: id) != nil && analysis.progress.isEmpty }
@@ -1083,7 +1083,7 @@ final class Gate: @unchecked Sendable {
         let id = UUID()
         let video = stamped(project(ids: [id]), stampA)
         let failing = Mutex(1)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [3]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 3]) }
         analysis.backend.perform = { package, body in
             if failing.value == 1 { throw CocoaError(.fileWriteNoPermission) }
             try body(package)
@@ -1123,7 +1123,7 @@ final class Gate: @unchecked Sendable {
         let id = UUID()
         let video = stamped(project(ids: [id]), stampA)
         let scored = Mutex(0)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(scored.increment())]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(scored.increment())]) }
         analysis.backend.captureReference = { _, _ in throw NSError(domain: "test", code: 1) }
         // On disk the file is already the other version.
         observing(analysis) { self.stampB }
@@ -1156,7 +1156,7 @@ final class Gate: @unchecked Sendable {
         let id = UUID()
         let video = stamped(project(ids: [id]), stampA)
         let calls = Mutex(0)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1]) }
         // As accepted when the job starts, different once it has been read.
         observing(analysis) { calls.increment() == 1 ? self.stampA : self.stampB }
         logging(analysis, id, log)
@@ -1176,7 +1176,7 @@ final class Gate: @unchecked Sendable {
         let video = stamped(project(ids: [id]), stampA)
         try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
         try ProjectStore.writeReference(reference(), for: id, in: package)
-        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [9]) }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 9]) }
         observing(analysis) { self.stampB }
         analysis.reset(packageURL: package)
         analysis.update(with: video)
@@ -1195,7 +1195,7 @@ final class Gate: @unchecked Sendable {
         analysis.backend.scoreFrames = { _, progress in
             progress(.nan); progress(.infinity); progress(-3); progress(7)
             await gate.wait()
-            return ChangeScoreTrack(timescale: 600, times: [0], scores: [1])
+            return ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1])
         }
         analysis.backend.captureReference = { _, _ in throw NSError(domain: "test", code: 1) }
         analysis.backend.capturePictures = { _, _, _ in ReferenceThumbnails(frames: []) }

@@ -80,6 +80,9 @@ enum FrameScorer {
                     timescale: timescale,
                     method: .roundHalfAwayFromZero
                 )
+                // A track keeps only frames inside the asset whose times
+                // increase: a repeated or backwards time can't be placed.
+                if time.value < 0 || (times.last.map { time.value <= $0 } ?? false) { continue }
                 copyLuma(from: pixels, into: &current)
 
                 scores.append(previous.isEmpty ? 0 : meanAbsoluteDifference(previous, current))

@@ -317,14 +317,6 @@ private func clip(_ frame: Int) -> CMTime { CMTime(value: Int64(frame), timescal
         // 12/24 = 0.5, 19/24 ≈ 0.79, 26/24 ≈ 1.08
         #expect(SceneDetector.autoCuts(in: track, defaultSensitivity: 0.5).map { $0.value } == [19])
     }
-
-    @Test func aScoreFileWithFramesOutOfOrderIsAcceptedToday() throws {
-        let broken = ChangeScoreTrack(timescale: 24, times: [0, 5, 3, 3, 10], scores: [0, 9, 200, 200, 9])
-        let data = broken.encoded()
-        withKnownIssue("decoding doesn't check that frame times ascend") {
-            #expect(throws: (any Error).self) { try ChangeScoreTrack(decoding: data) }
-        }
-    }
 }
 
 // MARK: - Timeline mapping and split behavior

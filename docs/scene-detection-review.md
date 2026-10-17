@@ -66,10 +66,15 @@ end; the boundary properties run over 400 seeded random tracks each.
 5. **Scenes at the two ends can be shorter than the minimum. (Low.)** The
    0.4 s rule applies between cuts only; a cut 3 frames in or 2 frames from
    the end is kept.
-6. **Frame times are not validated on load. (Low.)** `ChangeScoreTrack(decoding:)`
-   accepts times that go backwards or repeat; `autoCuts` then returns
-   unsorted cuts. The score file now has a digest, so this only matters for
-   a file written by something else.
+6. **Frame times were not validated on load. (Low; fixed.)**
+   `ChangeScoreTrack(decoding:)` accepted times that went backwards or
+   repeated, and `autoCuts` then returned unsorted cuts. Now a track is
+   validated (`ChangeScoreTrack.validate`): positive timescale, non-negative
+   strictly increasing frame times (a repeated or backwards time is an
+   error, never sorted or merged away), and a first score of 0. A saved file
+   that fails reads as damaged and is analyzed again; a track the scorer
+   produces that fails is a failure, not a result. The scorer itself drops
+   frames before time 0 and frames whose time does not increase.
 
 ## Limitations by design, recorded
 

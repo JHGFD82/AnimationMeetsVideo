@@ -34,7 +34,7 @@ import Testing
     private func analysis(holdingFirstWriteWith gate: Gate) -> AssetAnalysis {
         let analysis = AssetAnalysis()
         let first = Mutex(0)
-        analysis.backend.scoreFrames = { _, _ in ChangeScoreTrack(timescale: 600, times: [0], scores: [7]) }
+        analysis.backend.scoreFrames = { _, _ in ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 7]) }
         analysis.backend.captureReference = { _, _ in throw NSError(domain: "test", code: 1) }
         analysis.backend.capturePictures = { _, _, _ in ReferenceThumbnails(frames: []) }
         analysis.backend.detectBeats = { _, _ in BeatTrack(timescale: 1000, times: [100, 600], beatsPerMinute: 120) }
@@ -77,7 +77,7 @@ import Testing
         _ = try await save.value
         try await settle { analysis.progress.isEmpty }
         #expect(exists(package.appending(path: ProjectStore.projectFileName)))
-        #expect(ProjectStore.readChangeScores(for: id, in: package)?.scores == [7])
+        #expect(ProjectStore.readChangeScores(for: id, in: package)?.scores == [0, 7])
     }
 
     @Test func aDeletionWaitsForTheWriteBeforeItSoTheFileStaysGone() async throws {
@@ -118,7 +118,7 @@ import Testing
         analysis.backend.detectBeats = { _, _ in .none() }
         // Only `scored` has anything left to analyze, so its write is the held one.
         analysis.reset(
-            tracks: [droppedBeats: ChangeScoreTrack(timescale: 600, times: [0], scores: [1])],
+            tracks: [droppedBeats: ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1])],
             thumbnailed: [droppedBeats],
             beats: [droppedBeats: .none()],
             sources: AnalysisSources(scores: [droppedBeats: stamp], beats: [droppedBeats: stamp]),
@@ -146,7 +146,7 @@ import Testing
         // Everything queued before the copy had happened when it was made.
         #expect(ProjectStore.readBeats(for: droppedBeats, in: source) == nil)
         #expect(ProjectStore.readBeats(for: droppedBeats, in: destination) == nil)
-        #expect(ProjectStore.readChangeScores(for: scored, in: destination)?.scores == [7])
+        #expect(ProjectStore.readChangeScores(for: scored, in: destination)?.scores == [0, 7])
     }
 
     @Test func markingBackupsSeenWaitsForWhatIsAlreadyQueued() async throws {

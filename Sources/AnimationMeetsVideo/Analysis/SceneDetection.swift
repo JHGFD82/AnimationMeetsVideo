@@ -72,6 +72,29 @@ struct ChangeScoreTrack: Equatable, Sendable {
         for _ in 0..<count { times.append(try read(Int64.self)) }
         let scores = [UInt8](data[(data.startIndex + offset)...])
         self.init(timescale: timescale, times: times, scores: scores)
+        try validate()
+    }
+
+    /// Checks the track against its documented format, so nothing downstream
+    /// has to cope with a malformed one:
+    /// - `timescale` is positive;
+    /// - frame times are not negative and strictly increase (a frame whose
+    ///   time repeats or goes back is an error, not something to sort away);
+    /// - the first frame has no previous frame, so its score is 0.
+    /// Every score value, 0 to 255, is valid. An empty track is valid.
+    func validate() throws {
+        guard timescale > 0 else { throw ChangeScoreTrackError.invalid("The time scale isn't positive.") }
+        guard times.count == scores.count else { throw ChangeScoreTrackError.invalid("Frames and scores don't match.") }
+        guard let first = times.first else { return }
+        guard first >= 0 else { throw ChangeScoreTrackError.invalid("A frame time is negative.") }
+        for index in 1..<max(times.count, 1) where times[index] <= times[index - 1] {
+            throw ChangeScoreTrackError.invalid(
+                times[index] == times[index - 1]
+                    ? "Two frames have the same time."
+                    : "Frame times don't increase."
+            )
+        }
+        guard scores[0] == 0 else { throw ChangeScoreTrackError.invalid("The first frame has a score.") }
     }
 }
 
@@ -79,9 +102,12 @@ enum ChangeScoreTrackError: LocalizedError {
     case notAScoreFile
     case unsupportedVersion(UInt32)
     case truncated
+    /// The frames or scores break the format (see `ChangeScoreTrack.validate`).
+    case invalid(String)
 
     var errorDescription: String? {
         switch self {
+        case .invalid(let reason): "The scene-change data isn't valid: \(reason)"
         case .notAScoreFile: "This isn't a scene-change data file."
         case .unsupportedVersion(let version): "Scene-change data version \(version) isn't supported."
         case .truncated: "The scene-change data file is damaged."

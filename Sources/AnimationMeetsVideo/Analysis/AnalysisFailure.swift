@@ -72,6 +72,8 @@ struct AnalysisFailure: Equatable, Sendable {
              BeatDetector.DetectionError.readerFailed(let reason, let underlying):
             if let underlying { return kind(of: underlying) }
             return reason.contains("unsupported") ? .unsupportedMedia : .other
+        case is ChangeScoreTrackError:
+            return .corruptMedia
         default:
             break
         }

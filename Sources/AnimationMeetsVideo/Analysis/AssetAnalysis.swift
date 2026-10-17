@@ -828,7 +828,11 @@ final class AssetAnalysis {
         if job.wantsScores {
             let proceed = await runStage(
                 .scenes, lease: lease, file: job.file, url: job.url, observed: seen.stamp,
-                work: { [backend] progress in try await backend.scoreFrames(job.url, progress) },
+                work: { [backend] progress in
+                    let track = try await backend.scoreFrames(job.url, progress)
+                    try track.validate()
+                    return track
+                },
                 commit: { track in
                     tracks[id] = track
                     scoreSources[id] = source
