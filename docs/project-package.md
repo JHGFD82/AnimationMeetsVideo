@@ -8,7 +8,10 @@ signature.bin` holds each video's change scores, `reference.json` and
 `audio.bin` hold the metadata snapshot and audio envelope captured at import,
 and `project.json` holds scene edits (see [scene-cuts.md](scene-cuts.md)).
 `thumbs/` holds reference pictures. `beats.bin` holds detected beats (see
-[beat-detection.md](beat-detection.md)). The render cache is implemented (see [rendering.md](rendering.md)). Not yet implemented: dense reference frames, a list of backups to restore from (copy one over
+[beat-detection.md](beat-detection.md)); the beats the person confirmed
+are the person's work, so they are in `project.json`, as an asset's
+`beatMap`, written only once it has a section (see
+[beat-matching.md](beat-matching.md#saving)). The render cache is implemented (see [rendering.md](rendering.md)). Not yet implemented: dense reference frames, a list of backups to restore from (copy one over
 `project.json` by hand for now).
 Step 4 is implemented (see [media-replacement.md](media-replacement.md)):
 `project.json` stores each asset's alignment offset, earlier file paths, the

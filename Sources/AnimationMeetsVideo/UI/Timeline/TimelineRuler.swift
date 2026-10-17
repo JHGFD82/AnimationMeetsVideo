@@ -153,11 +153,15 @@ struct RulerTicks: Equatable {
 // layers now — see `PlayheadRail`.
 
 /// Beat ticks in the ruler and faint lines down through the layers, for the
-/// beats of the one layer chosen in the view options. Like the ruler's
-/// ticks, beats are grouped when zoomed out: only every 2nd, 4th, 8th…
-/// beat is drawn once they would crowd closer than `minimumSpacing`.
+/// beats of the one layer chosen in the view options. Confirmed beats are
+/// solid, with taller ticks on downbeats; detected beats nobody has
+/// confirmed are dimmer and dashed. Like the ruler's ticks, beats are
+/// grouped when zoomed out, once they would crowd closer than
+/// `minimumSpacing`: confirmed beats show only downbeats, then every 2nd,
+/// 4th… measure, and detected beats, which have no measures, every 2nd,
+/// 4th… beat.
 struct BeatMarkerOverlay: View {
-    let markers: [CMTime]
+    let markers: [BeatMarker]
     let viewport: TimelineViewport
     let rulerHeight: CGFloat
     let height: CGFloat
@@ -179,32 +183,61 @@ struct BeatMarkerOverlay: View {
         return stride
     }
 
-    /// The markers drawn at this zoom: every `beatsPerMarker`-th, counted
-    /// from the first. Snapping uses only these, so it never catches on a
-    /// beat that isn't shown.
-    nonisolated static func drawnMarkers(_ markers: [CMTime], pixelsPerSecond: CGFloat) -> [CMTime] {
-        let stride = beatsPerMarker(markers, pixelsPerSecond: pixelsPerSecond)
-        guard stride > 1 else { return markers }
-        return Swift.stride(from: 0, to: markers.count, by: stride).map { markers[$0] }
+    /// The markers drawn at this zoom, in time order. Snapping uses only
+    /// these, so it never catches on a beat that isn't shown.
+    nonisolated static func drawnMarkers(_ markers: [BeatMarker], pixelsPerSecond: CGFloat) -> [BeatMarker] {
+        let confirmed = markers.filter(\.isConfirmed)
+        let detected = markers.filter { !$0.isConfirmed }
+        let drawn = measuresThinned(confirmed, pixelsPerSecond: pixelsPerSecond)
+            + everyNth(detected, beatsPerMarker(detected.map(\.time), pixelsPerSecond: pixelsPerSecond))
+        guard !confirmed.isEmpty, !detected.isEmpty else { return drawn }
+        return drawn.sorted { CMTimeCompare($0.time, $1.time) < 0 }
+    }
+
+    /// Every beat while there is room, then only downbeats, then the
+    /// downbeats of every 2nd, 4th… measure, counted from the first.
+    private nonisolated static func measuresThinned(_ beats: [BeatMarker], pixelsPerSecond: CGFloat) -> [BeatMarker] {
+        guard beatsPerMarker(beats.map(\.time), pixelsPerSecond: pixelsPerSecond) > 1 else { return beats }
+        let downbeats = beats.filter(\.isDownbeat)
+        return everyNth(downbeats, beatsPerMarker(downbeats.map(\.time), pixelsPerSecond: pixelsPerSecond))
+    }
+
+    private nonisolated static func everyNth(_ beats: [BeatMarker], _ stride: Int) -> [BeatMarker] {
+        guard stride > 1 else { return beats }
+        return Swift.stride(from: 0, to: beats.count, by: stride).map { beats[$0] }
     }
 
     var body: some View {
         let visible = viewport.visibleSeconds
-        let stride = Self.beatsPerMarker(markers, pixelsPerSecond: viewport.pixelsPerSecond)
-        let first = markers.lowerBound(of: visible.lowerBound - 1) { $0.seconds }
-        let last = markers.lowerBound(of: visible.upperBound + 1) { $0.seconds }
+        let drawn = Self.drawnMarkers(markers, pixelsPerSecond: viewport.pixelsPerSecond)
+        let first = drawn.lowerBound(of: visible.lowerBound - 1) { $0.time.seconds }
+        let last = drawn.lowerBound(of: visible.upperBound + 1) { $0.time.seconds }
         Canvas { context, _ in
-            var ticks = Path()
-            var lines = Path()
-            for index in Swift.stride(from: (first + stride - 1) / stride * stride, to: last, by: stride) {
-                let x = viewport.x(atSeconds: markers[index].seconds)
-                ticks.move(to: CGPoint(x: x, y: rulerHeight - 9))
-                ticks.addLine(to: CGPoint(x: x, y: rulerHeight))
-                lines.move(to: CGPoint(x: x, y: rulerHeight))
-                lines.addLine(to: CGPoint(x: x, y: height))
+            var ticks = Path(), downbeatTicks = Path(), detectedTicks = Path()
+            var lines = Path(), downbeatLines = Path(), detectedLines = Path()
+            for marker in drawn[first..<max(first, last)] {
+                let x = viewport.x(atSeconds: marker.time.seconds)
+                let tickLength: CGFloat = marker.isDownbeat ? 14 : 9
+                func add(tick: inout Path, line: inout Path) {
+                    tick.move(to: CGPoint(x: x, y: rulerHeight - tickLength))
+                    tick.addLine(to: CGPoint(x: x, y: rulerHeight))
+                    line.move(to: CGPoint(x: x, y: rulerHeight))
+                    line.addLine(to: CGPoint(x: x, y: height))
+                }
+                if !marker.isConfirmed {
+                    add(tick: &detectedTicks, line: &detectedLines)
+                } else if marker.isDownbeat {
+                    add(tick: &downbeatTicks, line: &downbeatLines)
+                } else {
+                    add(tick: &ticks, line: &lines)
+                }
             }
+            context.stroke(detectedLines, with: .color(Design.beat.opacity(0.14)), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            context.stroke(detectedTicks, with: .color(Design.beat.opacity(0.55)), style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
             context.stroke(lines, with: .color(Design.beat.opacity(0.2)), lineWidth: 1)
             context.stroke(ticks, with: .color(Design.beat), lineWidth: 1.5)
+            context.stroke(downbeatLines, with: .color(Design.beat.opacity(0.35)), lineWidth: 1)
+            context.stroke(downbeatTicks, with: .color(Design.beat), lineWidth: 2)
         }
         .frame(width: viewport.width, height: height)
         .clipped()

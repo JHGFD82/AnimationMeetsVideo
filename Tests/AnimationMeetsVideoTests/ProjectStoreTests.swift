@@ -229,6 +229,27 @@ private struct Sandbox {
         #expect(json.contains("\"kind\" : \"transform\""))
     }
 
+    @Test func roundTripKeepsTheBeatMap() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, assetID) = sandbox.makeProject()
+        let beat = CMTime(value: 52_917, timescale: 44_100)
+        let section = BeatSection(
+            kind: .consistent, start: .zero, end: CMTime(seconds: 10, preferredTimescale: 600),
+            beatsPerMeasure: 6, steadiness: .intent, isConfirmed: true,
+            beats: [MappedBeat(time: beat, position: 1, isPinned: true), MappedBeat(time: CMTimeMultiply(beat, multiplier: 2), position: 2)]
+        )
+        let ramp = BeatSection(kind: .ramp, start: CMTime(seconds: 10, preferredTimescale: 600), end: CMTime(seconds: 12, preferredTimescale: 600))
+        let map = BeatMap(sections: [section, ramp], usesSections: true)
+        project.clips[0].beatMap = map
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.project.mediaClip(id: assetID)?.beatMap == map)
+        // Pinned is written only where it is true.
+        let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(json.components(separatedBy: "\"pinned\"").count == 2)
+    }
+
     @Test func roundTripKeepsTheCanvasMargin() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }

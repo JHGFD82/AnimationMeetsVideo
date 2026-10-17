@@ -136,15 +136,29 @@ timeline's view options; they are one pair of settings, remembered across
 launches. The pitch slider stops at 2000 Hz, so the downbeat goes no higher
 than 4000 Hz.
 
+## Saving
+
+An asset's `beatMap` in `project.json`, left out while it has no section:
+`usesSections` (only when true) and `sections`, each with its `id`, `kind`
+(`consistent`, `ramp` or `none`), `start` and `end`, `beatsPerMeasure`,
+`steadiness` (`click` or `intent`), `confirmed`, and `beats`. Each beat has
+a `time`, its `position` and, only when true, `pinned`. Times are exact,
+so a beat nudged by a sample stays on that sample. Loading sorts the
+sections and the beats, drops a beat that falls on another's time (keeping
+the pinned one), and wraps positions into the measure.
+
 ## On the timeline
 
-- The Beat Markers picker lists only Music layers.
-- Confirmed beats are drawn solid; detected beats that haven't been
-  confirmed are drawn dimmer and dashed.
+- The Beat Markers picker lists only Music layers. **Built.**
+- Once any section of a song is filled, its clips show the beat map's
+  beats instead of the detected ones (`EditingProject.beatMarkers`). They
+  are drawn solid, with taller ticks on downbeats, and the click plays
+  downbeats an octave up. Detected beats that haven't been confirmed are
+  drawn dimmer and dashed. **Built.**
 - Zooming out shows fewer beats: every beat while they are at least 10
   points apart, then only downbeats, then the first beat of every 2nd,
   4th… measure. Snapping uses what is drawn. Detected beats have no
-  measures, so they keep thinning by powers of two as before.
+  measures, so they keep thinning by powers of two as before. **Built.**
 
 ## Building it
 
@@ -152,8 +166,9 @@ than 4000 Hz.
 2. Tick volume, and the downbeat an octave up. **Built** in
    `BeatClickPlayer`; nothing marks downbeats until the beat map exists.
 3. The beat map: model, saving, undo, and timeline markers from it.
+   **Built** (`BeatMap`, on `MediaClip`, so undo comes with project edits).
 4. Filling sections: grid, refining, ramps, reanalyze. Pure functions over
    an onset curve, unit tested.
 5. The beat match panel: waveform, transport, anchors and nudging, beat
    editing, then sections.
-6. Timeline thinning by measures, and the Music-only picker.
+6. Timeline thinning by measures, and the Music-only picker. **Built.**

@@ -48,10 +48,26 @@ import Testing
     }
 
     @Test func onlyDrawnBeatsAreOffered() {
-        #expect(BeatMarkerOverlay.drawnMarkers(beats, pixelsPerSecond: 40) == beats)
-        let drawn = BeatMarkerOverlay.drawnMarkers(beats, pixelsPerSecond: 5)
+        let detected = beats.map { BeatMarker(time: $0) }
+        #expect(BeatMarkerOverlay.drawnMarkers(detected, pixelsPerSecond: 40) == detected)
+        let drawn = BeatMarkerOverlay.drawnMarkers(detected, pixelsPerSecond: 5).map(\.time)
         #expect(drawn.count == 60)
         #expect(drawn.prefix(2) == [.zero, CMTime(value: 4, timescale: 2)])
+    }
+
+    @Test func confirmedBeatsThinToDownbeatsThenMeasures() {
+        // Three beats a measure, half a second apart.
+        let confirmed = beats.enumerated().map { BeatMarker(time: $1, position: $0 % 3 + 1) }
+        #expect(BeatMarkerOverlay.drawnMarkers(confirmed, pixelsPerSecond: 40) == confirmed)
+        // 7.5 points between beats, 22.5 between downbeats.
+        let downbeats: [BeatMarker] = BeatMarkerOverlay.drawnMarkers(confirmed, pixelsPerSecond: 15)
+        #expect(downbeats.count == 80)
+        let allDownbeats = downbeats.allSatisfy { $0.isDownbeat }
+        #expect(allDownbeats)
+        // 5.1 points between downbeats: every 2nd measure.
+        let measures: [BeatMarker] = BeatMarkerOverlay.drawnMarkers(confirmed, pixelsPerSecond: 3.4)
+        #expect(measures.count == 40)
+        #expect(measures[1].time == CMTime(value: 6, timescale: 2))
     }
 }
 

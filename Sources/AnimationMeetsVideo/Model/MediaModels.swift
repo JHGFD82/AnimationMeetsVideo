@@ -621,6 +621,9 @@ struct MediaClip: Identifiable, Equatable {
     /// Hand-made changes to this asset's scene list. Detected cuts are not
     /// stored; they are recomputed from the saved change scores.
     var sceneEdits = SceneEdits()
+    /// The beats as the person confirmed them, in original time. Detected
+    /// beats are not stored here; they are a cache in the package.
+    var beatMap = BeatMap()
     /// How much later a moment is in the current file than in the original:
     /// original time `t` is at `t + alignmentOffset` in the file. Trims,
     /// scenes and cuts stay in original time; this is added when reading.

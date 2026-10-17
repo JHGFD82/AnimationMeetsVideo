@@ -125,8 +125,8 @@ its assets' offsets change, not on every playback tick or scroll.
 
 More than one layer can have audio with beats, but showing all of them would
 be unreadable. The view options popover (the sliders button on the timeline)
-has a **Beat Markers** picker listing the layers whose clips have beats, plus
-None.
+has a **Beat Markers** picker listing the Music layers whose clips have
+beats, plus None.
 
 The choice is just a layer ID held by the timeline view. The choices are
 the layers for which `EditingProject.layerHasBeats(_:tracks:)` holds,
@@ -140,9 +140,12 @@ it **drops out of the picker and its markers disappear**, with no cleanup
 step. The choice is view state and is not saved with the project.
 
 Markers are drawn as orange ticks in the ruler with faint lines down through
-the layers, under the playhead and ignoring the mouse. When zoomed out so
-far that they would be closer than 10 points, only every 2nd, 4th, 8th…
-beat is drawn, counted from the track's first beat (see
+the layers, under the playhead and ignoring the mouse. Detected beats are
+drawn dimmer and dashed, since nobody has confirmed them; once the song is
+beat matched its confirmed beats replace them (see
+[beat-matching.md](beat-matching.md#on-the-timeline)). When zoomed out so
+far that detected beats would be closer than 10 points, only every 2nd,
+4th, 8th… beat is drawn, counted from the track's first beat (see
 [timeline.md](timeline.md)).
 
 With snapping on (N), clip edges, the blade and the playhead snap to the

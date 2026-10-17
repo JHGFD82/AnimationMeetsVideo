@@ -93,7 +93,7 @@ struct TimelineView: View {
     /// The chosen layer's markers, worked out again only when what they
     /// depend on changes. The view's body runs on every playback tick and
     /// scroll, and a long song has thousands of beats to collect and sort.
-    @State private var beatMarkers: [CMTime] = []
+    @State private var beatMarkers: [BeatMarker] = []
     /// The layer whose header is being dragged, and how far.
     @State private var layerDrag: (id: UUID, dy: CGFloat)?
     /// The layer of a clip being dragged, drawn above the others so the
@@ -222,9 +222,10 @@ struct TimelineView: View {
         layer.kind.isAudio && project.layerPlaysAudio(layer)
     }
 
+    /// Only music is analyzed, so only Music layers are offered.
     private var beatLayerChoices: [(id: UUID, name: String)] {
         timeline.layers
-            .filter { project.layerHasBeats($0, tracks: beatTracks) }
+            .filter { $0.kind == .music && project.layerHasBeats($0, tracks: beatTracks) }
             .map { (id: $0.id, name: project.displayName(of: $0, in: timeline)) }
     }
 
@@ -233,6 +234,7 @@ struct TimelineView: View {
         var layer: TimelineLayer?
         var tracks: [UUID: BeatTrack] = [:]
         var offsets: [UUID: CMTime] = [:]
+        var maps: [UUID: BeatMap] = [:]
     }
 
     private var beatMarkerInputs: BeatMarkerInputs {
@@ -242,6 +244,7 @@ struct TimelineView: View {
             guard case .media(let assetID) = clip.source else { continue }
             inputs.tracks[assetID] = beatTracks[assetID]
             inputs.offsets[assetID] = project.mediaClip(id: assetID)?.alignmentOffset
+            inputs.maps[assetID] = project.mediaClip(id: assetID)?.beatMap
         }
         return inputs
     }
@@ -544,7 +547,7 @@ struct TimelineView: View {
             beatMarkers = inputs.layer.map { project.beatMarkers(in: $0, tracks: inputs.tracks) } ?? []
         }
         .onChange(of: beatMarkers, initial: true) { _, markers in
-            beatClicks.beats = markers.map { BeatClickPlayer.Tick(time: $0) }
+            beatClicks.beats = markers.map { BeatClickPlayer.Tick(time: $0.time, isDownbeat: $0.isDownbeat) }
         }
         .onChange(of: clickOnBeats, initial: true) { _, on in beatClicks.isEnabled = on }
         .onChange(of: beatClickFrequency, initial: true) { _, hertz in beatClicks.frequency = hertz }
@@ -1118,7 +1121,7 @@ struct TimelineView: View {
     }
 
     private func drawnBeats(_ viewport: TimelineViewport) -> [CMTime] {
-        BeatMarkerOverlay.drawnMarkers(beatMarkers, pixelsPerSecond: viewport.pixelsPerSecond)
+        BeatMarkerOverlay.drawnMarkers(beatMarkers, pixelsPerSecond: viewport.pixelsPerSecond).map(\.time)
     }
 
     private func snapTolerance(_ viewport: TimelineViewport) -> CMTime {

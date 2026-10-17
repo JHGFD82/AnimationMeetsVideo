@@ -680,6 +680,7 @@ enum ProjectStore {
                     name: clip.name,
                     path: relativePath(for: clip.url!),
                     sceneEdits: clip.sceneEdits == SceneEdits() ? nil : ProjectFile.SceneEditsEntry(clip.sceneEdits),
+                    beatMap: clip.beatMap.isEmpty ? nil : ProjectFile.BeatMapEntry(clip.beatMap),
                     alignmentOffset: clip.alignmentOffset == .zero ? nil : ProjectFile.TimeEntry(clip.alignmentOffset),
                     originalDuration: clip.originalDuration.map(ProjectFile.TimeEntry.init),
                     previousPaths: clip.previousPaths.isEmpty ? nil : clip.previousPaths,
@@ -753,6 +754,7 @@ enum ProjectStore {
             clip.id = asset.id
             clip.name = asset.name
             clip.sceneEdits = asset.sceneEdits?.edits ?? SceneEdits()
+            clip.beatMap = asset.beatMap?.map ?? BeatMap()
             clip.alignmentOffset = asset.alignmentOffset?.time ?? .zero
             clip.originalDuration = asset.originalDuration?.time
             clip.previousPaths = asset.previousPaths ?? []

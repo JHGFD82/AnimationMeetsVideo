@@ -550,6 +550,66 @@ struct ProjectFile: Codable {
         }
     }
 
+    struct BeatEntry: Codable {
+        var time: TimeEntry
+        var position: Int
+        /// Absent unless the person placed or moved the beat.
+        var pinned: Bool?
+    }
+
+    struct BeatSectionEntry: Codable {
+        var id: UUID
+        var kind: String
+        var start: TimeEntry
+        var end: TimeEntry
+        var beatsPerMeasure: Int
+        var steadiness: String
+        var confirmed: Bool
+        var beats: [BeatEntry]
+
+        init(_ section: BeatSection) {
+            id = section.id
+            kind = section.kind.rawValue
+            start = TimeEntry(section.start)
+            end = TimeEntry(section.end)
+            beatsPerMeasure = section.beatsPerMeasure
+            steadiness = section.steadiness.rawValue
+            confirmed = section.isConfirmed
+            beats = section.beats.map { BeatEntry(time: TimeEntry($0.time), position: $0.position, pinned: $0.isPinned ? true : nil) }
+        }
+
+        /// The shape check has already limited the kind and steadiness to
+        /// known names.
+        var section: BeatSection {
+            var section = BeatSection(
+                id: id, kind: BeatSection.Kind(rawValue: kind) ?? .none, start: start.time, end: end.time,
+                beatsPerMeasure: beatsPerMeasure, steadiness: BeatSection.Steadiness(rawValue: steadiness) ?? .click,
+                isConfirmed: confirmed,
+                beats: beats.map { MappedBeat(time: $0.time.time, position: $0.position, isPinned: $0.pinned ?? false) }
+            )
+            section.normalize()
+            return section
+        }
+    }
+
+    struct BeatMapEntry: Codable {
+        /// Absent unless the person chose to mark sections.
+        var usesSections: Bool?
+        var sections: [BeatSectionEntry]
+
+        init(_ map: BeatMap) {
+            usesSections = map.usesSections ? true : nil
+            sections = map.sections.map(BeatSectionEntry.init)
+        }
+
+        var map: BeatMap {
+            BeatMap(
+                sections: sections.map(\.section).sorted { CMTimeCompare($0.start, $1.start) < 0 },
+                usesSections: usesSections ?? false
+            )
+        }
+    }
+
     struct AssetEntry: Codable {
         var id: UUID
         var name: String
@@ -558,6 +618,8 @@ struct ProjectFile: Codable {
         var path: String
         /// Absent when the person hasn't edited the scene list.
         var sceneEdits: SceneEditsEntry?
+        /// Absent until the person beat matches the asset.
+        var beatMap: BeatMapEntry?
         /// Absent when the file is aligned with the original.
         var alignmentOffset: TimeEntry?
         /// How long the original file was; absent until the asset is replaced.
@@ -744,9 +806,23 @@ extension ProjectFile {
             .required("manualCuts", .array(.time)),
             .required("ignoredCuts", .array(.time)),
         ]))
+        let beatMap = JSONShape.object(object([
+            .optional("usesSections", .bool),
+            .required("sections", .array(.object(object([
+                .required("id", .uuid),
+                .required("kind", .choice(BeatSection.Kind.allCases.map(\.rawValue), noun: "beat section kind")),
+                .required("start", .time), .required("end", .time),
+                .required("beatsPerMeasure", .integer),
+                .required("steadiness", .choice(BeatSection.Steadiness.allCases.map(\.rawValue), noun: "steadiness")),
+                .required("confirmed", .bool),
+                .required("beats", .array(.object(object([
+                    .required("time", .time), .required("position", .integer), .optional("pinned", .bool),
+                ])))),
+            ])))),
+        ]))
         let asset = JSONShape.object(object([
             .required("id", .uuid), .required("name", .string), .required("path", .string),
-            .optional("sceneEdits", sceneEdits), .optional("alignmentOffset", .time), .optional("originalDuration", .time),
+            .optional("sceneEdits", sceneEdits), .optional("beatMap", beatMap), .optional("alignmentOffset", .time), .optional("originalDuration", .time),
             .optional("previousPaths", .array(.string)),
             .optional("fileStamp", .object(object([.required("byteCount", .integer), .optional("modified", .number)]))),
             .optional("referenceForgotten", .bool),

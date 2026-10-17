@@ -480,7 +480,7 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         layer.clips[0].trimEnd = t(2.25)
         layer.clips[0].startOffset = t(10)
 
-        let markers = project.beatMarkers(in: layer, tracks: [asset.id: sample])
+        let markers = project.beatMarkers(in: layer, tracks: [asset.id: sample]).map(\.time)
 
         #expect(markers.map { seconds($0) } == [10.25, 10.75, 11.25])
     }
@@ -496,7 +496,7 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         layer.clips[0].trimEnd = t(2.25)
         layer.clips[0].startOffset = t(10)
 
-        let markers = project.beatMarkers(in: layer, tracks: [asset.id: sample])
+        let markers = project.beatMarkers(in: layer, tracks: [asset.id: sample]).map(\.time)
 
         // File beats 1.5 and 2.0 fall in the file range 1.25..<2.75.
         #expect(markers.map { seconds($0) } == [10.25, 10.75])
@@ -515,7 +515,7 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         second.startOffset = t(0)
         layer.clips.append(second)
 
-        let markers = project.beatMarkers(in: layer, tracks: [asset.id: sample])
+        let markers = project.beatMarkers(in: layer, tracks: [asset.id: sample]).map(\.time)
 
         #expect(markers.map { seconds($0) } == [0, 0.5, 5, 5.5])
     }
