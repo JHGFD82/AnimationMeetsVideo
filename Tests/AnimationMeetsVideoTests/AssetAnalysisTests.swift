@@ -1202,6 +1202,27 @@ final class Gate: @unchecked Sendable {
         #expect(log.everHeldScores.isEmpty)
     }
 
+    @Test func aFileThatVanishesWhileItIsReadWaitsToComeBack() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1]) }
+        // There when the job starts, gone once it has been read.
+        let calls = Mutex(0), back = Mutex(0)
+        analysis.backend.observeFile = { _ in
+            AssetAnalysis.FileObservation(exists: calls.increment() == 1 || back.value == 1, stamp: self.stampA)
+        }
+        analysis.update(with: video)
+        try await settle { calls.value >= 2 && analysis.progress.isEmpty }
+
+        #expect(analysis.tracks[id] == nil)
+        // Missing, not changed: it comes back when files may be back.
+        #expect(analysis.changedFiles[id] == nil)
+        _ = back.increment()
+        analysis.retryUnavailable(in: video)
+        try await settle { analysis.tracks[id] != nil && analysis.progress.isEmpty }
+    }
+
     @Test func savedResultsAreNotUsedForAFileThatChangedOutsideTheApp() async throws {
         let package = try makePackage()
         defer { try? FileManager.default.removeItem(at: package) }

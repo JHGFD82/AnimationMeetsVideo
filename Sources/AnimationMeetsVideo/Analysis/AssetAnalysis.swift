@@ -252,7 +252,8 @@ final class AssetAnalysis {
     private struct Owner {
         var token: Int
         var input: Input
-        var wantsReference: Bool
+        /// Whether the job captures anything from the original.
+        var capturesOriginal: Bool
     }
 
     private struct Job {
@@ -274,7 +275,7 @@ final class AssetAnalysis {
     /// is replaced at once, without waiting for anyone to call `update`.
     private func stillValid(_ lease: Lease) -> Bool {
         guard isCurrent(lease) else { return false }
-        guard let project = projectSource?(), let owner = owners[lease.id] else { return true }
+        guard let project = projectSource?() ?? latestProject, let owner = owners[lease.id] else { return true }
         let now = project.clips.first { $0.id == lease.id }.map(Self.input(of:))
         if now == owner.input { return true }
         update(with: project)
@@ -473,7 +474,7 @@ final class AssetAnalysis {
             guard wantsScores || wantsReference || wantsThumbnails || wantsBeats else { continue }
             nextToken += 1
             let lease = Lease(generation: generation, id: clip.id, token: nextToken)
-            owners[clip.id] = Owner(token: nextToken, input: input, wantsReference: wantsReference)
+            owners[clip.id] = Owner(token: nextToken, input: input, capturesOriginal: wantsReference || wantsThumbnails)
             progress[clip.id] = 0
             waiting.append(Job(
                 lease: lease, url: url, file: file,
@@ -508,6 +509,7 @@ final class AssetAnalysis {
         let earlier = invalidationTasks.filter { $0.key.id == id }.map(\.value.task)
         Task {
             for task in earlier { await task.value }
+            guard generation == expectedGeneration, loading[id] == token else { return }
             var saved = await backend.readSaved(package, id, identity, includingReference)
             // Results fit the file the project accepted; if the file on disk
             // is not that one they say nothing about it.
@@ -662,7 +664,9 @@ final class AssetAnalysis {
     }
 
     /// Analyzes again what was skipped because its file was gone, for when
-    /// files may have come back.
+    /// files may have come back. Files that had changed outside the app are
+    /// looked at again too: one that was put back may be the accepted file
+    /// again, and a job checks the file on disk before using it anyway.
     func retryUnavailable(in project: EditingProject) {
         guard !unavailable.isEmpty else { return }
         unavailable = [:]
@@ -735,20 +739,28 @@ final class AssetAnalysis {
     /// Returns whether the stage was queued to be tried.
     @discardableResult
     func retry(_ stage: Stage, for id: UUID, in project: EditingProject) -> Bool {
-        guard let clip = project.clips.first(where: { $0.id == id }) else { return false }
-        if stage == .reference || stage == .pictures, !Self.input(of: clip).canCaptureReference { return false }
-        stageFailures[AssetStage(id: id, stage: stage)] = nil
-        unavailable[id] = nil
-        changedFiles[id] = nil
+        guard prepareRetry(of: [stage], for: id, in: project) else { return false }
         update(with: project)
         return true
     }
 
     /// Tries every failed stage of an asset again.
     func retryFailures(for id: UUID, in project: EditingProject) {
-        for stage in [Stage.reference, .scenes, .pictures, .beats] where failure(stage, for: id) != nil {
-            retry(stage, for: id, in: project)
-        }
+        let failed = [Stage.reference, .scenes, .pictures, .beats].filter { failure($0, for: id) != nil }
+        if prepareRetry(of: failed, for: id, in: project) { update(with: project) }
+    }
+
+    /// Clears what keeps `stages` from being tried again, as `retry`
+    /// describes. Returns whether any of them may be.
+    private func prepareRetry(of stages: [Stage], for id: UUID, in project: EditingProject) -> Bool {
+        guard let clip = project.clips.first(where: { $0.id == id }) else { return false }
+        let canCapture = Self.input(of: clip).canCaptureReference
+        let allowed = stages.filter { canCapture || ($0 != .reference && $0 != .pictures) }
+        guard !allowed.isEmpty else { return false }
+        for stage in allowed { stageFailures[AssetStage(id: id, stage: stage)] = nil }
+        unavailable[id] = nil
+        changedFiles[id] = nil
+        return true
     }
 
     /// For a person's explicit "re-detect": the stored score goes, from
@@ -762,6 +774,9 @@ final class AssetAnalysis {
         // A read already under way may carry the old score; it is dropped,
         // and the next one is queued behind the retirement.
         loading[id] = nil
+        // Whatever kept the asset from being tried is looked at afresh.
+        unavailable[id] = nil
+        changedFiles[id] = nil
         discardResult(.scores, of: id)
         update(with: project)
     }
@@ -914,7 +929,7 @@ final class AssetAnalysis {
             dirtyPictures[id] = nil
             heldPictures[id] = nil
             thumbnailed.remove(id)
-            if owners[id]?.wantsReference == true {
+            if owners[id]?.capturesOriginal == true {
                 revoke(id)
                 revoked = true
             }
@@ -1035,7 +1050,7 @@ final class AssetAnalysis {
     /// the lease is checked again before the next stage. A failure is recorded
     /// with the file it happened on; a file that vanished means the asset is
     /// unavailable rather than failed. Returns whether the job should go on:
-    /// false once it was replaced or cancelled.
+    /// false once it was replaced or cancelled, or the file is gone.
     private func runStage<Result: Sendable>(
         _ stage: Stage,
         lease: Lease,
@@ -1058,6 +1073,11 @@ final class AssetAnalysis {
             // result for neither version.
             let after = await backend.observeFile(url)
             guard stillValid(lease), !Task.isCancelled else { return false }
+            // Gone meanwhile: offline, like a file missing from the start.
+            guard after.exists else {
+                unavailable[lease.id] = file
+                return false
+            }
             if after.stamp != observed {
                 changedFiles[lease.id] = ChangedFile(accepted: file.stamp, observed: after.stamp)
                 return false
@@ -1070,8 +1090,10 @@ final class AssetAnalysis {
             // from anywhere else is recorded rather than retried, so it
             // can't loop.
             if error is CancellationError, Task.isCancelled { return false }
-            record(AnalysisFailure(stage: stage, error: error, file: file), for: lease.id)
-            return true
+            let failure = AnalysisFailure(stage: stage, error: error, file: file)
+            record(failure, for: lease.id)
+            // Later stages would only find the file missing too.
+            return failure.kind != .missingFile
         }
     }
 
