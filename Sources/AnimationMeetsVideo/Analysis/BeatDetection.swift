@@ -72,15 +72,28 @@ struct BeatTrack: Equatable, Sendable {
     }
 
     /// Beats from `start` up to but not including `end`, in asset time.
+    /// Empty when either time isn't a number or the range is reversed.
     func beats(from start: CMTime, to end: CMTime) -> [CMTime] {
-        let first = firstIndex(atOrAfter: start.convertScale(timescale, method: .roundTowardZero).value)
-        let last = firstIndex(atOrAfter: end.convertScale(timescale, method: .roundTowardZero).value)
-        guard first < last else { return [] }
-        return times[first..<last].map { CMTime(value: $0, timescale: timescale) }
+        indices(from: start, to: end).map { CMTime(value: times[$0], timescale: timescale) }
     }
 
-    private func firstIndex(atOrAfter value: Int64) -> Int {
-        times.lowerBound(of: value) { $0 }
+    /// The indices of the beats in `start..<end`. The bounds are compared
+    /// exactly rather than converted to `timescale`, which would round a
+    /// bound that falls between two ticks onto one of them and so let in a
+    /// beat just before `start` or leave out one just before `end`.
+    private func indices(from start: CMTime, to end: CMTime) -> Range<Int> {
+        guard Self.isUsable(start), Self.isUsable(end), CMTimeCompare(start, end) < 0 else { return 0..<0 }
+        let first = firstIndex(atOrAfter: start)
+        let last = firstIndex(atOrAfter: end)
+        return first < last ? first..<last : 0..<0
+    }
+
+    private static func isUsable(_ time: CMTime) -> Bool {
+        time.isNumeric && time.timescale > 0
+    }
+
+    private func firstIndex(atOrAfter time: CMTime) -> Int {
+        times.lowerBound(of: time) { CMTime(value: $0, timescale: timescale) }
     }
 
     // MARK: Serialization

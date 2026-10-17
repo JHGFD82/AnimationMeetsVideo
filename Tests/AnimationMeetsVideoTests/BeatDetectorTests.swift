@@ -202,6 +202,43 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         #expect(sample.beats(from: CMTime(seconds: 3, preferredTimescale: 600), to: CMTime(seconds: 4, preferredTimescale: 600)).isEmpty)
     }
 
+    @Test func rangeBoundsBetweenTwoTicksAreNotRoundedOntoEither() {
+        // 500.5 ms leaves out the beat at 500 ms; 1500.5 ms keeps the one at 1500 ms.
+        let beats = sample.beats(from: CMTime(value: 1001, timescale: 2000), to: CMTime(value: 3001, timescale: 2000))
+        #expect(beats.map(seconds) == [1.0, 1.5])
+        // 499.5 ms keeps 500 ms; 1499.5 ms leaves out 1500 ms.
+        let earlier = sample.beats(from: CMTime(value: 999, timescale: 2000), to: CMTime(value: 2999, timescale: 2000))
+        #expect(earlier.map(seconds) == [0.5, 1.0])
+    }
+
+    @Test func beatsAtEitherEndOfTheRange() {
+        let exact = sample.beats(from: CMTime(value: 1, timescale: 2), to: CMTime(value: 3, timescale: 2))
+        #expect(exact.map(seconds) == [0.5, 1.0])
+        let all = sample.beats(from: .zero, to: CMTime(value: 2001, timescale: 1000))
+        #expect(all.count == 5)
+        #expect(sample.beats(from: .zero, to: .zero).isEmpty)
+    }
+
+    @Test func negativeTimesAreFoundToo() throws {
+        let track = try BeatTrack(timescale: 1000, times: [-1000, -500, 0, 500], beatsPerMinute: 120)
+        // -500.5 ms up to -0.5 ms: the beats at -500 ms only.
+        let beats = track.beats(from: CMTime(value: -1001, timescale: 2000), to: CMTime(value: -1, timescale: 2000))
+        #expect(beats.map(seconds) == [-0.5])
+        // -999.5 ms up to 0.5 ms: -500 and 0.
+        let more = track.beats(from: CMTime(value: -1999, timescale: 2000), to: CMTime(value: 1, timescale: 2000))
+        #expect(more.map(seconds) == [-0.5, 0])
+    }
+
+    @Test func unusableRangesHaveNoBeats() {
+        let end = CMTime(value: 3, timescale: 2)
+        #expect(sample.beats(from: end, to: .zero).isEmpty, "reversed")
+        #expect(sample.beats(from: .invalid, to: end).isEmpty)
+        #expect(sample.beats(from: .zero, to: .positiveInfinity).isEmpty)
+        #expect(sample.beats(from: .negativeInfinity, to: end).isEmpty)
+        #expect(sample.beats(from: .zero, to: .indefinite).isEmpty)
+        #expect(sample.beats(from: CMTime(value: 0, timescale: 0), to: end).isEmpty)
+    }
+
     @Test func encodingRoundTrips() throws {
         let decoded = try BeatTrack(decoding: sample.encoded())
         #expect(decoded.times == sample.times)
