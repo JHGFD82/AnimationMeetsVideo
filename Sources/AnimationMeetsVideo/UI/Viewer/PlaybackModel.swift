@@ -225,7 +225,7 @@ final class PlaybackModel {
     private func refreshStill() {
         stillTask?.cancel()
         guard !isPlaying, !isSeeking, quality == .auto, level != .full,
-              let composed, let videoComposition = composed.videoComposition,
+              let composed, composed.hasPictures, let videoComposition = composed.videoComposition,
               player.currentItem != nil
         else {
             clearStill()

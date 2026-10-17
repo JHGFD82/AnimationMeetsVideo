@@ -90,7 +90,9 @@ enum EffectThumbnails {
             // No picture of its own.
             return nil
         case .timeline(let id):
-            guard let composed = try? await CompositionExporter.buildComposedTimeline(for: project, timelineID: id, forPreview: true) else {
+            guard let composed = try? await CompositionExporter.buildComposedTimeline(for: project, timelineID: id, forPreview: true),
+                  composed.hasPictures
+            else {
                 return nil
             }
             let generator = AVAssetImageGenerator(asset: composed.composition)

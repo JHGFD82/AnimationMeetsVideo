@@ -62,11 +62,18 @@ struct ComposedTimeline: @unchecked Sendable {
         audioTracks.isEmpty ? nil : AudioLevelTap.audioMix(for: audioTracks, curves: curves, meter: meter)
     }
 
+    /// Whether the composition has a video track to draw. A timeline of
+    /// sound alone has none, and asking `AVAssetImageGenerator` for a frame
+    /// of it raises an Objective-C exception that ends the app, so every
+    /// frame request checks this first.
+    var hasPictures: Bool { !composition.tracks(withMediaType: .video).isEmpty }
+
     /// The video composition drawn at `scale` of the timeline's frame size,
     /// for the viewer. Only one built for preview can be drawn smaller: its
     /// instructions keep the frame size and scale into whatever size the
     /// player asks for.
     func videoComposition(scaledBy scale: Double) -> AVVideoComposition? {
+        guard hasPictures else { return nil }
         guard let videoComposition, scale != 1,
               let scaled = videoComposition.mutableCopy() as? AVMutableVideoComposition
         else {
