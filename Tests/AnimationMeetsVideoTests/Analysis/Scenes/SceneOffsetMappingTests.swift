@@ -103,7 +103,7 @@ import Testing
         #expect(coverage.scenes.isEmpty)
         #expect(coverage.hasNoOverlap)
         #expect(coverage.uncovered == [range(0, 10)])
-        #expect(BrowserPanel.coverageNote(coverage, replaced: true) != nil)
+        #expect(ClipsTab.coverageNote(coverage, replaced: true) != nil)
     }
 
     @Test func aReplacementBeforeTheOriginalHasNoScenesEither() throws {

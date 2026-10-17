@@ -27,16 +27,24 @@ struct BrowserPanel: View {
     let replacement: MediaReplacementController
     let packageURL: URL?
     @State private var importError: String?
-    @State private var selectedScenes: Set<SceneKey> = []
-    @State private var expandedAssets: Set<UUID> = []
-    @State private var sensitivityTarget: SensitivityTarget?
-    @State private var previewTarget: ScenePreviewTarget?
     @State private var presets = PresetsModel()
+    @State private var showingSettings = false
     @AppStorage("browserTab") private var tab = BrowserTab.clips
+    @AppStorage("browserThumbnailInterval") private var interval = ThumbnailInterval.all
+    @AppStorage("browserThumbnailSize") private var thumbnailSize = ThumbnailSize.medium
 
     var body: some View {
         VStack(spacing: 0) {
             PanelTabBar(tabs: BrowserTab.allCases, selection: $tab, title: \.title) {
+                Button {
+                    showingSettings.toggle()
+                } label: {
+                    Image(systemName: "slider.horizontal.below.rectangle")
+                }
+                .buttonStyle(.borderless)
+                .help("Thumbnail settings")
+                .accessibilityLabel("Thumbnail settings")
+                .popover(isPresented: $showingSettings, arrowEdge: .bottom) { settings }
                 Button(action: importMedia) {
                     Image(systemName: "plus")
                 }
@@ -45,7 +53,11 @@ struct BrowserPanel: View {
                 .accessibilityLabel("Import media")
             }
             switch tab {
-            case .clips: clipsList
+            case .clips:
+                ClipsTab(
+                    project: $project, activeTimelineID: activeTimelineID, selection: $selection,
+                    analysis: analysis, replacement: replacement, packageURL: packageURL
+                )
             case .timelines: timelinesList
             case .presets: presetsList
             }
@@ -77,37 +89,44 @@ struct BrowserPanel: View {
         }
     }
 
-    private var clipsList: some View {
-        List(selection: $selectedScenes) {
-            ForEach(project.clips) { clip in
-                if clip.kind == .video {
-                    videoRow(clip)
-                } else {
-                    assetLabel(clip)
-                        .draggable(wholeAssetPayload(clip))
-                        .contextMenu {
-                            Button("Add to Timeline") { place(clip) }
-                            Divider()
-                            ReplaceMediaMenuItems(
-                                clip: clip, project: $project, analysis: analysis,
-                                controller: replacement, packageURL: packageURL
-                            )
-                        }
+    /// Time per thumbnail and thumbnail size, for every browser tab.
+    private var settings: some View {
+        VStack(alignment: .leading, spacing: Design.Space.group) {
+            VStack(alignment: .leading, spacing: Design.Space.tight) {
+                HStack {
+                    Text("Time per thumbnail")
+                    Spacer()
+                    Text(interval.title)
+                        .font(Design.Typeface.numericSmall)
+                        .foregroundStyle(Design.textSecondary)
+                }
+                Slider(
+                    value: Binding(
+                        get: { Double(interval.rawValue) },
+                        set: { interval = ThumbnailInterval(rawValue: Int($0.rounded())) ?? .all }
+                    ),
+                    in: 0...Double(ThumbnailInterval.allCases.count - 1),
+                    step: 1
+                ) {
+                    Text("Time per thumbnail")
+                } minimumValueLabel: {
+                    Text("All")
+                } maximumValueLabel: {
+                    Text("1 s")
+                }
+                .labelsHidden()
+                .accessibilityValue(interval.title)
+            }
+            Picker("Thumbnail size", selection: $thumbnailSize) {
+                ForEach(ThumbnailSize.allCases) { size in
+                    Text(size.title).tag(size)
                 }
             }
+            .pickerStyle(.segmented)
         }
-        .contextMenu(forSelectionType: SceneKey.self) { keys in
-            sceneMenu(for: keys)
-        } primaryAction: { keys in
-            addToTimeline(keys)
-        }
-        .sheet(item: $sensitivityTarget) { target in
-            SensitivitySheet(project: $project, target: target, track: analysis.tracks[target.assetID])
-        }
-        .sheet(item: $previewTarget) { target in
-            ScenePreviewSheet(project: $project, target: target, track: analysis.tracks[target.assetID])
-        }
-        .browserListStyle()
+        .font(Design.Typeface.label)
+        .padding(Design.Space.group)
+        .frame(width: 260)
     }
 
     private var timelinesList: some View {
@@ -144,263 +163,6 @@ struct BrowserPanel: View {
             PresetsList(model: presets)
         }
         .browserListStyle()
-    }
-
-    private func assetLabel(_ clip: MediaClip) -> some View {
-        Label {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(clip.name)
-                assetStatus(clip)
-            }
-        } icon: {
-            // The same hue the clip takes on the timeline, so what you drag
-            // and what lands there are recognisably the same thing.
-            Image(systemName: clip.kind.systemImage)
-                .foregroundStyle(Design.ClipTone.of(.media(clip), streams: .videoAndAudio).color)
-        }
-    }
-
-    /// "120 BPM", or "92–140 BPM" when the tempo changes noticeably.
-    static func tempoText(_ beats: BeatTrack) -> String {
-        if let range = beats.tempoRange, range.upperBound / range.lowerBound > 1.04 {
-            return "\(Int(range.lowerBound.rounded()))–\(Int(range.upperBound.rounded())) BPM"
-        }
-        return "\(Int(beats.beatsPerMinute.rounded())) BPM"
-    }
-
-    @ViewBuilder
-    private func assetStatus(_ clip: MediaClip) -> some View {
-        if let fraction = analysis.progress[clip.id] {
-            HStack(spacing: Design.Space.close) {
-                ProgressView(value: fraction)
-                    .controlSize(.small)
-                    .frame(width: 60)
-                Text(analysis.stages[clip.id]?.label ?? "Waiting…")
-                    .font(Design.Typeface.label)
-                    .foregroundStyle(Design.textTertiary)
-            }
-        } else if replacement.missingMedia.contains(clip.id) {
-            Text("File missing")
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.statusWarning)
-                .help("Its clips play as gaps until the file is back. Control-click to replace it.")
-        } else if let failure = analysis.firstFailure(for: clip.id) {
-            Text(failure.title)
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.statusWarning)
-                .help(failure.detail)
-                .accessibilityHint(failure.detail)
-        } else if analysis.changedFiles[clip.id] != nil {
-            Text("File changed outside the app")
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.statusWarning)
-                .help("Scenes and beats aren't found until the change is checked. Control-click and choose \u{201C}File Changed — Check Sync…\u{201D}.")
-                .accessibilityHint("Scenes and beats aren't found until the change is checked.")
-        } else if let problem = analysis.persistenceProblem(for: clip.id) {
-            Text(problem.title)
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.statusWarning)
-                .help(problem.detail)
-                .accessibilityHint(problem.detail)
-        } else if let beats = analysis.beats[clip.id], !beats.isEmpty {
-            HStack(spacing: Design.Space.tight) {
-                Text(clip.kind.rawValue)
-                    .font(Design.Typeface.label)
-                Text(Self.tempoText(beats))
-                    .font(Design.Typeface.numericMicro)
-            }
-            .foregroundStyle(Design.textTertiary)
-        } else {
-            Text(clip.kind.rawValue)
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.textTertiary)
-        }
-    }
-
-    /// Says what the file the asset uses now can't play of the original's
-    /// time, when it can't.
-    static func coverageNote(_ coverage: SceneCoverage?, replaced: Bool) -> String? {
-        guard let coverage else { return nil }
-        if coverage.hasNoOverlap {
-            return replaced ? "The replacement doesn't overlap the original's time, so there are no scenes." : "The file has no footage, so there are no scenes."
-        }
-        guard !coverage.uncovered.isEmpty else { return nil }
-        let spans = coverage.uncovered.map { "\(Self.timecode($0.start.seconds))–\(Self.timecode($0.end.seconds))" }
-        return "\(replaced ? "The replacement has" : "The file has") no footage for \(spans.joined(separator: ", "))."
-    }
-
-    private static func timecode(_ seconds: Double) -> String {
-        String(format: "%d:%05.2f", Int(seconds) / 60, seconds.truncatingRemainder(dividingBy: 60))
-    }
-
-    private func videoRow(_ clip: MediaClip) -> some View {
-        let isExpanded = Binding(
-            get: { expandedAssets.contains(clip.id) },
-            set: { if $0 { expandedAssets.insert(clip.id) } else { expandedAssets.remove(clip.id) } }
-        )
-        return DisclosureGroup(isExpanded: isExpanded) {
-            let scenes = project.scenes(ofAsset: clip.id, track: analysis.tracks[clip.id])
-            ForEach(Array(scenes.enumerated()), id: \.element.id) { index, scene in
-                let key = SceneKey(assetID: clip.id, sceneID: scene.id)
-                SceneRowView(clip: clip, scene: scene, number: index + 1)
-                    .tag(key)
-                    .draggable(dragPayload(for: key))
-            }
-            if let note = Self.coverageNote(project.sceneCoverage(ofAsset: clip.id, track: analysis.tracks[clip.id]), replaced: clip.wasReplaced) {
-                Text(note)
-                    .font(Design.Typeface.label)
-                    .foregroundStyle(Design.statusWarning)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        } label: {
-            assetLabel(clip)
-                .draggable(wholeAssetPayload(clip))
-                .contextMenu {
-                    Button("Add to Timeline") { place(clip) }
-                    Divider()
-                    Button("Cut Sensitivity…") {
-                        sensitivityTarget = SensitivityTarget(assetID: clip.id, scope: .asset)
-                    }
-                    .disabled(analysis.tracks[clip.id] == nil)
-                    Button("Find Scenes Again") {
-                        analysis.reanalyze(clip, in: project)
-                    }
-                    .disabled(analysis.progress[clip.id] != nil)
-                    if let problem = analysis.persistenceProblem(for: clip.id) {
-                        Button(problem.kind == .unreadableProject ? "Retry Reading Results" : "Retry Saving Results") {
-                            Task { await analysis.retryPersistence() }
-                        }
-                    }
-                    if analysis.firstFailure(for: clip.id) != nil {
-                        Button("Retry Failed Analysis") {
-                            analysis.retryFailures(for: clip.id, in: project)
-                        }
-                        .disabled(analysis.progress[clip.id] != nil)
-                    }
-                    Divider()
-                    ReplaceMediaMenuItems(
-                        clip: clip, project: $project, analysis: analysis,
-                        controller: replacement, packageURL: packageURL
-                    )
-                }
-        }
-    }
-
-    private struct PickedScenes {
-        struct Item {
-            var number: Int
-            var scene: SceneRange
-        }
-
-        var clip: MediaClip
-        var items: [Item]
-        var scenes: [SceneRange] { items.map(\.scene) }
-    }
-
-    /// Scenes picked in the browser, grouped by asset in library order, each
-    /// group in source order.
-    private func pickedScenes(_ keys: Set<SceneKey>) -> [PickedScenes] {
-        var groups: [PickedScenes] = []
-        for clip in project.clips {
-            var wanted = Set<String>()
-            for key in keys where key.assetID == clip.id { wanted.insert(key.sceneID) }
-            if wanted.isEmpty { continue }
-
-            let all = project.scenes(ofAsset: clip.id, track: analysis.tracks[clip.id])
-            var items: [PickedScenes.Item] = []
-            for (index, scene) in all.enumerated() where wanted.contains(scene.id) {
-                items.append(PickedScenes.Item(number: index + 1, scene: scene))
-            }
-            if !items.isEmpty { groups.append(PickedScenes(clip: clip, items: items)) }
-        }
-        return groups
-    }
-
-    /// Dragging an asset itself carries the whole file as one scene.
-    /// `.draggable` builds this as the drag begins.
-    private func wholeAssetPayload(_ clip: MediaClip) -> MediaDragPayload {
-        MediaDragPayload.beginDrag([MediaPiece(assetID: clip.id, start: .zero, end: clip.duration)])
-    }
-
-    private func place(_ clip: MediaClip) {
-        if let result = project.placeAsset(clip.id, intoTimeline: activeTimelineID) {
-            selection = TimelineSelection(timelineID: activeTimelineID, layerID: result.layerID, timelineClipID: result.clipID)
-        }
-    }
-
-    private func dragPayload(for key: SceneKey) -> MediaDragPayload {
-        let keys = selectedScenes.contains(key) ? selectedScenes : [key]
-        let group = pickedScenes(keys).first { $0.clip.id == key.assetID }
-        return MediaDragPayload.beginDrag((group?.scenes ?? []).pieces(ofAsset: key.assetID))
-    }
-
-    @ViewBuilder
-    private func sceneMenu(for keys: Set<SceneKey>) -> some View {
-        let groups = pickedScenes(keys)
-        if let only = groups.first, groups.count == 1 {
-            Button("Add to Timeline") { addToTimeline(keys) }
-
-            if only.items.count == 1, let one = only.items.first, let url = only.clip.url {
-                Button("Preview…") {
-                    previewTarget = ScenePreviewTarget(assetID: only.clip.id, url: url, scene: one.scene, number: one.number)
-                }
-            }
-
-            Divider()
-
-            if let span = only.scenes.span, analysis.tracks[only.clip.id] != nil {
-                Button("Adjust Cut Sensitivity…") {
-                    sensitivityTarget = SensitivityTarget(assetID: only.clip.id, scope: .span(start: span.start, end: span.end))
-                }
-            }
-            Button(only.items.count == 1 ? "Merge with Previous Scene" : "Merge Selected Scenes") {
-                mergeScenes(keys, assetID: only.clip.id)
-            }
-            .disabled(!canMerge(keys, assetID: only.clip.id))
-        } else if !groups.isEmpty {
-            Button("Add to Timeline") { addToTimeline(keys) }
-        }
-    }
-
-    private func addToTimeline(_ keys: Set<SceneKey>) {
-        var firstClip: (layerID: UUID, clipID: UUID)?
-        for group in pickedScenes(keys) {
-            if let result = project.addScenes(group.scenes, ofAsset: group.clip.id, intoTimeline: activeTimelineID),
-               firstClip == nil, let clipID = result.clipIDs.first {
-                firstClip = (result.layerID, clipID)
-            }
-        }
-        if let firstClip {
-            selection = TimelineSelection(timelineID: activeTimelineID, layerID: firstClip.layerID, timelineClipID: firstClip.clipID)
-        }
-    }
-
-    /// The cuts whose removal joins the picked scenes: each picked scene's
-    /// start, except where it begins the run (a single scene merges back into
-    /// the one before it).
-    private func cutsToRemove(_ keys: Set<SceneKey>, assetID: UUID) -> [SceneCut] {
-        let all = project.scenes(ofAsset: assetID, track: analysis.tracks[assetID])
-        let wanted = Set(keys.filter { $0.assetID == assetID }.map(\.sceneID))
-        let single = wanted.count == 1
-        var cuts: [SceneCut] = []
-        for (index, scene) in all.enumerated() where wanted.contains(scene.id) && index > 0 {
-            if single || wanted.contains(all[index - 1].id) {
-                cuts.append(SceneCut(time: scene.start, origin: scene.origin))
-            }
-        }
-        return cuts
-    }
-
-    private func canMerge(_ keys: Set<SceneKey>, assetID: UUID) -> Bool {
-        !cutsToRemove(keys, assetID: assetID).isEmpty
-    }
-
-    private func mergeScenes(_ keys: Set<SceneKey>, assetID: UUID) {
-        let cuts = cutsToRemove(keys, assetID: assetID)
-        project.editScenes(ofAsset: assetID) { edits in
-            for cut in cuts { edits.removeCut(cut) }
-        }
-        selectedScenes = []
     }
 
     private func embed(_ timeline: Timeline) {

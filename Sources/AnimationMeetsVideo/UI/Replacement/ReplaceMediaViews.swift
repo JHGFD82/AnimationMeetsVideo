@@ -349,7 +349,7 @@ private struct ReplaceMediaDetails: View {
         }
         let time = CMTimeAdd(CMTime(seconds: session.probeSeconds, preferredTimescale: 600), session.offset)
         replacement = time.seconds >= 0
-            ? await SceneThumbnailStore.image(url: session.candidate, time: time)
+            ? await FrameThumbnails.image(url: session.candidate, time: time)
             : nil
     }
 

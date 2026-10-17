@@ -288,9 +288,10 @@ the failure stays.
 
 Implemented:
 
-- Each video in the library has a disclosure control. Expanded, it lists its
-  scenes: thumbnail (the first frame of the scene), number, start timecode,
-  and duration. A hand-set boundary shows a small marker.
+- Each video in the browser has a disclosure control. Expanded, each of
+  its scenes is a clip of its own, with its number and a filmstrip like any
+  clip (see [browser.md](browser.md)). A hand-set boundary shows a small
+  marker.
 - Scenes can be multi-selected. **Add to Timeline** (context menu, or double
   click) places the selected scenes of an asset back to back, in source order
   with no gaps, on one new layer at the top, starting at time zero (the same

@@ -149,7 +149,7 @@ final class MediaReplacementController {
             let urls = newlyChanged.compactMap(\.url)
             Task {
                 for url in urls { await CompositionExporter.forgetCachedMedia(at: url) }
-                SceneThumbnailStore.invalidate()
+                FrameThumbnails.invalidate()
                 WaveformCache.shared.invalidateAll()
             }
         }
@@ -323,7 +323,7 @@ final class MediaReplacementController {
         let oldURL = context.project.wrappedValue.mediaClip(id: assetID)?.url
         if let oldURL { await CompositionExporter.forgetCachedMedia(at: oldURL) }
         if let newURL = analysis.replacement.url { await CompositionExporter.forgetCachedMedia(at: newURL) }
-        SceneThumbnailStore.invalidate()
+        FrameThumbnails.invalidate()
         WaveformCache.shared.invalidateAll()
         context.project.wrappedValue.replaceMedia(id: assetID, with: analysis.replacement, offset: offset)
         changedMedia.remove(assetID)

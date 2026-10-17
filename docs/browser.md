@@ -55,8 +55,9 @@ Pro, so a long clip takes more rows rather than a wider panel.
 - Each thumbnail shows the frame at the start of its stretch. The last one
   may cover a shorter stretch and is drawn narrower, in proportion, so a
   strip's length always reads as the clip's duration.
-- **Thumbnail size** (in the settings): small, medium and large heights,
-  with the width following the clip's aspect ratio.
+- **Thumbnail size** (in the settings): small, medium and large heights.
+  Every thumbnail is 16:9, with the picture fitted inside on black: assets
+  don't record their picture size, and one shape keeps strips aligned.
 - The **duration** sits in the bottom-left corner of the clip's first
   thumbnail, in a shaded box, as a timecode at the clip's own frame rate.
 - Thumbnails are made as they scroll into view, at the size drawn, and
@@ -153,11 +154,15 @@ Following [accessibility.md](accessibility.md):
 
 1. **Tabs and names** (done). Clips, Timelines and Presets tabs in place of
    the sections, and the Effects Library rename. Lists stay as they are.
-2. **Filmstrips.** Thumbnails, wrapping, the settings popover (time per
-   thumbnail, size), duration boxes, scenes as clips.
-3. **Selecting and dragging.** Click, Command-click and Shift-click; whole
-   clip drags of several assets in browser order; option-drag ranges with
-   handles; the keyboard paths.
+2. **Filmstrips** (built, Clips tab; not yet tried on screen). Thumbnails,
+   wrapping, the settings popover (time per thumbnail, size), duration
+   boxes, scenes as clips. Rendered offscreen to check layout only.
+3. **Selecting and dragging** (built, Clips tab; not yet tried on screen).
+   Click, Command-click and Shift-click; whole-clip drags of several
+   assets in browser order; option-drag ranges with handles; arrows,
+   Shift-arrows and Return. Option-arrows and I and O wait for skimming
+   (stage 4). Built together with stage 2, since both needed the clips
+   drawn by hand rather than in a list.
 4. **Skimming** in the viewer, and Space to play.
 5. **Used media** underlines.
 6. **Timelines** as filmstrips, with skimming.
