@@ -23,6 +23,9 @@ private struct Sandbox {
 
     var projectJSON: URL { packageURL.appending(path: ProjectStore.projectFileName) }
 
+    /// What the footage looks like to the project, which saved results must name.
+    var stamp: FileStamp { FileStamp(url: mediaURL)! }
+
     /// Stands in for `MediaImporter` so tests need no real footage.
     static let stubImporter: @Sendable (URL) async throws -> MediaClip = { url in
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -773,7 +776,10 @@ private struct Sandbox {
         let (project, _, assetID) = sandbox.makeProject()
         let track = ChangeScoreTrack(timescale: 600, times: [0, 25, 50], scores: [0, 200, 3])
 
-        try await ProjectStore.save(project, to: sandbox.packageURL, changeScores: [assetID: track])
+        try await ProjectStore.save(
+            project, to: sandbox.packageURL, changeScores: [assetID: track],
+            sources: AnalysisSources(scores: [assetID: sandbox.stamp])
+        )
 
         let file = ProjectStore.referenceFolder(for: assetID, in: sandbox.packageURL)
             .appending(path: ProjectStore.changeScoreFileName)
@@ -1102,7 +1108,8 @@ private struct Sandbox {
         let track = ChangeScoreTrack(timescale: 600, times: [0, 25], scores: [0, 200])
         try await ProjectStore.save(
             project, to: sandbox.packageURL,
-            changeScores: [assetID: track], references: [assetID: reference()]
+            changeScores: [assetID: track], references: [assetID: reference()],
+            sources: AnalysisSources(scores: [assetID: sandbox.stamp])
         )
         let folder = ProjectStore.referenceFolder(for: assetID, in: sandbox.packageURL)
         let thumbs = folder.appending(path: ProjectStore.thumbnailFolderName, directoryHint: .isDirectory)

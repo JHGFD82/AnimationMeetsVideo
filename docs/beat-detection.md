@@ -132,8 +132,15 @@ All integers are little endian. Version 1 files hold beats fitted to one
 steady tempo; they are read as missing, so those beats are detected again
 with the changing-tempo tracker. `AssetAnalysis` holds results in memory,
 remembers which are unsaved, and `ProjectStore.save` writes only those.
-Saved beats that were dropped because the file changed are deleted at the
-next save, so a reopened project never shows beats from an earlier file. A
+Each saved beat file has a record in `provenance.json` (the file it was
+found in, the analysis settings, an algorithm version, a digest of the beat
+file), and beats are loaded only when it still applies, so a reopened
+project never shows beats from an earlier file, and beats saved without a
+record are found again rather than assumed current. Beats dropped because
+the file changed are deleted at once when the project has a package, or at
+the next save; if the file can't be deleted its record is marked
+invalidated, and if that fails too the retirement stays pending and is
+reported (see [scene-cuts.md](scene-cuts.md)). A
 missing file means "not analyzed yet"; a damaged one is treated the same,
 since beats can be recomputed. The file is recomputable, so a project
 without it still opens.

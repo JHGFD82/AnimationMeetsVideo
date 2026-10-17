@@ -306,7 +306,8 @@ struct AnimationMeetsVideoApp: App {
             rememberLastProject(url)
             analysis.reset(
                 tracks: result.changeScores, references: result.references,
-                thumbnailed: result.assetsWithThumbnails, beats: result.beats, packageURL: url
+                thumbnailed: result.assetsWithThumbnails, beats: result.beats,
+                sources: result.analysisSources, packageURL: url
             )
             analysis.analyzeMissing(in: result.project)
             replacement.reset()
@@ -404,7 +405,8 @@ struct AnimationMeetsVideoApp: App {
                     snapshot, to: url, copying: copying,
                     changeScores: unsavedResults.changeScores, references: unsavedResults.referenceData,
                     thumbnails: unsavedResults.thumbnails, beats: unsavedResults.beatTracks,
-                    discardingBeats: unsavedResults.discardedBeats, previousPackageURL: projectURL
+                    sources: unsavedResults.sources, discardingBeats: unsavedResults.discardedBeats,
+                    invalidatingScores: unsavedResults.invalidatedScores, previousPackageURL: projectURL
                 )
                 analysis.markSaved(unsavedResults)
                 analysis.dropForgottenReferences(in: saved)
@@ -457,7 +459,8 @@ struct AnimationMeetsVideoApp: App {
                 fileMonitor.acknowledge(change)
                 analysis.reset(
                     tracks: result.changeScores, references: result.references,
-                    thumbnailed: result.assetsWithThumbnails, beats: result.beats, packageURL: url
+                    thumbnailed: result.assetsWithThumbnails, beats: result.beats,
+                sources: result.analysisSources, packageURL: url
                 )
                 analysis.analyzeMissing(in: result.project)
                 replacement.reset()

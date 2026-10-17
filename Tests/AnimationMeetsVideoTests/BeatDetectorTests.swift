@@ -386,12 +386,17 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
 
 @MainActor
 @Suite struct BeatAnalysisQueueTests {
-    private func project(url: URL, hasAudio: Bool) -> EditingProject {
+    /// What the project has accepted for the file: results name it.
+    private let stamp = FileStamp(byteCount: 100, modified: 1)
+    private let otherStamp = FileStamp(byteCount: 200, modified: 2)
+
+    private func project(url: URL, hasAudio: Bool, stamp: FileStamp? = nil) -> EditingProject {
         var project = EditingProject.empty
         project.clips = [MediaClip(
             name: url.lastPathComponent, kind: .audio, url: url,
             duration: CMTime(seconds: 12, preferredTimescale: 600), frameRate: 0,
-            colorSpace: .rec709, codecName: "Test", hasAudio: hasAudio
+            colorSpace: .rec709, codecName: "Test", hasAudio: hasAudio,
+            acceptedStamp: stamp ?? self.stamp
         )]
         return project
     }
@@ -441,7 +446,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         let project = project(url: url, hasAudio: true)
         let id = project.clips[0].id
         let analysis = AssetAnalysis()
-        analysis.reset(beats: [id: .none()])
+        analysis.reset(beats: [id: .none()], sources: AnalysisSources(beats: [id: stamp]))
 
         analysis.analyzeMissing(in: project)
 
@@ -460,12 +465,13 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         project.clips[0].referenceForgotten = true
         let id = project.clips[0].id
         let analysis = AssetAnalysis()
-        analysis.reset(beats: [id: .none()])
+        analysis.reset(beats: [id: .none()], sources: AnalysisSources(beats: [id: stamp]))
         analysis.analyzeMissing(in: project)
         #expect(analysis.beats[id] == BeatTrack.none())
         #expect(analysis.progress.isEmpty)
 
         project.clips[0].url = newURL
+        project.clips[0].acceptedStamp = otherStamp
         analysis.analyzeMissing(in: project)
 
         #expect(analysis.beats[id] == nil)
@@ -483,7 +489,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         project.clips[0].referenceForgotten = true
         let id = project.clips[0].id
         let analysis = AssetAnalysis()
-        analysis.reset(beats: [id: .none()])
+        analysis.reset(beats: [id: .none()], sources: AnalysisSources(beats: [id: stamp]))
         analysis.analyzeMissing(in: project)
 
         project.clips[0].hasAudio = false
@@ -512,6 +518,8 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         return (root, root.appending(path: "Test.amv", directoryHint: .isDirectory), project, asset.id)
     }
 
+    private func mediaStamp(in root: URL) -> FileStamp { FileStamp(url: root.appending(path: "song.wav"))! }
+
     private let stubImporter: @Sendable (URL) async throws -> MediaClip = { url in
         MediaClip(
             name: url.lastPathComponent, kind: .audio, url: url,
@@ -525,7 +533,9 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         defer { try? FileManager.default.removeItem(at: root) }
         let track = BeatTrack(timescale: 1000, times: [100, 600, 1100], beatsPerMinute: 120)
 
-        try await ProjectStore.save(project, to: package, beats: [assetID: track])
+        try await ProjectStore.save(
+            project, to: package, beats: [assetID: track], sources: AnalysisSources(beats: [assetID: mediaStamp(in: root)])
+        )
 
         let file = ProjectStore.referenceFolder(for: assetID, in: package).appending(path: ProjectStore.beatFileName)
         #expect(FileManager.default.fileExists(atPath: file.path))
@@ -537,7 +547,9 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         let (root, package, project, assetID) = try makePackage()
         defer { try? FileManager.default.removeItem(at: root) }
 
-        try await ProjectStore.save(project, to: package, beats: [assetID: .none()])
+        try await ProjectStore.save(
+            project, to: package, beats: [assetID: .none()], sources: AnalysisSources(beats: [assetID: mediaStamp(in: root)])
+        )
 
         let loaded = try await ProjectStore.load(from: package, importMedia: stubImporter)
         #expect(try #require(loaded.beats[assetID]).isEmpty)

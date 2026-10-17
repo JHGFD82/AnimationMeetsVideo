@@ -38,6 +38,7 @@ MyProject.amv/
       audio.bin           audio envelope
       signature.bin       per-frame picture change scores
       beats.bin           beat times of the audio (see beat-detection.md)
+      provenance.json     what signature.bin and beats.bin were computed from
       thumbs/ ...         pictures of the original at cuts and intervals
   Cache/              disposable, excluded from backup
     Renders/            rendered timeline segments (see rendering.md)
@@ -213,6 +214,23 @@ Requirements for the file:
 
 `Cache/` is marked excluded from backup and sync, and should be kept out of
 version control. Settings to move the cache elsewhere come later.
+
+The exception inside `Reference/` is `signature.bin` and `beats.bin`: they
+describe the file the asset uses now, not the original, so they are retired
+(deleted, or marked invalidated in `provenance.json`) when that file changes
+or the person asks to detect again. See [scene-cuts.md](scene-cuts.md).
+
+## Writing to the package
+
+Every change to a package, whether a save, Save As, an analysis result, the
+retirement of one, an autosave or a copy into `Media/`, goes through
+`PackageCoordinator`, which runs them one at a time per package in the order
+they were asked. Atomic writes keep each file whole but don't order writes
+against each other: without the queue a deletion could finish before an
+older write of the same file and let it come back, and Save As could copy
+`Reference/` while a result was half-way in. An operation on two packages
+(Save As) waits on both. Replacing an existing package and marking backups
+as seen are not queued, since no save of that package can be running then.
 
 ## Live reload
 

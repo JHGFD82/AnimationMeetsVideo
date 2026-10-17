@@ -68,6 +68,27 @@ final class AssetAnalysis {
         var stamp: FileStamp?
     }
 
+    /// The file a result in memory was computed from. Results read from the
+    /// package carry only the verified stamp, not the path they had then.
+    private struct ResultSource {
+        var path: String?
+        var stamp: FileStamp?
+
+        /// Files with stamps are the same file when the stamps are, wherever
+        /// they are; ones that can't be stamped only when the path is.
+        func matches(_ file: AnalyzedFile) -> Bool {
+            if let stamp, let other = file.stamp { return stamp == other }
+            return stamp == nil && file.stamp == nil && path == file.path
+        }
+    }
+
+    /// A result retired in memory whose retirement is not yet confirmed in
+    /// the package.
+    struct Invalidation: Hashable, Sendable {
+        var kind: AnalysisKind
+        var id: UUID
+    }
+
     static func inputs(of project: EditingProject) -> [Input] {
         project.clips.map(input(of:))
     }
@@ -131,6 +152,7 @@ final class AssetAnalysis {
     private struct Job {
         var lease: Lease
         var url: URL
+        var file: AnalyzedFile
         var wantsScores: Bool
         var wantsReference: Bool
         var wantsThumbnails: Bool
@@ -158,14 +180,19 @@ final class AssetAnalysis {
     /// Pictures captured since the last save; dropped once saved, since they
     /// are read back from the package when needed.
     @ObservationIgnored private var heldPictures: [UUID: ReferenceThumbnails] = [:]
-    /// Assets whose saved beats no longer match their file, for the next
-    /// save to delete, with the revision of the discard.
-    @ObservationIgnored private var discardRevisions: [UUID: Int] = [:]
+    /// Saved results retired in memory but not yet confirmed retired in the
+    /// package, with the revision of the retirement. Retried until it holds.
+    @ObservationIgnored private var pendingInvalidations: [Invalidation: Int] = [:]
+    /// Retirements that could not be made durable, by asset. While one is
+    /// listed, the outdated result could come back when the project is reopened.
+    private(set) var invalidationFailures: [Invalidation: String] = [:]
 
-    /// Which file each asset's beats, or beat failure, came from. Beats read
-    /// from the package are taken to match the file the asset has when it
-    /// is first analyzed.
-    @ObservationIgnored private var beatFiles: [UUID: AnalyzedFile] = [:]
+    /// Which file each asset's scores, beats, or failure to find them, came
+    /// from. Scores and beats describe the file the asset uses now, so they
+    /// are retired when it changes; nothing is assumed about a result that
+    /// has no source.
+    @ObservationIgnored private var scoreSources: [UUID: ResultSource] = [:]
+    @ObservationIgnored private var beatSources: [UUID: ResultSource] = [:]
     @ObservationIgnored private var thumbnailFailures: Set<UUID> = []
     /// Assets whose file was gone when their job ran, with the file that was
     /// missing. They aren't queued again, or recorded as failed, until
@@ -195,6 +222,7 @@ final class AssetAnalysis {
         references: [UUID: AssetReference] = [:],
         thumbnailed: Set<UUID> = [],
         beats: [UUID: BeatTrack] = [:],
+        sources: AnalysisSources = AnalysisSources(),
         packageURL: URL? = nil
     ) {
         worker?.cancel()
@@ -211,19 +239,25 @@ final class AssetAnalysis {
         dirtyBeats = [:]
         dirtyPictures = [:]
         heldPictures = [:]
-        discardRevisions = [:]
+        pendingInvalidations = [:]
+        invalidationFailures = [:]
         thumbnailFailures = []
         checkedPackage = []
         referenceFailures = [:]
         beatFailures = [:]
-        beatFiles = [:]
+        scoreSources = [:]
+        beatSources = [:]
         latestProject = nil
         unavailable = [:]
         self.packageURL = packageURL
-        self.beats = beats
         self.thumbnailed = thumbnailed
-        self.tracks = tracks
         self.references = references
+        // A result that comes without the file it was computed from is not
+        // known to describe any file, so it is left out and analyzed again.
+        self.tracks = tracks.filter { sources.scores[$0.key] != nil }
+        self.beats = beats.filter { sources.beats[$0.key] != nil }
+        scoreSources = sources.scores.mapValues { ResultSource(path: nil, stamp: $0) }
+        beatSources = sources.beats.mapValues { ResultSource(path: nil, stamp: $0) }
     }
 
     /// Queues every asset that lacks reference data, and every video asset
@@ -240,8 +274,8 @@ final class AssetAnalysis {
             if let packageURL, checkedPackage.insert(clip.id).inserted {
                 loadSaved(for: clip, from: packageURL, includingScores: true)
             }
-            // Even while a job runs, so outdated beats stop showing at once.
-            discardStaleBeats(of: clip, file: file)
+            // Even while a job runs, so outdated results stop showing at once.
+            discardStaleResults(of: clip, file: file)
             if let missing = unavailable[clip.id] {
                 if missing == file { continue }
                 unavailable[clip.id] = nil
@@ -262,7 +296,7 @@ final class AssetAnalysis {
             owners[clip.id] = Owner(token: nextToken, input: input, wantsReference: wantsReference)
             progress[clip.id] = 0
             waiting.append(Job(
-                lease: lease, url: url,
+                lease: lease, url: url, file: file,
                 wantsScores: wantsScores, wantsReference: wantsReference,
                 wantsThumbnails: wantsThumbnails, wantsBeats: wantsBeats
             ))
@@ -281,52 +315,84 @@ final class AssetAnalysis {
 
     /// Takes whatever the package already holds for an asset that has
     /// nothing in memory, as for one imported again under the ID it had
-    /// before, so it isn't analyzed twice.
+    /// before, so it isn't analyzed twice. Scores and beats are taken only
+    /// when their record says they came from the file the asset has now.
     private func loadSaved(for clip: MediaClip, from packageURL: URL, includingScores: Bool) {
         let id = clip.id
-        if includingScores, tracks[id] == nil, let saved = ProjectStore.readChangeScores(for: id, in: packageURL) { tracks[id] = saved }
-        if beats[id] == nil, let saved = ProjectStore.readBeats(for: id, in: packageURL) { beats[id] = saved }
+        if includingScores, tracks[id] == nil,
+           case .valid(let saved, let source) = ProjectStore.readVerifiedChangeScores(for: id, in: packageURL, identity: clip.acceptedStamp) {
+            tracks[id] = saved
+            scoreSources[id] = ResultSource(path: nil, stamp: source)
+        }
+        if beats[id] == nil,
+           case .valid(let saved, let source) = ProjectStore.readVerifiedBeats(for: id, in: packageURL, identity: clip.acceptedStamp) {
+            beats[id] = saved
+            beatSources[id] = ResultSource(path: nil, stamp: source)
+        }
         guard !clip.referenceForgotten else { return }
         if references[id] == nil, let saved = ProjectStore.readReference(for: id, in: packageURL) { references[id] = saved }
         if ProjectStore.hasThumbnails(for: id, in: packageURL) { thumbnailed.insert(id) }
     }
 
-    /// Drops beats found in a file the asset no longer uses, or in one that
-    /// has lost its sound, so they are not shown and are found again.
-    private func discardStaleBeats(of clip: MediaClip, file: AnalyzedFile) {
+    /// Drops scores and beats found in a file the asset no longer uses (and
+    /// beats in one that has lost its sound), so they are not shown and are
+    /// found again. A result with no known source is dropped too.
+    private func discardStaleResults(of clip: MediaClip, file: AnalyzedFile) {
         let id = clip.id
-        guard beats[id] != nil || beatFailures[id] != nil else { return }
-        guard let analyzed = beatFiles[id] else {
-            if clip.hasAudio {
-                beatFiles[id] = file
-                return
-            }
-            discardBeats(of: id)
-            return
+        if tracks[id] != nil || failures[id] != nil, scoreSources[id]?.matches(file) != true {
+            discardResult(.scores, of: id)
         }
-        if analyzed != file || !clip.hasAudio { discardBeats(of: id) }
+        if beats[id] != nil || beatFailures[id] != nil,
+           beatSources[id]?.matches(file) != true || !clip.hasAudio {
+            discardResult(.beats, of: id)
+        }
     }
 
-    private func discardBeats(of id: UUID) {
-        beats[id] = nil
-        beatFailures[id] = nil
-        beatFiles[id] = nil
-        dirtyBeats[id] = nil
-        // Stays discarded until the file is confirmed gone: here if there is
-        // a package, otherwise in the next save. The deletion is queued behind
-        // any write already started, so an older write can't bring the file back.
+    /// Retires a result: gone from memory now, and from the package as soon
+    /// as that can be confirmed. Until then it is pending, and tried again
+    /// with the next write or save and by `retryPendingInvalidations`.
+    private func discardResult(_ kind: AnalysisKind, of id: UUID) {
+        switch kind {
+        case .scores:
+            tracks[id] = nil
+            failures[id] = nil
+            scoreSources[id] = nil
+            dirtyScores[id] = nil
+        case .beats:
+            beats[id] = nil
+            beatFailures[id] = nil
+            beatSources[id] = nil
+            dirtyBeats[id] = nil
+        }
         nextRevision += 1
-        let revision = nextRevision
-        discardRevisions[id] = revision
-        guard let package = packageURL else { return }
+        let key = Invalidation(kind: kind, id: id)
+        pendingInvalidations[key] = nextRevision
+        persistInvalidation(key)
+    }
+
+    /// Asks the package to retire a result. Queued behind any write already
+    /// started, so an older write can't bring the file back. The result stays
+    /// pending, and the failure visible, until the package confirms.
+    private func persistInvalidation(_ key: Invalidation) {
+        guard let package = packageURL, let revision = pendingInvalidations[key] else { return }
         let epoch = packageEpoch
         Task {
-            let removed = await attempt(on: package) { package in
-                let url = ProjectStore.referenceFolder(for: id, in: package).appending(path: ProjectStore.beatFileName)
-                if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            let failure = await attemptReporting(on: package) { package in
+                try ProjectStore.invalidate(key.kind, for: key.id, in: package)
             }
-            if removed, epoch == packageEpoch, discardRevisions[id] == revision { discardRevisions[id] = nil }
+            guard epoch == packageEpoch, pendingInvalidations[key] == revision else { return }
+            if let failure {
+                invalidationFailures[key] = failure
+            } else {
+                pendingInvalidations[key] = nil
+                invalidationFailures[key] = nil
+            }
         }
+    }
+
+    /// Tries again to retire results whose retirement is not yet confirmed.
+    func retryPendingInvalidations() {
+        for key in pendingInvalidations.keys { persistInvalidation(key) }
     }
 
     /// Analyzes again what was skipped because its file was gone, for when
@@ -338,25 +404,18 @@ final class AssetAnalysis {
     }
 
     /// For a person's explicit "re-detect": the stored score goes, from
-    /// memory and from the package, any job still working on it is replaced,
-    /// and exactly one new attempt is made that does not read the saved score.
-    /// Reference pictures are original-reference artifacts and are kept.
+    /// memory and from the package (retired for good, even if its file can't
+    /// be deleted), any job still working on it is replaced, and exactly one
+    /// new attempt is made that does not read the saved score. Reference
+    /// pictures are original-reference artifacts and are kept.
     func reanalyze(_ clip: MediaClip, in project: EditingProject) {
         let id = clip.id
         revoke(id)
-        tracks[id] = nil
-        failures[id] = nil
-        dirtyScores[id] = nil
-        // Whatever else the package holds is read now; the score is not, and
-        // the old file is deleted, so a failed attempt can't bring it back.
-        if let packageURL {
-            if checkedPackage.insert(id).inserted { loadSaved(for: clip, from: packageURL, includingScores: false) }
-            Task {
-                _ = await attempt(on: packageURL) { package in
-                    try ProjectStore.removeChangeScores(for: id, in: package)
-                }
-            }
+        // Whatever else the package holds is read now; the score is not.
+        if let packageURL, checkedPackage.insert(id).inserted {
+            loadSaved(for: clip, from: packageURL, includingScores: false)
         }
+        discardResult(.scores, of: id)
         analyzeMissing(in: project)
     }
 
@@ -370,22 +429,35 @@ final class AssetAnalysis {
         fileprivate var references: [UUID: (revision: Int, value: AssetReference)] = [:]
         fileprivate var pictures: [UUID: (revision: Int, value: ReferenceThumbnails)] = [:]
         fileprivate var beats: [UUID: (revision: Int, value: BeatTrack)] = [:]
-        fileprivate var discards: [UUID: Int] = [:]
+        fileprivate var invalidations: [Invalidation: Int] = [:]
+        /// The file each result in here was computed from, to be saved with it.
+        fileprivate(set) var sources = AnalysisSources()
 
         var changeScores: [UUID: ChangeScoreTrack] { scores.mapValues(\.value) }
         var referenceData: [UUID: AssetReference] { references.mapValues(\.value) }
         var thumbnails: [UUID: ReferenceThumbnails] { pictures.mapValues(\.value) }
         var beatTracks: [UUID: BeatTrack] { beats.mapValues(\.value) }
-        var discardedBeats: Set<UUID> { Set(discards.keys) }
+        var discardedBeats: Set<UUID> { Set(invalidations.keys.filter { $0.kind == .beats }.map(\.id)) }
+        var invalidatedScores: Set<UUID> { Set(invalidations.keys.filter { $0.kind == .scores }.map(\.id)) }
     }
 
     func unsavedResults() -> UnsavedResults {
         var results = UnsavedResults()
-        for (id, revision) in dirtyScores { if let value = tracks[id] { results.scores[id] = (revision, value) } }
+        for (id, revision) in dirtyScores {
+            if let value = tracks[id] {
+                results.scores[id] = (revision, value)
+                results.sources.scores[id] = scoreSources[id]?.stamp
+            }
+        }
         for (id, revision) in dirtyReferences { if let value = references[id] { results.references[id] = (revision, value) } }
         for (id, revision) in dirtyPictures { if let value = heldPictures[id] { results.pictures[id] = (revision, value) } }
-        for (id, revision) in dirtyBeats { if let value = beats[id] { results.beats[id] = (revision, value) } }
-        results.discards = discardRevisions
+        for (id, revision) in dirtyBeats {
+            if let value = beats[id] {
+                results.beats[id] = (revision, value)
+                results.sources.beats[id] = beatSources[id]?.stamp
+            }
+        }
+        results.invalidations = pendingInvalidations
         return results
     }
 
@@ -394,7 +466,10 @@ final class AssetAnalysis {
         for (id, held) in results.references { acknowledge(\.dirtyReferences, id, held.revision) }
         for (id, held) in results.pictures { acknowledge(\.dirtyPictures, id, held.revision) }
         for (id, held) in results.beats { acknowledge(\.dirtyBeats, id, held.revision) }
-        for (id, revision) in results.discards { acknowledge(\.discardRevisions, id, revision) }
+        for (key, revision) in results.invalidations where pendingInvalidations[key] == revision {
+            pendingInvalidations[key] = nil
+            invalidationFailures[key] = nil
+        }
     }
 
     /// Scores computed since the last save.
@@ -406,7 +481,7 @@ final class AssetAnalysis {
     /// Reference pictures captured since the last save.
     var unsavedThumbnails: [UUID: ReferenceThumbnails] { unsavedResults().thumbnails }
     /// Assets whose outdated saved beats are still to be deleted.
-    var discardedBeats: Set<UUID> { Set(discardRevisions.keys) }
+    var discardedBeats: Set<UUID> { Set(pendingInvalidations.keys.filter { $0.kind == .beats }.map(\.id)) }
 
     private func markDirty(_ keyPath: ReferenceWritableKeyPath<AssetAnalysis, [UUID: Int]>, _ id: UUID) -> Int {
         nextRevision += 1
@@ -427,12 +502,14 @@ final class AssetAnalysis {
     func writeHeldResults() async {
         guard let package = packageURL else { return }
         let expected = generation, epoch = packageEpoch
+        retryPendingInvalidations()
         let held = unsavedResults()
         var unchanged: Bool { generation == expected && packageEpoch == epoch }
         for (id, entry) in held.scores {
             guard unchanged else { return }
+            let source = held.sources.scores[id]
             await persist(\.dirtyScores, id, entry.revision, to: package, epoch: epoch) {
-                try ProjectStore.writeChangeScores(entry.value, for: id, in: $0)
+                try ProjectStore.writeChangeScores(entry.value, for: id, in: $0, source: source)
             }
         }
         for (id, entry) in held.references {
@@ -449,8 +526,9 @@ final class AssetAnalysis {
         }
         for (id, entry) in held.beats {
             guard unchanged else { return }
+            let source = held.sources.beats[id]
             await persist(\.dirtyBeats, id, entry.revision, to: package, epoch: epoch) {
-                try ProjectStore.writeBeats(entry.value, for: id, in: $0)
+                try ProjectStore.writeBeats(entry.value, for: id, in: $0, source: source)
             }
         }
     }
@@ -499,6 +577,7 @@ final class AssetAnalysis {
         let id = lease.id
         // However the job ends, it lets go of what it still owns.
         defer { release(lease) }
+        let source = ResultSource(path: job.file.path, stamp: job.file.stamp)
         // An offline file can't be analyzed, and isn't a failure: it waits.
         guard FileManager.default.fileExists(atPath: job.url.path) else {
             if let file = owners[id]?.input.file { unavailable[id] = file }
@@ -525,12 +604,16 @@ final class AssetAnalysis {
                 work: { [backend] progress in try await backend.scoreFrames(job.url, progress) },
                 commit: { track in
                     tracks[id] = track
+                    scoreSources[id] = source
                     let revision = markDirty(\.dirtyScores, id)
                     await persist(\.dirtyScores, id, revision, to: packageURL, epoch: packageEpoch) {
-                        try ProjectStore.writeChangeScores(track, for: id, in: $0)
+                        try ProjectStore.writeChangeScores(track, for: id, in: $0, source: job.file.stamp)
                     }
                 },
-                failed: { failures[id] = $0 }
+                failed: {
+                    failures[id] = $0
+                    scoreSources[id] = source
+                }
             )
             guard proceed else { return }
         }
@@ -550,22 +633,22 @@ final class AssetAnalysis {
             )
             guard proceed else { return }
         }
-        if job.wantsBeats, let file = owners[id]?.input.file {
+        if job.wantsBeats {
             _ = await runStage(
                 .beats, lease: lease,
                 work: { [backend] progress in try await backend.detectBeats(job.url, progress) },
                 commit: { track in
                     beats[id] = track
-                    beatFiles[id] = file
-                    discardRevisions[id] = nil
+                    beatSources[id] = source
+                    pendingInvalidations[Invalidation(kind: .beats, id: id)] = nil
                     let revision = markDirty(\.dirtyBeats, id)
                     await persist(\.dirtyBeats, id, revision, to: packageURL, epoch: packageEpoch) {
-                        try ProjectStore.writeBeats(track, for: id, in: $0)
+                        try ProjectStore.writeBeats(track, for: id, in: $0, source: job.file.stamp)
                     }
                 },
                 failed: {
                     beatFailures[id] = $0
-                    beatFiles[id] = file
+                    beatSources[id] = source
                 }
             )
         }
@@ -637,6 +720,18 @@ final class AssetAnalysis {
         guard let package else { return }
         let written = await attempt(on: package, body)
         if written, epoch == packageEpoch { acknowledge(keyPath, id, revision) }
+    }
+
+    /// Runs package work off the main actor. Nil when it worked, otherwise
+    /// what went wrong.
+    private func attemptReporting(on package: URL, _ body: @escaping @Sendable (URL) throws -> Void) async -> String? {
+        do {
+            try await backend.perform(package, body)
+            return nil
+        } catch {
+            NSLog("Couldn't change the project package: \(error.localizedDescription)")
+            return error.localizedDescription
+        }
     }
 
     /// Runs package work off the main actor. False when it failed.

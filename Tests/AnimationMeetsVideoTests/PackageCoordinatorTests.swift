@@ -24,6 +24,7 @@ import Testing
             )
             clip.id = $0
             clip.hasAudio = true
+            clip.acceptedStamp = FileStamp(byteCount: 1, modified: 1)
             return clip
         }
         return project
@@ -111,10 +112,11 @@ import Testing
         let gate = Gate()
         let scored = UUID(), droppedBeats = UUID()
         var video = project(ids: [scored, droppedBeats])
-        try ProjectStore.writeBeats(.none(), for: droppedBeats, in: source)
+        let stamp = FileStamp(byteCount: 1, modified: 1)
+        try ProjectStore.writeBeats(.none(), for: droppedBeats, in: source, source: stamp)
         let analysis = analysis(holdingFirstWriteWith: gate)
         analysis.backend.detectBeats = { _, _ in .none() }
-        analysis.reset(beats: [droppedBeats: .none()], packageURL: source)
+        analysis.reset(beats: [droppedBeats: .none()], sources: AnalysisSources(beats: [droppedBeats: stamp]), packageURL: source)
         analysis.analyzeMissing(in: video)
         try await settle { gate.arrived == 1 }
 

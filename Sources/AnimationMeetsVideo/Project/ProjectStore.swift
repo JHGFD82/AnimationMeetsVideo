@@ -23,6 +23,11 @@ struct ProjectLoadResult {
     /// Assets whose reference thumbnails are saved. The pictures themselves
     /// are read with `readThumbnails` when needed.
     var assetsWithThumbnails: Set<UUID> = []
+    /// The file each loaded score and beat result was computed from. Results
+    /// whose record is missing or no longer fits the asset's file are not
+    /// loaded at all; `rejectedAnalysis` says why, and they are analyzed again.
+    var analysisSources = AnalysisSources()
+    var rejectedAnalysis: [UUID: [AnalysisKind: AnalysisRejection]] = [:]
 }
 
 /// A media file that saving would copy into the project package.
@@ -398,14 +403,17 @@ enum ProjectStore {
         references: [UUID: AssetReference] = [:],
         thumbnails: [UUID: ReferenceThumbnails] = [:],
         beats: [UUID: BeatTrack] = [:],
+        sources: AnalysisSources = AnalysisSources(),
         discardingBeats discardedBeats: Set<UUID> = [],
+        invalidatingScores invalidatedScores: Set<UUID> = [],
         previousPackageURL: URL? = nil
     ) async throws -> EditingProject {
         try await PackageCoordinator.shared.run(on: [packageURL] + (previousPackageURL.map { [$0] } ?? [])) {
             try performSave(
                 project, to: packageURL, copying: copying, changeScores: changeScores,
-                references: references, thumbnails: thumbnails, beats: beats,
-                discardingBeats: discardedBeats, previousPackageURL: previousPackageURL
+                references: references, thumbnails: thumbnails, beats: beats, sources: sources,
+                discardingBeats: discardedBeats, invalidatingScores: invalidatedScores,
+                previousPackageURL: previousPackageURL
             )
         }
     }
@@ -418,7 +426,9 @@ enum ProjectStore {
         references: [UUID: AssetReference],
         thumbnails: [UUID: ReferenceThumbnails],
         beats: [UUID: BeatTrack],
+        sources: AnalysisSources,
         discardingBeats discardedBeats: Set<UUID>,
+        invalidatingScores invalidatedScores: Set<UUID>,
         previousPackageURL: URL?
     ) throws -> EditingProject {
         try preparePackage(at: packageURL)
@@ -438,15 +448,19 @@ enum ProjectStore {
             project.clips[index].acceptedStamp = FileStamp(url: destination)
         }
 
-        for (assetID, track) in changeScores where project.mediaClip(id: assetID) != nil {
-            try writeChangeScores(track, for: assetID, in: packageURL)
+        // Retired results go first, and a retirement that can't be made
+        // durable fails the save, so an outdated result can't return.
+        for assetID in invalidatedScores where changeScores[assetID] == nil {
+            try invalidate(.scores, for: assetID, in: packageURL)
         }
         for assetID in discardedBeats where beats[assetID] == nil {
-            let url = referenceFolder(for: assetID, in: packageURL).appending(path: beatFileName)
-            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            try invalidate(.beats, for: assetID, in: packageURL)
+        }
+        for (assetID, track) in changeScores where project.mediaClip(id: assetID) != nil {
+            try writeChangeScores(track, for: assetID, in: packageURL, source: sources.scores[assetID])
         }
         for (assetID, track) in beats where project.mediaClip(id: assetID) != nil {
-            try writeBeats(track, for: assetID, in: packageURL)
+            try writeBeats(track, for: assetID, in: packageURL, source: sources.beats[assetID])
         }
         // A forgotten original's data is deleted only now, so that undoing
         // Forget Original before saving loses nothing.
@@ -796,16 +810,29 @@ enum ProjectStore {
         var scores: [UUID: ChangeScoreTrack] = [:]
         var references: [UUID: AssetReference] = [:]
         var beats: [UUID: BeatTrack] = [:]
+        var sources = AnalysisSources()
+        var rejected: [UUID: [AnalysisKind: AnalysisRejection]] = [:]
         var thumbnailed: Set<UUID> = []
         for id in orderedIDs {
-            beats[id] = readBeats(for: id, in: packageURL)
-            scores[id] = readChangeScores(for: id, in: packageURL)
+            // Results describe the file the asset has now, so they are used
+            // only when their record matches the file the project accepted.
+            let identity = importedClips[id]?.acceptedStamp
+            switch readVerifiedBeats(for: id, in: packageURL, identity: identity) {
+            case .valid(let track, let source): beats[id] = track; sources.beats[id] = source
+            case .rejected(let reason): rejected[id, default: [:]][.beats] = reason
+            case .absent: break
+            }
+            switch readVerifiedChangeScores(for: id, in: packageURL, identity: identity) {
+            case .valid(let track, let source): scores[id] = track; sources.scores[id] = source
+            case .rejected(let reason): rejected[id, default: [:]][.scores] = reason
+            case .absent: break
+            }
             // Left behind only if saving stopped partway; it is deleted at the next save.
             guard importedClips[id]?.referenceForgotten != true else { continue }
             if hasThumbnails(for: id, in: packageURL) { thumbnailed.insert(id) }
             references[id] = readReference(for: id, in: packageURL)
         }
-        return ProjectLoadResult(project: project, missingMedia: missingMedia, offlineMedia: offlineMedia, changedMedia: changedMedia, changeScores: scores, beats: beats, references: references, assetsWithThumbnails: thumbnailed)
+        return ProjectLoadResult(project: project, missingMedia: missingMedia, offlineMedia: offlineMedia, changedMedia: changedMedia, changeScores: scores, beats: beats, references: references, assetsWithThumbnails: thumbnailed, analysisSources: sources, rejectedAnalysis: rejected)
     }
 }
 

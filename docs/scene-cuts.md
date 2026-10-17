@@ -69,10 +69,25 @@ Notes and limits:
   sensitivity `s` from 0 to 1, so each step of the slider feels even. The
   default, balanced (0.5), is about 0.11, roughly 28 out of 255.
 
-Scores are saved with the project (see below) and only recomputed when the
-person chooses "Find Scenes Again". Detecting a replaced file's staleness
-(size, modification date, duration no longer matching) belongs to
-[media replacement](media-replacement.md) and is not built yet.
+Scores are saved with the project (see below) and recomputed when the
+person chooses "Find Scenes Again", or when the asset's file changes.
+
+**Scores describe the file the asset uses now**, because they find the
+scenes and splits of the media being edited. They are not original
+reference data: when a file is replaced its scores are retired and found
+again from the new file, and the original's scores are not used to split
+replacement media. (The reference pictures and metadata, which do describe
+the original, are kept; see below.) Each saved score file has a record in
+`provenance.json` next to it: the size and modification time of the file it
+was computed from (the one the project accepted), the analysis settings, an
+algorithm version, and a digest of the score file. A score is loaded only
+when all of that still applies. A score with no record, as saved by an
+earlier version, is not assumed to belong to the current file and is
+computed again. A retired score is deleted; if the file can't be deleted its
+record is marked invalidated instead, so it is still rejected. If neither
+can be done the retirement stays pending, is retried with the next write or
+save, and is reported by `AssetAnalysis.invalidationFailures`; saving fails
+rather than leave an outdated score that could come back.
 
 ### Three levels of sensitivity
 
@@ -131,7 +146,7 @@ In the package's `Reference/<asset id>/` folder:
 
 | Item | Status |
 | --- | --- |
-| `signature.bin`: the per-frame change scores (magic `AMVS`, version 1, little endian: timescale, frame count, an Int64 time per frame, one score byte per frame; about 9 bytes per frame). | Implemented. A damaged file reads as "not analyzed" and is recomputed. |
+| `signature.bin`: the per-frame change scores (magic `AMVS`, version 1, little endian: timescale, frame count, an Int64 time per frame, one score byte per frame; about 9 bytes per frame). | Implemented. A damaged file, or one whose `provenance.json` record doesn't fit the current file, reads as "not analyzed" and is recomputed. |
 | `thumbs/<value>_<timescale>.jpg`: pictures of the original (256x144 JPEG, quality 0.7) at the first and last frame, just before and at each cut found at a loose sensitivity (strongest 600 cuts at most), and every 10 seconds. | Implemented. Captured once, after scoring, into a scratch folder that is renamed into place, so a `thumbs/` folder that exists is complete. |
 | Dense frames near used ranges | Not implemented. The sync dialog will have to match by cuts and intervals. |
 | `reference.json`: metadata snapshot of the original file (name and path, size and modification time, duration as a rational, frame rate, displayed size, codec, color tags, audio sample rate, capture time). | Implemented. Captured once, in the background, before scoring. A damaged file reads as "no reference". |

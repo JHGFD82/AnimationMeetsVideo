@@ -17,9 +17,15 @@ import Testing
         var project = EditingProject.empty
         project.clips = urls.map {
             MediaClip(name: $0.lastPathComponent, kind: kind, url: $0, duration: CMTime(seconds: 1, preferredTimescale: 600),
-                      frameRate: 24, colorSpace: .rec709, codecName: "Test")
+                      frameRate: 24, colorSpace: .rec709, codecName: "Test", acceptedStamp: FileStamp(url: $0))
         }
         return project
+    }
+
+    private func sources(of project: EditingProject) -> AnalysisSources {
+        var sources = AnalysisSources()
+        for clip in project.clips { sources.scores[clip.id] = clip.acceptedStamp }
+        return sources
     }
 
     private func waitUntilIdle(_ analysis: AssetAnalysis, expecting count: Int) async throws {
@@ -122,7 +128,7 @@ import Testing
         let reference = try await ReferenceCapture.capture(url: movie)
         let analysis = AssetAnalysis()
 
-        analysis.reset(tracks: [id: saved], references: [id: reference], thumbnailed: [id])
+        analysis.reset(tracks: [id: saved], references: [id: reference], thumbnailed: [id], sources: sources(of: video))
         analysis.analyzeMissing(in: video)
 
         #expect(analysis.progress.isEmpty)
@@ -161,7 +167,7 @@ import Testing
         analysis.reset(
             tracks: [id: ChangeScoreTrack(timescale: 600, times: [0], scores: [0])],
             references: [id: try await ReferenceCapture.capture(url: movie)],
-            thumbnailed: [id]
+            thumbnailed: [id], sources: sources(of: video)
         )
 
         analysis.analyzeMissing(in: video)
@@ -223,7 +229,10 @@ import Testing
         var video = project(with: [movie])
         video.clips[0].previousPaths = ["/elsewhere/original.mov"]
         let analysis = AssetAnalysis()
-        analysis.reset(tracks: [video.clips[0].id: ChangeScoreTrack(timescale: 600, times: [0], scores: [0])])
+        analysis.reset(
+            tracks: [video.clips[0].id: ChangeScoreTrack(timescale: 600, times: [0], scores: [0])],
+            sources: sources(of: video)
+        )
 
         analysis.analyzeMissing(in: video)
 
@@ -589,6 +598,140 @@ final class Gate: @unchecked Sendable {
         try await settle { analysis.progress.isEmpty && analysis.tracks[id] != nil }
 
         #expect(analysis.tracks[id]?.scores == [2])
+    }
+
+    // MARK: Provenance and durable retirement
+
+    private let stampA = FileStamp(byteCount: 100, modified: 1)
+    private let stampB = FileStamp(byteCount: 200, modified: 2)
+
+    private func stamped(_ video: EditingProject, _ stamp: FileStamp) -> EditingProject {
+        var video = video
+        for index in video.clips.indices { video.clips[index].acceptedStamp = stamp }
+        return video
+    }
+
+    @Test func scoresWithNoKnownSourceAreAnalyzedAgain() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [5]) }
+
+        analysis.reset(tracks: [id: track(1)])
+        analysis.analyzeMissing(in: video)
+        try await settle { analysis.tracks[id]?.scores == [5] && analysis.progress.isEmpty }
+    }
+
+    @Test func scoresFromTheSameFileAreKept() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        let scored = Mutex(0)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(scored.increment())]) }
+        analysis.reset(tracks: [id: track(1)], sources: AnalysisSources(scores: [id: stampA]))
+
+        analysis.analyzeMissing(in: video)
+        try await settle { analysis.progress.isEmpty }
+
+        #expect(scored.value == 0)
+        #expect(analysis.tracks[id]?.scores == [1])
+    }
+
+    @Test func replacingTheFileRetiresItsScoresAndFindsThemAgain() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        let counter = Mutex(0)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(counter.increment())]) }
+        analysis.analyzeMissing(in: video)
+        try await settle { analysis.tracks[id] != nil && analysis.progress.isEmpty }
+
+        analysis.analyzeMissing(in: stamped(video, stampB))
+        #expect(analysis.tracks[id] == nil)
+        try await settle { analysis.tracks[id]?.scores == [2] && analysis.progress.isEmpty }
+    }
+
+    @Test func aRetiredBeatFileThatCannotBeDeletedStaysRetiredAfterReopening() async throws {
+        let package = try makePackage()
+        let id = UUID()
+        let file = ProjectStore.referenceFolder(for: id, in: package).appending(path: ProjectStore.beatFileName)
+        defer {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: file.path)
+            try? FileManager.default.removeItem(at: package)
+        }
+        let video = stamped(project(ids: [id], hasAudio: true), stampA)
+        try ProjectStore.writeBeats(.none(), for: id, in: package, source: stampA)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: file.path)
+        let analysis = AssetAnalysis()
+        scoring(analysis) { throw NSError(domain: "test", code: 3) }
+        analysis.backend.detectBeats = { _, _ in throw NSError(domain: "test", code: 4) }
+        analysis.reset(beats: [id: .none()], sources: AnalysisSources(beats: [id: stampA]), packageURL: package)
+
+        // The file changes, so the saved beats no longer apply.
+        analysis.analyzeMissing(in: stamped(video, stampB))
+        try await settle { analysis.discardedBeats.isEmpty }
+
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        let reopened = ProjectStore.readVerifiedBeats(for: id, in: package, identity: stampA)
+        guard case .rejected(.invalidated) = reopened else {
+            Issue.record("the retired beats were accepted again")
+            return
+        }
+    }
+
+    @Test func aRetirementThatCannotBePersistedStaysPendingAndVisibleUntilItCan() async throws {
+        let package = try makePackage()
+        let id = UUID()
+        let directory = ProjectStore.referenceFolder(for: id, in: package)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
+            try? FileManager.default.removeItem(at: package)
+        }
+        let video = stamped(project(ids: [id], hasAudio: true), stampA)
+        try ProjectStore.writeBeats(.none(), for: id, in: package, source: stampA)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory.path)
+        let analysis = AssetAnalysis()
+        scoring(analysis) { throw NSError(domain: "test", code: 3) }
+        analysis.backend.detectBeats = { _, _ in throw NSError(domain: "test", code: 4) }
+        analysis.reset(beats: [id: .none()], sources: AnalysisSources(beats: [id: stampA]), packageURL: package)
+
+        analysis.analyzeMissing(in: stamped(video, stampB))
+        try await settle { !analysis.invalidationFailures.isEmpty }
+
+        #expect(analysis.discardedBeats == [id])
+        // The same results go to a save, which fails rather than lose the retirement.
+        #expect(analysis.unsavedResults().discardedBeats == [id])
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
+        analysis.retryPendingInvalidations()
+        try await settle { analysis.discardedBeats.isEmpty }
+        #expect(analysis.invalidationFailures.isEmpty)
+        #expect(ProjectStore.readBeats(for: id, in: package) == nil)
+    }
+
+    @Test func aRedetectedScoreCannotComeBackWhenItsFileCannotBeDeleted() async throws {
+        let package = try makePackage()
+        let id = UUID()
+        let file = ProjectStore.referenceFolder(for: id, in: package).appending(path: ProjectStore.changeScoreFileName)
+        defer {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: file.path)
+            try? FileManager.default.removeItem(at: package)
+        }
+        let video = stamped(project(ids: [id]), stampA)
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: file.path)
+        let analysis = AssetAnalysis()
+        scoring(analysis) { throw NSError(domain: "test", code: 5) }
+        analysis.reset(packageURL: package)
+
+        analysis.reanalyze(video.clips[0], in: video)
+        try await settle { analysis.failures[id] != nil && analysis.progress.isEmpty }
+        try await settle { analysis.unsavedResults().invalidatedScores.isEmpty }
+
+        guard case .rejected(.invalidated) = ProjectStore.readVerifiedChangeScores(for: id, in: package, identity: stampA) else {
+            Issue.record("the old score is usable again")
+            return
+        }
     }
 
     @Test func progressThatIsNotANumberOrOutOfRangeNeverReachesTheUI() async throws {
