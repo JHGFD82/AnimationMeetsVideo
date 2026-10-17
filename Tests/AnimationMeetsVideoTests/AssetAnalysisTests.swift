@@ -780,6 +780,40 @@ final class Gate: @unchecked Sendable {
         #expect(ProjectStore.readVerifiedChangeScores(for: id, in: package, identity: stampA).value == track(9))
     }
 
+    @Test func aRetirementStillOnItsWayCannotDeleteTheNewScore() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
+        let analysis = AssetAnalysis()
+        let scored = Mutex(0)
+        scoring(analysis) {
+            _ = scored.increment()
+            return ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 9])
+        }
+        observing(analysis) { self.stampA }
+        analysis.reset(packageURL: package)
+        analysis.update(with: video)
+        try await settle { analysis.tracks[id] == track(1) && !analysis.isLoadingSaved && analysis.progress.isEmpty }
+
+        // The retirement is held before it reaches the package's queue.
+        let gate = Gate(), calls = Mutex(0)
+        analysis.backend.perform = { package, body in
+            if calls.increment() == 1 { await gate.wait() }
+            try await PackageCoordinator.shared.run(on: [package]) { try body(package) }
+        }
+        analysis.reanalyze(video.clips[0], in: video)
+        try await settle { gate.arrived == 1 && scored.value == 1 }
+        try await Task.sleep(for: .milliseconds(50))
+        gate.open()
+        try await settle { analysis.tracks[id]?.scores == [0, 9] && analysis.progress.isEmpty }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(analysis.unsavedTracks.isEmpty)
+        #expect(ProjectStore.readVerifiedChangeScores(for: id, in: package, identity: stampA).value?.scores == [0, 9])
+    }
+
     // MARK: Inputs checked by the job itself
 
     @MainActor private final class ProjectBox {

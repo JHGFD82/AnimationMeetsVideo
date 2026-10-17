@@ -638,10 +638,20 @@ final class AssetAnalysis {
         pendingInvalidations[Invalidation(kind: kind, id: id)] != nil
     }
 
+    /// Waits out a retirement of the asset's result of this kind that is
+    /// already under way: it may not have reached the package's queue yet,
+    /// and its delete must not land after the new result's write. Returns
+    /// whether the job still owns the asset afterwards.
+    private func awaitRetirement(_ kind: AnalysisKind, lease: Lease) async -> Bool {
+        let key = Invalidation(kind: kind, id: lease.id)
+        while let running = invalidationTasks[key] { await running.task.value }
+        return stillValid(lease)
+    }
+
     /// A new result replaces whatever the package held, so a retirement still
     /// pending for the old one is no longer wanted: run after the new write,
-    /// it would delete that. One already under way was queued ahead of the
-    /// write, and finds out it is no longer wanted when it ends.
+    /// it would delete that. Called once none is under way (see
+    /// `awaitRetirement`), so none starts before the write is queued.
     private func supersedeInvalidation(_ kind: AnalysisKind, of id: UUID) {
         let key = Invalidation(kind: kind, id: id)
         pendingInvalidations[key] = nil
@@ -1031,6 +1041,7 @@ final class AssetAnalysis {
                     return track
                 },
                 commit: { track in
+                    guard await awaitRetirement(.scores, lease: lease) else { return }
                     tracks[id] = track
                     scoreSources[id] = source
                     supersedeInvalidation(.scores, of: id)
@@ -1069,6 +1080,7 @@ final class AssetAnalysis {
                 .beats, lease: lease, file: job.file, url: job.url, observed: seen.stamp,
                 work: { [backend] progress in try await backend.detectBeats(job.url, progress) },
                 commit: { track in
+                    guard await awaitRetirement(.beats, lease: lease) else { return }
                     beats[id] = track
                     beatSources[id] = source
                     supersedeInvalidation(.beats, of: id)
