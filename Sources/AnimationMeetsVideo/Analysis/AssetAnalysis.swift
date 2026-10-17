@@ -180,8 +180,9 @@ final class AssetAnalysis {
         /// What the package holds for an asset, read away from the main actor
         /// and in turn with everything else that changes the package. Scores and
         /// beats are checked against `identity`; the reference and its pictures
-        /// are looked for only when `includingReference`.
-        var readSaved: @Sendable (_ package: URL, _ id: UUID, _ identity: FileStamp?, _ includingReference: Bool) async -> SavedAnalysis
+        /// are looked for only when `includingReference`. Throws when the
+        /// package could not be read at all, as opposed to holding nothing.
+        var readSaved: @Sendable (_ package: URL, _ id: UUID, _ identity: FileStamp?, _ includingReference: Bool) async throws -> SavedAnalysis
         /// Whether the media file is there and what it looks like right now,
         /// asked away from the main actor.
         var observeFile: @Sendable (URL) async -> FileObservation
@@ -199,7 +200,7 @@ final class AssetAnalysis {
             },
             detectBeats: { try await BeatDetector.detect(url: $0, progress: $1) },
             readSaved: { package, id, identity, includingReference in
-                let read = try? await PackageCoordinator.shared.run(on: [package]) { () -> SavedAnalysis in
+                try await PackageCoordinator.shared.run(on: [package]) { () -> SavedAnalysis in
                     var saved = SavedAnalysis()
                     saved.scores = ProjectStore.readVerifiedChangeScores(for: id, in: package, identity: identity)
                     saved.beats = ProjectStore.readVerifiedBeats(for: id, in: package, identity: identity)
@@ -210,7 +211,6 @@ final class AssetAnalysis {
                     }
                     return saved
                 }
-                return read ?? SavedAnalysis()
             },
             observeFile: { url in
                 await Task.detached(priority: .utility) {
@@ -322,7 +322,8 @@ final class AssetAnalysis {
     /// Assets whose saved results are being read right now, with the token of
     /// that read. Nothing is decided about such an asset until the read is
     /// back, so a result already on disk is not analyzed a second time.
-    @ObservationIgnored private var loading: [UUID: Int] = [:]
+    /// Observed, for `isLoadingSaved`.
+    private var loading: [UUID: Int] = [:]
     /// Assets whose file on disk differs from the one the project accepted:
     /// it was changed outside the app. No current-file analysis is made, or
     /// cached results used, for them until the change is accepted (which
@@ -442,7 +443,14 @@ final class AssetAnalysis {
         latestProject = project
         let present = Set(project.clips.map(\.id))
         for id in owners.keys where !present.contains(id) { revoke(id) }
+        // What is known about an asset's files and package goes with it; a
+        // read under way for it is dropped. Results and failures stay, for
+        // an undo that brings the asset back.
         for id in changedFiles.keys where !present.contains(id) { changedFiles[id] = nil }
+        for id in loading.keys where !present.contains(id) { loading[id] = nil }
+        for id in unavailable.keys where !present.contains(id) { unavailable[id] = nil }
+        for id in rejectedResults.keys where !present.contains(id) { rejectedResults[id] = nil }
+        checkedPackage.formIntersection(present)
         for clip in project.clips {
             let input = Self.input(of: clip)
             if let owner = owners[clip.id], owner.input != input { revoke(clip.id) }
@@ -510,7 +518,17 @@ final class AssetAnalysis {
         Task {
             for task in earlier { await task.value }
             guard generation == expectedGeneration, loading[id] == token else { return }
-            var saved = await backend.readSaved(package, id, identity, includingReference)
+            var saved: SavedAnalysis
+            do {
+                saved = try await backend.readSaved(package, id, identity, includingReference)
+            } catch {
+                // Not known to hold nothing, so not analyzed over: the asset
+                // stays unchecked, and is read again at the next update.
+                guard generation == expectedGeneration, loading[id] == token else { return }
+                NSLog("Couldn't read saved analysis: \(error.localizedDescription)")
+                loading[id] = nil
+                return
+            }
             // Results fit the file the project accepted; if the file on disk
             // is not that one they say nothing about it.
             var seen: FileObservation?
@@ -535,32 +553,36 @@ final class AssetAnalysis {
         checkedPackage.insert(id)
         // A result retired while it was read stays retired, even if the
         // package could not be made to forget it yet.
-        switch saved.scores {
-        case .valid(let track, let source) where tracks[id] == nil && !isRetiring(.scores, of: id):
+        noteRejection(saved.scores, .scores, of: id)
+        if case .valid(let track, let source) = saved.scores, tracks[id] == nil, !isRetiring(.scores, of: id) {
             tracks[id] = track
             scoreSources[id] = ResultSource(path: nil, stamp: source)
-        case .rejected(let reason): rejectedResults[id, default: [:]][.scores] = reason
-        default: break
         }
-        switch saved.beats {
-        case .valid(let track, let source) where beats[id] == nil && !isRetiring(.beats, of: id):
+        noteRejection(saved.beats, .beats, of: id)
+        if case .valid(let track, let source) = saved.beats, beats[id] == nil, !isRetiring(.beats, of: id) {
             beats[id] = track
             beatSources[id] = ResultSource(path: nil, stamp: source)
-        case .rejected(let reason): rejectedResults[id, default: [:]][.beats] = reason
-        default: break
         }
         // Read before a later Forget Original, so it is checked again here.
         let forgotten = (projectSource?() ?? latestProject)?.clips.first { $0.id == id }?.referenceForgotten ?? false
         guard !forgotten else { return }
         if references[id] == nil, let reference = saved.reference { references[id] = reference }
-        switch saved.originalScores {
-        case .valid(let track, let source) where originalScores[id] == nil:
+        noteRejection(saved.originalScores, .originalScores, of: id)
+        if case .valid(let track, let source) = saved.originalScores, originalScores[id] == nil {
             originalScores[id] = track
             originalSources[id] = source
-        case .rejected(let reason): rejectedResults[id, default: [:]][.originalScores] = reason
-        default: break
         }
         if saved.hasThumbnails { thumbnailed.insert(id) }
+    }
+
+    /// Keeps why the read result was not used, or forgets an earlier reason
+    /// once the read finds a usable result or none.
+    private func noteRejection<Value>(_ result: CachedResult<Value>, _ kind: AnalysisKind, of id: UUID) {
+        if case .rejected(let reason) = result {
+            rejectedResults[id, default: [:]][kind] = reason
+        } else if rejectedResults[id]?[kind] != nil {
+            rejectedResults[id]?[kind] = nil
+        }
     }
 
     /// True while saved results are being read.
@@ -590,6 +612,7 @@ final class AssetAnalysis {
     /// as that can be confirmed. Until then it is pending, and tried again
     /// with the next write or save and by `retryPendingInvalidations`.
     private func discardResult(_ kind: AnalysisKind, of id: UUID) {
+        if kind != .originalScores, rejectedResults[id]?[kind] != nil { rejectedResults[id]?[kind] = nil }
         switch kind {
         case .scores:
             tracks[id] = nil
@@ -926,6 +949,7 @@ final class AssetAnalysis {
             originalScores[id] = nil
             originalSources[id] = nil
             dirtyOriginalScores[id] = nil
+            if rejectedResults[id]?[.originalScores] != nil { rejectedResults[id]?[.originalScores] = nil }
             dirtyPictures[id] = nil
             heldPictures[id] = nil
             thumbnailed.remove(id)

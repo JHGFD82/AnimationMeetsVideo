@@ -900,7 +900,7 @@ final class Gate: @unchecked Sendable {
         let live = analysis.backend
         analysis.backend.readSaved = { package, id, identity, includingReference in
             await gate.wait()
-            return await live.readSaved(package, id, identity, includingReference)
+            return try await live.readSaved(package, id, identity, includingReference)
         }
         analysis.reset(packageURL: package)
         analysis.update(with: video)
@@ -912,6 +912,33 @@ final class Gate: @unchecked Sendable {
 
         #expect(analysis.tracks.isEmpty)
         #expect(!analysis.isLoadingSaved)
+    }
+
+    @Test func aReadThatFailsIsTriedAgainRatherThanAnalyzedOver() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
+        let analysis = AssetAnalysis()
+        let scored = Mutex(0)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(9 + scored.increment())]) }
+        observing(analysis) { self.stampA }
+        let live = analysis.backend, reads = Mutex(0)
+        analysis.backend.readSaved = { package, id, identity, includingReference in
+            if reads.increment() == 1 { throw CocoaError(.fileReadUnknown) }
+            return try await live.readSaved(package, id, identity, includingReference)
+        }
+        analysis.reset(packageURL: package)
+        analysis.update(with: video)
+        try await settle { reads.value == 1 && !analysis.isLoadingSaved }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(scored.value == 0)
+
+        analysis.update(with: video)
+        try await settle { analysis.tracks[id] != nil && !analysis.isLoadingSaved && analysis.progress.isEmpty }
+        #expect(analysis.tracks[id] == track(1))
+        #expect(scored.value == 0)
     }
 
     @Test func theMainActorRunsWhileASlowReadIsSuspended() async throws {
