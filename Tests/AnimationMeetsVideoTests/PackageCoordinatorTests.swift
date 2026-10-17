@@ -148,4 +148,71 @@ import Testing
         #expect(ProjectStore.readBeats(for: droppedBeats, in: destination) == nil)
         #expect(ProjectStore.readChangeScores(for: scored, in: destination)?.scores == [7])
     }
+
+    @Test func markingBackupsSeenWaitsForWhatIsAlreadyQueued() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let gate = Gate()
+        let id = UUID()
+        let video = project(ids: [id])
+        try await ProjectStore.save(video, to: package)
+        // An autosave newer than project.json: work that was never saved.
+        let projectFile = package.appending(path: ProjectStore.projectFileName)
+        let older = Date().addingTimeInterval(-60)
+        try FileManager.default.setAttributes([.modificationDate: older], ofItemAtPath: projectFile.path)
+        var edited = video
+        edited.name = "Edited"
+        try ProjectStore.writeBackup(of: edited, in: package)
+        #expect(ProjectStore.unsavedBackup(in: package) != nil)
+
+        let held = Task { try await PackageCoordinator.shared.run(on: [package]) { await gate.wait() } }
+        try await settle { gate.arrived == 1 }
+        let marking = Task { await ProjectStore.markBackupsSeenQueued(in: package) }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(ProjectStore.unsavedBackup(in: package) != nil)
+
+        gate.open()
+        try await held.value
+        await marking.value
+        #expect(ProjectStore.unsavedBackup(in: package) == nil)
+    }
+
+    @Test func replacingAPackageWaitsForWhatIsAlreadyQueued() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let gate = Gate()
+        let held = Task { try await PackageCoordinator.shared.run(on: [package]) { await gate.wait() } }
+        try await settle { gate.arrived == 1 }
+
+        let trashing = Task { try await ProjectStore.trashPackage(at: package, checkingLock: false) }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(exists(package))
+
+        gate.open()
+        try await held.value
+        try await trashing.value
+        #expect(!exists(package))
+        // Leave the Trash as it was found.
+        let trash = try FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+        for item in (try? FileManager.default.contentsOfDirectory(at: trash, includingPropertiesForKeys: nil)) ?? []
+        where item.lastPathComponent == package.lastPathComponent {
+            try? FileManager.default.removeItem(at: item)
+        }
+    }
+
+    @Test func saveAsInOppositeDirectionsAtOnceDoesNotDeadlock() async throws {
+        let first = try makePackage(), second = try makePackage()
+        defer {
+            try? FileManager.default.removeItem(at: first)
+            try? FileManager.default.removeItem(at: second)
+        }
+        let video = project(ids: [UUID()])
+        let finished = Mutex(0)
+        let toSecond = Task { try await ProjectStore.save(video, to: second, previousPackageURL: first); _ = finished.increment() }
+        let toFirst = Task { try await ProjectStore.save(video, to: first, previousPackageURL: second); _ = finished.increment() }
+
+        try await settle { finished.value == 2 }
+        try await toSecond.value
+        try await toFirst.value
+    }
 }

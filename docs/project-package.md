@@ -236,8 +236,10 @@ the package already holds is never analyzed twice, and a read can't see a
 result whose retirement was already asked for. The scorer, reference
 capture, picture capture and beat detector do their decoding and arithmetic
 on background tasks or the sample-reading queue, not on the main actor.
-Replacing an existing package and marking backups
-as seen are not queued, since no save of that package can be running then.
+Replacing an existing package (moving it to the Trash) and marking
+backups as seen go through the queue too. Operations name their packages in
+a fixed (sorted) order when they are queued, so two Save As operations in
+opposite directions can't wait on each other.
 
 ## Live reload
 

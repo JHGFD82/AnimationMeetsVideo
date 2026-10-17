@@ -202,7 +202,7 @@ struct AnimationMeetsVideoApp: App {
         isBusy = true
         defer { isBusy = false }
         do {
-            try replaceExisting(at: url)
+            try await replaceExisting(at: url)
             try ProjectStore.preparePackage(at: url)
             let lock = try ProjectLock.acquire(at: url)
             let saved = try await ProjectStore.save(fresh, to: url)
@@ -223,13 +223,8 @@ struct AnimationMeetsVideoApp: App {
 
     /// The save panel has already asked whether to replace what's at `url`,
     /// so it goes to the Trash, unless it's a project open somewhere else.
-    private func replaceExisting(at url: URL) throws {
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        if (try? ProjectStore.validatePackage(at: url)) != nil, !isOpenProject(url) {
-            // Throws if another window or app has it open; released right away.
-            _ = try ProjectLock.acquire(at: url)
-        }
-        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+    private func replaceExisting(at url: URL) async throws {
+        try await ProjectStore.trashPackage(at: url, checkingLock: !isOpenProject(url))
     }
 
     private func openProject() {
@@ -290,7 +285,7 @@ struct AnimationMeetsVideoApp: App {
                 if askToRestore(backup, name: saved.project.name) {
                     restored = try? await ProjectStore.load(from: url, projectFile: backup)
                 } else {
-                    ProjectStore.markBackupsSeen(in: url)
+                    await ProjectStore.markBackupsSeenQueued(in: url)
                 }
             }
             let result = restored ?? saved
@@ -378,7 +373,7 @@ struct AnimationMeetsVideoApp: App {
                 // Otherwise the old package's media, backups and render
                 // cache would be mixed into this one.
                 if replacesExisting {
-                    try replaceExisting(at: url)
+                    try await replaceExisting(at: url)
                 }
                 try ProjectStore.preparePackage(at: url)
                 let lock = try lockForProject(at: url)
@@ -571,7 +566,7 @@ struct AnimationMeetsVideoApp: App {
         switch askAboutUnsavedChanges("Save changes to \u{201C}\(project.name)\u{201D} first?") {
         case .save: return await saveProject()
         case .discard:
-            ProjectStore.markBackupsSeen(in: url)
+            await ProjectStore.markBackupsSeenQueued(in: url)
             return true
         case .cancel: return false
         }
@@ -590,8 +585,11 @@ struct AnimationMeetsVideoApp: App {
             }
             return .terminateLater
         case .discard:
-            ProjectStore.markBackupsSeen(in: url)
-            return .terminateNow
+            Task {
+                await ProjectStore.markBackupsSeenQueued(in: url)
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
+            return .terminateLater
         case .cancel:
             reopenWindowIfClosed()
             return .terminateCancel

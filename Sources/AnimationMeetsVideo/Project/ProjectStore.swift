@@ -562,6 +562,24 @@ enum ProjectStore {
         }
     }
 
+    /// `markBackupsSeen`, in turn with everything else that changes the package.
+    static func markBackupsSeenQueued(in packageURL: URL) async {
+        _ = try? await PackageCoordinator.shared.run(on: [packageURL]) { markBackupsSeen(in: packageURL) }
+    }
+
+    /// Moves an existing package to the Trash, after anything already queued
+    /// on it. With `checkingLock`, a package another window or app has open
+    /// is refused (the lock is released again at once).
+    static func trashPackage(at url: URL, checkingLock: Bool) async throws {
+        try await PackageCoordinator.shared.run(on: [url]) {
+            guard FileManager.default.fileExists(atPath: url.path) else { return }
+            if checkingLock, (try? validatePackage(at: url)) != nil {
+                _ = try ProjectLock.acquire(at: url)
+            }
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        }
+    }
+
     private static func modificationDate(of url: URL) -> Date? {
         var fresh = url
         fresh.removeAllCachedResourceValues()
