@@ -106,4 +106,42 @@ import Testing
         let sound = [MediaPiece(assetID: s.id, start: t(0), end: t(24))]
         #expect(project.landing(of: sound, onLayer: layerID, in: project.rootTimelineID, at: t(100)) == nil)
     }
+
+    @Test func mediaDroppedOnALayerPushesTheClipsAfterItAsAMoveWould() throws {
+        var project = EditingProject.empty
+        let v = video("V")
+        project.clips = [v]
+        let timelineID = project.rootTimelineID
+        let first = project.addPieces([MediaPiece(assetID: v.id, start: t(0), end: t(48))], intoTimeline: timelineID)
+        let layerID = try #require(first).layerID
+        _ = project.addPieces([MediaPiece(assetID: v.id, start: t(0), end: t(24))], intoLayer: layerID, in: timelineID, at: t(60))
+        // Clips at 0-48 and 60-84. Two pieces, 36 frames together, dropped
+        // nearer the end of the first clip: they go at 48 and push the
+        // second clip right just enough, from 60 to 84.
+        let pieces = [MediaPiece(assetID: v.id, start: t(100), end: t(124)), MediaPiece(assetID: v.id, start: t(200), end: t(212))]
+        let pushed = project.pushedByPieces(pieces, onLayer: layerID, in: timelineID, at: t(30))
+        #expect(pushed.values.map(\.to) == [t(84)])
+
+        let added = project.addPieces(pieces, intoLayer: layerID, in: timelineID, at: t(30))
+        #expect(added?.count == 2)
+        let starts = project.timelines[0].layers[0].clips.map(\.startOffset)
+        #expect(starts == [t(0), t(48), t(72), t(84)])
+    }
+
+    @Test func aMoveAndADropOfTheSameLengthLandAlike() throws {
+        var project = EditingProject.empty
+        let v = video("V")
+        project.clips = [v]
+        let timelineID = project.rootTimelineID
+        let first = project.addPieces([MediaPiece(assetID: v.id, start: t(0), end: t(48))], intoTimeline: timelineID)
+        let layerID = try #require(first).layerID
+        let timeline = try #require(project.timeline(id: timelineID))
+        let others = timeline.layers[0].clips
+        let move = project.insertion(lasting: t(24), frameLocked: true, among: others, in: timeline, at: t(10))
+        // Inside the clip, nearer its start: before it, pushing it 24 frames.
+        #expect(move.start == t(0))
+        #expect(move.push == t(24))
+        let pushed = project.pushedByPieces([MediaPiece(assetID: v.id, start: t(0), end: t(24))], onLayer: layerID, in: timelineID, at: t(10))
+        #expect(pushed.values.map(\.to) == [t(24)])
+    }
 }

@@ -12,26 +12,29 @@ import Observation
 final class MediaDragSession {
     static let shared = MediaDragSession()
 
-    struct Target: Equatable {
-        var layerID: UUID
-        /// Where the pointer is on the timeline: where the media would start.
-        var time: CMTime
-    }
-
     /// What is being dragged; empty when no drag from the browser is on.
     private(set) var pieces: [MediaPiece] = []
-    /// The layer the drag is over, while the media would fit on it.
-    var target: Target?
+    /// The layer the drag is over, while the media would go on it.
+    private(set) var targetLayerID: UUID?
+    /// Where the pointer is on that layer: where the media would start. Kept
+    /// apart from the layer so views of other layers, which read only the
+    /// layer, don't redraw each time the pointer moves.
+    private(set) var targetTime = CMTime.zero
 
     var isDragging: Bool { !pieces.isEmpty }
 
     func begin(_ pieces: [MediaPiece]) {
         self.pieces = pieces
-        target = nil
+        targetLayerID = nil
+    }
+
+    func target(_ layerID: UUID?, at time: CMTime = .zero) {
+        if targetLayerID != layerID { targetLayerID = layerID }
+        if layerID != nil, targetTime != time { targetTime = time }
     }
 
     func end() {
         pieces = []
-        target = nil
+        targetLayerID = nil
     }
 }

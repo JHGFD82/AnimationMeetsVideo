@@ -59,10 +59,11 @@ extension EditingProject {
         return (layers[0].id, clipIDs)
     }
 
-    /// Puts pieces on an existing layer, back to back from near `start`,
-    /// each moved to the nearest gap it fits in. Nothing is added unless
-    /// every piece fits and the layer is the right kind for all of them;
-    /// returns the new clips' IDs.
+    /// Puts pieces on an existing layer, back to back, landing as a clip
+    /// moved there would (`insertion(lasting:...)`): dropped inside a clip
+    /// they go to its nearer edge, and the clips from there on move right
+    /// just far enough to make room. Nothing is added unless the layer is
+    /// the right kind for every piece; returns the new clips' IDs.
     @discardableResult
     mutating func addPieces(
         _ pieces: [MediaPiece],
@@ -70,30 +71,61 @@ extension EditingProject {
         in timelineID: UUID,
         at start: CMTime
     ) -> [UUID]? {
-        guard !pieces.isEmpty, pieces.allSatisfy({ mediaClip(id: $0.assetID) != nil }),
-              let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
+              let (clips, move) = pieceInsertion(pieces, onLayer: layerID, in: timelineID, at: start)
         else { return nil }
 
         let timeline = timelines[tIndex]
-        var clips = timeline.layers[lIndex].clips
-        var cursor = CMTimeMaximum(.zero, start)
-        var added: [UUID] = []
+        var layerClips = timeline.layers[lIndex].clips
+        if move.push > .zero {
+            for index in layerClips.indices where layerClips[index].startOffset >= move.pushFrom {
+                layerClips[index].startOffset = CMTimeAdd(layerClips[index].startOffset, move.push)
+            }
+        }
+        var cursor = move.start
+        for var clip in clips {
+            clip.startOffset = timeline.placementTime(cursor, .nearest, frameLocked: isFrameLocked(clip))
+            layerClips.append(clip)
+            cursor = clip.endOffset
+        }
+        timelines[tIndex].layers[lIndex].clips = layerClips.sorted { $0.startOffset < $1.startOffset }
+        return clips.map(\.id)
+    }
+
+    /// The clips pieces would make on a layer (not yet placed), and where
+    /// the run of them lands and what moves aside; nil for an unknown asset,
+    /// timeline or layer, or a layer of the wrong kind for any piece.
+    func pieceInsertion(_ pieces: [MediaPiece], onLayer layerID: UUID, in timelineID: UUID, at start: CMTime) -> ([TimelineClip], ClipMove)? {
+        guard !pieces.isEmpty, pieces.allSatisfy({ mediaClip(id: $0.assetID) != nil }),
+              let timeline = timeline(id: timelineID), let layer = timeline.layer(id: layerID)
+        else { return nil }
+        var clips: [TimelineClip] = []
+        var length = CMTime.zero
         for piece in pieces {
-            var clip = coveringWholeFrames(
+            let clip = coveringWholeFrames(
                 TimelineClip(source: .media(piece.assetID), startOffset: .zero, trimStart: piece.start, trimEnd: piece.end),
                 in: timeline
             )
-            guard layer(timeline.layers[lIndex], accepts: clip),
-                  let placed = freeStart(for: clip, among: clips, in: timeline, near: cursor)
-            else { return nil }
-            clip.startOffset = placed
+            guard self.layer(layer, accepts: clip) else { return nil }
             clips.append(clip)
-            added.append(clip.id)
-            cursor = clip.endOffset
+            length = CMTimeAdd(length, clip.placedDuration)
         }
-        timelines[tIndex].layers[lIndex].clips = clips.sorted { $0.startOffset < $1.startOffset }
-        return added
+        let move = insertion(lasting: length, frameLocked: clips.contains(where: isFrameLocked), among: layer.clips, in: timeline, at: start)
+        return (clips, move)
+    }
+
+    /// The clips of a layer moving right for pieces dropped there: where
+    /// each is and where it would go. Empty where nothing moves.
+    func pushedByPieces(_ pieces: [MediaPiece], onLayer layerID: UUID, in timelineID: UUID, at start: CMTime) -> [UUID: PushedClip] {
+        guard let (_, move) = pieceInsertion(pieces, onLayer: layerID, in: timelineID, at: start), move.push > .zero,
+              let layer = timeline(id: timelineID)?.layer(id: layerID)
+        else { return [:] }
+        var pushed: [UUID: PushedClip] = [:]
+        for clip in layer.clips where clip.startOffset >= move.pushFrom {
+            pushed[clip.id] = PushedClip(from: clip.startOffset, to: CMTimeAdd(clip.startOffset, move.push))
+        }
+        return pushed
     }
 }
 

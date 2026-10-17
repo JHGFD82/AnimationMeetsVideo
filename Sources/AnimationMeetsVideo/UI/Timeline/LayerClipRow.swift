@@ -16,12 +16,6 @@ struct ClipMovePreview: Equatable {
     var newLayer: LayerKind?
 }
 
-/// A clip moving right to make room for one dragged in front of it.
-struct PushedClip: Equatable {
-    var from: CMTime
-    var to: CMTime
-}
-
 struct LayerClipRow: View {
     @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
     let layer: TimelineLayer
@@ -105,11 +99,20 @@ struct LayerClipRow: View {
     /// The clip lifted by a move drag, drawn above its neighbors.
     @State private var liftedClipID: UUID?
 
+    /// Clips moving aside for media dragged from the browser over this
+    /// layer. Only the layer under the drag reads where the pointer is, so
+    /// the others don't redraw as it moves.
+    private var browserPushed: [UUID: PushedClip] {
+        let session = MediaDragSession.shared
+        guard session.targetLayerID == layer.id else { return [:] }
+        return project.pushedByPieces(session.pieces, onLayer: layer.id, in: timelineID, at: session.targetTime)
+    }
+
     private func shiftX(of clip: TimelineClip) -> CGFloat {
         // A push applies only while the clip is still where it was: once
         // the move lands it is already there, and shifting it again would
         // show it twice as far for a frame.
-        if let push = pushed[clip.id], clip.startOffset == push.from {
+        if let push = pushed[clip.id] ?? browserPushed[clip.id], clip.startOffset == push.from {
             return CMTimeSubtract(push.to, push.from).seconds * pixelsPerSecond
         }
         guard let followerShift, clip.id != followerShift.clipID, clip.startOffset >= followerShift.after else { return 0 }

@@ -50,8 +50,11 @@ areas the scrollbar (shown only while zoomed in).
 Importing a file only adds it to the browser. It reaches a timeline when
 dragged there (whole assets, scenes, or a range; several go back to back
 in the order dragged), or from **Add to Timeline** in its menu. Dropped on
-a layer it goes onto that layer at the drop time, in the nearest gap it
-fits (`addPieces(_:intoLayer:in:at:)`), if the layer takes all of it;
+a layer that takes all of it, it lands as a clip moved there would
+(`addPieces(_:intoLayer:in:at:)`, by the same `insertion` rule as a move):
+inside a clip it goes to that clip's nearer edge, and the clips from there
+on move right just far enough to make room, shown moving while the drag is
+over the layer;
 dropped anywhere in an area below its layers, an empty area included, it
 gets a new layer of that area's kind; anywhere else, where it doesn't fit,
 or on a layer of the wrong kind, it gets new layers of its own default

@@ -147,7 +147,7 @@ struct FilmstripMouseView: NSViewRepresentable {
         /// would land, so the thumbnail under the pointer is hidden; it
         /// comes back anywhere else.
         func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) {
-            let hide = MediaDragSession.shared.target != nil
+            let hide = MediaDragSession.shared.targetLayerID != nil
             guard hide != dragImageHidden, let dragImage else { return }
             dragImageHidden = hide
             let shown = hide ? NSImage(size: dragImage.size) : dragImage

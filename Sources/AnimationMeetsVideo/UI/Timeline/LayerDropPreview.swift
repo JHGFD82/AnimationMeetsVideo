@@ -13,8 +13,8 @@ struct LayerDropPreview: View {
 
     var body: some View {
         let session = MediaDragSession.shared
-        if let target = session.target, target.layerID == layerID,
-           let clips = project.landing(of: session.pieces, onLayer: layerID, in: timelineID, at: target.time) {
+        if session.targetLayerID == layerID,
+           let clips = project.landing(of: session.pieces, onLayer: layerID, in: timelineID, at: session.targetTime) {
             ZStack(alignment: .topLeading) {
                 ForEach(clips) { clip in
                     block(clip)

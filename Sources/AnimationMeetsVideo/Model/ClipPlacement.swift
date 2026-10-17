@@ -192,7 +192,16 @@ extension EditingProject {
         } else {
             others = sameLayer
         }
-        let locked = isFrameLocked(moving)
+        return insertion(lasting: moving.placedDuration, frameLocked: isFrameLocked(moving), among: others, in: timeline, at: proposedStart)
+    }
+
+    /// Where something `length` long, asked to start at `proposedStart`,
+    /// lands among `others` on a layer, and what moves aside for it, by the
+    /// rule `resolvedMove` describes. Shared by moving a clip and by
+    /// dropping media from the browser, so both land alike.
+    func insertion(
+        lasting length: CMTime, frameLocked locked: Bool, among others: [TimelineClip], in timeline: Timeline, at proposedStart: CMTime
+    ) -> ClipMove {
         var start = timeline.placementTime(CMTimeMaximum(.zero, proposedStart), .nearest, frameLocked: locked)
         if let under = others.first(where: { $0.startOffset < start && start < $0.endOffset }) {
             let toStart = CMTimeSubtract(start, under.startOffset)
@@ -205,7 +214,7 @@ extension EditingProject {
         guard let next = followers.map(\.startOffset).min() else {
             return ClipMove(start: start, pushFrom: start, push: .zero)
         }
-        var push = CMTimeMaximum(.zero, CMTimeSubtract(CMTimeAdd(start, moving.placedDuration), next))
+        var push = CMTimeMaximum(.zero, CMTimeSubtract(CMTimeAdd(start, length), next))
         // Pushed clips with pictures must stay on frames.
         if push > .zero, followers.contains(where: isFrameLocked) {
             push = timeline.frameAligned(push, .up)
@@ -358,6 +367,12 @@ extension EditingProject {
         case nil: nil
         }
     }
+}
+
+/// A clip moving right to make room for one dragged in front of it.
+struct PushedClip: Equatable {
+    var from: CMTime
+    var to: CMTime
 }
 
 /// How a clip move resolves: where the clip starts, and how far the clips

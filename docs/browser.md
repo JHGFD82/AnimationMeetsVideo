@@ -123,7 +123,8 @@ the timeline changes. A thin line marks the skimmed frame on the strip.
   thumbnail goes and the layer draws the clips where the drop would put
   them (`landing(of:onLayer:in:at:)`, the drop's own rule), outlined;
   anywhere else, the new-layer row and zone included, it stays a
-  thumbnail. The drag's contents and the layer it is over are shared
+  thumbnail. Clips in the way move aside as they do for a clip dragged
+  within the timeline, by the same rule. The drag's contents and the layer it is over are shared
   through `MediaDragSession`, since a drop target can't read a drag before
   the drop.
 - **Several clips** are dropped back to back on one layer **in browser

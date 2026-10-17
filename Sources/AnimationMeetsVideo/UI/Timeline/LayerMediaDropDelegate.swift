@@ -32,22 +32,21 @@ struct LayerMediaDropDelegate: DropDelegate {
     }
 
     func dropExited(info: DropInfo) {
-        if session.target?.layerID == layerID { session.target = nil }
+        if session.targetLayerID == layerID { session.target(nil) }
     }
 
     private func mark(_ info: DropInfo) {
         let time = time(info)
         if fits(time) {
-            let target = MediaDragSession.Target(layerID: layerID, time: time)
-            if session.target != target { session.target = target }
-        } else if session.target?.layerID == layerID {
-            session.target = nil
+            session.target(layerID, at: time)
+        } else if session.targetLayerID == layerID {
+            session.target(nil)
         }
     }
 
     func performDrop(info: DropInfo) -> Bool {
         let time = time(info)
-        session.target = nil
+        session.target(nil)
         let providers = info.itemProviders(for: [.text])
         guard !providers.isEmpty else { return false }
         let onDrop = onDrop
