@@ -17,6 +17,9 @@ struct FilmstripRow: View {
     var used: [(start: Double, end: Double)] = []
     /// The duration, shown on the first row only.
     var durationText: String?
+    /// How far scene detection has got, shown across the top of the first
+    /// row while the clip's scenes are being found.
+    var detecting: Double?
 
     private var rowTop: CGFloat { CGFloat(row) * layout.rowPitch }
     private var cells: ArraySlice<FilmstripLayout.Cell> { layout.cells(inRow: row) }
@@ -41,6 +44,23 @@ struct FilmstripRow: View {
             } else {
                 RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
                     .strokeBorder(Design.bevelEdge, lineWidth: 1)
+            }
+        }
+        .overlay(alignment: .top) {
+            if let detecting {
+                // The label, shortened, then left out, on a single small
+                // thumbnail, so the bar always has room.
+                ViewThatFits(in: .horizontal) {
+                    detectionBar(detecting, label: "Detecting scenes")
+                    detectionBar(detecting, label: "Detecting")
+                    detectionBar(detecting, label: nil)
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.black.opacity(0.6))
+                .clipped()
+                .accessibilityHidden(true)
             }
         }
         .overlay(alignment: .bottomLeading) {
@@ -71,6 +91,28 @@ struct FilmstripRow: View {
                 duration: cell.duration,
                 color: Design.ClipTone.of(.media(entry.clip), streams: .videoAndAudio).color
             )
+        }
+    }
+
+    private func detectionBar(_ fraction: Double, label: String?) -> some View {
+        HStack(spacing: Design.Space.tight) {
+            if let label {
+                Text(label)
+                    .font(Design.Typeface.micro)
+                    .foregroundStyle(Design.textOnColor)
+                    .fixedSize()
+            }
+            Capsule()
+                .fill(Design.textOnColor.opacity(0.25))
+                .overlay(alignment: .leading) {
+                    GeometryReader { proxy in
+                        Capsule()
+                            .fill(Design.accent)
+                            .frame(width: proxy.size.width * CGFloat(min(max(fraction, 0), 1)))
+                    }
+                }
+                .frame(minWidth: 24, maxWidth: .infinity)
+                .frame(height: 4)
         }
     }
 

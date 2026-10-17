@@ -53,8 +53,9 @@ struct BrowserEntry: Identifiable {
     }
 }
 
-/// The browser's Clips tab: every asset as a filmstrip, and a video's
-/// scenes as clips of their own once it is expanded. See docs/browser.md.
+/// The browser's Clips tab: every asset as a filmstrip. A video is one
+/// clip until its scenes are found, with their progress across its top,
+/// and is then replaced by its scenes under its name. See docs/browser.md.
 struct ClipsTab: View {
     @Binding var project: EditingProject
     let activeTimelineID: UUID
@@ -66,7 +67,6 @@ struct ClipsTab: View {
     @AppStorage("browserThumbnailInterval") private var interval = ThumbnailInterval.all
     @AppStorage("browserThumbnailSize") private var thumbnailSize = ThumbnailSize.medium
     @State private var picked = BrowserSelection<BrowserItemID>()
-    @State private var expandedAssets: Set<UUID> = []
     @State private var width: CGFloat = 240
     @State private var sensitivityTarget: SensitivityTarget?
     @State private var previewTarget: ScenePreviewTarget?
@@ -89,7 +89,7 @@ struct ClipsTab: View {
         var entries: [BrowserEntry] = []
         var order: [BrowserItemID] = []
         var byID: [BrowserItemID: BrowserEntry] = [:]
-        /// Only for expanded videos.
+        /// Only for videos whose scenes are found.
         var coverage: [UUID: SceneCoverage] = [:]
 
         func scenes(of assetID: UUID) -> [SceneRange] { coverage[assetID]?.scenes ?? [] }
@@ -98,10 +98,12 @@ struct ClipsTab: View {
     private func makeSnapshot() -> Snapshot {
         var snapshot = Snapshot()
         for clip in project.clips {
-            snapshot.entries.append(BrowserEntry(id: .asset(clip.id), clip: clip, start: .zero, duration: clip.duration))
-            guard clip.kind == .video, expandedAssets.contains(clip.id),
-                  let coverage = coverageCache.coverage(of: clip, in: project, track: analysis.tracks[clip.id])
-            else { continue }
+            guard clip.kind == .video, let track = analysis.tracks[clip.id],
+                  let coverage = coverageCache.coverage(of: clip, in: project, track: track)
+            else {
+                snapshot.entries.append(BrowserEntry(id: .asset(clip.id), clip: clip, start: .zero, duration: clip.duration))
+                continue
+            }
             snapshot.coverage[clip.id] = coverage
             for (index, scene) in coverage.scenes.enumerated() {
                 snapshot.entries.append(BrowserEntry(
@@ -115,16 +117,19 @@ struct ClipsTab: View {
         return snapshot
     }
 
-    /// One line of the list: a clip's title, one row of its filmstrip, or
-    /// a note under an expanded video. Every line has an ID of its own, so
-    /// a recycled line never shows another clip's title or pictures.
+    /// One line of the list: a video's name over its scenes, a clip's
+    /// title, one row of its filmstrip, or a note under a video's scenes.
+    /// Every line has an ID of its own, so a recycled line never shows
+    /// another clip's title or pictures.
     private enum Line: Identifiable {
+        case heading(MediaClip, sceneCount: Int)
         case title(BrowserEntry, isUsed: Bool)
         case strip(BrowserEntry, FilmstripLayout, row: Int, used: [(start: Double, end: Double)])
         case note(UUID, String)
 
         var id: String {
             switch self {
+            case .heading(let clip, _): "heading|\(clip.id)"
             case .title(let entry, _): "title|\(entry.id)"
             case .strip(let entry, let layout, let row, _): "strip|\(entry.id)|\(row)|\(layout.rowCount)"
             case .note(let assetID, _): "note|\(assetID)"
@@ -136,18 +141,22 @@ struct ClipsTab: View {
         // What the project's timelines use of each asset, for the red line.
         let used = Dictionary(project.clips.map { ($0.id, project.usedRanges(ofMedia: $0.id)) }, uniquingKeysWith: { a, _ in a })
         var lines: [Line] = []
-        for entry in snapshot.entries {
-            let usedHere = entry.seconds(within: used[entry.clip.id] ?? [])
-            lines.append(.title(entry, isUsed: !usedHere.isEmpty))
-            if showsStrip(entry) {
+        var entries = snapshot.entries[...]
+        for clip in project.clips {
+            if let coverage = snapshot.coverage[clip.id] {
+                lines.append(.heading(clip, sceneCount: coverage.scenes.count))
+            }
+            while let entry = entries.first, entry.clip.id == clip.id {
+                entries = entries.dropFirst()
+                let usedHere = entry.seconds(within: used[entry.clip.id] ?? [])
+                lines.append(.title(entry, isUsed: !usedHere.isEmpty))
                 let layout = layout(of: entry)
                 for row in 0..<layout.rowCount {
                     lines.append(.strip(entry, layout, row: row, used: usedHere))
                 }
             }
-            if case .asset(let id) = entry.id, let coverage = snapshot.coverage[id],
-               let note = Self.coverageNote(coverage, replaced: entry.clip.wasReplaced) {
-                lines.append(.note(id, note))
+            if let coverage = snapshot.coverage[clip.id], let note = Self.coverageNote(coverage, replaced: clip.wasReplaced) {
+                lines.append(.note(clip.id, note))
             }
         }
         return lines
@@ -161,10 +170,11 @@ struct ClipsTab: View {
         FilmstripLayout(duration: entry.seconds, interval: interval, cellSize: cellSize, width: width - Self.padding * 2)
     }
 
-    /// An expanded video shows its scenes' strips, not its own.
-    private func showsStrip(_ entry: BrowserEntry) -> Bool {
-        if case .asset(let id) = entry.id { return !expandedAssets.contains(id) }
-        return true
+    /// How far scene detection has got for a video still shown whole;
+    /// nil when nothing is being found for it.
+    private func detecting(_ entry: BrowserEntry) -> Double? {
+        guard case .asset = entry.id, entry.clip.kind == .video, analysis.tracks[entry.clip.id] == nil else { return nil }
+        return analysis.progress[entry.clip.id]
     }
 
     // MARK: - Body
@@ -176,6 +186,9 @@ struct ClipsTab: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(lines(snapshot)) { line in
                     switch line {
+                    case .heading(let clip, let count):
+                        heading(clip, sceneCount: count)
+                            .padding(.top, Design.Space.group)
                     case .title(let entry, let isUsed):
                         title(entry, isUsed: isUsed, snapshot: snapshot)
                             .padding(.top, Design.Space.step)
@@ -220,17 +233,6 @@ struct ClipsTab: View {
     private func title(_ entry: BrowserEntry, isUsed: Bool, snapshot: Snapshot) -> some View {
         let isSelected = picked.contains(entry.id)
         HStack(alignment: .firstTextBaseline, spacing: Design.Space.tight) {
-            if case .asset(let id) = entry.id, entry.clip.kind == .video {
-                Button {
-                    if expandedAssets.contains(id) { expandedAssets.remove(id) } else { expandedAssets.insert(id) }
-                } label: {
-                    Image(systemName: expandedAssets.contains(id) ? "chevron.down" : "chevron.right")
-                        .font(Design.Typeface.micro)
-                        .frame(width: 12)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(expandedAssets.contains(id) ? "Hide scenes" : "Show scenes")
-            }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: Design.Space.tight) {
                     Text(entry.sceneNumber.map { "Scene \($0)" } ?? entry.clip.name)
@@ -246,11 +248,11 @@ struct ClipsTab: View {
                     }
                 }
                 if case .asset = entry.id {
-                    assetStatus(entry.clip)
+                    // Detection shows its progress across the strip instead.
+                    assetStatus(entry.clip, showsProgress: detecting(entry) == nil)
                 }
             }
         }
-        .padding(.leading, entry.sceneNumber == nil ? 0 : 16)
         .contentShape(Rectangle())
         .onTapGesture {
             focused = true
@@ -266,8 +268,39 @@ struct ClipsTab: View {
         .accessibilityAction(named: "Add to Timeline") { addToTimeline(dragPieces(for: [entry.id], snapshot: snapshot)) }
     }
 
+    /// A video's name over its scenes: not a clip itself, but where the
+    /// video's own menu is.
+    private func heading(_ clip: MediaClip, sceneCount: Int) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: Design.Space.tight) {
+                Text(clip.name)
+                    .font(Design.Typeface.label.weight(.semibold))
+                    .foregroundStyle(Design.textPrimary)
+                    .lineLimit(1)
+                Text(sceneCount == 1 ? "1 scene" : "\(sceneCount) scenes")
+                    .font(Design.Typeface.micro)
+                    .foregroundStyle(Design.textTertiary)
+            }
+            assetStatus(clip, showsProgress: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("Add Whole Clip to Timeline") {
+                addToTimeline([MediaPiece(assetID: clip.id, start: .zero, end: clip.duration)])
+            }
+            assetMenu(clip)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityAction(named: "Add Whole Clip to Timeline") {
+            addToTimeline([MediaPiece(assetID: clip.id, start: .zero, end: clip.duration)])
+        }
+    }
+
     private func accessibilityName(_ entry: BrowserEntry, isUsed: Bool) -> String {
         var parts = [entry.sceneNumber.map { "Scene \($0) of \(entry.clip.name)" } ?? entry.clip.name, durationText(entry)]
+        if let progress = detecting(entry) { parts.append("detecting scenes, \(Int(progress * 100)) percent") }
         if isUsed { parts.append("used in a timeline") }
         if let range = picked.range, range.item == entry.id {
             parts.append("range \(timecode(range.start, entry)) to \(timecode(range.end, entry))")
@@ -287,7 +320,8 @@ struct ClipsTab: View {
             isSelected: picked.contains(entry.id) && range == nil,
             range: range.map { ($0.start, $0.end) },
             used: used,
-            durationText: row == 0 ? durationText(entry) : nil
+            durationText: row == 0 ? durationText(entry) : nil,
+            detecting: row == 0 ? detecting(entry) : nil
         )
         .overlay {
             FilmstripMouseView(
@@ -573,8 +607,8 @@ struct ClipsTab: View {
     }
 
     @ViewBuilder
-    private func assetStatus(_ clip: MediaClip) -> some View {
-        if let fraction = analysis.progress[clip.id] {
+    private func assetStatus(_ clip: MediaClip, showsProgress: Bool) -> some View {
+        if showsProgress, let fraction = analysis.progress[clip.id] {
             HStack(spacing: Design.Space.close) {
                 ProgressView(value: fraction)
                     .controlSize(.small)
@@ -583,6 +617,8 @@ struct ClipsTab: View {
                     .font(Design.Typeface.label)
                     .foregroundStyle(Design.textTertiary)
             }
+        } else if analysis.progress[clip.id] != nil {
+            EmptyView()
         } else if replacement.missingMedia.contains(clip.id) {
             Text("File missing")
                 .font(Design.Typeface.label)

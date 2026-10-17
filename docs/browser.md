@@ -28,12 +28,18 @@ The tabs sit at the top of the browser in the same tab bar as the side
 panel's Inspector and Effects tabs (`PanelTabBar`). The chosen tab is
 remembered.
 
-- **Clips**: the project's media, in import order. A video with scenes has
-  a disclosure control; expanded, **each scene is a clip** of its own (a
-  "virtual clip", as in [scene-cuts.md](scene-cuts.md)), listed under the
-  video in source order, and everything below applies to it as to any
-  clip. Collapsed, the video is one clip. Audio files are clips with a
-  waveform in place of thumbnails.
+- **Clips**: the project's media, in import order. Until its scenes are
+  found, a video is **one clip**, usable as any other, with **Detecting
+  scenes** and a progress bar across the top of its filmstrip while they
+  are being found (shortened to "Detecting", then the bar alone, when a
+  single small thumbnail has no room). Once they are found the clip is
+  **replaced by its scenes**: the video's name becomes a heading with its
+  scene count and its own menu (Add Whole Clip to Timeline, Cut
+  Sensitivity, Find Scenes Again, replacing the file), and **each scene
+  is a clip** of its own (a "virtual clip", as in
+  [scene-cuts.md](scene-cuts.md)) under it, in source order. Finding
+  scenes again shows the whole clip until they are found. Audio files are
+  clips with a waveform in place of thumbnails.
 - **Timelines**: the project's timelines other than the active one, as
   clips whose thumbnails are drawn from the timeline itself. Dropping one
   nests it, as today. One that can't be embedded (it would contain itself)

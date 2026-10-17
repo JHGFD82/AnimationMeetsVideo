@@ -288,9 +288,10 @@ the failure stays.
 
 Implemented:
 
-- Each video in the browser has a disclosure control. Expanded, each of
-  its scenes is a clip of its own, with its number and a filmstrip like any
-  clip (see [browser.md](browser.md)). A hand-set boundary shows a small
+- In the browser a video is one clip, with detection's progress across
+  it, until its scenes are found; then each scene is a clip of its own
+  under the video's name, with its number and a filmstrip like any clip
+  (see [browser.md](browser.md)). A hand-set boundary shows a small
   marker.
 - Scenes can be multi-selected. **Add to Timeline** (context menu, or double
   click) places the selected scenes of an asset back to back, in source order
