@@ -186,33 +186,6 @@ struct ClipBlockView: View {
                     .allowsHitTesting(false)
             }
 
-            if isLifted {
-                // The slot the clip was picked up from. It stays on the
-                // clip's own layer while the clip is carried to another.
-                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                    .fill(Color.black.opacity(0.22))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                            .strokeBorder(typeColor.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-                    }
-                    .frame(width: baseWidth, height: height)
-                    .offset(x: baseX, y: -(previewTarget?.offsetY ?? 0))
-                    .allowsHitTesting(false)
-
-                // Where it will land if let go now: snapped, on a frame and
-                // clear of other clips, while the block itself follows the
-                // pointer.
-                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                    .fill(typeColor.opacity(0.18))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                            .strokeBorder(typeColor, lineWidth: 1.5)
-                    }
-                    .frame(width: liveWidth, height: height)
-                    .offset(x: liveX)
-                    .allowsHitTesting(false)
-            }
-
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: Design.Space.tight) {
                     if case .timeline = clip.source {
@@ -305,10 +278,8 @@ struct ClipBlockView: View {
             // timeline that redraws as you scrub, and the look of a stack
             // of cards rather than of blocks set into a track.
             .shadow(color: .black.opacity(isSelected ? 0.55 : 0), radius: isSelected ? 6 : 0, y: 1)
-            // Picked up: a little larger, raised, and casting a longer
-            // shadow on the track, so it reads as held above the other
-            // clips rather than sliding among them.
-            .scaleEffect(isLifted ? 1.04 : 1)
+            // Picked up: raised and casting a longer shadow on the track, at
+            // its own size, so where it sits is exactly where it will land.
             .shadow(color: .black.opacity(isLifted ? 0.5 : 0), radius: isLifted ? 10 : 0, y: isLifted ? 7 : 0)
             .offset(y: isLifted ? -3 : 0)
             .confirmFlash(token: landedCount, color: Design.textOnColor)
@@ -590,9 +561,10 @@ struct ClipBlockView: View {
         showPreview(moved)
         previewTarget = target?.layerID == nil && target?.newLayer == nil ? nil : target
         onMovePreview(target)
-        // The block is drawn at its landing place, moved by this: from
-        // there to where the pointer has carried it.
-        carry = CGSize(
+        // The block is drawn at its landing place, and stays there, so it
+        // shows where it will go. Bound for a new layer there is no place
+        // on the timeline yet, so it follows the pointer.
+        carry = target?.newLayer == nil ? .zero : CGSize(
             width: CMTimeSubtract(clip.startOffset, moved.startOffset).seconds * pixelsPerSecond + across,
             height: translation.height - (previewTarget?.offsetY ?? 0)
         )

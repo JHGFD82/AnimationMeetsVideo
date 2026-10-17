@@ -345,15 +345,14 @@ rules for where a clip may go are in `ClipPlacement.swift`:
   can't make a clip shorter than one frame (a twentieth of a second for
   audio).
 
-A clip being moved is drawn picked up and carried under the pointer:
-slightly larger, raised and shadowed, following the pointer smoothly
-across and between layers rather than stepping from frame to frame. A
-solid outline in the clip's color shows where it will land under these
-rules (snapped, on a frame and clear of other clips), and a dashed one
-stays in the slot it came from. Clips it pushes slide aside as the drag
-makes room. On release the clip settles from under the pointer into the
-place the outline showed; with Reduce Motion it goes there at once. A
-trim is still drawn where it will land. The functions that work this out
+A clip being moved is drawn picked up: raised and shadowed, at its own
+size, and **where it will land** under these rules (snapped, on a frame,
+at a clip's nearer edge), on whatever layer it is over, so the clip itself
+shows where it will go; no outline stands in for it. Clips it pushes slide
+aside as the drag makes room. Over the layer names or an area's empty
+space, where it would make a new layer, there is no place for it yet, so
+it follows the pointer, and on release settles from there; with Reduce
+Motion it goes there at once. A trim is still drawn where it will land. The functions that work this out
 (`resolvedMove(ofMoving:…)`, `resolvedTrimStart(of:…)`,
 `resolvedTrimEnd(of:…)`) do not change the project, and the editing
 functions commit what they return.
