@@ -356,7 +356,9 @@ works on frames already chosen:
 
   How long a ramp lasts is the integral of 100 / speed over the source
   time it plays, taken from the curve itself (its eases included, speed
-  clamped to 1%...10000%). `SpeedIntegral` computes it once per speed curve
+  clamped to 1%...10000% in the clip's direction: an ease that overshoots
+  past zero is held at 1% that way, never played at its size the other
+  way, `ClipTime.playedSize`). `SpeedIntegral` computes it once per speed curve
   with adaptive Gauss-Kronrod and keeps the edges of its cells and the
   integral up to each, so a lookup finds its cell by binary search and
   integrates only the part of it before the query, and the inverse

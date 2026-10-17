@@ -30,6 +30,7 @@ struct ProjectStartView: View {
                 Button("Open project…", action: onOpen)
                 Button("New project…", action: onNew)
                     .buttonStyle(.borderedProminent)
+                    .tint(Design.accentFill)
                     .keyboardShortcut(.defaultAction)
             }
             .padding(.horizontal, Design.Space.sheet + 4)

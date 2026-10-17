@@ -135,6 +135,8 @@ struct ReplaceMediaSheet: View {
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
             }
+            // Its one action closes it, so Escape does too.
+            .onExitCommand { controller.cancel(session) }
         case .ready(let analysis):
             ReplaceMediaDetails(
                 session: session, analysis: analysis, controller: controller,
@@ -184,7 +186,7 @@ private struct ReplaceMediaDetails: View {
     }
 
     var body: some View {
-        SheetFrame(title: title, subtitle: subtitle, width: Design.SheetWidth.wide) {
+        SheetFrame(title: title, subtitle: subtitle, width: Design.SheetWidth.wide, scrollsContent: true) {
             if !analysis.hasReference {
                 SheetCallout(.warning, "The original's reference data isn't available, so the new file can't be compared with it. Check the alignment yourself.")
             }
@@ -251,6 +253,8 @@ private struct ReplaceMediaDetails: View {
                     value: Bindable(session).probeSeconds,
                     in: 0...max(session.originalDuration.seconds, 0.1)
                 )
+                .accessibilityLabel("Moment compared")
+                .accessibilityValue(Self.format(session.probeSeconds, signed: false))
             }
 
             // The offset reads as one instrument: coarse and fine nudges
@@ -259,13 +263,19 @@ private struct ReplaceMediaDetails: View {
             HStack(spacing: Design.Space.step) {
                 HStack(spacing: Design.Space.tight) {
                     Button("\u{2212}1 s") { nudge(seconds: -1) }
+                        .accessibilityLabel("Offset one second earlier")
                     Button("\u{2212}1 fr") { nudge(by: session.frameDuration, sign: -1) }
+                        .accessibilityLabel("Offset one frame earlier")
                     Text(Self.format(session.offset.seconds, signed: true))
                         .font(Design.Typeface.numeric)
                         .foregroundStyle(Design.textPrimary)
                         .frame(minWidth: 84)
+                        .accessibilityLabel("Offset")
+                        .accessibilityValue(Self.format(session.offset.seconds, signed: true))
                     Button("+1 fr") { nudge(by: session.frameDuration, sign: 1) }
+                        .accessibilityLabel("Offset one frame later")
                     Button("+1 s") { nudge(seconds: 1) }
+                        .accessibilityLabel("Offset one second later")
                 }
                 Spacer()
                 Button("Use suggested") {

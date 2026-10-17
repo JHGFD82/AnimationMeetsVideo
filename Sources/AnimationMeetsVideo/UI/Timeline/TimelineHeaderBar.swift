@@ -72,13 +72,16 @@ struct TimelineSettingsSheet: View {
     @State private var frameRateText: String = "24"
     @State private var colorSpace: ProjectColorSpace = .rec709
 
+    private static let arithmeticNote = "Fields take arithmetic: 1920/2 becomes 960."
+
     var body: some View {
         SheetFrame(
             title: isCreating ? "New Timeline" : "Timeline Settings",
             subtitle: isCreating
                 ? "The frame size and rate everything on this timeline is composited to."
                 : "Clips keep their own footage; changing these re-composites them to the new frame.",
-            width: Design.SheetWidth.standard
+            width: Design.SheetWidth.standard,
+            scrollsContent: true
         ) {
             SheetSection {
                 SheetRow("Name") {
@@ -92,12 +95,14 @@ struct TimelineSettingsSheet: View {
                     HStack(spacing: Design.Space.close) {
                         TextField("Width", text: $widthText)
                             .labelsHidden()
+                            .accessibilityHint(Self.arithmeticNote)
                             .evaluatesArithmetic($widthText)
                             .frame(width: 72)
                         Text("×")
                             .foregroundStyle(Design.textTertiary)
                         TextField("Height", text: $heightText)
                             .labelsHidden()
+                            .accessibilityHint(Self.arithmeticNote)
                             .evaluatesArithmetic($heightText)
                             .frame(width: 72)
                         Text("px")
@@ -109,6 +114,7 @@ struct TimelineSettingsSheet: View {
                     HStack(spacing: Design.Space.close) {
                         TextField("Frame rate", text: $frameRateText)
                             .labelsHidden()
+                            .accessibilityHint(Self.arithmeticNote)
                             .evaluatesArithmetic($frameRateText)
                             .frame(width: 72)
                         Text("fps")
@@ -116,7 +122,7 @@ struct TimelineSettingsSheet: View {
                             .foregroundStyle(Design.textTertiary)
                     }
                 }
-                SheetNote("Fields take arithmetic: 1920/2 becomes 960.")
+                SheetNote(Self.arithmeticNote)
             }
 
             SheetSection("Colour") {

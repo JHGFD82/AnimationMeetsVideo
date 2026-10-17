@@ -86,6 +86,10 @@ enum Design {
     /// time family so a selected clip never reads as a time marker.
     static let accent = hex(0x4C8DFF)
     static let accentMuted = hex(0x2F5BA8)
+    /// The accent as a button's fill, darkened so the white title on it
+    /// reads at 4.9:1; the accent itself gives only 3.2:1. Filled buttons
+    /// take it with `.tint`, and everything else keeps the accent.
+    static let accentFill = hex(0x3B6EC7)
 
     // MARK: - Clips
 

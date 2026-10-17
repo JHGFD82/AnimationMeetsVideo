@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Bevels, grooves and panel fills: how `Design.Surface` becomes pixels.
@@ -7,6 +8,11 @@ import SwiftUI
 /// its bottom; a surface you look into is shaded along its top instead.
 /// Keeping that consistent is what lets depth carry meaning rather than
 /// just texture — a bevel in this app always means "you can operate this".
+///
+/// Bevels, rims and grooves are drawn over what they decorate, so each is
+/// drawn with hit testing off, leaving clicks and drags at an edge to the
+/// control underneath, and hidden from VoiceOver, which has nothing to read
+/// in them.
 
 // MARK: - Rails and panels
 
@@ -15,12 +21,13 @@ extension View {
     /// transport. Lit on top, shaded and ruled underneath.
     func rail(_ level: Design.Surface = .raised) -> some View {
         background(level.color)
-            .overlay(alignment: .top) { Design.bevelLight.frame(height: 1) }
+            .overlay(alignment: .top) { Design.bevelLight.frame(height: 1).decorative() }
             .overlay(alignment: .bottom) {
                 VStack(spacing: 0) {
                     Design.bevelShade.frame(height: 1)
                     Design.hairline.frame(height: 1)
                 }
+                .decorative()
             }
     }
 
@@ -41,7 +48,7 @@ extension View {
                     endPoint: .bottom
                 )
                 .frame(height: 4)
-                .allowsHitTesting(false)
+                .decorative()
             }
     }
 
@@ -53,8 +60,14 @@ extension View {
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .strokeBorder(Design.bevelEdge, lineWidth: 1)
+                    .decorative()
             }
             .shadow(color: .black.opacity(0.5), radius: 24, y: 8)
+    }
+
+    /// Drawn for looks alone: it takes no clicks and VoiceOver skips it.
+    func decorative() -> some View {
+        allowsHitTesting(false).accessibilityHidden(true)
     }
 }
 
@@ -79,10 +92,18 @@ extension Design {
     }
 
     /// A clip's body: a tinted block lit from above.
+    ///
+    /// Clip names and badges are drawn on it in `textOnColor`, at least 90%
+    /// strong. Over the track's rows, plain or lit as a drop target, that
+    /// reads at 4.5:1 or better for every tone where the text sits (the
+    /// middle of the block). Unselected it does as it is; selected, the
+    /// brighter fill only managed 3.3:1, so it is shaded by a fifth, the
+    /// same as laying 20% black over it. It stays brighter than unselected,
+    /// and the selected outline still marks it.
     static func clipFill(_ tone: Color, selected: Bool) -> LinearGradient {
         LinearGradient(
             colors: selected
-                ? [tone.opacity(0.92), tone.opacity(0.66)]
+                ? [tone.darkened(to: 0.786).opacity(0.936), tone.darkened(to: 0.725).opacity(0.728)]
                 : [tone.opacity(0.62), tone.opacity(0.4)],
             startPoint: .top,
             endPoint: .bottom
@@ -104,6 +125,11 @@ struct Groove: View {
     var subtle = false
 
     var body: some View {
+        lines.decorative()
+    }
+
+    @ViewBuilder
+    private var lines: some View {
         let dark = Design.hairline.opacity(subtle ? 0.6 : 1)
         let light = Color.white.opacity(subtle ? 0.03 : 0.06)
         switch axis {
@@ -146,6 +172,7 @@ extension View {
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .strokeBorder(strong ? Design.bevelEdgeStrong : Design.bevelEdge, lineWidth: 1)
+                    .decorative()
             }
     }
 
@@ -157,6 +184,22 @@ extension View {
                 Design.accent
                     .frame(width: 2)
                     .opacity(isSelected ? 1 : 0)
+                    .decorative()
             }
+    }
+}
+
+private extension Color {
+    /// This color with its red, green and blue scaled by `fraction`, which
+    /// darkens it without changing its hue.
+    func darkened(to fraction: Double) -> Color {
+        guard let srgb = NSColor(self).usingColorSpace(.sRGB) else { return self }
+        return Color(
+            .sRGB,
+            red: srgb.redComponent * fraction,
+            green: srgb.greenComponent * fraction,
+            blue: srgb.blueComponent * fraction,
+            opacity: srgb.alphaComponent
+        )
     }
 }
