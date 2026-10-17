@@ -342,9 +342,6 @@ struct TimelineEditorSurface<Library: View>: View {
         .onAppear {
             rebuildPlayerItem(resetPosition: true)
         }
-        .dropDestination(for: MediaDragPayload.self) { payloads, _ in
-            dropScenes(payloads, onLayer: nil, at: .zero)
-        }
     }
 
     @ViewBuilder
