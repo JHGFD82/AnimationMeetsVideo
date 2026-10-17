@@ -721,7 +721,9 @@ struct ClipBlockView: View {
                                 .help("Motion blur or trails")
                         }
                     }
-                    .foregroundStyle(Design.textOnColor.opacity(0.7))
+                    // Quieter than the name, but no lower than 90%:
+                    // dimmer fails 4.5:1 on the fill (see `clipFill`).
+                    .foregroundStyle(Design.textOnColor.opacity(0.9))
                 }
                 .foregroundStyle(Design.textOnColor)
                 // Where a retimed clip's speed is set, along the bar.
@@ -1422,7 +1424,7 @@ struct LinkedAudioLane: View {
                             .lineLimit(1)
                     }
                     .font(Design.Typeface.micro)
-                    .foregroundStyle(Design.textOnColor.opacity(0.75))
+                    .foregroundStyle(Design.textOnColor.opacity(0.9))
                     .padding(.leading, Design.Space.close)
                     .frame(width: drawnMaxX - drawnMinX, height: height, alignment: .leading)
                     .background { waveform(of: clip, drawnMinX: drawnMinX, clipX: x, width: drawnMaxX - drawnMinX) }

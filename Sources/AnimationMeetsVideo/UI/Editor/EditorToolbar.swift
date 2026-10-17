@@ -106,6 +106,7 @@ struct EditorToolbar: View {
                         exportProject()
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(Design.accentFill)
                 }
             }
             .editorAnimation(Design.Motion.panel, value: isExporting)
