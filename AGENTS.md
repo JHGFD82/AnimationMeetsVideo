@@ -44,12 +44,11 @@ Follow Google's change-description conventions for every commit.
     key: playback logic that is not a view.
   - `UI/`: SwiftUI views by area: `Editor/` (shell, toolbar, editor
     surface), `Timeline/` (with `Clips/` for what draws on one clip),
-    `Effects/` (effects panel), `EffectsLibrary/` (effects and transitions to
-    drag onto clips), `Keyframes/` (graph editors), `Browser/` (clips,
-    timelines and presets),
-    `Inspector/`, `Viewer/`, `BeatMatch/`, `Replacement/`, `Design/`
-    (design system and shared styling) and `Components/` for shared
-    controls.
+    `Effects/` (effects panel), `EffectsLibrary/` (effects and transitions
+    to drag onto clips), `Keyframes/` (graph editors), `Browser/` (clips,
+    timelines and presets), `Inspector/`, `Viewer/`, `BeatMatch/`,
+    `Replacement/`, `Design/` (design system and shared styling) and
+    `Components/` for shared controls.
   Put new UI code in the folder of the area that uses it, one main view per
   file; keep non-UI logic out of `UI/`.
 - Tests in `Tests/AnimationMeetsVideoTests` mirror the source folders, with

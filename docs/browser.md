@@ -1,7 +1,7 @@
 # The browser
 
-Status: **planned, not implemented**. See "Building it" for the stages and
-which are done. Replaces the library sidebar described in
+Status: **being built**. See "Building it" for the stages and which are
+done. Replaces the library sidebar described in
 [scene-cuts.md](scene-cuts.md) ("In the browser") and the library parts of
 [timeline.md](timeline.md); their scene editing (merge, split,
 sensitivity, Find Scenes Again) carries over unchanged.
@@ -151,8 +151,8 @@ Following [accessibility.md](accessibility.md):
 
 ## Building it
 
-1. **Tabs and names.** Clips, Timelines and Presets tabs in place of the
-   sections, and the Effects Library rename. Lists stay as they are.
+1. **Tabs and names** (done). Clips, Timelines and Presets tabs in place of
+   the sections, and the Effects Library rename. Lists stay as they are.
 2. **Filmstrips.** Thumbnails, wrapping, the settings popover (time per
    thumbnail, size), duration boxes, scenes as clips.
 3. **Selecting and dragging.** Click, Command-click and Shift-click; whole

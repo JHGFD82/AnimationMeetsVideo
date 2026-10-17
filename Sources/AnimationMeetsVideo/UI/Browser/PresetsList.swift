@@ -2,7 +2,7 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// The presets in the presets folder, for the browser's Presets section.
+/// The presets in the presets folder, for the browser's Presets tab.
 /// They are shared by every project, so they are read from the folder
 /// again when the app comes forward or one is saved, not kept per project.
 @MainActor @Observable
@@ -58,14 +58,14 @@ final class PresetsModel {
     }
 }
 
-/// The browser's Presets section: each preset can be dragged onto a clip or
+/// The browser's Presets tab: each preset can be dragged onto a clip or
 /// into a stack, renamed, deleted or shown in the Finder. A file that can't
 /// be read is listed with why, and is never used.
-struct PresetsSection: View {
+struct PresetsList: View {
     let model: PresetsModel
 
     var body: some View {
-        Section("Presets") {
+        Group {
             ForEach(model.library.presets) { preset in
                 Label {
                     VStack(alignment: .leading, spacing: 3) {

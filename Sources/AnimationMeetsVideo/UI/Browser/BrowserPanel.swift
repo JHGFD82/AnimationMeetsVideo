@@ -2,7 +2,24 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct LibrarySidebar: View {
+/// What the browser lists.
+enum BrowserTab: String, CaseIterable, Identifiable {
+    case clips, timelines, presets
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .clips: "Clips"
+        case .timelines: "Timelines"
+        case .presets: "Presets"
+        }
+    }
+}
+
+/// The browser left of the viewer: what can go into a timeline, in tabs.
+/// See docs/browser.md.
+struct BrowserPanel: View {
     @Binding var project: EditingProject
     @Binding var activeTimelineID: UUID
     @Binding var selection: TimelineSelection?
@@ -15,14 +32,11 @@ struct LibrarySidebar: View {
     @State private var sensitivityTarget: SensitivityTarget?
     @State private var previewTarget: ScenePreviewTarget?
     @State private var presets = PresetsModel()
+    @AppStorage("browserTab") private var tab = BrowserTab.clips
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Library")
-                    .font(Design.Typeface.panelTitle)
-                    .foregroundStyle(Design.textPrimary)
-                Spacer()
+            PanelTabBar(tabs: BrowserTab.allCases, selection: $tab, title: \.title) {
                 Button(action: importMedia) {
                     Image(systemName: "plus")
                 }
@@ -30,10 +44,11 @@ struct LibrarySidebar: View {
                 .help("Import media")
                 .accessibilityLabel("Import media")
             }
-            .padding(.horizontal, Design.Space.group)
-            .padding(.vertical, Design.Space.step)
-            .rail(.raised)
-            list
+            switch tab {
+            case .clips: clipsList
+            case .timelines: timelinesList
+            case .presets: presetsList
+            }
         }
         .panelSurface(.base)
         .alert("Rename Preset", isPresented: Binding(get: { presets.renaming != nil }, set: { if !$0 { presets.renaming = nil } })) {
@@ -62,54 +77,24 @@ struct LibrarySidebar: View {
         }
     }
 
-    private var list: some View {
+    private var clipsList: some View {
         List(selection: $selectedScenes) {
-            Section("Clips") {
-                ForEach(project.clips) { clip in
-                    if clip.kind == .video {
-                        videoRow(clip)
-                    } else {
-                        assetLabel(clip)
-                            .draggable(wholeAssetPayload(clip))
-                            .contextMenu {
-                                Button("Add to Timeline") { place(clip) }
-                                Divider()
-                                ReplaceMediaMenuItems(
-                                    clip: clip, project: $project, analysis: analysis,
-                                    controller: replacement, packageURL: packageURL
-                                )
-                            }
-                    }
-                }
-            }
-
-            Section("Timelines") {
-                ForEach(project.timelines) { timeline in
-                    if timeline.id != activeTimelineID {
-                        Button {
-                            embed(timeline)
-                        } label: {
-                            Label {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(timeline.name)
-                                    Text(timeline.timebaseSummary)
-                                        .font(Design.Typeface.numericMicro)
-                                        .foregroundStyle(Design.textTertiary)
-                                }
-                            } icon: {
-                                Image(systemName: "rectangle.stack")
-                                    .foregroundStyle(Design.ClipTone.nested.color)
-                            }
+            ForEach(project.clips) { clip in
+                if clip.kind == .video {
+                    videoRow(clip)
+                } else {
+                    assetLabel(clip)
+                        .draggable(wholeAssetPayload(clip))
+                        .contextMenu {
+                            Button("Add to Timeline") { place(clip) }
+                            Divider()
+                            ReplaceMediaMenuItems(
+                                clip: clip, project: $project, analysis: analysis,
+                                controller: replacement, packageURL: packageURL
+                            )
                         }
-                        .buttonStyle(.plain)
-                        .disabled(!project.canEmbed(timeline.id, into: activeTimelineID))
-                        .help("Embed into the active timeline, or drag onto an effect that takes an input")
-                        .draggable(TimelineDragPayload(timelineID: timeline.id))
-                    }
                 }
             }
-
-            PresetsSection(model: presets)
         }
         .contextMenu(forSelectionType: SceneKey.self) { keys in
             sceneMenu(for: keys)
@@ -122,9 +107,43 @@ struct LibrarySidebar: View {
         .sheet(item: $previewTarget) { target in
             ScenePreviewSheet(project: $project, target: target, track: analysis.tracks[target.assetID])
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .sunken(.sunken)
+        .browserListStyle()
+    }
+
+    private var timelinesList: some View {
+        List {
+            ForEach(project.timelines) { timeline in
+                if timeline.id != activeTimelineID {
+                    Button {
+                        embed(timeline)
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(timeline.name)
+                                Text(timeline.timebaseSummary)
+                                    .font(Design.Typeface.numericMicro)
+                                    .foregroundStyle(Design.textTertiary)
+                            }
+                        } icon: {
+                            Image(systemName: "rectangle.stack")
+                                .foregroundStyle(Design.ClipTone.nested.color)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!project.canEmbed(timeline.id, into: activeTimelineID))
+                    .help("Embed into the active timeline, or drag onto an effect that takes an input")
+                    .draggable(TimelineDragPayload(timelineID: timeline.id))
+                }
+            }
+        }
+        .browserListStyle()
+    }
+
+    private var presetsList: some View {
+        List {
+            PresetsList(model: presets)
+        }
+        .browserListStyle()
     }
 
     private func assetLabel(_ clip: MediaClip) -> some View {
@@ -443,6 +462,7 @@ struct LibrarySidebar: View {
                     claimedIDs.insert(clip.id)
                     usedPaths.insert(source.standardizedFileURL.resolvingSymlinksInPath().path)
                     project.addMedia(clip)
+                    tab = .clips
                 } catch {
                     if let madeCopy { try? FileManager.default.removeItem(at: madeCopy) }
                     importError = "\(url.lastPathComponent): \(error.localizedDescription)"
@@ -465,5 +485,13 @@ struct LibrarySidebar: View {
         case .referenceInPlace: return Set(clones)
         case nil: return nil
         }
+    }
+}
+
+private extension View {
+    func browserListStyle() -> some View {
+        listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .sunken(.sunken)
     }
 }

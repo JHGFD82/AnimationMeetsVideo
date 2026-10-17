@@ -58,7 +58,7 @@ struct EditorView: View {
                 project: $project, timelineID: activeTimeline, selection: $selection,
                 playback: playback, analysis: analysis, offlineMedia: replacement.missingMedia
             ) {
-                LibrarySidebar(
+                BrowserPanel(
                     project: $project, activeTimelineID: activeTimeline, selection: $selection,
                     analysis: analysis, replacement: replacement, packageURL: packageURL
                 )
