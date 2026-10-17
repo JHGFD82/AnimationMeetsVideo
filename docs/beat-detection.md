@@ -199,7 +199,11 @@ background queue. Beats are queued for assets whose `MediaClip.hasAudio` is
 set, which the importer fills in from the file's audio tracks. The browser
 row names the stage running (reading the original, finding scenes, saving
 pictures, finding beats) with that stage's progress, starting from zero for
-each, and once done shows the tempo: the median, or the range the beats
+each. Finding beats gives reading the audio the first 80% (by the buffers'
+timestamps, clamped and never going back) and tracking the rest (it took
+about a fifth of the time on a three-minute song); it reaches 100% only
+with a result, never for a failed or cancelled run. Once done the row
+shows the tempo: the median, or the range the beats
 keep up for a few beats ("92–140 BPM") when it varies by more than 4%.
 
 ## Not implemented yet

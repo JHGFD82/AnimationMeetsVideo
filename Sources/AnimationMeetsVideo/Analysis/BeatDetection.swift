@@ -312,8 +312,9 @@ enum BeatDetector {
         return samples
     }
 
-    /// Finds the beats of the first audio track. `progress` receives 0...1 and
-    /// may be called from a background thread. A track with no steady beat
+    /// Finds the beats of the first audio track. `progress` receives 0...1,
+    /// never decreasing, and may be called from a background thread; 1 comes
+    /// only with a result. A track with no steady beat
     /// gives an empty result rather than an error. Cancelling the calling task
     /// at any stage, from loading the track to tracking the beats, stops the
     /// work and throws `CancellationError`, never a result.
@@ -362,8 +363,15 @@ enum BeatDetector {
         }
     }
 
+    /// The share of `progress` given to reading and decoding, by the
+    /// buffers' timestamps; tracking the beats takes the rest. Tracking took
+    /// about a fifth of the time on a three-minute song.
+    static let readingShare = 0.8
+
     /// Finds the beats in the buffers `source` gives, which must be mono
     /// float PCM at `sampleRate`. `duration` is the asset's, in seconds.
+    /// `progress` gets finite values in 0...1 that never decrease, through
+    /// reading and then tracking, and 1 only once the result is ready.
     /// Throws `CancellationError` once `isCancelled` turns true, which is
     /// checked before every buffer (so also at the end of the audio), while
     /// a long gap is filled, through tracking, and before returning.
@@ -399,7 +407,15 @@ enum BeatDetector {
                 analyzer.append(samples)
             }
         )
-        var lastReported = -1.0
+        var reported = 0.0
+        /// Passes `value` on when it has grown by a hundredth; 1 only once.
+        func report(_ value: Double) {
+            guard value.isFinite else { return }
+            let clamped = min(max(value, 0), 1)
+            guard clamped == 1 ? reported < 1 : clamped - reported >= 0.01 else { return }
+            reported = clamped
+            progress(clamped)
+        }
 
         while true {
             try checkCancellation()
@@ -407,12 +423,8 @@ enum BeatDetector {
             let presentation = CMSampleBufferGetPresentationTimeStamp(sample)
             try timed.append(pcmSamples(of: sample), at: presentation)
 
-            if duration > 0 {
-                let fraction = min((presentation.seconds) / duration, 1)
-                if fraction - lastReported >= 0.01 {
-                    lastReported = fraction
-                    progress(fraction)
-                }
+            if seconds > 0 {
+                report(min(max(presentation.seconds / seconds, 0), 1) * readingShare)
             }
         }
         // A read cancelled at the end must not count as completed.
@@ -420,20 +432,27 @@ enum BeatDetector {
         // Only a read that got to the end may become a result: one that
         // stopped early would be saved as the beats of the whole file.
         try source.checkCompleted()
-        progress(1)
+        report(readingShare)
 
         let origin = timed.origin ?? 0
-        let beats = try BeatTracker.track(
-            envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond, checkpoint: checkCancellation
-        )
+        let beats = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) { done in
+            try checkCancellation()
+            // Short of 1, which is for the finished result.
+            report(readingShare + (1 - readingShare) * min(max(done, 0), 0.99))
+        }
         try checkCancellation()
-        guard let beats else { return .none(timescale: Int32(sampleRate)) }
+        guard let beats else {
+            report(1)
+            return .none(timescale: Int32(sampleRate))
+        }
         let times = try beats.frames.map { frame -> Int64 in
             let (time, overflow) = origin.addingReportingOverflow(OnsetAnalyzer.centerSample(ofFrame: frame))
             guard !overflow else { throw DetectionError.malformedAudio("the audio's timestamps are out of range") }
             return time
         }
-        return try BeatTrack(timescale: Int32(sampleRate), times: times, beatsPerMinute: beats.beatsPerMinute)
+        let result = try BeatTrack(timescale: Int32(sampleRate), times: times, beatsPerMinute: beats.beatsPerMinute)
+        report(1)
+        return result
     }
 }
 
@@ -756,10 +775,11 @@ enum BeatTracker {
     /// value isn't finite and nonnegative: those would trap in the
     /// conversions to frame counts or poison every score.
     ///
-    /// `checkpoint` is called every so often through the work; what it
-    /// throws, such as `CancellationError`, stops tracking and is rethrown.
+    /// `checkpoint` is called every so often through the work with roughly
+    /// how much of it is done, in 0..<1 and never decreasing; what it throws,
+    /// such as `CancellationError`, stops tracking and is rethrown.
     static func track(
-        envelope raw: [Float], framesPerSecond: Double, checkpoint: () throws -> Void = {}
+        envelope raw: [Float], framesPerSecond: Double, checkpoint: (Double) throws -> Void = { _ in }
     ) throws -> Result? {
         guard framesPerSecond.isFinite, framesPerSecond > 0 else {
             throw InputError.invalidFrameRate(framesPerSecond)
@@ -910,7 +930,7 @@ enum BeatTracker {
     /// the cost of changing tempo, and the result is interpolated between
     /// the stretches' centers.
     private static func periods(
-        of onsets: [Float], framesPerSecond: Double, checkpoint: () throws -> Void
+        of onsets: [Float], framesPerSecond: Double, checkpoint: (Double) throws -> Void
     ) throws -> Periods? {
         let shortest = max(2, Int((framesPerSecond * 60 / maximumBPM).rounded(.down)))
         let longest = Int((framesPerSecond * 60 / minimumBPM).rounded(.up))
@@ -941,8 +961,10 @@ enum BeatTracker {
         var scores: [[Double]] = []
         var anyEvidence = false
         try blurred.withUnsafeBufferPointer { buffer in
-            for start in starts {
-                try checkpoint()
+            for (index, start) in starts.enumerated() {
+                // Scoring the stretches is about half the work, the Viterbi
+                // pass a tenth and the beat chain the rest.
+                try checkpoint(0.5 * Double(index) / Double(starts.count))
                 var row = lags.indices.map { index -> Double in
                     let lag = lags[index]
                     let overlap = length - lag
@@ -967,8 +989,8 @@ enum BeatTracker {
         let logLags = lags.map { log2(Double($0)) }
         var total = Array(scores[0][..<states])
         var backlinks: [[Int]] = []
-        for row in scores.dropFirst() {
-            try checkpoint()
+        for (index, row) in scores.dropFirst().enumerated() {
+            try checkpoint(0.5 + 0.1 * Double(index) / Double(scores.count))
             var next = [Double](repeating: -.infinity, count: states)
             var links = [Int](repeating: 0, count: states)
             for state in 0..<states {
@@ -1088,7 +1110,7 @@ enum BeatTracker {
     /// Dynamic programming: each frame's best score is its onset strength
     /// plus the best earlier beat, minus a penalty for straying from the
     /// period at that frame.
-    private static func chain(_ onsets: [Float], periods: Periods, checkpoint: () throws -> Void) throws -> [Int] {
+    private static func chain(_ onsets: [Float], periods: Periods, checkpoint: (Double) throws -> Void) throws -> [Int] {
         let count = onsets.count
         let longestPeriod = max(periods.main.max() ?? 2, periods.alternative.compactMap { $0 }.max() ?? 2)
         let farthestAnywhere = max(2, Int((longestPeriod * 2).rounded()))
@@ -1097,7 +1119,7 @@ enum BeatTracker {
         var score = [Double](repeating: 0, count: count)
         var backlink = [Int](repeating: -1, count: count)
         for t in 0..<count {
-            if t % 1024 == 0 { try checkpoint() }
+            if t % 1024 == 0 { try checkpoint(0.6 + 0.4 * Double(t) / Double(count)) }
             let period = periods.main[t]
             let other = periods.alternative[t] ?? period
             let logPeriod = log(period), logOther = log(other)

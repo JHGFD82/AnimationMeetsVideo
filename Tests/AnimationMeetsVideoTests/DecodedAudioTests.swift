@@ -373,13 +373,13 @@ private final class Switch: @unchecked Sendable {
         let analyzer = OnsetAnalyzer()
         clicks(seconds: 30, first: 0.1, rate: BeatDetector.sampleRate).withUnsafeBufferPointer { analyzer.append($0) }
         var checks = 0
-        _ = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) { checks += 1 }
+        _ = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) { _ in checks += 1 }
         #expect(checks > 20)
 
         for stopAt in [1, checks / 2, checks] {
             var seen = 0
             #expect(throws: CancellationError.self, "stopping at check \(stopAt)") {
-                _ = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) {
+                _ = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) { _ in
                     seen += 1
                     if seen == stopAt { throw CancellationError() }
                 }
@@ -409,5 +409,75 @@ private final class Switch: @unchecked Sendable {
             return try await BeatDetector.detect(url: url)
         }
         await #expect(throws: CancellationError.self) { _ = try await task.value }
+    }
+}
+
+// MARK: - Progress
+
+private final class Reports: @unchecked Sendable {
+    var values: [Double] = []
+}
+
+@Suite struct BeatProgressTests {
+    private func isWellFormed(_ values: [Double]) -> Bool {
+        values.allSatisfy { $0.isFinite && (0...1).contains($0) } && zip(values, values.dropFirst()).allSatisfy { $0 <= $1 }
+    }
+
+    @Test func progressRunsThroughTrackingAndEndsAtOneWithTheResult() throws {
+        var source = FakeSource(buffers: try clickBuffers())
+        let reports = Reports()
+
+        let track = try BeatDetector.analyze(&source, duration: 12, isCancelled: { false }) { reports.values.append($0) }
+
+        #expect(!track.isEmpty)
+        #expect(isWellFormed(reports.values))
+        #expect(reports.values.last == 1)
+        #expect(reports.values.filter { $0 == 1 }.count == 1)
+        // Tracking reports in its own share, after reading's.
+        #expect(reports.values.contains { $0 > BeatDetector.readingShare && $0 < 1 })
+        #expect(reports.values.contains { $0 > 0 && $0 < BeatDetector.readingShare })
+    }
+
+    @Test func anEmptyResultAlsoEndsAtOne() throws {
+        let silence = try pcmBuffer([Float](repeating: 0, count: 22_050))
+        var source = FakeSource(buffers: [silence])
+        let reports = Reports()
+
+        let track = try BeatDetector.analyze(&source, duration: 1, isCancelled: { false }) { reports.values.append($0) }
+
+        #expect(track.isEmpty)
+        #expect(reports.values.last == 1)
+    }
+
+    @Test func cancelledOrFailedWorkNeverReportsCompletion() throws {
+        let reports = Reports()
+        var cancelledSource = FakeSource(buffers: try clickBuffers())
+        let cancelled = Switch()
+        let count = cancelledSource.buffers.count
+        cancelledSource.willHandOut = { if $0 == count { cancelled.isOn = true } }
+        _ = try? BeatDetector.analyze(&cancelledSource, duration: 12, isCancelled: { cancelled.isOn }) { reports.values.append($0) }
+
+        var failedSource = FakeSource(buffers: try clickBuffers(), failure: BeatDetector.DetectionError.readerFailed("stopped"))
+        let failedReports = Reports()
+        _ = try? BeatDetector.analyze(&failedSource, duration: 12, isCancelled: { false }) { failedReports.values.append($0) }
+
+        #expect(!reports.values.contains(1))
+        #expect(!failedReports.values.contains(1))
+        #expect(isWellFormed(reports.values))
+        #expect(isWellFormed(failedReports.values))
+    }
+
+    @Test func oddTimestampsAndDurationsGiveWellFormedProgress() throws {
+        let buffers = try clickBuffers()
+        // Out of order, missing and far-off timestamps.
+        var shuffled = try [pcmBuffer([0], at: CMTime(seconds: 11, preferredTimescale: 600))] + buffers.prefix(30)
+        shuffled.append(try pcmBuffer([0], at: .invalid))
+        shuffled.append(try pcmBuffer([0], at: CMTime(seconds: -5, preferredTimescale: 600)))
+        for duration in [12, 0, -1, .nan, .infinity, 0.001] as [Double] {
+            var source = FakeSource(buffers: shuffled)
+            let reports = Reports()
+            _ = try? BeatDetector.analyze(&source, duration: duration, isCancelled: { false }) { reports.values.append($0) }
+            #expect(isWellFormed(reports.values), "duration \(duration): \(reports.values)")
+        }
     }
 }
