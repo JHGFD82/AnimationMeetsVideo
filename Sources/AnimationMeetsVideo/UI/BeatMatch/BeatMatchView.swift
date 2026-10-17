@@ -277,15 +277,10 @@ struct BeatMatchView: View {
         Picker("Beat of the measure", selection: Binding(get: { beat.position }, set: { session.setSelectedPosition($0) })) {
             ForEach(1...section.beatsPerMeasure, id: \.self) { Text("\($0)").tag($0) }
         }
-        HStack(spacing: Design.Space.tight) {
-            nudgeButton("−10 ms", -0.01)
-            nudgeButton("−1 ms", -0.001)
-            nudgeButton("−1", -session.sampleDuration, label: "One sample earlier")
-            nudgeButton("+1", session.sampleDuration, label: "One sample later")
-            nudgeButton("+1 ms", 0.001)
-            nudgeButton("+10 ms", 0.01)
-        }
-        .font(Design.Typeface.label)
+        Text("Drag the beat to move it, or use ← and → for 1 ms, with ⌥ for one sample and with ⇧ for 10 ms.")
+            .font(Design.Typeface.label)
+            .foregroundStyle(Design.textTertiary)
+            .fixedSize(horizontal: false, vertical: true)
         HStack {
             if beat.isPinned {
                 Button("Unpin", action: session.unpinSelected)
@@ -293,11 +288,6 @@ struct BeatMatchView: View {
             }
             Button("Delete Beat", role: .destructive, action: session.deleteSelectedBeat)
         }
-    }
-
-    private func nudgeButton(_ title: String, _ seconds: Double, label: String? = nil) -> some View {
-        Button(title) { session.nudgeSelected(by: seconds) }
-            .accessibilityLabel(label ?? "Move \(title)")
     }
 
     // MARK: Keys

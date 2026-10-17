@@ -58,9 +58,10 @@ step.
    end. Each anchor is dropped on the waveform or at the playhead (M), and
    is beat 1 unless the person picks another position.
 2. **Line them up.** The tick plays on each anchor while the song plays.
-   Arrow keys move the selected anchor by 1 ms, Option-arrow by one sample
-   of the file, and Shift-arrow by 10 ms. Dragging works on the waveform,
-   which zooms down to single samples. A loop toggle repeats the
+   Drag the anchor on the waveform, which zooms down to single samples.
+   From the keyboard (and VoiceOver), ← → move the selected anchor by
+   1 ms, ⌥ by one sample of the file, and ⇧ by 10 ms; there are no nudge
+   buttons. A loop toggle repeats the
    two bars around the selected anchor.
 3. **Confirm.** The number of beats between the anchors comes from a rough
    tempo estimate. Dividing the time between the anchors by that number
