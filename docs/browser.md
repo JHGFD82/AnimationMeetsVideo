@@ -7,7 +7,9 @@ done. Replaces the library sidebar described in
 sensitivity, Find Scenes Again) carries over unchanged.
 
 The browser is the panel left of the viewer that holds what can go into a
-timeline. It works like Final Cut Pro's browser: every clip is a filmstrip
+timeline. It and the panel right of the viewer can each be resized by
+their inner edge whatever tab is open, down to a minimum width; the
+right panel keeps a width per tab. It works like Final Cut Pro's browser: every clip is a filmstrip
 of thumbnails, skimming one shows it in the viewer, and a range of it can
 be picked and dragged in. The main difference is what a plain drag does:
 here it always grabs the whole clip.
@@ -60,6 +62,9 @@ Pro, so a long clip takes more rows rather than a wider panel.
   don't record their picture size, and one shape keeps strips aligned.
 - The **duration** sits in the bottom-left corner of the clip's first
   thumbnail, in a shaded box, as a timecode at the clip's own frame rate.
+- Scenes are found once for each change to what they come from (the
+  asset's edits, the sensitivity, the scores) and remembered
+  (`SceneCoverageCache`), not found again on every redraw.
 - Thumbnails are made as they scroll into view, at the size drawn, and
   kept in memory only. Nothing is written to disk: small frames are cheap
   to make again, and storing them would go against keeping per-asset data
@@ -91,7 +96,8 @@ the timeline changes. A thin line marks the skimmed frame on the strip.
   in browser order.
 - **Option-drag** across a filmstrip selects a **range** of that clip: an
   outlined span with a handle at each end. The handles can be dragged to
-  set the range more exactly, snapping to frames. A range belongs to one
+  set the range more exactly, snapping to frames; the pointer becomes the
+  resize cursor over them. A range belongs to one
   clip; making one clears any other selection.
 - **Clicking** a clip outside its range selects the whole clip again,
   dropping the range. Clicking inside the range keeps it.
@@ -99,7 +105,8 @@ the timeline changes. A thin line marks the skimmed frame on the strip.
 ## Dragging
 
 - **Dragging** a clip drags the **whole clip**, wherever on it the drag
-  starts, or every selected clip if it is part of the selection.
+  starts, or every selected clip if it is part of the selection. Only the
+  timeline takes it: a drag let go anywhere else adds nothing.
 - **Dragging from inside a range** (its middle, not its handles) drags only
   that range.
 - **Several clips** are dropped back to back on one layer **in browser

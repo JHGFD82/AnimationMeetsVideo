@@ -74,6 +74,7 @@ struct ClipsTab: View {
     @State private var rangeDrag: (item: BrowserItemID, anchor: Double)?
     /// Where the arrow keys move from: the last clip clicked or stepped to.
     @State private var cursor: BrowserItemID?
+    @State private var coverageCache = SceneCoverageCache()
     @FocusState private var focused: Bool
 
     private static let padding: CGFloat = 10
@@ -82,23 +83,74 @@ struct ClipsTab: View {
 
     // MARK: - Entries
 
-    private var entries: [BrowserEntry] {
+    /// Everything listed, worked out once per redraw and handed to what
+    /// needs it, since scenes are costly to find.
+    private struct Snapshot {
         var entries: [BrowserEntry] = []
+        var order: [BrowserItemID] = []
+        var byID: [BrowserItemID: BrowserEntry] = [:]
+        /// Only for expanded videos.
+        var coverage: [UUID: SceneCoverage] = [:]
+
+        func scenes(of assetID: UUID) -> [SceneRange] { coverage[assetID]?.scenes ?? [] }
+    }
+
+    private func makeSnapshot() -> Snapshot {
+        var snapshot = Snapshot()
         for clip in project.clips {
-            entries.append(BrowserEntry(id: .asset(clip.id), clip: clip, start: .zero, duration: clip.duration))
-            guard clip.kind == .video, expandedAssets.contains(clip.id) else { continue }
-            for (index, scene) in scenes(of: clip).enumerated() {
-                entries.append(BrowserEntry(
+            snapshot.entries.append(BrowserEntry(id: .asset(clip.id), clip: clip, start: .zero, duration: clip.duration))
+            guard clip.kind == .video, expandedAssets.contains(clip.id),
+                  let coverage = coverageCache.coverage(of: clip, in: project, track: analysis.tracks[clip.id])
+            else { continue }
+            snapshot.coverage[clip.id] = coverage
+            for (index, scene) in coverage.scenes.enumerated() {
+                snapshot.entries.append(BrowserEntry(
                     id: .scene(asset: clip.id, scene: scene.id), clip: clip, start: scene.start, duration: scene.duration,
                     sceneNumber: index + 1, setByHand: scene.origin == .manual
                 ))
             }
         }
-        return entries
+        snapshot.order = snapshot.entries.map(\.id)
+        snapshot.byID = Dictionary(snapshot.entries.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return snapshot
     }
 
-    private func scenes(of clip: MediaClip) -> [SceneRange] {
-        project.scenes(ofAsset: clip.id, track: analysis.tracks[clip.id])
+    /// One line of the list: a clip's title, one row of its filmstrip, or
+    /// a note under an expanded video. Every line has an ID of its own, so
+    /// a recycled line never shows another clip's title or pictures.
+    private enum Line: Identifiable {
+        case title(BrowserEntry, isUsed: Bool)
+        case strip(BrowserEntry, FilmstripLayout, row: Int, used: [(start: Double, end: Double)])
+        case note(UUID, String)
+
+        var id: String {
+            switch self {
+            case .title(let entry, _): "title|\(entry.id)"
+            case .strip(let entry, let layout, let row, _): "strip|\(entry.id)|\(row)|\(layout.rowCount)"
+            case .note(let assetID, _): "note|\(assetID)"
+            }
+        }
+    }
+
+    private func lines(_ snapshot: Snapshot) -> [Line] {
+        // What the project's timelines use of each asset, for the red line.
+        let used = Dictionary(project.clips.map { ($0.id, project.usedRanges(ofMedia: $0.id)) }, uniquingKeysWith: { a, _ in a })
+        var lines: [Line] = []
+        for entry in snapshot.entries {
+            let usedHere = entry.seconds(within: used[entry.clip.id] ?? [])
+            lines.append(.title(entry, isUsed: !usedHere.isEmpty))
+            if showsStrip(entry) {
+                let layout = layout(of: entry)
+                for row in 0..<layout.rowCount {
+                    lines.append(.strip(entry, layout, row: row, used: usedHere))
+                }
+            }
+            if case .asset(let id) = entry.id, let coverage = snapshot.coverage[id],
+               let note = Self.coverageNote(coverage, replaced: entry.clip.wasReplaced) {
+                lines.append(.note(id, note))
+            }
+        }
+        return lines
     }
 
     private var cellSize: CGSize {
@@ -118,26 +170,20 @@ struct ClipsTab: View {
     // MARK: - Body
 
     var body: some View {
-        let entries = entries
-        let order = entries.map(\.id)
-        // What the project's timelines use of each asset, for the red line.
-        let used = Dictionary(project.clips.map { ($0.id, project.usedRanges(ofMedia: $0.id)) }, uniquingKeysWith: { a, _ in a })
+        let snapshot = makeSnapshot()
+        let order = snapshot.order
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(entries) { entry in
-                    let layout = layout(of: entry)
-                    let usedHere = entry.seconds(within: used[entry.clip.id] ?? [])
-                    title(entry, isUsed: !usedHere.isEmpty)
-                        .padding(.top, Design.Space.step)
-                        .padding(.bottom, Design.Space.tight)
-                        .id("\(entry.id)-title")
-                    if showsStrip(entry) {
-                        ForEach(0..<layout.rowCount, id: \.self) { row in
-                            stripRow(entry, layout: layout, row: row, used: usedHere, order: order)
-                                .padding(.bottom, FilmstripLayout.rowSpacing)
-                        }
-                    }
-                    if case .asset(let id) = entry.id, expandedAssets.contains(id), let note = coverageNote(for: entry.clip) {
+                ForEach(lines(snapshot)) { line in
+                    switch line {
+                    case .title(let entry, let isUsed):
+                        title(entry, isUsed: isUsed, snapshot: snapshot)
+                            .padding(.top, Design.Space.step)
+                            .padding(.bottom, Design.Space.tight)
+                    case .strip(let entry, let layout, let row, let used):
+                        stripRow(entry, layout: layout, row: row, used: used, snapshot: snapshot)
+                            .padding(.bottom, FilmstripLayout.rowSpacing)
+                    case .note(_, let note):
                         Text(note)
                             .font(Design.Typeface.label)
                             .foregroundStyle(Design.statusWarning)
@@ -153,9 +199,12 @@ struct ClipsTab: View {
         .focused($focused)
         .focusEffectDisabled()
         .onKeyPress(keys: [.upArrow, .downArrow, .return]) { press in
-            handleKey(press, order: order) ? .handled : .ignored
+            handleKey(press, snapshot: snapshot) ? .handled : .ignored
         }
-        .onChange(of: order) { _, order in picked.keep(only: order) }
+        .onChange(of: order) { _, order in
+            picked.keep(only: order)
+            coverageCache.keep(only: Set(project.clips.map(\.id)))
+        }
         .sheet(item: $sensitivityTarget) { target in
             SensitivitySheet(project: $project, target: target, track: analysis.tracks[target.assetID])
         }
@@ -168,7 +217,7 @@ struct ClipsTab: View {
     // MARK: - Titles
 
     @ViewBuilder
-    private func title(_ entry: BrowserEntry, isUsed: Bool) -> some View {
+    private func title(_ entry: BrowserEntry, isUsed: Bool, snapshot: Snapshot) -> some View {
         let isSelected = picked.contains(entry.id)
         HStack(alignment: .firstTextBaseline, spacing: Design.Space.tight) {
             if case .asset(let id) = entry.id, entry.clip.kind == .video {
@@ -208,13 +257,13 @@ struct ClipsTab: View {
             picked.click(entry.id)
             cursor = entry.id
         }
-        .contextMenu { menu(for: entry) }
+        .contextMenu { menu(for: entry, snapshot: snapshot) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityName(entry, isUsed: isUsed))
         .accessibilityValue(isSelected ? "selected" : "")
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
         .accessibilityAction { picked.click(entry.id) }
-        .accessibilityAction(named: "Add to Timeline") { addToTimeline(dragPieces(for: [entry.id])) }
+        .accessibilityAction(named: "Add to Timeline") { addToTimeline(dragPieces(for: [entry.id], snapshot: snapshot)) }
     }
 
     private func accessibilityName(_ entry: BrowserEntry, isUsed: Bool) -> String {
@@ -229,7 +278,7 @@ struct ClipsTab: View {
     // MARK: - Strips
 
     private func stripRow(
-        _ entry: BrowserEntry, layout: FilmstripLayout, row: Int, used: [(start: Double, end: Double)], order: [BrowserItemID]
+        _ entry: BrowserEntry, layout: FilmstripLayout, row: Int, used: [(start: Double, end: Double)], snapshot: Snapshot
     ) -> some View {
         let rowTop = CGFloat(row) * layout.rowPitch
         let range = picked.range?.item == entry.id ? picked.range : nil
@@ -244,29 +293,33 @@ struct ClipsTab: View {
             FilmstripMouseView(
                 rowOffset: rowTop,
                 onDown: { point, flags in pressBegan(entry, layout: layout, at: point, flags: flags) },
-                onPress: { press in pressed(press, entry: entry, layout: layout, order: order) },
-                dragText: { point in dragText(entry, layout: layout, at: point, order: order) }
+                onPress: { press in pressed(press, entry: entry, layout: layout, order: snapshot.order) },
+                dragText: { point in dragText(entry, layout: layout, at: point, snapshot: snapshot) },
+                isOnHandle: { point in handle(of: entry, layout: layout, at: point) != nil }
             )
         }
-        .contextMenu { menu(for: entry) }
+        .contextMenu { menu(for: entry, snapshot: snapshot) }
         // The title line is the clip for VoiceOver; the pictures add nothing.
         .accessibilityHidden(true)
+    }
+
+    /// The end of the clip's range whose handle is at `point`: the far
+    /// end, which stays put while the handle is dragged.
+    private func handle(of entry: BrowserEntry, layout: FilmstripLayout, at point: CGPoint) -> Double? {
+        guard let range = picked.range, range.item == entry.id else { return nil }
+        let start = layout.position(atSeconds: range.start), end = layout.position(atSeconds: range.end)
+        let row = Int(point.y / layout.rowPitch)
+        if row == start.row, abs(point.x - start.x) <= Self.handleReach { return range.end }
+        if row == end.row, abs(point.x - end.x) <= Self.handleReach { return range.start }
+        return nil
     }
 
     private func pressBegan(_ entry: BrowserEntry, layout: FilmstripLayout, at point: CGPoint, flags: NSEvent.ModifierFlags) -> Bool {
         focused = true
         let seconds = snapped(layout.seconds(at: point), entry)
-        if let range = picked.range, range.item == entry.id {
-            let start = layout.position(atSeconds: range.start), end = layout.position(atSeconds: range.end)
-            let row = Int(point.y / layout.rowPitch)
-            if row == start.row, abs(point.x - start.x) <= Self.handleReach {
-                rangeDrag = (entry.id, range.end)
-                return true
-            }
-            if row == end.row, abs(point.x - end.x) <= Self.handleReach {
-                rangeDrag = (entry.id, range.start)
-                return true
-            }
+        if let fixed = handle(of: entry, layout: layout, at: point) {
+            rangeDrag = (entry.id, fixed)
+            return true
         }
         guard flags.contains(.option) else { return false }
         rangeDrag = (entry.id, seconds)
@@ -300,7 +353,7 @@ struct ClipsTab: View {
     /// What a drag from `point` carries: the range when it starts inside
     /// the clip's range, otherwise the clip, or every selected clip when it
     /// is one of them.
-    private func dragText(_ entry: BrowserEntry, layout: FilmstripLayout, at point: CGPoint, order: [BrowserItemID]) -> (text: String, label: String)? {
+    private func dragText(_ entry: BrowserEntry, layout: FilmstripLayout, at point: CGPoint, snapshot: Snapshot) -> (text: String, label: String)? {
         let pieces: [MediaPiece]
         let label: String
         if let range = picked.range, range.item == entry.id, range.contains(layout.seconds(at: point)) {
@@ -308,8 +361,8 @@ struct ClipsTab: View {
             label = "\(entry.clip.name) \(timecode(range.end - range.start, entry))"
         } else {
             if !picked.contains(entry.id) { picked.click(entry.id) }
-            let ids = picked.dragged(from: entry.id, in: order)
-            pieces = dragPieces(for: ids)
+            let ids = picked.dragged(from: entry.id, in: snapshot.order)
+            pieces = dragPieces(for: ids, snapshot: snapshot)
             label = ids.count == 1 ? (entry.sceneNumber.map { "Scene \($0)" } ?? entry.clip.name) : "\(ids.count) clips"
         }
         guard !pieces.isEmpty else { return nil }
@@ -318,15 +371,14 @@ struct ClipsTab: View {
 
     /// The pieces for `ids`, in that order. A scene whose whole asset is
     /// also picked is left out, since the asset already carries it.
-    private func dragPieces(for ids: [BrowserItemID]) -> [MediaPiece] {
-        let byID = Dictionary(entries.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    private func dragPieces(for ids: [BrowserItemID], snapshot: Snapshot) -> [MediaPiece] {
         let wholeAssets = Set(ids.compactMap { id -> UUID? in
             if case .asset(let asset) = id { return asset }
             return nil
         })
         return ids.compactMap { id in
             if case .scene(let asset, _) = id, wholeAssets.contains(asset) { return nil }
-            return byID[id]?.piece()
+            return snapshot.byID[id]?.piece()
         }
     }
 
@@ -355,14 +407,15 @@ struct ClipsTab: View {
 
     /// Up and down move the selection (Shift extends it); Return adds the
     /// selection to the timeline.
-    private func handleKey(_ press: KeyPress, order: [BrowserItemID]) -> Bool {
+    private func handleKey(_ press: KeyPress, snapshot: Snapshot) -> Bool {
+        let order = snapshot.order
         if press.key == .return {
             let ids = picked.ordered(in: order)
             guard !ids.isEmpty else { return false }
-            if let range = picked.range, let entry = entries.first(where: { $0.id == range.item }) {
+            if let range = picked.range, let entry = snapshot.byID[range.item] {
                 addToTimeline([entry.piece(from: range.start, to: range.end)])
             } else {
-                addToTimeline(dragPieces(for: ids))
+                addToTimeline(dragPieces(for: ids, snapshot: snapshot))
             }
             return true
         }
@@ -387,13 +440,13 @@ struct ClipsTab: View {
     // MARK: - Menus
 
     @ViewBuilder
-    private func menu(for entry: BrowserEntry) -> some View {
-        let ids = picked.contains(entry.id) ? picked.ordered(in: entries.map(\.id)) : [entry.id]
+    private func menu(for entry: BrowserEntry, snapshot: Snapshot) -> some View {
+        let ids = picked.contains(entry.id) ? picked.ordered(in: snapshot.order) : [entry.id]
         Button(ids.count > 1 ? "Add \(ids.count) Clips to Timeline" : "Add to Timeline") {
             if let range = picked.range, range.item == entry.id {
                 addToTimeline([entry.piece(from: range.start, to: range.end)])
             } else {
-                addToTimeline(dragPieces(for: ids))
+                addToTimeline(dragPieces(for: ids, snapshot: snapshot))
             }
         }
         if ids.count == 1 {
@@ -401,16 +454,17 @@ struct ClipsTab: View {
             case .asset:
                 assetMenu(entry.clip)
             case .scene(let assetID, _):
-                sceneMenu(entry, assetID: assetID)
+                sceneMenu(entry, assetID: assetID, scenes: snapshot.scenes(of: assetID))
             }
         } else {
             let sceneIDs = ids.compactMap { id -> String? in
                 if case .scene(let asset, let scene) = id, asset == entry.clip.id { return scene }
                 return nil
             }
-            if sceneIDs.count == ids.count, canMerge(Set(sceneIDs), assetID: entry.clip.id) {
+            let scenes = snapshot.scenes(of: entry.clip.id)
+            if sceneIDs.count == ids.count, !cutsToRemove(Set(sceneIDs), in: scenes).isEmpty {
                 Divider()
-                Button("Merge Selected Scenes") { mergeScenes(Set(sceneIDs), assetID: entry.clip.id) }
+                Button("Merge Selected Scenes") { mergeScenes(Set(sceneIDs), assetID: entry.clip.id, scenes: scenes) }
             }
         }
     }
@@ -444,7 +498,7 @@ struct ClipsTab: View {
     }
 
     @ViewBuilder
-    private func sceneMenu(_ entry: BrowserEntry, assetID: UUID) -> some View {
+    private func sceneMenu(_ entry: BrowserEntry, assetID: UUID, scenes: [SceneRange]) -> some View {
         if let url = entry.clip.url, let number = entry.sceneNumber {
             Button("Preview…") {
                 let scene = SceneRange(start: entry.start, end: CMTimeAdd(entry.start, entry.duration), origin: entry.setByHand ? .manual : .auto)
@@ -458,8 +512,8 @@ struct ClipsTab: View {
             }
         }
         if case .scene(_, let sceneID) = entry.id {
-            Button("Merge with Previous Scene") { mergeScenes([sceneID], assetID: assetID) }
-                .disabled(!canMerge([sceneID], assetID: assetID))
+            Button("Merge with Previous Scene") { mergeScenes([sceneID], assetID: assetID, scenes: scenes) }
+                .disabled(cutsToRemove([sceneID], in: scenes).isEmpty)
         }
     }
 
@@ -473,8 +527,7 @@ struct ClipsTab: View {
     /// The cuts whose removal joins the picked scenes: each picked scene's
     /// start, except where it begins the run (a single scene merges back into
     /// the one before it).
-    private func cutsToRemove(_ sceneIDs: Set<String>, assetID: UUID) -> [SceneCut] {
-        let all = project.scenes(ofAsset: assetID, track: analysis.tracks[assetID])
+    private func cutsToRemove(_ sceneIDs: Set<String>, in all: [SceneRange]) -> [SceneCut] {
         let single = sceneIDs.count == 1
         var cuts: [SceneCut] = []
         for (index, scene) in all.enumerated() where sceneIDs.contains(scene.id) && index > 0 {
@@ -485,12 +538,8 @@ struct ClipsTab: View {
         return cuts
     }
 
-    private func canMerge(_ sceneIDs: Set<String>, assetID: UUID) -> Bool {
-        !cutsToRemove(sceneIDs, assetID: assetID).isEmpty
-    }
-
-    private func mergeScenes(_ sceneIDs: Set<String>, assetID: UUID) {
-        let cuts = cutsToRemove(sceneIDs, assetID: assetID)
+    private func mergeScenes(_ sceneIDs: Set<String>, assetID: UUID, scenes: [SceneRange]) {
+        let cuts = cutsToRemove(sceneIDs, in: scenes)
         project.editScenes(ofAsset: assetID) { edits in
             for cut in cuts { edits.removeCut(cut) }
         }
@@ -498,10 +547,6 @@ struct ClipsTab: View {
     }
 
     // MARK: - Status
-
-    private func coverageNote(for clip: MediaClip) -> String? {
-        Self.coverageNote(project.sceneCoverage(ofAsset: clip.id, track: analysis.tracks[clip.id]), replaced: clip.wasReplaced)
-    }
 
     /// Says what the file the asset uses now can't play of the original's
     /// time, when it can't.

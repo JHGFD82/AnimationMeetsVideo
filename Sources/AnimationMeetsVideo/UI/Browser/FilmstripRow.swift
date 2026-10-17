@@ -116,24 +116,31 @@ struct FilmstripRow: View {
 }
 
 /// The frame at `time` in a file, fitted into its cell.
+///
+/// The picture is kept with what it is of, and shown only while that is
+/// still what the cell asks for: a cell reused for another clip or time
+/// shows black until its own picture arrives, never the last one's.
 struct FilmstripThumbnail: View {
     let url: URL?
     let time: CMTime
     let height: CGFloat
-    @State private var image: NSImage?
+    @State private var loaded: (key: String, image: NSImage)?
+
+    private var key: String { "\(url?.path ?? "")|\(time.value)/\(time.timescale)|\(height)" }
 
     var body: some View {
         ZStack {
             Rectangle().fill(.black)
-            if let image {
-                Image(nsImage: image)
+            if let loaded, loaded.key == key {
+                Image(nsImage: loaded.image)
                     .resizable()
                     .scaledToFit()
             }
         }
-        .task(id: "\(url?.path ?? "")|\(time.value)/\(time.timescale)|\(height)") {
-            guard let url else { return }
-            image = await FrameThumbnails.image(url: url, time: time, height: height)
+        .task(id: key) {
+            let key = key
+            guard let url, let image = await FrameThumbnails.image(url: url, time: time, height: height) else { return }
+            loaded = (key, image)
         }
     }
 }

@@ -27,6 +27,9 @@ struct FilmstripMouseView: NSViewRepresentable {
     /// The payload for a drag starting at a point, with a label for its
     /// drag image; nil not to drag.
     var dragText: (CGPoint) -> (text: String, label: String)?
+    /// Whether a point is on a range's handle, which shows the resize
+    /// cursor.
+    var isOnHandle: (CGPoint) -> Bool = { _ in false }
     /// The pointer over the strip, nil once it leaves.
     var onHover: (CGPoint?) -> Void = { _ in }
 
@@ -66,11 +69,23 @@ struct FilmstripMouseView: NSViewRepresentable {
         }
 
         override func mouseMoved(with event: NSEvent) {
-            configuration?.onHover(layoutPoint(event))
+            let point = layoutPoint(event)
+            showCursor(over: point)
+            configuration?.onHover(point)
         }
 
         override func mouseExited(with event: NSEvent) {
+            if !tracking { NSCursor.arrow.set() }
             configuration?.onHover(nil)
+        }
+
+        /// The resize cursor over a handle, the arrow elsewhere.
+        private func showCursor(over point: CGPoint) {
+            if configuration?.isOnHandle(point) == true {
+                NSCursor.resizeLeftRight.set()
+            } else {
+                NSCursor.arrow.set()
+            }
         }
 
         override func mouseDown(with event: NSEvent) {
@@ -85,6 +100,7 @@ struct FilmstripMouseView: NSViewRepresentable {
         override func mouseDragged(with event: NSEvent) {
             let point = layoutPoint(event)
             if tracking {
+                NSCursor.resizeLeftRight.set()
                 configuration?.onPress(.track(point))
                 return
             }
@@ -108,6 +124,7 @@ struct FilmstripMouseView: NSViewRepresentable {
             let point = layoutPoint(event)
             if tracking {
                 configuration?.onPress(.endTrack(point))
+                showCursor(over: point)
             } else if !dragging, let downPoint {
                 configuration?.onPress(.click(downPoint, downFlags))
             }
