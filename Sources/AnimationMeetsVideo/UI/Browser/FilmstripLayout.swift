@@ -59,9 +59,10 @@ enum ThumbnailSize: String, CaseIterable, Identifiable {
 }
 
 /// Where a clip's thumbnails go in a filmstrip that wraps onto further rows
-/// once it is wider than the browser. Within a row the thumbnails touch, so
-/// time runs evenly along it; the last thumbnail is narrower in proportion
-/// when it stands for less time, so a strip's length reads as the clip's.
+/// once it is wider than the browser. Within a row the thumbnails touch.
+/// Every thumbnail is full size, the last one included even when it stands
+/// for less time, and so is a clip shorter than one interval: a shortened
+/// thumbnail is too small to read.
 struct FilmstripLayout: Equatable {
     struct Cell: Equatable {
         /// Seconds into the clip where the thumbnail's stretch starts, and
@@ -76,8 +77,6 @@ struct FilmstripLayout: Equatable {
 
     /// Space between rows.
     static let rowSpacing: CGFloat = 2
-    /// The narrowest a short last thumbnail is drawn, to stay visible.
-    static let minimumCellWidth: CGFloat = 4
 
     let cells: [Cell]
     let cellSize: CGSize
@@ -102,7 +101,7 @@ struct FilmstripLayout: Equatable {
             for index in 0..<count {
                 let start = Double(index) * step
                 let length = min(step, self.duration - start)
-                let w = max(Self.minimumCellWidth, cellSize.width * CGFloat(length / step))
+                let w = cellSize.width
                 if x > 0, x + w > width + 0.5 {
                     x = 0
                     row += 1

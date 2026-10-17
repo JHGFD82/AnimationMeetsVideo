@@ -12,12 +12,20 @@ import Testing
         #expect(layout.size == cell)
     }
 
-    @Test func eachThumbnailStandsForOneIntervalAndTheLastIsNarrowerInProportion() {
+    @Test func eachThumbnailStandsForOneIntervalAndEveryOneIsFullSize() {
         let layout = FilmstripLayout(duration: 12.5, interval: .fiveSeconds, cellSize: cell, width: 1000)
         #expect(layout.cells.map(\.start) == [0, 5, 10])
         #expect(layout.cells.map(\.duration) == [5, 5, 2.5])
-        #expect(layout.cells.map(\.frame.width) == [96, 96, 48])
+        #expect(layout.cells.map(\.frame.width) == [96, 96, 96])
         #expect(layout.rowCount == 1)
+    }
+
+    @Test func aClipShorterThanOneIntervalIsOneFullThumbnail() {
+        let layout = FilmstripLayout(duration: 1.5, interval: .tenSeconds, cellSize: cell, width: 1000)
+        #expect(layout.cells.count == 1)
+        #expect(layout.cells[0].frame.size == cell)
+        // Its time still runs across the whole thumbnail.
+        #expect(layout.seconds(at: CGPoint(x: 48, y: 10)) == 0.75)
     }
 
     @Test func anExactMultipleHasNoSliverAtTheEnd() {

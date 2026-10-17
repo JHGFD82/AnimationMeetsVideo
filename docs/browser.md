@@ -48,15 +48,17 @@ stretch set by **time per thumbnail** in the browser's settings. A
 filmstrip wider than the browser wraps onto further rows, as in Final Cut
 Pro, so a long clip takes more rows rather than a wider panel.
 
-- **Time per thumbnail** steps: **All** (one thumbnail per clip, its first
-  frame), **1 min**, **30 s**, **10 s**, **5 s**, **2 s**, **1 s**. Each step
+- **Time per thumbnail** steps, from the slider's right end to its left:
+  **All** (one thumbnail per clip, its first frame), **1 min**, **30 s**,
+  **10 s**, **5 s**, **2 s**, **1 s**. Each step
   is about two to three times the next, so each notch of the slider changes
   the view by a similar amount, the way the sensitivity slider is
   exponential. 1 s is the finest: finer steps make a 10-minute clip 1,200
   thumbnails and more, and skimming already gives frame-level detail.
-- Each thumbnail shows the frame at the start of its stretch. The last one
-  may cover a shorter stretch and is drawn narrower, in proportion, so a
-  strip's length always reads as the clip's duration.
+- Each thumbnail shows the frame at the start of its stretch. Every
+  thumbnail is full size: the last one, which may cover a shorter stretch,
+  and a clip (or scene) shorter than one interval, which is one thumbnail.
+  A shortened thumbnail is too small to read.
 - **Thumbnail size** (in the settings): small, medium and large heights.
   Every thumbnail is 16:9, with the picture fitted inside on black: assets
   don't record their picture size, and one shape keeps strips aligned.
