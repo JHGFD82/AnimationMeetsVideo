@@ -346,7 +346,7 @@ enum BeatDetector {
             progress(1)
 
             let origin = originSamples ?? 0
-            guard let beats = BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) else {
+            guard let beats = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) else {
                 return .none(timescale: Int32(sampleRate))
             }
             return try BeatTrack(
@@ -522,7 +522,35 @@ enum BeatTracker {
     /// octaves (about 7%), is a jump rather than part of a ramp.
     static let suddenChange = 0.1
 
-    static func track(envelope raw: [Float], framesPerSecond: Double) -> Result? {
+    /// The tracker was given something that isn't an onset curve.
+    enum InputError: LocalizedError, Equatable {
+        /// The frame rate isn't a finite, positive number.
+        case invalidFrameRate(Double)
+        /// The value at this frame isn't finite and nonnegative.
+        case invalidOnset(frame: Int)
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidFrameRate(let rate): "The onset curve's frame rate (\(rate)) isn't a positive number."
+            case .invalidOnset(let frame): "The onset curve has a value at frame \(frame) that isn't a number."
+            }
+        }
+    }
+
+    /// The beats of an onset curve, or nil when it holds no steady beat
+    /// (including a curve too short to tell). Throws `InputError`, before
+    /// doing any work, when the frame rate isn't finite and positive or a
+    /// value isn't finite and nonnegative: those would trap in the
+    /// conversions to frame counts or poison every score.
+    static func track(envelope raw: [Float], framesPerSecond: Double) throws -> Result? {
+        guard framesPerSecond.isFinite, framesPerSecond > 0 else {
+            throw InputError.invalidFrameRate(framesPerSecond)
+        }
+        if let bad = raw.firstIndex(where: { !$0.isFinite || $0 < 0 }) {
+            throw InputError.invalidOnset(frame: bad)
+        }
+        // A long enough curve also bounds the frame rate by its length, so
+        // the frame counts worked out from it below fit in an Int.
         guard Double(raw.count) / framesPerSecond >= minimumSeconds,
               let onsets = prepared(raw, framesPerSecond: framesPerSecond),
               let periods = periods(of: onsets, framesPerSecond: framesPerSecond)
@@ -548,11 +576,11 @@ enum BeatTracker {
             let mean = (prefix[high] - prefix[low]) / Double(high - low)
             onsets[i] = max(0, raw[i] - Float(mean))
         }
-        var sumOfSquares: Float = 0
-        vDSP_svesq(onsets, 1, &sumOfSquares, vDSP_Length(onsets.count))
-        let spread = (sumOfSquares / Float(onsets.count)).squareRoot()
+        // In Double, so values near Float's limit don't overflow the sum.
+        let sumOfSquares = onsets.reduce(0.0) { $0 + Double($1) * Double($1) }
+        let spread = (sumOfSquares / Double(onsets.count)).squareRoot()
         guard spread > 1e-6 else { return nil }
-        return onsets.map { $0 / spread }
+        return onsets.map { Float(Double($0) / spread) }
     }
 
     /// The beat period in frames (fractional) at every frame. Where the
@@ -573,7 +601,8 @@ enum BeatTracker {
     private static func periods(of onsets: [Float], framesPerSecond: Double) -> Periods? {
         let shortest = max(2, Int((framesPerSecond * 60 / maximumBPM).rounded(.down)))
         let longest = Int((framesPerSecond * 60 / minimumBPM).rounded(.up))
-        guard longest + 1 < onsets.count else { return nil }
+        // At a frame rate this low the whole tempo range is under a frame or two.
+        guard shortest < longest, longest + 1 < onsets.count else { return nil }
 
         let length = min(onsets.count, max(Int(tempoWindowSeconds * framesPerSecond), 2 * (longest + 2)))
         let hop = max(1, Int(tempoHopSeconds * framesPerSecond))

@@ -63,7 +63,7 @@ private func agreement(beats: [Double], clicks: [Double], seconds: Double) -> (f
 private func trackBeats(_ samples: [Float]) throws -> (seconds: [Double], result: BeatTracker.Result) {
     let analyzer = OnsetAnalyzer()
     samples.withUnsafeBufferPointer { analyzer.append($0) }
-    let result = try #require(BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond))
+    let result = try #require(try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond))
     let seconds = result.frames.map { Double(OnsetAnalyzer.centerSample(ofFrame: $0)) / BeatDetector.sampleRate }
     return (seconds, result)
 }
@@ -79,7 +79,7 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         let analyzer = OnsetAnalyzer()
         samples.withUnsafeBufferPointer { analyzer.append($0) }
 
-        let result = try #require(BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond))
+        let result = try #require(try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond))
 
         #expect(abs(result.beatsPerMinute - 120) < 3)
         #expect(result.frames.count >= 18)
@@ -96,7 +96,7 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         let analyzer = OnsetAnalyzer()
         samples.withUnsafeBufferPointer { analyzer.append($0) }
 
-        let result = try #require(BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond))
+        let result = try #require(try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond))
 
         #expect(abs(result.beatsPerMinute - 90) < 3)
     }
@@ -145,15 +145,56 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         #expect(match.accurate > 0.9, "only \(match.accurate) of the beats are on a click")
     }
 
-    @Test func silenceAndShortAudioHaveNoBeats() {
+    @Test func silenceAndShortAudioHaveNoBeats() throws {
         let analyzer = OnsetAnalyzer()
         [Float](repeating: 0, count: 22_050 * 10).withUnsafeBufferPointer { analyzer.append($0) }
-        #expect(BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) == nil)
+        let silent = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond)
+        #expect(silent == nil)
 
         let short = clickTrack(seconds: 2, interval: 0.5, first: 0.1, sampleRate: BeatDetector.sampleRate)
         let shortAnalyzer = OnsetAnalyzer()
         short.withUnsafeBufferPointer { shortAnalyzer.append($0) }
-        #expect(BeatTracker.track(envelope: shortAnalyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) == nil)
+        let brief = try BeatTracker.track(envelope: shortAnalyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond)
+        #expect(brief == nil)
+    }
+
+    /// A pulse every half second at the analyzer's frame rate.
+    private func pulses(seconds: Double) -> [Float] {
+        let rate = OnsetAnalyzer.framesPerSecond
+        return (0..<Int(seconds * rate)).map { Int(Double($0).truncatingRemainder(dividingBy: rate / 2)) == 0 ? 5 : 0 }
+    }
+
+    @Test func invalidFrameRatesAreRejected() {
+        let envelope = pulses(seconds: 10)
+        for rate in [0, -86, .infinity, -.infinity, .nan] as [Double] {
+            #expect(throws: BeatTracker.InputError.self, "\(rate)") {
+                _ = try BeatTracker.track(envelope: envelope, framesPerSecond: rate)
+            }
+        }
+    }
+
+    @Test func onsetsThatArentFiniteAndNonnegativeAreRejected() {
+        for bad in [Float.nan, .infinity, -.infinity, -1] {
+            var envelope = pulses(seconds: 10)
+            envelope[100] = bad
+            #expect(throws: BeatTracker.InputError.invalidOnset(frame: 100), "\(bad)") {
+                _ = try BeatTracker.track(envelope: envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond)
+            }
+        }
+    }
+
+    @Test func veryShortOrOddlyScaledCurvesHaveNoBeatsAndDontTrap() throws {
+        let rate = OnsetAnalyzer.framesPerSecond
+        #expect(try BeatTracker.track(envelope: [], framesPerSecond: rate) == nil)
+        #expect(try BeatTracker.track(envelope: [1], framesPerSecond: rate) == nil)
+        #expect(try BeatTracker.track(envelope: pulses(seconds: 3.9), framesPerSecond: rate) == nil)
+        // Rates that are valid but make the tempo range smaller than a frame, or the curve far too short.
+        #expect(try BeatTracker.track(envelope: pulses(seconds: 10), framesPerSecond: 0.5) == nil)
+        #expect(try BeatTracker.track(envelope: pulses(seconds: 10), framesPerSecond: .leastNonzeroMagnitude) == nil)
+        #expect(try BeatTracker.track(envelope: pulses(seconds: 10), framesPerSecond: 1e300) == nil)
+        // Values near Float's limit must not overflow into infinities.
+        let huge = pulses(seconds: 10).map { $0 / 5 * Float.greatestFiniteMagnitude }
+        _ = try BeatTracker.track(envelope: huge, framesPerSecond: rate)
     }
 
     // MARK: Spectrum

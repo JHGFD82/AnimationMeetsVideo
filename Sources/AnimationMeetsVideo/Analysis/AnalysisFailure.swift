@@ -77,7 +77,9 @@ struct AnalysisFailure: Equatable, Sendable {
              BeatDetector.DetectionError.readerFailed(let reason, let underlying):
             if let underlying { return kind(of: underlying) }
             return reason.contains("unsupported") ? .unsupportedMedia : .other
-        case is ChangeScoreTrackError:
+        case is ChangeScoreTrackError, is BeatTracker.InputError:
+            // The onset curve comes from the decoded audio, so values that
+            // aren't numbers mean the audio held some.
             return .corruptMedia
         default:
             break
