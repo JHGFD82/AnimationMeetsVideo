@@ -80,6 +80,18 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         #expect(top.clips.first?.id == music.clipID && top.clips.first?.startOffset == seconds(3))
     }
 
+    @Test func aClipDroppedInAnEmptyAreaStartsWhereItWasDropped() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let soundResult = project.importClip(song(), intoTimeline: t)
+        let sound = try #require(soundResult)
+        let movedResult = project.moveClipToNewLayer(sound.clipID, in: t, layer: sound.layerID, kind: .music, at: seconds(4))
+        let moved = try #require(movedResult)
+        let layer = try #require(layers(project).first { $0.id == moved })
+        #expect(layer.kind == .music)
+        #expect(layer.clips.first?.startOffset == seconds(4))
+    }
+
     @Test func scenesGoOnANewLayerOfTheChosenKind() throws {
         var project = EditingProject.empty
         let t = project.rootTimelineID

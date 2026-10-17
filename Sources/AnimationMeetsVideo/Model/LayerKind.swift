@@ -91,11 +91,13 @@ extension EditingProject {
         }
     }
 
-    /// Moves a clip onto a new layer of `kind` at the top of the stack,
-    /// keeping its time, as when it is dropped on the "new layer" zone.
-    /// Returns the new layer, or nil if the clip can't go on that kind.
+    /// Moves a clip onto a new layer of `kind` at the top of the stack, as
+    /// when it is dropped on the "new layer" zone or on the empty part of an
+    /// area. It keeps its time, or starts at `start` when given (moved onto
+    /// the timeline's frames). Returns the new layer, or nil if the clip
+    /// can't go on that kind.
     @discardableResult
-    mutating func moveClipToNewLayer(_ id: UUID, in timelineID: UUID, layer layerID: UUID, kind: LayerKind) -> UUID? {
+    mutating func moveClipToNewLayer(_ id: UUID, in timelineID: UUID, layer layerID: UUID, kind: LayerKind, at start: CMTime? = nil) -> UUID? {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
               let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
               let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id }),
@@ -103,7 +105,10 @@ extension EditingProject {
         else {
             return nil
         }
-        let clip = timelines[tIndex].layers[lIndex].clips.remove(at: cIndex)
+        var clip = timelines[tIndex].layers[lIndex].clips.remove(at: cIndex)
+        if let start {
+            clip.startOffset = timelines[tIndex].placementTime(CMTimeMaximum(.zero, start), .nearest, frameLocked: isFrameLocked(clip))
+        }
         var layer = TimelineLayer(customName: nil, kind: kind, clips: [clip])
         layer.isAdjustment = clip.source == .adjustment
         timelines[tIndex].layers.insert(layer, at: 0)

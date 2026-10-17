@@ -35,16 +35,16 @@ tall a layer is: a bigger area shows more layers. Layer height is each
 area's own vertical zoom (see [Zoom and scroll](#zoom-and-scroll)).
 **View Options** has a checkbox per area that hides or shows it, and a
 layer height slider for each. The layout (`TimelineAreaLayout`) is kept in
-the app's defaults. Under each area's layers is a slim row for dropping
-onto a new layer of that kind, then under the areas the scrollbar (shown
-only while zoomed in).
+the app's defaults. Under each area's layers, the rest of the area (at
+least a slim row) takes drops onto a new layer of that kind, then under the
+areas the scrollbar (shown only while zoomed in).
 
 Importing a file only adds it to the library. It reaches a timeline when
 dragged there (a whole asset, or scenes of it), or from **Add to Timeline**
 in its menu. Dropped on a layer it goes onto that layer at the drop time,
 in the nearest gap it fits (`addScenes(_:ofAsset:intoLayer:in:at:)`);
-dropped on the row under an area's layers it gets a new layer of that
-area's kind; anywhere else, where it doesn't fit, or on a layer of the
+dropped anywhere in an area below its layers, an empty area included, it
+gets a new layer of that area's kind; anywhere else, where it doesn't fit, or on a layer of the
 wrong kind, it gets a new layer of its own default kind. New layers always
 go at the top of the stack, which is the top of their area. **Add to
 Timeline** always makes a new layer.
@@ -54,7 +54,10 @@ the timeline lights up a translucent zone in the area's hue saying what a
 drop there makes: **New Video Layer** for pictures, or for sound the column
 split into **New Sound Layer** above **New Music Layer**, the half under
 the pointer lit brighter. Media dropped there goes on the new layer at the
-playhead. A clip dropped there keeps its time (`moveClipToNewLayer`). The
+playhead. A clip dropped there keeps its time (`moveClipToNewLayer`). A
+clip dragged over the empty part of another area that takes it, below
+that area's layers, goes onto a new layer there at the time it was dragged
+to: that is how detached sound goes from the Sound area to Music. The
 library notes which asset a drag carries as it begins
 (`SceneDragPayload.draggedAssetID`), since the drop target can't read the
 payload until the drop.

@@ -373,8 +373,8 @@ struct TimelineEditorSurface<Library: View>: View {
                         selection?.layerID = targetLayerID
                     }
                 },
-                onMoveClipToNewLayer: { layerID, clipID, kind in
-                    if let newLayer = project.moveClipToNewLayer(clipID, in: timelineID, layer: layerID, kind: kind),
+                onMoveClipToNewLayer: { layerID, clipID, kind, start in
+                    if let newLayer = project.moveClipToNewLayer(clipID, in: timelineID, layer: layerID, kind: kind, at: start),
                        selection?.timelineClipID == clipID {
                         selection?.layerID = newLayer
                     }

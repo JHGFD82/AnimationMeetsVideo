@@ -26,7 +26,7 @@ struct TimelineView: View {
     /// Layer, clip, the layer it moves to if another, and its new start.
     let onMoveClip: (UUID, UUID, UUID?, CMTime) -> Void
     /// Layer, clip and the kind of new layer, at the top, to move it onto.
-    let onMoveClipToNewLayer: (UUID, UUID, LayerKind) -> Void
+    let onMoveClipToNewLayer: (UUID, UUID, LayerKind, CMTime) -> Void
     /// Scenes dropped on a layer at a time, or with no layer, onto a new
     /// layer of the given kind (the asset's default kind when nil).
     let onDropScenes: ([SceneDragPayload], UUID?, CMTime, LayerKind?) -> Bool
@@ -584,7 +584,7 @@ struct TimelineView: View {
                         onHover: { hover in if hover != newLayerHover { newLayerHover = hover } },
                         onDrop: { payloads, kind in _ = onDropScenes(payloads, nil, playheadTime, kind) }
                     ))
-                layerTracks(kind, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets)
+                layerTracks(kind, areaHeight: height, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets)
                     .offset(x: -viewport.scrollX)
                     .frame(width: viewport.width, alignment: .topLeading)
                     .clipped()
@@ -672,9 +672,23 @@ struct TimelineView: View {
                 pushed: pushed(on: target, by: landed, excluding: clip.id)
             )
         }
+        // Over the empty part of another area that takes it, below its
+        // layers: onto a new layer there, where it was dragged to. This is
+        // how detached sound goes from the Sound area to Music.
+        if target == nil, let kind = emptyAreaKind(at: pointer), kind != fromLayer.kind,
+           project.layerKind(kind, accepts: clip) {
+            return ClipMovePreview(start: CMTimeMaximum(.zero, start), layerID: nil, offsetY: 0, newLayer: kind)
+        }
         return project.resolvedMove(ofMoving: clip.id, in: timelineID, layer: layerID, to: start).map {
             ClipMovePreview(start: $0.start, layerID: nil, offsetY: 0, pushed: pushed(on: fromLayer, by: $0, excluding: clip.id))
         }
+    }
+
+    /// The area whose empty space, below its layers, is under the pointer.
+    private func emptyAreaKind(at pointer: CGPoint) -> LayerKind? {
+        guard let kind = areaLayout.shown.first(where: { geometryStore.areas[$0]?.contains(pointer) == true }) else { return nil }
+        let onLayer = areaLayers(kind).contains { geometryStore.layerRows[$0.id]?.contains(pointer) == true }
+        return onLayer ? nil : kind
     }
 
     /// Shows what a clip drag from `layerID` will do, or stops with nil.
@@ -833,7 +847,11 @@ struct TimelineView: View {
 
     /// Every layer's clips and keyframe lanes, laid out across the whole
     /// span in unscrolled coordinates; the caller shifts them into view.
-    private func layerTracks(_ kind: LayerKind, viewport: TimelineViewport, frameTime: CMTime, snapTargets: SnapTargets?) -> some View {
+    private func layersHeight(_ kind: LayerKind) -> CGFloat {
+        areaLayers(kind).reduce(0) { $0 + blockHeight(of: $1) }
+    }
+
+    private func layerTracks(_ kind: LayerKind, areaHeight: CGFloat, viewport: TimelineViewport, frameTime: CMTime, snapTargets: SnapTargets?) -> some View {
         let pixelsPerSecond = viewport.pixelsPerSecond
         let contentWidth = viewport.contentWidth
         let snapTolerance = snapTolerance(viewport)
@@ -855,9 +873,9 @@ struct TimelineView: View {
                         onSelectClip: { clip in onSelectClip(layer.id, clip) },
                         resolveMove: { clip, pointer, start in resolveMove(clip, from: layer.id, pointer: pointer, to: start) },
                         onMoveClip: { clipID, target, newStart in onMoveClip(layer.id, clipID, target, newStart) },
-                        onMoveClipToNewLayer: { clipID, kind in
+                        onMoveClipToNewLayer: { clipID, kind, start in
                             newLayerHover = nil
-                            onMoveClipToNewLayer(layer.id, clipID, kind)
+                            onMoveClipToNewLayer(layer.id, clipID, kind, start)
                         },
                         onDraggingClip: { dragging in draggingClipLayerID = dragging ? layer.id : nil },
                         pushed: pushedClips.flatMap { $0.layerID == layer.id ? $0.clips : nil } ?? [:],
@@ -969,7 +987,9 @@ struct TimelineView: View {
                 .background(index.isMultiple(of: 2) ? Color.clear : Color.white.opacity(0.018))
                 .zIndex(draggingClipLayerID == layer.id ? 1 : 0)
             }
-            NewLayerDropRow(height: newLayerRowHeight, kind: kind) { payloads, x in
+            // Fills the rest of the area, so media dropped anywhere below the
+            // layers (or in an empty area) gets a new layer of its kind.
+            NewLayerDropRow(height: max(newLayerRowHeight, areaHeight - layersHeight(kind)), kind: kind) { payloads, x in
                 onDropScenes(payloads, nil, CMTime(seconds: max(0, Double(x / pixelsPerSecond)), preferredTimescale: 600), kind)
             }
         }
