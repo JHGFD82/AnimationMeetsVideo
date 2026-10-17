@@ -340,6 +340,20 @@ works on frames already chosen:
   so the clip's length on the timeline follows from it: dragging the
   clip's end trims the source, it never stretches the clip.
 
+  A negative speed plays the clip backwards: its leading edge on the
+  timeline is the end of its trim, and trimming, splitting and slipping
+  follow (`TimelineClip.isReversed`). The first speed keyframe's sign (the
+  value's, with none) is the clip's direction. A speed can't turn around
+  partway, since passing through zero would take forever, so every other
+  keyframe keeps that direction (`editTime(ofClip:)`) and no speed is
+  under 1% in size. The Time section's **Reverse** checkbox flips the
+  sign of the whole curve (100% becomes -100%, ramps and eases kept). A
+  speed typed across zero is held at 1% in the clip's direction, with a
+  note suggesting the Blade tool: cut the clip and set each segment's
+  speed. A composition can't play footage backwards, so the
+  exporter builds a backwards clip from a piece for every frame, and its
+  sound is silent.
+
   How long a ramp lasts is the integral of 100 / speed over the source
   time it plays, taken from the curve itself (its eases included, speed
   clamped to 1%...10000%). `SpeedIntegral` computes it once per speed curve

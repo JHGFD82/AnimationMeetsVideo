@@ -13,14 +13,15 @@ struct RetimeMark: Equatable {
     /// own speed.
     static func marks(of clip: TimelineClip) -> [RetimeMark] {
         guard clip.isRetimed else { return [] }
-        var marks = [RetimeMark(seconds: 0, speed: clip.speed(atSource: clip.trimStart))]
+        // Backwards, the clip starts at the end of its trim.
+        var marks = [RetimeMark(seconds: 0, speed: clip.speed(atSource: clip.isReversed ? clip.trimEnd : clip.trimStart))]
         for keyframe in clip.time.speed.keyframes where keyframe.time > clip.trimStart && keyframe.time < clip.trimEnd {
             marks.append(RetimeMark(
                 seconds: CMTimeSubtract(clip.timelineTime(forSourceTime: keyframe.time), clip.startOffset).seconds,
                 speed: clip.speed(atSource: keyframe.time)
             ))
         }
-        return marks
+        return marks.sorted { $0.seconds < $1.seconds }
     }
 
     /// Whether the speed changes gradually from this mark to `next`.

@@ -193,7 +193,7 @@ enum AnimatedParameter: Hashable {
     func clamped(_ component: Double) -> Double {
         switch self {
         case .layerVolume, .clipVolume: AudioLevel.clamped(component)
-        case .speed: min(max(component, ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound)
+        case .speed: ClipTime.clampedSpeed(component)
         case .anchorPoint: component
         case .control(let kind, _, _, _): kind.clamped(component)
         }

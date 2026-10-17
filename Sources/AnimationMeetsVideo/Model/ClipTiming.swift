@@ -70,14 +70,39 @@ struct Echo: Equatable, Sendable {
 /// What a clip does to time, above its stack: which source frames the rest
 /// of the clip receives.
 struct ClipTime: Equatable, Sendable {
-    /// A percentage, 100 playing at the source's own speed. Keyframed in the
-    /// clip's source time (see `TimelineClip.timelineTime(forSourceTime:)`).
+    /// A percentage, 100 playing at the source's own speed and negative
+    /// playing it backwards. Keyframed in the clip's source time (see
+    /// `TimelineClip.timelineTime(forSourceTime:)`). The first keyframe's
+    /// sign (or the value's, with none) is the clip's direction; a speed
+    /// can't turn around partway (that would take forever to play), so the
+    /// other keyframes keep that direction, and no speed is under 1%.
     var speed = AnimatedValue(100.0)
     var frameBlending = FrameBlending.off
     var echo: Echo?
     var sound = SoundMode.keepPitch
 
+    /// How fast a clip may play, in either direction.
     static let speedRange = 1.0...10_000.0
+
+    /// `speed` held to `speedRange` in size, keeping its sign (zero counts
+    /// as forwards).
+    static func clampedSpeed(_ speed: Double) -> Double {
+        let size = min(max(abs(speed), speedRange.lowerBound), speedRange.upperBound)
+        return speed < 0 ? -size : size
+    }
+
+    /// Whether the speed plays the source backwards.
+    var isReversed: Bool { (speed.keyframes.first?.value ?? speed.value) < 0 }
+
+    /// The speed turned to play forwards or backwards, with its sizes,
+    /// keyframes and eases as they were: 100% becomes -100%.
+    mutating func setReversed(_ reversed: Bool) {
+        let sign: Double = reversed ? -1 : 1
+        speed = AnimatedValue(
+            abs(speed.value) * sign,
+            keyframes: speed.keyframes.map { Keyframe(time: $0.time, value: abs($0.value) * sign, easeIn: $0.easeIn, easeOut: $0.easeOut) }
+        )
+    }
 
     var isDefault: Bool { self == ClipTime() }
 }
@@ -126,9 +151,15 @@ extension TimelineClip {
     /// Whether the clip plays at anything but its source's own speed.
     var isRetimed: Bool { time.speed != AnimatedValue(100.0) }
 
-    /// How fast the clip plays at a moment of its source, as a percentage.
+    /// Whether the clip plays its source backwards: its leading edge on the
+    /// timeline is the end of its trim.
+    var isReversed: Bool { time.isReversed }
+
+    /// How fast the clip plays at a moment of its source, as a percentage,
+    /// negative when it plays backwards.
     func speed(atSource sourceTime: CMTime) -> Double {
-        min(max(time.speed.value(at: sourceTime), ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound)
+        let size = abs(ClipTime.clampedSpeed(time.speed.value(at: sourceTime)))
+        return isReversed ? -size : size
     }
 
     /// The timeline time the source takes to play from `a` to `b` (negative
@@ -141,7 +172,7 @@ extension TimelineClip {
             let integral = SpeedIntegral.of(time.speed)
             return CMTime(seconds: integral.length(from: a.seconds, to: b.seconds), preferredTimescale: 240_000)
         }
-        let speed = speed(atSource: a)
+        let speed = abs(speed(atSource: a))
         if speed == 100 { return span }
         if speed.rounded() == speed, speed >= 1 { return CMTimeMultiplyByRatio(span, multiplier: 100, divisor: Int32(speed)) }
         return CMTimeMultiplyByFloat64(span, multiplier: 100 / speed)
@@ -154,29 +185,50 @@ extension TimelineClip {
 
     /// The timeline time the source's `sourceTime` plays at.
     func timelineTime(forSourceTime sourceTime: CMTime) -> CMTime {
-        CMTimeAdd(startOffset, timelineLength(ofSource: trimStart, to: sourceTime))
+        // Backwards, the clip starts at the end of its trim.
+        CMTimeAdd(startOffset, isReversed ? timelineLength(ofSource: sourceTime, to: trimEnd) : timelineLength(ofSource: trimStart, to: sourceTime))
     }
 
     /// The moment of the source playing at `time` in the timeline.
     func sourceTime(atTimelineTime time: CMTime) -> CMTime {
         let elapsed = CMTimeSubtract(time, startOffset)
+        let reversed = isReversed
+        // Backwards, the source is run from the end of the trim toward its
+        // start.
+        let anchor = reversed ? trimEnd : trimStart
         guard self.time.speed.isAnimated else {
-            let speed = speed(atSource: trimStart)
-            if speed == 100 { return CMTimeAdd(trimStart, elapsed) }
-            if speed.rounded() == speed { return CMTimeAdd(trimStart, CMTimeMultiplyByRatio(elapsed, multiplier: Int32(speed), divisor: 100)) }
-            return CMTimeAdd(trimStart, CMTimeMultiplyByFloat64(elapsed, multiplier: speed / 100))
+            let speed = abs(speed(atSource: trimStart))
+            let moved: CMTime
+            if speed == 100 {
+                moved = elapsed
+            } else if speed.rounded() == speed {
+                moved = CMTimeMultiplyByRatio(elapsed, multiplier: Int32(speed), divisor: 100)
+            } else {
+                moved = CMTimeMultiplyByFloat64(elapsed, multiplier: speed / 100)
+            }
+            return reversed ? CMTimeSubtract(anchor, moved) : CMTimeAdd(anchor, moved)
         }
         // Playing the source takes more time the more of it has played, so
         // find where the time that has passed is used up.
         let integral = SpeedIntegral.of(self.time.speed)
-        let anchor = trimStart.seconds
-        return CMTime(seconds: integral.source(atIntegral: integral.at(anchor) + elapsed.seconds), preferredTimescale: 240_000)
+        let passed = reversed ? -elapsed.seconds : elapsed.seconds
+        return CMTime(seconds: integral.source(atIntegral: integral.at(anchor.seconds) + passed), preferredTimescale: 240_000)
     }
 
     /// How much source plays in `length` of timeline time from the clip's
     /// start (what trimming the end to that length leaves).
     func sourceDuration(forPlaced length: CMTime) -> CMTime {
-        CMTimeSubtract(sourceTime(atTimelineTime: CMTimeAdd(startOffset, length)), trimStart)
+        let end = sourceTime(atTimelineTime: CMTimeAdd(startOffset, length))
+        return isReversed ? CMTimeSubtract(trimEnd, end) : CMTimeSubtract(end, trimStart)
+    }
+
+    /// The clip trimmed at its trailing edge to last `length` on the
+    /// timeline: the end of the trim, or the start of it when backwards.
+    func lasting(_ length: CMTime) -> TimelineClip {
+        var clip = self
+        let source = sourceDuration(forPlaced: length)
+        if isReversed { clip.trimStart = CMTimeSubtract(trimEnd, source) } else { clip.trimEnd = CMTimeAdd(trimStart, source) }
+        return clip
     }
 
     /// How far a drag of the footage by `placedDelta` of timeline time moves
@@ -271,8 +323,8 @@ struct SpeedIntegral {
     var cellEdges: [Double] { edges }
 
     private static func rate(_ speed: AnimatedValue<Double>, at seconds: Double) -> Double {
-        let value = speed.value(atSeconds: seconds)
-        return 100 / min(max(value, ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound)
+        // Direction is the clip's, not the integral's: sizes only.
+        return 100 / abs(ClipTime.clampedSpeed(speed.value(atSeconds: seconds)))
     }
 
     private static let kronrodNodes = [0.991455371120813, 0.949107912342759, 0.864864423359769, 0.741531185599394, 0.586087235467691, 0.405845151377397, 0.207784955007898, 0.0]
@@ -404,10 +456,12 @@ extension EditingProject {
         }
         var settings = clip.time
         change(&settings)
+        // Every keyframe goes the way the first does.
+        let direction: Double = settings.isReversed ? -1 : 1
         settings.speed = AnimatedValue(
-            Self.clampedSpeed(settings.speed.value),
+            Self.clampedSpeed(settings.speed.value, direction: direction),
             keyframes: settings.speed.keyframes.map {
-                Keyframe(time: $0.time, value: Self.clampedSpeed($0.value), easeIn: $0.easeIn, easeOut: $0.easeOut)
+                Keyframe(time: $0.time, value: Self.clampedSpeed($0.value, direction: direction), easeIn: $0.easeIn, easeOut: $0.easeOut)
             }
         )
         settings.echo = settings.echo?.clamped
@@ -416,7 +470,7 @@ extension EditingProject {
         applyRipple(coveringWholeFrames(clip, in: timeline), in: timelineID, layer: layerID)
     }
 
-    private static func clampedSpeed(_ speed: Double) -> Double {
-        min(max(speed, ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound)
+    private static func clampedSpeed(_ speed: Double, direction: Double) -> Double {
+        abs(ClipTime.clampedSpeed(speed)) * direction
     }
 }

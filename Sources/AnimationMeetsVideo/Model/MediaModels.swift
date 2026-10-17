@@ -382,14 +382,15 @@ struct EditingProject: Identifiable, Equatable {
         // either half can be dragged apart afterward.
         let secondStart = secondStartTime ?? clip.timelineTime(forSourceTime: time)
         // The first half keeps the way in, the second the way out.
+        // (A backwards clip plays the later footage first.)
         var first = clip
         first.id = UUID()
-        first.trimEnd = time
+        if clip.isReversed { first.trimStart = time } else { first.trimEnd = time }
         first.transitionOut = nil
         var second = clip
         second.id = UUID()
         second.startOffset = secondStart
-        second.trimStart = time
+        if clip.isReversed { second.trimEnd = time } else { second.trimStart = time }
         second.transitionIn = nil
         clips.replaceSubrange(index...index, with: [first, second])
     }

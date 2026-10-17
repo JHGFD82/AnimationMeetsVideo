@@ -118,7 +118,7 @@ struct ProjectFile: Codable {
         var time: ClipTime {
             var time = ClipTime()
             if let speed {
-                time.speed = speed.property(default: 100.0) { min(max($0, ClipTime.speedRange.lowerBound), ClipTime.speedRange.upperBound) }
+                time.speed = speed.property(default: 100.0) { ClipTime.clampedSpeed($0) }
             }
             time.frameBlending = frameBlending.flatMap(FrameBlending.init(rawValue:)) ?? .off
             time.echo = echo.map { Echo(count: $0.count, delay: $0.delay.time, decay: $0.decay).clamped }

@@ -80,12 +80,11 @@ extension EditingProject {
         // footage runs out first.
         let nearest = timeline.frameAligned(clip.placedDuration, .nearest)
         let isNearWhole = abs(CMTimeSubtract(clip.placedDuration, nearest).seconds) < Timeline.abutmentTolerance.seconds
-        let fits = sourceDuration(for: clip.source).map { CMTimeAdd(clip.trimStart, clip.sourceDuration(forPlaced: nearest)) <= $0 } ?? true
+        let lasting = clip.lasting(nearest)
+        let fits = sourceDuration(for: clip.source).map { lasting.trimEnd <= $0 && lasting.trimStart >= .zero } ?? true
         let length = isNearWhole && fits ? nearest : timeline.frameAligned(clip.placedDuration, .down)
         guard length > .zero, length != clip.placedDuration else { return clip }
-        var aligned = clip
-        aligned.trimEnd = CMTimeAdd(clip.trimStart, clip.sourceDuration(forPlaced: length))
-        return aligned
+        return clip.lasting(length)
     }
 
     /// Trims every clip with pictures to whole frames, for projects saved
@@ -256,7 +255,8 @@ extension EditingProject {
         guard let (timeline, clip, others) = placementContext(id, in: timelineID, layer: layerID) else { return nil }
         let locked = isFrameLocked(clip)
         // Where the source's own start would play, on the timeline.
-        var lowest = CMTimeMaximum(.zero, clip.timelineTime(forSourceTime: .zero))
+        // (Backwards, the leading edge is the end of the trim.)
+        var lowest = CMTimeMaximum(.zero, clip.timelineTime(forSourceTime: clip.isReversed ? (sourceDuration(for: clip.source) ?? clip.trimEnd) : .zero))
         if let previousEnd = others.filter({ $0.endOffset <= clip.startOffset }).map(\.endOffset).max() {
             lowest = CMTimeMaximum(lowest, previousEnd)
         }
@@ -269,7 +269,8 @@ extension EditingProject {
         let start = timeline.placementTime(proposedStart, .nearest, frameLocked: locked)
         let newStart = CMTimeMinimum(CMTimeMaximum(start, lower), upper)
         var trimmed = clip
-        trimmed.trimStart = clip.sourceTime(atTimelineTime: newStart)
+        let source = clip.sourceTime(atTimelineTime: newStart)
+        if clip.isReversed { trimmed.trimEnd = source } else { trimmed.trimStart = source }
         trimmed.startOffset = newStart
         return trimmed
     }
@@ -285,7 +286,7 @@ extension EditingProject {
         }
         let locked = isFrameLocked(clip)
         // Where the end of the source would play, on the timeline.
-        var highest = clip.timelineTime(forSourceTime: sourceDuration)
+        var highest = clip.timelineTime(forSourceTime: clip.isReversed ? .zero : sourceDuration)
         if let nextStart = others.filter({ $0.startOffset >= clip.endOffset }).map(\.startOffset).min() {
             highest = CMTimeMinimum(highest, nextStart)
         }
@@ -298,7 +299,8 @@ extension EditingProject {
         let end = timeline.placementTime(proposedEnd, .nearest, frameLocked: locked)
         let newEnd = CMTimeMinimum(CMTimeMaximum(end, lower), upper)
         var trimmed = clip
-        trimmed.trimEnd = clip.sourceTime(atTimelineTime: newEnd)
+        let source = clip.sourceTime(atTimelineTime: newEnd)
+        if clip.isReversed { trimmed.trimStart = source } else { trimmed.trimEnd = source }
         return trimmed
     }
 

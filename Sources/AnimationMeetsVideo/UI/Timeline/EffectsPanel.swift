@@ -21,6 +21,9 @@ struct EffectsPanel: View {
     /// playhead over them. Kept between launches.
     @AppStorage("effectsPanelShowsKeyframeLanes") var showsKeyframeLanes = true
     @State private var renamingEffectID: UUID?
+    /// The clip whose speed was last refused for crossing zero, until its
+    /// speed is next edited.
+    @State var speedBlockedClipID: UUID?
     /// Effects being saved as a preset (nil for the whole stack), while the
     /// name is asked for.
     @State private var presetSave: PresetSave?
