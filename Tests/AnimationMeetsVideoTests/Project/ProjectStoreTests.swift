@@ -484,9 +484,13 @@ private struct Sandbox {
     }
 
     @Test func theAppBundleDeclaresTheProjectType() throws {
-        let plistURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appending(path: "Packaging/Info.plist")
+        // The package root is the nearest folder up holding Package.swift,
+        // however deep this file sits under Tests/.
+        var root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while !FileManager.default.fileExists(atPath: root.appending(path: "Package.swift").path), root.pathComponents.count > 1 {
+            root = root.deletingLastPathComponent()
+        }
+        let plistURL = root.appending(path: "Packaging/Info.plist")
         let plist = try #require(
             PropertyListSerialization.propertyList(from: Data(contentsOf: plistURL), format: nil) as? [String: Any]
         )
