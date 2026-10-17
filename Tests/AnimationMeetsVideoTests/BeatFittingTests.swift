@@ -108,6 +108,20 @@ private func section(_ kind: BeatSection.Kind, _ start: Double, _ end: Double, p
         #expect(error < 0.004, "\(error)")
     }
 
+    @Test func anchorsAFewMillisecondsOffMoveOntoTheirOnsets() throws {
+        let truth = steadyBeats(bpm: 120, from: 0.25, to: 30)
+        let onsets = curve(beats: truth, seconds: 30)
+        // One early, one late, within 15 ms: both land on the beat. (The
+        // curve is aligned to how the anchors are heard on average, so their
+        // mean error carries over; here it is none.)
+        let input = section(.consistent, 0, 30, pins: [(truth[8] - 0.012, 1), (truth[40] + 0.012, 1)])
+        let (filled, _) = try BeatFitting.fillConsistent(input, curve: onsets, sampleRate: rate)
+        let pins = filled.beats.filter(\.isPinned)
+        #expect(pins.count == 2)
+        #expect(worstError(pins, truth) < 0.001)
+        #expect(worstError(filled.beats, truth) < 0.001)
+    }
+
     @Test func aTypedTempoOverridesTheCount() throws {
         let truth = steadyBeats(bpm: 90, from: 0.2, to: 20)
         let onsets = curve(beats: truth, seconds: 20)
@@ -149,13 +163,14 @@ private func section(_ kind: BeatSection.Kind, _ start: Double, _ end: Double, p
         var (filled, _) = try BeatFitting.fillConsistent(
             section(.consistent, 0, 20, pins: [(truth[2], 1), (truth[34], 1)]), curve: onsets, sampleRate: rate
         )
-        // The person moves beat 20 a little late by hand.
+        // The person moves beat 20 later by hand, past where it would be
+        // snapped back onto its onset.
         let index = try #require(filled.beats.firstIndex { abs($0.time.seconds - truth[20]) < 0.001 })
-        filled.beats[index].time = time(truth[20] + 0.01)
+        filled.beats[index].time = time(truth[20] + 0.04)
         filled.beats[index].isPinned = true
 
         let (again, _) = try BeatFitting.fillConsistent(filled, curve: onsets, sampleRate: rate)
-        let moved = again.beats.first { $0.isPinned && abs($0.time.seconds - (truth[20] + 0.01)) < 1e-6 }
+        let moved = again.beats.first { $0.isPinned && abs($0.time.seconds - (truth[20] + 0.04)) < 1e-6 }
         #expect(moved != nil)
         #expect(again.beats.count == filled.beats.count)
         // Between beat 2 and the moved one, beats spread out to meet it.

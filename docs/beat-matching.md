@@ -46,7 +46,8 @@ step.
     *intent* (played live, meant to be steady but drifting).
 - **Beats**, in order, each with its time, its **position** in the measure
   (1 is the downbeat), and whether it is **pinned**. A pinned beat was
-  placed or moved by the person, and analysis never moves it. Positions
+  placed or moved by the person. Analysis moves it only onto a clear
+  onset within 15 ms (see Onset timing below), never further. Positions
   are counted out from the nearest pinned beat that has one. Setting a
   beat's position pins it.
 
@@ -126,6 +127,12 @@ original time.
   at the edge are dropped too. A beat with no hit of its own but
   something between it and the last, such as a held chord or a vocal,
   counts as music.
+- **Snapping.** Every beat a fill or reanalysis sets, pinned ones
+  included, moves onto the strongest clear onset within 15 ms: closer
+  than anyone places a beat by ear, and far short of the next beat. A beat
+  with no clear onset near stays put, which keeps a click section's grid
+  through quiet beats. A beat moved further than that by hand stays where
+  it was put.
 - **Onset timing.** Spectral flux peaks about 14 ms before a sharp hit,
   because it rises as soon as the hit enters the analysis window. The
   anchors are lined up by ear, so the curve is shifted by the median

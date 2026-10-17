@@ -190,10 +190,12 @@ enum BeatFitting {
     static func fillConsistent(
         _ section: BeatSection, curve: OnsetCurve, sampleRate: Double, tempo: Double? = nil
     ) throws -> (section: BeatSection, period: Double) {
-        let pins = section.pinnedBeats
-        guard pins.count >= 2 else { throw Failure.needsTwoAnchors }
+        guard section.pinnedBeats.count >= 2 else { throw Failure.needsTwoAnchors }
+        let curve = aligned(curve, to: section.pinnedBeats.map(\.time.seconds))
+        // Beats placed by ear are a few milliseconds off; each moves onto
+        // its onset, and stays pinned.
+        let pins = snapped(section.pinnedBeats, curve: curve, sampleRate: sampleRate)
         let pinTimes = pins.map(\.time.seconds)
-        let curve = aligned(curve, to: pinTimes)
         let start = section.start.seconds, end = section.end.seconds
         let reanalyzing = section.isConfirmed && section.beats.count > pins.count
 
@@ -239,7 +241,10 @@ enum BeatFitting {
         times += stepping(from: pinTimes.last!, period: period, direction: 1, limit: end, curve: curve, refine: refine)
 
         var filled = section
-        filled.beats = pins + times.filter { $0 >= start && $0 < end }.map { MappedBeat(time: time($0, sampleRate: sampleRate)) }
+        filled.beats = pins + snapped(
+            times.filter { $0 >= start && $0 < end }.map { MappedBeat(time: time($0, sampleRate: sampleRate)) },
+            curve: curve, sampleRate: sampleRate
+        )
         filled.isConfirmed = true
         filled.normalize()
         return (filled, period)
@@ -464,7 +469,7 @@ enum BeatFitting {
         // The chains run between fixed beats, so only the steps past an open
         // end needed limiting to the section.
         var filled = section
-        filled.beats = section.pinnedBeats + times.map { MappedBeat(time: time($0, sampleRate: sampleRate)) }
+        filled.beats = snapped(section.pinnedBeats + times.map { MappedBeat(time: time($0, sampleRate: sampleRate)) }, curve: curve, sampleRate: sampleRate)
         filled.isConfirmed = true
         filled.normalize()
         return filled
@@ -620,6 +625,25 @@ enum BeatFitting {
 
     // MARK: Onset timing
 
+    /// How far, in seconds, any beat, pinned or not, may be moved onto a
+    /// clear onset: closer than anyone can place a beat by ear, and far
+    /// short of the next beat at any tempo.
+    static let snapReach = 0.015
+
+    /// The beats moved onto the strongest clear onset within `snapReach`
+    /// of each, on a curve already aligned to how the beats are heard. A
+    /// beat with no clear onset near stays where it is: in a section
+    /// produced to a click, that keeps the grid through quiet beats.
+    static func snapped(_ beats: [MappedBeat], curve: OnsetCurve, sampleRate: Double) -> [MappedBeat] {
+        beats.map { beat in
+            let peak = curve.peak(near: curve.frame(atSeconds: beat.time.seconds), reach: snapReach * curve.framesPerSecond)
+            guard peak.strength >= weakOnset else { return beat }
+            var moved = beat
+            moved.time = time(curve.seconds(atFrame: peak.frame), sampleRate: sampleRate)
+            return moved
+        }
+    }
+
     /// How much earlier than the hit itself the onset curve peaks, in
     /// seconds: spectral flux rises as soon as the hit enters the analysis
     /// window, which is centered after it. Measured on sharp clicks; used
@@ -638,7 +662,12 @@ enum BeatFitting {
             return time - curve.seconds(atFrame: peak.frame)
         }.sorted()
         var moved = curve
-        moved.start += leads.isEmpty ? onsetLead : min(max(leads[leads.count / 2], -0.05), 0.05)
+        // The median; for an even count, the mean of the middle two, so two
+        // anchors off in opposite directions each end up half way.
+        let middle = leads.count / 2
+        let lead = leads.isEmpty ? onsetLead
+            : leads.count.isMultiple(of: 2) ? (leads[middle - 1] + leads[middle]) / 2 : leads[middle]
+        moved.start += min(max(lead, -0.05), 0.05)
         return moved
     }
 
