@@ -105,8 +105,11 @@ chosen moment (it starts at the first used range).
    file is scored (or just before it is replaced, if they are still the
    current ones), are reference data that re-detecting does not change, and
    are never made from a replacement file. When they are not available, the
-   dialog says so and the sync is judged by sound alone; nothing is made up
-   from the replacement. Assets replaced before this was kept have no
+   dialog says why (forgotten, never saved, damaged, made another way, or not
+   shown to be the original's) and nothing is made up from the replacement.
+   If both files had sound, it was compared and the dialog says the sync
+   was judged by sound alone; if not, it says the alignment could not be
+   established and the offset is set by hand. Assets replaced before this was kept have no
    original scores.
 2. The person can accept it, nudge the offset by a frame or a second until
    the two pictures show the same moment, use the suggestion again, or set

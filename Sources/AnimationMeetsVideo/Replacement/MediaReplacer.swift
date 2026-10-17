@@ -25,6 +25,23 @@ struct ReplacementAnalysis: Sendable {
     /// original's scores aren't available (forgotten, or never set aside),
     /// so only sound was used. Nothing is made up in their place.
     var cutMatchingUnavailable: OriginalScoresUnavailable? = nil
+    /// Whether the original's and the candidate's sound were both available
+    /// and so compared. False when either has none.
+    var audioWasCompared = false
+
+    /// What to tell the person when the picture's cuts could not help, or
+    /// nil when they were not needed. It claims a sound comparison only if
+    /// one took place.
+    var alignmentLimitation: String? {
+        guard let reason = cutMatchingUnavailable else { return nil }
+        return Self.limitation(reason, audioWasCompared: audioWasCompared)
+    }
+
+    static func limitation(_ reason: OriginalScoresUnavailable, audioWasCompared: Bool) -> String {
+        audioWasCompared
+            ? "\(reason.sentence) The sync was judged by sound alone; check the alignment yourself."
+            : "\(reason.sentence) There was no sound to compare either, so the alignment could not be established. Set it by hand."
+    }
 
     /// Whether the replacement can go ahead without the person being asked.
     var needsNoQuestions: Bool {
@@ -113,7 +130,8 @@ enum MediaReplacer {
             replacement: replacement, snapshot: captured.metadata, audioEnvelope: captured.audioEnvelope,
             hasReference: true, report: report, suggestion: suggestion, verdict: verdict,
             proposedOffset: proposed, missingRanges: missing, usedRanges: usedRanges,
-            cutMatchingUnavailable: cutMatchingUnavailable
+            cutMatchingUnavailable: cutMatchingUnavailable,
+            audioWasCompared: reference.audioEnvelope != nil && captured.audioEnvelope != nil
         )
     }
 }

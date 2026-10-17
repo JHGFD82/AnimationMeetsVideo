@@ -219,6 +219,11 @@ import Testing
 
         #expect(result.suggestion == nil)
         #expect(result.cutMatchingUnavailable == .notCaptured)
+        // The fixtures have no sound, so none was compared and none is claimed.
+        #expect(!result.audioWasCompared)
+        let message = try #require(result.alignmentLimitation)
+        #expect(!message.contains("judged by sound alone"))
+        #expect(message.contains("could not be established"))
         #expect(result.proposedOffset == asset.alignmentOffset)
     }
 
@@ -376,5 +381,16 @@ import Testing
         let loaded = try await ProjectStore.load(from: package, importMedia: Self.stubImporter)
         #expect(loaded.changeScores[id] == track(7))
         #expect(loaded.originalScores[id] == nil)
+    }
+
+    @Test func theLimitationOnlyClaimsASoundComparisonThatHappened() {
+        let compared = ReplacementAnalysis.limitation(.forgotten, audioWasCompared: true)
+        let none = ReplacementAnalysis.limitation(.forgotten, audioWasCompared: false)
+        #expect(compared.contains("judged by sound alone"))
+        #expect(!none.contains("judged by sound alone"))
+        #expect(none.contains("Set it by hand"))
+        for reason in [OriginalScoresUnavailable.forgotten, .notCaptured, .damaged, .incompatible, .unverified] {
+            #expect(ReplacementAnalysis.limitation(reason, audioWasCompared: true).hasPrefix(reason.sentence))
+        }
     }
 }
