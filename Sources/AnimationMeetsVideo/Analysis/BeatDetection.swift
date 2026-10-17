@@ -808,20 +808,24 @@ enum BeatTracker {
     /// How sure the tracker is that the beats are a real pulse rather than
     /// a regular chain laid over sound with none.
     ///
-    /// The thresholds were set from synthetic material (click tracks,
+    /// The thresholds were set from whole files, as the app analyzes them:
+    /// full mixes and the instrument, drum and vocal stems of several songs,
+    /// a crowd track, a stem that is only dither, a spoken recording and a
+    /// feature film's dialogue; and from synthetic material (click tracks,
     /// drum patterns loud and quiet, white and wandering noise, speech-like
-    /// syllables, isolated and random clicks, a dither-level floor) and
-    /// from 20-second excerpts of real recordings: full mixes, instrument
-    /// and vocal stems, a crowd track, a near-silent stem and film dialogue.
-    /// Non-rhythmic material scored a periodicity of at most 0.4 and an
-    /// agreement of at most 2 (noise) or a periodicity of at most 0.22
-    /// (speech), while full mixes scored at least 0.7 and 2.5. Single
-    /// instrument stems spread across 0.2–0.9, so a weakly rhythmic stem
-    /// may be rejected.
+    /// syllables, isolated and random clicks). Speech, crowd, noise and
+    /// dither scored a periodicity of at most 0.15, vocal stems up to 0.26,
+    /// and rhythmic material at least 0.32 (a pop song with a busy vocal
+    /// over a light rhythm section); full mixes and drums mostly above 0.8.
+    /// So a vocal stem on its own may get beats, while dialogue doesn't.
     struct Confidence: Equatable {
-        /// The onset curve's autocorrelation coefficient at the period
-        /// chosen for each stretch, the median over the stretches that
-        /// aren't silent: about 0 for noise, 1 for a perfectly repeating pulse.
+        /// The onset curve's periodicity contrast, the median over the
+        /// stretches that aren't silent. For each stretch it is how much
+        /// more the curve correlates with itself one, two or four periods
+        /// on (the best of the three, since a bar repeats more exactly than
+        /// a beat) than at a typical lag in the tempo range. About 0 for
+        /// speech and noise, which correlate as much at any lag; around 1
+        /// for a pulse that repeats exactly.
         var periodicity: Double
         /// How many gaps between consecutive beats have an onset at both ends.
         var supportedIntervals: Int
@@ -835,16 +839,21 @@ enum BeatTracker {
         /// The share of intervals with an onset at both ends.
         var supportedShare: Double { intervals > 0 ? Double(supportedIntervals) / Double(intervals) : 0 }
 
-        static let minimumPeriodicity = 0.45
+        static let minimumPeriodicity = 0.25
+        /// Above this periodicity agreement isn't asked for: steady
+        /// sixteenth-note hi-hats are as strong between the beats as on them.
+        static let clearPeriodicity = 0.5
         static let minimumAgreement = 2.0
-        static let minimumSupportedShare = 0.5
+        static let minimumSupportedShare = 0.25
         /// A beat needs a few bars' worth of evidence, not two transients.
         static let minimumSupportedIntervals = 4
 
         /// The onsets repeat at the tempo, the beats sit on onsets rather than
-        /// between them, and they do so across several intervals.
+        /// between them (unless the repetition is clear anyway), and they do
+        /// so across several intervals.
         var isSteadyBeat: Bool {
-            periodicity >= Self.minimumPeriodicity && agreement >= Self.minimumAgreement
+            periodicity >= Self.minimumPeriodicity
+                && (agreement >= Self.minimumAgreement || periodicity >= Self.clearPeriodicity)
                 && supportedShare >= Self.minimumSupportedShare && supportedIntervals >= Self.minimumSupportedIntervals
         }
     }
@@ -1061,14 +1070,15 @@ enum BeatTracker {
                 alternative[frame] = Double(frame) < middle ? after : before
             }
         }
-        let periodicity = Self.periodicity(of: blurred, starts: starts, length: length, periods: periods)
+        let periodicity = Self.periodicity(of: blurred, starts: starts, length: length, periods: periods, lags: lags)
         return Periods(main: perFrame, alternative: alternative, periodicity: periodicity)
     }
 
-    /// See `Confidence.periodicity`. The coefficient is taken at the whole
-    /// lags either side of each stretch's refined period, the better of the two.
-    private static func periodicity(of curve: [Float], starts: [Int], length: Int, periods: [Double]) -> Double {
-        var coefficients: [Double] = []
+    /// See `Confidence.periodicity`. `lags` is the tempo range, whose
+    /// median coefficient is the baseline; each multiple of the period is
+    /// taken at the better of the whole lags either side of it.
+    private static func periodicity(of curve: [Float], starts: [Int], length: Int, periods: [Double], lags: [Int]) -> Double {
+        var contrasts: [Double] = []
         curve.withUnsafeBufferPointer { buffer in
             let base = buffer.baseAddress!
             for (start, period) in zip(starts, periods) {
@@ -1077,18 +1087,25 @@ enum BeatTracker {
                 vDSP_measqv(base + start, 1, &meanSquare, vDSP_Length(length))
                 let variance = Double(meanSquare) - Double(mean) * Double(mean)
                 guard variance > 1e-9 else { continue }
-                let best = [Int(period.rounded(.down)), Int(period.rounded(.up))].map { lag -> Double in
+                /// The autocorrelation coefficient at `lag`, 0 where too
+                /// little of the stretch overlaps to say.
+                func coefficient(_ lag: Int) -> Double {
                     let overlap = length - lag
-                    guard lag > 0, overlap > 0 else { return 0 }
+                    guard lag > 0, overlap > length / 4 else { return 0 }
                     var sum: Float = 0
                     vDSP_dotpr(base + start, 1, base + start + lag, 1, &sum, vDSP_Length(overlap))
                     return (Double(sum) / Double(overlap) - Double(mean) * Double(mean)) / variance
+                }
+                let repeating = [1.0, 2, 4].map { multiple -> Double in
+                    let lag = period * multiple
+                    return max(coefficient(Int(lag.rounded(.down))), coefficient(Int(lag.rounded(.up))))
                 }.max() ?? 0
-                coefficients.append(best)
+                let typical = lags.map(coefficient).sorted()
+                contrasts.append(repeating - typical[typical.count / 2])
             }
         }
-        guard !coefficients.isEmpty else { return 0 }
-        return coefficients.sorted()[coefficients.count / 2]
+        guard !contrasts.isEmpty else { return 0 }
+        return contrasts.sorted()[contrasts.count / 2]
     }
 
     /// The curve smoothed with a small Gaussian (a deviation of 1.5 frames).

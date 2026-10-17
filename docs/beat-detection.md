@@ -50,26 +50,32 @@ its beats, following the tempo where it ramps or changes:
 7. The chain lays a regular string of beats over any sound, so it is then
    checked for a real pulse (`BeatTracker.Confidence`), and rejected
    unless all of these hold:
-   - **Periodicity contrast** of at least 0.45: the onset curve's
-     autocorrelation coefficient at the period chosen for each stretch,
-     the median over stretches that aren't silent (about 0 for noise, 1
-     for a pulse that repeats exactly).
-   - **Agreement** of at least 2: the onset strength at the beats over
-     that at the same beats moved a quarter, half and three quarters of
-     the way to the next. Noise, where the chain only finds local bumps,
-     comes to about 1.5.
-   - **Support across intervals**: at least half the gaps between beats,
-     and at least 4, have an onset of the curve's RMS or more within two
-     frames of both ends.
+   - **Periodicity contrast** of at least 0.25: for each stretch, how much
+     more the onset curve correlates with itself one, two or four periods
+     on (the best of the three; a bar repeats more exactly than a beat)
+     than at a typical lag in the tempo range, the median over stretches
+     that aren't silent. Speech and noise correlate about as much at any
+     lag and score near 0; a pulse that repeats exactly scores about 1.
+   - **Agreement** of at least 2, unless the periodicity contrast is 0.5
+     or more: the onset strength at the beats over that at the same beats
+     moved a quarter, half and three quarters of the way to the next.
+     Noise, where the chain only finds local bumps, comes to about 1.5;
+     so do steady sixteenth-note hi-hats, which is why a clearly periodic
+     curve is let off.
+   - **Support across intervals**: at least a quarter of the gaps between
+     beats, and at least 4, have an onset of the curve's RMS or more
+     within two frames of both ends.
 
-   The thresholds come from synthetic material (click tracks, drum
-   patterns loud and quiet, white and wandering noise, speech-like
-   syllables, isolated and random clicks, a dither-level floor) and
-   20-second excerpts of real recordings (full mixes, instrument and
-   vocal stems, a crowd track, a near-silent stem, film dialogue).
-   Non-rhythmic material scored a periodicity of at most 0.4 and full
-   mixes at least 0.7; single instrument stems ranged from 0.2 to 0.9,
-   so a weakly rhythmic stem on its own may get no beats.
+   The thresholds come from whole files, as the app analyzes them (full
+   mixes and the instrument, drum and vocal stems of several songs, a
+   crowd track, a dither-only stem, a spoken recording, a feature film's
+   dialogue), and from synthetic material (click tracks, drum patterns
+   loud and quiet, white and wandering noise, speech-like syllables,
+   isolated and random clicks). Speech, crowd, noise and dither scored a
+   periodicity contrast of at most 0.15 and vocal stems up to 0.26, while
+   every song and rhythmic stem scored at least 0.32, the lowest being a
+   pop song whose busy vocal sits over a light rhythm section. So a vocal
+   stem on its own may get beats; dialogue doesn't.
 8. The tempo reported is that of the beats kept: 60 over the median gap
    between consecutive beats (the mean of the middle two for an even
    count). It matches the markers even where the chain took the period

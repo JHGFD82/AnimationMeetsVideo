@@ -198,11 +198,25 @@ private func beats(in samples: [Float]) throws -> BeatTracker.Result? {
         #expect(abs(result.beatsPerMinute - 75) < 3)
     }
 
+    /// Like a pop song with a busy vocal over a light rhythm section: the
+    /// onsets repeat far less exactly than a drum track's, but they do repeat.
+    @Test(arguments: seeds) func aLightBeatUnderABusyVocalIsFound(seed: UInt64) throws {
+        var material = Material(seed: seed)
+        let length = 30.0
+        var song = material.drums(bpm: 83, seconds: length, level: 0.15, looseness: 0.01)
+        let voice = material.speech(length, level: 0.3)
+        for index in song.indices { song[index] += voice[index] }
+
+        let result = try #require(try beats(in: song))
+
+        #expect(abs(result.beatsPerMinute - 83) < 3)
+    }
+
     @Test func aClearPulseIsConfident() throws {
         var material = Material(seed: 7)
         let result = try #require(try beats(in: material.clicks(at: Array(stride(from: 0.2, to: length, by: 0.5)), seconds: length, level: 0.8, floor: 0)))
         let confidence = result.confidence
-        #expect(confidence.periodicity > 0.9)
+        #expect(confidence.periodicity > 0.8)
         #expect(confidence.supportedShare > 0.9)
         #expect(confidence.agreement > 5)
     }

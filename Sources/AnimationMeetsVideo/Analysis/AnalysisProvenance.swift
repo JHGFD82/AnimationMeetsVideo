@@ -91,13 +91,15 @@ struct AnalysisProvenance: Codable, Equatable, Sendable {
                 "tightness=\(BeatTracker.tightness)", "minimum=\(BeatTracker.minimumSeconds)",
                 "tempoWindow=\(BeatTracker.tempoWindowSeconds)", "tempoHop=\(BeatTracker.tempoHopSeconds)",
                 "glide=\(BeatTracker.tempoGlide)", "jump=\(BeatTracker.tempoJump)", "sudden=\(BeatTracker.suddenChange)",
-                "periodicity=\(BeatTracker.Confidence.minimumPeriodicity)", "agreement=\(BeatTracker.Confidence.minimumAgreement)",
+                "periodicity=\(BeatTracker.Confidence.minimumPeriodicity)/\(BeatTracker.Confidence.clearPeriodicity)",
+                "agreement=\(BeatTracker.Confidence.minimumAgreement)",
                 "supported=\(BeatTracker.Confidence.minimumSupportedShare)x\(BeatTracker.Confidence.minimumSupportedIntervals)",
             ]
             // 2: the FFT's packed DC and Nyquist values no longer count
             // toward onsets. 3: the tempo is the beats' median gap. 4: beats
-            // without a steady pulse are rejected.
-            return (settings.joined(separator: ";"), 4)
+            // without a steady pulse are rejected. 5: periodicity is a
+            // contrast with other lags, so real songs aren't rejected.
+            return (settings.joined(separator: ";"), 5)
         }
     }
 
