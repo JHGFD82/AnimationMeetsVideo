@@ -416,7 +416,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         let id = project.clips[0].id
         let analysis = AssetAnalysis()
 
-        analysis.analyzeMissing(in: project)
+        analysis.update(with: project)
         try await waitForBeats(analysis)
 
         let track = try #require(analysis.beats[id])
@@ -433,7 +433,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         let silent = project(url: url, hasAudio: false)
         let analysis = AssetAnalysis()
 
-        analysis.analyzeMissing(in: silent)
+        analysis.update(with: silent)
         for _ in 0..<2000 where !analysis.progress.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
 
         #expect(analysis.beats.isEmpty)
@@ -448,7 +448,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         let analysis = AssetAnalysis()
         analysis.reset(beats: [id: .none()], sources: AnalysisSources(beats: [id: stamp]))
 
-        analysis.analyzeMissing(in: project)
+        analysis.update(with: project)
 
         for _ in 0..<2000 where !analysis.progress.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
         #expect(analysis.beats[id] == BeatTrack.none())
@@ -466,13 +466,13 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         let id = project.clips[0].id
         let analysis = AssetAnalysis()
         analysis.reset(beats: [id: .none()], sources: AnalysisSources(beats: [id: stamp]))
-        analysis.analyzeMissing(in: project)
+        analysis.update(with: project)
         #expect(analysis.beats[id] == BeatTrack.none())
         #expect(analysis.progress.isEmpty)
 
         project.clips[0].url = newURL
         project.clips[0].acceptedStamp = otherStamp
-        analysis.analyzeMissing(in: project)
+        analysis.update(with: project)
 
         #expect(analysis.beats[id] == nil)
         #expect(analysis.discardedBeats == [id])
@@ -490,10 +490,10 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         let id = project.clips[0].id
         let analysis = AssetAnalysis()
         analysis.reset(beats: [id: .none()], sources: AnalysisSources(beats: [id: stamp]))
-        analysis.analyzeMissing(in: project)
+        analysis.update(with: project)
 
         project.clips[0].hasAudio = false
-        analysis.analyzeMissing(in: project)
+        analysis.update(with: project)
 
         #expect(analysis.beats[id] == nil)
         #expect(analysis.discardedBeats == [id])

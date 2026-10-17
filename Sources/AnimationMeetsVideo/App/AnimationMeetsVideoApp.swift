@@ -309,7 +309,7 @@ struct AnimationMeetsVideoApp: App {
                 thumbnailed: result.assetsWithThumbnails, beats: result.beats,
                 sources: result.analysisSources, packageURL: url
             )
-            analysis.analyzeMissing(in: result.project)
+            analysis.update(with: result.project)
             replacement.reset()
             replacement.markChanged(result.changedMedia)
             replacement.markMissing(result.offlineMedia)
@@ -462,7 +462,7 @@ struct AnimationMeetsVideoApp: App {
                     thumbnailed: result.assetsWithThumbnails, beats: result.beats,
                 sources: result.analysisSources, packageURL: url
                 )
-                analysis.analyzeMissing(in: result.project)
+                analysis.update(with: result.project)
                 replacement.reset()
                 replacement.markChanged(result.changedMedia)
                 replacement.markMissing(result.offlineMedia)

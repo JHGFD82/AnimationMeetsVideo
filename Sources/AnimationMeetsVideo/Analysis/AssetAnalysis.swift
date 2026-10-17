@@ -49,7 +49,7 @@ final class AssetAnalysis {
     private(set) var beats: [UUID: BeatTrack] = [:]
     private(set) var beatFailures: [UUID: String] = [:]
 
-    /// What `analyzeMissing` looks at for each asset, so views can call it
+    /// What `update(with:)` looks at for each asset, so views can call it
     /// again when any of it changes. A job whose input no longer matches is
     /// replaced, and its results are dropped.
     struct Input: Equatable {
@@ -59,7 +59,14 @@ final class AssetAnalysis {
         /// False once the original is forgotten or the file was replaced:
         /// reference data is never taken from such a file.
         var canCaptureReference: Bool
+        /// What the analysis runs with, so results made with other settings
+        /// are not mixed in; see `AnalysisProvenance`.
+        var settings = AssetAnalysis.settings
     }
+
+    nonisolated private static let settings = AnalysisKind.allCases
+        .map { "\($0.rawValue):\(AnalysisProvenance.current(for: $0).algorithm)/\(AnalysisProvenance.current(for: $0).settings)" }
+        .joined(separator: "|")
 
     /// The file a result was computed from. Beats are in the time of the
     /// file they were found in, so they are found again when it changes.
@@ -163,6 +170,18 @@ final class AssetAnalysis {
         generation == lease.generation && owners[lease.id]?.token == lease.token
     }
 
+    /// `isCurrent`, and the asset still has the inputs the job was made for
+    /// according to the project as it is right now. A job found out of date
+    /// is replaced at once, without waiting for anyone to call `update`.
+    private func stillValid(_ lease: Lease) -> Bool {
+        guard isCurrent(lease) else { return false }
+        guard let project = projectSource?(), let owner = owners[lease.id] else { return true }
+        let now = project.clips.first { $0.id == lease.id }.map(Self.input(of:))
+        if now == owner.input { return true }
+        update(with: project)
+        return false
+    }
+
     @ObservationIgnored private var owners: [UUID: Owner] = [:]
     @ObservationIgnored private var nextToken = 0
     /// Source of result revisions. Never reset, so a revision identifies one
@@ -202,6 +221,10 @@ final class AssetAnalysis {
     @ObservationIgnored private var checkedPackage: Set<UUID> = []
     /// The project last analyzed, checked again once the queue drains.
     @ObservationIgnored private var latestProject: EditingProject?
+    /// The project as it is now, read when a job checks its inputs. Set by
+    /// whoever owns the project; without it the last project passed to
+    /// `update(with:)` stands in.
+    @ObservationIgnored var projectSource: (@MainActor () -> EditingProject?)?
     @ObservationIgnored private var waiting: [Job] = []
     @ObservationIgnored private var worker: Task<Void, Never>?
     /// Bumped by `reset` so a result that arrives after the project was
@@ -260,10 +283,14 @@ final class AssetAnalysis {
         beatSources = sources.beats.mapValues { ResultSource(path: nil, stamp: $0) }
     }
 
-    /// Queues every asset that lacks reference data, and every video asset
-    /// that lacks scores or reference pictures, unless already queued or failed.
-    /// A job whose inputs changed since it was queued is replaced.
-    func analyzeMissing(in project: EditingProject) {
+    /// The one way the project's state reaches the analysis: retires jobs and
+    /// results the project no longer allows, then queues every asset that
+    /// lacks reference data, and every video asset that lacks scores or
+    /// reference pictures, unless already queued or failed. Call it whenever
+    /// `Input`s change. Jobs also check themselves against `projectSource`
+    /// before each stage and each commit, so a missed call can delay work
+    /// but can't let an outdated result in.
+    func update(with project: EditingProject) {
         latestProject = project
         let present = Set(project.clips.map(\.id))
         for id in owners.keys where !present.contains(id) { revoke(id) }
@@ -400,7 +427,7 @@ final class AssetAnalysis {
     func retryUnavailable(in project: EditingProject) {
         guard !unavailable.isEmpty else { return }
         unavailable = [:]
-        analyzeMissing(in: project)
+        update(with: project)
     }
 
     /// For a person's explicit "re-detect": the stored score goes, from
@@ -416,7 +443,7 @@ final class AssetAnalysis {
             loadSaved(for: clip, from: packageURL, includingScores: false)
         }
         discardResult(.scores, of: id)
-        analyzeMissing(in: project)
+        update(with: project)
     }
 
     // MARK: Saving
@@ -552,7 +579,7 @@ final class AssetAnalysis {
                 revoked = true
             }
         }
-        if revoked { analyzeMissing(in: saved) }
+        if revoked { update(with: saved) }
     }
 
     // MARK: Running
@@ -568,7 +595,7 @@ final class AssetAnalysis {
             }
             guard let self, self.generation == expected else { return }
             self.worker = nil
-            if let project = self.latestProject, !Task.isCancelled { self.analyzeMissing(in: project) }
+            if let project = self.projectSource?() ?? self.latestProject, !Task.isCancelled { self.update(with: project) }
         }
     }
 
@@ -664,7 +691,7 @@ final class AssetAnalysis {
         commit: (Result) async -> Void,
         failed: (String) -> Void
     ) async -> Bool {
-        guard isCurrent(lease), !Task.isCancelled else { return false }
+        guard stillValid(lease), !Task.isCancelled else { return false }
         stages[lease.id] = stage
         progress[lease.id] = 0
         let relay = ProgressRelay { [weak self] fraction in
@@ -672,9 +699,9 @@ final class AssetAnalysis {
         }
         do {
             let result = try await work(relay.report)
-            guard isCurrent(lease), !Task.isCancelled else { return false }
+            guard stillValid(lease), !Task.isCancelled else { return false }
             await commit(result)
-            return isCurrent(lease)
+            return stillValid(lease)
         } catch {
             guard isCurrent(lease) else { return false }
             if error is CancellationError {

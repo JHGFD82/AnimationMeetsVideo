@@ -81,11 +81,12 @@ struct EditorView: View {
             history.projectDidChange(newValue)
             keepViewStateValid(for: newValue)
         }
-        .onChange(of: AssetAnalysis.inputs(of: project)) { _, _ in analysis.analyzeMissing(in: project) }
+        .onChange(of: AssetAnalysis.inputs(of: project)) { _, _ in analysis.update(with: project) }
         .onChange(of: packageURL, initial: true) { _, url in renderer.packageURL = url }
         .onAppear {
             connectHistory()
-            analysis.analyzeMissing(in: project)
+            analysis.projectSource = { project }
+            analysis.update(with: project)
         }
         .onChange(of: undoManager) { _, _ in connectHistory() }
         // A file that comes back can be analyzed again.

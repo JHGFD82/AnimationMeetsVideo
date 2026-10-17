@@ -66,7 +66,7 @@ import Testing
         let video = project(ids: [id])
         let analysis = analysis(holdingFirstWriteWith: gate)
         analysis.reset(packageURL: package)
-        analysis.analyzeMissing(in: video)
+        analysis.update(with: video)
         try await settle { gate.arrived == 1 }
 
         let save = Task { try await ProjectStore.save(video, to: package) }
@@ -90,12 +90,12 @@ import Testing
         // Beats only, so the held write is the beat write.
         analysis.backend.scoreFrames = { _, _ in throw NSError(domain: "test", code: 2) }
         analysis.reset(packageURL: package)
-        analysis.analyzeMissing(in: video)
+        analysis.update(with: video)
         try await settle { gate.arrived >= 1 && analysis.beats[id] != nil }
 
         // The audio is gone while its beats are being written.
         video.clips[0].hasAudio = false
-        analysis.analyzeMissing(in: video)
+        analysis.update(with: video)
         #expect(analysis.beats[id] == nil)
         gate.open()
         try await settle { analysis.discardedBeats.isEmpty && analysis.progress.isEmpty }
@@ -117,12 +117,12 @@ import Testing
         let analysis = analysis(holdingFirstWriteWith: gate)
         analysis.backend.detectBeats = { _, _ in .none() }
         analysis.reset(beats: [droppedBeats: .none()], sources: AnalysisSources(beats: [droppedBeats: stamp]), packageURL: source)
-        analysis.analyzeMissing(in: video)
+        analysis.update(with: video)
         try await settle { gate.arrived == 1 }
 
         // Queue behind the held write: a deletion in the source, then Save As.
         video.clips[1].hasAudio = false
-        analysis.analyzeMissing(in: video)
+        analysis.update(with: video)
         let unsaved = analysis.unsavedResults()
         let saveAs = Task {
             try await ProjectStore.save(
