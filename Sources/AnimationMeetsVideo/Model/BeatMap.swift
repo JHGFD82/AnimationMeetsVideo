@@ -34,6 +34,19 @@ struct BeatMap: Equatable {
         sections.first { $0.id == id }
     }
 
+    /// Numbers the beats of every section. A section with a pinned beat
+    /// counts out from it; one without carries on from the section before,
+    /// in its own beats per measure.
+    mutating func recountPositions() {
+        var next = 1
+        for index in sections.indices where sections[index].kind != .none {
+            sections[index].recountPositions(firstPosition: next)
+            if let last = sections[index].beats.last {
+                next = last.position + 1
+            }
+        }
+    }
+
     /// Changes one section in place; does nothing if it is gone.
     mutating func updateSection(_ id: UUID, _ change: (inout BeatSection) -> Void) {
         guard let index = sections.firstIndex(where: { $0.id == id }) else { return }

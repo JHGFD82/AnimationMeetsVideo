@@ -115,7 +115,7 @@ enum BeatFitting {
         case .none:
             throw Failure.notAnalyzed
         }
-        recountPositions(&map)
+        map.recountPositions()
         return map
     }
 
@@ -169,18 +169,6 @@ enum BeatFitting {
         map.sections[index].end = end
     }
 
-    /// Numbers the beats of every filled section. A section with a pinned
-    /// beat counts out from it; one without carries on from the section
-    /// before, in its own beats per measure.
-    static func recountPositions(_ map: inout BeatMap) {
-        var next = 1
-        for index in map.sections.indices where map.sections[index].kind != .none {
-            map.sections[index].recountPositions(firstPosition: next)
-            if let last = map.sections[index].beats.last {
-                next = last.position + 1
-            }
-        }
-    }
 
     // MARK: Consistent sections
 

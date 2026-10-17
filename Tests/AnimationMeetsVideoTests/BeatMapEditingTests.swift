@@ -1,0 +1,104 @@
+import CoreMedia
+import Foundation
+import Testing
+@testable import AnimationMeetsVideo
+
+private func s(_ value: Double) -> CMTime { CMTime(seconds: value, preferredTimescale: 48_000) }
+private let song = s(100)
+private let snap = s(0.5)
+
+@Suite struct BeatMapEditingTests {
+    private func ranges(_ map: BeatMap) -> [[Double]] {
+        map.sections.map { [$0.start.seconds, $0.end.seconds] }
+    }
+
+    @Test func drawnSectionsStopAtTheirNeighboursAndClickIn() {
+        var map = BeatMap()
+        map.drawSection(.consistent, from: s(10), to: s(30), duration: song, snap: snap)
+        // Drawn leftward from just past the first, ending near the start of the song.
+        map.drawSection(.ramp, from: s(40), to: s(30.3), duration: song, snap: snap)
+        map.drawSection(.none, from: s(0.4), to: s(8), duration: song, snap: snap)
+        // Overlapping the first section: stops at its edge.
+        map.drawSection(.consistent, from: s(60), to: s(35), duration: song, snap: snap)
+        #expect(ranges(map) == [[0, 8], [10, 30], [30, 40], [40, 60]])
+        // Starting inside a section draws nothing.
+        #expect(map.drawSection(.ramp, from: s(20), to: s(70), duration: song, snap: snap) == nil)
+    }
+
+    @Test func doubleClickFillsTheGapOrChangesTheKind() throws {
+        var map = BeatMap()
+        map.drawSection(.consistent, from: s(10), to: s(30), duration: song, snap: snap)
+        map.drawSection(.consistent, from: s(50), to: s(70), duration: song, snap: snap)
+        let filledID = map.fill(at: s(40), with: .ramp, duration: song)
+        let filled = try #require(filledID)
+        #expect(map.section(id: filled)?.range == CMTimeRange(start: s(30), end: s(50)))
+        map.fill(at: s(80), with: .none, duration: song)
+        #expect(ranges(map).last == [70, 100])
+        map.fill(at: s(20), with: .ramp, duration: song)
+        #expect(map.sections[0].kind == .ramp)
+    }
+
+    @Test func edgesStopAtNeighboursAndClickInNearThem() {
+        var map = BeatMap()
+        let first = map.drawSection(.consistent, from: s(10), to: s(30), duration: song, snap: snap)!
+        map.drawSection(.consistent, from: s(40), to: s(60), duration: song, snap: snap)
+        map.moveEdge(.end, of: first, to: s(45), duration: song, snap: snap)
+        #expect(ranges(map)[0] == [10, 40])
+        map.moveEdge(.end, of: first, to: s(35), duration: song, snap: snap)
+        map.moveEdge(.end, of: first, to: s(39.6), duration: song, snap: snap)
+        #expect(ranges(map)[0] == [10, 40])
+        map.moveEdge(.start, of: first, to: s(50), duration: song, snap: snap)
+        #expect(ranges(map)[0] == [39.9, 40])
+    }
+
+    @Test func changingTheKindKeepsOnlyPinnedBeats() {
+        var map = BeatMap.oneTempo(duration: song)
+        map.sections[0].beats = [MappedBeat(time: s(1), isPinned: true), MappedBeat(time: s(2))]
+        map.sections[0].isConfirmed = true
+        map.setKind(of: map.sections[0].id, to: .ramp)
+        #expect(map.sections[0].beats.count == 1)
+        #expect(!map.sections[0].isConfirmed)
+    }
+
+    @Test func addedBeatsArePinnedAndNumberedFromTheBeatBefore() throws {
+        var map = BeatMap(sections: [BeatSection(kind: .consistent, start: .zero, end: s(10), beatsPerMeasure: 3)])
+        // Anchors in a section not filled yet are downbeats.
+        map.addBeat(at: s(1), reach: snap)
+        map.addBeat(at: s(4), reach: snap)
+        let anchors: [Int] = map.sections[0].beats.map(\.position)
+        #expect(anchors == [1, 1])
+
+        map.sections[0].isConfirmed = true
+        map.sections[0].beats = [1, 2, 3, 4].map { MappedBeat(time: s(Double($0)), isPinned: $0 == 1) }
+        map.recountPositions()
+        map.addBeat(at: s(2.5), reach: snap)
+        let positions: [Int] = map.sections[0].beats.map(\.position)
+        #expect(positions == [1, 2, 3, 1, 2])
+        // Just past the end, the section grows to take it.
+        let added = map.addBeat(at: s(10.2), reach: snap)
+        let outside = try #require(added)
+        #expect(map.sections[0].contains(outside))
+        #expect(map.addBeat(at: s(20), reach: snap) == nil)
+    }
+
+    @Test func movedBeatsArePinnedAndStayBetweenTheirNeighbours() {
+        var map = BeatMap(sections: [BeatSection(kind: .consistent, start: .zero, end: s(10), isConfirmed: true, beats: [
+            MappedBeat(time: s(1)), MappedBeat(time: s(2)), MappedBeat(time: s(3)),
+        ])])
+        let moved = map.moveBeat(at: s(2), to: s(2.01))
+        #expect(moved == s(2.01))
+        #expect(map.sections[0].beats[1].isPinned)
+        let clamped = map.moveBeat(at: s(2.01), to: s(5))
+        #expect(clamped.map { $0.seconds < 3 } == true)
+    }
+
+    @Test func settingAPositionRenumbersTheBeatsAfter() {
+        var map = BeatMap(sections: [BeatSection(kind: .consistent, start: .zero, end: s(10), isConfirmed: true, beats:
+            (0..<6).map { MappedBeat(time: s(Double($0)), isPinned: $0 == 0) }
+        )])
+        map.recountPositions()
+        map.setPosition(of: s(3), to: 1)
+        let positions: [Int] = map.sections[0].beats.map(\.position)
+        #expect(positions == [1, 2, 3, 1, 2, 3])
+    }
+}

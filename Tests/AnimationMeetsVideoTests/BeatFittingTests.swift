@@ -209,7 +209,7 @@ private func section(_ kind: BeatSection.Kind, _ start: Double, _ end: Double, p
                 MappedBeat(time: time(3)), MappedBeat(time: time(4)),
             ]),
         ])
-        BeatFitting.recountPositions(&map)
+        map.recountPositions()
         let positions: [Int] = map.confirmedBeats.map(\.position)
         #expect(positions == [1, 2, 3, 1, 2, 3])
     }
