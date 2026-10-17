@@ -537,7 +537,7 @@ struct AnimationMeetsVideoApp: App {
         guard let url = projectURL, hasUnsavedChanges, project != lastAutosaved else { return }
         let snapshot = project
         do {
-            try await PackageCoordinator.shared.run(on: [url]) {
+            _ = try await PackageCoordinator.shared.run(on: [url]) {
                 try ProjectStore.writeBackup(of: snapshot, in: url)
             }
             lastAutosaved = snapshot

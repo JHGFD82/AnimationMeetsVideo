@@ -52,14 +52,14 @@ extension ProjectStore {
     /// Writes scores together with the record of the file they came from.
     static func writeChangeScores(_ track: ChangeScoreTrack, for assetID: UUID, in packageURL: URL, source: FileStamp?) throws {
         try writeChangeScores(track, for: assetID, in: packageURL)
-        let data = try track.encoded()
+        let data = track.encoded()
         try recordProvenance(.scores, resultData: data, source: source, for: assetID, in: packageURL)
     }
 
     /// Writes beats together with the record of the file they came from.
     static func writeBeats(_ track: BeatTrack, for assetID: UUID, in packageURL: URL, source: FileStamp?) throws {
         try writeBeats(track, for: assetID, in: packageURL)
-        let data = try track.encoded()
+        let data = track.encoded()
         try recordProvenance(.beats, resultData: data, source: source, for: assetID, in: packageURL)
     }
 

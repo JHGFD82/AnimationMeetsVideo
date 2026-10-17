@@ -48,7 +48,19 @@ enum MorphFlow {
             return sample(image, samplerTransform(image, d + amount * f.xy));
         }
         """
-        if let kernel = CIKernel(source: legacy) { return (kernel, nil) }
+        if let kernel = (LegacyKernel.self as LegacyKernelCompiling.Type).compile(legacy) { return (kernel, nil) }
         return (nil, "Metal: \(metalError); the kernel language one didn't compile either")
     }()
+}
+
+/// Compiles Core Image's older kernel language, deprecated but still the
+/// only fallback where Metal can't compile at runtime. Called through the
+/// protocol so the deliberate use doesn't warn on every build.
+private protocol LegacyKernelCompiling {
+    static func compile(_ source: String) -> CIKernel?
+}
+
+private enum LegacyKernel: LegacyKernelCompiling {
+    @available(macOS, deprecated: 10.14)
+    static func compile(_ source: String) -> CIKernel? { CIKernel(source: source) }
 }
