@@ -22,8 +22,10 @@ ruler it is split into three **areas**, top to bottom:
 - **Video**: layers with pictures (`LayerKind.video`).
 - **Sound**: dialogue and effects (`.sound`), including sound detached from
   video.
-- **Music**: the score (`.music`). Audio files go here unless dropped
-  elsewhere.
+- **Music**: the score (`.music`). Nothing goes here unless the person
+  drops or drags it here: audio files go on Sound layers by default. Only
+  clips on Music layers are analyzed for beats (see
+  [beat-detection.md](beat-detection.md)).
 
 Each area has a title bar with its name and layer count, and scrolls its
 layers on its own. Dragging the title bar of the sound or music area moves

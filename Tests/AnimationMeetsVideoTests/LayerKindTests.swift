@@ -28,10 +28,11 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         let t = project.rootTimelineID
         let pictureResult = project.importClip(video(), intoTimeline: t)
         let picture = try #require(pictureResult)
-        let musicResult = project.importClip(song(), intoTimeline: t)
-        let music = try #require(musicResult)
+        let soundResult = project.importClip(song(), intoTimeline: t)
+        let sound = try #require(soundResult)
         #expect(layers(project).first { $0.id == picture.layerID }?.kind == .video)
-        #expect(layers(project).first { $0.id == music.layerID }?.kind == .music)
+        // Audio goes on music only when the person puts it there.
+        #expect(layers(project).first { $0.id == sound.layerID }?.kind == .sound)
     }
 
     @Test func detachedSoundGoesOnASoundLayer() throws {
@@ -120,7 +121,7 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         _ = project.importClip(song(), intoTimeline: t)
         _ = project.importClip(video(), intoTimeline: t)
         let timeline = try #require(project.timeline(id: t))
-        #expect(timeline.layers.map { project.displayName(of: $0, in: timeline) } == ["Video 1", "Music 1", "Video 2"])
+        #expect(timeline.layers.map { project.displayName(of: $0, in: timeline) } == ["Video 1", "Sound 1", "Video 2"])
     }
 
     @Test func layersMoveAmongTheirOwnKind() throws {

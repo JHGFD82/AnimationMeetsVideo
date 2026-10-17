@@ -27,6 +27,7 @@ import Testing
             clip.acceptedStamp = FileStamp(byteCount: 1, modified: 1)
             return clip
         }
+        project.putOnMusicLayer(ids)
         return project
     }
 

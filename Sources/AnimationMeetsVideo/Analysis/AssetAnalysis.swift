@@ -113,6 +113,10 @@ final class AssetAnalysis {
         var id: UUID
         var file: AnalyzedFile?
         var hasAudio: Bool
+        /// Whether a clip of the asset sits on a Music layer. Only music is
+        /// analyzed for beats, so sound left with a video, or on a Sound
+        /// layer, never is.
+        var onMusicLayer: Bool
         /// False once the original is forgotten or the file was replaced:
         /// reference data is never taken from such a file.
         var canCaptureReference: Bool
@@ -154,14 +158,20 @@ final class AssetAnalysis {
     }
 
     static func inputs(of project: EditingProject) -> [Input] {
-        project.clips.map(input(of:))
+        let music = project.assetsOnMusicLayers
+        return project.clips.map { input(of: $0, musicAssets: music) }
     }
 
-    private static func input(of clip: MediaClip) -> Input {
+    private static func input(of clip: MediaClip, musicAssets: Set<UUID>) -> Input {
         Input(
             id: clip.id, file: analyzedFile(of: clip), hasAudio: clip.hasAudio,
-            canCaptureReference: !clip.referenceForgotten && !clip.wasReplaced
+            onMusicLayer: musicAssets.contains(clip.id),
+            canCaptureReference: canCaptureReference(from: clip)
         )
+    }
+
+    private static func canCaptureReference(from clip: MediaClip) -> Bool {
+        !clip.referenceForgotten && !clip.wasReplaced
     }
 
     private static func analyzedFile(of clip: MediaClip) -> AnalyzedFile? {
@@ -276,7 +286,7 @@ final class AssetAnalysis {
     private func stillValid(_ lease: Lease) -> Bool {
         guard isCurrent(lease) else { return false }
         guard let project = projectSource?() ?? latestProject, let owner = owners[lease.id] else { return true }
-        let now = project.clips.first { $0.id == lease.id }.map(Self.input(of:))
+        let now = project.clips.first { $0.id == lease.id }.map { Self.input(of: $0, musicAssets: project.assetsOnMusicLayers) }
         if now == owner.input { return true }
         update(with: project)
         return false
@@ -467,8 +477,9 @@ final class AssetAnalysis {
         for id in readAttempts.keys where !present.contains(id) { readAttempts[id] = nil }
         for id in readRetries.keys where !present.contains(id) { readRetries[id] = nil }
         checkedPackage.formIntersection(present)
+        let musicAssets = project.assetsOnMusicLayers
         for clip in project.clips {
-            let input = Self.input(of: clip)
+            let input = Self.input(of: clip, musicAssets: musicAssets)
             if let owner = owners[clip.id], owner.input != input { revoke(clip.id) }
             // A change that has been accepted since is a new file to the analysis.
             if let changed = changedFiles[clip.id], changed.accepted != clip.acceptedStamp { changedFiles[clip.id] = nil }
@@ -495,7 +506,7 @@ final class AssetAnalysis {
             // Pictures are chosen from the scores, so they need scores to exist or be coming.
             let wantsThumbnails = clip.kind == .video && canCapture && !thumbnailed.contains(clip.id)
                 && failure(.pictures, for: clip.id) == nil && (wantsScores || tracks[clip.id] != nil)
-            let wantsBeats = clip.hasAudio && beats[clip.id] == nil && failure(.beats, for: clip.id) == nil
+            let wantsBeats = clip.hasAudio && input.onMusicLayer && beats[clip.id] == nil && failure(.beats, for: clip.id) == nil
             guard wantsScores || wantsReference || wantsThumbnails || wantsBeats else { continue }
             nextToken += 1
             let lease = Lease(generation: generation, id: clip.id, token: nextToken)
@@ -778,8 +789,7 @@ final class AssetAnalysis {
         let id = clip.id
         if clip.referenceForgotten { return .failure(.forgotten) }
         if let track = originalScores[id] { return .success(track) }
-        let input = Self.input(of: clip)
-        if input.canCaptureReference, let track = tracks[id], let file = input.file,
+        if Self.canCaptureReference(from: clip), let track = tracks[id], let file = Self.analyzedFile(of: clip),
            scoreSources[id]?.matches(file) == true {
             let revision = keepAsOriginal(track, of: id, source: file.stamp)
             Task { await persistOriginalScores(track, of: id, revision: revision, source: file.stamp) }
@@ -839,7 +849,7 @@ final class AssetAnalysis {
     /// describes. Returns whether any of them may be.
     private func prepareRetry(of stages: [Stage], for id: UUID, in project: EditingProject) -> Bool {
         guard let clip = project.clips.first(where: { $0.id == id }) else { return false }
-        let canCapture = Self.input(of: clip).canCaptureReference
+        let canCapture = Self.canCaptureReference(from: clip)
         let allowed = stages.filter { canCapture || ($0 != .reference && $0 != .pictures) }
         guard !allowed.isEmpty else { return false }
         for stage in allowed { stageFailures[AssetStage(id: id, stage: stage)] = nil }

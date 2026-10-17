@@ -6,8 +6,11 @@ beat during playback. It is unit tested; the timeline picker, markers and
 clicks are compile-checked but have not been exercised on screen.
 What is not built is listed under [Not implemented yet](#not-implemented-yet).
 
-Any media file that has an audio track (an audio file, or a video with
-sound) is analyzed for beats when it enters the project. The beats are shown
+Only music is analyzed: an asset is analyzed for beats once a clip of it
+sits on a **Music layer** (of any timeline). Audio files are placed on Sound
+layers unless dropped on a Music one, and a video's sound only gets there
+once it is detached and dragged from the Sound area into the Music area, so
+dialogue and effects are never analyzed. The beats are shown
 on the timeline for one audio layer at a time, chosen in the timeline's view
 options.
 
@@ -202,7 +205,11 @@ without it still opens.
 `AssetAnalysis` queues one job per asset (reference data first, then scene
 scores for video and reference pictures, then beats) on its serial
 background queue. Beats are queued for assets whose `MediaClip.hasAudio` is
-set, which the importer fills in from the file's audio tracks. The browser
+set (the importer fills it in from the file's audio tracks) and that have a
+clip on a Music layer (`EditingProject.assetsOnMusicLayers`). Whether an
+asset is on music is part of its analysis input, so moving its last music
+clip away cancels beat detection under way; beats already found are kept,
+for when it comes back. The browser
 row names the stage running (reading the original, finding scenes, saving
 pictures, finding beats) with that stage's progress, starting from zero for
 each. Finding beats gives reading the audio the first 80% (by the buffers'

@@ -48,9 +48,24 @@ extension EditingProject {
     }
 
     /// The kind of layer an asset goes on when nothing says otherwise:
-    /// audio files are taken to be music, everything else is video.
+    /// audio files are taken to be sound, everything else is video. Music
+    /// is analyzed for beats, so only the person puts audio there.
     func defaultLayerKind(forAsset assetID: UUID) -> LayerKind {
-        mediaClip(id: assetID)?.kind == .audio ? .music : .video
+        mediaClip(id: assetID)?.kind == .audio ? .sound : .video
+    }
+
+    /// Assets with a clip on a Music layer of any timeline: the ones whose
+    /// beats are found.
+    var assetsOnMusicLayers: Set<UUID> {
+        var ids: Set<UUID> = []
+        for timeline in timelines {
+            for layer in timeline.layers where layer.kind == .music {
+                for clip in layer.clips {
+                    if case .media(let id) = clip.source { ids.insert(id) }
+                }
+            }
+        }
+        return ids
     }
 
     /// The kind a layer saved before layers had kinds must have been, from

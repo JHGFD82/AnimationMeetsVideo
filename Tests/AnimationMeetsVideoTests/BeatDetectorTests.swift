@@ -654,7 +654,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
     private let stamp = FileStamp(byteCount: 100, modified: 1)
     private let otherStamp = FileStamp(byteCount: 200, modified: 2)
 
-    private func project(url: URL, hasAudio: Bool, stamp: FileStamp? = nil) -> EditingProject {
+    private func project(url: URL, hasAudio: Bool, stamp: FileStamp? = nil, onMusic: Bool = true) -> EditingProject {
         var project = EditingProject.empty
         project.clips = [MediaClip(
             name: url.lastPathComponent, kind: .audio, url: url,
@@ -662,6 +662,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
             colorSpace: .rec709, codecName: "Test", hasAudio: hasAudio,
             acceptedStamp: stamp ?? FileStamp(url: url) ?? self.stamp
         )]
+        if onMusic { project.putOnMusicLayer(project.clips.map(\.id)) }
         return project
     }
 
@@ -702,6 +703,26 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
 
         #expect(analysis.beats.isEmpty)
         #expect(analysis.beatFailures.isEmpty)
+    }
+
+    @Test func onlySoundOnAMusicLayerIsAnalyzedForBeats() async throws {
+        let url = try writeClickFile(seconds: 5)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var project = project(url: url, hasAudio: true, onMusic: false)
+        let id = project.clips[0].id
+        let analysis = AssetAnalysis()
+        // In the library, and then on a Sound layer: neither is music.
+        analysis.update(with: project)
+        project.placeAsset(id, intoTimeline: project.rootTimelineID)
+        analysis.update(with: project)
+        for _ in 0..<2000 where !analysis.progress.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(analysis.beats.isEmpty)
+
+        project.timelines[0].layers[0].kind = .music
+        analysis.update(with: project)
+        try await waitForBeats(analysis)
+
+        #expect(analysis.beats[id] != nil)
     }
 
     @Test func savedBeatsAreNotFoundAgain() async throws {

@@ -326,6 +326,7 @@ final class Gate: @unchecked Sendable {
             clip.hasAudio = hasAudio
             return clip
         }
+        if hasAudio { project.putOnMusicLayer(ids) }
         return project
     }
 
