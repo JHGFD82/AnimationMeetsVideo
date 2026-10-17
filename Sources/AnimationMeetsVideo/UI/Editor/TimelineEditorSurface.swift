@@ -41,7 +41,10 @@ struct TimelineEditorSurface<Library: View>: View {
     /// changes when the person picks one or an effect is applied.
     @AppStorage("showsSidePanel") private var showsSidePanel = true
     @AppStorage("sidePanelTab") private var sideTab = SidePanelTab.inspector
+    /// Each side panel tab keeps its own width, and so does the browser.
     @AppStorage("effectsPanelWidth") private var effectsPanelWidth = 640.0
+    @AppStorage("inspectorPanelWidth") private var inspectorPanelWidth = 280.0
+    @AppStorage("browserWidth") private var browserWidth = 260.0
     @State private var effectsState = EffectsPanelState()
     @AppStorage("showsAudioMeter") private var showsMeter = false
     /// The graph editors this surface has open, one HUD per parameter.
@@ -74,13 +77,27 @@ struct TimelineEditorSurface<Library: View>: View {
         project.timeline(id: timelineID)
     }
 
-    /// The widest the effects panel gets, so the viewer keeps room.
-    private func effectsMaxWidth(in available: CGFloat) -> CGFloat {
-        max(EffectsPanelResizeHandle.minimumWidth, available * 0.55)
+    /// The narrowest each panel gets: the effects panel needs room for its
+    /// lanes beside its controls.
+    private static var effectsMinWidth: CGFloat { 480 }
+    private static var inspectorMinWidth: CGFloat { 240 }
+    private static var browserMinWidth: CGFloat { 200 }
+
+    /// The widest the side panel gets, so the viewer keeps room.
+    private func sideMaxWidth(in available: CGFloat) -> CGFloat {
+        available * 0.55
     }
 
-    private func effectsWidth(in available: CGFloat) -> CGFloat {
-        min(max(CGFloat(effectsPanelWidth), EffectsPanelResizeHandle.minimumWidth), effectsMaxWidth(in: available))
+    private func browserMaxWidth(in available: CGFloat) -> CGFloat {
+        available * 0.4
+    }
+
+    private var sideWidth: Binding<Double> {
+        sideTab == .effects ? $effectsPanelWidth : $inspectorPanelWidth
+    }
+
+    private var sideMinWidth: CGFloat {
+        sideTab == .effects ? Self.effectsMinWidth : Self.inspectorMinWidth
     }
 
     /// The clip and effect Show Up to Here is showing, while the effect
@@ -152,6 +169,16 @@ struct TimelineEditorSurface<Library: View>: View {
 
                 HStack(spacing: 0) {
                     library()
+                        .frame(width: CGFloat(PanelResizeHandle.clamped(
+                            browserWidth, min: Self.browserMinWidth, max: browserMaxWidth(in: geometry.size.width)
+                        )))
+                        .overlay(alignment: .trailing) {
+                            PanelResizeHandle(
+                                width: $browserWidth, minWidth: Self.browserMinWidth,
+                                maxWidth: browserMaxWidth(in: geometry.size.width), edge: .trailing,
+                                help: "Drag to resize the browser"
+                            )
+                        }
                     ViewerPanel(
                         playback: playback,
                         hasContent: timeline?.layers.contains { !$0.clips.isEmpty } ?? false,
@@ -200,11 +227,14 @@ struct TimelineEditorSurface<Library: View>: View {
                                 )
                             }
                         }
-                        .frame(width: sideTab == .effects ? effectsWidth(in: geometry.size.width) : 280)
+                        .frame(width: CGFloat(PanelResizeHandle.clamped(
+                            sideWidth.wrappedValue, min: sideMinWidth, max: sideMaxWidth(in: geometry.size.width)
+                        )))
                         .overlay(alignment: .leading) {
-                            if sideTab == .effects {
-                                EffectsPanelResizeHandle(width: $effectsPanelWidth, maxWidth: effectsMaxWidth(in: geometry.size.width))
-                            }
+                            PanelResizeHandle(
+                                width: sideWidth, minWidth: sideMinWidth, maxWidth: sideMaxWidth(in: geometry.size.width),
+                                edge: .leading, help: sideTab == .effects ? "Drag to resize the effects panel" : "Drag to resize the inspector"
+                            )
                         }
                         .grooved(.leading)
                         .transition(.move(edge: .trailing))
@@ -699,33 +729,5 @@ struct TimelineResizeHandle: View {
                     dragStartHeight = nil
                 }
         )
-    }
-}
-
-/// The strip along the effects panel's left edge that resizes it.
-struct EffectsPanelResizeHandle: View {
-    static let minimumWidth: CGFloat = 480
-
-    @Binding var width: Double
-    let maxWidth: CGFloat
-    @State private var startWidth: Double?
-
-    var body: some View {
-        Color.clear
-            .frame(width: 6)
-            .contentShape(Rectangle())
-            .onHover { inside in
-                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                    .onChanged { value in
-                        let start = startWidth ?? width
-                        startWidth = start
-                        width = min(max(start - Double(value.translation.width), Double(Self.minimumWidth)), Double(maxWidth))
-                    }
-                    .onEnded { _ in startWidth = nil }
-            )
-            .help("Drag to resize the effects panel")
     }
 }

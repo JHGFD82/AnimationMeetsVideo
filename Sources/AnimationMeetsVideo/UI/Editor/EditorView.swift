@@ -62,7 +62,6 @@ struct EditorView: View {
                     project: $project, activeTimelineID: activeTimeline, selection: $selection,
                     analysis: analysis, replacement: replacement, packageURL: packageURL
                 )
-                .frame(width: 260)
                 .grooved(.trailing)
             }
             .environment(renderer)
