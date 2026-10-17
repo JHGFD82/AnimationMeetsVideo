@@ -122,6 +122,8 @@ final class BeatMatchSession {
         guard map != self.map else { return }
         self.map = map
         if let id = selectedSectionID, map.section(id: id) == nil { selectedSectionID = map.sections.first?.id }
+        // A lone section needs no choosing.
+        if selectedSectionID == nil, map.sections.count == 1 { selectedSectionID = map.sections[0].id }
         if let beat = selectedBeat, map.beat(at: beat) == nil { selectedBeat = nil }
         if map.isEmpty && !map.usesSections { isDrawing = false }
         refreshTicks()
