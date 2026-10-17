@@ -424,19 +424,7 @@ final class OnsetAnalyzer {
         pending.withUnsafeBufferPointer { samples in
             vDSP_vmul(samples.baseAddress! + start, 1, window, 1, &frame, 1, vDSP_Length(Self.windowSize))
         }
-
-        realPart.withUnsafeMutableBufferPointer { real in
-            imaginaryPart.withUnsafeMutableBufferPointer { imaginary in
-                var split = DSPSplitComplex(realp: real.baseAddress!, imagp: imaginary.baseAddress!)
-                frame.withUnsafeBufferPointer { input in
-                    input.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: bins) {
-                        vDSP_ctoz($0, 2, &split, 1, vDSP_Length(bins))
-                    }
-                }
-                vDSP_fft_zrip(fft, &split, 1, log2n, FFTDirection(kFFTDirection_Forward))
-                vDSP_zvabs(&split, 1, &magnitudes, 1, vDSP_Length(bins))
-            }
-        }
+        computeMagnitudes()
 
         // Log compression so a quiet hi-hat counts as much as a loud kick.
         var scale = 1000 / Float(Self.windowSize)
@@ -446,13 +434,51 @@ final class OnsetAnalyzer {
 
         var flux: Float = 0
         if hasPrevious {
-            for bin in 0..<bins {
+            for bin in 1..<bins {
                 flux += max(0, compressed[bin] - previous[bin])
             }
         }
         envelope.append(flux)
         hasPrevious = true
         swap(&previous, &compressed)
+    }
+
+    /// The magnitude of every frequency bin of `frame` into `magnitudes`,
+    /// indexed by bin, with DC (index 0) left at zero and Nyquist left out.
+    ///
+    /// `vDSP_fft_zrip` packs its output: `realp[0]` is the DC bin and
+    /// `imagp[0]` is the Nyquist bin, two real values from different
+    /// frequencies rather than one complex bin. Neither says anything about
+    /// where a note starts (DC is offset, Nyquist is above anything the
+    /// downsampled audio holds), so they are left out of the flux rather
+    /// than mixed into one meaningless magnitude.
+    private func computeMagnitudes() {
+        let bins = Self.windowSize / 2
+        realPart.withUnsafeMutableBufferPointer { real in
+            imaginaryPart.withUnsafeMutableBufferPointer { imaginary in
+                var split = DSPSplitComplex(realp: real.baseAddress!, imagp: imaginary.baseAddress!)
+                frame.withUnsafeBufferPointer { input in
+                    input.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: bins) {
+                        vDSP_ctoz($0, 2, &split, 1, vDSP_Length(bins))
+                    }
+                }
+                vDSP_fft_zrip(fft, &split, 1, log2n, FFTDirection(kFFTDirection_Forward))
+                var interior = DSPSplitComplex(realp: real.baseAddress! + 1, imagp: imaginary.baseAddress! + 1)
+                magnitudes.withUnsafeMutableBufferPointer { output in
+                    vDSP_zvabs(&interior, 1, output.baseAddress! + 1, 1, vDSP_Length(bins - 1))
+                    output[0] = 0
+                }
+            }
+        }
+    }
+
+    /// The bin magnitudes `computeMagnitudes` gives for one unwindowed
+    /// frame of `windowSize` samples, for tests.
+    func magnitudes(ofFrame samples: [Float]) -> [Float] {
+        precondition(samples.count == Self.windowSize)
+        frame = samples
+        computeMagnitudes()
+        return magnitudes
     }
 }
 

@@ -20,8 +20,10 @@ its beats, following the tempo where it ramps or changes:
    file is never held in memory.
 2. `OnsetAnalyzer` takes a short Fourier transform (1024 samples, hop of
    256) and measures, frame by frame, how much louder each frequency has
-   become (spectral flux, log compressed). The result is an onset curve:
-   about 86 values per second saying how much new sound starts there.
+   become (spectral flux, log compressed). DC and Nyquist, which the real
+   FFT packs together into its first slot, are left out. The result is an
+   onset curve: about 86 values per second saying how much new sound
+   starts there.
 3. `BeatTracker` measures the tempo locally: for each 8-second stretch,
    one second apart, it scores every period from 60 to 200 BPM by the
    curve's autocorrelation, weighted toward 120 BPM (which settles tempo

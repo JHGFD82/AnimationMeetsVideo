@@ -92,7 +92,9 @@ struct AnalysisProvenance: Codable, Equatable, Sendable {
                 "tempoWindow=\(BeatTracker.tempoWindowSeconds)", "tempoHop=\(BeatTracker.tempoHopSeconds)",
                 "glide=\(BeatTracker.tempoGlide)", "jump=\(BeatTracker.tempoJump)", "sudden=\(BeatTracker.suddenChange)",
             ]
-            return (settings.joined(separator: ";"), 1)
+            // 2: the FFT's packed DC and Nyquist values no longer count
+            // toward onsets.
+            return (settings.joined(separator: ";"), 2)
         }
     }
 

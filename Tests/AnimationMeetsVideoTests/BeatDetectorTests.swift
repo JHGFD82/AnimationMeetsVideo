@@ -156,6 +156,30 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         #expect(BeatTracker.track(envelope: shortAnalyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) == nil)
     }
 
+    // MARK: Spectrum
+
+    @Test func aConstantFrameHasNoInteriorEnergy() {
+        let magnitudes = OnsetAnalyzer().magnitudes(ofFrame: [Float](repeating: 1, count: OnsetAnalyzer.windowSize))
+        #expect(magnitudes.count == OnsetAnalyzer.windowSize / 2)
+        // All of it is DC, which is left out rather than reported in bin 0.
+        #expect(magnitudes.allSatisfy { abs($0) < 1e-3 }, "largest: \(magnitudes.max() ?? 0)")
+    }
+
+    @Test func aNyquistFrameIsNotReportedAsAnyBin() {
+        let alternating = (0..<OnsetAnalyzer.windowSize).map { $0.isMultiple(of: 2) ? Float(1) : -1 }
+        let magnitudes = OnsetAnalyzer().magnitudes(ofFrame: alternating)
+        #expect(magnitudes.allSatisfy { abs($0) < 1e-3 }, "largest: \(magnitudes.max() ?? 0)")
+    }
+
+    @Test func anInteriorToneLandsInItsOwnBin() throws {
+        let size = OnsetAnalyzer.windowSize
+        let tone = (0..<size).map { Float(cos(2 * Double.pi * 37 * Double($0) / Double(size))) }
+        let magnitudes = OnsetAnalyzer().magnitudes(ofFrame: tone)
+        let peak = try #require(magnitudes.indices.max { magnitudes[$0] < magnitudes[$1] })
+        #expect(peak == 37)
+        #expect(magnitudes[0] == 0)
+    }
+
     // MARK: End to end
 
     @Test func detectsBeatsInAnAudioFile() async throws {
