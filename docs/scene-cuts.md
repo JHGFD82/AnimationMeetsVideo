@@ -97,7 +97,11 @@ A retired score is deleted; if the file can't be deleted its
 record is marked invalidated instead, so it is still rejected. If neither
 can be done the retirement stays pending, is retried with the next write or
 save, and is reported by `AssetAnalysis.invalidationFailures`; saving fails
-rather than leave an outdated score that could come back.
+rather than leave an outdated score that could come back. While it is
+pending, a read of the package does not bring the score back into memory.
+A new score for the asset replaces the pending retirement, so a later retry
+can't delete it. Opening another project carries out pending retirements in
+the old package; reopening the same one keeps them pending.
 
 ### Three levels of sensitivity
 
@@ -245,10 +249,12 @@ A stage that can't finish is recorded per asset and stage
 the system's message, and the file it ran on. The kinds are a missing file,
 permission denied, unsupported media (no suitable track, or a format that
 can't be decoded), damaged media, a result that could not be saved into the
-project (`persistenceFailures`, which doesn't stop the result from being
-used), an interruption, and anything else. A file that is missing is not a
-failure: the asset waits for it and is tried again when its file changes or
-`retryUnavailable` is called.
+project (`persistenceFailures`, kept per result written, so the current and
+original scores fail separately, and which doesn't stop the result from
+being used), an interruption, and anything else. A file that is missing,
+whether when the job starts or gone by the end of a stage, is not a
+failure: the job stops, and the asset waits for its file and is tried again
+when its file changes or `retryUnavailable` is called.
 
 A failure belongs to the file it happened on, so it is dropped when the
 asset's file changes (and, for beats, when the sound is gone). It is
