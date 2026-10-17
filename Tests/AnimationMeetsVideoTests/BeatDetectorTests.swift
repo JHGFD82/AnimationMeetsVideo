@@ -605,10 +605,10 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
 
 // MARK: - Analysis queue and saving
 
-private func writeClickFile(seconds: Double = 12) throws -> URL {
+func writeClickFile(seconds: Double = 12, interval: Double = 0.5, first: Double = 0.1) throws -> URL {
     let url = FileManager.default.temporaryDirectory.appending(path: "amv-beats-\(UUID().uuidString).wav")
     let rate = 44_100.0
-    let samples = clickTrack(seconds: seconds, interval: 0.5, first: 0.1, sampleRate: rate)
+    let samples = clickTrack(seconds: seconds, interval: interval, first: first, sampleRate: rate)
     let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false)!
     let file = try AVAudioFile(forWriting: url, settings: format.settings)
     let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!

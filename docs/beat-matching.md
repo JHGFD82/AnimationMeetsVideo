@@ -79,6 +79,45 @@ Between two pinned beats the count is the nearest whole number of periods,
 so a pinned beat a little off the grid bends the grid through it rather
 than shifting every later beat.
 
+### How a section is filled
+
+Built in `BeatFitting`, as pure functions over an `OnsetCurve`, and unit
+tested on synthetic curves and a decoded click file. The panel reads the
+song once when it opens (`BeatMatchAudio`): its samples at the file's own
+rate, for the waveform, and an onset curve with a hop of 64 samples
+(2.9 ms frames, against detection's 11.6 ms). Both are in the asset's
+original time.
+
+- **Tempo.** A typed tempo wins. Otherwise, when reanalyzing, it is the
+  median gap of the beats already there. Otherwise it is estimated from the
+  onsets around the anchors, by autocorrelation weighted toward 120 BPM
+  as detection does.
+- **Count between the anchors.** Every count within 12% of the gap over
+  that tempo is tried. *Click*: the score is the mean onset under an even
+  grid. *Intent*: the score is the refined chain's, since drift takes an
+  even grid off the beats. A count that keeps the two anchors' places in
+  the measure is taken if it scores within 80% of the best, so the measure
+  settles a count the onsets can't, without forcing one they plainly
+  reject.
+- **Refining** (intent and ramps) is Ellis's dynamic programming held at
+  both ends: each beat is searched within a quarter of a gap of its even
+  place, scoring the onset there against how far each gap strays from the
+  expected one. Peaks are placed between frames with a parabola.
+- **Past the outer anchors** the beats step on a period at a time, to the
+  section's edge. For intent each step moves to the strongest onset within
+  15% of the gap. Steps stop where the music does: after four in a row
+  without an onset, which are dropped, and silent steps at the edge are
+  dropped too.
+- **Onset timing.** Spectral flux peaks about 14 ms before a sharp hit,
+  because it rises as soon as the hit enters the analysis window. The
+  anchors are lined up by ear, so the curve is shifted by the median
+  distance from each anchor to its nearest clear peak. That also takes in
+  how soft the song's attacks are. With no anchor on a clear onset, it is
+  shifted by the measured 14.3 ms.
+- **Ramps** try every count within 15% of what an even change of tempo
+  holds. A count away from that costs a little (a tenth of the chain's
+  tightness), because ramps are seldom even.
+
 ## Sections
 
 When the song has more than one tempo, the person picks **Sections** at the
@@ -168,7 +207,7 @@ the pinned one), and wraps positions into the measure.
 3. The beat map: model, saving, undo, and timeline markers from it.
    **Built** (`BeatMap`, on `MediaClip`, so undo comes with project edits).
 4. Filling sections: grid, refining, ramps, reanalyze. Pure functions over
-   an onset curve, unit tested.
+   an onset curve, unit tested. **Built** (`BeatFitting`, `BeatMatchAudio`).
 5. The beat match panel: waveform, transport, anchors and nudging, beat
    editing, then sections.
 6. Timeline thinning by measures, and the Music-only picker. **Built.**

@@ -302,7 +302,7 @@ enum BeatDetector {
     /// format, or whose data is missing, the wrong size or can't be copied,
     /// rather than skipping it: a skipped buffer shifts every later beat,
     /// and a file read that way would be saved as analyzed.
-    static func pcmSamples(of buffer: CMSampleBuffer) throws -> [Float] {
+    static func pcmSamples(of buffer: CMSampleBuffer, sampleRate expected: Double = sampleRate) throws -> [Float] {
         let count = CMSampleBufferGetNumSamples(buffer)
         let block = CMSampleBufferGetDataBuffer(buffer)
         let length = block.map { CMBlockBufferGetDataLength($0) } ?? 0
@@ -317,9 +317,9 @@ enum BeatDetector {
               description.mFormatFlags & kAudioFormatFlagIsBigEndian == 0,
               description.mChannelsPerFrame == 1, description.mBitsPerChannel == 32,
               description.mBytesPerFrame == UInt32(MemoryLayout<Float>.size),
-              description.mSampleRate == sampleRate
+              description.mSampleRate == expected
         else {
-            throw DetectionError.malformedAudio("a buffer isn't mono 32-bit float PCM at \(Int(sampleRate)) Hz")
+            throw DetectionError.malformedAudio("a buffer isn't mono 32-bit float PCM at \(Int(expected)) Hz")
         }
         guard let block else { throw DetectionError.malformedAudio("a buffer with samples has no data") }
         let (expected, overflow) = count.multipliedReportingOverflow(by: MemoryLayout<Float>.size)
@@ -493,7 +493,7 @@ protocol DecodedAudioSource {
     func cancel()
 }
 
-private struct ReaderSource: DecodedAudioSource {
+struct ReaderSource: DecodedAudioSource {
     let reader: AVAssetReader
     let output: AVAssetReaderTrackOutput
 
@@ -527,18 +527,21 @@ struct TimedSamples {
     /// The most silence a gap is filled with. A timestamp further ahead
     /// than this is damage rather than a gap.
     let longestGap: Int64
+    /// Samples per second of the audio handed in.
+    let sampleRate: Double
     /// Where the samples go, in order, gaps filled with zeros. What it
     /// throws (a cancellation) stops `append` at once.
     let feed: (UnsafeBufferPointer<Float>) throws -> Void
-    /// The asset-time position, in samples at `BeatDetector.sampleRate`, of
+    /// The asset-time position, in samples at `sampleRate`, of
     /// the first sample handed on: the first buffer that contributes any,
     /// never an empty one. Nil until then.
     private(set) var origin: Int64?
     /// Samples handed on so far, gap fill included.
     private(set) var fed: Int64 = 0
 
-    init(longestGap: Int64, feed: @escaping (UnsafeBufferPointer<Float>) throws -> Void) {
+    init(longestGap: Int64, sampleRate: Double = BeatDetector.sampleRate, feed: @escaping (UnsafeBufferPointer<Float>) throws -> Void) {
         self.longestGap = longestGap
+        self.sampleRate = sampleRate
         self.feed = feed
     }
 
@@ -549,7 +552,7 @@ struct TimedSamples {
     /// Throws `DetectionError.malformedAudio` for a jump past `longestGap`.
     mutating func append(_ samples: [Float], at presentation: CMTime) throws {
         guard !samples.isEmpty else { return }
-        let position = try Self.samplePosition(of: presentation)
+        let position = try samplePosition(of: presentation)
         guard let origin else {
             origin = position ?? 0
             try hand(samples[...])
@@ -566,7 +569,7 @@ struct TimedSamples {
         }
         if offset > Self.tolerance {
             guard offset <= longestGap else {
-                let seconds = Double(offset) / BeatDetector.sampleRate
+                let seconds = Double(offset) / sampleRate
                 throw BeatDetector.DetectionError.malformedAudio("a buffer's timestamp jumps \(Int(seconds)) seconds ahead")
             }
             try handSilence(offset)
@@ -582,9 +585,9 @@ struct TimedSamples {
 
     /// The timestamp in samples, or nil if there is none. Throws for a
     /// numeric timestamp too far out to count in samples.
-    private static func samplePosition(of time: CMTime) throws -> Int64? {
+    private func samplePosition(of time: CMTime) throws -> Int64? {
         guard time.isNumeric, time.timescale > 0 else { return nil }
-        let rate = Int32(BeatDetector.sampleRate)
+        let rate = Int32(sampleRate)
         let converted = time.convertScale(rate, method: .roundHalfAwayFromZero)
         // An overflowing conversion comes back as an infinity, or clamped.
         guard converted.isNumeric, converted.timescale == rate,
@@ -628,6 +631,12 @@ final class OnsetAnalyzer {
         Int64(frame * hopSize + windowSize / 2)
     }
 
+    /// Samples from one frame to the next. Detection uses `hopSize`; beat
+    /// matching uses a smaller hop, for beats placed within a few
+    /// milliseconds.
+    let hop: Int
+    var framesPerSecond: Double { BeatDetector.sampleRate / Double(hop) }
+
     private(set) var envelope: [Float] = []
 
     private let log2n = vDSP_Length(10)
@@ -644,7 +653,9 @@ final class OnsetAnalyzer {
     private var scaled: [Float]
     private var compressed: [Float]
 
-    init() {
+    init(hop: Int = OnsetAnalyzer.hopSize) {
+        precondition(hop > 0 && hop <= Self.windowSize)
+        self.hop = hop
         let bins = Self.windowSize / 2
         fft = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))!
         var hann = [Float](repeating: 0, count: Self.windowSize)
@@ -668,7 +679,7 @@ final class OnsetAnalyzer {
         var start = 0
         while pending.count - start >= Self.windowSize {
             processFrame(startingAt: start)
-            start += Self.hopSize
+            start += hop
         }
         pending.removeFirst(start)
     }
@@ -929,7 +940,8 @@ enum BeatTracker {
 
     /// Keeps only what stands out from the surrounding second, then scales
     /// to unit spread so the settings above mean the same for any loudness.
-    private static func prepared(_ raw: [Float], framesPerSecond: Double) -> [Float]? {
+    /// Nil for a curve with nothing standing out.
+    static func prepared(_ raw: [Float], framesPerSecond: Double) -> [Float]? {
         let radius = max(1, Int(framesPerSecond / 2))
         var prefix = [Double](repeating: 0, count: raw.count + 1)
         for i in raw.indices { prefix[i + 1] = prefix[i] + Double(raw[i]) }
