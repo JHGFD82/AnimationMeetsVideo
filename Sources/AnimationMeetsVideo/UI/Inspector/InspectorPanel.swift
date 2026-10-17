@@ -12,6 +12,15 @@ struct InspectorPanel: View {
     let onDeleteSelection: () -> Void
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
+    @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
+
+    /// The song of a selected clip on a Music layer, which can be beat matched.
+    private var beatMatchAsset: MediaClip? {
+        guard let selection, case .media(let clip) = info, clip.url != nil, clip.hasAudio,
+              project.timeline(id: selection.timelineID)?.layer(id: selection.layerID)?.kind == .music
+        else { return nil }
+        return clip
+    }
 
     private var maxDurationSeconds: Double? {
         switch info {
@@ -76,6 +85,18 @@ struct InspectorPanel: View {
                     InspectorRow("Kind", value: "Adjustment")
                 case nil:
                     EmptyView()
+                }
+            }
+
+            if let asset = beatMatchAsset, let beatMatch {
+                InspectorGroup("Beats") {
+                    Text(asset.beatMap.hasConfirmedBeats
+                         ? "Beat matched: the timeline shows the beats you confirmed."
+                         : "Not beat matched: the timeline shows detected beats, which may be wrong.")
+                        .font(Design.Typeface.label)
+                        .foregroundStyle(Design.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Beat Match…") { beatMatch.open(assetID: asset.id, in: project) }
                 }
             }
 

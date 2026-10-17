@@ -114,6 +114,7 @@ struct TimelineView: View {
     @AppStorage("followsPlayhead") private var followsPlayhead = true
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
+    @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
     /// Where a drag in progress snapped, drawn as a line across the layers.
     @State private var snapIndicator: CMTime?
@@ -529,7 +530,8 @@ struct TimelineView: View {
         }
         .padding(.top, topPadding)
         .background(KeyPressMonitor(handler: handleKey))
-        .focusedSceneValue(\.timelineActions, actions)
+        // The Timeline menu rests while a song is beat matched.
+        .focusedSceneValue(\.timelineActions, beatMatch?.isActive == true ? nil : actions)
         .environment(autoScroll)
         // Again whenever the timeline changes: the closures read its
         // length, through this view's copy of it.

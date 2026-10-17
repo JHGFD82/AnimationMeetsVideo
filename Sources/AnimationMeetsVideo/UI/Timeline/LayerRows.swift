@@ -245,6 +245,7 @@ struct PushedClip: Equatable {
 }
 
 struct LayerClipRow: View {
+    @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
     let layer: TimelineLayer
     /// The layer's name as the timeline shows it, for VoiceOver.
     let name: String
@@ -350,6 +351,14 @@ struct LayerClipRow: View {
         }
     }
 
+    /// Music is beat matched; the panel works on the clip's song.
+    private func beatMatchAction(for clip: TimelineClip) -> (() -> Void)? {
+        guard layer.kind == .music, case .media(let assetID) = clip.source,
+              project.mediaClip(id: assetID)?.url != nil, let beatMatch
+        else { return nil }
+        return { [project] in beatMatch.open(assetID: assetID, in: project) }
+    }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             ForEach(layer.clips) { clip in
@@ -413,7 +422,8 @@ struct LayerClipRow: View {
                     onSetPassThrough: { onSetPassThrough(clip.id, $0) },
                     playsSound: project.playsAudio(clip),
                     onEditTime: { change in onEditTime(clip.id, change) },
-                    onEditClip: { change in onEditClip(clip.id, change) }
+                    onEditClip: { change in onEditClip(clip.id, change) },
+                    onBeatMatch: beatMatchAction(for: clip)
                 )
                 .offset(x: shiftX(of: clip))
                 // Clips slide aside as a drag makes room, but not when the
@@ -559,6 +569,9 @@ struct ClipBlockView: View {
     let playsSound: Bool
     let onEditTime: ((inout ClipTime) -> Void) -> Void
     let onEditClip: ((inout TimelineClip) -> Void) -> Void
+    /// Opens the beat match panel for the clip's song; nil for clips that
+    /// aren't on a Music layer.
+    var onBeatMatch: (() -> Void)? = nil
 
     /// The clip as it will be if the current drag ends now. After a drop
     /// it stays up until the edited clip comes back down from the project:
@@ -967,6 +980,9 @@ struct ClipBlockView: View {
         if hasLinkedAudio {
             Button("Detach audio", action: onDetachAudio)
         }
+        if let onBeatMatch {
+            Button("Beat match", action: onBeatMatch)
+        }
     }
 
     /// The sound of the drawn part of the clip, faded, once the layer is
@@ -1087,6 +1103,9 @@ struct ClipBlockView: View {
         if hasLinkedAudio {
             if clip.transitionIn != nil || clip.transitionOut != nil { Divider() }
             Button("Detach Audio", action: onDetachAudio)
+        }
+        if let onBeatMatch {
+            Button("Beat Match…", action: onBeatMatch)
         }
         if case .timeline = clip.source {
             Toggle("Pass Through", isOn: Binding(get: { passesThrough }, set: { onSetPassThrough($0) }))

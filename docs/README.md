@@ -11,7 +11,7 @@ accessibility are implemented (each document lists what remains).
 | --- | --- |
 | [scene-cuts.md](scene-cuts.md) | Implemented (core). Detecting scene cuts in a media file and treating each scene as a virtual clip in the browser, without touching the file. |
 | [beat-detection.md](beat-detection.md) | Implemented. Finding the beats of audio tracks, and showing one audio layer's beats as timeline markers chosen from the view options. |
-| [beat-matching.md](beat-matching.md) | Planned, being built. Confirming a song's beats by hand in the beat match panel: anchors, sections of one tempo or a ramp, measures, and the beat map saved with the project. |
+| [beat-matching.md](beat-matching.md) | Built, not yet tried on screen. Confirming a song's beats by hand in the beat match panel: anchors, sections of one tempo or a ramp, measures, and the beat map saved with the project. |
 | [layer-transforms.md](layer-transforms.md) | Replaced by effects. Keyframes, eases, the graph editor and arithmetic in numeric fields, which carry over; layers no longer have a transform. |
 | [effects.md](effects.md) | Built (see its Building it). Per-clip effect stacks applied in the order listed (Transform, Blending, Color and Matte), an anchor point on every visual clip, closed nested timelines, adjustment layers with a set reach, the effects panel, and strict project loading. Time and Shutter, inputs, speed ramps and Optical Flow, copy and presets with paste changes. Replaces layer transforms. |
 | [audio.md](audio.md) | Implemented (core). Keyframed layer volume from mute to +6 dB in playback and export, and a meter of the whole mix beside the timeline. |

@@ -9,7 +9,7 @@ import Foundation
 ///
 /// Unlike detected beats this is the person's work: it is saved in the
 /// project file, and changing it is an undoable edit.
-struct BeatMap: Equatable {
+struct BeatMap: Equatable, Sendable {
     /// In time order, never overlapping. A song of one tempo has one
     /// section covering all of it.
     var sections: [BeatSection] = []
@@ -56,8 +56,8 @@ struct BeatMap: Equatable {
 }
 
 /// A stretch of the song with one way of finding its beats.
-struct BeatSection: Identifiable, Equatable {
-    enum Kind: String, CaseIterable, Identifiable {
+struct BeatSection: Identifiable, Equatable, Sendable {
+    enum Kind: String, CaseIterable, Identifiable, Sendable {
         /// One tempo throughout.
         case consistent
         /// The tempo moves from the section before's to the section after's.
@@ -79,7 +79,7 @@ struct BeatSection: Identifiable, Equatable {
 
     /// How a consistent section keeps its tempo, which decides whether
     /// detection may move its beats off the grid.
-    enum Steadiness: String, CaseIterable, Identifiable {
+    enum Steadiness: String, CaseIterable, Identifiable, Sendable {
         /// Produced to a click track: the beats are an exact grid.
         case click
         /// Meant to be steady but played live, so it drifts: the grid is
@@ -164,7 +164,7 @@ struct BeatSection: Identifiable, Equatable {
 }
 
 /// One beat of a beat map.
-struct MappedBeat: Equatable {
+struct MappedBeat: Equatable, Sendable {
     var time: CMTime
     /// Place in the measure, from 1 (the downbeat) to the section's beats
     /// per measure.

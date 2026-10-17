@@ -1,6 +1,7 @@
 # Beat matching
 
-Status: **planned**, being built in steps. Each step below says whether
+Status: **built** except where noted; the panel is compile-checked and
+was rendered offscreen, but hasn't been used on screen yet. Built in steps. Each step below says whether
 it is built yet. Automatic detection ([beat-detection.md](beat-detection.md))
 is the starting point. It is often wrong, even on easy songs, so the
 person confirms the beats in a guided process, the **beat match** panel,
@@ -137,9 +138,9 @@ start, and draws them before marking any:
   inside a section changes its kind to the chosen one.
 - Click inside a section to select it; its kind can be changed in the
   panel, and Delete removes it.
-- Keyboard: **Fill gap at playhead**, and moving the selected section's
-  edges by a frame, are menu commands with keys, so none of it needs a
-  drag.
+- Keyboard: F fills the gap at the playhead, and [ and ] move the
+  selected section's start and end to the playhead, so none of it needs a
+  drag. The same are buttons in the panel.
 
 Then each consistent section is marked as above, one after another. Once a
 consistent section is filled its edges snap to its first and last beats,
@@ -209,5 +210,13 @@ the pinned one), and wraps positions into the measure.
 4. Filling sections: grid, refining, ramps, reanalyze. Pure functions over
    an onset curve, unit tested. **Built** (`BeatFitting`, `BeatMatchAudio`).
 5. The beat match panel: waveform, transport, anchors and nudging, beat
-   editing, then sections.
+   editing, then sections. **Built** (`UI/BeatMatch/`): opened from a Music
+   clip's menu or the inspector. While it is open the editor is darkened
+   and disabled, the Timeline menu rests, and a click on the editor brings
+   the panel back; its undo is the editor's. Keys: Space plays, M drops a
+   beat or anchor at the playhead, ← → nudge the selected beat (⌥ one
+   sample, ⇧ 10 ms; without a selection they move the playhead a second),
+   ↑ ↓ select the previous and next beat, Delete, L loops, Return fills,
+   ⌘= ⌘- ⌘0 zoom. Not yet tried on screen: drag feel, the dimming, and
+   focus moving between the panel and the editor.
 6. Timeline thinning by measures, and the Music-only picker. **Built.**

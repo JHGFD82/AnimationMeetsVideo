@@ -23,6 +23,7 @@ struct EditorView: View {
     @State private var annotations = AnnotationModel()
     @State private var externalDisplay = ExternalDisplayController()
     @State private var renderer = RenderScheduler()
+    @State private var beatMatch = BeatMatchController()
 
     init(
         project: Binding<EditingProject>,
@@ -66,6 +67,21 @@ struct EditorView: View {
             }
             .environment(renderer)
         }
+        // While a song is beat matched the editor is darkened and takes no
+        // input; a click on it brings the panel back.
+        .disabled(beatMatch.isActive)
+        .overlay {
+            if beatMatch.isActive {
+                Color.black.opacity(0.55)
+                    .contentShape(Rectangle())
+                    .onTapGesture { beatMatch.bringToFront() }
+                    .accessibilityLabel("Beat match is open")
+                    .accessibilityHint("Bring the beat match panel to the front")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { beatMatch.bringToFront() }
+            }
+        }
+        .environment(beatMatch)
         .background(Design.Surface.base.color)
         // A picture can only be judged against a neutral dim surround, so
         // the editor is dark whatever the system appearance is. See
@@ -76,14 +92,18 @@ struct EditorView: View {
         .onChange(of: project.id) { _, _ in
             activeTimelineID = project.rootTimelineID
             selection = nil
+            beatMatch.close()
         }
         .onChange(of: project) { _, newValue in
             history.projectDidChange(newValue)
             keepViewStateValid(for: newValue)
+            beatMatch.update(project: newValue)
         }
         .onChange(of: AssetAnalysis.inputs(of: project)) { _, _ in analysis.update(with: project) }
         .onChange(of: packageURL, initial: true) { _, url in renderer.packageURL = url }
         .onAppear {
+            beatMatch.onEdit = { change in change(&project) }
+            beatMatch.onOpen = { [playback] in playback.player.pause() }
             connectHistory()
             analysis.projectSource = { project }
             analysis.update(with: project)
