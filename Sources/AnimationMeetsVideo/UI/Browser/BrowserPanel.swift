@@ -100,19 +100,21 @@ struct BrowserPanel: View {
                         .font(Design.Typeface.numericSmall)
                         .foregroundStyle(Design.textSecondary)
                 }
+                // The most thumbnails on the left, one per clip on the right.
+                let last = Double(ThumbnailInterval.allCases.count - 1)
                 Slider(
                     value: Binding(
-                        get: { Double(interval.rawValue) },
-                        set: { interval = ThumbnailInterval(rawValue: Int($0.rounded())) ?? .all }
+                        get: { last - Double(interval.rawValue) },
+                        set: { interval = ThumbnailInterval(rawValue: Int((last - $0).rounded())) ?? .all }
                     ),
-                    in: 0...Double(ThumbnailInterval.allCases.count - 1),
+                    in: 0...last,
                     step: 1
                 ) {
                     Text("Time per thumbnail")
                 } minimumValueLabel: {
-                    Text("All")
-                } maximumValueLabel: {
                     Text("1 s")
+                } maximumValueLabel: {
+                    Text("All")
                 }
                 .labelsHidden()
                 .accessibilityValue(interval.title)
