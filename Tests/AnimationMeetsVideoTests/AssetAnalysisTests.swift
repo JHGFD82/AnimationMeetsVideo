@@ -95,12 +95,23 @@ import Testing
         first.update(with: video)
         try await waitUntilIdle(first, expecting: 1)
 
-        // As when the same file is imported again under its earlier ID.
+        // As when the same file is imported again under its earlier ID. Its
+        // saved results are read first, and only then is anything analyzed.
         let again = AssetAnalysis()
+        let analyzed = Mutex(0)
+        let live = again.backend
+        again.backend.captureReference = { analyzed.increment(); return try await live.captureReference($0, $1) }
+        again.backend.scoreFrames = { analyzed.increment(); return try await live.scoreFrames($0, $1) }
+        again.backend.capturePictures = { analyzed.increment(); return try await live.capturePictures($0, $1, $2) }
+        again.backend.detectBeats = { analyzed.increment(); return try await live.detectBeats($0, $1) }
         again.reset(packageURL: package)
         again.update(with: video)
+        #expect(again.isLoadingSaved)
+        for _ in 0..<2000 where again.isLoadingSaved || !again.progress.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        try await Task.sleep(for: .milliseconds(50))
 
         #expect(again.progress.isEmpty)
+        #expect(analyzed.value == 0)
         #expect(again.tracks[id] == first.tracks[id])
         #expect(again.references[id] != nil)
         #expect(again.thumbnailed == [id])
@@ -838,6 +849,81 @@ final class Gate: @unchecked Sendable {
 
         #expect(analysis.references[id] == nil)
         #expect(analysis.unsavedReferences.isEmpty)
+    }
+
+    // MARK: Reading the package
+
+    @Test func resettingDuringAReadDropsWhatItFound() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let gate = Gate()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
+        let analysis = AssetAnalysis()
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [9]) }
+        let live = analysis.backend
+        analysis.backend.readSaved = { package, id, identity, includingReference in
+            await gate.wait()
+            return await live.readSaved(package, id, identity, includingReference)
+        }
+        analysis.reset(packageURL: package)
+        analysis.update(with: video)
+        try await settle { gate.arrived == 1 }
+
+        analysis.reset()
+        gate.open()
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(analysis.tracks.isEmpty)
+        #expect(!analysis.isLoadingSaved)
+    }
+
+    @Test func aSlowReadDoesNotBlockTheMainActor() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
+        let analysis = AssetAnalysis()
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [9]) }
+        analysis.reset(packageURL: package)
+        // A slow disk: something ahead of the read in the package's queue.
+        let slow = Task {
+            try await PackageCoordinator.shared.run(on: [package]) { usleep(400_000) }
+        }
+        try await Task.sleep(for: .milliseconds(20))
+
+        analysis.update(with: video)
+        var heartbeats = 0
+        let start = ContinuousClock.now
+        while analysis.isLoadingSaved, ContinuousClock.now - start < .seconds(5) {
+            heartbeats += 1
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try await slow.value
+
+        #expect(heartbeats >= 20)
+        #expect(analysis.tracks[id]?.scores == [1])
+    }
+
+    @Test func aScoreRetiredWhileAReadWasQueuedIsNotReadBack() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
+        let analysis = AssetAnalysis()
+        let counter = Mutex(0)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(8 + counter.increment())]) }
+        analysis.reset(packageURL: package)
+        analysis.update(with: video)
+
+        // Re-detect before the first read is back.
+        analysis.reanalyze(video.clips[0], in: video)
+        try await settle { analysis.tracks[id]?.scores == [9] && analysis.progress.isEmpty && !analysis.isLoadingSaved }
+
+        #expect(counter.value == 1)
     }
 
     @Test func progressThatIsNotANumberOrOutOfRangeNeverReachesTheUI() async throws {

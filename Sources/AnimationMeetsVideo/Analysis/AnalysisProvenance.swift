@@ -92,3 +92,5 @@ enum CachedResult<Value> {
         return nil
     }
 }
+
+extension CachedResult: Sendable where Value: Sendable {}

@@ -229,7 +229,14 @@ they were asked. Atomic writes keep each file whole but don't order writes
 against each other: without the queue a deletion could finish before an
 older write of the same file and let it come back, and Save As could copy
 `Reference/` while a result was half-way in. An operation on two packages
-(Save As) waits on both. Replacing an existing package and marking backups
+(Save As) waits on both. Reading saved analysis results goes through the same queue, away from the
+main actor, and is an explicit phase: `AssetAnalysis` decides what an asset
+still needs only after its saved results have been read and checked, so what
+the package already holds is never analyzed twice, and a read can't see a
+result whose retirement was already asked for. The scorer, reference
+capture, picture capture and beat detector do their decoding and arithmetic
+on background tasks or the sample-reading queue, not on the main actor.
+Replacing an existing package and marking backups
 as seen are not queued, since no save of that package can be running then.
 
 ## Live reload

@@ -120,6 +120,13 @@ final class AssetAnalysis {
         var scoreFrames: @Sendable (URL, @escaping Progress) async throws -> ChangeScoreTrack
         var capturePictures: @Sendable (URL, ChangeScoreTrack, @escaping Progress) async throws -> ReferenceThumbnails
         var detectBeats: @Sendable (URL, @escaping Progress) async throws -> BeatTrack
+        /// What the package holds for an asset, read away from the main actor
+        /// and in turn with everything else that changes the package. Scores and
+        /// beats are checked against `identity`; the reference and its pictures
+        /// are looked for only when `includingReference`.
+        var readSaved: @Sendable (_ package: URL, _ id: UUID, _ identity: FileStamp?, _ includingReference: Bool) async -> SavedAnalysis
+        /// Whether the media file is there, asked away from the main actor.
+        var fileExists: @Sendable (URL) async -> Bool
         /// Runs `body` against the package, through the `PackageCoordinator`
         /// so it happens in the order it was asked, relative to saves too.
         var perform: @Sendable (URL, @escaping @Sendable (URL) throws -> Void) async throws -> Void
@@ -133,11 +140,35 @@ final class AssetAnalysis {
                 )
             },
             detectBeats: { try await BeatDetector.detect(url: $0, progress: $1) },
+            readSaved: { package, id, identity, includingReference in
+                let read = try? await PackageCoordinator.shared.run(on: [package]) { () -> SavedAnalysis in
+                    var saved = SavedAnalysis()
+                    saved.scores = ProjectStore.readVerifiedChangeScores(for: id, in: package, identity: identity)
+                    saved.beats = ProjectStore.readVerifiedBeats(for: id, in: package, identity: identity)
+                    if includingReference {
+                        saved.reference = ProjectStore.readReference(for: id, in: package)
+                        saved.hasThumbnails = ProjectStore.hasThumbnails(for: id, in: package)
+                    }
+                    return saved
+                }
+                return read ?? SavedAnalysis()
+            },
+            fileExists: { url in
+                await Task.detached(priority: .utility) { FileManager.default.fileExists(atPath: url.path) }.value
+            },
             perform: { package, body in try await PackageCoordinator.shared.run(on: [package]) { try body(package) } }
         )
     }
 
     @ObservationIgnored var backend = Backend.live
+
+    /// What a package held for one asset when it was read.
+    struct SavedAnalysis: Sendable {
+        var scores: CachedResult<ChangeScoreTrack> = .absent
+        var beats: CachedResult<BeatTrack> = .absent
+        var reference: AssetReference?
+        var hasThumbnails = false
+    }
 
     // MARK: Job ownership
 
@@ -219,6 +250,13 @@ final class AssetAnalysis {
     @ObservationIgnored private var unavailable: [UUID: AnalyzedFile] = [:]
     /// Assets whose saved results were looked for in the package already.
     @ObservationIgnored private var checkedPackage: Set<UUID> = []
+    /// Assets whose saved results are being read right now, with the token of
+    /// that read. Nothing is decided about such an asset until the read is
+    /// back, so a result already on disk is not analyzed a second time.
+    @ObservationIgnored private var loading: [UUID: Int] = [:]
+    /// Why saved results were not used, by asset, as of the last read.
+    private(set) var rejectedResults: [UUID: [AnalysisKind: AnalysisRejection]] = [:]
+    @ObservationIgnored private var invalidationTasks: [Invalidation: Task<Void, Never>] = [:]
     /// The project last analyzed, checked again once the queue drains.
     @ObservationIgnored private var latestProject: EditingProject?
     /// The project as it is now, read when a job checks its inputs. Set by
@@ -266,6 +304,9 @@ final class AssetAnalysis {
         invalidationFailures = [:]
         thumbnailFailures = []
         checkedPackage = []
+        loading = [:]
+        rejectedResults = [:]
+        invalidationTasks = [:]
         referenceFailures = [:]
         beatFailures = [:]
         scoreSources = [:]
@@ -298,11 +339,14 @@ final class AssetAnalysis {
             let input = Self.input(of: clip)
             if let owner = owners[clip.id], owner.input != input { revoke(clip.id) }
             guard let url = clip.url, let file = input.file else { continue }
-            if let packageURL, checkedPackage.insert(clip.id).inserted {
-                loadSaved(for: clip, from: packageURL, includingScores: true)
-            }
             // Even while a job runs, so outdated results stop showing at once.
             discardStaleResults(of: clip, file: file)
+            // What the package already holds is read first, away from the main
+            // actor; the asset is looked at again once it is back.
+            if let packageURL, !checkedPackage.contains(clip.id) {
+                if loading[clip.id] == nil { beginLoad(for: clip, from: packageURL) }
+                continue
+            }
             if let missing = unavailable[clip.id] {
                 if missing == file { continue }
                 unavailable[clip.id] = nil
@@ -340,26 +384,56 @@ final class AssetAnalysis {
         stages[id] = nil
     }
 
-    /// Takes whatever the package already holds for an asset that has
-    /// nothing in memory, as for one imported again under the ID it had
-    /// before, so it isn't analyzed twice. Scores and beats are taken only
-    /// when their record says they came from the file the asset has now.
-    private func loadSaved(for clip: MediaClip, from packageURL: URL, includingScores: Bool) {
-        let id = clip.id
-        if includingScores, tracks[id] == nil,
-           case .valid(let saved, let source) = ProjectStore.readVerifiedChangeScores(for: id, in: packageURL, identity: clip.acceptedStamp) {
-            tracks[id] = saved
-            scoreSources[id] = ResultSource(path: nil, stamp: source)
+    /// Reads whatever the package already holds for an asset, as for one
+    /// imported again under the ID it had before, so it isn't analyzed twice.
+    /// Scores and beats are taken only when their record says they came from
+    /// the file the asset has now. The read is queued behind any retirement
+    /// of this asset's results already asked for, so it can't see them.
+    private func beginLoad(for clip: MediaClip, from package: URL) {
+        nextToken += 1
+        let token = nextToken, id = clip.id
+        loading[id] = token
+        let expectedGeneration = generation, epoch = packageEpoch
+        let identity = clip.acceptedStamp, includingReference = !clip.referenceForgotten
+        let earlier = invalidationTasks.filter { $0.key.id == id }.map(\.value)
+        Task {
+            for task in earlier { await task.value }
+            let saved = await backend.readSaved(package, id, identity, includingReference)
+            guard generation == expectedGeneration, loading[id] == token else { return }
+            loading[id] = nil
+            if epoch == packageEpoch { publish(saved, for: id) }
+            // Either way, look at the asset again: with its results, or with
+            // the package it has now.
+            if let project = projectSource?() ?? latestProject { update(with: project) }
         }
-        if beats[id] == nil,
-           case .valid(let saved, let source) = ProjectStore.readVerifiedBeats(for: id, in: packageURL, identity: clip.acceptedStamp) {
-            beats[id] = saved
-            beatSources[id] = ResultSource(path: nil, stamp: source)
-        }
-        guard !clip.referenceForgotten else { return }
-        if references[id] == nil, let saved = ProjectStore.readReference(for: id, in: packageURL) { references[id] = saved }
-        if ProjectStore.hasThumbnails(for: id, in: packageURL) { thumbnailed.insert(id) }
     }
+
+    /// Takes what a read found, for what has nothing in memory yet.
+    private func publish(_ saved: SavedAnalysis, for id: UUID) {
+        checkedPackage.insert(id)
+        switch saved.scores {
+        case .valid(let track, let source) where tracks[id] == nil:
+            tracks[id] = track
+            scoreSources[id] = ResultSource(path: nil, stamp: source)
+        case .rejected(let reason): rejectedResults[id, default: [:]][.scores] = reason
+        default: break
+        }
+        switch saved.beats {
+        case .valid(let track, let source) where beats[id] == nil:
+            beats[id] = track
+            beatSources[id] = ResultSource(path: nil, stamp: source)
+        case .rejected(let reason): rejectedResults[id, default: [:]][.beats] = reason
+        default: break
+        }
+        // Read before a later Forget Original, so it is checked again here.
+        let forgotten = (projectSource?() ?? latestProject)?.clips.first { $0.id == id }?.referenceForgotten ?? false
+        guard !forgotten else { return }
+        if references[id] == nil, let reference = saved.reference { references[id] = reference }
+        if saved.hasThumbnails { thumbnailed.insert(id) }
+    }
+
+    /// True while saved results are being read.
+    var isLoadingSaved: Bool { !loading.isEmpty }
 
     /// Drops scores and beats found in a file the asset no longer uses (and
     /// beats in one that has lost its sound), so they are not shown and are
@@ -403,11 +477,12 @@ final class AssetAnalysis {
     private func persistInvalidation(_ key: Invalidation) {
         guard let package = packageURL, let revision = pendingInvalidations[key] else { return }
         let epoch = packageEpoch
-        Task {
+        invalidationTasks[key] = Task {
             let failure = await attemptReporting(on: package) { package in
                 try ProjectStore.invalidate(key.kind, for: key.id, in: package)
             }
             guard epoch == packageEpoch, pendingInvalidations[key] == revision else { return }
+            invalidationTasks[key] = nil
             if let failure {
                 invalidationFailures[key] = failure
             } else {
@@ -438,10 +513,9 @@ final class AssetAnalysis {
     func reanalyze(_ clip: MediaClip, in project: EditingProject) {
         let id = clip.id
         revoke(id)
-        // Whatever else the package holds is read now; the score is not.
-        if let packageURL, checkedPackage.insert(id).inserted {
-            loadSaved(for: clip, from: packageURL, includingScores: false)
-        }
+        // A read already under way may carry the old score; it is dropped,
+        // and the next one is queued behind the retirement.
+        loading[id] = nil
         discardResult(.scores, of: id)
         update(with: project)
     }
@@ -606,7 +680,9 @@ final class AssetAnalysis {
         defer { release(lease) }
         let source = ResultSource(path: job.file.path, stamp: job.file.stamp)
         // An offline file can't be analyzed, and isn't a failure: it waits.
-        guard FileManager.default.fileExists(atPath: job.url.path) else {
+        let present = await backend.fileExists(job.url)
+        guard stillValid(lease) else { return }
+        guard present else {
             if let file = owners[id]?.input.file { unavailable[id] = file }
             return
         }
