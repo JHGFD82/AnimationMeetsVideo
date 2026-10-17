@@ -66,11 +66,11 @@ struct TimelineView: View {
     /// The chosen zoom, or nil while the whole timeline is fitted to the
     /// window. Kept in points per second, not relative to the fit, so
     /// moving a clip past the end doesn't rescale everything.
-    @State private var zoomedPixelsPerSecond: CGFloat?
-    @State private var scrollX: CGFloat = 0
-    @State private var trackAreaWidth: CGFloat = 800
+    @State var zoomedPixelsPerSecond: CGFloat?
+    @State var scrollX: CGFloat = 0
+    @State var trackAreaWidth: CGFloat = 800
     /// Layers showing their volume under their clips.
-    @State private var volumeRevealed: Set<UUID> = []
+    @State var volumeRevealed: Set<UUID> = []
     /// Layers showing their video clips' linked audio.
     @State private var audioRevealed: Set<UUID> = []
     /// Layers whose sound shows each channel apart: the clips of sound
@@ -78,14 +78,14 @@ struct TimelineView: View {
     @State private var channelsRevealed: Set<UUID> = []
     /// Which areas show, how they share the height, and each one's layer
     /// height (its vertical zoom).
-    @AppStorage("timelineAreaLayout") private var areaLayout = TimelineAreaLayout()
+    @AppStorage("timelineAreaLayout") var areaLayout = TimelineAreaLayout()
     /// Area heights when a drag of the boundary between two areas began.
     @State private var boundaryDragStart: [LayerKind: CGFloat]?
-    @State private var geometryStore = TimelineGeometryStore()
-    @State private var autoScroll = TimelineAutoScroll()
+    @State var geometryStore = TimelineGeometryStore()
+    @State var autoScroll = TimelineAutoScroll()
     /// What the layer names column offers while a clip or media is dragged
     /// over it; nil otherwise.
-    @State private var newLayerHover: NewLayerHover?
+    @State var newLayerHover: NewLayerHover?
     @State private var showingViewOptions = false
     /// The layer whose beats are shown. Only layers that still have beats are
     /// offered, so a deleted layer simply stops matching and markers vanish.
@@ -95,27 +95,27 @@ struct TimelineView: View {
     /// scroll, and a long song has thousands of beats to collect and sort.
     @State private var beatMarkers: [BeatMarker] = []
     /// The layer whose header is being dragged, and how far.
-    @State private var layerDrag: (id: UUID, dy: CGFloat)?
+    @State var layerDrag: (id: UUID, dy: CGFloat)?
     /// The layer of a clip being dragged, drawn above the others so the
     /// clip stays visible over the layer it is moving to.
     @State private var draggingClipLayerID: UUID?
     /// Clips moving aside for the clip being dragged, by layer.
-    @State private var pushedClips: (layerID: UUID, clips: [UUID: PushedClip])?
+    @State var pushedClips: (layerID: UUID, clips: [UUID: PushedClip])?
     /// The incoming clip of the joining transition whose footage is open.
     @State private var expandedJoint: UUID?
     @State private var headerBarHeight: CGFloat = 32
     /// The layer selected by its header, for Delete. Selecting a clip clears it.
-    @State private var selectedLayerID: UUID?
-    @State private var tool: TimelineTool = .arrow
+    @State var selectedLayerID: UUID?
+    @State var tool: TimelineTool = .arrow
     /// The section selected in the lane under the ruler, for Delete.
-    @State private var selectedSectionID: UUID?
-    @AppStorage("snapping") private var snapping = true
+    @State var selectedSectionID: UUID?
+    @AppStorage("snapping") var snapping = true
     /// Whether the view pages along with the playhead while playing.
     @AppStorage("followsPlayhead") private var followsPlayhead = true
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
     @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
-    @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
+    @Environment(RenderScheduler.self) var renderer: RenderScheduler?
     /// Where a drag in progress snapped, drawn as a line across the layers.
     @State private var snapIndicator: CMTime?
 
@@ -145,7 +145,7 @@ struct TimelineView: View {
     /// Everything one layer shows, top to bottom. The header column and the
     /// track area lay out the same rows, so this is each layer's height in
     /// both.
-    private func blockHeight(of layer: TimelineLayer) -> CGFloat {
+    func blockHeight(of layer: TimelineLayer) -> CGFloat {
         clipRowHeight(of: layer)
             + (shownJoint(in: layer) != nil ? TransitionFootageLane.height : 0)
             + (showsLinkedAudio(of: layer) ? audioLaneHeight(of: layer) : 0)
@@ -154,12 +154,12 @@ struct TimelineView: View {
     }
 
     /// The layers an area shows, top to bottom.
-    private func areaLayers(_ kind: LayerKind) -> [TimelineLayer] {
+    func areaLayers(_ kind: LayerKind) -> [TimelineLayer] {
         timeline.layers.filter { $0.kind == kind }
     }
 
     /// Where each of `layers` starts, from the top of its area.
-    private func tops(of layers: [TimelineLayer]) -> [CGFloat] {
+    func tops(of layers: [TimelineLayer]) -> [CGFloat] {
         var tops: [CGFloat] = []
         var y: CGFloat = 0
         for layer in layers {
@@ -200,14 +200,14 @@ struct TimelineView: View {
         guard layer.kind != .video, showsChannels(of: layer) else { return height }
         return max(height, Self.channelBandHeight) * 2
     }
-    private let zoomStep: CGFloat = 1.5
+    let zoomStep: CGFloat = 1.5
 
     /// Wider while a volume row is showing, to fit its values.
     private var labelColumnWidth: CGFloat {
         timeline.layers.contains { showsVolume(of: $0) } ? 300 : 150
     }
 
-    private func showsVolume(of layer: TimelineLayer) -> Bool {
+    func showsVolume(of layer: TimelineLayer) -> Bool {
         volumeRevealed.contains(layer.id) && hasProperties(layer)
     }
 
@@ -256,7 +256,7 @@ struct TimelineView: View {
             set: { chosenBeatLayerID = $0 }
         )
     }
-    private func viewport(width: CGFloat) -> TimelineViewport {
+    func viewport(width: CGFloat) -> TimelineViewport {
         TimelineViewport(
             durationSeconds: timeline.duration.seconds,
             frameRate: timeline.frameRate,
@@ -268,11 +268,11 @@ struct TimelineView: View {
 
     /// The viewport as last laid out, for actions that start outside the
     /// layout pass (buttons, keys, the slider).
-    private var currentViewport: TimelineViewport { viewport(width: trackAreaWidth) }
+    var currentViewport: TimelineViewport { viewport(width: trackAreaWidth) }
 
     /// Where the playhead is now: the player's time while it plays, which
     /// `playheadTime` doesn't follow, else the parked time.
-    private var livePlayheadTime: CMTime {
+    var livePlayheadTime: CMTime {
         playback.isPlaying ? playback.player.currentTime() : playheadTime
     }
 
@@ -611,121 +611,6 @@ struct TimelineView: View {
         }
     }
 
-    // MARK: - Layer and clip dragging
-
-    /// Where a layer dragged by `dy` would go among the layers of its
-    /// area: the number of others whose middle is above its middle.
-    private func dropPosition(forLayer id: UUID, dy: CGFloat) -> Int? {
-        guard let kind = timeline.layer(id: id)?.kind else { return nil }
-        let layers = areaLayers(kind)
-        let tops = tops(of: layers)
-        guard let from = layers.firstIndex(where: { $0.id == id }) else { return nil }
-        let middle = tops[from] + blockHeight(of: layers[from]) / 2 + dy
-        return layers.indices.filter { index in
-            index != from && tops[index] + blockHeight(of: layers[index]) / 2 < middle
-        }.count
-    }
-
-    /// A line where a layer dragged in this area will land.
-    @ViewBuilder
-    private func layerDropIndicator(_ kind: LayerKind) -> some View {
-        if let drag = layerDrag, timeline.layer(id: drag.id)?.kind == kind,
-           let position = dropPosition(forLayer: drag.id, dy: drag.dy) {
-            let layers = areaLayers(kind)
-            let tops = tops(of: layers)
-            let others = layers.indices.filter { layers[$0].id != drag.id }
-            let y = position < others.count
-                ? tops[others[position]]
-                : tops.last.map { $0 + blockHeight(of: layers[layers.count - 1]) } ?? 0
-            Rectangle()
-                .fill(Design.accent)
-                .frame(height: 2)
-                .shadow(color: Design.accent.opacity(0.7), radius: 4)
-                .offset(y: y - 1)
-                .allowsHitTesting(false)
-        }
-    }
-
-    private func endLayerDrag(_ id: UUID, dy: CGFloat) {
-        if let kind = timeline.layer(id: id)?.kind,
-           let position = dropPosition(forLayer: id, dy: dy),
-           position != areaLayers(kind).firstIndex(where: { $0.id == id }) {
-            onMoveLayerTo(id, position)
-        }
-        layerDrag = nil
-    }
-
-    /// Where a clip dragged with the pointer at `pointer` (window
-    /// coordinates) and asked to start at `start` lands: on the layer
-    /// under the pointer when that layer can take it, otherwise on its own
-    /// layer. Layers are found by where they are on screen, since each
-    /// area scrolls on its own.
-    private func resolveMove(_ clip: TimelineClip, from layerID: UUID, pointer: CGPoint, to start: CMTime) -> ClipMovePreview? {
-        let rows = geometryStore.layerRows
-        guard let fromRow = rows[layerID], let fromLayer = timeline.layer(id: layerID) else { return nil }
-        // Over the layer names: onto a new layer, keeping its time.
-        let column = geometryStore.namesColumn
-        if column.contains(pointer) {
-            let hover = NewLayerHover(audio: project.isAudioOnly(clip), pointerY: pointer.y, in: column)
-            return ClipMovePreview(start: clip.startOffset, layerID: nil, offsetY: 0, newLayer: hover.hovered)
-        }
-        let target = timeline.layers.first { layer in
-            guard layer.id != layerID, let row = rows[layer.id],
-                  // A row scrolled out of its area's view isn't under the pointer.
-                  geometryStore.areas[layer.kind]?.contains(pointer) == true
-            else {
-                return false
-            }
-            return pointer.y >= row.minY && pointer.y < row.maxY
-        }
-        if let target, let landed = project.resolvedMove(ofMoving: clip.id, in: timelineID, layer: layerID, onto: target.id, to: start),
-           let targetRow = rows[target.id] {
-            return ClipMovePreview(
-                start: landed.start, layerID: target.id, offsetY: targetRow.minY - fromRow.minY,
-                pushed: pushed(on: target, by: landed, excluding: clip.id)
-            )
-        }
-        // Over the empty part of another area that takes it, below its
-        // layers: onto a new layer there, where it was dragged to. This is
-        // how detached sound goes from the Sound area to Music.
-        if target == nil, let kind = emptyAreaKind(at: pointer), kind != fromLayer.kind,
-           project.layerKind(kind, accepts: clip) {
-            return ClipMovePreview(start: CMTimeMaximum(.zero, start), layerID: nil, offsetY: 0, newLayer: kind)
-        }
-        return project.resolvedMove(ofMoving: clip.id, in: timelineID, layer: layerID, to: start).map {
-            ClipMovePreview(start: $0.start, layerID: nil, offsetY: 0, pushed: pushed(on: fromLayer, by: $0, excluding: clip.id))
-        }
-    }
-
-    /// The area whose empty space, below its layers, is under the pointer.
-    private func emptyAreaKind(at pointer: CGPoint) -> LayerKind? {
-        guard let kind = areaLayout.shown.first(where: { geometryStore.areas[$0]?.contains(pointer) == true }) else { return nil }
-        let onLayer = areaLayers(kind).contains { geometryStore.layerRows[$0.id]?.contains(pointer) == true }
-        return onLayer ? nil : kind
-    }
-
-    /// Shows what a clip drag from `layerID` will do, or stops with nil.
-    private func showMovePreview(_ preview: ClipMovePreview?, from layerID: UUID) {
-        let hover = preview?.newLayer.map(NewLayerHover.init(hovering:))
-        if hover != newLayerHover { newLayerHover = hover }
-        let next = preview.flatMap { preview in
-            preview.pushed.isEmpty ? nil : (layerID: preview.layerID ?? layerID, clips: preview.pushed)
-        }
-        if next?.layerID != pushedClips?.layerID || next?.clips != pushedClips?.clips {
-            pushedClips = next
-        }
-    }
-
-    /// The clips on `layer` that `move` pushes right, and where to.
-    private func pushed(on layer: TimelineLayer, by move: ClipMove, excluding movingID: UUID) -> [UUID: PushedClip] {
-        guard move.push > .zero else { return [:] }
-        var pushed: [UUID: PushedClip] = [:]
-        for clip in layer.clips where clip.id != movingID && clip.startOffset >= move.pushFrom {
-            pushed[clip.id] = PushedClip(from: clip.startOffset, to: CMTimeAdd(clip.startOffset, move.push))
-        }
-        return pushed
-    }
-
     private func layerHeaders(_ kind: LayerKind, frameTime: CMTime) -> some View {
         let layers = areaLayers(kind)
         return VStack(alignment: .leading, spacing: 0) {
@@ -1011,134 +896,6 @@ struct TimelineView: View {
 
     // MARK: - Zoom and scrub
 
-    /// Pinch and Option-scroll zoom about the pointer.
-    private func zoom(_ laidOut: TimelineViewport, by factor: CGFloat, aboutX x: CGFloat) {
-        // Pinch events arrive faster than layout; build on the newest state.
-        let viewport = viewport(width: laidOut.width)
-        apply(viewport.zoomed(to: viewport.pixelsPerSecond * factor, keeping: viewport.seconds(atX: x), atX: x))
-    }
-
-    /// A vertical pinch: the layers of the area under the pointer grow or
-    /// shrink, and no other area's do.
-    private func zoomLayerHeight(by factor: CGFloat, at pointer: CGPoint) {
-        guard let kind = areaLayout.shown.first(where: { geometryStore.areas[$0]?.contains(pointer) == true }) else { return }
-        areaLayout.setLayerHeight(kind, areaLayout.layerHeight(kind) * factor)
-    }
-
-    /// The zoom buttons, keys and slider zoom about the playhead: it stays
-    /// where it is on screen, or comes to the middle if it was out of view.
-    private func zoomAroundPlayhead(to pixelsPerSecond: CGFloat) {
-        let viewport = currentViewport
-        let seconds = livePlayheadTime.seconds
-        let x = viewport.x(atSeconds: seconds)
-        let anchorX = (0...viewport.width).contains(x) ? x : viewport.width / 2
-        apply(viewport.zoomed(to: pixelsPerSecond, keeping: seconds, atX: anchorX))
-    }
-
-    private func zoomAroundPlayhead(by factor: CGFloat) {
-        zoomAroundPlayhead(to: currentViewport.pixelsPerSecond * factor)
-    }
-
-    private func apply(_ zoom: (pixelsPerSecond: CGFloat?, scrollX: CGFloat)) {
-        zoomedPixelsPerSecond = zoom.pixelsPerSecond
-        scrollX = zoom.pixelsPerSecond == nil ? 0 : zoom.scrollX
-    }
-
-    /// Scrolls so `time` sits just inside the left edge: a page turn, as
-    /// when playback runs off the right of the view.
-    private func page(to time: CMTime) {
-        let viewport = currentViewport
-        scrollX = CGFloat(time.seconds) * viewport.pixelsPerSecond - viewport.width * 0.05
-    }
-
-    /// Lets drags at the edges of the tracks scroll them (`TimelineAutoScroll`).
-    private func configureAutoScroll() {
-        autoScroll.scrollBy = { distance in
-            let before = currentViewport.scrollX
-            scrollX = before + distance
-            return currentViewport.scrollX - before
-        }
-        // The tracks start where the names column ends.
-        autoScroll.trackSpan = {
-            let start = geometryStore.namesColumn.maxX
-            return start...(start + trackAreaWidth)
-        }
-    }
-
-    /// Scrolls `time` to the middle of the view if it is out of view.
-    private func reveal(_ time: CMTime) {
-        let viewport = currentViewport
-        let x = viewport.x(atSeconds: time.seconds)
-        guard x < 0 || x > viewport.width else { return }
-        scrollX = CGFloat(time.seconds) * viewport.pixelsPerSecond - viewport.width / 2
-    }
-
-    /// Retiming a clip can change the timeline's length enormously (a
-    /// crawling clip), and a fitted view would rescale to match. Time edits
-    /// pin the zoom the view had instead, until Fit is chosen.
-    private func keepZoomThroughRetiming(from old: Timeline, to new: Timeline) {
-        guard zoomedPixelsPerSecond == nil, old.id == new.id, old.duration != new.duration else { return }
-        func times(_ timeline: Timeline) -> [UUID: ClipTime] {
-            Dictionary(timeline.layers.flatMap(\.clips).map { ($0.id, $0.time) }, uniquingKeysWith: { first, _ in first })
-        }
-        guard times(old) != times(new) else { return }
-        zoomedPixelsPerSecond = TimelineViewport(
-            durationSeconds: old.duration.seconds,
-            frameRate: old.frameRate,
-            width: trackAreaWidth,
-            requestedPixelsPerSecond: nil,
-            requestedScrollX: 0
-        ).pixelsPerSecond
-    }
-
-    /// What decides whether to fit the timeline to a song dragged in: the
-    /// clip, when a music clip is the only one on the timeline, and how
-    /// many clips there are.
-    private struct SoleMusic: Equatable {
-        var clipID: UUID?
-        var clipCount: Int
-    }
-
-    private var soleMusic: SoleMusic {
-        let clips = timeline.layers.flatMap { layer in layer.clips.map { (layer.kind, $0.id) } }
-        let sole = clips.count == 1 && clips[0].0 == .music ? clips[0].1 : nil
-        return SoleMusic(clipID: sole, clipCount: clips.count)
-    }
-
-    private func fitToWindow() {
-        zoomedPixelsPerSecond = nil
-        scrollX = 0
-    }
-
-    private var zoomFractionBinding: Binding<Double> {
-        Binding(
-            get: { currentViewport.zoomFraction },
-            set: { zoomAroundPlayhead(to: currentViewport.pixelsPerSecond(atZoomFraction: $0)) }
-        )
-    }
-
-    /// Only moves the playhead — per-clip selection and repositioning are
-    /// owned by each clip block's own gesture in `LayerClipRow`, which sits
-    /// above this and so claims clicks on clips first. The playhead lands
-    /// on frames.
-    private func scrubGesture(in viewport: TimelineViewport) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in scrub(atX: value.location.x, in: viewport) }
-            .onEnded { value in scrub(atX: value.location.x, in: viewport) }
-    }
-
-    /// The same for views laid out across the whole span, whose x is in
-    /// unscrolled content coordinates.
-    private func scrub(atX x: CGFloat, in viewport: TimelineViewport) {
-        let seconds = max(0, min(timeline.duration.seconds, viewport.seconds(atX: x)))
-        let time = CMTime(seconds: seconds, preferredTimescale: 600)
-        // With snapping on, the playhead snaps to clip edges and beat markers.
-        let snapped = snapping
-            ? project.snapTargets(in: timelineID, playhead: nil, markers: drawnBeats(viewport)).nearest(to: time, within: snapTolerance(viewport))
-            : nil
-        onScrub(timeline.snappedToFrame(snapped ?? time))
-    }
-
     private func sectionLane(viewport: TimelineViewport, targets: SnapTargets?) -> some View {
         let tolerance = snapTolerance(viewport)
         return SectionLane(
@@ -1169,11 +926,11 @@ struct TimelineView: View {
         )
     }
 
-    private func drawnBeats(_ viewport: TimelineViewport) -> [CMTime] {
+    func drawnBeats(_ viewport: TimelineViewport) -> [CMTime] {
         BeatMarkerOverlay.drawnMarkers(beatMarkers, pixelsPerSecond: viewport.pixelsPerSecond).map(\.time)
     }
 
-    private func snapTolerance(_ viewport: TimelineViewport) -> CMTime {
+    func snapTolerance(_ viewport: TimelineViewport) -> CMTime {
         CMTime(seconds: Double(snapDistance / max(viewport.pixelsPerSecond, 0.0001)), preferredTimescale: 600_000)
     }
 
@@ -1200,346 +957,8 @@ struct TimelineView: View {
         }
     }
 
-    private func deleteLayer(_ id: UUID) {
+    func deleteLayer(_ id: UUID) {
         if selectedLayerID == id { selectedLayerID = nil }
         onDeleteLayer(id)
-    }
-
-    /// Delete removes the selected layer, else the selected transition,
-    /// else the selected clip.
-    private func deleteSelection() -> Bool {
-        // The effects panel has the key while something in it is selected.
-        if showsEffects, effectsState.hasSelection { return false }
-        if let selectedSectionID, timeline.sections.contains(where: { $0.id == selectedSectionID }) {
-            onEditProject { $0.deleteSection(selectedSectionID, in: timelineID) }
-            self.selectedSectionID = nil
-            return true
-        }
-        if let selectedLayerID, timeline.layer(id: selectedLayerID) != nil {
-            deleteLayer(selectedLayerID)
-            return true
-        }
-        guard let selection, selection.timelineID == timelineID else { return false }
-        if let edge = selection.transitionEdge {
-            onRemoveTransition(selection.layerID, selection.timelineClipID, edge)
-        } else {
-            onDeleteClip(selection.layerID, selection.timelineClipID)
-        }
-        return true
-    }
-
-    /// P, S, R and T show only position, scale, rotation or opacity (pressing
-    /// the key again hides it); with Shift they add or remove that property
-    /// and keep the others. They act on the selected clip's layer, or on
-    /// every visual layer when nothing is selected.
-    private func handleKey(_ event: NSEvent) -> Bool {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if let handled = handleNavigationKey(event, flags: flags) { return handled }
-        // Delete and Forward Delete, without modifiers.
-        if [51, 117].contains(event.keyCode), flags.isDisjoint(with: [.command, .control, .option, .shift]) {
-            return deleteSelection()
-        }
-        // F9 eases, as in After Effects: Easy Ease, Shift for Ease In,
-        // Command-Shift for Ease Out.
-        if event.keyCode == 101, flags.isDisjoint(with: [.control, .option]) {
-            let preset: KeyframeEase.Preset = flags.contains(.shift)
-                ? (flags.contains(.command) ? .easeOut : .easeIn)
-                : .easyEase
-            return easeKeyframesAtPlayhead(preset)
-        }
-        guard flags.isDisjoint(with: [.command, .control, .option]),
-              let key = event.charactersIgnoringModifiers?.lowercased().first
-        else {
-            return false
-        }
-        switch key {
-        // Shift turns , and . into < and >: ten frames.
-        case ",": return nudgeSelection(byFrames: -1)
-        case ".": return nudgeSelection(byFrames: 1)
-        case "<": return nudgeSelection(byFrames: -10)
-        case ">": return nudgeSelection(byFrames: 10)
-        case "=", "+": zoomAroundPlayhead(by: zoomStep); return true
-        case "-": zoomAroundPlayhead(by: 1 / zoomStep); return true
-        case "\\": fitToWindow(); return true
-        default: break
-        }
-        if key == "e", flags == .shift {
-            showsEffects.toggle()
-            return true
-        }
-        if key == "n", !flags.contains(.shift) {
-            snapping.toggle()
-            return true
-        }
-        if let chosen = TimelineTool(shortcutKey: key), !flags.contains(.shift) {
-            tool = chosen
-            return true
-        }
-        if key == "l" { return toggleVolumeRows() }
-        return false
-    }
-
-    // MARK: - Playhead keys and the Timeline menu
-
-    /// What the Timeline menu does in this timeline. See `TimelineCommands`.
-    private var actions: TimelineActions {
-        TimelineActions(
-            togglePlayback: { playback.togglePlayback() },
-            step: { stepPlayhead(byFrames: $0) },
-            goToStart: { parkPlayhead(at: .zero) },
-            goToEnd: { parkPlayhead(at: timeline.duration) },
-            previousEdit: { _ = jumpToEdit(forward: false) },
-            nextEdit: { _ = jumpToEdit(forward: true) },
-            splitAtPlayhead: { _ = splitAtPlayhead() },
-            nudge: { _ = nudgeSelection(byFrames: $0) },
-            deleteSelection: { _ = deleteSelection() },
-            isSnapping: snapping,
-            toggleSnapping: { snapping.toggle() },
-            tool: tool,
-            setTool: { tool = $0 },
-            zoomIn: { zoomAroundPlayhead(by: zoomStep) },
-            zoomOut: { zoomAroundPlayhead(by: 1 / zoomStep) },
-            zoomToFit: { fitToWindow() },
-            renderNow: renderer.flatMap { renderer in renderer.canRenderNow ? { renderer.renderNow() } : nil }
-        )
-    }
-
-    /// ← and → step a frame (ten with Shift), ↑ and ↓ go to the previous or
-    /// next edit, Home and End to the start and end. Nil for other keys.
-    /// False, leaving the key alone, while a list or other control has the
-    /// keyboard, since it uses these keys itself.
-    private func handleNavigationKey(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool? {
-        let left: UInt16 = 123, right: UInt16 = 124, down: UInt16 = 125, up: UInt16 = 126
-        let home: UInt16 = 115, end: UInt16 = 119
-        guard [left, right, down, up, home, end].contains(event.keyCode),
-              flags.isDisjoint(with: [.command, .control, .option])
-        else {
-            return nil
-        }
-        guard !(event.window?.firstResponder is NSControl) else { return false }
-        let frames = flags.contains(.shift) ? 10 : 1
-        switch event.keyCode {
-        case left: stepPlayhead(byFrames: -frames)
-        case right: stepPlayhead(byFrames: frames)
-        case up: return jumpToEdit(forward: false)
-        case down: return jumpToEdit(forward: true)
-        case home: parkPlayhead(at: .zero)
-        default: parkPlayhead(at: timeline.duration)
-        }
-        return true
-    }
-
-    /// Pauses and puts the playhead at `time`, on a frame within the
-    /// timeline.
-    private func parkPlayhead(at time: CMTime) {
-        playback.player.pause()
-        let parked = timeline.snappedToFrame(CMTimeMinimum(CMTimeMaximum(.zero, time), timeline.duration))
-        onScrub(parked)
-        reveal(parked)
-    }
-
-    /// Pauses and moves the playhead `frames` frames, back when negative.
-    private func stepPlayhead(byFrames frames: Int) {
-        let from = timeline.snappedToFrame(livePlayheadTime)
-        parkPlayhead(at: CMTimeAdd(from, CMTimeMultiply(timeline.frameDuration, multiplier: Int32(clamping: frames))))
-    }
-
-    /// Moves the playhead to the nearest clip edge (or the timeline's end)
-    /// after it, or before it. False when there is none that way.
-    @discardableResult
-    private func jumpToEdit(forward: Bool) -> Bool {
-        let now = timeline.snappedToFrame(livePlayheadTime)
-        let edges = timeline.layers.flatMap { $0.clips.flatMap { [$0.startOffset, $0.endOffset] } } + [timeline.duration]
-        let frames = edges.map { timeline.snappedToFrame($0) }
-        guard let target = forward ? frames.filter({ $0 > now }).min() : frames.filter({ $0 < now }).max() else {
-            return false
-        }
-        parkPlayhead(at: target)
-        return true
-    }
-
-    /// Moves the selected clip `frames` frames, later when positive, by the
-    /// same rules as dragging it. False with no clip selected.
-    @discardableResult
-    private func nudgeSelection(byFrames frames: Int) -> Bool {
-        guard let selection, selection.timelineID == timelineID,
-              let clip = timeline.layer(id: selection.layerID)?.clips.first(where: { $0.id == selection.timelineClipID })
-        else {
-            return false
-        }
-        let distance = CMTimeMultiply(timeline.frameDuration, multiplier: Int32(clamping: frames))
-        onMoveClip(selection.layerID, clip.id, nil, CMTimeMaximum(.zero, CMTimeAdd(clip.startOffset, distance)))
-        return true
-    }
-
-    /// Splits at the playhead: the selected clip when the playhead is in
-    /// it, otherwise every clip the playhead is in, on every layer. False
-    /// when it is in none.
-    @discardableResult
-    private func splitAtPlayhead() -> Bool {
-        let time = timeline.snappedToFrame(livePlayheadTime)
-        func contains(_ clip: TimelineClip) -> Bool { time > clip.startOffset && time < clip.endOffset }
-        var targets: [(layerID: UUID, clipID: UUID)] = []
-        if let selection, selection.timelineID == timelineID,
-           let clip = timeline.layer(id: selection.layerID)?.clips.first(where: { $0.id == selection.timelineClipID }),
-           contains(clip) {
-            targets = [(selection.layerID, clip.id)]
-        } else {
-            for layer in timeline.layers {
-                for clip in layer.clips where contains(clip) { targets.append((layer.id, clip.id)) }
-            }
-        }
-        for target in targets { onBladeClip(target.layerID, target.clipID, time) }
-        return !targets.isEmpty
-    }
-
-    /// Eases the keyframes at the playhead in the property rows that are
-    /// showing, under the selected clip's layer or under every layer when
-    /// nothing is selected. False when there are none.
-    private func easeKeyframesAtPlayhead(_ preset: KeyframeEase.Preset) -> Bool {
-        let time = timeline.snappedToFrame(playheadTime)
-        let layers: [TimelineLayer]
-        if let selection, selection.timelineID == timelineID, let layer = timeline.layer(id: selection.layerID) {
-            layers = [layer]
-        } else {
-            layers = timeline.layers
-        }
-        var eased = false
-        // With the effects panel open, the selected clip's controls count.
-        if showsEffects, let selection, selection.timelineID == timelineID,
-           let clip = project.clipAndLayer(selection.timelineClipID, in: timelineID)?.clip {
-            var copy = clip
-            if copy.easeKeyframes(atTimelineTime: time, preset) {
-                onEditProject { $0.editClip(clip.id, in: timelineID) { $0 = copy } }
-                eased = true
-            }
-        }
-        for layer in layers {
-            if showsVolume(of: layer), layer.volume.keyframe(at: time) != nil {
-                onEditVolume(layer.id) { $0.applyEase(preset, at: time) }
-                eased = true
-            }
-        }
-        return eased
-    }
-
-    /// L shows volume, as levels in After Effects (pressing it again hides
-    /// it): each clip's as a line across it, and a Sound or Music layer's as
-    /// a row under it. Acts on the selected clip's layer, or on every layer
-    /// with sound when nothing is selected.
-    private func toggleVolumeRows() -> Bool {
-        let targets: [TimelineLayer]
-        if let selection, selection.timelineID == timelineID, let layer = timeline.layer(id: selection.layerID) {
-            targets = project.layerPlaysAudio(layer) ? [layer] : []
-        } else {
-            targets = timeline.layers.filter { project.layerPlaysAudio($0) }
-        }
-        guard !targets.isEmpty else { return false }
-        let hiding = targets.allSatisfy { volumeRevealed.contains($0.id) }
-        for layer in targets {
-            if hiding { volumeRevealed.remove(layer.id) } else { volumeRevealed.insert(layer.id) }
-        }
-        return true
-    }
-
-}
-
-/// The playhead drawn over the tracks. While playing it follows the player
-/// itself, so only this view redraws on each tick rather than the whole
-/// timeline; parked, it shows `parked`.
-private struct LivePlayheadRail: View {
-    let playback: PlaybackModel
-    let parked: CMTime
-    let viewport: TimelineViewport
-    /// Called with the playhead's time when it leaves the view while
-    /// playing (including when playing starts with it out of view), so the
-    /// timeline can page after it. Nil not to follow.
-    let onLeaveView: ((CMTime) -> Void)?
-    let snapX: CGFloat?
-    let height: CGFloat
-
-    var body: some View {
-        let playing = playback.isPlaying
-        let time = playing ? playback.currentTime : parked
-        let x = viewport.x(atSeconds: time.seconds)
-        // Checked here because this is the one view that sees every tick;
-        // the page turn itself is a scroll of the whole timeline.
-        let leftView = playing && onLeaveView != nil && (x < 0 || x > viewport.width)
-        PlayheadRail(
-            playheadX: x,
-            isPlayheadVisible: (-1...(viewport.width + 1)).contains(x),
-            snapX: snapX,
-            height: height
-        )
-        .frame(width: viewport.width, height: height)
-        .onChange(of: leftView) { _, left in
-            if left { onLeaveView?(time) }
-        }
-    }
-}
-
-/// The playhead's timecode in the timeline's header, following the player
-/// while it plays, like `LivePlayheadRail`.
-private struct PlayheadTimecode: View {
-    let playback: PlaybackModel
-    let parked: CMTime
-    let frameRate: Double
-
-    var body: some View {
-        Text((playback.isPlaying ? playback.currentTime : parked).timecode(frameRate: frameRate))
-            .font(Design.Typeface.numericSmall)
-            .foregroundStyle(Design.textSecondary)
-    }
-}
-
-/// Labels the per-layer columns, beside the ruler — currently just
-/// number/name, but reserved as the home for upcoming per-layer option
-/// controls (visibility, lock, etc.).
-struct TimelineColumnHeaderRow: View {
-    let height: CGFloat
-
-    var body: some View {
-        HStack(spacing: Design.Space.close) {
-            Color.clear.frame(width: 12)
-            Text("#")
-                .frame(width: 18, alignment: .trailing)
-            Text("Name")
-            Spacer()
-        }
-        .font(Design.Typeface.micro)
-        .foregroundStyle(Design.textTertiary)
-        .padding(.horizontal, Design.Space.step)
-        .padding(.bottom, Design.Space.tight)
-        .frame(height: height, alignment: .bottomLeading)
-    }
-}
-
-/// The slim row under an area's layers: scenes dropped here go on a new
-/// layer of the area's kind at the drop time. It says so while something
-/// is dragged over it, and is otherwise empty space.
-private struct NewLayerDropRow: View {
-    let height: CGFloat
-    let kind: LayerKind
-    let onDrop: ([SceneDragPayload], CGFloat) -> Bool
-
-    @State private var isTargeted = false
-
-    var body: some View {
-        Text(isTargeted ? "Drop here for a new \(kind.name.lowercased()) layer" : "")
-            .font(Design.Typeface.micro)
-            .foregroundStyle(Design.accent)
-            .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
-            .background(isTargeted ? Design.accent.opacity(0.14) : .clear)
-            .overlay {
-                if isTargeted {
-                    RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                        .strokeBorder(Design.accent, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                }
-            }
-            .contentShape(Rectangle())
-            .editorAnimation(Design.Motion.select, value: isTargeted)
-            .dropDestination(for: SceneDragPayload.self) { payloads, location in
-                onDrop(payloads, location.x)
-            } isTargeted: { isTargeted = $0 }
     }
 }
