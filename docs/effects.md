@@ -492,7 +492,7 @@ shows or hides it. Picking a tab is the only thing that changes it, apart
 from applying an effect to the selected clip, which shows the Effects tab.
 The Effects tab is resizable by its left edge.
 
-The **browser** at the right end of the timeline has tabs too: **Effects**
+The **Effects Library** at the right end of the timeline has tabs too: **Effects**
 (the library, grouped by category, Foundations first) and **Transitions**.
 One button in the timeline's header shows or hides it, and opening it
 changes nothing else. Drag an effect onto a clip or into the stack, or

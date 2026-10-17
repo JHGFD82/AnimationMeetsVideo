@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// The effects that can be added, grouped by category: a tab of the
-/// browser panel at the right end of the timeline. Effects are dragged onto a clip or into the stack in the effects
+/// Effects Library at the right end of the timeline. Effects are dragged onto a clip or into the stack in the effects
 /// panel, or double-clicked to add them to the selected clip.
-struct EffectsLibraryPanel: View {
+struct EffectsListPanel: View {
     @Binding var project: EditingProject
     let timelineID: UUID
     let selection: TimelineSelection?

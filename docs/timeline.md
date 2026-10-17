@@ -10,7 +10,7 @@ with a trackpad. What is not built is listed under
 The timeline sits under the library, viewer and inspector and spans the
 full width of the window: a label column on the left (layer number and
 name, and its volume row when shown), and the track area on the
-right with the ruler across its top. The browser (effects and
+right with the ruler across its top. The Effects Library (effects and
 transitions in tabs, [effects.md](effects.md#the-effects-panel)) takes the
 right end when its button in the header is on. The inspector and the
 effects list are tabs of the area beside the viewer.

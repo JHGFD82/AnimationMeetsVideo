@@ -44,7 +44,9 @@ Follow Google's change-description conventions for every commit.
     key: playback logic that is not a view.
   - `UI/`: SwiftUI views by area: `Editor/` (shell, toolbar, editor
     surface), `Timeline/` (with `Clips/` for what draws on one clip),
-    `Effects/` (effects panel), `Keyframes/` (graph editors), `Browser/`,
+    `Effects/` (effects panel), `EffectsLibrary/` (effects and transitions to
+    drag onto clips), `Keyframes/` (graph editors), `Browser/` (clips,
+    timelines and presets),
     `Inspector/`, `Viewer/`, `BeatMatch/`, `Replacement/`, `Design/`
     (design system and shared styling) and `Components/` for shared
     controls.

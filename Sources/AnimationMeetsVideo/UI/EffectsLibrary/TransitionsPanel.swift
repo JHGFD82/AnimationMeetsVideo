@@ -32,7 +32,7 @@ struct TransitionDragPayload: Transferable {
 }
 
 /// The transitions that can be dragged onto either end of a clip, grouped
-/// by what they do to the pictures: a tab of the browser panel.
+/// by what they do to the pictures: a tab of the Effects Library.
 struct TransitionsPanel: View {
     private let columns = [GridItem(.adaptive(minimum: 84), spacing: 8)]
 

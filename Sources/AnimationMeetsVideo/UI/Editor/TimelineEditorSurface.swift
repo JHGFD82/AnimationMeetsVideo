@@ -34,9 +34,9 @@ struct TimelineEditorSurface<Library: View>: View {
     /// As tall as the person makes it, not as tall as its layers need: its
     /// areas share whatever height it has and scroll the rest.
     @AppStorage("timelineHeight") private var timelineHeight: Double = 280
-    /// The browser at the right end of the timeline, and which tab it is on.
-    @AppStorage("showsBrowserPanel") private var showsBrowser = false
-    @AppStorage("browserTab") private var browserTab = BrowserTab.effects
+    /// The Effects Library at the right end of the timeline, and which tab it is on.
+    @AppStorage("showsEffectsLibrary") private var showsEffectsLibrary = false
+    @AppStorage("effectsLibraryTab") private var effectsLibraryTab = EffectsLibraryTab.effects
     /// The area beside the viewer, and which tab it is on. The tab only
     /// changes when the person picks one or an effect is applied.
     @AppStorage("showsSidePanel") private var showsSidePanel = true
@@ -227,10 +227,10 @@ struct TimelineEditorSurface<Library: View>: View {
                             .grooved(.leading)
                             .transition(.move(edge: .trailing))
                     }
-                    if showsBrowser {
-                        BrowserPanel(
+                    if showsEffectsLibrary {
+                        EffectsLibrary(
                             project: $project, timelineID: timelineID, selection: selection,
-                            state: effectsState, tab: $browserTab, onClose: { showsBrowser = false }
+                            state: effectsState, tab: $effectsLibraryTab, onClose: { showsEffectsLibrary = false }
                         )
                         .frame(width: 280)
                         .grooved(.leading)
@@ -238,7 +238,7 @@ struct TimelineEditorSurface<Library: View>: View {
                     }
                 }
                 .frame(height: resolvedTimelineHeight)
-                .editorAnimation(Design.Motion.panel, value: showsBrowser)
+                .editorAnimation(Design.Motion.panel, value: showsEffectsLibrary)
                 .editorAnimation(Design.Motion.panel, value: showsMeter)
             }
         }
@@ -427,7 +427,7 @@ struct TimelineEditorSurface<Library: View>: View {
                     project.setTransitionDuration(duration, at: edge, of: clipID, in: timelineID, layer: layerID)
                 },
                 onEditProject: { change in change(&project) },
-                showsBrowser: $showsBrowser,
+                showsEffectsLibrary: $showsEffectsLibrary,
                 showsSidePanel: $showsSidePanel,
                 showsEffects: Binding(
                     get: { showsSidePanel && sideTab == .effects },

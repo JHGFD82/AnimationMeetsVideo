@@ -55,7 +55,7 @@ struct TimelineView: View {
     let onSetTransitionDuration: (UUID, UUID, TransitionEdge, CMTime) -> Void
     /// Applies a change to the project, for the section lane.
     let onEditProject: ((inout EditingProject) -> Void) -> Void
-    @Binding var showsBrowser: Bool
+    @Binding var showsEffectsLibrary: Bool
     @Binding var showsSidePanel: Bool
     @Binding var showsEffects: Bool
     @Binding var showsMeter: Bool
@@ -340,12 +340,12 @@ struct TimelineView: View {
                 .toggleStyle(.button)
                 .help(areaLayout.showsSections ? "Hide the sections row" : "Show the sections row")
                 .accessibilityLabel("Sections row")
-                Toggle(isOn: $showsBrowser) {
+                Toggle(isOn: $showsEffectsLibrary) {
                     Image(systemName: "square.grid.2x2")
                 }
                 .toggleStyle(.button)
-                .help(showsBrowser ? "Hide the effects and transitions browser" : "Show the effects and transitions browser")
-                .accessibilityLabel("Effects and transitions browser")
+                .help(showsEffectsLibrary ? "Hide the Effects Library" : "Show the Effects Library")
+                .accessibilityLabel("Effects Library")
                 Button {
                     addAdjustmentLayer()
                 } label: {
