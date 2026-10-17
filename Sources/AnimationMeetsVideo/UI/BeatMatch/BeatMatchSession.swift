@@ -4,9 +4,10 @@ import Observation
 import SwiftUI
 
 /// One opening of the beat match panel for one song: its audio, a player
-/// of its own that plays the song alone with the tick, what is selected,
-/// and the zoom. The beat map itself stays in the project; edits go back
-/// through `onEdit`, so each is an undo step. See docs/beat-matching.md.
+/// of its own that plays the song alone with the ticks, what is selected,
+/// and the zoom. The panel works on a draft of the song's beat map, with
+/// an undo history of its own; nothing reaches the project until the
+/// person confirms. See docs/beat-matching.md.
 @MainActor @Observable
 final class BeatMatchSession {
     let assetID: UUID
@@ -19,9 +20,14 @@ final class BeatMatchSession {
     private(set) var audio: BeatMatchAudio?
     private(set) var loadProgress = 0.0
     private(set) var loadError: String?
-    /// The map as the project has it now.
+    /// The draft being edited.
     private(set) var map: BeatMap
-    @ObservationIgnored var onEdit: ((inout BeatMap) -> Void) -> Void = { _ in }
+    /// The map as the project had it when the panel opened.
+    let original: BeatMap
+    /// Whether confirming would change the project.
+    var isChanged: Bool { map != original }
+    /// The panel's own undo history, for the draft.
+    @ObservationIgnored let undoManager = UndoManager()
 
     // MARK: Transport
 
@@ -77,11 +83,13 @@ final class BeatMatchSession {
         duration = asset.originalDuration ?? asset.duration
         alignment = asset.alignmentOffset
         map = asset.beatMap
+        original = asset.beatMap
         isDrawing = asset.beatMap.usesSections && !asset.beatMap.sections.contains { !$0.pinnedBeats.isEmpty || $0.isConfirmed }
         player = AVPlayer(playerItem: AVPlayerItem(url: url))
         player.actionAtItemEnd = .pause
         clicks = BeatClickPlayer(player: player)
         clicks.isEnabled = true
+        player.volume = Float(songVolume)
         selectedSectionID = asset.beatMap.sections.first { $0.kind == .consistent && !$0.isConfirmed }?.id
             ?? asset.beatMap.sections.first?.id
 
@@ -117,10 +125,17 @@ final class BeatMatchSession {
         statusObservation = nil
     }
 
-    /// The project's map changed, by an edit here or an undo.
-    func mapChanged(_ map: BeatMap) {
-        guard map != self.map else { return }
+    /// Puts the draft back to `map`, as an undo or redo does, and makes
+    /// the reverse undoable.
+    private func restore(_ map: BeatMap) {
+        let current = self.map
         self.map = map
+        undoManager.registerUndo(withTarget: self) { $0.restore(current) }
+        mapChanged()
+    }
+
+    /// Keeps the selection and ticks in step with the draft.
+    private func mapChanged() {
         if let id = selectedSectionID, map.section(id: id) == nil { selectedSectionID = map.sections.first?.id }
         // A lone section needs no choosing.
         if selectedSectionID == nil, map.sections.count == 1 { selectedSectionID = map.sections[0].id }
@@ -129,14 +144,29 @@ final class BeatMatchSession {
         refreshTicks()
     }
 
-    /// Changes the project's map, as one undo step, and gives what the
-    /// change returned.
+    /// Changes the draft at once, as one undo step, and gives what the
+    /// change returned. Being in place, a nudge or drop never shows the
+    /// old map for a frame.
     @discardableResult
-    private func edit<Result>(_ change: (inout BeatMap) -> Result) -> Result? {
+    private func edit<Result>(_ change: (inout BeatMap) -> Result) -> Result {
         message = nil
-        var result: Result?
-        onEdit { map in result = change(&map) }
+        let before = map
+        let result = change(&map)
+        if map != before {
+            undoManager.registerUndo(withTarget: self) { $0.restore(before) }
+            mapChanged()
+        }
         return result
+    }
+
+    /// The song's own level in the panel, apart from the timeline's mix.
+    nonisolated static let songVolumeKey = "beatMatchSongVolume"
+
+    var songVolume = UserDefaults.standard.object(forKey: BeatMatchSession.songVolumeKey) as? Double ?? 1 {
+        didSet {
+            player.volume = Float(songVolume)
+            UserDefaults.standard.set(songVolume, forKey: Self.songVolumeKey)
+        }
     }
 
     // MARK: Steps
@@ -217,6 +247,28 @@ final class BeatMatchSession {
 
     // MARK: Filling
 
+    /// Doubles the selected section's tempo by putting a beat between each
+    /// two; see `BeatFitting.doubled`.
+    func doubleTempo() {
+        guard let audio, let id = selectedSectionID else { return }
+        edit { map in
+            map.updateSection(id) { $0 = BeatFitting.doubled($0, curve: audio.curve, sampleRate: audio.sampleRate) }
+            map.recountPositions()
+        }
+    }
+
+    /// Halves the selected section's tempo by keeping every other beat.
+    func halveTempo() {
+        guard let id = selectedSectionID else { return }
+        edit { map in
+            map.updateSection(id) { $0 = BeatFitting.halved($0) }
+            map.recountPositions()
+        }
+    }
+
+    var canHalveTempo: Bool { selectedSection.map { BeatFitting.halvingParity(of: $0) != nil } ?? false }
+    var canDoubleTempo: Bool { (selectedTempo ?? .infinity) * 2 <= BeatFitting.fastestDoubled }
+
     /// The tempo of the selected section's beats, from their median gap.
     var selectedTempo: Double? {
         guard let section = selectedSection, section.isConfirmed,
@@ -261,12 +313,12 @@ final class BeatMatchSession {
         let id = edit { [duration, drawKind] map in
             map.drawSection(drawKind, from: Self.time(from), to: Self.time(to), duration: duration, snap: Self.time(snap))
         }
-        if let id = id ?? nil { selectedSectionID = id }
+        if let id { selectedSectionID = id }
     }
 
     func fillGap(at seconds: Double) {
         let id = edit { [duration, drawKind] map in map.fill(at: Self.time(seconds), with: drawKind, duration: duration) }
-        if let id = id ?? nil { selectedSectionID = id }
+        if let id { selectedSectionID = id }
     }
 
     func moveEdge(_ edge: BeatMap.Edge, of id: UUID, to seconds: Double, snap: Double) {
@@ -315,7 +367,7 @@ final class BeatMatchSession {
 
     func moveBeat(at time: CMTime, to seconds: Double) {
         let target = sampleTime(seconds)
-        if let moved = edit({ map in map.moveBeat(at: time, to: target) }) ?? nil { selectedBeat = moved }
+        if let moved = edit({ map in map.moveBeat(at: time, to: target) }) { selectedBeat = moved }
     }
 
     /// Moves the selected beat by `seconds`, landing on a sample.

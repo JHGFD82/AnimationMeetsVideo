@@ -20,6 +20,11 @@ and the beats they confirm are what the timeline uses.
 - The person marks one tempo for the whole song, or switches to
   **sections** at the start. Either way the result is a **beat map**: the
   song's beats, each with its place in the measure, saved with the project.
+- The panel works on a draft with its own undo. **Confirm** puts it on the
+  timeline as one undo step there, and turns on that song's beat markers
+  (the view options' picker chooses its Music layer). **Cancel**, or the
+  close button, leaves the timeline as it was, asking first if anything
+  changed, so a fill gone wrong never touches the project.
 - The person can come back at any time to move, add or delete beats,
   reanalyze a section, or start over.
 
@@ -205,8 +210,10 @@ beats per measure, unless a pinned beat in the section says otherwise.
 
 ## Hearing it
 
-Once a beat or anchor is placed, the panel's transport shows the tick's
-**pitch** and **volume**; before that there is nothing to tick on. The downbeat (position
+The panel's transport has the song's own **volume**, apart from the
+timeline's mix and remembered across launches. Once a beat or anchor is
+placed, it also shows the tick's **pitch** and **volume**; before that
+there is nothing to tick on. The downbeat (position
 1) plays an octave above the other beats. The same two settings are in the
 timeline's view options; they are one pair of settings, remembered across
 launches. The pitch slider stops at 2000 Hz, so the downbeat goes no higher
@@ -252,9 +259,13 @@ the pinned one), and wraps positions into the measure.
    left of the waveform, and resizing the panel keeps the same stretch of
    song in view. The waveform is drawn to the song's loudest sample and
    clipped to its area, and the panel's size is the window's alone (the
-   hosting view only sets its minimum). While it is open the editor is darkened
-   and disabled, the Timeline menu rests, and a click on the editor brings
-   the panel back; its undo is the editor's. Keys: Space plays, M drops a
+   hosting view only sets its minimum). The green zoom button widens the
+   panel to the screen and leaves its height alone. Over a section's edge
+   or a beat, the pointer is a resize arrow, since those are what a drag
+   moves; a section never moves as a whole. While it is open the editor is
+   darkened and disabled, the Timeline menu rests, and a click on the
+   editor brings the panel back. Edits change the draft in place, so a
+   nudge or drop never shows the old beat for a frame. Keys: Space plays, M drops a
    beat or anchor at the playhead, ← → nudge the selected beat (⌥ one
    sample, ⇧ 10 ms; without a selection they move the playhead a second),
    ↑ ↓ select the previous and next beat, Delete, L loops, Return fills,

@@ -15,7 +15,8 @@ import SwiftUI
 /// ⌘= and ⌘- zoom and ⌘0 fits.
 struct BeatMatchView: View {
     @Bindable var session: BeatMatchSession
-    let onDone: () -> Void
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
 
     @AppStorage(ClickToneSettings.frequencyKey) private var frequency = ClickToneSettings.defaultFrequency
     @AppStorage(ClickToneSettings.volumeKey) private var volume = ClickToneSettings.defaultVolume
@@ -69,6 +70,16 @@ struct BeatMatchView: View {
             .disabled(session.selectedBeat == nil)
             .help("Loop the two measures around the selected beat (L)")
             .accessibilityLabel("Loop around the selected beat")
+            HStack(spacing: Design.Space.close) {
+                Image(systemName: "music.note")
+                    .foregroundStyle(Design.textSecondary)
+                    .accessibilityHidden(true)
+                Slider(value: $session.songVolume, in: 0...1)
+                    .frame(width: 90)
+                    .help("The song's volume here; the timeline's mix is untouched")
+                    .accessibilityLabel("Song volume")
+                    .accessibilityValue("\(Int((session.songVolume * 100).rounded())) percent")
+            }
             // Nothing to tick on until a beat is placed.
             if session.hasBeats {
                 Toggle("Tick", isOn: $session.clicksOn)
@@ -134,12 +145,16 @@ struct BeatMatchView: View {
                 case .mark: markingControls
                 }
                 Groove()
+                Button("Start Over…") { confirmingStartOver = true }
+                    .disabled(session.step == .chooseMode)
                 HStack {
-                    Button("Start Over…") { confirmingStartOver = true }
-                        .disabled(session.step == .chooseMode)
                     Spacer()
-                    Button("Done", action: onDone)
+                    Button("Cancel", action: onCancel)
                         .keyboardShortcut(.cancelAction)
+                    Button("Confirm", action: onConfirm)
+                        .buttonStyle(.borderedProminent)
+                        .tint(Design.accentFill)
+                        .help("Put these beats on the timeline; until then nothing here changes it")
                 }
             }
             .padding(Design.Space.rail)
@@ -260,11 +275,15 @@ struct BeatMatchView: View {
             Text("BPM")
                 .font(Design.Typeface.label)
                 .foregroundStyle(Design.textSecondary)
-            Button("×2") { session.selectedTempo.map { session.fillSelected(tempo: $0 * 2) } }
-                .help("Double the tempo")
+            Button("×2", action: session.doubleTempo)
+                .disabled(!session.canDoubleTempo)
+                .help("Double the tempo: a beat between each two")
                 .accessibilityLabel("Double the tempo")
-            Button("÷2") { session.selectedTempo.map { session.fillSelected(tempo: $0 / 2) } }
-                .help("Halve the tempo")
+            Button("÷2", action: session.halveTempo)
+                .disabled(!session.canHalveTempo)
+                .help(session.canHalveTempo
+                      ? "Halve the tempo: keep every other beat"
+                      : "Can't halve: it would drop a pinned beat or go below \(Int(BeatFitting.slowestHalved)) BPM")
                 .accessibilityLabel("Halve the tempo")
         }
     }

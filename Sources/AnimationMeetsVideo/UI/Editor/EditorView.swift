@@ -92,7 +92,7 @@ struct EditorView: View {
         .onChange(of: project.id) { _, _ in
             activeTimelineID = project.rootTimelineID
             selection = nil
-            beatMatch.close()
+            beatMatch.discardAndClose()
         }
         .onChange(of: project) { _, newValue in
             history.projectDidChange(newValue)

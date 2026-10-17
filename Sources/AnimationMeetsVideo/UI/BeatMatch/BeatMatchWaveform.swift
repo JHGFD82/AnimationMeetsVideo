@@ -1,3 +1,4 @@
+import AppKit
 import CoreMedia
 import SwiftUI
 
@@ -50,6 +51,18 @@ struct BeatMatchWaveform: View {
             .simultaneousGesture(SpatialTapGesture(count: 2).onEnded { value in
                 doubleClick(at: value.location)
             })
+            // A resize arrow over what a drag moves sideways: a section's
+            // edge, or a beat. A section itself doesn't move as a whole.
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let point) where drag == nil:
+                    (resizes(at: point) ? NSCursor.resizeLeftRight : NSCursor.arrow).set()
+                case .active:
+                    break
+                case .ended:
+                    NSCursor.arrow.set()
+                }
+            }
             .background(
                 TimelineInputMonitor(
                     onMagnify: { factor, _, x, _ in session.zoom(by: factor, aboutX: x) },
@@ -329,6 +342,19 @@ struct BeatMatchWaveform: View {
                     break
                 }
             }
+    }
+
+    /// Whether a drag from `point` moves an edge or a beat sideways.
+    private func resizes(at point: CGPoint) -> Bool {
+        guard point.y >= Self.rulerHeight else { return false }
+        if point.y < Self.rulerHeight + Self.stripHeight {
+            return session.map.sections.contains { section in
+                abs(session.x(of: section.start.seconds) - point.x) <= Self.reach
+                    || abs(session.x(of: section.end.seconds) - point.x) <= Self.reach
+            }
+        }
+        let reach = CMTime(seconds: Double(Self.reach) * session.secondsPerPoint, preferredTimescale: 192_000)
+        return session.map.nearestBeat(to: BeatFitting.time(session.seconds(atX: point.x), sampleRate: 192_000), within: reach) != nil
     }
 
     /// What a press at `point` starts.

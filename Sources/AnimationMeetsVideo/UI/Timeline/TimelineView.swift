@@ -547,6 +547,14 @@ struct TimelineView: View {
         }
         // A song dragged in as the only thing on the timeline: show all of
         // it. Not when deleting the rest leaves a song alone.
+        // A song just confirmed in Beat Match: show its beats.
+        .onChange(of: beatMatch?.confirmation) { _, confirmation in
+            guard let confirmation else { return }
+            let layer = timeline.layers.first { layer in
+                layer.kind == .music && layer.clips.contains { $0.source == .media(confirmation.assetID) }
+            }
+            if let layer { chosenBeatLayerID = layer.id }
+        }
         .onChange(of: soleMusic) { old, new in
             if new.clipID != nil, new.clipID != old.clipID, new.clipCount >= old.clipCount { fitToWindow() }
         }
