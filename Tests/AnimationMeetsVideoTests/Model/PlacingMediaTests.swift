@@ -82,4 +82,28 @@ import Testing
         #expect(added?.count == 1)
         #expect(project.timelines[0].layers[0].clips.map(\.startOffset) == [t(0), t(100)])
     }
+
+    @Test func theLandingPreviewShowsWhereADropWouldGoWithoutChangingAnything() throws {
+        var project = EditingProject.empty
+        let v = video("V"), s = audio("S")
+        project.clips = [v, s]
+        let first = project.addPieces([MediaPiece(assetID: v.id, start: t(0), end: t(48))], intoTimeline: project.rootTimelineID)
+        let layerID = try #require(first).layerID
+        let before = project
+
+        let pieces = [MediaPiece(assetID: v.id, start: t(100), end: t(124))]
+        // Dropped over the clip already there, it moves to the gap after it.
+        let preview = try #require(project.landing(of: pieces, onLayer: layerID, in: project.rootTimelineID, at: t(24)))
+        #expect(project == before)
+        #expect(preview.map(\.startOffset) == [t(48)])
+
+        var dropped = project
+        let added = dropped.addPieces(pieces, intoLayer: layerID, in: project.rootTimelineID, at: t(24))
+        let placed = dropped.timelines[0].layers[0].clips.filter { added?.contains($0.id) == true }
+        #expect(placed.map(\.startOffset) == preview.map(\.startOffset))
+
+        // Sound can't go on a video layer, so there is no preview there.
+        let sound = [MediaPiece(assetID: s.id, start: t(0), end: t(24))]
+        #expect(project.landing(of: sound, onLayer: layerID, in: project.rootTimelineID, at: t(100)) == nil)
+    }
 }

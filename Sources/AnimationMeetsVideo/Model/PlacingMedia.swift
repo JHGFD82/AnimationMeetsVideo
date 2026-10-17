@@ -96,3 +96,17 @@ extension EditingProject {
         return added
     }
 }
+
+extension EditingProject {
+    /// The clips `addPieces(_:intoLayer:in:at:)` would make, where they
+    /// would land, without changing the project; nil where it would refuse.
+    /// Drawn on a layer while media is dragged over it.
+    func landing(of pieces: [MediaPiece], onLayer layerID: UUID, in timelineID: UUID, at start: CMTime) -> [TimelineClip]? {
+        var copy = self
+        guard let ids = copy.addPieces(pieces, intoLayer: layerID, in: timelineID, at: start),
+              let layer = copy.timeline(id: timelineID)?.layer(id: layerID)
+        else { return nil }
+        let added = Set(ids)
+        return layer.clips.filter { added.contains($0.id) }
+    }
+}

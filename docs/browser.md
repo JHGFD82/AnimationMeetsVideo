@@ -117,6 +117,15 @@ the timeline changes. A thin line marks the skimmed frame on the strip.
   timeline takes it: a drag let go anywhere else adds nothing.
 - **Dragging from inside a range** (its middle, not its handles) drags only
   that range.
+- What follows the pointer is **one thumbnail**: the first clip's picture
+  at its start (a tile of its colour for sound), with a count when several
+  are dragged. Over an **existing layer** that would take them, the
+  thumbnail goes and the layer draws the clips where the drop would put
+  them (`landing(of:onLayer:in:at:)`, the drop's own rule), outlined;
+  anywhere else, the new-layer row and zone included, it stays a
+  thumbnail. The drag's contents and the layer it is over are shared
+  through `MediaDragSession`, since a drop target can't read a drag before
+  the drop.
 - **Several clips** are dropped back to back on one layer **in browser
   order** (the order of the Clips tab, scenes in source order), whatever
   order they were selected in. Drops follow the timeline's rules for where

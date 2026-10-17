@@ -243,10 +243,19 @@ struct LayerClipRow: View {
         // anchored to the wrong origin instead of true timeline time 0.
         .frame(width: width, height: height, alignment: .topLeading)
         .contentShape(Rectangle())
-        // Scenes dropped on a layer go onto it where they were dropped.
-        .dropDestination(for: MediaDragPayload.self) { payloads, location in
-            onDropScenes(payloads, CMTime(seconds: max(0, Double(location.x / pixelsPerSecond)), preferredTimescale: 600))
+        // While media from the browser is over the layer, it is drawn where
+        // it would land; dropped, it goes there.
+        .overlay(alignment: .topLeading) {
+            LayerDropPreview(project: project, timelineID: timelineID, layerID: layer.id, pixelsPerSecond: pixelsPerSecond, height: height)
         }
+        .onDrop(of: [.text], delegate: LayerMediaDropDelegate(
+            layerID: layer.id,
+            pixelsPerSecond: pixelsPerSecond,
+            fits: { [project, timelineID, layerID = layer.id] time in
+                project.landing(of: MediaDragSession.shared.pieces, onLayer: layerID, in: timelineID, at: time) != nil
+            },
+            onDrop: onDropScenes
+        ))
         // VoiceOver goes through the layers, then into each one's clips.
         .accessibilityElement(children: .contain)
         .accessibilityLabel(name)

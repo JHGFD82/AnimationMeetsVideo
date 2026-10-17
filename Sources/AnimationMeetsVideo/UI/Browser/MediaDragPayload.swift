@@ -27,9 +27,11 @@ struct MediaDragPayload: Transferable, Equatable {
     /// new layer. Left set after the drag; only read during one.
     @MainActor static var draggedAssetID: UUID?
 
-    /// The payload for a drag starting now, noting its first asset.
+    /// The payload for a drag starting now, noting its first asset and
+    /// what it carries (`MediaDragSession`).
     @MainActor static func beginDrag(_ pieces: [MediaPiece]) -> MediaDragPayload {
         draggedAssetID = pieces.first?.assetID
+        MediaDragSession.shared.begin(pieces)
         return MediaDragPayload(pieces: pieces)
     }
 

@@ -23,13 +23,22 @@ enum FrameThumbnails {
         generators = [:]
     }
 
+    /// The picture `image(url:time:height:)` made, if it is still kept.
+    static func cached(url: URL, time: CMTime, height: CGFloat) -> NSImage? {
+        cache.object(forKey: key(url: url, time: time, height: height))
+    }
+
+    private static func key(url: URL, time: CMTime, height: CGFloat) -> NSString {
+        "\(url.path)|\(time.value)/\(time.timescale)|\(Int((height * 2).rounded(.up)))" as NSString
+    }
+
     /// The frame at `time` in the file, at most `height` points tall (drawn
     /// at twice that in pixels). Nil when it can't be read, or when the
     /// calling task is cancelled before its turn, as a thumbnail scrolled
     /// out of view is.
     static func image(url: URL, time: CMTime, height: CGFloat = 45) async -> NSImage? {
         let pixels = Int((height * 2).rounded(.up))
-        let key = "\(url.path)|\(time.value)/\(time.timescale)|\(pixels)" as NSString
+        let key = key(url: url, time: time, height: height)
         if let cached = cache.object(forKey: key) { return cached }
 
         let generator = generator(for: url, pixels: pixels)

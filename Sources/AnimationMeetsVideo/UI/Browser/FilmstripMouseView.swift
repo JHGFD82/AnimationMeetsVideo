@@ -24,9 +24,9 @@ struct FilmstripMouseView: NSViewRepresentable {
     /// The press at a point, with the keys held: true to track a range.
     var onDown: (CGPoint, NSEvent.ModifierFlags) -> Bool
     var onPress: (FilmstripPress) -> Void
-    /// The payload for a drag starting at a point, with a label for its
-    /// drag image; nil not to drag.
-    var dragText: (CGPoint) -> (text: String, label: String)?
+    /// The payload for a drag starting at a point, with the picture that
+    /// follows the pointer; nil not to drag.
+    var dragText: (CGPoint) -> (text: String, image: NSImage)?
     /// Whether a point is on a range's handle, which shows the resize
     /// cursor.
     var isOnHandle: (CGPoint) -> Bool = { _ in false }
@@ -51,6 +51,10 @@ struct FilmstripMouseView: NSViewRepresentable {
         private var dragging = false
         /// How far the pointer moves before a press becomes a drag.
         private let dragThreshold: CGFloat = 3
+        /// The picture following the pointer, and whether it is hidden
+        /// because a layer under the pointer draws the media instead.
+        private var dragImage: NSImage?
+        private var dragImageHidden = false
 
         override var isFlipped: Bool { true }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -111,7 +115,9 @@ struct FilmstripMouseView: NSViewRepresentable {
             let item = NSPasteboardItem()
             item.setString(drag.text, forType: .string)
             let draggingItem = NSDraggingItem(pasteboardWriter: item)
-            let image = Self.dragImage(drag.label)
+            let image = drag.image
+            dragImage = image
+            dragImageHidden = false
             let local = convert(event.locationInWindow, from: nil)
             draggingItem.setDraggingFrame(
                 CGRect(x: local.x - image.size.width / 2, y: local.y - image.size.height / 2, width: image.size.width, height: image.size.height),
@@ -137,20 +143,22 @@ struct FilmstripMouseView: NSViewRepresentable {
             .copy
         }
 
-        /// A rounded label saying what is dragged.
-        private static func dragImage(_ label: String) -> NSImage {
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-                .foregroundColor: NSColor.white,
-            ]
-            let text = NSAttributedString(string: label, attributes: attributes)
-            let size = CGSize(width: ceil(text.size().width) + 16, height: 22)
-            return NSImage(size: size, flipped: false) { rect in
-                NSColor.controlAccentColor.withAlphaComponent(0.9).setFill()
-                NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
-                text.draw(at: CGPoint(x: 8, y: (rect.height - text.size().height) / 2))
-                return true
+        /// Over a layer the media would fit on, the layer draws it where it
+        /// would land, so the thumbnail under the pointer is hidden; it
+        /// comes back anywhere else.
+        func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) {
+            let hide = MediaDragSession.shared.target != nil
+            guard hide != dragImageHidden, let dragImage else { return }
+            dragImageHidden = hide
+            let shown = hide ? NSImage(size: dragImage.size) : dragImage
+            session.enumerateDraggingItems(options: [], for: nil, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
+                item.setDraggingFrame(item.draggingFrame, contents: shown)
             }
+        }
+
+        func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+            dragImage = nil
+            MediaDragSession.shared.end()
         }
     }
 }
