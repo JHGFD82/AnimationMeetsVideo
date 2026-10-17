@@ -29,18 +29,29 @@ Follow Google's change-description conventions for every commit.
 - SwiftPM macOS app (`Package.swift`), sources in `Sources/AnimationMeetsVideo`,
   grouped by folder (one target, so folders are organization only):
   - `App/`: app entry point and windows.
-  - `Model/`: project data types (`EditingProject`, timelines, transforms).
+  - `Model/`: project data types (`EditingProject`, timelines, transforms),
+    with `Effects/`, `Transitions/` and `Beats/` (beat maps) as subfolders.
   - `Project/`: saving, loading, undo history, locking, file watching, import.
-  - `Analysis/`: media analysis (beats, scene cuts, alignment, comparison,
-    reference capture, sample reading).
-  - `Replacement/`, `Export/`: media replacement logic and ProRes export.
-  - `Rendering/`: viewer quality and render timing; the render cache goes
-    here too.
-  - `UI/`: SwiftUI views by area: `Editor/` (shell and toolbar),
-    `Timeline/`, `Browser/`, `Inspector/`, `Viewer/` (player, playback,
-    external display), `Replacement/`, and `Components/` for shared controls.
+  - `Analysis/`: the background runner (`AssetAnalysis`), provenance, sample
+    reading and waveforms, with `Beats/`, `Scenes/` and `Reference/`
+    (reference capture, alignment, comparison) as subfolders.
+  - `Replacement/`: media replacement logic.
+  - `Export/`: building a timeline's composition and ProRes export.
+  - `Rendering/`: drawing frames. `Compositor/` draws a frame's stack,
+    `Transitions/` the transitions that need both pictures, and `Cache/`
+    renders segments ahead; viewer quality stays at the top.
+  - `Playback/`: the shared player, beat ticks, mix meter and composition
+    key: playback logic that is not a view.
+  - `UI/`: SwiftUI views by area: `Editor/` (shell, toolbar, editor
+    surface), `Timeline/` (with `Clips/` for what draws on one clip),
+    `Effects/` (effects panel), `Keyframes/` (graph editors), `Browser/`,
+    `Inspector/`, `Viewer/`, `BeatMatch/`, `Replacement/`, `Design/`
+    (design system and shared styling) and `Components/` for shared
+    controls.
   Put new UI code in the folder of the area that uses it, one main view per
   file; keep non-UI logic out of `UI/`.
+- Tests in `Tests/AnimationMeetsVideoTests` mirror the source folders, with
+  shared fixtures and harnesses in `Support/`.
 - New UI follows the rules in `docs/accessibility.md`: drawn or gesture-
   driven views need an accessibility element with actions, icon-only
   buttons need labels, and anything a drag does needs a keyboard path.
