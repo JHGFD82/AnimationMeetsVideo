@@ -96,6 +96,8 @@ struct TimelineView: View {
     @State private var beatMarkers: [BeatMarker] = []
     /// The layer whose header is being dragged, and how far.
     @State var layerDrag: (id: UUID, dy: CGFloat)?
+    /// The height of the layer being resized when the drag began.
+    @State private var layerResize: (id: UUID, startHeight: CGFloat)?
     /// The layer of a clip being dragged, drawn above the others so the
     /// clip stays visible over the layer it is moving to.
     @State private var draggingClipLayerID: UUID?
@@ -172,7 +174,7 @@ struct TimelineView: View {
     /// Linked audio is shown under video, at a little over half its height,
     /// or tall enough for two channels when they're shown apart.
     private func audioLaneHeight(of layer: TimelineLayer) -> CGFloat {
-        let lane = max(22, (areaLayout.layerHeight(.video) * 0.6).rounded())
+        let lane = max(22, (areaLayout.height(of: layer.id, kind: layer.kind) * 0.6).rounded())
         return showsChannels(of: layer) ? max(lane, Self.channelBandHeight) * 2 : lane
     }
 
@@ -193,10 +195,10 @@ struct TimelineView: View {
         channelsRevealed.contains(layer.id) && canShowChannels(of: layer)
     }
 
-    /// The clips' row: the area's layer height, doubled (with a floor) on
-    /// sound layers showing their channels, so each gets a band.
+    /// The clips' row: the layer's height, doubled (with a floor) on sound
+    /// layers showing their channels, so each gets a band.
     private func clipRowHeight(of layer: TimelineLayer) -> CGFloat {
-        let height = areaLayout.layerHeight(layer.kind)
+        let height = areaLayout.height(of: layer.id, kind: layer.kind)
         guard layer.kind != .video, showsChannels(of: layer) else { return height }
         return max(height, Self.channelBandHeight) * 2
     }
@@ -683,6 +685,16 @@ struct TimelineView: View {
                     }
                     separator
                 }
+                .overlay(alignment: .bottom) {
+                    LayerResizeDivider(
+                        onChanged: { dy, flags in resizeLayer(layer, by: dy, flags: flags) },
+                        onEnded: { layerResize = nil },
+                        onStep: { step in
+                            areaLayout.setHeight(areaLayout.height(of: layer.id, kind: layer.kind) + step, of: layer.id, kind: layer.kind)
+                        }
+                    )
+                    .offset(y: LayerResizeDivider.hitHeight / 2)
+                }
                 // Alternating tone, faint enough to read as banding rather
                 // than as two kinds of layer. With the grooves it is what
                 // keeps a tall stack of layers legible at a glance.
@@ -696,6 +708,25 @@ struct TimelineView: View {
             Color.clear.frame(height: newLayerRowHeight)
         }
         .overlay(alignment: .topLeading) { reachBrackets(of: layers) }
+    }
+
+    /// Resizes a layer from its names-column divider, `dy` from where the
+    /// drag began: the layer alone, with Option every layer of its area,
+    /// with Option-Shift every shown layer, all to the same height.
+    private func resizeLayer(_ layer: TimelineLayer, by dy: CGFloat, flags: NSEvent.ModifierFlags) {
+        if layerResize?.id != layer.id {
+            layerResize = (layer.id, areaLayout.height(of: layer.id, kind: layer.kind))
+        }
+        guard let start = layerResize?.startHeight else { return }
+        // A layer showing its channels draws its row twice as tall.
+        let height = start + dy / (layer.kind != .video && showsChannels(of: layer) ? 2 : 1)
+        if flags.contains(.option), flags.contains(.shift) {
+            areaLayout.setHeightOfAllShown(height, layers: timeline.layers.map(\.id))
+        } else if flags.contains(.option) {
+            areaLayout.setHeightOfAll(height, kind: layer.kind, layers: areaLayers(layer.kind).map(\.id))
+        } else {
+            areaLayout.setHeight(height, of: layer.id, kind: layer.kind)
+        }
     }
 
     /// The reach choices of an adjustment layer: every layer below it, or

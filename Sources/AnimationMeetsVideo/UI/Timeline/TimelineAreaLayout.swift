@@ -7,8 +7,10 @@ import SwiftUI
 /// Heights are kept as shares rather than points, so resizing the whole
 /// timeline (the grip between it and the viewer) grows or shrinks every
 /// area in proportion. Growing an area shows more of its layers; it never
-/// makes them taller. Layer height is each area's own vertical zoom.
-/// Saved in the app's defaults, so the layout outlives the window.
+/// makes them taller. Layer height is each area's own vertical zoom, and a
+/// layer can be taller or shorter than its area's by a scale of its own,
+/// so zooming the area keeps it in proportion. Saved in the app's
+/// defaults, so the layout outlives the window.
 struct TimelineAreaLayout: Equatable, Codable {
     /// Top to bottom, as the timeline stacks them.
     static let order: [LayerKind] = [.video, .sound, .music]
@@ -21,6 +23,8 @@ struct TimelineAreaLayout: Equatable, Codable {
     var showsSections = true
     var shares: [LayerKind: CGFloat] = [.video: 0.5, .sound: 0.25, .music: 0.25]
     var layerHeights: [LayerKind: CGFloat] = [.video: 56, .sound: 44, .music: 44]
+    /// Layers sized apart from their area, as a multiple of its height.
+    var layerScales: [UUID: CGFloat] = [:]
 
     /// The shown areas, top to bottom.
     var shown: [LayerKind] { Self.order.filter { !hidden.contains($0) } }
@@ -36,7 +40,35 @@ struct TimelineAreaLayout: Equatable, Codable {
     }
 
     mutating func setLayerHeight(_ kind: LayerKind, _ height: CGFloat) {
-        layerHeights[kind] = min(max(height, Self.layerHeightRange.lowerBound), Self.layerHeightRange.upperBound)
+        layerHeights[kind] = Self.clamped(height)
+    }
+
+    private static func clamped(_ height: CGFloat) -> CGFloat {
+        min(max(height, layerHeightRange.lowerBound), layerHeightRange.upperBound)
+    }
+
+    /// One layer's height: its area's, times its own scale if it has one.
+    func height(of layerID: UUID, kind: LayerKind) -> CGFloat {
+        Self.clamped(layerHeight(kind) * (layerScales[layerID] ?? 1))
+    }
+
+    /// Sizes one layer apart from the others of its area.
+    mutating func setHeight(_ height: CGFloat, of layerID: UUID, kind: LayerKind) {
+        let scale = Self.clamped(height) / layerHeight(kind)
+        layerScales[layerID] = abs(scale - 1) < 1e-6 ? nil : scale
+    }
+
+    /// Sizes every layer of an area alike: the area's height, with the
+    /// scales of `layers` (its layers) dropped.
+    mutating func setHeightOfAll(_ height: CGFloat, kind: LayerKind, layers: [UUID]) {
+        setLayerHeight(kind, height)
+        for id in layers { layerScales[id] = nil }
+    }
+
+    /// Sizes every shown area's layers alike, `layers` being all of them.
+    mutating func setHeightOfAllShown(_ height: CGFloat, layers: [UUID]) {
+        for kind in shown { setLayerHeight(kind, height) }
+        for id in layers { layerScales[id] = nil }
     }
 
     /// A layer height on a 0...1 scale that is even in ratio, so each step
@@ -122,7 +154,7 @@ struct TimelineAreaLayout: Equatable, Codable {
     // which goes through rawValue, and rawValue encodes with Codable, so
     // the two would call each other until the stack ran out.
     private enum CodingKeys: String, CodingKey {
-        case hidden, shares, layerHeights, showsSections
+        case hidden, shares, layerHeights, layerScales, showsSections
     }
 
     init() {}
@@ -133,6 +165,7 @@ struct TimelineAreaLayout: Equatable, Codable {
         shares = try container.decode([LayerKind: CGFloat].self, forKey: .shares)
         layerHeights = try container.decode([LayerKind: CGFloat].self, forKey: .layerHeights)
         showsSections = try container.decodeIfPresent(Bool.self, forKey: .showsSections) ?? true
+        layerScales = try container.decodeIfPresent([UUID: CGFloat].self, forKey: .layerScales) ?? [:]
     }
 
     func encode(to encoder: Encoder) throws {
@@ -141,6 +174,7 @@ struct TimelineAreaLayout: Equatable, Codable {
         try container.encode(shares, forKey: .shares)
         try container.encode(layerHeights, forKey: .layerHeights)
         try container.encode(showsSections, forKey: .showsSections)
+        try container.encode(layerScales, forKey: .layerScales)
     }
 }
 

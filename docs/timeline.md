@@ -33,6 +33,14 @@ its boundary with the area above, trading height between the two. The grip
 above the timeline resizes every area in proportion. Neither changes how
 tall a layer is: a bigger area shows more layers. Layer height is each
 area's own vertical zoom (see [Zoom and scroll](#zoom-and-scroll)).
+
+A single layer is resized by dragging the line under it **in the layer
+names column** (never in the track area, where a drag moves clips).
+With **Option** every layer of that area goes to the new height, and with
+**Option-Shift** every shown layer does. A layer sized on its own keeps a
+scale of its area's height (`layerScales`), so zooming the area keeps it
+in proportion; sizing all of an area's layers drops their scales. With
+VoiceOver the line is adjustable in steps of 8 points.
 **View Options** has a checkbox per area that hides or shows it, and a
 layer height slider for each. The layout (`TimelineAreaLayout`) is kept in
 the app's defaults. Under each area's layers, the rest of the area (at
