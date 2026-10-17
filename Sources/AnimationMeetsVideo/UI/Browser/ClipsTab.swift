@@ -400,13 +400,17 @@ struct ClipsTab: View {
         return (MediaDragPayload.beginDrag(pieces).text, image)
     }
 
-    /// One thumbnail of the first thing dragged, at its start (a coloured
-    /// tile for sound, or before its picture is made), with how many
-    /// things are dragged when there are several.
-    private static func dragImage(of clip: MediaClip, at start: CMTime, size: CGSize, count: Int) -> NSImage {
+    /// One thumbnail of the first thing dragged: its picture at its start,
+    /// or the nearest one made (a range seldom starts where a thumbnail
+    /// does); for sound, a tile of its colour with a waveform on it, as for
+    /// a picture not yet made. With how many things are dragged when there
+    /// are several.
+    static func dragImage(of clip: MediaClip, at start: CMTime, size: CGSize, count: Int) -> NSImage {
         let picture = clip.kind == .video ? clip.url.flatMap {
-            FrameThumbnails.cached(url: $0, time: clip.fileTime(forSourceTime: start), height: size.height)
+            FrameThumbnails.nearestCached(url: $0, time: clip.fileTime(forSourceTime: start), height: size.height)
         } : nil
+        let waveform = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: size.height * 0.4, weight: .medium))
         let tone = NSColor(Design.ClipTone.of(.media(clip), streams: .videoAndAudio).color)
         return NSImage(size: size, flipped: false) { rect in
             let tile = NSBezierPath(roundedRect: rect, xRadius: Design.Radius.chip, yRadius: Design.Radius.chip)
@@ -417,6 +421,18 @@ struct ClipsTab: View {
                     ? min(rect.width / picture.size.width, rect.height / picture.size.height) : 1
                 let drawn = CGSize(width: picture.size.width * fitted, height: picture.size.height * fitted)
                 picture.draw(in: CGRect(x: rect.midX - drawn.width / 2, y: rect.midY - drawn.height / 2, width: drawn.width, height: drawn.height))
+            } else if let waveform {
+                // Tinted white: a symbol image draws in its own colour.
+                let tinted = NSImage(size: waveform.size, flipped: false) { bounds in
+                    waveform.draw(in: bounds)
+                    NSColor.white.set()
+                    bounds.fill(using: .sourceAtop)
+                    return true
+                }
+                tinted.draw(in: CGRect(
+                    x: rect.midX - waveform.size.width / 2, y: rect.midY - waveform.size.height / 2,
+                    width: waveform.size.width, height: waveform.size.height
+                ))
             }
             NSColor(Design.accent).setStroke()
             tile.lineWidth = 2

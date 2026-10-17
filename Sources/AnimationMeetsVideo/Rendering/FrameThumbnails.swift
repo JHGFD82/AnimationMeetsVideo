@@ -14,6 +14,9 @@ enum FrameThumbnails {
 
     private static let cache = NSCache<NSString, NSImage>()
     private static var generators: [String: AVAssetImageGenerator] = [:]
+    /// The times pictures were made at, by file and size, to find the one
+    /// nearest a time when that time has none.
+    private static var madeTimes: [String: [CMTime]] = [:]
     private static let limiter = Limiter(slots: concurrency)
 
     /// Forgets every picture and generator, for when a file was swapped
@@ -21,11 +24,30 @@ enum FrameThumbnails {
     static func invalidate() {
         cache.removeAllObjects()
         generators = [:]
+        madeTimes = [:]
     }
 
     /// The picture `image(url:time:height:)` made, if it is still kept.
     static func cached(url: URL, time: CMTime, height: CGFloat) -> NSImage? {
         cache.object(forKey: key(url: url, time: time, height: height))
+    }
+
+    /// The kept picture of the file nearest `time`, preferring the last
+    /// one at or before it, as the thumbnail whose stretch holds `time`
+    /// is. Nil when none of the file at that size is kept.
+    static func nearestCached(url: URL, time: CMTime, height: CGFloat) -> NSImage? {
+        if let exact = cached(url: url, time: time, height: height) { return exact }
+        let times = madeTimes[fileKey(url: url, height: height)] ?? []
+        let before = times.filter { $0 <= time }.sorted(by: >)
+        let after = times.filter { $0 > time }.sorted()
+        for candidate in before + after {
+            if let image = cached(url: url, time: candidate, height: height) { return image }
+        }
+        return nil
+    }
+
+    private static func fileKey(url: URL, height: CGFloat) -> String {
+        "\(url.path)|\(Int((height * 2).rounded(.up)))"
     }
 
     private static func key(url: URL, time: CMTime, height: CGFloat) -> NSString {
@@ -49,6 +71,7 @@ enum FrameThumbnails {
         guard let made else { return nil }
         let image = NSImage(cgImage: made, size: NSSize(width: made.width, height: made.height))
         cache.setObject(image, forKey: key)
+        madeTimes[fileKey(url: url, height: height), default: []].append(time)
         return image
     }
 

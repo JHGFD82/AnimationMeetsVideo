@@ -118,8 +118,9 @@ the timeline changes. A thin line marks the skimmed frame on the strip.
 - **Dragging from inside a range** (its middle, not its handles) drags only
   that range.
 - What follows the pointer is **one thumbnail**: the first clip's picture
-  at its start (a tile of its colour for sound), with a count when several
-  are dragged. Over an **existing layer** that would take them, the
+  at its start, or for a range the nearest picture made (a range seldom
+  starts where a thumbnail does); for sound or music, a tile of its colour
+  with a waveform icon. With a count when several are dragged. Over an **existing layer** that would take them, the
   thumbnail goes and the layer draws the clips where the drop would put
   them (`landing(of:onLayer:in:at:)`, the drop's own rule), outlined;
   anywhere else, the new-layer row and zone included, it stays a
