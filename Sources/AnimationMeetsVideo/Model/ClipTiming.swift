@@ -92,7 +92,22 @@ struct ClipTime: Equatable, Sendable {
     }
 
     /// Whether the speed plays the source backwards.
-    var isReversed: Bool { (speed.keyframes.first?.value ?? speed.value) < 0 }
+    var isReversed: Bool { Self.isReversed(speed) }
+
+    /// Whether `speed` plays backwards: its first keyframe's sign, or its
+    /// value's with none.
+    static func isReversed(_ speed: AnimatedValue<Double>) -> Bool {
+        (speed.keyframes.first?.value ?? speed.value) < 0
+    }
+
+    /// How fast a speed `value` plays in a clip going the way `reversed`
+    /// says, as a size. A value eased past zero, or under 1% that way, is
+    /// held at 1%: the clip can't turn around, and taking the value's size
+    /// instead would play a dip to -50% as 50% forwards.
+    static func playedSize(_ value: Double, reversed: Bool) -> Double {
+        let along = reversed ? -value : value
+        return min(max(along, speedRange.lowerBound), speedRange.upperBound)
+    }
 
     /// The speed turned to play forwards or backwards, with its sizes,
     /// keyframes and eases as they were: 100% becomes -100%.
@@ -158,8 +173,9 @@ extension TimelineClip {
     /// How fast the clip plays at a moment of its source, as a percentage,
     /// negative when it plays backwards.
     func speed(atSource sourceTime: CMTime) -> Double {
-        let size = abs(ClipTime.clampedSpeed(time.speed.value(at: sourceTime)))
-        return isReversed ? -size : size
+        let reversed = isReversed
+        let size = ClipTime.playedSize(time.speed.value(at: sourceTime), reversed: reversed)
+        return reversed ? -size : size
     }
 
     /// The timeline time the source takes to play from `a` to `b` (negative
@@ -323,8 +339,8 @@ struct SpeedIntegral {
     var cellEdges: [Double] { edges }
 
     private static func rate(_ speed: AnimatedValue<Double>, at seconds: Double) -> Double {
-        // Direction is the clip's, not the integral's: sizes only.
-        return 100 / abs(ClipTime.clampedSpeed(speed.value(atSeconds: seconds)))
+        // Sizes only, along the clip's direction (see `playedSize`).
+        return 100 / ClipTime.playedSize(speed.value(atSeconds: seconds), reversed: ClipTime.isReversed(speed))
     }
 
     private static let kronrodNodes = [0.991455371120813, 0.949107912342759, 0.864864423359769, 0.741531185599394, 0.586087235467691, 0.405845151377397, 0.207784955007898, 0.0]
