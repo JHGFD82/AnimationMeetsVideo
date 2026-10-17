@@ -106,9 +106,11 @@ original time.
   expected one. Peaks are placed between frames with a parabola.
 - **Past the outer anchors** the beats step on a period at a time, to the
   section's edge. For intent each step moves to the strongest onset within
-  15% of the gap. Steps stop where the music does: after four in a row
-  without an onset, which are dropped, and silent steps at the edge are
-  dropped too.
+  15% of the gap. Steps stop where the music does: after two measures (eight
+  steps) with no onset anywhere in them, which are dropped; silent steps
+  at the edge are dropped too. A beat with no hit of its own but
+  something between it and the last, such as a held chord or a vocal,
+  counts as music.
 - **Onset timing.** Spectral flux peaks about 14 ms before a sharp hit,
   because it rises as soon as the hit enters the analysis window. The
   anchors are lined up by ear, so the curve is shifted by the median

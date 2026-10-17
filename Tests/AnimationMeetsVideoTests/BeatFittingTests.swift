@@ -67,6 +67,26 @@ private func section(_ kind: BeatSection.Kind, _ start: Double, _ end: Double, p
         #expect(worstError(filled.beats, truth) < 0.001)
     }
 
+    @Test func beatsWithoutAHitOnThemStillReachTheEndsOfTheSong() throws {
+        // Most beats have no hit of their own (a held chord, a vocal), only
+        // something happening between them, and the song has a silent tail.
+        let truth = steadyBeats(bpm: 100, from: 0.3, to: 60)
+        let hits = truth.enumerated().filter { $0.offset.isMultiple(of: 8) }.map(\.element)
+        var onsets = curve(beats: hits, seconds: 66, offbeats: false)
+        for (a, b) in zip(truth, truth.dropFirst()) {
+            let frame = Int((a + 0.37 * (b - a)) * framesPerSecond)
+            onsets.values[frame] = 1.2
+        }
+        let input = section(.consistent, 0, 66, pins: [(truth[24], 1), (truth[40], 1)])
+        let (filled, _) = try BeatFitting.fillConsistent(input, curve: onsets, sampleRate: rate)
+        let first = try #require(filled.beats.first?.time.seconds)
+        let last = try #require(filled.beats.last?.time.seconds)
+        #expect(abs(first - truth[0]) < 0.001)
+        // Through the music, but not two measures into the silence after it.
+        #expect(last >= truth[truth.count - 1] - 0.001)
+        #expect(last < 60 + 8 * 0.6)
+    }
+
     @Test func aTypedTempoOverridesTheCount() throws {
         let truth = steadyBeats(bpm: 90, from: 0.2, to: 20)
         let onsets = curve(beats: truth, seconds: 20)

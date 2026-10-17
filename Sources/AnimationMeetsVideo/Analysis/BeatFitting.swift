@@ -477,8 +477,10 @@ enum BeatFitting {
     /// onset near where the next beat should be, so they follow drift;
     /// through a short quiet stretch they keep the period. Stepping stops
     /// where the music does: after `silentBeats` steps in a row with no
-    /// onset, which are dropped, so a drawn edge past the end of the song
-    /// doesn't fill silence with beats.
+    /// onset anywhere in the step, which are dropped, so a drawn edge past
+    /// the end of the song doesn't fill silence with beats. A beat with no
+    /// hit on it but something between it and the last (a held chord, a
+    /// vocal) is music, not silence.
     static func stepping(from time: Double, period: Double, direction: Double, limit: Double, curve: OnsetCurve, refine: Bool) -> [Double] {
         guard period > 0 else { return [] }
         var times: [Double] = []
@@ -499,7 +501,9 @@ enum BeatFitting {
                 times.removeLast(silent)
                 break
             }
-            silent = found.strength >= weakOnset ? 0 : silent + 1
+            // From clear of the last beat's own hit to just past this one's.
+            let stepStart = previous + direction * period * 0.15, stepEnd = next + direction * period * steadyReach
+            silent = hasOnset(curve, between: stepStart, and: stepEnd) ? 0 : silent + 1
             if silent >= silentBeats {
                 times.removeLast(silent - 1)
                 break
@@ -511,8 +515,15 @@ enum BeatFitting {
         return times
     }
 
-    /// See `stepping`: a measure of four.
-    static let silentBeats = 4
+    /// See `stepping`: two measures of four.
+    static let silentBeats = 8
+
+    /// Whether anything starts in the curve between two times.
+    private static func hasOnset(_ curve: OnsetCurve, between a: Double, and b: Double) -> Bool {
+        let low = Int(curve.frame(atSeconds: min(a, b)).rounded(.up)), high = Int(curve.frame(atSeconds: max(a, b)))
+        guard low <= high else { return false }
+        return (low...high).contains { curve.value(at: $0) >= weakOnset }
+    }
 
     // MARK: Onset timing
 
