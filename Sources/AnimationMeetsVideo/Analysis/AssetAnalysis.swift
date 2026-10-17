@@ -42,11 +42,32 @@ final class AssetAnalysis {
     private(set) var stageFailures: [AssetStage: AnalysisFailure] = [:]
     /// Results that exist but could not be written into the project. They
     /// are kept and written with the next save or `writeHeldResults`.
-    private(set) var persistenceFailures: [AssetStage: AnalysisFailure] = [:]
+    private(set) var persistenceFailures: [AssetOutput: AnalysisFailure] = [:]
 
     struct AssetStage: Hashable, Sendable {
         var id: UUID
         var stage: Stage
+    }
+
+    /// One result written into the package. A stage can make more than one
+    /// (scene detection gives the current scores and the original's), and
+    /// each is written, and can fail to be, on its own.
+    enum Output: Hashable, Sendable {
+        case reference, scores, originalScores, pictures, beats
+
+        var stage: Stage {
+            switch self {
+            case .reference: .reference
+            case .scores, .originalScores: .scenes
+            case .pictures: .pictures
+            case .beats: .beats
+            }
+        }
+    }
+
+    struct AssetOutput: Hashable, Sendable {
+        var id: UUID
+        var output: Output
     }
 
     func failure(_ stage: Stage, for id: UUID) -> AnalysisFailure? {
@@ -655,10 +676,16 @@ final class AssetAnalysis {
         owners[id]?.input.canCaptureReference == true
     }
 
-    private func keepAsOriginal(_ track: ChangeScoreTrack, of id: UUID, source: FileStamp?) {
+    private func keepAsOriginal(_ track: ChangeScoreTrack, of id: UUID, source: FileStamp?) -> Int {
         originalScores[id] = track
         originalSources[id] = source
-        _ = markDirty(\.dirtyOriginalScores, id)
+        return markDirty(\.dirtyOriginalScores, id)
+    }
+
+    private func persistOriginalScores(_ track: ChangeScoreTrack, of id: UUID, revision: Int, source: FileStamp?) async {
+        await persist(\.dirtyOriginalScores, .originalScores, id, revision, to: packageURL, epoch: packageEpoch) {
+            try ProjectStore.writeOriginalScores(track, for: id, in: $0, source: source)
+        }
     }
 
     /// The original footage's scores for aligning a replacement, in the
@@ -667,7 +694,7 @@ final class AssetAnalysis {
     /// used in between. Never made from a replacement. If the asset's file
     /// still is the original and only its current-file scores exist (as when
     /// a replacement is chosen before they were set aside), those are the
-    /// original's and are kept as such now.
+    /// original's and are kept, and written, as such now.
     func resolveOriginalScores(for clip: MediaClip) -> Result<ChangeScoreTrack, OriginalScoresUnavailable> {
         let id = clip.id
         if clip.referenceForgotten { return .failure(.forgotten) }
@@ -675,7 +702,8 @@ final class AssetAnalysis {
         let input = Self.input(of: clip)
         if input.canCaptureReference, let track = tracks[id], let file = input.file,
            scoreSources[id]?.matches(file) == true {
-            keepAsOriginal(track, of: id, source: file.stamp)
+            let revision = keepAsOriginal(track, of: id, source: file.stamp)
+            Task { await persistOriginalScores(track, of: id, revision: revision, source: file.stamp) }
             return .success(track)
         }
         // Saved but unusable is not the same as never saved.
@@ -836,7 +864,7 @@ final class AssetAnalysis {
         for (id, entry) in held.scores {
             guard unchanged else { return }
             let source = held.sources.scores[id]
-            await persist(\.dirtyScores, .scenes, id, entry.revision, to: package, epoch: epoch) {
+            await persist(\.dirtyScores, .scores, id, entry.revision, to: package, epoch: epoch) {
                 try ProjectStore.writeChangeScores(entry.value, for: id, in: $0, source: source)
             }
         }
@@ -849,7 +877,7 @@ final class AssetAnalysis {
         for (id, entry) in held.original {
             guard unchanged else { return }
             let source = held.sources.originalScores[id]
-            await persist(\.dirtyOriginalScores, .scenes, id, entry.revision, to: package, epoch: epoch) {
+            await persist(\.dirtyOriginalScores, .originalScores, id, entry.revision, to: package, epoch: epoch) {
                 try ProjectStore.writeOriginalScores(entry.value, for: id, in: $0, source: source)
             }
         }
@@ -959,16 +987,13 @@ final class AssetAnalysis {
                     let revision = markDirty(\.dirtyScores, id)
                     // While the asset's file is still the original, these are
                     // also the original's scores, kept for aligning a replacement.
-                    let isOriginal = capturesOriginalScores(id) && originalScores[id] == nil
-                    if isOriginal { keepAsOriginal(track, of: id, source: job.file.stamp) }
-                    let originalRevision = dirtyOriginalScores[id]
-                    await persist(\.dirtyScores, .scenes, id, revision, to: packageURL, epoch: packageEpoch) {
+                    let originalRevision = capturesOriginalScores(id) && originalScores[id] == nil
+                        ? keepAsOriginal(track, of: id, source: job.file.stamp) : nil
+                    await persist(\.dirtyScores, .scores, id, revision, to: packageURL, epoch: packageEpoch) {
                         try ProjectStore.writeChangeScores(track, for: id, in: $0, source: job.file.stamp)
                     }
-                    if isOriginal, let originalRevision {
-                        await persist(\.dirtyOriginalScores, .scenes, id, originalRevision, to: packageURL, epoch: packageEpoch) {
-                            try ProjectStore.writeOriginalScores(track, for: id, in: $0, source: job.file.stamp)
-                        }
+                    if let originalRevision {
+                        await persistOriginalScores(track, of: id, revision: originalRevision, source: job.file.stamp)
                     }
                 }
             )
@@ -1080,7 +1105,7 @@ final class AssetAnalysis {
     /// longer active, or one that fails, leaves the result waiting.
     private func persist(
         _ keyPath: ReferenceWritableKeyPath<AssetAnalysis, [UUID: Int]>,
-        _ stage: Stage,
+        _ output: Output,
         _ id: UUID,
         _ revision: Int,
         to package: URL?,
@@ -1090,9 +1115,9 @@ final class AssetAnalysis {
         guard let package else { return }
         let failure = await attemptReporting(on: package, body)
         guard epoch == packageEpoch else { return }
-        let key = AssetStage(id: id, stage: stage)
+        let key = AssetOutput(id: id, output: output)
         if let failure {
-            persistenceFailures[key] = AnalysisFailure(stage: stage, error: failure, file: nil, kind: .persistence)
+            persistenceFailures[key] = AnalysisFailure(stage: output.stage, error: failure, file: nil, kind: .persistence)
         } else {
             persistenceFailures[key] = nil
             acknowledge(keyPath, id, revision)

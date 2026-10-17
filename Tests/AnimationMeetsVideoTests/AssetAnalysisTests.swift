@@ -1126,7 +1126,7 @@ final class Gate: @unchecked Sendable {
         analysis.update(with: video)
         try await settle { analysis.progress.isEmpty && analysis.tracks[id] != nil }
 
-        let failure = try #require(analysis.persistenceFailures[.init(id: id, stage: .scenes)])
+        let failure = try #require(analysis.persistenceFailures[.init(id: id, output: .scores)])
         #expect(failure.kind == .persistence)
         #expect(analysis.unsavedTracks[id] != nil)
         // The result is still usable; the failure is not an analysis failure.
@@ -1139,7 +1139,7 @@ final class Gate: @unchecked Sendable {
         failing.increment()
         await analysis.retryPersistence()
         #expect(analysis.persistenceProblem(for: id) == nil)
-        #expect(analysis.persistenceFailures[.init(id: id, stage: .scenes)] == nil)
+        #expect(analysis.persistenceFailures[.init(id: id, output: .scores)] == nil)
         #expect(analysis.unsavedTracks.isEmpty)
     }
 
