@@ -320,10 +320,13 @@ final class AssetAnalysis {
     /// Assets whose saved results were looked for in the package already.
     @ObservationIgnored private var checkedPackage: Set<UUID> = []
     /// Assets whose saved results could not be read, with why. Such an asset
-    /// is read again a few times on its own, at every update, and by
-    /// `retryPersistence`; it is not analyzed until a read succeeds.
+    /// is read again a few times on its own, and by `retryPersistence`, but
+    /// not by `update`; it is not analyzed until a read succeeds.
     private(set) var readFailures: [UUID: AnalysisFailure] = [:]
     @ObservationIgnored private var readAttempts: [UUID: Int] = [:]
+    /// The token of each asset's scheduled read retry, so only the latest
+    /// one runs.
+    @ObservationIgnored private var readRetries: [UUID: Int] = [:]
     /// How many times a failed read is tried again without being asked.
     private static let automaticReadRetries = 3
     /// Assets whose saved results are being read right now, with the token of
@@ -417,6 +420,7 @@ final class AssetAnalysis {
         checkedPackage = []
         readFailures = [:]
         readAttempts = [:]
+        readRetries = [:]
         loading = [:]
         changedFiles = [:]
         rejectedResults = rejected
@@ -461,6 +465,7 @@ final class AssetAnalysis {
         for id in rejectedResults.keys where !present.contains(id) { rejectedResults[id] = nil }
         for id in readFailures.keys where !present.contains(id) { readFailures[id] = nil }
         for id in readAttempts.keys where !present.contains(id) { readAttempts[id] = nil }
+        for id in readRetries.keys where !present.contains(id) { readRetries[id] = nil }
         checkedPackage.formIntersection(present)
         for clip in project.clips {
             let input = Self.input(of: clip)
@@ -473,7 +478,8 @@ final class AssetAnalysis {
             // What the package already holds is read first, away from the main
             // actor; the asset is looked at again once it is back.
             if let packageURL, !checkedPackage.contains(clip.id) {
-                if loading[clip.id] == nil { beginLoad(for: clip, from: packageURL) }
+                // One that failed is read again only when its retry is due.
+                if loading[clip.id] == nil, readFailures[clip.id] == nil { beginLoad(for: clip, from: packageURL) }
                 continue
             }
             if let missing = unavailable[clip.id] {
@@ -534,8 +540,8 @@ final class AssetAnalysis {
                 saved = try await backend.readSaved(package, id, identity, includingReference)
             } catch {
                 // Not known to hold nothing, so not analyzed over: the asset
-                // stays unchecked, and is read again at the next update, and
-                // after a growing wait for the first few failures.
+                // stays unchecked, and is read again after a growing wait for
+                // the first few failures, then only when asked.
                 guard generation == expectedGeneration, loading[id] == token else { return }
                 NSLog("Couldn't read saved analysis: \(error.localizedDescription)")
                 loading[id] = nil
@@ -543,10 +549,12 @@ final class AssetAnalysis {
                 let attempt = readAttempts[id, default: 0] + 1
                 readAttempts[id] = attempt
                 guard attempt <= Self.automaticReadRetries else { return }
+                nextToken += 1
+                let retry = nextToken
+                readRetries[id] = retry
                 try? await Task.sleep(for: .seconds(1 << (attempt - 1)))
-                guard generation == expectedGeneration, loading[id] == nil, !checkedPackage.contains(id),
-                      let project = projectSource?() ?? latestProject else { return }
-                update(with: project)
+                guard generation == expectedGeneration, readRetries[id] == retry else { return }
+                retryRead(of: id)
                 return
             }
             // Results fit the file the project accepted; if the file on disk
@@ -563,11 +571,22 @@ final class AssetAnalysis {
             loading[id] = nil
             readFailures[id] = nil
             readAttempts[id] = nil
+            readRetries[id] = nil
             if epoch == packageEpoch { publish(saved, for: id) }
             // Either way, look at the asset again: with its results, or with
             // the package it has now.
             if let project = projectSource?() ?? latestProject { update(with: project) }
         }
+    }
+
+    /// Reads an asset's saved results again after a failure, if it is still
+    /// in the project, unchecked, and not being read.
+    private func retryRead(of id: UUID) {
+        readRetries[id] = nil
+        guard let package = packageURL, loading[id] == nil, !checkedPackage.contains(id),
+              let clip = (projectSource?() ?? latestProject)?.clips.first(where: { $0.id == id }), clip.url != nil
+        else { return }
+        beginLoad(for: clip, from: package)
     }
 
     /// Takes what a read found, for what has nothing in memory yet.
@@ -786,9 +805,10 @@ final class AssetAnalysis {
     /// results that could not be saved, and to retire outdated ones that
     /// could not be removed.
     func retryPersistence() async {
-        if !readFailures.isEmpty, let project = projectSource?() ?? latestProject {
-            readAttempts = [:]
-            update(with: project)
+        // Each failed read starts over, with its own automatic retries.
+        for id in Array(readFailures.keys) {
+            readAttempts[id] = nil
+            retryRead(of: id)
         }
         retryPendingInvalidations()
         await writeHeldResults()

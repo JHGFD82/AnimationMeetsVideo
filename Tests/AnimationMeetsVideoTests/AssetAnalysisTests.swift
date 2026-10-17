@@ -1028,6 +1028,35 @@ final class Gate: @unchecked Sendable {
         #expect(reads.value == 2)
     }
 
+    @Test func updatesDuringTheWaitAfterAFailedReadDoNotReadAgain() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
+        let analysis = AssetAnalysis()
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 9]) }
+        observing(analysis) { self.stampA }
+        let live = analysis.backend, reads = Mutex(0)
+        analysis.backend.readSaved = { package, id, identity, includingReference in
+            if reads.increment() <= 2 { throw CocoaError(.fileReadUnknown) }
+            return try await live.readSaved(package, id, identity, includingReference)
+        }
+        analysis.reset(packageURL: package)
+        analysis.update(with: video)
+
+        // One read per wait, however often the project is looked at meanwhile.
+        for expected in [1, 2] {
+            try await settle { reads.value == expected && !analysis.isLoadingSaved }
+            for _ in 0..<3 { analysis.update(with: video) }
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(reads.value == expected)
+        }
+        try await settle { analysis.tracks[id] == track(1) }
+        #expect(reads.value == 3)
+        #expect(analysis.readFailures.isEmpty)
+    }
+
     @Test func theMainActorRunsWhileASlowReadIsSuspended() async throws {
         let package = try makePackage()
         defer { try? FileManager.default.removeItem(at: package) }
