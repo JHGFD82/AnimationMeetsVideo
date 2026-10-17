@@ -253,7 +253,8 @@ final class BeatMatchSession {
             if section.isConfirmed { return reviewHint }
             switch section.pinnedBeats.count {
             case 0:
-                return "Play the song and find a downbeat, beat 1 of a measure, near the middle of this section. Press M to drop an anchor at the playhead, or double-click the waveform."
+                let paste = copiedDetails == nil ? "" : " Or, if it keeps the tempo you copied, paste it (⌘V): the section's start is taken as beat 1."
+                return "Play the song and find a downbeat, beat 1 of a measure, near the middle of this section. Press M to drop an anchor at the playhead, or double-click the waveform." + paste
             case 1:
                 return "Line the tick up with the beat: ← → move the anchor 1 ms, with ⌥ one sample, with ⇧ 10 ms. Then place a second anchor well away from it, ideally near the far end of the section."
             default:
@@ -300,8 +301,15 @@ final class BeatMatchSession {
 
     /// Fills (or reanalyzes) the selected section, at `tempo` if given.
     func fillSelected(tempo: Double? = nil) {
-        guard let audio, let id = selectedSectionID, !isFilling else { return }
-        let map = self.map, duration = self.duration
+        guard let id = selectedSectionID else { return }
+        fill(map, section: id, tempo: tempo)
+    }
+
+    /// Fills section `id` of `map` off the main thread, then makes the
+    /// draft the result, as one undo step.
+    private func fill(_ map: BeatMap, section id: UUID, tempo: Double?) {
+        guard let audio, !isFilling else { return }
+        let duration = self.duration
         isFilling = true
         message = nil
         Task {
@@ -317,6 +325,38 @@ final class BeatMatchSession {
                 message = error.localizedDescription
             }
         }
+    }
+
+    // MARK: Copy and paste
+
+    /// What was copied from a filled consistent section, to paste on others.
+    private(set) var copiedDetails: BeatSectionDetails?
+
+    /// The selected section's details, when it is a filled consistent one.
+    var selectedDetails: BeatSectionDetails? {
+        guard let section = selectedSection, section.kind == .consistent, let tempo = selectedTempo else { return nil }
+        return BeatSectionDetails(
+            tempo: tempo, beatsPerMeasure: section.beatsPerMeasure,
+            isMeasureSet: section.isMeasureSet, steadiness: section.steadiness
+        )
+    }
+
+    func copyDetails() {
+        guard let details = selectedDetails else { return }
+        copiedDetails = details
+    }
+
+    var canPasteDetails: Bool {
+        copiedDetails != nil && selectedSection?.kind == .consistent && audio != nil && !isFilling
+    }
+
+    /// Fills the selected consistent section at the copied tempo, its start
+    /// taken as beat 1, with the copied beats per measure and steadiness.
+    func pasteDetails() {
+        guard canPasteDetails, let details = copiedDetails, let id = selectedSectionID else { return }
+        var prepared = map
+        guard prepared.paste(details, into: id) else { return }
+        fill(prepared, section: id, tempo: details.tempo)
     }
 
     /// After a fill, the next consistent section to mark, then ramps.

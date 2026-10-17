@@ -263,6 +263,7 @@ struct BeatMatchView: View {
                 if session.isFilling { ProgressView().controlSize(.small) }
             }
             if section.isConfirmed { tempoControls }
+            copyPasteControls
         } else if section.kind == .ramp {
             Button("Drop Beat at Playhead (M)", action: session.addBeatAtPlayhead)
             HStack {
@@ -272,6 +273,25 @@ struct BeatMatchView: View {
                     .disabled(session.audio == nil || session.isFilling)
                 if session.isFilling { ProgressView().controlSize(.small) }
             }
+        }
+    }
+
+    /// Copy and paste of a consistent section's tempo, beats per measure
+    /// and steadiness; ramps and unanalyzed sections have none to share.
+    @ViewBuilder
+    private var copyPasteControls: some View {
+        HStack {
+            Button("Copy Tempo", action: session.copyDetails)
+                .disabled(session.selectedDetails == nil)
+                .help("Copy this section's tempo, beats a measure and steadiness (⌘C)")
+            Button("Paste Tempo", action: session.pasteDetails)
+                .disabled(!session.canPasteDetails)
+                .help("Fill this section at the copied tempo, its start taken as beat 1 (⌘V)")
+        }
+        if let copied = session.copiedDetails {
+            Text("Copied: \(String(format: "%.2f", copied.tempo)) BPM, \(copied.beatsPerMeasure) beats a measure")
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.textTertiary)
         }
     }
 
@@ -329,6 +349,11 @@ struct BeatMatchView: View {
             case "=", "+": session.zoomIn(); return true
             case "-": session.zoomOut(); return true
             case "0": session.fit(); return true
+            case "c": session.copyDetails(); return session.selectedDetails != nil
+            case "v":
+                guard session.canPasteDetails else { return false }
+                session.pasteDetails()
+                return true
             default: return false
             }
         }

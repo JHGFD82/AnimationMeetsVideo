@@ -34,6 +34,24 @@ private let snap = s(0.5)
         #expect(ranges(map) == [[12, 20], [20, 30]])
     }
 
+    @Test func pastingStartsTheSectionOnAPinnedDownbeatAndSkipsRamps() throws {
+        var map = BeatMap(sections: [
+            BeatSection(kind: .consistent, start: s(10), end: s(20), isConfirmed: true, beats: [MappedBeat(time: s(12))]),
+            BeatSection(kind: .ramp, start: s(20), end: s(30)),
+        ])
+        let details = BeatSectionDetails(tempo: 100, beatsPerMeasure: 6, isMeasureSet: true, steadiness: .intent)
+        let intoConsistent = map.paste(details, into: map.sections[0].id)
+        #expect(intoConsistent)
+        let pasted = map.sections[0]
+        #expect(pasted.beats == [MappedBeat(time: s(10), position: 1, isPinned: true)])
+        #expect(pasted.beatsPerMeasure == 6)
+        #expect(pasted.isMeasureSet)
+        #expect(pasted.steadiness == .intent)
+        #expect(!pasted.isConfirmed)
+        let intoRamp = map.paste(details, into: map.sections[1].id)
+        #expect(!intoRamp)
+    }
+
     @Test func doubleClickFillsTheGapOrChangesTheKind() throws {
         var map = BeatMap()
         map.drawSection(.consistent, from: s(10), to: s(30), duration: song, snap: snap)

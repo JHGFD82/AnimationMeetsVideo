@@ -102,6 +102,25 @@ extension BeatMap {
         }
     }
 
+    /// Readies a consistent section to be filled at another's copied
+    /// details: it takes their beats per measure and steadiness, its start
+    /// is taken to be beat 1, pinned, and the beats it had go. The fill at
+    /// the copied tempo does the rest. Gives false, changing nothing, for
+    /// any other kind.
+    @discardableResult
+    mutating func paste(_ details: BeatSectionDetails, into id: UUID) -> Bool {
+        guard section(id: id)?.kind == .consistent else { return false }
+        updateSection(id) { section in
+            section.beatsPerMeasure = details.beatsPerMeasure
+            section.isMeasureSet = details.isMeasureSet
+            section.steadiness = details.steadiness
+            section.beats = [MappedBeat(time: section.start, position: 1, isPinned: true)]
+            section.isConfirmed = false
+        }
+        recountPositions()
+        return true
+    }
+
     mutating func removeSection(_ id: UUID) {
         sections.removeAll { $0.id == id }
         recountPositions()
@@ -213,4 +232,15 @@ extension BeatMap {
         }
         recountPositions()
     }
+}
+
+/// What a filled consistent section passes to another by copy and paste:
+/// its tempo and how it counts its measures. Ramps change tempo, so they
+/// have nothing to pass on.
+struct BeatSectionDetails: Equatable, Sendable {
+    /// Beats per minute.
+    var tempo: Double
+    var beatsPerMeasure: Int
+    var isMeasureSet: Bool
+    var steadiness: BeatSection.Steadiness
 }

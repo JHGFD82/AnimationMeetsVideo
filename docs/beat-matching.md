@@ -193,6 +193,14 @@ start, and draws them before marking any:
   drag. The same are buttons in the panel.
 
 Then each consistent section is marked as above, one after another.
+A filled consistent section's details (its tempo, beats per measure and
+steadiness) can be copied (**Copy Tempo**, ⌘C) and pasted (**Paste
+Tempo**, ⌘V) onto another consistent section that keeps that tempo. The
+paste takes the section's start to be beat 1: it pins a downbeat there
+(snapped onto its onset like any pinned beat), drops the beats the section
+had, and fills the rest at the copied tempo, as one undo step. Ramps
+change tempo and unanalyzed sections have none, so neither copies or
+takes a paste.
 Switching sections in the panel's picker, or moving on to the next one
 after a fill, scrolls the section into view, centred if it fits; the zoom
 is left alone. The

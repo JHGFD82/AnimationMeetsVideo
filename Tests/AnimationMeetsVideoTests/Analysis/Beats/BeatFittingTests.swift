@@ -190,6 +190,34 @@ private func section(_ kind: BeatSection.Kind, _ start: Double, _ end: Double, p
         #expect(intentError < 0.004, "\(intentError)")
     }
 
+    @Test func aPastedTempoFillsASectionFromItsStart() throws {
+        // Two sections of one song at the same tempo; the second's start is
+        // on a beat, beat 1 of its measure.
+        let truth = steadyBeats(bpm: 117.3, from: 0.25, to: 40)
+        let onsets = curve(beats: truth, seconds: 40)
+        var map = BeatMap(sections: [
+            section(.consistent, 0, time(truth[40]).seconds, pins: [(truth[4], 1), (truth[36], 1)]),
+            section(.consistent, time(truth[40]).seconds, 40),
+        ], usesSections: true)
+        map = try BeatFitting.fill(map, section: map.sections[0].id, curve: onsets, sampleRate: rate, duration: time(40))
+        let gap = try #require(BeatFitting.medianGap(of: map.sections[0].beats.map(\.time.seconds)))
+        let tempo = 60 / gap
+        let details = BeatSectionDetails(tempo: tempo, beatsPerMeasure: 3, isMeasureSet: true, steadiness: .click)
+        let second = map.sections[1].id
+        let pasted = map.paste(details, into: second)
+        #expect(pasted)
+        map = try BeatFitting.fill(map, section: second, curve: onsets, sampleRate: rate, duration: time(40), tempo: tempo)
+
+        let filled = try #require(map.section(id: second))
+        let expected = truth.filter { $0 >= truth[40] - 0.001 }
+        #expect(filled.isConfirmed)
+        #expect(filled.beatsPerMeasure == 3)
+        #expect(filled.beats.count == expected.count)
+        #expect(worstError(filled.beats, expected) < 0.001)
+        let firstPosition = filled.beats.first?.position
+        #expect(firstPosition == 1)
+    }
+
     @Test func aTwoAnchorSectionNeedsBothAnchors() {
         let input = section(.consistent, 0, 10, pins: [(1, 1)])
         #expect(throws: BeatFitting.Failure.needsTwoAnchors) {

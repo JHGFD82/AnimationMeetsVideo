@@ -182,7 +182,8 @@ enum BeatFitting {
 
     // MARK: Consistent sections
 
-    /// Fills a consistent section from its pinned beats (at least two),
+    /// Fills a consistent section from its pinned beats (at least two, or
+    /// one with a `tempo`, as when a tempo is pasted from another section),
     /// and gives the period it settled on, in seconds.
     ///
     /// The tempo comes from `tempo`, else from the beats already there when
@@ -194,7 +195,9 @@ enum BeatFitting {
     static func fillConsistent(
         _ section: BeatSection, curve: OnsetCurve, sampleRate: Double, tempo: Double? = nil
     ) throws -> (section: BeatSection, period: Double) {
-        guard section.pinnedBeats.count >= 2 else { throw Failure.needsTwoAnchors }
+        guard section.pinnedBeats.count >= 2 || ((tempo ?? 0) > 0 && !section.pinnedBeats.isEmpty) else {
+            throw Failure.needsTwoAnchors
+        }
         let curve = aligned(curve, to: section.pinnedBeats.map(\.time.seconds))
         // Beats placed by ear are a few milliseconds off; each moves onto
         // its onset, and stays pinned.
@@ -227,7 +230,7 @@ enum BeatFitting {
             counts[widest] = count
         }
         // What the pinned beats say the tempo is, all of them counted.
-        period = zip(gaps, counts).map { $0 / Double($1) }.sorted()[gaps.count / 2]
+        if !gaps.isEmpty { period = zip(gaps, counts).map { $0 / Double($1) }.sorted()[gaps.count / 2] }
         // Close anchors give only a rough tempo; the whole section's onsets
         // pin it down.
         if tempo == nil, !reanalyzing {
