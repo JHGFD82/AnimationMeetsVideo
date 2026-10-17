@@ -215,7 +215,14 @@ final class BeatMatchSession {
 
     func finishDrawing() {
         isDrawing = false
-        selectedSectionID = map.sections.first { $0.kind == .consistent && !$0.isConfirmed }?.id ?? map.sections.first?.id
+        selectSection(map.sections.first { $0.kind == .consistent && !$0.isConfirmed }?.id ?? map.sections.first?.id)
+    }
+
+    /// Switches to a section from the panel rather than the waveform, and
+    /// scrolls it into view.
+    func selectSection(_ id: UUID?) {
+        selectedSectionID = id
+        if let id { reveal(section: id) }
     }
 
     func startOver() {
@@ -317,7 +324,7 @@ final class BeatMatchSession {
         guard map.usesSections else { return }
         if let next = map.sections.first(where: { $0.kind == .consistent && !$0.isConfirmed })
             ?? map.sections.first(where: { $0.kind == .ramp && !$0.isConfirmed }) {
-            selectedSectionID = next.id
+            selectSection(next.id)
         }
     }
 
@@ -598,6 +605,17 @@ final class BeatMatchSession {
 
     /// The song's start sits at the left edge at most, and its end at the
     /// right edge at least: nothing past either end is shown.
+    /// Scrolls a section into view, centred if it fits and from its start
+    /// if not; one already in view stays where it is.
+    private func reveal(section id: UUID) {
+        guard let section = map.section(id: id) else { return }
+        let span = Double(viewWidth) * secondsPerPoint
+        let start = section.start.seconds, length = section.end.seconds - start
+        guard start < visibleStart || start + length > visibleStart + span else { return }
+        visibleStart = length <= span * 0.9 ? start - (span - length) / 2 : start - span * 0.05
+        clampView()
+    }
+
     private func clampView() {
         let span = Double(viewWidth) * secondsPerPoint
         visibleStart = min(max(visibleStart, 0), max(0, duration.seconds - span))

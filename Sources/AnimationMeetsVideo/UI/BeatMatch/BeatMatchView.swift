@@ -220,7 +220,7 @@ struct BeatMatchView: View {
     @ViewBuilder
     private var markingControls: some View {
         if session.map.usesSections {
-            Picker("Section", selection: $session.selectedSectionID) {
+            Picker("Section", selection: Binding(get: { session.selectedSectionID }, set: { session.selectSection($0) })) {
                 ForEach(Array(session.map.sections.enumerated()), id: \.element.id) { index, section in
                     Text("\(index + 1). \(section.kind.name)\(section.isConfirmed ? " ✓" : "")").tag(UUID?.some(section.id))
                 }
