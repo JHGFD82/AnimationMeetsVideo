@@ -94,6 +94,7 @@ struct AnimationMeetsVideoApp: App {
                     ProjectStartView(onNew: newProject, onOpen: openProject)
                 }
                 .background(WindowReopenerRegistration())
+                .background(WindowCloseGuard(shouldClose: shouldCloseWindow))
                 .background(
                     Color.clear.sheet(isPresented: $showsProjectSettings) {
                         ProjectSettingsView(project: project) { name, copies in
@@ -596,6 +597,15 @@ struct AnimationMeetsVideoApp: App {
             reopenWindowIfClosed()
             return .terminateCancel
         }
+    }
+
+    /// Closing the window quits, so with unsaved changes it asks to quit
+    /// instead and stays open: the question about saving then appears over
+    /// the window, which closes only once the app does.
+    private func shouldCloseWindow() -> Bool {
+        guard hasUnsavedChanges, projectURL != nil else { return true }
+        DispatchQueue.main.async { NSApp.terminate(nil) }
+        return false
     }
 
     /// Closing the last window asks to quit; when that's cancelled the
