@@ -198,6 +198,20 @@ struct LibrarySidebar: View {
         }
     }
 
+    /// Says what the file the asset uses now can't play of the original's
+    /// time, when it can't.
+    static func coverageNote(_ coverage: SceneCoverage?) -> String? {
+        guard let coverage else { return nil }
+        if coverage.hasNoOverlap { return "The replacement doesn't overlap the original's time, so there are no scenes." }
+        guard !coverage.uncovered.isEmpty else { return nil }
+        let spans = coverage.uncovered.map { "\(Self.timecode($0.start.seconds))–\(Self.timecode($0.end.seconds))" }
+        return "The replacement has no footage for \(spans.joined(separator: ", "))."
+    }
+
+    private static func timecode(_ seconds: Double) -> String {
+        String(format: "%d:%05.2f", Int(seconds) / 60, seconds.truncatingRemainder(dividingBy: 60))
+    }
+
     private func videoRow(_ clip: MediaClip) -> some View {
         let isExpanded = Binding(
             get: { expandedAssets.contains(clip.id) },
@@ -210,6 +224,12 @@ struct LibrarySidebar: View {
                 SceneRowView(clip: clip, scene: scene, number: index + 1)
                     .tag(key)
                     .draggable(dragPayload(for: key))
+            }
+            if let note = Self.coverageNote(project.sceneCoverage(ofAsset: clip.id, track: analysis.tracks[clip.id])) {
+                Text(note)
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.statusWarning)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         } label: {
             assetLabel(clip)

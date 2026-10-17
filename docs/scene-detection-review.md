@@ -41,8 +41,10 @@ end; the boundary properties run over 400 seeded random tracks each.
 
 ## Defects
 
-1. **Replacement media is not mapped into original time. (High; follows
-   from scores describing the current file.)** Scores are in the current
+1. **Replacement media was not mapped into original time. (High; fixed.)**
+   See "Replacement media: original time and the file's time" in
+   [scene-cuts.md](scene-cuts.md) for the convention, the domain policy and
+   the tests. The description of the defect, as found: Scores are in the current
    file's time, but scenes, manual cuts, ignored cuts and trims are in
    original time, and the file is read at `original + alignmentOffset`.
    `scenes(ofAsset:)` uses the cut times as they are. For a replacement

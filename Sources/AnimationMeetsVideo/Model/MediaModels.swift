@@ -631,6 +631,12 @@ struct MediaClip: Identifiable, Equatable {
     /// Size and modification time of the file when the project last accepted
     /// it. A different stamp on opening means it was swapped outside the app.
     var acceptedStamp: FileStamp?
+    /// How long the original file was, kept when the asset is first
+    /// replaced. The original's editing time stays `0..<originalDuration`:
+    /// a longer replacement does not extend it, and a shorter one leaves
+    /// part of it uncovered. Nil while the file is the original, and for
+    /// assets replaced before it was kept.
+    var originalDuration: CMTime?
     /// True once the person chose to forget the original. Its reference data
     /// is deleted at the next save and not captured again from whatever file
     /// is there now.

@@ -560,6 +560,8 @@ struct ProjectFile: Codable {
         var sceneEdits: SceneEditsEntry?
         /// Absent when the file is aligned with the original.
         var alignmentOffset: TimeEntry?
+        /// How long the original file was; absent until the asset is replaced.
+        var originalDuration: TimeEntry?
         /// Absent when the asset has never been replaced.
         var previousPaths: [String]?
         /// Absent in files written before replacement existed.
@@ -744,7 +746,7 @@ extension ProjectFile {
         ]))
         let asset = JSONShape.object(object([
             .required("id", .uuid), .required("name", .string), .required("path", .string),
-            .optional("sceneEdits", sceneEdits), .optional("alignmentOffset", .time),
+            .optional("sceneEdits", sceneEdits), .optional("alignmentOffset", .time), .optional("originalDuration", .time),
             .optional("previousPaths", .array(.string)),
             .optional("fileStamp", .object(object([.required("byteCount", .integer), .optional("modified", .number)]))),
             .optional("referenceForgotten", .bool),

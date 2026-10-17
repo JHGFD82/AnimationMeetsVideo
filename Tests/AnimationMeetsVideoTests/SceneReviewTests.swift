@@ -356,27 +356,22 @@ private func clip(_ frame: Int) -> CMTime { CMTime(value: Int64(frame), timescal
     }
 
     @Test func aReplacementAlignedByTwoSecondsGetsItsCutsInOriginalTime() {
-        // Original time t is at t + 2 s in the file. The scores now describe
-        // the file (a cut at 5 s of the file), but scenes and trims are in
-        // original time, so the cut belongs at 3 s.
+        // Original time t is at t + 2 s in the file. The scores describe the
+        // file (a cut at 5 s of the file), but scenes and trims are in
+        // original time, so the cut is at 3 s.
         let (project, id) = project(offset: CMTime(value: 2, timescale: 1))
         let scenes = project.scenes(ofAsset: id, track: spikes([120: 200]))
-        withKnownIssue("cuts found in the file are not moved into original time by the alignment offset") {
-            #expect(scenes.map(\.start).contains(clip(72)))
-        }
+        #expect(scenes.map(\.start).contains(clip(72)))
     }
 
-    @Test func aSceneAddedFromAReplacementShouldStartWhereTheCutIsInTheFile() {
+    @Test func aSceneAddedFromAReplacementStartsWhereTheCutIsInTheFile() {
         var (project, id) = project(offset: CMTime(value: 2, timescale: 1))
         let scenes = project.scenes(ofAsset: id, track: spikes([120: 200]))
         let second = scenes[1]
         project.addScenes([second], ofAsset: id, intoTimeline: project.rootTimelineID)
         let placed = project.timelines[0].layers[0].clips[0]
-        // The clip reads the file at trimStart + offset. It should be the cut, 5 s.
-        let readsFileAt = CMTimeAdd(placed.trimStart, CMTime(value: 2, timescale: 1)).seconds
-        withKnownIssue("the clip starts 2 s after the cut in the file") {
-            #expect(abs(readsFileAt - 5.0) < 1.0 / 24)
-        }
+        // The clip reads the file at trimStart + offset. It is the cut, 5 s.
+        #expect(abs(project.clips[0].fileTime(forSourceTime: placed.trimStart).seconds - 5.0) < 1.0 / 24)
     }
 
     @Test func scenesBecomeClipsThatMeetOnATimelineWithAnotherFrameRate() throws {

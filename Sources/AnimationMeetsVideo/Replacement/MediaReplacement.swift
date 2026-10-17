@@ -22,6 +22,11 @@ extension EditingProject {
     /// copied or deleted.
     mutating func replaceMedia(id assetID: UUID, with replacement: MediaClip, offset: CMTime) {
         guard let index = clips.firstIndex(where: { $0.id == assetID }), let newURL = replacement.url else { return }
+        // The first replacement keeps how long the original was; later ones
+        // must not mistake an earlier replacement's length for it.
+        if clips[index].originalDuration == nil, !clips[index].wasReplaced {
+            clips[index].originalDuration = clips[index].duration
+        }
         if let oldURL = clips[index].url, oldURL.path != newURL.path {
             let old = oldURL.path
             clips[index].previousPaths.removeAll { $0 == old }

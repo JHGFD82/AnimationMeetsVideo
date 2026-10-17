@@ -681,6 +681,7 @@ enum ProjectStore {
                     path: relativePath(for: clip.url!),
                     sceneEdits: clip.sceneEdits == SceneEdits() ? nil : ProjectFile.SceneEditsEntry(clip.sceneEdits),
                     alignmentOffset: clip.alignmentOffset == .zero ? nil : ProjectFile.TimeEntry(clip.alignmentOffset),
+                    originalDuration: clip.originalDuration.map(ProjectFile.TimeEntry.init),
                     previousPaths: clip.previousPaths.isEmpty ? nil : clip.previousPaths,
                     fileStamp: clip.acceptedStamp,
                     referenceForgotten: clip.referenceForgotten ? true : nil,
@@ -753,6 +754,7 @@ enum ProjectStore {
             clip.name = asset.name
             clip.sceneEdits = asset.sceneEdits?.edits ?? SceneEdits()
             clip.alignmentOffset = asset.alignmentOffset?.time ?? .zero
+            clip.originalDuration = asset.originalDuration?.time
             clip.previousPaths = asset.previousPaths ?? []
             clip.referenceForgotten = asset.referenceForgotten ?? false
             clip.acceptedStamp = asset.fileStamp ?? FileStamp(url: url)

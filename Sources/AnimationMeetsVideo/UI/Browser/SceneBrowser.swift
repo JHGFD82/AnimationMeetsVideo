@@ -264,7 +264,10 @@ struct ScenePreviewSheet: View {
 
     private var splitTime: CMTime {
         let raw = CMTime(seconds: model.position, preferredTimescale: 600)
-        return track?.nearestFrameTime(to: raw) ?? raw
+        let mapping = project.mediaClip(id: target.assetID)?.timeMapping ?? .identity
+        return track?.nearestFrameTime(
+            toOriginal: raw, mapping: mapping, within: CMTimeRange(start: target.scene.start, end: target.scene.end)
+        ) ?? raw
     }
 
     private var canSplit: Bool {

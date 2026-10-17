@@ -187,7 +187,13 @@ enum SceneDetector {
     /// Cuts found by applying a sensitivity to the saved change scores.
     /// A cut is a frame whose change is over the threshold and is a local
     /// peak, so a slow dissolve or a camera move isn't split in the middle.
-    static func autoCuts(in track: ChangeScoreTrack, defaultSensitivity: Double, edits: SceneEdits = SceneEdits()) -> [CMTime] {
+    /// The track is in the time of the file it was made from; with a
+    /// `mapping` the cuts are returned in the original's time, and the
+    /// sensitivity regions in `edits` (also original time) are read there.
+    static func autoCuts(
+        in track: ChangeScoreTrack, defaultSensitivity: Double, edits: SceneEdits = SceneEdits(),
+        mapping: OriginalTimeMapping = .identity
+    ) -> [CMTime] {
         guard track.frameCount > 2 else { return [] }
         let scores = track.scores
         let minimumGap = Int64((minimumSceneSeconds * Double(track.timescale)).rounded())
@@ -199,7 +205,7 @@ enum SceneDetector {
             guard isPeak else { continue }
 
             let time = track.time(at: i)
-            let sensitivity = sensitivity(at: time, defaultSensitivity: defaultSensitivity, edits: edits)
+            let sensitivity = sensitivity(at: mapping.original(fromFile: time), defaultSensitivity: defaultSensitivity, edits: edits)
             guard Double(score) / 255 >= threshold(forSensitivity: sensitivity) else { continue }
 
             if let last = kept.last, track.times[i] - track.times[last.index] < minimumGap {
@@ -208,15 +214,18 @@ enum SceneDetector {
                 kept.append((i, score))
             }
         }
-        return kept.map { track.time(at: $0.index) }
+        return kept.map { mapping.original(fromFile: track.time(at: $0.index)) }
     }
 
     /// Automatic cuts, minus the ones the person ignored, plus the ones they
     /// added, in time order.
-    static func cuts(in track: ChangeScoreTrack?, defaultSensitivity: Double, edits: SceneEdits) -> [SceneCut] {
+    static func cuts(
+        in track: ChangeScoreTrack?, defaultSensitivity: Double, edits: SceneEdits,
+        mapping: OriginalTimeMapping = .identity
+    ) -> [SceneCut] {
         var result: [SceneCut] = []
         if let track {
-            for time in autoCuts(in: track, defaultSensitivity: defaultSensitivity, edits: edits)
+            for time in autoCuts(in: track, defaultSensitivity: defaultSensitivity, edits: edits, mapping: mapping)
             where !edits.ignoredCuts.contains(where: { CMTimeCompare($0, time) == 0 }) {
                 result.append(SceneCut(time: time, origin: .auto))
             }
@@ -225,6 +234,24 @@ enum SceneDetector {
             result.append(SceneCut(time: time, origin: .manual))
         }
         return result.sorted { CMTimeCompare($0.time, $1.time) < 0 }
+    }
+
+    /// The scenes over each of `ranges` (in original time): cuts strictly
+    /// inside a range split it; cuts at or outside its ends are discarded,
+    /// never clamped into cuts at the ends.
+    static func scenes(from cuts: [SceneCut], over ranges: [CMTimeRange]) -> [SceneRange] {
+        ranges.flatMap { range in
+            var scenes: [SceneRange] = []
+            var start = range.start
+            var origin = SceneCut.Origin.auto
+            for cut in cuts where CMTimeCompare(cut.time, range.start) > 0 && CMTimeCompare(cut.time, range.end) < 0 {
+                scenes.append(SceneRange(start: start, end: cut.time, origin: origin))
+                start = cut.time
+                origin = cut.origin
+            }
+            scenes.append(SceneRange(start: start, end: range.end, origin: origin))
+            return scenes
+        }
     }
 
     /// The scenes between cuts, covering the whole asset. Cuts at or beyond

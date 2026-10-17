@@ -179,6 +179,34 @@ New scores and reference data are written on the next save. A project that was n
 nowhere to put them yet, so they are recomputed after reopening if the
 project was closed before saving.
 
+## Replacement media: original time and the file's time
+
+Scores are in the time of the file they were made from; scenes, cuts, hand
+edits, sensitivity regions and trims are in the **original's** time. With
+`offset = fileTime − originalTime` (the asset's alignment offset):
+
+    originalTime = fileTime − offset        fileTime = originalTime + offset
+
+`OriginalTimeMapping` holds these two conversions and everything uses it.
+Detected cuts are moved into original time by subtracting the offset
+(sensitivity regions and ignored cuts are read there too). A hand-placed
+cut is snapped by adding the offset, finding the nearest real frame among
+the file's actual timestamps (not a frame grid), and subtracting the offset
+again, staying inside the scene it splits.
+
+**The original's editing-time domain is kept.** It is `0..<originalDuration`
+(kept when the asset is first replaced; unknown for assets replaced before
+that, which are then limited by the file only). The scenes of a replaced
+asset are made only over `[0, originalDuration) ∩ [−offset, fileDuration −
+offset)`, and a clip's trim is one more intersection (`SceneCoverage.scenes(within:)`).
+A longer replacement is not allowed to extend the domain: its extra
+footage is ignored. A shorter one, or one that starts later or earlier,
+leaves part of the original's time **uncovered**: no scene, frozen frame
+or other stand-in is made, existing edits are not changed, and the library
+says which time has no footage (or that the file doesn't overlap the
+original at all, in which case there are no scenes). Cuts outside the
+usable stretch are dropped, never clamped into cuts at its ends.
+
 ## Failures and retries
 
 A stage that can't finish is recorded per asset and stage
