@@ -2,9 +2,10 @@ import AppKit
 import CoreMedia
 import SwiftUI
 
-/// The beat match panel: the song's transport and tick along the top, the
-/// waveform, and beside it the step the person is on and the selected
-/// section or beat. See docs/beat-matching.md.
+/// The beat match panel: the song's transport along the top (with the tick
+/// once there are beats to tick on), and the step the person is on and
+/// the selected section or beat to the left of the waveform. See
+/// docs/beat-matching.md.
 ///
 /// Keys: Space plays, M drops a beat or anchor at the playhead, ← → nudge
 /// the selected beat (1 ms; ⌥ one sample; ⇧ 10 ms), ↑ ↓ select the
@@ -28,10 +29,10 @@ struct BeatMatchView: View {
                 .padding(.vertical, Design.Space.step)
             Groove()
             HStack(spacing: 0) {
-                waveformArea
-                Groove(axis: .vertical)
                 sidebar
                     .frame(width: 280)
+                Groove(axis: .vertical)
+                waveformArea
             }
         }
         .background(Design.Surface.base.color)
@@ -68,12 +69,15 @@ struct BeatMatchView: View {
             .disabled(session.selectedBeat == nil)
             .help("Loop the two measures around the selected beat (L)")
             .accessibilityLabel("Loop around the selected beat")
-            Toggle("Tick", isOn: $session.clicksOn)
-                .toggleStyle(.checkbox)
-                .help("Play a tick on every beat; downbeats an octave up")
-            ClickToneControls(frequency: $frequency, volume: $volume) { session.clicks.preview() }
-                .frame(width: 300)
-                .disabled(!session.clicksOn)
+            // Nothing to tick on until a beat is placed.
+            if session.hasBeats {
+                Toggle("Tick", isOn: $session.clicksOn)
+                    .toggleStyle(.checkbox)
+                    .help("Play a tick on every beat; downbeats an octave up")
+                ClickToneControls(frequency: $frequency, volume: $volume) { session.clicks.preview() }
+                    .frame(width: 300)
+                    .disabled(!session.clicksOn)
+            }
             Spacer()
             HStack(spacing: Design.Space.tight) {
                 Button(action: session.zoomOut) { Image(systemName: "minus.magnifyingglass") }

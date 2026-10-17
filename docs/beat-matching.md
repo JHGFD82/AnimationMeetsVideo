@@ -172,7 +172,8 @@ beats per measure, unless a pinned beat in the section says otherwise.
 
 ## Hearing it
 
-The panel has the tick's **pitch** and **volume**. The downbeat (position
+Once a beat or anchor is placed, the panel's transport shows the tick's
+**pitch** and **volume**; before that there is nothing to tick on. The downbeat (position
 1) plays an octave above the other beats. The same two settings are in the
 timeline's view options; they are one pair of settings, remembered across
 launches. The pitch slider stops at 2000 Hz, so the downbeat goes no higher
@@ -213,7 +214,9 @@ the pinned one), and wraps positions into the measure.
    an onset curve, unit tested. **Built** (`BeatFitting`, `BeatMatchAudio`).
 5. The beat match panel: waveform, transport, anchors and nudging, beat
    editing, then sections. **Built** (`UI/BeatMatch/`): opened from a Music
-   clip's menu or the inspector. While it is open the editor is darkened
+   clip's menu or the inspector. The step's instructions and controls sit
+   left of the waveform, and resizing the panel keeps the same stretch of
+   song in view. While it is open the editor is darkened
    and disabled, the Timeline menu rests, and a click on the editor brings
    the panel back; its undo is the editor's. Keys: Space plays, M drops a
    beat or anchor at the playhead, ← → nudge the selected beat (⌥ one

@@ -41,9 +41,16 @@ final class BeatMatchSession {
     /// The waveform's left edge, in seconds, and its zoom.
     var visibleStart = 0.0
     var secondsPerPoint = 0.05
-    /// The waveform's width, which zooming and fitting work from.
+    /// The waveform's width, which zooming and fitting work from. A resize
+    /// keeps the same stretch of song in view, so the waveform scales with
+    /// the panel.
     var viewWidth: CGFloat = 800 {
-        didSet { if !hasFitted, viewWidth > 0 { fit() } }
+        didSet {
+            guard viewWidth > 0, viewWidth != oldValue else { return }
+            guard hasFitted, oldValue > 0 else { return fit() }
+            secondsPerPoint = min(max(secondsPerPoint * Double(oldValue / viewWidth), closestZoom), farthestZoom)
+            clampView()
+        }
     }
     @ObservationIgnored private var hasFitted = false
 
@@ -145,6 +152,9 @@ final class BeatMatchSession {
     }
 
     var selectedSection: BeatSection? { selectedSectionID.flatMap(map.section(id:)) }
+
+    /// Whether any beat or anchor has been placed, which the tick needs.
+    var hasBeats: Bool { map.sections.contains { !$0.beats.isEmpty } }
 
     func chooseOneTempo() {
         edit { [duration] map in map = .oneTempo(duration: duration) }
