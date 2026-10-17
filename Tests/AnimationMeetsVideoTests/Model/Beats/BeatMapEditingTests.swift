@@ -108,6 +108,18 @@ private let snap = s(0.5)
         #expect(map.addBeat(at: s(20), reach: snap) == nil)
     }
 
+    @Test func tappedBeatsKeepTheirCountThroughTheMeasure() {
+        var map = BeatMap(sections: [BeatSection(kind: .ramp, start: .zero, end: s(10), beatsPerMeasure: 3)])
+        for (index, seconds) in [1.0, 1.5, 2.0, 2.5].enumerated() {
+            map.addBeat(at: s(seconds), reach: snap, position: index + 1)
+        }
+        // The fourth tap wraps round to 1, and every tap is pinned.
+        let positions: [Int] = map.sections[0].beats.map(\.position)
+        #expect(positions == [1, 2, 3, 1])
+        let pinned = map.sections[0].beats.allSatisfy(\.isPinned)
+        #expect(pinned)
+    }
+
     @Test func movedBeatsArePinnedAndStayBetweenTheirNeighbours() {
         var map = BeatMap(sections: [BeatSection(kind: .consistent, start: .zero, end: s(10), isConfirmed: true, beats: [
             MappedBeat(time: s(1)), MappedBeat(time: s(2)), MappedBeat(time: s(3)),

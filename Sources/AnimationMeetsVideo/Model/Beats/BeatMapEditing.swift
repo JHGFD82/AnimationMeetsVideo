@@ -152,10 +152,10 @@ extension BeatMap {
     /// Adds a pinned beat. It goes into the section it falls in, or, just
     /// past a section's edge, into that section, which grows to take it.
     /// An anchor in a section not filled yet is a downbeat; in a filled one
-    /// it takes the place after the beat before it. Gives the beat's time,
-    /// or nil outside every section.
+    /// it takes the place after the beat before it; `position`, when given,
+    /// overrides either. Gives the beat's time, or nil outside every section.
     @discardableResult
-    mutating func addBeat(at time: CMTime, reach: CMTime) -> CMTime? {
+    mutating func addBeat(at time: CMTime, reach: CMTime, position: Int? = nil) -> CMTime? {
         let index = sectionIndex(containing: time) ?? sections.indices.min { a, b in
             distance(from: time, to: sections[a]) < distance(from: time, to: sections[b])
         }.flatMap { CMTimeCompare(distance(from: time, to: sections[$0]), reach) <= 0 ? $0 : nil }
@@ -164,7 +164,9 @@ extension BeatMap {
         if CMTimeCompare(time, section.start) < 0 { section.start = time }
         if CMTimeCompare(time, section.end) >= 0 { section.end = CMTimeAdd(time, CMTime(value: 1, timescale: 1000)) }
         var beat = MappedBeat(time: time, position: 1, isPinned: true)
-        if section.isConfirmed {
+        if let position {
+            beat.position = (position - 1).modulo(section.beatsPerMeasure) + 1
+        } else if section.isConfirmed {
             if let before = section.beats.last(where: { CMTimeCompare($0.time, time) < 0 }) {
                 beat.position = before.position.modulo(section.beatsPerMeasure) + 1
             } else if let after = section.beats.first {

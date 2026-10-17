@@ -61,7 +61,15 @@ step.
 1. **Place two anchors.** The panel asks for a beat near the middle of the
    section, then a second one well away from it, ideally near the far
    end. Each anchor is dropped on the waveform or at the playhead (M), and
-   is beat 1 unless the person picks another position.
+   is beat 1 unless the person picks another position. While the song
+   plays, M can be tapped along with it: each tap drops a pinned beat
+   where the song is, and taps in a row count on through the section's
+   measure (1, 2, 3, 4, 1…), in ramps too. A run starts again after a
+   pause, a seek, a new section or more than 4 seconds between taps; its
+   first tap is 1 in a section not filled yet, and follows the beat before
+   it in a filled one. Tapped beats are pinned, so a fill keeps them (each
+   moved onto its onset within 15 ms); one tapped well off the beat bends
+   the grid until it is moved or deleted.
 2. **Line them up.** The tick plays on each anchor while the song plays.
    Drag the anchor on the waveform, which zooms down to single samples.
    From the keyboard (and VoiceOver), ← → move the selected anchor by
@@ -306,6 +314,6 @@ the pinned one), and wraps positions into the measure.
    beat or anchor at the playhead, ← → nudge the selected beat (⌥ one
    sample, ⇧ 10 ms; without a selection they move the playhead a second),
    ↑ ↓ select the previous and next beat, Delete, L loops, Return fills,
-   ⌘= ⌘- ⌘0 zoom. Not yet tried on screen: drag feel, the dimming, and
+   ⌘= ⌘- ⌘0 zoom, ⌘C and ⌘V copy and paste a consistent section's tempo. Not yet tried on screen: drag feel, the dimming, and
    focus moving between the panel and the editor.
 6. Timeline thinning by measures, and the Music-only picker. **Built.**

@@ -254,7 +254,7 @@ final class BeatMatchSession {
             switch section.pinnedBeats.count {
             case 0:
                 let paste = copiedDetails == nil ? "" : " Or, if it keeps the tempo you copied, paste it (⌘V): the section's start is taken as beat 1."
-                return "Play the song and find a downbeat, beat 1 of a measure, near the middle of this section. Press M to drop an anchor at the playhead, or double-click the waveform." + paste
+                return "Play the song and find a downbeat, beat 1 of a measure, near the middle of this section. Press M to drop an anchor at the playhead, or double-click the waveform. While it plays, taps of M in a row count on through the measure." + paste
             case 1:
                 return "Line the tick up with the beat: ← → move the anchor 1 ms, with ⌥ one sample, with ⇧ 10 ms. Then place a second anchor well away from it, ideally near the far end of the section."
             default:
@@ -445,15 +445,45 @@ final class BeatMatchSession {
 
     // MARK: Beats
 
-    /// Drops a pinned beat (an anchor, before a section is filled) at a time.
-    func addBeat(at seconds: Double) {
+    /// Drops a pinned beat (an anchor, before a section is filled) at a
+    /// time, at `position` in the measure if given.
+    func addBeat(at seconds: Double, position: Int? = nil) {
         let time = sampleTime(seconds)
-        edit { map in map.addBeat(at: time, reach: CMTime(value: 1, timescale: 1)) }
+        edit { map in map.addBeat(at: time, reach: CMTime(value: 1, timescale: 1), position: position) }
         selectedBeat = time
         if let index = map.sectionIndex(containing: time) { selectedSectionID = map.sections[index].id }
     }
 
-    func addBeatAtPlayhead() { addBeat(at: livePlayhead) }
+    /// The beats tapped in a row with M while the song plays: their
+    /// section, the last one's place in the measure, and its time.
+    private struct TapRun {
+        var section: UUID
+        var position: Int
+        var seconds: Double
+    }
+    @ObservationIgnored private var tapRun: TapRun?
+    /// Taps further apart than this, in seconds, start a new run.
+    static let longestTapGap = 4.0
+
+    /// M: drops a beat where the song is. While it plays, each tap in a
+    /// row counts on through the section's measure, 1, 2, 3, 4, 1…, so
+    /// the beats can be tapped along with the music, in ramps as well.
+    /// A run starts again after a pause, a seek, a gap or a new section;
+    /// its first tap numbers as any added beat does.
+    func addBeatAtPlayhead() {
+        let seconds = livePlayhead
+        guard isPlaying else { return addBeat(at: seconds) }
+        let time = sampleTime(seconds)
+        var position: Int?
+        if let run = tapRun, let index = map.sectionIndex(containing: time), map.sections[index].id == run.section,
+           seconds > run.seconds, seconds - run.seconds <= Self.longestTapGap {
+            position = run.position.modulo(map.sections[index].beatsPerMeasure) + 1
+        }
+        addBeat(at: seconds, position: position)
+        if let index = map.sectionIndex(containing: time), let beat = map.beat(at: time) {
+            tapRun = TapRun(section: map.sections[index].id, position: beat.position, seconds: seconds)
+        }
+    }
 
     func moveBeat(at time: CMTime, to seconds: Double) {
         let target = sampleTime(seconds)
@@ -517,6 +547,7 @@ final class BeatMatchSession {
     func seek(to seconds: Double) {
         let clamped = min(max(seconds, 0), duration.seconds)
         playhead = clamped
+        tapRun = nil
         let fileTime = CMTimeAdd(CMTime(seconds: clamped, preferredTimescale: 48_000), alignment)
         player.seek(to: fileTime, toleranceBefore: .zero, toleranceAfter: .zero)
     }
@@ -531,6 +562,7 @@ final class BeatMatchSession {
     private func playingChanged(_ playing: Bool) {
         guard playing != isPlaying else { return }
         isPlaying = playing
+        tapRun = nil
         if !playing { playhead = playerSeconds() }
     }
 

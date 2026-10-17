@@ -7,7 +7,8 @@ import SwiftUI
 /// the selected section or beat to the left of the waveform. See
 /// docs/beat-matching.md.
 ///
-/// Keys: Space plays, M drops a beat or anchor at the playhead, ← → nudge
+/// Keys: Space plays, M drops a beat or anchor at the playhead (while
+/// playing, taps in a row count on through the measure), ← → nudge
 /// the selected beat (1 ms; ⌥ one sample; ⇧ 10 ms), ↑ ↓ select the
 /// previous and next beat, Delete removes the selected beat or section,
 /// L loops, F fills the gap at the playhead, [ and ] move the selected
