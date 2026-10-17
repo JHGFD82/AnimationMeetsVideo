@@ -3,8 +3,9 @@ import CoreMedia
 import SwiftUI
 
 /// One row of a clip's filmstrip: its thumbnails (or, for sound, its
-/// waveform), the selection, a picked range with its handles, and on the
-/// first row the clip's duration in a shaded box.
+/// waveform), the selection, a picked range with its handles, a red line
+/// under what timelines use, and on the first row the clip's duration in a
+/// shaded box.
 struct FilmstripRow: View {
     let entry: BrowserEntry
     let layout: FilmstripLayout
@@ -12,6 +13,8 @@ struct FilmstripRow: View {
     var isSelected = false
     /// A picked range, in seconds into the clip.
     var range: (start: Double, end: Double)?
+    /// What the project's timelines use of the clip, in seconds into it.
+    var used: [(start: Double, end: Double)] = []
     /// The duration, shown on the first row only.
     var durationText: String?
 
@@ -74,6 +77,12 @@ struct FilmstripRow: View {
     /// The range's shading and handles, in this row's part of it.
     @ViewBuilder
     private var overlays: some View {
+        ForEach(Array(usedSpans.enumerated()), id: \.offset) { _, span in
+            Rectangle()
+                .fill(Design.statusDanger)
+                .frame(width: span.width, height: 3)
+                .offset(x: span.minX, y: span.height - 3)
+        }
         if let range {
             ForEach(Array(layout.spans(from: range.start, to: range.end).enumerated()), id: \.offset) { _, span in
                 if abs(span.minY - rowTop) < 0.5 {
@@ -87,6 +96,11 @@ struct FilmstripRow: View {
             handle(at: range.start)
             handle(at: range.end)
         }
+    }
+
+    /// The used stretches' parts in this row.
+    private var usedSpans: [CGRect] {
+        used.flatMap { layout.spans(from: $0.start, to: $0.end) }.filter { abs($0.minY - rowTop) < 0.5 }
     }
 
     @ViewBuilder

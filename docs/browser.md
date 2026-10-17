@@ -164,6 +164,7 @@ Following [accessibility.md](accessibility.md):
    (stage 4). Built together with stage 2, since both needed the clips
    drawn by hand rather than in a list.
 4. **Skimming** in the viewer, and Space to play.
-5. **Used media** underlines.
+5. **Used media** underlines (built, Clips tab; not yet tried on screen).
+   The Timelines tab's line comes with stage 6.
 6. **Timelines** as filmstrips, with skimming.
 7. **Presets** with generated test footage.

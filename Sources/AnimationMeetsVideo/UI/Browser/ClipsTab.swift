@@ -27,6 +27,25 @@ struct BrowserEntry: Identifiable {
 
     var seconds: Double { duration.seconds }
 
+    /// The parts of `ranges` (in the asset's original time) inside this
+    /// clip, in seconds into it, joined where they overlap or touch.
+    func seconds(within ranges: [CMTimeRange]) -> [(start: Double, end: Double)] {
+        let from = start.seconds, to = from + seconds
+        let inside = ranges
+            .map { (max($0.start.seconds, from) - from, min($0.end.seconds, to) - from) }
+            .filter { $0.1 > $0.0 }
+            .sorted { $0.0 < $1.0 }
+        var joined: [(start: Double, end: Double)] = []
+        for (a, b) in inside {
+            if let last = joined.last, a <= last.end + 1e-6 {
+                joined[joined.count - 1].end = max(last.end, b)
+            } else {
+                joined.append((a, b))
+            }
+        }
+        return joined
+    }
+
     func piece(from a: Double = 0, to b: Double? = nil) -> MediaPiece {
         let timescale = max(duration.timescale, 600)
         let end = b.map { CMTimeAdd(start, CMTime(seconds: $0, preferredTimescale: timescale)) } ?? CMTimeAdd(start, duration)
@@ -101,17 +120,20 @@ struct ClipsTab: View {
     var body: some View {
         let entries = entries
         let order = entries.map(\.id)
+        // What the project's timelines use of each asset, for the red line.
+        let used = Dictionary(project.clips.map { ($0.id, project.usedRanges(ofMedia: $0.id)) }, uniquingKeysWith: { a, _ in a })
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(entries) { entry in
                     let layout = layout(of: entry)
-                    title(entry)
+                    let usedHere = entry.seconds(within: used[entry.clip.id] ?? [])
+                    title(entry, isUsed: !usedHere.isEmpty)
                         .padding(.top, Design.Space.step)
                         .padding(.bottom, Design.Space.tight)
                         .id("\(entry.id)-title")
                     if showsStrip(entry) {
                         ForEach(0..<layout.rowCount, id: \.self) { row in
-                            stripRow(entry, layout: layout, row: row, order: order)
+                            stripRow(entry, layout: layout, row: row, used: usedHere, order: order)
                                 .padding(.bottom, FilmstripLayout.rowSpacing)
                         }
                     }
@@ -146,7 +168,7 @@ struct ClipsTab: View {
     // MARK: - Titles
 
     @ViewBuilder
-    private func title(_ entry: BrowserEntry) -> some View {
+    private func title(_ entry: BrowserEntry, isUsed: Bool) -> some View {
         let isSelected = picked.contains(entry.id)
         HStack(alignment: .firstTextBaseline, spacing: Design.Space.tight) {
             if case .asset(let id) = entry.id, entry.clip.kind == .video {
@@ -188,15 +210,16 @@ struct ClipsTab: View {
         }
         .contextMenu { menu(for: entry) }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityName(entry))
+        .accessibilityLabel(accessibilityName(entry, isUsed: isUsed))
         .accessibilityValue(isSelected ? "selected" : "")
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
         .accessibilityAction { picked.click(entry.id) }
         .accessibilityAction(named: "Add to Timeline") { addToTimeline(dragPieces(for: [entry.id])) }
     }
 
-    private func accessibilityName(_ entry: BrowserEntry) -> String {
+    private func accessibilityName(_ entry: BrowserEntry, isUsed: Bool) -> String {
         var parts = [entry.sceneNumber.map { "Scene \($0) of \(entry.clip.name)" } ?? entry.clip.name, durationText(entry)]
+        if isUsed { parts.append("used in a timeline") }
         if let range = picked.range, range.item == entry.id {
             parts.append("range \(timecode(range.start, entry)) to \(timecode(range.end, entry))")
         }
@@ -205,13 +228,16 @@ struct ClipsTab: View {
 
     // MARK: - Strips
 
-    private func stripRow(_ entry: BrowserEntry, layout: FilmstripLayout, row: Int, order: [BrowserItemID]) -> some View {
+    private func stripRow(
+        _ entry: BrowserEntry, layout: FilmstripLayout, row: Int, used: [(start: Double, end: Double)], order: [BrowserItemID]
+    ) -> some View {
         let rowTop = CGFloat(row) * layout.rowPitch
         let range = picked.range?.item == entry.id ? picked.range : nil
         return FilmstripRow(
             entry: entry, layout: layout, row: row,
             isSelected: picked.contains(entry.id) && range == nil,
             range: range.map { ($0.start, $0.end) },
+            used: used,
             durationText: row == 0 ? durationText(entry) : nil
         )
         .overlay {
