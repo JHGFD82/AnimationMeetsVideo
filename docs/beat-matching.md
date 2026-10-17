@@ -273,7 +273,11 @@ the pinned one), and wraps positions into the measure.
    hosting view only sets its minimum). The green zoom button widens the
    panel to the screen and leaves its height alone. Over a section's edge
    or a beat, the pointer is a resize arrow, since those are what a drag
-   moves; a section never moves as a whole. While it is open the editor is
+   moves; a section never moves as a whole. Each beat's line hangs from a
+   tag with its number in the measure: brighter for pinned beats and
+   anchors, the accent for the selected beat. When the beats are too close
+   for every tag, only downbeats keep theirs, and closer still none do,
+   though a pinned beat keeps a small handle. While it is open the editor is
    darkened and disabled, the Timeline menu rests, and a click on the
    editor brings the panel back. Edits change the draft in place, so a
    nudge or drop never shows the old beat for a frame. While the song

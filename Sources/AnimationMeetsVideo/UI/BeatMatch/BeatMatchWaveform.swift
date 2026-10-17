@@ -263,20 +263,37 @@ struct BeatMatchWaveform: View {
         return parts.joined(separator: " · ")
     }
 
+    /// The tag at the top of a beat's line, with its place in the measure.
+    static let tagSize = CGSize(width: 15, height: 14)
+
+    /// Each beat as a line down the waveform under a tag with its number in
+    /// the measure. Tags need room: when the beats are too close for every
+    /// tag, only downbeats keep theirs, and closer still none do, though a
+    /// pinned beat keeps a small handle. The selected beat always has its tag.
     private func drawBeats(in context: inout GraphicsContext, rect: CGRect) {
         let visible = session.visibleStart...session.seconds(atX: rect.width)
+        let room = Self.tagSize.width + 3
+        let lineTop = rect.minY + Self.tagSize.height
         var beats = Path(), downbeats = Path(), anchors = Path(), handles = Path()
         var selected: CGFloat?
+        var tags: [(x: CGFloat, beat: MappedBeat, tone: Color, isSelected: Bool)] = []
         for section in session.map.sections where section.kind != .none {
+            // Points between beats here, on average.
+            let spacing = section.beats.count > 1
+                ? CGFloat((section.beats.last!.time.seconds - section.beats.first!.time.seconds) / Double(section.beats.count - 1) / session.secondsPerPoint)
+                : .infinity
+            let tagsAll = !section.isConfirmed || spacing >= room
+            let tagsDownbeats = spacing * CGFloat(section.beatsPerMeasure) >= room
             for beat in section.beats {
                 var seconds = beat.time.seconds
                 if case .beat(let time, let grab) = drag, time == beat.time { seconds = session.seconds(atX: dragX - grab) }
                 guard visible.contains(seconds) else { continue }
                 let x = session.x(of: seconds)
                 var line = Path()
-                line.move(to: CGPoint(x: x, y: rect.minY))
+                line.move(to: CGPoint(x: x, y: lineTop))
                 line.addLine(to: CGPoint(x: x, y: rect.maxY))
-                if session.selectedBeat == beat.time {
+                let isSelected = session.selectedBeat == beat.time
+                if isSelected {
                     selected = x
                 } else if !section.isConfirmed {
                     anchors.addPath(line)
@@ -285,7 +302,12 @@ struct BeatMatchWaveform: View {
                 } else {
                     beats.addPath(line)
                 }
-                if beat.isPinned {
+                if isSelected || tagsAll || (tagsDownbeats && beat.isDownbeat) {
+                    let tone = isSelected ? Design.accent
+                        : beat.isPinned || !section.isConfirmed ? Design.keyframe
+                        : beat.isDownbeat ? Design.beat : Design.beat.opacity(0.7)
+                    tags.append((x, beat, tone, isSelected))
+                } else if beat.isPinned {
                     handles.addPath(Path { path in
                         path.move(to: CGPoint(x: x, y: rect.minY))
                         path.addLine(to: CGPoint(x: x + 4, y: rect.minY + 5))
@@ -302,9 +324,37 @@ struct BeatMatchWaveform: View {
         context.fill(handles, with: .color(Design.keyframe))
         if let selected {
             var line = Path()
-            line.move(to: CGPoint(x: selected, y: rect.minY))
+            line.move(to: CGPoint(x: selected, y: lineTop))
             line.addLine(to: CGPoint(x: selected, y: rect.maxY))
             context.stroke(line, with: .color(Design.accent), lineWidth: 2)
+        }
+        // Each number is laid out once a draw, in the tag's ink.
+        var numbers: [String: GraphicsContext.ResolvedText] = [:]
+        for tag in tags {
+            let frame = CGRect(x: tag.x - Self.tagSize.width / 2, y: rect.minY, width: Self.tagSize.width, height: Self.tagSize.height)
+            context.fill(Self.tagPath(in: frame), with: .color(tag.tone))
+            let key = "\(tag.beat.position)\(tag.isSelected ? "s" : "")"
+            let number = numbers[key] ?? context.resolve(
+                Text("\(tag.beat.position)")
+                    .font(.system(size: tag.beat.position > 9 ? 8 : 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(tag.isSelected ? Design.textOnColor : Design.Surface.well.color)
+            )
+            numbers[key] = number
+            context.draw(number, at: CGPoint(x: frame.midX, y: frame.minY + frame.height * 0.36), anchor: .center)
+        }
+    }
+
+    /// A downward-pointing tag, as the playhead's head: square shoulders
+    /// over a point on the beat.
+    private static func tagPath(in frame: CGRect) -> Path {
+        let shoulder = frame.minY + frame.height * 0.62
+        return Path { path in
+            path.move(to: CGPoint(x: frame.minX, y: frame.minY))
+            path.addLine(to: CGPoint(x: frame.maxX, y: frame.minY))
+            path.addLine(to: CGPoint(x: frame.maxX, y: shoulder))
+            path.addLine(to: CGPoint(x: frame.midX, y: frame.maxY))
+            path.addLine(to: CGPoint(x: frame.minX, y: shoulder))
+            path.closeSubpath()
         }
     }
 
