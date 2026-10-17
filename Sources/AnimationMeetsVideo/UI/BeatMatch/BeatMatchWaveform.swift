@@ -43,8 +43,17 @@ struct BeatMatchWaveform: View {
             Canvas { context, size in
                 draw(in: &context, size: size)
             }
+            .background(alignment: .top) {
+                if let audio = session.audio {
+                    let top = Self.rulerHeight + Self.stripHeight
+                    WaveLayer(audio: audio, start: session.visibleStart, secondsPerPoint: session.secondsPerPoint)
+                        .frame(height: max(0, geometry.size.height - top))
+                        .offset(y: top)
+                }
+            }
             .background(Design.Surface.sunken.color)
             .overlay(alignment: .topLeading) { sectionStrip(width: geometry.size.width) }
+            .overlay { playheadRail(size: geometry.size) }
             .clipped()
             .contentShape(Rectangle())
             .gesture(dragGesture(height: geometry.size.height))
@@ -80,7 +89,7 @@ struct BeatMatchWaveform: View {
         .accessibilityAddTraits(.allowsDirectInteraction)
         .accessibilityAction(named: "Play or pause") { session.togglePlayback() }
         .accessibilityAction(named: "Add a beat at the playhead") { session.addBeatAtPlayhead() }
-        .accessibilityAction(named: "Fill the gap at the playhead") { session.fillGap(at: session.playhead) }
+        .accessibilityAction(named: "Fill the gap at the playhead") { session.fillGap(at: session.livePlayhead) }
         .accessibilityAction(named: "Select the next beat") { session.selectBeat(step: 1) }
         .accessibilityAction(named: "Select the previous beat") { session.selectBeat(step: -1) }
         .accessibilityAction(named: "Move the selected beat 1 millisecond later") { session.nudgeSelected(by: 0.001) }
@@ -110,14 +119,20 @@ struct BeatMatchWaveform: View {
         // Each layer is held to its own area, whatever the samples say.
         context.drawLayer { layer in
             layer.clip(to: Path(waveRect))
-            drawWave(in: &layer, rect: waveRect)
             drawBeats(in: &layer, rect: waveRect)
         }
-        let x = session.x(of: session.playhead)
-        var line = Path()
-        line.move(to: CGPoint(x: x, y: 0))
-        line.addLine(to: CGPoint(x: x, y: size.height))
-        context.stroke(line, with: .color(Design.playhead), lineWidth: 1.5)
+    }
+
+    /// The playhead, as Core Animation layers that follow the player on each
+    /// display frame while it plays, so playing redraws nothing else and
+    /// the line keeps up with what is heard.
+    private func playheadRail(size: CGSize) -> some View {
+        SwiftUI.TimelineView(.animation(paused: !session.isPlaying)) { context in
+            let x = session.x(of: session.playhead(at: context.date))
+            PlayheadRail(playheadX: x, isPlayheadVisible: (-1...(size.width + 1)).contains(x), snapX: nil, height: size.height)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private func drawRuler(in context: inout GraphicsContext, width: CGFloat) {
@@ -139,45 +154,6 @@ struct BeatMatchWaveform: View {
             seconds += spacing
         }
         context.stroke(ticks, with: .color(Design.textTertiary), lineWidth: 1)
-    }
-
-    private func drawWave(in context: inout GraphicsContext, rect: CGRect) {
-        guard let audio = session.audio, rect.height > 0 else { return }
-        // Scaled to the song's loudest sample, so it fills the area and
-        // never runs past it.
-        let middle = rect.midY, half = rect.height / 2 * 0.92 / CGFloat(audio.peak)
-        let samplesPerPoint = session.secondsPerPoint * audio.sampleRate
-        let color = Design.ClipTone.music.color
-        if let level = audio.level(forSamplesPerPoint: samplesPerPoint) {
-            var shape = Path()
-            for column in 0..<Int(rect.width) {
-                let from = audio.sample(atSeconds: session.seconds(atX: CGFloat(column)))
-                let to = from + samplesPerPoint
-                let low = max(0, Int(from) / level.samplesPerBucket), high = min(level.high.count, Int(to.rounded(.up)) / level.samplesPerBucket + 1)
-                guard low < high else { continue }
-                let top = level.high[low..<high].max() ?? 0, bottom = level.low[low..<high].min() ?? 0
-                shape.addRect(CGRect(x: CGFloat(column), y: middle - CGFloat(top) * half, width: 1, height: max(1, CGFloat(top - bottom) * half)))
-            }
-            context.fill(shape, with: .color(color))
-        } else {
-            // Close in: the samples themselves, joined, with dots once they
-            // are a few points apart.
-            let first = max(0, Int(audio.sample(atSeconds: session.visibleStart)) - 1)
-            let last = min(audio.samples.count - 1, Int(audio.sample(atSeconds: session.seconds(atX: rect.width))) + 1)
-            guard first <= last else { return }
-            var line = Path(), dots = Path()
-            for index in first...last {
-                let point = CGPoint(x: session.x(of: audio.seconds(atSample: index)), y: middle - CGFloat(audio.samples[index]) * half)
-                if index == first { line.move(to: point) } else { line.addLine(to: point) }
-                if samplesPerPoint < 0.34 { dots.addEllipse(in: CGRect(x: point.x - 1.5, y: point.y - 1.5, width: 3, height: 3)) }
-            }
-            context.stroke(line, with: .color(color), lineWidth: 1)
-            context.fill(dots, with: .color(color))
-        }
-        var axis = Path()
-        axis.move(to: CGPoint(x: 0, y: middle))
-        axis.addLine(to: CGPoint(x: rect.width, y: middle))
-        context.stroke(axis, with: .color(Design.textTertiary.opacity(0.4)), lineWidth: 1)
     }
 
     /// The sections, drawn as the timeline's section lane draws its own:
@@ -417,5 +393,63 @@ struct BeatMatchWaveform: View {
         let rest = seconds - Double(minutes) * 60
         let secondsText = String(format: "%0\(decimals == 0 ? 2 : decimals + 3).\(decimals)f", rest)
         return "\(minutes):\(secondsText)"
+    }
+}
+
+/// The song's samples, drawn on their own so that only zooming and
+/// scrolling redraw them, not a drag over them or the playhead moving.
+private struct WaveLayer: View {
+    let audio: BeatMatchAudio
+    /// The left edge, in seconds, and the zoom.
+    let start: Double
+    let secondsPerPoint: Double
+
+    var body: some View {
+        Canvas { context, size in
+            draw(in: &context, rect: CGRect(origin: .zero, size: size))
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func x(of seconds: Double) -> CGFloat { CGFloat((seconds - start) / secondsPerPoint) }
+    private func seconds(atX x: CGFloat) -> Double { start + Double(x) * secondsPerPoint }
+
+    private func draw(in context: inout GraphicsContext, rect: CGRect) {
+        guard rect.height > 0 else { return }
+        // Scaled to the song's loudest sample, so it fills the area and
+        // never runs past it.
+        let middle = rect.midY, half = rect.height / 2 * 0.92 / CGFloat(audio.peak)
+        let samplesPerPoint = secondsPerPoint * audio.sampleRate
+        let color = Design.ClipTone.music.color
+        if let level = audio.level(forSamplesPerPoint: samplesPerPoint) {
+            var shape = Path()
+            for column in 0..<Int(rect.width) {
+                let from = audio.sample(atSeconds: seconds(atX: CGFloat(column)))
+                let to = from + samplesPerPoint
+                let low = max(0, Int(from) / level.samplesPerBucket), high = min(level.high.count, Int(to.rounded(.up)) / level.samplesPerBucket + 1)
+                guard low < high else { continue }
+                let top = level.high[low..<high].max() ?? 0, bottom = level.low[low..<high].min() ?? 0
+                shape.addRect(CGRect(x: CGFloat(column), y: middle - CGFloat(top) * half, width: 1, height: max(1, CGFloat(top - bottom) * half)))
+            }
+            context.fill(shape, with: .color(color))
+        } else {
+            // Close in: the samples themselves, joined, with dots once they
+            // are a few points apart.
+            let first = max(0, Int(audio.sample(atSeconds: start)) - 1)
+            let last = min(audio.samples.count - 1, Int(audio.sample(atSeconds: seconds(atX: rect.width))) + 1)
+            guard first <= last else { return }
+            var line = Path(), dots = Path()
+            for index in first...last {
+                let point = CGPoint(x: x(of: audio.seconds(atSample: index)), y: middle - CGFloat(audio.samples[index]) * half)
+                if index == first { line.move(to: point) } else { line.addLine(to: point) }
+                if samplesPerPoint < 0.34 { dots.addEllipse(in: CGRect(x: point.x - 1.5, y: point.y - 1.5, width: 3, height: 3)) }
+            }
+            context.stroke(line, with: .color(color), lineWidth: 1)
+            context.fill(dots, with: .color(color))
+        }
+        var axis = Path()
+        axis.move(to: CGPoint(x: 0, y: middle))
+        axis.addLine(to: CGPoint(x: rect.width, y: middle))
+        context.stroke(axis, with: .color(Design.textTertiary.opacity(0.4)), lineWidth: 1)
     }
 }

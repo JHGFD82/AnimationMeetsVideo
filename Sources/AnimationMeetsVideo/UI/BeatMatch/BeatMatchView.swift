@@ -57,12 +57,16 @@ struct BeatMatchView: View {
             }
             .help(session.isPlaying ? "Pause (Space)" : "Play (Space)")
             .accessibilityLabel(session.isPlaying ? "Pause" : "Play")
-            Text(BeatMatchWaveform.timeText(session.playhead))
-                .font(Design.Typeface.timecode)
-                .foregroundStyle(Design.textPrimary)
-                .frame(width: 92, alignment: .leading)
-                .accessibilityLabel("Playhead")
-                .accessibilityValue(BeatMatchWaveform.timeText(session.playhead))
+            // Follows the player on its own, so playing redraws only this.
+            SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !session.isPlaying)) { context in
+                let time = BeatMatchWaveform.timeText(session.playhead(at: context.date))
+                Text(time)
+                    .font(Design.Typeface.timecode)
+                    .foregroundStyle(Design.textPrimary)
+                    .frame(width: 92, alignment: .leading)
+                    .accessibilityLabel("Playhead")
+                    .accessibilityValue(time)
+            }
             Toggle(isOn: $session.isLooping) {
                 Image(systemName: "repeat")
             }
@@ -183,7 +187,7 @@ struct BeatMatchView: View {
                 ForEach(BeatSection.Kind.allCases) { kind in Text(kind.name).tag(kind) }
             }
             .pickerStyle(.segmented)
-            Button("Fill Gap at Playhead (F)") { session.fillGap(at: session.playhead) }
+            Button("Fill Gap at Playhead (F)") { session.fillGap(at: session.livePlayhead) }
             if let section = session.selectedSection {
                 sectionSummary(section)
                 HStack {
@@ -325,9 +329,9 @@ struct BeatMatchView: View {
         switch Int(event.keyCode) {
         case 49: session.togglePlayback()  // space
         case 123:  // left
-            if session.selectedBeat != nil { session.nudgeSelected(by: -step) } else { session.seek(to: session.playhead - 1) }
+            if session.selectedBeat != nil { session.nudgeSelected(by: -step) } else { session.seek(to: session.livePlayhead - 1) }
         case 124:  // right
-            if session.selectedBeat != nil { session.nudgeSelected(by: step) } else { session.seek(to: session.playhead + 1) }
+            if session.selectedBeat != nil { session.nudgeSelected(by: step) } else { session.seek(to: session.livePlayhead + 1) }
         case 126: session.selectBeat(step: -1)  // up
         case 125: session.selectBeat(step: 1)  // down
         case 51, 117:  // delete, forward delete
@@ -338,7 +342,7 @@ struct BeatMatchView: View {
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "m": session.addBeatAtPlayhead()
             case "l": session.isLooping.toggle()
-            case "f": session.fillGap(at: session.playhead)
+            case "f": session.fillGap(at: session.livePlayhead)
             case "[": session.moveSelectedEdgeToPlayhead(.start)
             case "]": session.moveSelectedEdgeToPlayhead(.end)
             default: return false

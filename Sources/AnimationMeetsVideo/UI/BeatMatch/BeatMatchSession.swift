@@ -33,7 +33,10 @@ final class BeatMatchSession {
 
     let player: AVPlayer
     let clicks: BeatClickPlayer
-    /// Where the song is, in seconds of original time.
+    /// Where the song is, in seconds of original time: where it was put,
+    /// or where it stopped. While playing this stays put, so the panel
+    /// isn't rebuilt on every tick; `livePlayhead` and the views that draw
+    /// the moving playhead read the player itself.
     private(set) var playhead = 0.0
     private(set) var isPlaying = false
     /// Repeats the two measures around the selected beat.
@@ -93,13 +96,14 @@ final class BeatMatchSession {
         selectedSectionID = asset.beatMap.sections.first { $0.kind == .consistent && !$0.isConfirmed }?.id
             ?? asset.beatMap.sections.first?.id
 
+        // Only for looping, which changes nothing the views read.
         let interval = CMTime(value: 1, timescale: 60)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             MainActor.assumeIsolated { self?.playerMoved(to: time) }
         }
         statusObservation = player.observe(\.timeControlStatus) { [weak self] player, _ in
             let playing = player.timeControlStatus != .paused
-            Task { @MainActor in self?.isPlaying = playing }
+            Task { @MainActor in self?.playingChanged(playing) }
         }
         refreshTicks()
         loading = Task { [weak self] in
@@ -329,7 +333,7 @@ final class BeatMatchSession {
     /// to set an edge.
     func moveSelectedEdgeToPlayhead(_ edge: BeatMap.Edge) {
         guard let id = selectedSectionID else { return }
-        moveEdge(edge, of: id, to: playhead, snap: 0)
+        moveEdge(edge, of: id, to: livePlayhead, snap: 0)
     }
 
     func setKind(_ kind: BeatSection.Kind) {
@@ -363,7 +367,7 @@ final class BeatMatchSession {
         if let index = map.sectionIndex(containing: time) { selectedSectionID = map.sections[index].id }
     }
 
-    func addBeatAtPlayhead() { addBeat(at: playhead) }
+    func addBeatAtPlayhead() { addBeat(at: livePlayhead) }
 
     func moveBeat(at time: CMTime, to seconds: Double) {
         let target = sampleTime(seconds)
@@ -400,7 +404,7 @@ final class BeatMatchSession {
     func selectBeat(step: Int) {
         let beats = map.sections.flatMap(\.beats).map(\.time)
         guard !beats.isEmpty else { return }
-        let reference = selectedBeat?.seconds ?? playhead
+        let reference = selectedBeat?.seconds ?? livePlayhead
         let target = step > 0
             ? beats.first { $0.seconds > reference + 1e-6 }
             : beats.last { $0.seconds < reference - 1e-6 }
@@ -418,6 +422,7 @@ final class BeatMatchSession {
         if isPlaying {
             player.pause()
         } else {
+            playhead = playerSeconds()
             if playhead >= duration.seconds - 0.01 { seek(to: 0) }
             player.play()
         }
@@ -430,15 +435,33 @@ final class BeatMatchSession {
         player.seek(to: fileTime, toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
+    /// The view doesn't follow the playhead: the person browses the song
+    /// and clicks where to hear while it plays.
     private func playerMoved(to time: CMTime) {
-        guard time.isNumeric else { return }
-        playhead = CMTimeSubtract(time, alignment).seconds
-        if isPlaying, let loop = loopRange, playhead >= loop.upperBound {
-            seek(to: loop.lowerBound)
-        }
-        if isPlaying, playhead > visibleStart + Double(viewWidth) * secondsPerPoint || playhead < visibleStart {
-            visibleStart = max(0, playhead - Double(viewWidth) * secondsPerPoint * 0.1)
-        }
+        guard isPlaying, time.isNumeric, let loop = loopRange else { return }
+        if CMTimeSubtract(time, alignment).seconds >= loop.upperBound { seek(to: loop.lowerBound) }
+    }
+
+    private func playingChanged(_ playing: Bool) {
+        guard playing != isPlaying else { return }
+        isPlaying = playing
+        if !playing { playhead = playerSeconds() }
+    }
+
+    /// Where the song is now, playing or not.
+    var livePlayhead: Double { isPlaying ? playerSeconds() : playhead }
+
+    /// Where the song will be at `date`, for drawing a frame that is shown
+    /// then: the player's time now, carried on to the frame's time.
+    func playhead(at date: Date) -> Double {
+        guard isPlaying else { return playhead }
+        let ahead = min(max(date.timeIntervalSinceNow, 0), 0.05)
+        return min(playerSeconds() + ahead * Double(player.rate), duration.seconds)
+    }
+
+    private func playerSeconds() -> Double {
+        let time = player.currentTime()
+        return time.isNumeric ? CMTimeSubtract(time, alignment).seconds : playhead
     }
 
     /// Two measures around the selected beat, while looping.
@@ -484,8 +507,8 @@ final class BeatMatchSession {
 
     /// Zooms in on the selected beat, or the playhead, far enough to place
     /// a beat by eye.
-    func zoomIn() { zoom(by: 2, aboutX: x(of: selectedBeat?.seconds ?? playhead)) }
-    func zoomOut() { zoom(by: 0.5, aboutX: x(of: selectedBeat?.seconds ?? playhead)) }
+    func zoomIn() { zoom(by: 2, aboutX: x(of: selectedBeat?.seconds ?? livePlayhead)) }
+    func zoomOut() { zoom(by: 0.5, aboutX: x(of: selectedBeat?.seconds ?? livePlayhead)) }
 
     func x(of seconds: Double) -> CGFloat { CGFloat((seconds - visibleStart) / secondsPerPoint) }
     func seconds(atX x: CGFloat) -> Double { visibleStart + Double(x) * secondsPerPoint }

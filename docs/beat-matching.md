@@ -265,7 +265,12 @@ the pinned one), and wraps positions into the measure.
    moves; a section never moves as a whole. While it is open the editor is
    darkened and disabled, the Timeline menu rests, and a click on the
    editor brings the panel back. Edits change the draft in place, so a
-   nudge or drop never shows the old beat for a frame. Keys: Space plays, M drops a
+   nudge or drop never shows the old beat for a frame. While the song
+   plays nothing in the panel is rebuilt: the playhead (Core Animation
+   layers, as on the timeline) and the timecode read the player on each
+   display frame, and the waveform is drawn on its own, redrawn only by
+   zooming and scrolling. The view doesn't follow the playhead, so the
+   person can browse the song and click where to hear while it plays. Keys: Space plays, M drops a
    beat or anchor at the playhead, ← → nudge the selected beat (⌥ one
    sample, ⇧ 10 ms; without a selection they move the playhead a second),
    ↑ ↓ select the previous and next beat, Delete, L loops, Return fills,
