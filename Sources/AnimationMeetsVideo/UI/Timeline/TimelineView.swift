@@ -545,6 +545,11 @@ struct TimelineView: View {
                 selectedSectionID = nil
             }
         }
+        // A song dragged in as the only thing on the timeline: show all of
+        // it. Not when deleting the rest leaves a song alone.
+        .onChange(of: soleMusic) { old, new in
+            if new.clipID != nil, new.clipID != old.clipID, new.clipCount >= old.clipCount { fitToWindow() }
+        }
         .onChange(of: beatMarkerInputs, initial: true) { _, inputs in
             beatMarkers = inputs.layer.map { project.beatMarkers(in: $0, tracks: inputs.tracks) } ?? []
         }
@@ -1076,6 +1081,20 @@ struct TimelineView: View {
             requestedPixelsPerSecond: nil,
             requestedScrollX: 0
         ).pixelsPerSecond
+    }
+
+    /// What decides whether to fit the timeline to a song dragged in: the
+    /// clip, when a music clip is the only one on the timeline, and how
+    /// many clips there are.
+    private struct SoleMusic: Equatable {
+        var clipID: UUID?
+        var clipCount: Int
+    }
+
+    private var soleMusic: SoleMusic {
+        let clips = timeline.layers.flatMap { layer in layer.clips.map { (layer.kind, $0.id) } }
+        let sole = clips.count == 1 && clips[0].0 == .music ? clips[0].1 : nil
+        return SoleMusic(clipID: sole, clipCount: clips.count)
     }
 
     private func fitToWindow() {

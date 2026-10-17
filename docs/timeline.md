@@ -92,6 +92,10 @@ scroll view, so a zoom can change the scale and the scroll offset in one
 step. `TimelineViewport` holds both. The scale is either "fitted" or a
 number of points per second. It is not stored relative to the fit, so a
 drop that makes the timeline longer does not rescale the clips on screen.
+The one exception: when a drop or move leaves a music clip as the only
+clip on the timeline, the view fits the timeline to it, so a song dragged
+into an empty timeline is shown whole. Deleting everything else around a
+song does not.
 
 - The track area spans the timeline plus a little room after its end (5%,
   at least one second) to drag clips into. The ruler shades that time.
