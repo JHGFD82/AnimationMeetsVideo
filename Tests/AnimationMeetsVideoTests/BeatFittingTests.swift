@@ -44,16 +44,17 @@ private func section(_ kind: BeatSection.Kind, _ start: Double, _ end: Double, p
 }
 
 @Suite struct BeatFittingTests {
-    @Test func aClickTrackIsAnExactGridFromTwoAnchors() throws {
+    @Test func aClickTrackIsAnEvenGridFromTwoAnchors() throws {
         let truth = steadyBeats(bpm: 123.4, from: 0.37, to: 40)
         let onsets = curve(beats: truth, seconds: 40)
         // Anchors 32 beats apart, both downbeats.
         let input = section(.consistent, 0, 40, pins: [(truth[10], 1), (truth[42], 1)])
         let (filled, period) = try BeatFitting.fillConsistent(input, curve: onsets, sampleRate: rate)
 
-        #expect(abs(period - 60 / 123.4) < 1e-6)
+        // Fitted to the onsets across the section, to well under a frame.
+        #expect(abs(period - 60 / 123.4) < 1e-5)
         #expect(filled.beats.count == truth.count)
-        #expect(worstError(filled.beats, truth) < 1.0 / rate)
+        #expect(worstError(filled.beats, truth) < 0.0005)
         #expect(filled.isConfirmed)
     }
 
@@ -85,6 +86,26 @@ private func section(_ kind: BeatSection.Kind, _ start: Double, _ end: Double, p
         // Through the music, but not two measures into the silence after it.
         #expect(last >= truth[truth.count - 1] - 0.001)
         #expect(last < 60 + 8 * 0.6)
+    }
+
+    @Test func anchorsOnBeatsOneAndThreeOfAWaltzFillTheWholeSection() throws {
+        // 3 beats a measure at 92.5 BPM, the downbeat the strongest. The
+        // anchors are beats 1 and 3 of one measure, each a little off, as
+        // placed by ear.
+        let truth = steadyBeats(bpm: 92.5, from: 0.4, to: 90)
+        var onsets = curve(beats: truth.enumerated().filter { $0.offset % 3 == 0 }.map(\.element), seconds: 91, offbeats: false)
+        for beat in truth.enumerated().filter({ $0.offset % 3 != 0 }).map(\.element) {
+            let frame = Int(beat * framesPerSecond)
+            for offset in -2...2 { onsets.values[frame + offset] = max(onsets.values[frame + offset], offset == 0 ? 2 : 1) }
+        }
+        var input = section(.consistent, 0, 90, pins: [(truth[60] + 0.0015, 1), (truth[62] - 0.0015, 3)])
+        input.beatsPerMeasure = 3
+        let (filled, period) = try BeatFitting.fillConsistent(input, curve: onsets, sampleRate: rate)
+
+        #expect(abs(period - 60 / 92.5) < 0.0005)
+        #expect(filled.beats.count == truth.count)
+        let error = worstError(filled.beats, truth)
+        #expect(error < 0.004, "\(error)")
     }
 
     @Test func aTypedTempoOverridesTheCount() throws {
@@ -246,7 +267,7 @@ private func section(_ kind: BeatSection.Kind, _ start: Double, _ end: Double, p
         #expect(first.start == first.beats.first?.time)
         // The beat after the last one, where the next section's first falls.
         let next = truth[first.beats.count]
-        #expect(abs(first.end.seconds - next) < 1.0 / rate)
+        #expect(abs(first.end.seconds - next) < 0.0005)
         #expect(map.sections[1].start == first.end)
     }
 }

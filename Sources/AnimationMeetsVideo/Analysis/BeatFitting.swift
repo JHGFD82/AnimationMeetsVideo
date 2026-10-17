@@ -17,6 +17,12 @@ struct OnsetCurve: Sendable, Equatable {
         values.indices.contains(frame) ? values[frame] : 0
     }
 
+    /// The curve between frames, linearly.
+    func interpolatedValue(atFrame frame: Double) -> Float {
+        let low = Int(frame.rounded(.down)), share = Float(frame - Double(low))
+        return value(at: low) * (1 - share) + value(at: low + 1) * share
+    }
+
     /// The strongest onset within `reach` frames of `frame`, and where it
     /// is, refined between frames by fitting a parabola through the peak.
     func peak(near frame: Double, reach: Double) -> (frame: Double, strength: Float) {
@@ -216,18 +222,21 @@ enum BeatFitting {
         }
         // What the pinned beats say the tempo is, all of them counted.
         period = zip(gaps, counts).map { $0 / Double($1) }.sorted()[gaps.count / 2]
+        // Close anchors give only a rough tempo; the whole section's onsets
+        // pin it down.
+        if tempo == nil, !reanalyzing {
+            period = fittedPeriod(near: period, pins: pinTimes, from: start, to: end, curve: curve)
+        }
 
         let refine = section.steadiness == .intent
         var times: [Double] = []
-        times += stepping(from: pinTimes.first!, period: gaps.isEmpty ? period : gaps[0] / Double(counts[0]),
-                          direction: -1, limit: start, curve: curve, refine: refine).reversed()
+        times += stepping(from: pinTimes.first!, period: period, direction: -1, limit: start, curve: curve, refine: refine).reversed()
         for (index, gap) in gaps.enumerated() {
             let a = pinTimes[index], b = pinTimes[index + 1], count = counts[index]
             let ideal = (1..<count).map { a + gap * Double($0) / Double(count) }
             times += refine ? chain(from: a, to: b, ideal: ideal, curve: curve, reach: chainReach).times : ideal
         }
-        times += stepping(from: pinTimes.last!, period: gaps[gaps.count - 1] / Double(counts[counts.count - 1]),
-                          direction: 1, limit: end, curve: curve, refine: refine)
+        times += stepping(from: pinTimes.last!, period: period, direction: 1, limit: end, curve: curve, refine: refine)
 
         var filled = section
         filled.beats = pins + times.filter { $0 >= start && $0 < end }.map { MappedBeat(time: time($0, sampleRate: sampleRate)) }
@@ -268,11 +277,14 @@ enum BeatFitting {
     }
 
     /// How many beat periods lie between two anchors: near the gap over
-    /// `period`, a count that keeps the anchors' places in the measure if
-    /// one is close enough, and among those the one that lands on the
-    /// strongest onsets. That is an even grid for a section produced to a
-    /// click, and the refined chain for one steady by intent, whose drift
-    /// takes an even grid off the beats.
+    /// `period`, keeping the anchors' places in the measure, and among
+    /// those the one that lands on the strongest onsets. That is an even
+    /// grid for a section produced to a click, and the refined chain for
+    /// one steady by intent, whose drift takes an even grid off the beats.
+    ///
+    /// Anchors given different places are the person's word, so the count
+    /// must keep them. Two downbeats (both left at 1) may just not have been
+    /// numbered, so that is a strong hint the onsets can overrule.
     static func beatCount(
         from a: Double, to b: Double, period: Double, curve: OnsetCurve,
         positions: (Int, Int), beatsPerMeasure: Int, refined: Bool = false
@@ -289,6 +301,9 @@ enum BeatFitting {
         // The measure is a strong hint, not a rule: anchors given the wrong
         // places shouldn't force a count the onsets plainly disagree with.
         let measured = scored.filter { ($0.count - (positions.1 - positions.0)).modulo(beatsPerMeasure) == 0 }
+        if positions.0 != positions.1, let fitting = measured.max(by: { $0.score < $1.score }) {
+            return fitting.count
+        }
         guard let fitting = measured.max(by: { $0.score < $1.score }),
               fitting.score >= best.score - (1 - measureHint) * abs(best.score)
         else {
@@ -298,15 +313,93 @@ enum BeatFitting {
     }
 
     /// The mean onset under an even grid of `count` steps from `a` to `b`,
-    /// each taken within a few milliseconds of its place.
+    /// carried on `gridOverhang` steps past each, each taken within a few
+    /// milliseconds of its place. The anchors themselves are left out: they
+    /// sit on onsets whatever the count, which made two close anchors look
+    /// best with nothing between them.
     static func gridScore(from a: Double, to b: Double, count: Int, curve: OnsetCurve) -> Double {
-        let reach = max(1, 0.006 * curve.framesPerSecond)
-        var total = 0.0
-        for step in 0...count {
-            let seconds = a + (b - a) * Double(step) / Double(count)
-            total += Double(curve.peak(near: curve.frame(atSeconds: seconds), reach: reach).strength)
+        let step = (b - a) / Double(count)
+        var total = 0.0, points = 0
+        for index in -gridOverhang...(count + gridOverhang) where index != 0 && index != count {
+            total += strength(at: a + step * Double(index), curve: curve)
+            points += 1
         }
-        return total / Double(count + 1)
+        return points > 0 ? total / Double(points) : 0
+    }
+
+    /// See `gridScore`: two measures of four.
+    static let gridOverhang = 8
+
+    /// The onset within a few milliseconds of a time.
+    private static func strength(at seconds: Double, curve: OnsetCurve) -> Double {
+        Double(curve.peak(near: curve.frame(atSeconds: seconds), reach: max(1, 0.006 * curve.framesPerSecond)).strength)
+    }
+
+    /// How far, in seconds, an anchor placed by ear may be off the beat.
+    static let anchorUncertainty = 0.005
+
+    /// The period whose grid, stepping out from the outermost pinned beats
+    /// to the section's edges, lands on the strongest onsets: searched near
+    /// `period`, as far as the anchors' own uncertainty over their span
+    /// allows. Anchors a beat or two apart give a period a millisecond or
+    /// so off, which adds up to a beat by the end of a song; across the
+    /// whole section the onsets settle it to a fraction of that.
+    static func fittedPeriod(near period: Double, pins: [Double], from start: Double, to end: Double, curve: OnsetCurve) -> Double {
+        guard let first = pins.first, let last = pins.last, period > 0 else { return period }
+        let span = max(last - first, period)
+        let reach = period * min(max(2 * anchorUncertainty / span, 0.0005), 0.03)
+        // Fine enough that the farthest beat moves under a millisecond a step.
+        let farthest = max((first - start) / period, (end - last) / period, 1)
+        let step = 0.001 / farthest
+        let steps = min(4000, max(1, Int((reach / step).rounded(.up))))
+        /// The mean onset within a few milliseconds of each beat of the grid.
+        func score(_ candidate: Double) -> Double {
+            var total = 0.0, points = 0
+            var time = first - candidate
+            while time >= start {
+                total += strength(at: time, curve: curve)
+                points += 1
+                time -= candidate
+            }
+            time = last + candidate
+            while time < end {
+                total += strength(at: time, curve: curve)
+                points += 1
+                time += candidate
+            }
+            return points > 0 ? total / Double(points) : 0
+        }
+        var rough = period, roughScore = score(period)
+        for index in -steps...steps where index != 0 {
+            let candidate = period + reach * Double(index) / Double(steps)
+            let value = score(candidate)
+            if value > roughScore {
+                rough = candidate
+                roughScore = value
+            }
+        }
+        // That finds the neighbourhood; within it every period whose far
+        // beats stay near their onsets scores alike. The onset peaks near
+        // the grid, placed between frames, settle it by least squares: each
+        // side steps from its own outer anchor, k beats out.
+        let window = max(1, 0.006 * curve.framesPerSecond)
+        var numerator = 0.0, denominator = 0.0
+        func fit(from anchor: Double, direction: Double, while inside: (Double) -> Bool) {
+            var k = 1.0
+            while inside(anchor + direction * k * rough) {
+                let found = curve.peak(near: curve.frame(atSeconds: anchor + direction * k * rough), reach: window)
+                if found.strength >= weakOnset {
+                    let signed = direction * k
+                    numerator += signed * (curve.seconds(atFrame: found.frame) - anchor)
+                    denominator += signed * signed
+                }
+                k += 1
+            }
+        }
+        fit(from: first, direction: -1) { $0 >= start }
+        fit(from: last, direction: 1) { $0 < end }
+        guard denominator > 0 else { return rough }
+        return min(max(numerator / denominator, period - reach), period + reach)
     }
 
     // MARK: Ramps

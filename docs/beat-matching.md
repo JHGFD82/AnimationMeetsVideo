@@ -97,11 +97,24 @@ original time.
   as detection does.
 - **Count between the anchors.** Every count within 12% of the gap over
   that tempo is tried. *Click*: the score is the mean onset under an even
-  grid. *Intent*: the score is the refined chain's, since drift takes an
-  even grid off the beats. A count that keeps the two anchors' places in
-  the measure is taken if it scores within 80% of the best, so the measure
-  settles a count the onsets can't, without forcing one they plainly
-  reject.
+  grid carried two measures past each anchor, leaving out the anchors
+  themselves (they sit on onsets whatever the count, which made close
+  anchors look best with nothing between them). *Intent*: the score is the
+  refined chain's, since drift takes an even grid off the beats. Anchors
+  given different places in the measure (beats 1 and 3, say) are the
+  person's word: the count must keep them. Two anchors both left at 1 may
+  just not have been numbered, so a count that keeps them is taken if it
+  scores within 80% of the best.
+- **The section's period.** The anchors give the period only roughly when
+  they are close: anchors a beat or two apart and a few milliseconds off
+  give a period a millisecond off, which adds up to a beat by the end of a
+  song. So, unless a tempo was typed or the section is being reanalyzed,
+  the period is fitted to the whole section. First a search near it, as
+  wide as the anchors' uncertainty (5 ms each) over their span allows, for
+  the grid stepping out from the outer anchors that lands on the strongest
+  onsets. Then a least-squares fit of the onset peaks near that grid.
+  Beats past the anchors step at this period; between pinned beats they
+  stay evenly spaced.
 - **Refining** (intent and ramps) is Ellis's dynamic programming held at
   both ends: each beat is searched within a quarter of a gap of its even
   place, scoring the onset there against how far each gap strays from the
