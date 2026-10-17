@@ -21,6 +21,10 @@ struct ReplacementAnalysis: Sendable {
     var missingRanges: [CMTimeRange]
     /// Used ranges in original time, kept so a manual offset can be checked.
     var usedRanges: [CMTimeRange]
+    /// Set when the picture's cuts could have settled the sync but the
+    /// original's scores aren't available (forgotten, or never set aside),
+    /// so only sound was used. Nothing is made up in their place.
+    var cutMatchingUnavailable: OriginalScoresUnavailable? = nil
 
     /// Whether the replacement can go ahead without the person being asked.
     var needsNoQuestions: Bool {
@@ -40,13 +44,16 @@ enum MediaReplacer {
     }
 
     /// Reads the candidate file and compares it with what was saved about the
-    /// original. `originalScores` are the original's change scores, used to
-    /// match cuts when audio can't decide.
+    /// original. `originalScores` are the original footage's change scores
+    /// (never those of a replacement file), used to match cuts when audio
+    /// can't decide; the offset found is from the original's time to the
+    /// candidate's file, so it holds however many files came between. When
+    /// they are `.failure`, the reason is reported in the result.
     static func analyze(
         candidate url: URL,
         replacing asset: MediaClip,
         reference: AssetReference?,
-        originalScores: ChangeScoreTrack?,
+        originalScores: Result<ChangeScoreTrack, OriginalScoresUnavailable>,
         usedRanges: [CMTimeRange],
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> ReplacementAnalysis {
@@ -70,13 +77,19 @@ enum MediaReplacer {
         )
         // Scoring every frame of the new file is slow, so only do it when the
         // audio didn't settle the question.
-        if suggestion?.isConfident != true, let originalScores, captured.metadata.isVideo {
-            if let scores = try? await FrameScorer.score(url: url, progress: { progress(0.5 + $0 * 0.5) }) {
-                let fromCuts = MediaAlignment.suggest(
-                    referenceAudio: nil, candidateAudio: nil,
-                    referenceScores: originalScores, candidateScores: scores
-                )
-                if let fromCuts, fromCuts.confidence > (suggestion?.confidence ?? 0) { suggestion = fromCuts }
+        var cutMatchingUnavailable: OriginalScoresUnavailable?
+        if suggestion?.isConfident != true, captured.metadata.isVideo {
+            switch originalScores {
+            case .failure(let reason):
+                cutMatchingUnavailable = reason
+            case .success(let originalScores):
+                if let scores = try? await FrameScorer.score(url: url, progress: { progress(0.5 + $0 * 0.5) }) {
+                    let fromCuts = MediaAlignment.suggest(
+                        referenceAudio: nil, candidateAudio: nil,
+                        referenceScores: originalScores, candidateScores: scores
+                    )
+                    if let fromCuts, fromCuts.confidence > (suggestion?.confidence ?? 0) { suggestion = fromCuts }
+                }
             }
         }
         progress(1)
@@ -99,7 +112,8 @@ enum MediaReplacer {
         return ReplacementAnalysis(
             replacement: replacement, snapshot: captured.metadata, audioEnvelope: captured.audioEnvelope,
             hasReference: true, report: report, suggestion: suggestion, verdict: verdict,
-            proposedOffset: proposed, missingRanges: missing, usedRanges: usedRanges
+            proposedOffset: proposed, missingRanges: missing, usedRanges: usedRanges,
+            cutMatchingUnavailable: cutMatchingUnavailable
         )
     }
 }

@@ -4,13 +4,37 @@ import Foundation
 /// The results that describe the file an asset uses now, as opposed to the
 /// reference data, which describes the original and survives replacement.
 enum AnalysisKind: String, Codable, CaseIterable, Sendable {
-    case scores, beats
+    /// Scores of the file the asset uses now.
+    case scores
+    case beats
+    /// Scores of the original footage: reference data, kept through
+    /// replacement so a later file can be aligned to the original. Their
+    /// record names the original file, not the current one.
+    case originalScores
 }
 
 /// The file identity each saved result was computed from, by asset.
 struct AnalysisSources: Equatable, Sendable {
     var scores: [UUID: FileStamp] = [:]
     var beats: [UUID: FileStamp] = [:]
+    var originalScores: [UUID: FileStamp] = [:]
+}
+
+/// Why an asset has no original scores to align a replacement with.
+enum OriginalScoresUnavailable: Error, Equatable, Sendable {
+    /// The person chose Forget Original, which deletes them.
+    case forgotten
+    /// They were never captured while the original was the asset's file
+    /// (or were saved by a version that did not keep them separately), and
+    /// the scores of the current file are not the original's.
+    case notCaptured
+
+    var sentence: String {
+        switch self {
+        case .forgotten: "The original was forgotten, so its cuts can't be matched."
+        case .notCaptured: "The original's cuts weren't saved, so they can't be matched."
+        }
+    }
 }
 
 /// What a saved score or beat file was computed from, saved beside it in
@@ -35,7 +59,7 @@ struct AnalysisProvenance: Codable, Equatable, Sendable {
 
     static func current(for kind: AnalysisKind) -> (settings: String, algorithm: Int) {
         switch kind {
-        case .scores:
+        case .scores, .originalScores:
             return ("sample=\(FrameScorer.sampleWidth)x\(FrameScorer.sampleHeight)", 1)
         case .beats:
             let settings = [

@@ -38,7 +38,8 @@ MyProject.amv/
       audio.bin           audio envelope
       signature.bin       per-frame picture change scores
       beats.bin           beat times of the audio (see beat-detection.md)
-      provenance.json     what signature.bin and beats.bin were computed from
+      original-signature.bin  scores of the original footage (alignment data)
+      provenance.json     what the score and beat files were computed from
       thumbs/ ...         pictures of the original at cuts and intervals
   Cache/              disposable, excluded from backup
     Renders/            rendered timeline segments (see rendering.md)

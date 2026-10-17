@@ -277,7 +277,8 @@ final class MediaReplacementController {
         let forgotten = asset.referenceForgotten
         let reference = forgotten ? nil : context.analysis.references[asset.id]
             ?? packageURL.flatMap { ProjectStore.readReference(for: asset.id, in: $0) }
-        let scores = context.analysis.tracks[asset.id]
+        // The original's own scores, however many files the asset has had since.
+        let scores = context.analysis.resolveOriginalScores(for: asset)
         let used = context.project.wrappedValue.usedRanges(ofMedia: asset.id)
 
         task = Task {

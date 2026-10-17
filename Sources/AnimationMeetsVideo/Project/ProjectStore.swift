@@ -27,6 +27,9 @@ struct ProjectLoadResult {
     /// whose record is missing or no longer fits the asset's file are not
     /// loaded at all; `rejectedAnalysis` says why, and they are analyzed again.
     var analysisSources = AnalysisSources()
+    /// The original footage's saved scores, by asset ID, for aligning a
+    /// replacement. Not loaded for an asset whose original was forgotten.
+    var originalScores: [UUID: ChangeScoreTrack] = [:]
     var rejectedAnalysis: [UUID: [AnalysisKind: AnalysisRejection]] = [:]
 }
 
@@ -153,9 +156,9 @@ enum ProjectStore {
     }
 
     /// Deletes what was captured of the original: its metadata, audio
-    /// envelope and pictures. The change scores stay, since scene detection
-    /// uses them. This can't be undone; `save` calls it for every asset
-    /// marked `referenceForgotten`.
+    /// envelope, pictures and scores. The change scores of the file the
+    /// asset uses now stay, since scene detection uses them. This can't be
+    /// undone; `save` calls it for every asset marked `referenceForgotten`.
     static func forgetReference(for assetID: UUID, in packageURL: URL) throws {
         let folder = referenceFolder(for: assetID, in: packageURL)
         let fileManager = FileManager.default
@@ -163,6 +166,7 @@ enum ProjectStore {
             let url = folder.appending(path: name)
             if fileManager.fileExists(atPath: url.path) { try fileManager.removeItem(at: url) }
         }
+        try invalidate(.originalScores, for: assetID, in: packageURL)
     }
 
     /// Nil when there is no usable metadata snapshot. A missing or damaged
@@ -403,6 +407,7 @@ enum ProjectStore {
         references: [UUID: AssetReference] = [:],
         thumbnails: [UUID: ReferenceThumbnails] = [:],
         beats: [UUID: BeatTrack] = [:],
+        originalScores: [UUID: ChangeScoreTrack] = [:],
         sources: AnalysisSources = AnalysisSources(),
         discardingBeats discardedBeats: Set<UUID> = [],
         invalidatingScores invalidatedScores: Set<UUID> = [],
@@ -411,7 +416,7 @@ enum ProjectStore {
         try await PackageCoordinator.shared.run(on: [packageURL] + (previousPackageURL.map { [$0] } ?? [])) {
             try performSave(
                 project, to: packageURL, copying: copying, changeScores: changeScores,
-                references: references, thumbnails: thumbnails, beats: beats, sources: sources,
+                references: references, thumbnails: thumbnails, beats: beats, originalScores: originalScores, sources: sources,
                 discardingBeats: discardedBeats, invalidatingScores: invalidatedScores,
                 previousPackageURL: previousPackageURL
             )
@@ -426,6 +431,7 @@ enum ProjectStore {
         references: [UUID: AssetReference],
         thumbnails: [UUID: ReferenceThumbnails],
         beats: [UUID: BeatTrack],
+        originalScores: [UUID: ChangeScoreTrack],
         sources: AnalysisSources,
         discardingBeats discardedBeats: Set<UUID>,
         invalidatingScores invalidatedScores: Set<UUID>,
@@ -473,6 +479,9 @@ enum ProjectStore {
         }
         for (assetID, pictures) in thumbnails where project.mediaClip(id: assetID) != nil && !forgotten.contains(assetID) {
             try writeThumbnails(pictures, for: assetID, in: packageURL)
+        }
+        for (assetID, track) in originalScores where project.mediaClip(id: assetID) != nil && !forgotten.contains(assetID) {
+            try writeOriginalScores(track, for: assetID, in: packageURL, source: sources.originalScores[assetID])
         }
 
         try encode(project, packageURL: packageURL)
@@ -829,6 +838,7 @@ enum ProjectStore {
         var references: [UUID: AssetReference] = [:]
         var beats: [UUID: BeatTrack] = [:]
         var sources = AnalysisSources()
+        var original: [UUID: ChangeScoreTrack] = [:]
         var rejected: [UUID: [AnalysisKind: AnalysisRejection]] = [:]
         var thumbnailed: Set<UUID> = []
         for id in orderedIDs {
@@ -849,8 +859,13 @@ enum ProjectStore {
             guard importedClips[id]?.referenceForgotten != true else { continue }
             if hasThumbnails(for: id, in: packageURL) { thumbnailed.insert(id) }
             references[id] = readReference(for: id, in: packageURL)
+            switch readVerifiedOriginalScores(for: id, in: packageURL) {
+            case .valid(let track, let source): original[id] = track; sources.originalScores[id] = source
+            case .rejected(let reason): rejected[id, default: [:]][.originalScores] = reason
+            case .absent: break
+            }
         }
-        return ProjectLoadResult(project: project, missingMedia: missingMedia, offlineMedia: offlineMedia, changedMedia: changedMedia, changeScores: scores, beats: beats, references: references, assetsWithThumbnails: thumbnailed, analysisSources: sources, rejectedAnalysis: rejected)
+        return ProjectLoadResult(project: project, missingMedia: missingMedia, offlineMedia: offlineMedia, changedMedia: changedMedia, changeScores: scores, beats: beats, references: references, assetsWithThumbnails: thumbnailed, analysisSources: sources, originalScores: original, rejectedAnalysis: rejected)
     }
 }
 

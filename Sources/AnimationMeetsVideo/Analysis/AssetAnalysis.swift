@@ -72,6 +72,13 @@ final class AssetAnalysis {
     /// Reference data captured at import. Never re-captured for an asset that
     /// has it, so it keeps describing the original after the file is replaced.
     private(set) var references: [UUID: AssetReference] = [:]
+    /// The scores of each asset's original footage, for aligning a
+    /// replacement to the original. Reference data like `references`: taken
+    /// only while the asset's file still is the original, never replaced,
+    /// never made from a replacement file, and deleted by Forget Original.
+    /// The scores in `tracks` describe the file in use now and are separate.
+    private(set) var originalScores: [UUID: ChangeScoreTrack] = [:]
+    @ObservationIgnored private var originalSources: [UUID: FileStamp] = [:]
     /// Assets whose reference pictures are captured, in memory or on disk.
     private(set) var thumbnailed: Set<UUID> = []
     /// Beats found in each asset's audio, in the asset's own time. An empty
@@ -177,6 +184,7 @@ final class AssetAnalysis {
                     saved.beats = ProjectStore.readVerifiedBeats(for: id, in: package, identity: identity)
                     if includingReference {
                         saved.reference = ProjectStore.readReference(for: id, in: package)
+                        saved.originalScores = ProjectStore.readVerifiedOriginalScores(for: id, in: package)
                         saved.hasThumbnails = ProjectStore.hasThumbnails(for: id, in: package)
                     }
                     return saved
@@ -204,6 +212,7 @@ final class AssetAnalysis {
     struct SavedAnalysis: Sendable {
         var scores: CachedResult<ChangeScoreTrack> = .absent
         var beats: CachedResult<BeatTrack> = .absent
+        var originalScores: CachedResult<ChangeScoreTrack> = .absent
         var reference: AssetReference?
         var hasThumbnails = false
     }
@@ -264,6 +273,7 @@ final class AssetAnalysis {
     @ObservationIgnored private var dirtyScores: [UUID: Int] = [:]
     @ObservationIgnored private var dirtyReferences: [UUID: Int] = [:]
     @ObservationIgnored private var dirtyBeats: [UUID: Int] = [:]
+    @ObservationIgnored private var dirtyOriginalScores: [UUID: Int] = [:]
     @ObservationIgnored private var dirtyPictures: [UUID: Int] = [:]
     /// Pictures captured since the last save; dropped once saved, since they
     /// are read back from the package when needed.
@@ -338,6 +348,7 @@ final class AssetAnalysis {
         references: [UUID: AssetReference] = [:],
         thumbnailed: Set<UUID> = [],
         beats: [UUID: BeatTrack] = [:],
+        originalScores: [UUID: ChangeScoreTrack] = [:],
         sources: AnalysisSources = AnalysisSources(),
         packageURL: URL? = nil
     ) {
@@ -354,6 +365,8 @@ final class AssetAnalysis {
         dirtyScores = [:]
         dirtyReferences = [:]
         dirtyBeats = [:]
+        dirtyOriginalScores = [:]
+        originalSources = [:]
         dirtyPictures = [:]
         heldPictures = [:]
         pendingInvalidations = [:]
@@ -374,6 +387,9 @@ final class AssetAnalysis {
         // known to describe any file, so it is left out and analyzed again.
         self.tracks = tracks.filter { sources.scores[$0.key] != nil }
         self.beats = beats.filter { sources.beats[$0.key] != nil }
+        // Original scores without a record of the original are not trusted.
+        self.originalScores = originalScores.filter { sources.originalScores[$0.key] != nil }
+        originalSources = sources.originalScores
         scoreSources = sources.scores.mapValues { ResultSource(path: nil, stamp: $0) }
         beatSources = sources.beats.mapValues { ResultSource(path: nil, stamp: $0) }
     }
@@ -497,6 +513,10 @@ final class AssetAnalysis {
         let forgotten = (projectSource?() ?? latestProject)?.clips.first { $0.id == id }?.referenceForgotten ?? false
         guard !forgotten else { return }
         if references[id] == nil, let reference = saved.reference { references[id] = reference }
+        if originalScores[id] == nil, case .valid(let track, let source) = saved.originalScores {
+            originalScores[id] = track
+            originalSources[id] = source
+        }
         if saved.hasThumbnails { thumbnailed.insert(id) }
     }
 
@@ -538,6 +558,9 @@ final class AssetAnalysis {
             stageFailures[AssetStage(id: id, stage: .beats)] = nil
             beatSources[id] = nil
             dirtyBeats[id] = nil
+        case .originalScores:
+            // Reference data: only Forget Original removes it.
+            return
         }
         nextRevision += 1
         let key = Invalidation(kind: kind, id: id)
@@ -580,6 +603,38 @@ final class AssetAnalysis {
         unavailable = [:]
         changedFiles = [:]
         update(with: project)
+    }
+
+    /// Whether the asset's file still is its original, so scores made from it
+    /// are the original's: a replaced, realigned or forgotten asset is not.
+    private func capturesOriginalScores(_ id: UUID) -> Bool {
+        owners[id]?.input.canCaptureReference == true
+    }
+
+    private func keepAsOriginal(_ track: ChangeScoreTrack, of id: UUID, source: FileStamp?) {
+        originalScores[id] = track
+        originalSources[id] = source
+        _ = markDirty(\.dirtyOriginalScores, id)
+    }
+
+    /// The original footage's scores for aligning a replacement, in the
+    /// original's own time: a candidate's cuts minus these give the offset
+    /// from original time to the candidate's file, whatever files the asset
+    /// used in between. Never made from a replacement. If the asset's file
+    /// still is the original and only its current-file scores exist (as when
+    /// a replacement is chosen before they were set aside), those are the
+    /// original's and are kept as such now.
+    func resolveOriginalScores(for clip: MediaClip) -> Result<ChangeScoreTrack, OriginalScoresUnavailable> {
+        let id = clip.id
+        if clip.referenceForgotten { return .failure(.forgotten) }
+        if let track = originalScores[id] { return .success(track) }
+        let input = Self.input(of: clip)
+        if input.canCaptureReference, let track = tracks[id], let file = input.file,
+           scoreSources[id]?.matches(file) == true {
+            keepAsOriginal(track, of: id, source: file.stamp)
+            return .success(track)
+        }
+        return .failure(.notCaptured)
     }
 
     /// A problem saving this asset's results, or retiring outdated ones, that
@@ -648,6 +703,7 @@ final class AssetAnalysis {
         fileprivate var references: [UUID: (revision: Int, value: AssetReference)] = [:]
         fileprivate var pictures: [UUID: (revision: Int, value: ReferenceThumbnails)] = [:]
         fileprivate var beats: [UUID: (revision: Int, value: BeatTrack)] = [:]
+        fileprivate var original: [UUID: (revision: Int, value: ChangeScoreTrack)] = [:]
         fileprivate var invalidations: [Invalidation: Int] = [:]
         /// The file each result in here was computed from, to be saved with it.
         fileprivate(set) var sources = AnalysisSources()
@@ -656,6 +712,7 @@ final class AssetAnalysis {
         var referenceData: [UUID: AssetReference] { references.mapValues(\.value) }
         var thumbnails: [UUID: ReferenceThumbnails] { pictures.mapValues(\.value) }
         var beatTracks: [UUID: BeatTrack] { beats.mapValues(\.value) }
+        var originalScoreTracks: [UUID: ChangeScoreTrack] { original.mapValues(\.value) }
         var discardedBeats: Set<UUID> { Set(invalidations.keys.filter { $0.kind == .beats }.map(\.id)) }
         var invalidatedScores: Set<UUID> { Set(invalidations.keys.filter { $0.kind == .scores }.map(\.id)) }
     }
@@ -669,6 +726,12 @@ final class AssetAnalysis {
             }
         }
         for (id, revision) in dirtyReferences { if let value = references[id] { results.references[id] = (revision, value) } }
+        for (id, revision) in dirtyOriginalScores {
+            if let value = originalScores[id] {
+                results.original[id] = (revision, value)
+                results.sources.originalScores[id] = originalSources[id]
+            }
+        }
         for (id, revision) in dirtyPictures { if let value = heldPictures[id] { results.pictures[id] = (revision, value) } }
         for (id, revision) in dirtyBeats {
             if let value = beats[id] {
@@ -685,6 +748,7 @@ final class AssetAnalysis {
         for (id, held) in results.references { acknowledge(\.dirtyReferences, id, held.revision) }
         for (id, held) in results.pictures { acknowledge(\.dirtyPictures, id, held.revision) }
         for (id, held) in results.beats { acknowledge(\.dirtyBeats, id, held.revision) }
+        for (id, held) in results.original { acknowledge(\.dirtyOriginalScores, id, held.revision) }
         for (key, revision) in results.invalidations where pendingInvalidations[key] == revision {
             pendingInvalidations[key] = nil
             invalidationFailures[key] = nil
@@ -737,6 +801,13 @@ final class AssetAnalysis {
                 try ProjectStore.writeReference(entry.value, for: id, in: $0)
             }
         }
+        for (id, entry) in held.original {
+            guard unchanged else { return }
+            let source = held.sources.originalScores[id]
+            await persist(\.dirtyOriginalScores, .scenes, id, entry.revision, to: package, epoch: epoch) {
+                try ProjectStore.writeOriginalScores(entry.value, for: id, in: $0, source: source)
+            }
+        }
         for (id, entry) in held.pictures {
             guard unchanged else { return }
             await persist(\.dirtyPictures, .pictures, id, entry.revision, to: package, epoch: epoch) {
@@ -764,6 +835,9 @@ final class AssetAnalysis {
             stageFailures[AssetStage(id: id, stage: .reference)] = nil
             stageFailures[AssetStage(id: id, stage: .pictures)] = nil
             dirtyReferences[id] = nil
+            originalScores[id] = nil
+            originalSources[id] = nil
+            dirtyOriginalScores[id] = nil
             dirtyPictures[id] = nil
             heldPictures[id] = nil
             thumbnailed.remove(id)
@@ -837,8 +911,18 @@ final class AssetAnalysis {
                     tracks[id] = track
                     scoreSources[id] = source
                     let revision = markDirty(\.dirtyScores, id)
+                    // While the asset's file is still the original, these are
+                    // also the original's scores, kept for aligning a replacement.
+                    let isOriginal = capturesOriginalScores(id) && originalScores[id] == nil
+                    if isOriginal { keepAsOriginal(track, of: id, source: job.file.stamp) }
+                    let originalRevision = dirtyOriginalScores[id]
                     await persist(\.dirtyScores, .scenes, id, revision, to: packageURL, epoch: packageEpoch) {
                         try ProjectStore.writeChangeScores(track, for: id, in: $0, source: job.file.stamp)
+                    }
+                    if isOriginal, let originalRevision {
+                        await persist(\.dirtyOriginalScores, .scenes, id, originalRevision, to: packageURL, epoch: packageEpoch) {
+                            try ProjectStore.writeOriginalScores(track, for: id, in: $0, source: job.file.stamp)
+                        }
                     }
                 }
             )

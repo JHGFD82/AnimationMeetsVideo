@@ -95,6 +95,19 @@ chosen moment (it starts at the first used range).
    confident, the files' scene cuts are compared instead, which means
    scoring every frame of the new file and is slower. A suggestion with
    confidence below 0.25 is shown as weak.
+
+   The cuts are compared with **the original's own scores**
+   (`original-signature.bin`), never with the scores of whatever file the
+   asset uses now. The offset found is the candidate's cut time minus the
+   original's, that is from original time to the candidate's file, so a
+   second replacement is aligned to the original and not to the first
+   replacement. The original's scores are set aside when the asset's first
+   file is scored (or just before it is replaced, if they are still the
+   current ones), are reference data that re-detecting does not change, and
+   are never made from a replacement file. When they are not available, the
+   dialog says so and the sync is judged by sound alone; nothing is made up
+   from the replacement. Assets replaced before this was kept have no
+   original scores.
 2. The person can accept it, nudge the offset by a frame or a second until
    the two pictures show the same moment, use the suggestion again, or set
    the offset to zero.
@@ -162,9 +175,9 @@ replaced by renaming over it is noticed too.
 **Forget Original…** in the clip's context menu deletes what was captured of
 the original file: its metadata snapshot, audio envelope and reference
 pictures. It asks for confirmation first. Without that data a replacement can
-no longer be compared with the original or aligned automatically. The change
-scores stay, because scene detection uses them, and clips and trims are
-untouched.
+no longer be compared with the original or aligned automatically. That
+includes the original's scores. The change scores of the file in use stay,
+because scene detection uses them, and clips and trims are untouched.
 
 Forgetting marks the asset `referenceForgotten`, an ordinary edit that undo
 reverses. The data is deleted from `Reference/` when the project is next

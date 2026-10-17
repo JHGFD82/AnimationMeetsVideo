@@ -302,7 +302,7 @@ struct AnimationMeetsVideoApp: App {
             analysis.reset(
                 tracks: result.changeScores, references: result.references,
                 thumbnailed: result.assetsWithThumbnails, beats: result.beats,
-                sources: result.analysisSources, packageURL: url
+                originalScores: result.originalScores, sources: result.analysisSources, packageURL: url
             )
             analysis.update(with: result.project)
             replacement.reset()
@@ -400,7 +400,7 @@ struct AnimationMeetsVideoApp: App {
                     snapshot, to: url, copying: copying,
                     changeScores: unsavedResults.changeScores, references: unsavedResults.referenceData,
                     thumbnails: unsavedResults.thumbnails, beats: unsavedResults.beatTracks,
-                    sources: unsavedResults.sources, discardingBeats: unsavedResults.discardedBeats,
+                    originalScores: unsavedResults.originalScoreTracks, sources: unsavedResults.sources, discardingBeats: unsavedResults.discardedBeats,
                     invalidatingScores: unsavedResults.invalidatedScores, previousPackageURL: projectURL
                 )
                 analysis.markSaved(unsavedResults)
@@ -455,7 +455,7 @@ struct AnimationMeetsVideoApp: App {
                 analysis.reset(
                     tracks: result.changeScores, references: result.references,
                     thumbnailed: result.assetsWithThumbnails, beats: result.beats,
-                sources: result.analysisSources, packageURL: url
+                originalScores: result.originalScores, sources: result.analysisSources, packageURL: url
                 )
                 analysis.update(with: result.project)
                 replacement.reset()

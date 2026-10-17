@@ -7,6 +7,7 @@ extension ProjectStore {
         switch kind {
         case .scores: changeScoreFileName
         case .beats: beatFileName
+        case .originalScores: originalScoresFileName
         }
     }
 
@@ -113,6 +114,31 @@ extension ProjectStore {
 
     static func readVerifiedChangeScores(for assetID: UUID, in packageURL: URL, identity: FileStamp?) -> CachedResult<ChangeScoreTrack> {
         verified(.scores, for: assetID, in: packageURL, identity: identity) { try ChangeScoreTrack(decoding: $0) }
+    }
+
+    static let originalScoresFileName = "original-signature.bin"
+
+    /// Writes the original footage's scores, with a record naming the
+    /// original file they came from. Only for an asset whose file still is
+    /// the original.
+    static func writeOriginalScores(_ track: ChangeScoreTrack, for assetID: UUID, in packageURL: URL, source: FileStamp?) throws {
+        let folder = referenceFolder(for: assetID, in: packageURL)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try track.encoded().write(to: folder.appending(path: originalScoresFileName), options: .atomic)
+        try recordProvenance(.originalScores, resultData: track.encoded(), source: source, for: assetID, in: packageURL)
+    }
+
+    /// The original's saved scores, if their record is intact and, where the
+    /// original's metadata snapshot is saved, names the same file as it.
+    /// Unlike current-file results they are not compared with the file the
+    /// asset uses now: they describe the original, whatever replaced it.
+    static func readVerifiedOriginalScores(for assetID: UUID, in packageURL: URL) -> CachedResult<ChangeScoreTrack> {
+        let record = readProvenance(for: assetID, in: packageURL)[.originalScores]
+        if let source = record?.source, let snapshot = readReference(for: assetID, in: packageURL)?.metadata,
+           snapshot.byteCount != source.byteCount || snapshot.modified != source.modified {
+            return .rejected(.differentFile)
+        }
+        return verified(.originalScores, for: assetID, in: packageURL, identity: record?.source) { try ChangeScoreTrack(decoding: $0) }
     }
 
     static func readVerifiedBeats(for assetID: UUID, in packageURL: URL, identity: FileStamp?) -> CachedResult<BeatTrack> {

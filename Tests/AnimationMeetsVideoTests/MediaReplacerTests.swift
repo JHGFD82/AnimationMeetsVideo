@@ -39,7 +39,7 @@ import Testing
 
         let analysis = try await MediaReplacer.analyze(
             candidate: replacement, replacing: fixture.asset, reference: fixture.reference,
-            originalScores: nil, usedRanges: [range(2, 8)]
+            originalScores: .failure(.notCaptured), usedRanges: [range(2, 8)]
         )
 
         #expect(analysis.hasReference)
@@ -62,7 +62,7 @@ import Testing
 
         let analysis = try await MediaReplacer.analyze(
             candidate: replacement, replacing: fixture.asset, reference: fixture.reference,
-            originalScores: nil, usedRanges: [range(2, 8)]
+            originalScores: .failure(.notCaptured), usedRanges: [range(2, 8)]
         )
 
         #expect(analysis.verdict == .aligned)
@@ -78,7 +78,7 @@ import Testing
 
         let analysis = try await MediaReplacer.analyze(
             candidate: replacement, replacing: fixture.asset, reference: nil,
-            originalScores: nil, usedRanges: [range(2, 8)]
+            originalScores: .failure(.notCaptured), usedRanges: [range(2, 8)]
         )
 
         #expect(!analysis.hasReference)
@@ -94,7 +94,7 @@ import Testing
 
         let analysis = try await MediaReplacer.analyze(
             candidate: replacement, replacing: fixture.asset, reference: fixture.reference,
-            originalScores: nil, usedRanges: [range(2, 10)]
+            originalScores: .failure(.notCaptured), usedRanges: [range(2, 10)]
         )
 
         #expect(!analysis.missingRanges.isEmpty)
@@ -111,7 +111,7 @@ import Testing
 
         let analysis = try await MediaReplacer.analyze(
             candidate: silentVideo, replacing: fixture.asset, reference: fixture.reference,
-            originalScores: nil, usedRanges: []
+            originalScores: .failure(.notCaptured), usedRanges: []
         )
 
         #expect(analysis.report.blockers.contains(.lostAudio))
@@ -132,7 +132,7 @@ import Testing
 
         let analysis = try await MediaReplacer.analyze(
             candidate: replacement, replacing: asset, reference: reference,
-            originalScores: scores, usedRanges: [range(0, 5)]
+            originalScores: .success(scores), usedRanges: [range(0, 5)]
         )
 
         #expect(analysis.suggestion?.method == .cuts)

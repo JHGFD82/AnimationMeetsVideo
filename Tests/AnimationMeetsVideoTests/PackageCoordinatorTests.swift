@@ -31,9 +31,9 @@ import Testing
     }
 
     /// An analysis whose first package operation stays open until `gate` does.
-    private func analysis(holdingFirstWriteWith gate: Gate) -> AssetAnalysis {
+    private func analysis(holdingFirstWriteWith gate: Gate, counting calls: Mutex = Mutex(0)) -> AssetAnalysis {
         let analysis = AssetAnalysis()
-        let first = Mutex(0)
+        let first = calls
         analysis.backend.scoreFrames = { _, _ in ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 7]) }
         analysis.backend.captureReference = { _, _ in throw NSError(domain: "test", code: 1) }
         analysis.backend.capturePictures = { _, _, _ in ReferenceThumbnails(frames: []) }
@@ -114,7 +114,8 @@ import Testing
         var video = project(ids: [scored, droppedBeats])
         let stamp = FileStamp(byteCount: 1, modified: 1)
         try ProjectStore.writeBeats(.none(), for: droppedBeats, in: source, source: stamp)
-        let analysis = analysis(holdingFirstWriteWith: gate)
+        let calls = Mutex(0)
+        let analysis = analysis(holdingFirstWriteWith: gate, counting: calls)
         analysis.backend.detectBeats = { _, _ in .none() }
         // Only `scored` has anything left to analyze, so its write is the held one.
         analysis.reset(
@@ -130,6 +131,10 @@ import Testing
         // Queue behind the held write: a deletion in the source, then Save As.
         video.clips[1].hasAudio = false
         analysis.update(with: video)
+        // Let the deletion reach the queue before Save As is asked for, as it
+        // does when a person saves some time after an edit.
+        try await settle { calls.value >= 2 }
+        try await Task.sleep(for: .milliseconds(30))
         let unsaved = analysis.unsavedResults()
         let saveAs = Task {
             try await ProjectStore.save(

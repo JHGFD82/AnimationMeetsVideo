@@ -96,8 +96,9 @@ end; the boundary properties run over 400 seeded random tracks each.
 - Playback-speed changes on timeline clips: `addScenes` creates 1x clips and
   `split` is covered by `BladeRetimeTests`; no new test here.
 - Original scores for aligning a later replacement: the replacement flow
-  reads `analysis.tracks[asset]` as the original's scores. Since scores now
-  describe the current file, after a first replacement a second one aligns
-  against the first replacement's scores, with no offset composed. The
-  decision for original scores is to store them separately; not built.
+  used to read `analysis.tracks[asset]` as the original's scores, so after
+  a first replacement a second one aligned against the first replacement's
+  scores. Fixed: the original's scores are stored separately
+  (`original-signature.bin`) and read explicitly; see
+  [media-replacement.md](media-replacement.md).
 - Cross-dissolve and fade detection quality beyond "not cut by default".

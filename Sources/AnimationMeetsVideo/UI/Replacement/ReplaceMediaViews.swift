@@ -191,6 +191,10 @@ private struct ReplaceMediaDetails: View {
                 SheetCallout(.warning, "The original's reference data isn't available, so the new file can't be compared with it. Check the alignment yourself.")
             }
 
+            if let reason = analysis.cutMatchingUnavailable {
+                SheetCallout(.warning, "\(reason.sentence) The sync was judged by sound alone; check the alignment yourself.")
+            }
+
             if !analysis.report.adjustments.isEmpty {
                 SheetSection("Handled for you", spacing: Design.Space.tight) {
                     ForEach(analysis.report.adjustments, id: \.self) { note in
