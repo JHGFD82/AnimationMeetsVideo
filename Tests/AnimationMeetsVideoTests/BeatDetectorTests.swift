@@ -417,7 +417,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
         let track = try #require(analysis.beats[id])
         #expect(abs(track.beatsPerMinute - 120) < 3)
         #expect(Set(analysis.unsavedBeats.keys) == [id])
-        analysis.markBeatsSaved([id])
+        analysis.markSaved(analysis.unsavedResults())
         #expect(analysis.unsavedBeats.isEmpty)
         #expect(analysis.beats[id] != nil)
     }
@@ -491,7 +491,7 @@ private func writeClickFile(seconds: Double = 12) throws -> URL {
 
         #expect(analysis.beats[id] == nil)
         #expect(analysis.discardedBeats == [id])
-        analysis.markBeatsDiscarded([id])
+        analysis.markSaved(analysis.unsavedResults())
         #expect(analysis.discardedBeats.isEmpty)
     }
 }

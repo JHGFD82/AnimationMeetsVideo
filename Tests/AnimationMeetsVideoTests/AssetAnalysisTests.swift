@@ -51,8 +51,8 @@ import Testing
         #expect(analysis.tracks[project.clips[1].id]?.frameCount == 48)
         #expect(Set(analysis.unsavedTracks.keys) == Set(project.clips.map(\.id)))
 
-        analysis.markSaved([project.clips[0].id])
-        #expect(Set(analysis.unsavedTracks.keys) == [project.clips[1].id])
+        analysis.markSaved(analysis.unsavedResults())
+        #expect(analysis.unsavedTracks.isEmpty)
     }
 
     @Test func withAPackageResultsAreWrittenAtOnceAndPicturesLeaveMemory() async throws {
@@ -145,7 +145,7 @@ import Testing
         #expect(pictures.frames.count >= 3)
         #expect(analysis.thumbnailed == [id])
 
-        analysis.markThumbnailsSaved([id])
+        analysis.markSaved(analysis.unsavedResults())
         #expect(analysis.unsavedThumbnails.isEmpty)
         #expect(analysis.thumbnailed == [id])
         analysis.analyzeMissing(in: video)
@@ -181,7 +181,7 @@ import Testing
         let captured = try #require(analysis.references[id])
         #expect(analysis.unsavedReferences[id] == captured)
 
-        analysis.markReferencesSaved([id])
+        analysis.markSaved(analysis.unsavedResults())
         #expect(analysis.unsavedReferences.isEmpty)
 
         let replacement = try await makeMovie(frames: 96)
@@ -259,4 +259,363 @@ import Testing
         #expect(analysis.tracks.isEmpty)
         #expect(analysis.progress.isEmpty)
     }
+
+}
+
+/// A step that stays suspended until the test lets it finish.
+private final class Gate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+    private(set) var arrivals = 0
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            let resume = lock.withLock { () -> Bool in
+                arrivals += 1
+                if !isOpen { continuations.append(continuation) }
+                return isOpen
+            }
+            if resume { continuation.resume() }
+        }
+    }
+
+    func open() {
+        let pending = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            isOpen = true
+            defer { continuations = [] }
+            return continuations
+        }
+        pending.forEach { $0.resume() }
+    }
+
+    var arrived: Int { lock.withLock { arrivals } }
+}
+
+@MainActor
+@Suite struct AssetAnalysisRaceTests {
+    private func project(ids: [UUID] = [UUID()], hasAudio: Bool = false) -> EditingProject {
+        var project = EditingProject.empty
+        project.clips = ids.map {
+            var clip = MediaClip(
+                id: $0, name: "a.mov", kind: .video, url: URL(fileURLWithPath: "/dev/null"),
+                duration: CMTime(seconds: 1, preferredTimescale: 600),
+                frameRate: 24, colorSpace: .rec709, codecName: "Test"
+            )
+            clip.hasAudio = hasAudio
+            return clip
+        }
+        return project
+    }
+
+    private func track(_ marker: UInt8) -> ChangeScoreTrack {
+        ChangeScoreTrack(timescale: 600, times: [0], scores: [marker])
+    }
+
+    private func reference() -> AssetReference {
+        AssetReference(
+            metadata: AssetMetadataSnapshot(
+                fileName: "a.mov", originalPath: "/dev/null", byteCount: 1, modified: nil, isVideo: true,
+                durationValue: 600, durationTimescale: 600, frameRate: 24, width: 16, height: 16,
+                codecName: "Test", audioSampleRate: nil, capturedAt: 0
+            ),
+            audioEnvelope: nil
+        )
+    }
+
+    private func settle(_ condition: @MainActor () -> Bool) async throws {
+        for _ in 0..<2000 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        Issue.record("condition never held")
+    }
+
+    private func makePackage() throws -> URL {
+        let package = FileManager.default.temporaryDirectory.appending(path: "amv-race-\(UUID().uuidString).amv")
+        try ProjectStore.preparePackage(at: package)
+        return package
+    }
+
+    /// Scores come from `score`; everything else finishes at once without data.
+    private func scoring(_ analysis: AssetAnalysis, _ score: @escaping @Sendable () async throws -> ChangeScoreTrack) {
+        analysis.backend.scoreFrames = { _, _ in try await score() }
+        analysis.backend.captureReference = { _, _ in throw NSError(domain: "test", code: 1) }
+        analysis.backend.capturePictures = { _, _, _ in ReferenceThumbnails(frames: []) }
+        analysis.backend.detectBeats = { _, _ in BeatTrack.none() }
+    }
+
+    @Test func aResultThatArrivesAfterResetIsDropped() async throws {
+        let gate = Gate()
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        scoring(analysis) { await gate.wait(); return ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        analysis.analyzeMissing(in: project(ids: [id]))
+        try await settle { gate.arrived == 1 }
+
+        analysis.reset()
+        gate.open()
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(analysis.tracks.isEmpty)
+        #expect(analysis.progress.isEmpty)
+        #expect(analysis.unsavedTracks.isEmpty)
+    }
+
+    @Test func aWriteFinishingAfterResetChangesNothingInTheNewProject() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let writeGate = Gate()
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        analysis.backend.perform = { package, body in await writeGate.wait(); try body(package) }
+        analysis.reset(packageURL: package)
+        analysis.analyzeMissing(in: project(ids: [id]))
+        try await settle { writeGate.arrived >= 1 }
+
+        // The same asset ID in the next project, with its own dirty result.
+        analysis.reset(tracks: [:], packageURL: nil)
+        analysis.backend.perform = { _, _ in }
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [2]) }
+        analysis.analyzeMissing(in: project(ids: [id]))
+        try await settle { analysis.tracks[id] != nil && analysis.progress.isEmpty }
+        let before = analysis.unsavedTracks
+        let stages = analysis.stages
+
+        writeGate.open()
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(analysis.unsavedTracks == before)
+        #expect(analysis.tracks[id]?.scores == [2])
+        #expect(analysis.stages == stages)
+    }
+
+    @Test func aLateWriteOfAnOlderRevisionLeavesTheNewerOneUnsaved() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let writeGate = Gate()
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = project(ids: [id])
+        let revisionCount = Mutex(0)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(revisionCount.increment())]) }
+        // Only the first write is held back.
+        analysis.backend.perform = { package, body in
+            if writeGate.arrived == 0 { await writeGate.wait() }
+            try body(package)
+        }
+        analysis.reset(packageURL: package)
+        analysis.analyzeMissing(in: video)
+        try await settle { writeGate.arrived == 1 }
+
+        // Re-detecting retires the result whose write is still in flight.
+        analysis.reanalyze(video.clips[0], in: video)
+        #expect(analysis.unsavedTracks.isEmpty)
+        writeGate.open()
+        try await settle { analysis.tracks[id]?.scores == [2] && analysis.progress.isEmpty }
+        try await Task.sleep(for: .milliseconds(100))
+
+        // The older write's acknowledgement did not disturb the newer result.
+        #expect(analysis.tracks[id]?.scores == [2])
+        #expect(analysis.unsavedTracks.isEmpty)
+        #expect(ProjectStore.readChangeScores(for: id, in: package)?.scores == [2])
+    }
+
+    @Test func savingOnlyMarksWhatTheSaveContained() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = project(ids: [id])
+        let counter = Mutex(0)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(counter.increment())]) }
+        analysis.analyzeMissing(in: video)
+        try await settle { analysis.tracks[id] != nil && analysis.progress.isEmpty }
+        let snapshot = analysis.unsavedResults()
+
+        analysis.reanalyze(video.clips[0], in: video)
+        try await settle { analysis.tracks[id]?.scores == [2] && analysis.progress.isEmpty }
+        analysis.markSaved(snapshot)
+
+        #expect(analysis.unsavedTracks[id]?.scores == [2])
+    }
+
+    @Test func redetectingWhileScoringKeepsOnlyTheReplacement() async throws {
+        let gate = Gate()
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = project(ids: [id])
+        let counter = Mutex(0)
+        scoring(analysis) {
+            let attempt = counter.increment()
+            if attempt == 1 { await gate.wait() }
+            return ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(attempt)])
+        }
+        analysis.analyzeMissing(in: video)
+        try await settle { gate.arrived == 1 }
+
+        analysis.reanalyze(video.clips[0], in: video)
+        gate.open()
+        try await settle { analysis.progress.isEmpty && analysis.tracks[id] != nil }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(analysis.tracks[id]?.scores == [2])
+        #expect(counter.value == 2)
+    }
+
+    @Test func redetectingIgnoresTheScoreSavedInThePackage() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let id = UUID()
+        let video = project(ids: [id])
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package)
+        let analysis = AssetAnalysis()
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [9]) }
+        analysis.reset(packageURL: package)
+
+        analysis.reanalyze(video.clips[0], in: video)
+        try await settle { analysis.tracks[id] != nil && analysis.progress.isEmpty }
+
+        #expect(analysis.tracks[id]?.scores == [9])
+    }
+
+    @Test func aFailedRedetectionLeavesNoOldScoreToReload() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let id = UUID()
+        let video = project(ids: [id])
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package)
+        let analysis = AssetAnalysis()
+        scoring(analysis) { throw NSError(domain: "test", code: 2) }
+        analysis.reset(packageURL: package)
+
+        analysis.reanalyze(video.clips[0], in: video)
+        try await settle { analysis.failures[id] != nil && analysis.progress.isEmpty }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(analysis.tracks[id] == nil)
+        #expect(ProjectStore.readChangeScores(for: id, in: package) == nil)
+    }
+
+    @Test func aFileReplacedWhileScoringIsNotCommittedAsTheOldRun() async throws {
+        let gate = Gate()
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        var video = project(ids: [id])
+        let counter = Mutex(0)
+        scoring(analysis) {
+            let attempt = counter.increment()
+            if attempt == 1 { await gate.wait() }
+            return ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(attempt)])
+        }
+        analysis.analyzeMissing(in: video)
+        try await settle { gate.arrived == 1 }
+
+        video.clips[0].url = URL(fileURLWithPath: "/etc/hosts")
+        analysis.analyzeMissing(in: video)
+        gate.open()
+        try await settle { analysis.progress.isEmpty && analysis.tracks[id] != nil }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(analysis.tracks[id]?.scores == [2])
+    }
+
+    @Test func removingAnAssetDropsItsRunningJob() async throws {
+        let gate = Gate()
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        var video = project(ids: [id])
+        scoring(analysis) { await gate.wait(); return ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        analysis.analyzeMissing(in: video)
+        try await settle { gate.arrived == 1 }
+
+        video.clips = []
+        analysis.analyzeMissing(in: video)
+        gate.open()
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(analysis.tracks.isEmpty)
+        #expect(analysis.progress.isEmpty)
+    }
+
+    @Test func forgettingTheOriginalDuringCaptureKeepsItForgotten() async throws {
+        let gate = Gate()
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        var video = project(ids: [id])
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [1]) }
+        let captured = reference()
+        analysis.backend.captureReference = { _, _ in await gate.wait(); return captured }
+        analysis.analyzeMissing(in: video)
+        try await settle { gate.arrived == 1 }
+
+        video.markReferenceForgotten(forAsset: id)
+        analysis.analyzeMissing(in: video)
+        gate.open()
+        try await settle { analysis.progress.isEmpty }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(analysis.references[id] == nil)
+        #expect(analysis.unsavedReferences.isEmpty)
+        #expect(!analysis.thumbnailed.contains(id))
+    }
+
+    @Test func aStageThatThrowsCancellationLeavesNoOrphanedProgress() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        scoring(analysis) { throw CancellationError() }
+        analysis.analyzeMissing(in: project(ids: [id]))
+
+        try await settle { analysis.progress.isEmpty && analysis.failures[id] != nil }
+
+        #expect(analysis.stages.isEmpty)
+    }
+
+    @Test func aSupersededJobCannotClearTheReplacementsProgress() async throws {
+        let gate = Gate()
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = project(ids: [id])
+        let counter = Mutex(0)
+        scoring(analysis) {
+            let attempt = counter.increment()
+            await gate.wait()
+            return ChangeScoreTrack(timescale: 600, times: [0], scores: [UInt8(attempt)])
+        }
+        analysis.analyzeMissing(in: video)
+        try await settle { gate.arrived == 1 }
+        analysis.reanalyze(video.clips[0], in: video)
+        // The first job finishes only now; the replacement hasn't started yet.
+        gate.open()
+        try await settle { analysis.progress.isEmpty && analysis.tracks[id] != nil }
+
+        #expect(analysis.tracks[id]?.scores == [2])
+    }
+
+    @Test func progressThatIsNotANumberOrOutOfRangeNeverReachesTheUI() async throws {
+        let gate = Gate()
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        analysis.backend.scoreFrames = { _, progress in
+            progress(.nan); progress(.infinity); progress(-3); progress(7)
+            await gate.wait()
+            return ChangeScoreTrack(timescale: 600, times: [0], scores: [1])
+        }
+        analysis.backend.captureReference = { _, _ in throw NSError(domain: "test", code: 1) }
+        analysis.backend.capturePictures = { _, _, _ in ReferenceThumbnails(frames: []) }
+        analysis.analyzeMissing(in: project(ids: [id]))
+        try await settle { gate.arrived == 1 }
+        try await Task.sleep(for: .milliseconds(50))
+
+        let value = try #require(analysis.progress[id])
+        #expect(value >= 0 && value <= 1)
+        gate.open()
+    }
+}
+
+private final class Mutex: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Int
+    init(_ value: Int) { stored = value }
+    var value: Int { lock.withLock { stored } }
+    func increment() -> Int { lock.withLock { stored += 1; return stored } }
 }

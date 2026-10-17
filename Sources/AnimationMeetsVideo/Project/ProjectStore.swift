@@ -127,6 +127,12 @@ enum ProjectStore {
         return try? ChangeScoreTrack(decoding: data)
     }
 
+    /// Deletes an asset's saved change scores, for an explicit re-detect.
+    static func removeChangeScores(for assetID: UUID, in packageURL: URL) throws {
+        let url = referenceFolder(for: assetID, in: packageURL).appending(path: changeScoreFileName)
+        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+    }
+
     static let referenceMetadataFileName = "reference.json"
     static let audioEnvelopeFileName = "audio.bin"
 
