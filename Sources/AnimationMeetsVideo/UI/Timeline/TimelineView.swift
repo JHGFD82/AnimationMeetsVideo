@@ -121,7 +121,8 @@ struct TimelineView: View {
     /// How close, on screen, an edge must come to a target to snap to it.
     private let snapDistance: CGFloat = 8
     @AppStorage("clickOnBeats") private var clickOnBeats = false
-    @AppStorage("beatClickFrequency") private var beatClickFrequency = 1000.0
+    @AppStorage(ClickToneSettings.frequencyKey) private var beatClickFrequency = ClickToneSettings.defaultFrequency
+    @AppStorage(ClickToneSettings.volumeKey) private var beatClickVolume = ClickToneSettings.defaultVolume
 
     private let rulerHeight: CGFloat = 28
     /// Two points: the groove between layers is a dark cut with a lit edge
@@ -320,7 +321,7 @@ struct TimelineView: View {
                         followsPlayhead: $followsPlayhead,
                         beatLayers: beatLayerChoices, beatLayerID: beatLayerSelection,
                         clickOnBeats: $clickOnBeats, clickFrequency: $beatClickFrequency,
-                        onPreviewClick: beatClicks.preview
+                        clickVolume: $beatClickVolume, onPreviewClick: { beatClicks.preview() }
                     )
                 }
                 Toggle(isOn: $snapping) {
@@ -542,9 +543,12 @@ struct TimelineView: View {
         .onChange(of: beatMarkerInputs, initial: true) { _, inputs in
             beatMarkers = inputs.layer.map { project.beatMarkers(in: $0, tracks: inputs.tracks) } ?? []
         }
-        .onChange(of: beatMarkers, initial: true) { _, markers in beatClicks.beats = markers }
+        .onChange(of: beatMarkers, initial: true) { _, markers in
+            beatClicks.beats = markers.map { BeatClickPlayer.Tick(time: $0) }
+        }
         .onChange(of: clickOnBeats, initial: true) { _, on in beatClicks.isEnabled = on }
         .onChange(of: beatClickFrequency, initial: true) { _, hertz in beatClicks.frequency = hertz }
+        .onChange(of: beatClickVolume, initial: true) { _, volume in beatClicks.volume = Float(volume) }
         .onChange(of: timelineID) { _, _ in
             zoomedPixelsPerSecond = nil
             scrollX = 0

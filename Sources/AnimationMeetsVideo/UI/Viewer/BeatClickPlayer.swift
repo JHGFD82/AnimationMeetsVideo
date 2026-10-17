@@ -3,7 +3,8 @@ import CoreMedia
 import Foundation
 
 /// Plays a short tone on each beat marker while the player plays, so the
-/// markers can be checked by ear against the music.
+/// markers can be checked by ear against the music. A downbeat's tone is an
+/// octave higher, so the measures can be heard too.
 ///
 /// Blips are scheduled ahead on an `AVAudioPlayerNode` at host times taken
 /// from the player item's timebase, rather than fired from a time observer,
@@ -12,8 +13,15 @@ import Foundation
 /// item) throws away what was scheduled and starts again from now.
 @MainActor
 final class BeatClickPlayer {
-    /// Beat times on the timeline, sorted.
-    var beats: [CMTime] = [] {
+    /// One beat to click on: where it is in the player item's time, and
+    /// whether it starts a measure.
+    struct Tick: Equatable {
+        var time: CMTime
+        var isDownbeat = false
+    }
+
+    /// The beats to click on, sorted by time.
+    var beats: [Tick] = [] {
         didSet { if beats != oldValue { restart() } }
     }
 
@@ -30,10 +38,21 @@ final class BeatClickPlayer {
         didSet {
             guard frequency != oldValue else { return }
             blip = nil
+            downbeatBlip = nil
             restart()
         }
     }
 
+    /// How loud the tone is, from silent (0) to full (1).
+    var volume: Float = 0.8 {
+        didSet {
+            clickNode.volume = volume
+            previewNode.volume = volume
+        }
+    }
+
+    /// The downbeat is an octave up, so this stops at 2000 Hz for the
+    /// downbeat's 4000.
     nonisolated static let frequencyRange: ClosedRange<Double> = 200...2000
 
     private let player: AVPlayer
@@ -41,6 +60,7 @@ final class BeatClickPlayer {
     private let clickNode = AVAudioPlayerNode()
     private let previewNode = AVAudioPlayerNode()
     private var blip: AVAudioPCMBuffer?
+    private var downbeatBlip: AVAudioPCMBuffer?
     /// Item time up to which beats are scheduled, or nil when none are.
     private var scheduledThrough: CMTime?
     private var timer: Timer?
@@ -55,6 +75,8 @@ final class BeatClickPlayer {
         self.player = player
         engine.attach(clickNode)
         engine.attach(previewNode)
+        clickNode.volume = volume
+        previewNode.volume = volume
         connectNodes()
 
         let restartOnMain: @Sendable () -> Void = { [weak self] in
@@ -81,10 +103,11 @@ final class BeatClickPlayer {
         ]
     }
 
-    /// Plays one blip now, at the current pitch.
-    func preview() {
+    /// Plays one blip now, at the current pitch and volume: a downbeat's
+    /// when asked for.
+    func preview(downbeat: Bool = false) {
         startEngine()
-        guard engine.isRunning, let blip = currentBlip() else { return }
+        guard engine.isRunning, let blip = currentBlip(downbeat: downbeat) else { return }
         previewNode.scheduleBuffer(blip, at: nil, options: .interrupts)
         previewNode.play()
     }
@@ -110,7 +133,7 @@ final class BeatClickPlayer {
     /// past now.
     private func scheduleAhead() {
         guard let timebase = player.currentItem?.timebase, CMTimebaseGetRate(timebase) > 0,
-              let blip = currentBlip()
+              let blip = currentBlip(downbeat: false), let downbeat = currentBlip(downbeat: true)
         else { return }
         let now = CMTimebaseGetTime(timebase)
         let from = scheduledThrough.map { CMTimeMaximum($0, now) } ?? now
@@ -120,12 +143,12 @@ final class BeatClickPlayer {
         // the blips are scheduled for when they are heard, the same way.
         let latency = engine.outputNode.presentationLatency
         let hostClock = CMClockGetHostTimeClock()
-        let start = beats.lowerBound(of: from.seconds) { $0.seconds }
+        let start = beats.lowerBound(of: from.seconds) { $0.time.seconds }
         for beat in beats[start...] {
-            guard CMTimeCompare(beat, to) < 0 else { break }
-            let hostTime = CMSyncConvertTime(beat, from: timebase, to: hostClock)
+            guard CMTimeCompare(beat.time, to) < 0 else { break }
+            let hostTime = CMSyncConvertTime(beat.time, from: timebase, to: hostClock)
             let ticks = AVAudioTime.hostTime(forSeconds: max(0, hostTime.seconds - latency))
-            clickNode.scheduleBuffer(blip, at: AVAudioTime(hostTime: ticks))
+            clickNode.scheduleBuffer(beat.isDownbeat ? downbeat : blip, at: AVAudioTime(hostTime: ticks))
         }
         scheduledThrough = to
     }
@@ -140,6 +163,7 @@ final class BeatClickPlayer {
         engine.connect(clickNode, to: engine.mainMixerNode, format: format)
         engine.connect(previewNode, to: engine.mainMixerNode, format: format)
         blip = nil
+        downbeatBlip = nil
     }
 
     private func startEngine() {
@@ -161,11 +185,12 @@ final class BeatClickPlayer {
         restart()
     }
 
-    private func currentBlip() -> AVAudioPCMBuffer? {
-        if let blip { return blip }
+    private func currentBlip(downbeat: Bool) -> AVAudioPCMBuffer? {
+        if let made = downbeat ? downbeatBlip : blip { return made }
         let format = clickNode.outputFormat(forBus: 0)
-        blip = Self.makeBlip(frequency: frequency, format: format)
-        return blip
+        let made = Self.makeBlip(frequency: downbeat ? 2 * frequency : frequency, format: format)
+        if downbeat { downbeatBlip = made } else { blip = made }
+        return made
     }
 
     /// A 50 ms sine tone with a quick fade in and an exponential decay, so

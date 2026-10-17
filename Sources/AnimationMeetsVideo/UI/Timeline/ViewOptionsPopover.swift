@@ -14,6 +14,8 @@ struct ViewOptionsPopover: View {
     @Binding var clickOnBeats: Bool
     /// The click's pitch, in hertz.
     @Binding var clickFrequency: Double
+    /// The click's volume, 0...1.
+    @Binding var clickVolume: Double
     let onPreviewClick: () -> Void
 
     var body: some View {
@@ -76,28 +78,7 @@ struct ViewOptionsPopover: View {
                     Toggle("Click on beats", isOn: $clickOnBeats)
                         .disabled(beatLayerID == nil)
                     if clickOnBeats {
-                        HStack(spacing: Design.Space.close) {
-                            Text("Pitch")
-                                .font(Design.Typeface.label)
-                                .foregroundStyle(Design.textSecondary)
-                                .accessibilityHidden(true)
-                            Slider(value: $clickFrequency, in: BeatClickPlayer.frequencyRange, step: 10) { editing in
-                                if !editing { onPreviewClick() }
-                            }
-                            .accessibilityLabel("Click pitch")
-                            .accessibilityValue("\(Int(clickFrequency)) hertz")
-                            Text("\(Int(clickFrequency)) Hz")
-                                .font(Design.Typeface.numericSmall)
-                                .foregroundStyle(Design.textPrimary)
-                                .frame(width: 52, alignment: .trailing)
-                                .accessibilityHidden(true)
-                            Button(action: onPreviewClick) {
-                                Image(systemName: "speaker.wave.2")
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Preview the click")
-                            .accessibilityLabel("Preview the click")
-                        }
+                        ClickToneControls(frequency: $clickFrequency, volume: $clickVolume, onPreview: onPreviewClick)
                     }
                 }
             }

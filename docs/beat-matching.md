@@ -149,7 +149,8 @@ than 4000 Hz.
 ## Building it
 
 1. Only music is analyzed. **Built.**
-2. Tick volume, and the downbeat an octave up.
+2. Tick volume, and the downbeat an octave up. **Built** in
+   `BeatClickPlayer`; nothing marks downbeats until the beat map exists.
 3. The beat map: model, saving, undo, and timeline markers from it.
 4. Filling sections: grid, refining, ramps, reanalyze. Pure functions over
    an onset curve, unit tested.
