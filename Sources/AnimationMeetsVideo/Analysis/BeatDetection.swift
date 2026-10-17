@@ -353,59 +353,194 @@ enum BeatDetector {
             guard reader.startReading() else {
                 throw DetectionError.readerFailed(reader.error?.localizedDescription ?? "unknown error", underlying: reader.error)
             }
+            var source = ReaderSource(reader: reader, output: output)
+            return try analyze(&source, duration: duration, isCancelled: isCancelled, progress: progress)
+        }
+    }
 
-            let analyzer = OnsetAnalyzer()
-            var originSamples: Int64?
-            var lastReported = -1.0
+    /// Finds the beats in the buffers `source` gives, which must be mono
+    /// float PCM at `sampleRate`. `duration` is the asset's, in seconds.
+    /// Whatever goes wrong, the source is cancelled before this throws.
+    static func analyze(
+        _ source: inout some DecodedAudioSource, duration: Double,
+        isCancelled: () -> Bool, progress: (Double) -> Void
+    ) throws -> BeatTrack {
+        do {
+            return try analyzeOrThrow(&source, duration: duration, isCancelled: isCancelled, progress: progress)
+        } catch {
+            source.cancel()
+            throw error
+        }
+    }
 
-            while let sample = output.copyNextSampleBuffer() {
-                if isCancelled() {
-                    reader.cancelReading()
-                    throw CancellationError()
-                }
-                let presentation = CMSampleBufferGetPresentationTimeStamp(sample)
-                let chunk: [Float]
-                do {
-                    chunk = try pcmSamples(of: sample)
-                } catch {
-                    reader.cancelReading()
-                    throw error
-                }
-                if originSamples == nil, presentation.isNumeric {
-                    originSamples = Int64((presentation.seconds * sampleRate).rounded())
-                }
-                chunk.withUnsafeBufferPointer { analyzer.append($0) }
+    private static func analyzeOrThrow(
+        _ source: inout some DecodedAudioSource, duration: Double,
+        isCancelled: () -> Bool, progress: (Double) -> Void
+    ) throws -> BeatTrack {
+        let analyzer = OnsetAnalyzer()
+        let seconds = duration.isFinite && duration > 0 ? duration : 0
+        var timed = TimedSamples(
+            longestGap: Int64(min(max(seconds, 60), 24 * 3600) * sampleRate),
+            feed: { analyzer.append($0) }
+        )
+        var lastReported = -1.0
 
-                if duration > 0 {
-                    let fraction = min((presentation.seconds) / duration, 1)
-                    if fraction - lastReported >= 0.01 {
-                        lastReported = fraction
-                        progress(fraction)
-                    }
+        while let sample = source.next() {
+            if isCancelled() { throw CancellationError() }
+            let presentation = CMSampleBufferGetPresentationTimeStamp(sample)
+            try timed.append(pcmSamples(of: sample), at: presentation)
+
+            if duration > 0 {
+                let fraction = min((presentation.seconds) / duration, 1)
+                if fraction - lastReported >= 0.01 {
+                    lastReported = fraction
+                    progress(fraction)
                 }
             }
+        }
+        // Only a read that got to the end may become a result: one that
+        // stopped early would be saved as the beats of the whole file.
+        try source.checkCompleted()
+        progress(1)
 
-            // Only a read that got to the end may become a result: one that
-            // stopped early would be saved as the beats of the whole file.
-            switch reader.status {
-            case .completed:
-                break
-            case .failed:
-                throw DetectionError.readerFailed(reader.error?.localizedDescription ?? "unknown error", underlying: reader.error)
-            default:
-                throw DetectionError.readerFailed("reading stopped before the end", underlying: reader.error)
-            }
-            progress(1)
+        let origin = timed.origin ?? 0
+        guard let beats = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) else {
+            return .none(timescale: Int32(sampleRate))
+        }
+        let times = try beats.frames.map { frame -> Int64 in
+            let (time, overflow) = origin.addingReportingOverflow(OnsetAnalyzer.centerSample(ofFrame: frame))
+            guard !overflow else { throw DetectionError.malformedAudio("the audio's timestamps are out of range") }
+            return time
+        }
+        return try BeatTrack(timescale: Int32(sampleRate), times: times, beatsPerMinute: beats.beatsPerMinute)
+    }
+}
 
-            let origin = originSamples ?? 0
-            guard let beats = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) else {
-                return .none(timescale: Int32(sampleRate))
+/// Where `BeatDetector.analyze` gets decoded audio: an asset reader, or
+/// buffers made up by a test.
+protocol DecodedAudioSource {
+    /// The next buffer, or nil once there are no more, whether because the
+    /// end was reached or because reading stopped.
+    mutating func next() -> CMSampleBuffer?
+    /// Called after `next` gave nil. Throws unless all of the audio was read.
+    func checkCompleted() throws
+    /// Stops reading; called when analysis fails or is cancelled.
+    func cancel()
+}
+
+private struct ReaderSource: DecodedAudioSource {
+    let reader: AVAssetReader
+    let output: AVAssetReaderTrackOutput
+
+    mutating func next() -> CMSampleBuffer? { output.copyNextSampleBuffer() }
+
+    func checkCompleted() throws {
+        switch reader.status {
+        case .completed:
+            return
+        case .failed:
+            throw BeatDetector.DetectionError.readerFailed(reader.error?.localizedDescription ?? "unknown error", underlying: reader.error)
+        default:
+            throw BeatDetector.DetectionError.readerFailed("reading stopped before the end", underlying: reader.error)
+        }
+    }
+
+    func cancel() { reader.cancelReading() }
+}
+
+// MARK: - Sample timing
+
+/// Hands decoded audio on at the positions its timestamps give. The
+/// reader's buffers normally follow each other exactly, but if one were
+/// dropped, or timestamps jumped or overlapped, joining them end to end
+/// would shift every beat after that point away from the asset's time.
+struct TimedSamples {
+    /// A timestamp within this many samples of where a buffer is expected
+    /// is on time: the difference is rounding between timescales.
+    static let tolerance: Int64 = 2
+
+    /// The most silence a gap is filled with. A timestamp further ahead
+    /// than this is damage rather than a gap.
+    let longestGap: Int64
+    /// Where the samples go, in order, gaps filled with zeros.
+    let feed: (UnsafeBufferPointer<Float>) -> Void
+    /// The asset-time position, in samples at `BeatDetector.sampleRate`, of
+    /// the first sample handed on: the first buffer that contributes any,
+    /// never an empty one. Nil until then.
+    private(set) var origin: Int64?
+    /// Samples handed on so far, gap fill included.
+    private(set) var fed: Int64 = 0
+
+    init(longestGap: Int64, feed: @escaping (UnsafeBufferPointer<Float>) -> Void) {
+        self.longestGap = longestGap
+        self.feed = feed
+    }
+
+    /// Places one buffer's samples. A buffer later than expected has the
+    /// gap before it filled with silence; one earlier than expected has the
+    /// part already covered dropped, and is dropped whole if all of it is.
+    /// A buffer without a usable timestamp follows on from the one before.
+    /// Throws `DetectionError.malformedAudio` for a jump past `longestGap`.
+    mutating func append(_ samples: [Float], at presentation: CMTime) throws {
+        guard !samples.isEmpty else { return }
+        let position = try Self.samplePosition(of: presentation)
+        guard let origin else {
+            origin = position ?? 0
+            hand(samples[...])
+            return
+        }
+        guard let position else {
+            hand(samples[...])
+            return
+        }
+        let (expected, endOverflow) = origin.addingReportingOverflow(fed)
+        let (offset, offsetOverflow) = position.subtractingReportingOverflow(expected)
+        guard !endOverflow, !offsetOverflow else {
+            throw BeatDetector.DetectionError.malformedAudio("a buffer's timestamp is out of range")
+        }
+        if offset > Self.tolerance {
+            guard offset <= longestGap else {
+                let seconds = Double(offset) / BeatDetector.sampleRate
+                throw BeatDetector.DetectionError.malformedAudio("a buffer's timestamp jumps \(Int(seconds)) seconds ahead")
             }
-            return try BeatTrack(
-                timescale: Int32(sampleRate),
-                times: beats.frames.map { origin + OnsetAnalyzer.centerSample(ofFrame: $0) },
-                beatsPerMinute: beats.beatsPerMinute
-            )
+            handSilence(offset)
+            hand(samples[...])
+        } else if offset < -Self.tolerance {
+            let overlap = -offset
+            guard overlap < Int64(samples.count) else { return }
+            hand(samples[Int(overlap)...])
+        } else {
+            hand(samples[...])
+        }
+    }
+
+    /// The timestamp in samples, or nil if there is none. Throws for a
+    /// numeric timestamp too far out to count in samples.
+    private static func samplePosition(of time: CMTime) throws -> Int64? {
+        guard time.isNumeric, time.timescale > 0 else { return nil }
+        let rate = Int32(BeatDetector.sampleRate)
+        let converted = time.convertScale(rate, method: .roundHalfAwayFromZero)
+        // An overflowing conversion comes back as an infinity, or clamped.
+        guard converted.isNumeric, converted.timescale == rate,
+              abs(converted.seconds - time.seconds) < 1
+        else {
+            throw BeatDetector.DetectionError.malformedAudio("a buffer's timestamp is out of range")
+        }
+        return converted.value
+    }
+
+    private mutating func hand(_ samples: ArraySlice<Float>) {
+        samples.withUnsafeBufferPointer { feed($0) }
+        fed += Int64(samples.count)
+    }
+
+    private mutating func handSilence(_ count: Int64) {
+        let chunk = [Float](repeating: 0, count: Int(min(count, 1 << 16)))
+        var left = count
+        while left > 0 {
+            let length = Int(min(left, Int64(chunk.count)))
+            hand(chunk[..<length])
+            left -= Int64(length)
         }
     }
 }

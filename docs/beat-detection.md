@@ -17,7 +17,11 @@ options.
 its beats, following the tempo where it ramps or changes:
 
 1. The audio is decoded in a stream to mono, 22,050 Hz floats, so a long
-   file is never held in memory.
+   file is never held in memory. `TimedSamples` places each buffer at its
+   presentation time rather than joining them end to end: a gap is filled
+   with silence, audio overlapping what came before is dropped, and a
+   difference of up to two samples counts as rounding. A jump further
+   ahead than the asset is long (at least a minute) is damage.
 2. `OnsetAnalyzer` takes a short Fourier transform (1024 samples, hop of
    256) and measures, frame by frame, how much louder each frequency has
    become (spectral flux, log compressed). DC and Nyquist, which the real
@@ -83,8 +87,8 @@ an empty result.
 
 ## Beats are stored per asset, in the asset's time
 
-A `BeatTrack` holds beat times (in samples at 22,050 Hz, adjusted by the
-audio's first presentation time) and the tempo. It belongs to the asset, not
+A `BeatTrack` holds beat times (in samples at 22,050 Hz, from the
+presentation time of the first buffer that held any samples) and the tempo. It belongs to the asset, not
 to a clip or layer, so moving or trimming a clip, or using the same file
 twice, needs no re-detection.
 
