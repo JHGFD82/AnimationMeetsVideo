@@ -29,7 +29,7 @@ struct TimelineView: View {
     let onMoveClipToNewLayer: (UUID, UUID, LayerKind, CMTime) -> Void
     /// Scenes dropped on a layer at a time, or with no layer, onto a new
     /// layer of the given kind (the asset's default kind when nil).
-    let onDropScenes: ([SceneDragPayload], UUID?, CMTime, LayerKind?) -> Bool
+    let onDropScenes: ([MediaDragPayload], UUID?, CMTime, LayerKind?) -> Bool
     let onApplyJointEdit: (UUID, UUID, JointEdit) -> Void
     let onTrimClipStart: (UUID, UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, UUID, CMTime) -> Void

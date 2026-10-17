@@ -117,11 +117,8 @@ extension EditingProject {
         change(&clips[index].sceneEdits)
     }
 
-    /// Puts scenes on the timeline as ordinary clips, back to back with no
-    /// gaps in the order given, on one new layer at the top. The media is not
-    /// touched; each clip is the asset trimmed to the scene's range. The
-    /// layer is of `kind`, or the asset's default kind; nil if the asset's
-    /// clips can't go on that kind of layer.
+    /// Puts scenes of one asset on the timeline as ordinary clips, back to
+    /// back on one new layer; see `addPieces(_:intoTimeline:at:kind:)`.
     @discardableResult
     mutating func addScenes(
         _ scenes: [SceneRange],
@@ -130,35 +127,11 @@ extension EditingProject {
         at start: CMTime = .zero,
         kind: LayerKind? = nil
     ) -> (layerID: UUID, clipIDs: [UUID])? {
-        guard !scenes.isEmpty, mediaClip(id: assetID) != nil,
-              let index = timelines.firstIndex(where: { $0.id == timelineID })
-        else { return nil }
-        let kind = kind ?? defaultLayerKind(forAsset: assetID)
-
-        let timeline = timelines[index]
-        var offset = start
-        var added: [TimelineClip] = []
-        for scene in scenes {
-            var clip = coveringWholeFrames(
-                TimelineClip(source: .media(assetID), startOffset: .zero, trimStart: scene.start, trimEnd: scene.end),
-                in: timeline
-            )
-            clip.startOffset = timeline.placementTime(CMTimeMaximum(.zero, offset), .nearest, frameLocked: isFrameLocked(clip))
-            guard layerKind(kind, accepts: clip) else { return nil }
-            added.append(clip)
-            offset = clip.endOffset
-        }
-        let layer = TimelineLayer(customName: nil, kind: kind, clips: added)
-        timelines[index].layers.insert(layer, at: 0)
-        return (layer.id, added.map(\.id))
+        addPieces(scenes.pieces(ofAsset: assetID), intoTimeline: timelineID, at: start, kind: kind)
     }
-}
 
-extension EditingProject {
-    /// Puts scenes on an existing layer, back to back from near `start`,
-    /// each moved to the nearest gap it fits in. Nothing is added unless
-    /// every scene fits, and the layer is the right kind for them; returns
-    /// the new clips' IDs.
+    /// Puts scenes of one asset on an existing layer; see
+    /// `addPieces(_:intoLayer:in:at:)`.
     @discardableResult
     mutating func addScenes(
         _ scenes: [SceneRange],
@@ -167,34 +140,15 @@ extension EditingProject {
         in timelineID: UUID,
         at start: CMTime
     ) -> [UUID]? {
-        guard !scenes.isEmpty, mediaClip(id: assetID) != nil,
-              let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
-        else { return nil }
-
-        let timeline = timelines[tIndex]
-        var clips = timeline.layers[lIndex].clips
-        var cursor = CMTimeMaximum(.zero, start)
-        var added: [UUID] = []
-        for scene in scenes {
-            var clip = coveringWholeFrames(
-                TimelineClip(source: .media(assetID), startOffset: .zero, trimStart: scene.start, trimEnd: scene.end),
-                in: timeline
-            )
-            guard layer(timeline.layers[lIndex], accepts: clip),
-                  let placed = freeStart(for: clip, among: clips, in: timeline, near: cursor)
-            else { return nil }
-            clip.startOffset = placed
-            clips.append(clip)
-            added.append(clip.id)
-            cursor = clip.endOffset
-        }
-        timelines[tIndex].layers[lIndex].clips = clips.sorted { $0.startOffset < $1.startOffset }
-        return added
+        addPieces(scenes.pieces(ofAsset: assetID), intoLayer: layerID, in: timelineID, at: start)
     }
 }
 
 extension Array where Element == SceneRange {
+    func pieces(ofAsset assetID: UUID) -> [MediaPiece] {
+        map { MediaPiece(assetID: assetID, start: $0.start, end: $0.end) }
+    }
+
     /// The time covered from the earliest start to the latest end, or nil when empty.
     var span: (start: CMTime, end: CMTime)? {
         guard let first else { return nil }

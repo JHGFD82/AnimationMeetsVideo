@@ -52,7 +52,7 @@ struct LayerClipRow: View {
     let pushed: [UUID: PushedClip]
     /// Hears where a drag in progress will land, and nil when it ends.
     let onMovePreview: (ClipMovePreview?) -> Void
-    let onDropScenes: ([SceneDragPayload], CMTime) -> Bool
+    let onDropScenes: ([MediaDragPayload], CMTime) -> Bool
     let onEditJoint: (UUID) -> Void
     let onTrimClipStart: (UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, CMTime) -> Void
@@ -244,7 +244,7 @@ struct LayerClipRow: View {
         .frame(width: width, height: height, alignment: .topLeading)
         .contentShape(Rectangle())
         // Scenes dropped on a layer go onto it where they were dropped.
-        .dropDestination(for: SceneDragPayload.self) { payloads, location in
+        .dropDestination(for: MediaDragPayload.self) { payloads, location in
             onDropScenes(payloads, CMTime(seconds: max(0, Double(location.x / pixelsPerSecond)), preferredTimescale: 600))
         }
         // VoiceOver goes through the layers, then into each one's clips.

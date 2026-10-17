@@ -13,9 +13,9 @@ extension EffectsPanel {
                 labelled(inputOptions(input, effect: effect, clip: clip).opacity(effectDimmed ? 0.45 : 1), lane: emptyLane(c))
             }
         }
-        .dropDestination(for: SceneDragPayload.self) { payloads, _ in
-            guard let payload = payloads.first else { return false }
-            return setInput(EffectInput(source: .asset(payload.assetID)), on: effect, in: clip)
+        .dropDestination(for: MediaDragPayload.self) { payloads, _ in
+            guard let assetID = payloads.first?.pieces.first?.assetID else { return false }
+            return setInput(EffectInput(source: .asset(assetID)), on: effect, in: clip)
         }
         .dropDestination(for: TimelineDragPayload.self) { payloads, _ in
             guard let payload = payloads.first else { return false }

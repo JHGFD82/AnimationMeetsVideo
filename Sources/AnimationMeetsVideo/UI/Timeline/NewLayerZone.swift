@@ -57,8 +57,8 @@ struct NewLayerZone: View {
 /// puts it on a new layer of the kind under the pointer.
 ///
 /// What is being dragged can't be read until it is dropped, so whether to
-/// offer video or sound comes from `SceneDragPayload.draggedAssetID`, which
-/// the library sets as a drag begins.
+/// offer video or sound comes from `MediaDragPayload.draggedAssetID`, which
+/// the browser sets as a drag begins.
 struct NewLayerDropDelegate: DropDelegate {
     let column: () -> CGRect
     /// Where the delegate's view is, in window coordinates, to place the
@@ -66,10 +66,10 @@ struct NewLayerDropDelegate: DropDelegate {
     let viewFrame: () -> CGRect
     let isAudio: (UUID) -> Bool
     let onHover: (NewLayerHover?) -> Void
-    let onDrop: ([SceneDragPayload], LayerKind) -> Void
+    let onDrop: ([MediaDragPayload], LayerKind) -> Void
 
     private func hover(_ info: DropInfo) -> NewLayerHover? {
-        guard let assetID = SceneDragPayload.draggedAssetID else { return nil }
+        guard let assetID = MediaDragPayload.draggedAssetID else { return nil }
         let y = viewFrame().minY + info.location.y
         return NewLayerHover(audio: isAudio(assetID), pointerY: y, in: column())
     }
@@ -99,7 +99,7 @@ struct NewLayerDropDelegate: DropDelegate {
         guard !providers.isEmpty else { return false }
         let onDrop = onDrop
         Task { @MainActor in
-            var payloads: [SceneDragPayload] = []
+            var payloads: [MediaDragPayload] = []
             for provider in providers {
                 if let payload = await Self.load(provider) { payloads.append(payload) }
             }
@@ -108,9 +108,9 @@ struct NewLayerDropDelegate: DropDelegate {
         return true
     }
 
-    private static func load(_ provider: NSItemProvider) async -> SceneDragPayload? {
+    private static func load(_ provider: NSItemProvider) async -> MediaDragPayload? {
         await withCheckedContinuation { continuation in
-            _ = provider.loadTransferable(type: SceneDragPayload.self) { result in
+            _ = provider.loadTransferable(type: MediaDragPayload.self) { result in
                 continuation.resume(returning: try? result.get())
             }
         }

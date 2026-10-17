@@ -342,7 +342,7 @@ struct TimelineEditorSurface<Library: View>: View {
         .onAppear {
             rebuildPlayerItem(resetPosition: true)
         }
-        .dropDestination(for: SceneDragPayload.self) { payloads, _ in
+        .dropDestination(for: MediaDragPayload.self) { payloads, _ in
             dropScenes(payloads, onLayer: nil, at: .zero)
         }
     }
@@ -443,20 +443,20 @@ struct TimelineEditorSurface<Library: View>: View {
         }
     }
 
-    /// Scenes dragged from the browser become ordinary clips, back to back.
-    /// Dropped on a layer they go onto it at the drop time, if they fit and
-    /// it is the right kind; otherwise, or dropped elsewhere, onto a new
-    /// layer at the top, of `kind` or the asset's default kind.
-    private func dropScenes(_ payloads: [SceneDragPayload], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind? = nil) -> Bool {
+    /// Media dragged from the browser becomes ordinary clips, back to back
+    /// in the order it was dragged. Dropped on a layer it goes onto it at the
+    /// drop time, if it all fits and the layer is the right kind; otherwise,
+    /// or dropped elsewhere, onto new layers at the top, of `kind` or each
+    /// asset's default kind.
+    private func dropScenes(_ payloads: [MediaDragPayload], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind? = nil) -> Bool {
+        let pieces = payloads.flatMap(\.pieces)
         var firstClip: (layerID: UUID, clipID: UUID)?
-        for payload in payloads {
-            if let layerID,
-               let added = project.addScenes(payload.scenes, ofAsset: payload.assetID, intoLayer: layerID, in: timelineID, at: time) {
-                if firstClip == nil, let clipID = added.first { firstClip = (layerID, clipID) }
-            } else if let result = project.addScenes(payload.scenes, ofAsset: payload.assetID, intoTimeline: timelineID, at: time, kind: kind),
-                      firstClip == nil, let clipID = result.clipIDs.first {
-                firstClip = (result.layerID, clipID)
-            }
+        if let layerID, let added = project.addPieces(pieces, intoLayer: layerID, in: timelineID, at: time),
+           let clipID = added.first {
+            firstClip = (layerID, clipID)
+        } else if let result = project.addPieces(pieces, intoTimeline: timelineID, at: time, kind: kind),
+                  let clipID = result.clipIDs.first {
+            firstClip = (result.layerID, clipID)
         }
         guard let firstClip else { return false }
         selection = TimelineSelection(timelineID: timelineID, layerID: firstClip.layerID, timelineClipID: firstClip.clipID)

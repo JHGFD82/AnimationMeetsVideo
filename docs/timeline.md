@@ -39,15 +39,18 @@ the app's defaults. Under each area's layers, the rest of the area (at
 least a slim row) takes drops onto a new layer of that kind, then under the
 areas the scrollbar (shown only while zoomed in).
 
-Importing a file only adds it to the library. It reaches a timeline when
-dragged there (a whole asset, or scenes of it), or from **Add to Timeline**
-in its menu. Dropped on a layer it goes onto that layer at the drop time,
-in the nearest gap it fits (`addScenes(_:ofAsset:intoLayer:in:at:)`);
+Importing a file only adds it to the browser. It reaches a timeline when
+dragged there (whole assets, scenes, or a range; several go back to back
+in the order dragged), or from **Add to Timeline** in its menu. Dropped on
+a layer it goes onto that layer at the drop time, in the nearest gap it
+fits (`addPieces(_:intoLayer:in:at:)`), if the layer takes all of it;
 dropped anywhere in an area below its layers, an empty area included, it
-gets a new layer of that area's kind; anywhere else, where it doesn't fit, or on a layer of the
-wrong kind, it gets a new layer of its own default kind. New layers always
-go at the top of the stack, which is the top of their area. **Add to
-Timeline** always makes a new layer.
+gets a new layer of that area's kind; anywhere else, where it doesn't fit,
+or on a layer of the wrong kind, it gets new layers of its own default
+kinds, one per kind, so sound and pictures dragged together land as one
+run across two layers (`addPieces(_:intoTimeline:at:kind:)`). New layers
+always go at the top of the stack, which is the top of their area. **Add
+to Timeline** always makes a new layer.
 
 Dragged over the layer names, media from the library or a clip already on
 the timeline lights up a translucent zone in the area's hue saying what a
@@ -58,8 +61,8 @@ playhead. A clip dropped there keeps its time (`moveClipToNewLayer`). A
 clip dragged over the empty part of another area that takes it, below
 that area's layers, goes onto a new layer there at the time it was dragged
 to: that is how detached sound goes from the Sound area to Music. The
-library notes which asset a drag carries as it begins
-(`SceneDragPayload.draggedAssetID`), since the drop target can't read the
+browser notes the first asset a drag carries as it begins
+(`MediaDragPayload.draggedAssetID`), since the drop target can't read the
 payload until the drop.
 
 ## Layers

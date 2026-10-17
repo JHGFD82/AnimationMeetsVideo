@@ -243,30 +243,3 @@ private func frames(_ times: [CMTime]) -> [Int64] { times.map { $0.value * 24 / 
         #expect(SceneDetector.sensitivity(at: t(50), defaultSensitivity: 0.5, edits: edits) == 0.7)
     }
 }
-
-@Suite struct SceneDragPayloadTests {
-    @Test func roundTripsThroughText() throws {
-        let id = UUID()
-        let scenes = [
-            SceneRange(start: CMTime(value: 1001, timescale: 24000), end: CMTime(value: 5, timescale: 1), origin: .auto),
-            SceneRange(start: CMTime(value: 5, timescale: 1), end: CMTime(value: 9, timescale: 1), origin: .manual),
-        ]
-
-        let payload = try #require(SceneDragPayload(text: SceneDragPayload(assetID: id, scenes: scenes).text))
-
-        #expect(payload.assetID == id)
-        #expect(payload.scenes.map(\.start) == scenes.map(\.start))
-        #expect(payload.scenes.map(\.end) == scenes.map(\.end))
-    }
-
-    @Test func ordinaryTextIsNotAPayload() {
-        #expect(SceneDragPayload(text: "hello") == nil)
-        #expect(SceneDragPayload(text: "amv-scenes:{}") == nil)
-        #expect(SceneDragPayload(text: "amv-scenes:not json") == nil)
-    }
-
-    @Test func rejectsZeroTimescales() {
-        let text = "amv-scenes:{\"assetID\":\"\(UUID().uuidString)\",\"entries\":[{\"endScale\":0,\"endValue\":1,\"startScale\":24,\"startValue\":0}]}"
-        #expect(SceneDragPayload(text: text) == nil)
-    }
-}

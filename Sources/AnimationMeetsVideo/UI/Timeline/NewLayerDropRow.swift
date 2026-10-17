@@ -6,7 +6,7 @@ import SwiftUI
 struct NewLayerDropRow: View {
     let height: CGFloat
     let kind: LayerKind
-    let onDrop: ([SceneDragPayload], CGFloat) -> Bool
+    let onDrop: ([MediaDragPayload], CGFloat) -> Bool
 
     @State private var isTargeted = false
 
@@ -24,7 +24,7 @@ struct NewLayerDropRow: View {
             }
             .contentShape(Rectangle())
             .editorAnimation(Design.Motion.select, value: isTargeted)
-            .dropDestination(for: SceneDragPayload.self) { payloads, location in
+            .dropDestination(for: MediaDragPayload.self) { payloads, location in
                 onDrop(payloads, location.x)
             } isTargeted: { isTargeted = $0 }
     }
