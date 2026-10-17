@@ -257,13 +257,59 @@ enum BeatDetector {
         case noAudioTrack
         /// `underlying` is what the reader reported, kept so the cause can be told apart.
         case readerFailed(String, underlying: (any Error)? = nil)
+        /// A decoded buffer isn't the PCM asked for, or its samples can't be
+        /// read; says what was wrong.
+        case malformedAudio(String)
 
         var errorDescription: String? {
             switch self {
             case .noAudioTrack: "The file has no audio track to analyze."
             case .readerFailed(let reason, _): "Couldn't read the audio: \(reason)"
+            case .malformedAudio(let reason): "The decoded audio is damaged: \(reason)."
             }
         }
+    }
+
+    /// The samples of one buffer from the reader, which was asked for mono
+    /// 32-bit float PCM at `sampleRate`. Empty for a buffer that holds no
+    /// samples and no data, which the reader may legitimately hand out.
+    /// Throws `malformedAudio` for anything else that isn't exactly that
+    /// format, or whose data is missing, the wrong size or can't be copied,
+    /// rather than skipping it: a skipped buffer shifts every later beat,
+    /// and a file read that way would be saved as analyzed.
+    static func pcmSamples(of buffer: CMSampleBuffer) throws -> [Float] {
+        let count = CMSampleBufferGetNumSamples(buffer)
+        let block = CMSampleBufferGetDataBuffer(buffer)
+        let length = block.map { CMBlockBufferGetDataLength($0) } ?? 0
+        guard count > 0 else {
+            guard length == 0 else { throw DetectionError.malformedAudio("a buffer has data but no samples") }
+            return []
+        }
+        guard let format = CMSampleBufferGetFormatDescription(buffer),
+              let description = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee,
+              description.mFormatID == kAudioFormatLinearPCM,
+              description.mFormatFlags & kAudioFormatFlagIsFloat != 0,
+              description.mFormatFlags & kAudioFormatFlagIsBigEndian == 0,
+              description.mChannelsPerFrame == 1, description.mBitsPerChannel == 32,
+              description.mBytesPerFrame == UInt32(MemoryLayout<Float>.size),
+              description.mSampleRate == sampleRate
+        else {
+            throw DetectionError.malformedAudio("a buffer isn't mono 32-bit float PCM at \(Int(sampleRate)) Hz")
+        }
+        guard let block else { throw DetectionError.malformedAudio("a buffer with samples has no data") }
+        let (expected, overflow) = count.multipliedReportingOverflow(by: MemoryLayout<Float>.size)
+        guard !overflow, length == expected else {
+            throw DetectionError.malformedAudio("a buffer holds \(length) bytes for \(count) samples")
+        }
+        var samples = [Float](repeating: 0, count: count)
+        let status = samples.withUnsafeMutableBytes { bytes -> OSStatus in
+            guard let destination = bytes.baseAddress else { return kCMBlockBufferBadLengthParameterErr }
+            return CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: destination)
+        }
+        guard status == kCMBlockBufferNoErr else {
+            throw DetectionError.malformedAudio("a buffer's samples couldn't be copied (error \(status))")
+        }
+        return samples
     }
 
     /// Finds the beats of the first audio track. `progress` receives 0...1 and
@@ -311,7 +357,6 @@ enum BeatDetector {
             let analyzer = OnsetAnalyzer()
             var originSamples: Int64?
             var lastReported = -1.0
-            var chunk: [Float] = []
 
             while let sample = output.copyNextSampleBuffer() {
                 if isCancelled() {
@@ -319,16 +364,16 @@ enum BeatDetector {
                     throw CancellationError()
                 }
                 let presentation = CMSampleBufferGetPresentationTimeStamp(sample)
+                let chunk: [Float]
+                do {
+                    chunk = try pcmSamples(of: sample)
+                } catch {
+                    reader.cancelReading()
+                    throw error
+                }
                 if originSamples == nil, presentation.isNumeric {
                     originSamples = Int64((presentation.seconds * sampleRate).rounded())
                 }
-                guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
-                let length = CMBlockBufferGetDataLength(block)
-                chunk = [Float](repeating: 0, count: length / MemoryLayout<Float>.size)
-                let status = chunk.withUnsafeMutableBytes {
-                    CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!)
-                }
-                guard status == kCMBlockBufferNoErr else { continue }
                 chunk.withUnsafeBufferPointer { analyzer.append($0) }
 
                 if duration > 0 {
@@ -340,8 +385,15 @@ enum BeatDetector {
                 }
             }
 
-            if reader.status == .failed {
+            // Only a read that got to the end may become a result: one that
+            // stopped early would be saved as the beats of the whole file.
+            switch reader.status {
+            case .completed:
+                break
+            case .failed:
                 throw DetectionError.readerFailed(reader.error?.localizedDescription ?? "unknown error", underlying: reader.error)
+            default:
+                throw DetectionError.readerFailed("reading stopped before the end", underlying: reader.error)
             }
             progress(1)
 

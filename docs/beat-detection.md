@@ -75,7 +75,11 @@ its beats, following the tempo where it ramps or changes:
 Audio shorter than 4 seconds, with no usable onsets, or without a steady
 pulse (noise, speech, a few isolated hits) gives an **empty result**. That is saved like any other result, so the file is not analyzed
 again every time the project opens. An unreadable file is a failure and is
-shown in the browser; it can be retried by reopening the project.
+shown in the browser; it can be retried by reopening the project. So is
+one whose decoded audio is damaged (a buffer that isn't the mono float
+PCM asked for, has the wrong number of bytes for its samples, or can't
+be copied) or whose read stops before the end: those are never saved as
+an empty result.
 
 ## Beats are stored per asset, in the asset's time
 
