@@ -170,6 +170,19 @@ struct LibrarySidebar: View {
                 .font(Design.Typeface.label)
                 .foregroundStyle(Design.statusWarning)
                 .help(failure.detail)
+                .accessibilityHint(failure.detail)
+        } else if analysis.changedFiles[clip.id] != nil {
+            Text("File changed outside the app")
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.statusWarning)
+                .help("Scenes and beats aren't found until the change is checked. Control-click and choose \u{201C}File Changed — Check Sync…\u{201D}.")
+                .accessibilityHint("Scenes and beats aren't found until the change is checked.")
+        } else if let problem = analysis.persistenceProblem(for: clip.id) {
+            Text(problem.title)
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.statusWarning)
+                .help(problem.detail)
+                .accessibilityHint(problem.detail)
         } else if let beats = analysis.beats[clip.id], !beats.isEmpty {
             HStack(spacing: Design.Space.tight) {
                 Text(clip.kind.rawValue)
@@ -212,6 +225,11 @@ struct LibrarySidebar: View {
                         analysis.reanalyze(clip, in: project)
                     }
                     .disabled(analysis.progress[clip.id] != nil)
+                    if analysis.persistenceProblem(for: clip.id) != nil {
+                        Button("Retry Saving Results") {
+                            Task { await analysis.retryPersistence() }
+                        }
+                    }
                     if analysis.firstFailure(for: clip.id) != nil {
                         Button("Retry Failed Analysis") {
                             analysis.retryFailures(for: clip.id, in: project)

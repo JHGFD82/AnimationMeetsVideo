@@ -880,7 +880,7 @@ final class Gate: @unchecked Sendable {
         #expect(!analysis.isLoadingSaved)
     }
 
-    @Test func aSlowReadDoesNotBlockTheMainActor() async throws {
+    @Test func theMainActorRunsWhileASlowReadIsSuspended() async throws {
         let package = try makePackage()
         defer { try? FileManager.default.removeItem(at: package) }
         let id = UUID()
@@ -888,30 +888,27 @@ final class Gate: @unchecked Sendable {
         try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
         let analysis = AssetAnalysis()
         scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0], scores: [9]) }
+        observing(analysis) { self.stampA }
         analysis.reset(packageURL: package)
-        // A slow disk: something ahead of the read in the package's queue.
-        let started = Mutex(0)
-        let slow = Task {
-            try await PackageCoordinator.shared.run(on: [package]) { _ = started.increment(); usleep(400_000) }
-        }
-        try await settle { started.value == 1 }
+        // A slow disk: an operation ahead of the read in the package's queue,
+        // held open until the test lets it go.
+        let gate = Gate()
+        let slow = Task { try await PackageCoordinator.shared.run(on: [package]) { await gate.wait() } }
+        try await settle { gate.arrived == 1 }
 
         analysis.update(with: video)
-        // The main actor keeps turning while the read waits: no gap between
-        // turns comes near the 0.4 seconds a blocked main actor would show.
-        var longestGap = Duration.zero
-        var last = ContinuousClock.now
-        let start = last
-        while analysis.isLoadingSaved, ContinuousClock.now - start < .seconds(5) {
-            try await Task.sleep(for: .milliseconds(10))
-            let now = ContinuousClock.now
-            longestGap = max(longestGap, now - last)
-            last = now
-        }
-        try await slow.value
+        #expect(analysis.isLoadingSaved)
 
-        #expect(longestGap < .milliseconds(250))
-        #expect(ContinuousClock.now - start > .milliseconds(200))
+        // With the read suspended, the main actor still runs other work.
+        let ran = Mutex(0)
+        await Task { @MainActor in _ = ran.increment() }.value
+        #expect(ran.value == 1)
+        #expect(analysis.isLoadingSaved)
+        #expect(analysis.tracks[id] == nil)
+
+        gate.open()
+        try await slow.value
+        try await settle { !analysis.isLoadingSaved }
         #expect(analysis.tracks[id]?.scores == [1])
     }
 
@@ -1101,8 +1098,13 @@ final class Gate: @unchecked Sendable {
         // The result is still usable; the failure is not an analysis failure.
         #expect(analysis.failure(.scenes, for: id) == nil)
 
+        // What the library shows, and what its retry does.
+        #expect(analysis.persistenceProblem(for: id)?.title == "Couldn't save results")
+        #expect(analysis.hasPersistenceProblems)
+
         failing.increment()
-        await analysis.writeHeldResults()
+        await analysis.retryPersistence()
+        #expect(analysis.persistenceProblem(for: id) == nil)
         #expect(analysis.persistenceFailures[.init(id: id, stage: .scenes)] == nil)
         #expect(analysis.unsavedTracks.isEmpty)
     }

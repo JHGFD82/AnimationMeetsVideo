@@ -582,6 +582,22 @@ final class AssetAnalysis {
         update(with: project)
     }
 
+    /// A problem saving this asset's results, or retiring outdated ones, that
+    /// the person can act on with `retryPersistence`.
+    func persistenceProblem(for id: UUID) -> AnalysisFailure? {
+        persistenceFailures.first { $0.key.id == id }?.value
+            ?? invalidationFailures.first { $0.key.id == id }?.value
+    }
+
+    var hasPersistenceProblems: Bool { !persistenceFailures.isEmpty || !invalidationFailures.isEmpty }
+
+    /// Tries again to write results that could not be saved and to retire
+    /// outdated ones that could not be removed.
+    func retryPersistence() async {
+        retryPendingInvalidations()
+        await writeHeldResults()
+    }
+
     /// Tries one stage again for one asset, without touching anything else:
     /// its failure is cleared, and so is the asset's wait for a missing file,
     /// so a file that came back is tried too. Reading the original and its
