@@ -192,7 +192,10 @@ start, and draws them before marking any:
   selected section's start and end to the playhead, so none of it needs a
   drag. The same are buttons in the panel.
 
-Then each consistent section is marked as above, one after another. The
+Then each consistent section is marked as above, one after another.
+Switching sections in the panel's picker, or moving on to the next one
+after a fill, scrolls the section into view, centred if it fits; the zoom
+is left alone. The
 first time a consistent section is filled its edges snap to its first and
 last beats, so neighbouring sections meet on a beat. Filling it again
 (reanalyzing, or at a typed tempo) leaves the edges where they are.
