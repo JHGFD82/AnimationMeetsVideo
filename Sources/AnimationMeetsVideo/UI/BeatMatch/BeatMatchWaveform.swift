@@ -12,31 +12,51 @@ import SwiftUI
 ///   double-click a gap to fill it.
 /// - Waveform: click a beat to select it and drag it to move it (which pins
 ///   it); click elsewhere to move the playhead; double-click to add a beat
-///   (an anchor, before the section is filled), or while drawing sections,
-///   to fill the gap.
+///   (an anchor, before the section is filled). While drawing sections it
+///   works as the strip does: dragging on unmarked song draws, an edge
+///   moves, and double-clicking fills the gap, while a click still moves
+///   the playhead.
+///
+/// Drawing and moving edges snap as the timeline does, to section edges,
+/// beats, the playhead and the song's ends, with its snap line; a section
+/// stops at the ones beside it, and the preview shows where it will land.
 struct BeatMatchWaveform: View {
     @Bindable var session: BeatMatchSession
 
     @State private var drag: Drag?
     /// Where a drag is now, for previews.
     @State private var dragX: CGFloat = 0
+    /// The map as the drag in progress would leave it, and the section it
+    /// is drawing.
+    @State private var preview: BeatMap?
+    @State private var previewID: UUID?
+    /// Where the drag in progress snapped or stopped, for the snap line.
+    @State private var snapX: CGFloat?
 
     private enum Drag {
         case scrub
-        case draw(from: Double)
+        /// Drawing from `from` (snapped) in the gap around `gapAt`.
+        case draw(from: Double, gapAt: Double)
         case edge(UUID, BeatMap.Edge)
         case beat(CMTime, grab: CGFloat)
+        /// A press on a section in the strip, which selects it.
         case pressSection(UUID)
-        case pressWave
-        case pressStrip
+        /// A press on unmarked song, which draws if it moves; a click
+        /// clears the selection and, on the waveform, moves the playhead.
+        case pressGap(seeks: Bool)
+        /// A press on the waveform, which scrubs if it moves; a click moves
+        /// the playhead and selects the section there (or none).
+        case pressWave(section: UUID?)
     }
 
     static let rulerHeight: CGFloat = 18
     /// The section strip matches the timeline's section lane.
     static let stripHeight: CGFloat = SectionLane.height
-    /// How close, on screen, the pointer must be to grab an edge or a beat,
-    /// and to click in against a neighbour.
+    /// How close, on screen, the pointer must be to grab an edge or a beat.
     static let reach: CGFloat = 6
+    /// How close, on screen, an edge must come to a target to snap to it:
+    /// the timeline's distance.
+    static let snapDistance: CGFloat = 8
 
     var body: some View {
         GeometryReader { geometry in
@@ -60,12 +80,13 @@ struct BeatMatchWaveform: View {
             .simultaneousGesture(SpatialTapGesture(count: 2).onEnded { value in
                 doubleClick(at: value.location)
             })
-            // A resize arrow over what a drag moves sideways: a section's
-            // edge, or a beat. A section itself doesn't move as a whole.
+            // A resize arrow over what a drag moves sideways (a section's
+            // edge, or a beat; a section itself doesn't move as a whole),
+            // and a crosshair where a drag draws a section.
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let point) where drag == nil:
-                    (resizes(at: point) ? NSCursor.resizeLeftRight : NSCursor.arrow).set()
+                    cursor(at: point).set()
                 case .active:
                     break
                 case .ended:
@@ -116,6 +137,14 @@ struct BeatMatchWaveform: View {
             let x0 = session.x(of: loop.lowerBound), x1 = session.x(of: loop.upperBound)
             context.fill(Path(CGRect(x: x0, y: waveTop, width: x1 - x0, height: waveRect.height)), with: .color(Design.accent.opacity(0.08)))
         }
+        // Each section's colour behind its stretch of the waveform, so the
+        // sections read on the waveform that draws them.
+        for section in shownMap.sections {
+            let x0 = session.x(of: section.start.seconds), x1 = session.x(of: section.end.seconds)
+            guard x1 > 0, x0 < size.width else { continue }
+            let opacity = session.selectedSectionID == section.id || previewID == section.id ? 0.14 : 0.07
+            context.fill(Path(CGRect(x: x0, y: waveTop, width: x1 - x0, height: waveRect.height)), with: .color(section.kind.tone.opacity(opacity)))
+        }
         // Each layer is held to its own area, whatever the samples say.
         context.drawLayer { layer in
             layer.clip(to: Path(waveRect))
@@ -129,7 +158,7 @@ struct BeatMatchWaveform: View {
     private func playheadRail(size: CGSize) -> some View {
         SwiftUI.TimelineView(.animation(paused: !session.isPlaying)) { context in
             let x = session.x(of: session.playhead(at: context.date))
-            PlayheadRail(playheadX: x, isPlayheadVisible: (-1...(size.width + 1)).contains(x), snapX: nil, height: size.height)
+            PlayheadRail(playheadX: x, isPlayheadVisible: (-1...(size.width + 1)).contains(x), snapX: snapX, height: size.height)
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -156,25 +185,21 @@ struct BeatMatchWaveform: View {
         context.stroke(ticks, with: .color(Design.textTertiary), lineWidth: 1)
     }
 
+    /// The map as drawn: the preview while a drag changes it.
+    private var shownMap: BeatMap { preview ?? session.map }
+
     /// The sections, drawn as the timeline's section lane draws its own:
-    /// bronze chips with the kind (and measure and tempo, once known) for a
-    /// name. Drawn only; the waveform's drag does the editing.
+    /// chips coloured by kind, with the kind (and measure and tempo, once
+    /// known) for a name. Drawn only; the waveform's drag does the editing.
     private func sectionStrip(width: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             Color.black.opacity(0.22)
-            ForEach(session.map.sections) { section in
-                let (x0, x1) = shownEdges(of: section)
+            ForEach(shownMap.sections) { section in
+                let x0 = session.x(of: section.start.seconds), x1 = session.x(of: section.end.seconds)
                 if x1 > 0, x0 < width {
-                    sectionChip(section, width: max(2, x1 - x0))
+                    sectionChip(section, x0: x0, width: max(2, x1 - x0))
                         .offset(x: x0, y: 2)
                 }
-            }
-            if case .draw(let from) = drag {
-                let x0 = session.x(of: from)
-                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                    .strokeBorder(Design.section, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                    .frame(width: abs(dragX - x0), height: Self.stripHeight - 4)
-                    .offset(x: min(dragX, x0), y: 2)
             }
         }
         .frame(width: width, height: Self.stripHeight, alignment: .topLeading)
@@ -184,22 +209,21 @@ struct BeatMatchWaveform: View {
         .accessibilityHidden(true)
     }
 
-    /// A section's edges on screen, following an edge being dragged.
-    private func shownEdges(of section: BeatSection) -> (CGFloat, CGFloat) {
-        var x0 = session.x(of: section.start.seconds), x1 = session.x(of: section.end.seconds)
-        if case .edge(let id, let edge) = drag, id == section.id {
-            if edge == .start { x0 = dragX } else { x1 = dragX }
-        }
-        return (x0, x1)
-    }
-
-    private func sectionChip(_ section: BeatSection, width: CGFloat) -> some View {
+    /// A section's chip, `width` wide at `x0`. A section that starts left of
+    /// the view keeps its name at the view's left edge, over what can be
+    /// seen of it.
+    private func sectionChip(_ section: BeatSection, x0: CGFloat, width: CGFloat) -> some View {
         let isSelected = session.selectedSectionID == section.id
+        let isDrawn = previewID == section.id
+        let tone = section.kind.tone
         return RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-            .fill(Design.clipFill(Design.section, selected: isSelected))
+            .fill(Design.clipFill(tone, selected: isSelected))
             .overlay {
                 RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                    .strokeBorder(isSelected ? Design.textOnColor.opacity(0.95) : Design.section.opacity(0.85), lineWidth: isSelected ? 1.5 : 1)
+                    .strokeBorder(
+                        isSelected || isDrawn ? Design.textOnColor.opacity(0.95) : tone.opacity(0.85),
+                        style: StrokeStyle(lineWidth: isSelected || isDrawn ? 1.5 : 1, dash: isDrawn ? [4, 3] : [])
+                    )
             }
             .overlay {
                 RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
@@ -210,9 +234,10 @@ struct BeatMatchWaveform: View {
                     .font(Design.Typeface.label.weight(.medium))
                     .foregroundStyle(Design.textOnColor)
                     .lineLimit(1)
-                    .padding(.horizontal, Design.Space.tight)
+                    .padding(.leading, max(0, -x0) + Design.Space.tight)
+                    .padding(.trailing, Design.Space.tight)
             }
-            .opacity(section.kind == .none ? 0.6 : 1)
+            .opacity(section.kind == .none ? 0.75 : 1)
             .frame(width: width, height: Self.stripHeight - 4)
             .clipped()
     }
@@ -280,57 +305,149 @@ struct BeatMatchWaveform: View {
             .onChanged { value in
                 dragX = value.location.x
                 if drag == nil { drag = begin(at: value.startLocation) }
+                let moved = abs(value.translation.width) > 3
                 switch drag {
-                case .scrub: session.seek(to: session.seconds(atX: value.location.x))
-                case .pressSection, .pressWave, .pressStrip:
-                    // A press that moves on unmarked song draws; on the wave it scrubs.
-                    if abs(value.translation.width) > 3 {
-                        if case .pressStrip = drag {
-                            drag = .draw(from: session.seconds(atX: value.startLocation.x))
-                        } else if case .pressWave = drag {
-                            drag = .scrub
-                        }
-                    }
-                default: break
+                case .scrub:
+                    session.seek(to: session.seconds(atX: value.location.x))
+                case .pressGap where moved:
+                    let start = session.seconds(atX: value.startLocation.x)
+                    drag = .draw(from: snapped(start, excluding: nil) ?? start, gapAt: start)
+                    showDrawing()
+                case .pressWave where moved:
+                    drag = .scrub
+                    session.seek(to: session.seconds(atX: value.location.x))
+                case .draw:
+                    showDrawing()
+                case .edge(let id, let edge):
+                    let proposed = session.seconds(atX: value.location.x)
+                    let target = snapped(proposed, excluding: id)
+                    let moved = session.edgePreview(edge, of: id, to: target ?? proposed)
+                    preview = moved
+                    let landed = moved.section(id: id).map { (edge == .start ? $0.start : $0.end).seconds }
+                    showSnap(target: target, landed: landed, proposed: proposed)
+                default:
+                    break
                 }
             }
             .onEnded { value in
-                defer { drag = nil }
+                defer {
+                    drag = nil
+                    preview = nil
+                    previewID = nil
+                    snapX = nil
+                }
                 let seconds = session.seconds(atX: value.location.x)
-                let snap = Double(Self.reach) * session.secondsPerPoint
                 switch drag {
-                case .draw(let from):
-                    session.drawSection(from: from, to: seconds, snap: snap)
+                case .draw(let from, let gapAt):
+                    session.drawSection(from: from, to: snapped(seconds, excluding: nil) ?? seconds, in: gapAt, snap: 0)
                 case .edge(let id, let edge):
-                    session.moveEdge(edge, of: id, to: seconds, snap: snap)
+                    session.moveEdge(edge, of: id, to: snapped(seconds, excluding: id) ?? seconds, snap: 0)
                 case .beat(let time, let grab):
                     if abs(value.translation.width) > 1 {
                         session.moveBeat(at: time, to: session.seconds(atX: value.location.x - grab))
                     }
                 case .pressSection(let id):
                     session.selectedSectionID = id
-                case .pressWave:
-                    session.selectedBeat = nil
-                    session.seek(to: seconds)
-                case .pressStrip:
+                case .pressGap(let seeks):
                     session.selectedSectionID = nil
+                    if seeks {
+                        session.selectedBeat = nil
+                        session.seek(to: seconds)
+                    }
+                case .pressWave(let section):
+                    session.selectedBeat = nil
+                    if session.step == .drawSections { session.selectedSectionID = section }
+                    session.seek(to: seconds)
                 case .scrub, nil:
                     break
                 }
             }
     }
 
-    /// Whether a drag from `point` moves an edge or a beat sideways.
-    private func resizes(at point: CGPoint) -> Bool {
-        guard point.y >= Self.rulerHeight else { return false }
-        if point.y < Self.rulerHeight + Self.stripHeight {
-            return session.map.sections.contains { section in
-                abs(session.x(of: section.start.seconds) - point.x) <= Self.reach
-                    || abs(session.x(of: section.end.seconds) - point.x) <= Self.reach
+    /// Shows the section being drawn where it will land, and the snap line
+    /// where its moving end snapped or stopped.
+    private func showDrawing() {
+        guard case .draw(let from, let gapAt) = drag else { return }
+        let proposed = session.seconds(atX: dragX)
+        let target = snapped(proposed, excluding: nil)
+        guard let (map, id) = session.drawingPreview(from: from, to: target ?? proposed, in: gapAt) else {
+            preview = nil
+            previewID = nil
+            snapX = nil
+            return
+        }
+        preview = map
+        previewID = id
+        let landed = map.section(id: id).map { proposed < from ? $0.start.seconds : $0.end.seconds }
+        showSnap(target: target, landed: landed, proposed: proposed)
+    }
+
+    /// The snap line goes where the edge snapped, or where it stopped short
+    /// of where it was dragged, against a neighbour or the song's end.
+    private func showSnap(target: Double?, landed: Double?, proposed: Double) {
+        if let target {
+            snapX = session.x(of: target)
+        } else if let landed, abs(session.x(of: landed) - session.x(of: proposed)) > 1 {
+            snapX = session.x(of: landed)
+        } else {
+            snapX = nil
+        }
+    }
+
+    /// The snap target within `snapDistance` of `seconds`, leaving out the
+    /// edges of section `owner`: the timeline's snapping, over the song's
+    /// ends, the playhead, every section's edges and every beat.
+    private func snapped(_ seconds: Double, excluding owner: UUID?) -> Double? {
+        let time = { (seconds: Double) in CMTime(seconds: seconds, preferredTimescale: 48_000) }
+        var targets = [
+            SnapTargets.Target(time: .zero), SnapTargets.Target(time: session.duration),
+            SnapTargets.Target(time: time(session.livePlayhead)),
+        ]
+        for section in session.map.sections {
+            targets.append(SnapTargets.Target(time: section.start, ownerID: section.id))
+            targets.append(SnapTargets.Target(time: section.end, ownerID: section.id))
+            targets += section.beats.map { SnapTargets.Target(time: $0.time) }
+        }
+        let tolerance = time(Double(Self.snapDistance) * session.secondsPerPoint)
+        return SnapTargets(targets: targets).nearest(to: time(seconds), within: tolerance, excluding: owner)?.seconds
+    }
+
+    /// Whether a point is where sections are drawn and edited: the strip,
+    /// and the waveform while drawing sections.
+    private func editsSections(at point: CGPoint) -> Bool {
+        point.y >= Self.rulerHeight && (point.y < Self.rulerHeight + Self.stripHeight || session.step == .drawSections)
+    }
+
+    /// The section edge within reach of `x`, nearest first.
+    private func edge(nearX x: CGFloat) -> (UUID, BeatMap.Edge)? {
+        var best: (id: UUID, edge: BeatMap.Edge, distance: CGFloat)?
+        for section in session.map.sections {
+            for (edge, time) in [(BeatMap.Edge.start, section.start), (.end, section.end)] {
+                let distance = abs(session.x(of: time.seconds) - x)
+                if distance <= Self.reach, distance < (best?.distance ?? .infinity) { best = (section.id, edge, distance) }
             }
         }
+        return best.map { ($0.id, $0.edge) }
+    }
+
+    private func beat(nearX x: CGFloat) -> MappedBeat? {
         let reach = CMTime(seconds: Double(Self.reach) * session.secondsPerPoint, preferredTimescale: 192_000)
-        return session.map.nearestBeat(to: BeatFitting.time(session.seconds(atX: point.x), sampleRate: 192_000), within: reach) != nil
+        return session.map.nearestBeat(to: BeatFitting.time(session.seconds(atX: x), sampleRate: 192_000), within: reach)
+    }
+
+    private func isInGap(atX x: CGFloat) -> Bool {
+        session.map.sectionIndex(containing: BeatFitting.time(session.seconds(atX: x), sampleRate: 48_000)) == nil
+    }
+
+    private func cursor(at point: CGPoint) -> NSCursor {
+        guard point.y >= Self.rulerHeight else { return .arrow }
+        let inStrip = point.y < Self.rulerHeight + Self.stripHeight
+        if editsSections(at: point) {
+            if edge(nearX: point.x) != nil { return .resizeLeftRight }
+            if !inStrip, beat(nearX: point.x) != nil { return .resizeLeftRight }
+            return isInGap(atX: point.x) ? .crosshair : .arrow
+        }
+        return !inStrip && beat(nearX: point.x) != nil ? .resizeLeftRight : .arrow
     }
 
     /// What a press at `point` starts.
@@ -340,37 +457,30 @@ struct BeatMatchWaveform: View {
             return .scrub
         }
         let seconds = session.seconds(atX: point.x)
-        if point.y < Self.rulerHeight + Self.stripHeight {
-            for section in session.map.sections {
-                if abs(session.x(of: section.start.seconds) - point.x) <= Self.reach {
-                    session.selectedSectionID = section.id
-                    return .edge(section.id, .start)
-                }
-                if abs(session.x(of: section.end.seconds) - point.x) <= Self.reach {
-                    session.selectedSectionID = section.id
-                    return .edge(section.id, .end)
-                }
-            }
-            if let index = session.map.sectionIndex(containing: BeatFitting.time(seconds, sampleRate: 48_000)) {
-                return .pressSection(session.map.sections[index].id)
-            }
-            return .pressStrip
+        let inStrip = point.y < Self.rulerHeight + Self.stripHeight
+        let containing = session.map.sectionIndex(containing: BeatFitting.time(seconds, sampleRate: 48_000)).map { session.map.sections[$0].id }
+        if editsSections(at: point), let (id, edge) = edge(nearX: point.x) {
+            session.selectedSectionID = id
+            return .edge(id, edge)
         }
-        let reach = CMTime(seconds: Double(Self.reach) * session.secondsPerPoint, preferredTimescale: 192_000)
-        if let beat = session.map.nearestBeat(to: BeatFitting.time(seconds, sampleRate: 192_000), within: reach) {
+        if inStrip {
+            return containing.map { .pressSection($0) } ?? .pressGap(seeks: false)
+        }
+        if let beat = beat(nearX: point.x) {
             session.selectedBeat = beat.time
             if let index = session.map.sectionIndex(containing: beat.time) {
                 session.selectedSectionID = session.map.sections[index].id
             }
             return .beat(beat.time, grab: point.x - session.x(of: beat.time.seconds))
         }
-        return .pressWave
+        if session.step == .drawSections, containing == nil { return .pressGap(seeks: true) }
+        return .pressWave(section: containing)
     }
 
     private func doubleClick(at point: CGPoint) {
         guard point.y >= Self.rulerHeight else { return }
         let seconds = session.seconds(atX: point.x)
-        if point.y < Self.rulerHeight + Self.stripHeight || session.step == .drawSections {
+        if editsSections(at: point) {
             session.fillGap(at: seconds)
         } else {
             session.addBeat(at: seconds)

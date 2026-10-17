@@ -30,14 +30,19 @@ extension BeatMap {
         return CMTimeRange(start: start, end: end)
     }
 
-    /// Draws a section of `kind` across `from`...`to` (either order), which
-    /// must start on unmarked song. It stops at the sections either side,
-    /// and an end within `snap` of a neighbour (or the song's start or end)
-    /// clicks in against it. Gives the new section's ID, or nil when there
-    /// is no room.
+    /// Draws a section of `kind` across `from`...`to` (either order), in the
+    /// unmarked stretch around `gapAt` (by default `from`, which must then
+    /// be on unmarked song). It stops at the sections either side, and an
+    /// end within `snap` of a neighbour (or the song's start or end) clicks
+    /// in against it. Gives the new section's ID, or nil when there is no
+    /// room. A drag that started in a gap passes where it started as
+    /// `gapAt`, so a start that snapped onto the next section's edge still
+    /// draws in that gap.
     @discardableResult
-    mutating func drawSection(_ kind: BeatSection.Kind, from: CMTime, to: CMTime, duration: CMTime, snap: CMTime) -> UUID? {
-        guard let gap = gap(around: from, duration: duration) else { return nil }
+    mutating func drawSection(
+        _ kind: BeatSection.Kind, from: CMTime, to: CMTime, in gapAt: CMTime? = nil, duration: CMTime, snap: CMTime
+    ) -> UUID? {
+        guard let gap = gap(around: gapAt ?? from, duration: duration) else { return nil }
         var start = CMTimeMaximum(CMTimeMinimum(from, to), gap.start)
         var end = CMTimeMinimum(CMTimeMaximum(from, to), gap.end)
         if CMTimeCompare(CMTimeSubtract(start, gap.start), snap) <= 0 { start = gap.start }

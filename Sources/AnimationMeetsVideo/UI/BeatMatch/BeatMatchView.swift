@@ -183,10 +183,17 @@ struct BeatMatchView: View {
 
     private var drawingControls: some View {
         VStack(alignment: .leading, spacing: Design.Space.step) {
-            Picker("Draw", selection: $session.drawKind) {
+            // With a section selected, its kind; picking one changes it.
+            Picker("Kind", selection: Binding(
+                get: { session.selectedSection?.kind ?? session.drawKind },
+                set: { session.chooseKind($0) }
+            )) {
                 ForEach(BeatSection.Kind.allCases) { kind in Text(kind.name).tag(kind) }
             }
             .pickerStyle(.segmented)
+            .help(session.selectedSection == nil
+                  ? "The kind of section a drag draws"
+                  : "The selected section's kind, and what a drag draws next")
             Button("Fill Gap at Playhead (F)") { session.fillGap(at: session.livePlayhead) }
             if let section = session.selectedSection {
                 sectionSummary(section)

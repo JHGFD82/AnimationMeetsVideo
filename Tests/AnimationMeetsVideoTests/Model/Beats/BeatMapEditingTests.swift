@@ -25,6 +25,15 @@ private let snap = s(0.5)
         #expect(map.drawSection(.ramp, from: s(20), to: s(70), duration: song, snap: snap) == nil)
     }
 
+    @Test func aDrawnStartSnappedOntoTheNextSectionStillDrawsInItsGap() {
+        var map = BeatMap()
+        map.drawSection(.consistent, from: s(20), to: s(30), duration: song, snap: .zero)
+        // The drag started at 19.8, in the gap, and its start snapped to 20.
+        #expect(map.drawSection(.ramp, from: s(20), to: s(12), duration: song, snap: .zero) == nil)
+        map.drawSection(.ramp, from: s(20), to: s(12), in: s(19.8), duration: song, snap: .zero)
+        #expect(ranges(map) == [[12, 20], [20, 30]])
+    }
+
     @Test func doubleClickFillsTheGapOrChangesTheKind() throws {
         var map = BeatMap()
         map.drawSection(.consistent, from: s(10), to: s(30), duration: song, snap: snap)

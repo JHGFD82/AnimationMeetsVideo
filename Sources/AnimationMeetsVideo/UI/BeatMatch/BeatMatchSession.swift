@@ -141,8 +141,9 @@ final class BeatMatchSession {
     /// Keeps the selection and ticks in step with the draft.
     private func mapChanged() {
         if let id = selectedSectionID, map.section(id: id) == nil { selectedSectionID = map.sections.first?.id }
-        // A lone section needs no choosing.
-        if selectedSectionID == nil, map.sections.count == 1 { selectedSectionID = map.sections[0].id }
+        // A lone section needs no choosing, except while drawing, where
+        // picking a kind would then change it.
+        if selectedSectionID == nil, map.sections.count == 1, !isDrawing { selectedSectionID = map.sections[0].id }
         if let beat = selectedBeat, map.beat(at: beat) == nil { selectedBeat = nil }
         if map.isEmpty && !map.usesSections { isDrawing = false }
         refreshTicks()
@@ -221,7 +222,7 @@ final class BeatMatchSession {
         case .chooseMode:
             return "Does the song keep one tempo all the way through? Pick Sections if it changes tempo, speeds up or slows down."
         case .drawSections:
-            return "Pick a kind, then drag across the waveform to mark a section; double-click a gap to fill it. Drag an edge to move it, and near a neighbour it clicks in. Get the edges between sections close; the song's start and end needn't be exact."
+            return "Pick a kind, then drag across the waveform to mark a section; double-click a gap to fill it. A section stops at the ones beside it, and its edges snap to theirs, to beats and to the playhead. Click a section to select it: picking a kind then changes it. Drag an edge to move it. Get the edges between sections close; the song's start and end needn't be exact."
         case .mark:
             break
         }
@@ -313,16 +314,45 @@ final class BeatMatchSession {
 
     // MARK: Sections
 
-    func drawSection(from: Double, to: Double, snap: Double) {
-        let id = edit { [duration, drawKind] map in
-            map.drawSection(drawKind, from: Self.time(from), to: Self.time(to), duration: duration, snap: Self.time(snap))
+    /// Draws a section of the chosen kind; see `BeatMap.drawSection`. It
+    /// isn't selected, so picking a kind next sets what is drawn after it
+    /// rather than changing it.
+    func drawSection(from: Double, to: Double, in gapAt: Double? = nil, snap: Double) {
+        edit { [duration, drawKind] map in
+            map.drawSection(
+                drawKind, from: Self.time(from), to: Self.time(to), in: gapAt.map(Self.time),
+                duration: duration, snap: Self.time(snap)
+            )
         }
-        if let id { selectedSectionID = id }
+    }
+
+    /// The map as drawing a section would leave it, for the drag's preview,
+    /// and the drawn section's ID; nil without room.
+    func drawingPreview(from: Double, to: Double, in gapAt: Double) -> (map: BeatMap, id: UUID)? {
+        var preview = map
+        guard let id = preview.drawSection(
+            drawKind, from: Self.time(from), to: Self.time(to), in: Self.time(gapAt), duration: duration, snap: .zero
+        ) else { return nil }
+        return (preview, id)
+    }
+
+    /// The map as moving an edge would leave it, for the drag's preview.
+    func edgePreview(_ edge: BeatMap.Edge, of id: UUID, to seconds: Double) -> BeatMap {
+        var preview = map
+        preview.moveEdge(edge, of: id, to: Self.time(seconds), duration: duration, snap: .zero)
+        return preview
     }
 
     func fillGap(at seconds: Double) {
-        let id = edit { [duration, drawKind] map in map.fill(at: Self.time(seconds), with: drawKind, duration: duration) }
-        if let id { selectedSectionID = id }
+        edit { [duration, drawKind] map in map.fill(at: Self.time(seconds), with: drawKind, duration: duration) }
+    }
+
+    /// The kind picker: sets what is drawn next and, with a section
+    /// selected, changes that section to it.
+    func chooseKind(_ kind: BeatSection.Kind) {
+        drawKind = kind
+        guard let section = selectedSection, section.kind != kind else { return }
+        setKind(kind)
     }
 
     func moveEdge(_ edge: BeatMap.Edge, of id: UUID, to seconds: Double, snap: Double) {

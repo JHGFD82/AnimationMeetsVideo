@@ -159,24 +159,35 @@ original time.
 When the song has more than one tempo, the person picks **Sections** at the
 start, and draws them before marking any:
 
-- Pick a kind (consistent, ramp, none), then drag across the waveform to
-  draw a section of it. The ends need not be exact at the start and end of
-  the song, but should be close between two sections.
+- Pick a kind (consistent, ramp, none), then drag across the waveform, or
+  the strip of sections above it, to draw a section of it. Over unmarked
+  song the pointer is a crosshair. A click on the waveform still moves the
+  playhead, and a drag inside a section scrubs. The ends need not be exact
+  at the start and end of the song, but should be close between two
+  sections.
+- While drawing, the new section is shown where it will land, with a
+  dashed outline: it stops at the sections either side, so one never
+  covers another.
 - Drag a section's edge to move it. Pinch to zoom in for the in-between
-  edges. An edge dragged close to a neighbour's clicks in against it. A
-  drag that starts on empty waveform always draws, even right next to a
-  section, so drawing and resizing never conflict: draw beside a section,
-  then drag the new edge until it clicks in.
+  edges. Drawn ends and dragged edges snap as on the timeline, within
+  8 points, to the other sections' edges, beats, the playhead and the
+  song's ends. The timeline's snap line shows where an edge caught, and
+  also where it stopped against a neighbour.
 - **Double-click** empty waveform to fill it, like a paint bucket, with
   the chosen kind, from the nearest section edge (or the start or end of
   the song) on the left to the nearest one on the right. Double-clicking
   inside a section changes its kind to the chosen one.
-- Click inside a section to select it; its kind can be changed in the
-  panel, and Delete removes it. A lone section (as with one tempo) is
-  selected without asking.
-- The strip looks like the timeline's section lane: bronze chips named by
+- Click inside a section to select it; picking a kind then changes it to
+  that kind, and Delete removes it. A drawn section isn't selected, so
+  picking a kind before drawing the next one sets what is drawn rather
+  than changing the last. Outside drawing, a lone section (as with one
+  tempo) is selected without asking.
+- The strip looks like the timeline's section lane, with chips named by
   their kind, then the beats per measure once set, then the tempo once
-  filled.
+  filled. Each kind has its colour: consistent sections the timeline's
+  bronze, ramps violet, none grey. The colour also tints the section's
+  stretch of the waveform. A section that starts left of the view keeps its
+  name at the view's left edge.
 - Keyboard: F fills the gap at the playhead, and [ and ] move the
   selected section's start and end to the playhead, so none of it needs a
   drag. The same are buttons in the panel.
