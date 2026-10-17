@@ -867,15 +867,25 @@ final class AssetAnalysis {
     }
 
     /// Scores computed since the last save.
-    var unsavedTracks: [UUID: ChangeScoreTrack] { unsavedResults().changeScores }
+    var unsavedTracks: [UUID: ChangeScoreTrack] { unsaved(dirtyScores, from: tracks) }
     /// Reference data captured since the last save.
-    var unsavedReferences: [UUID: AssetReference] { unsavedResults().referenceData }
+    var unsavedReferences: [UUID: AssetReference] { unsaved(dirtyReferences, from: references) }
     /// Beats found since the last save.
-    var unsavedBeats: [UUID: BeatTrack] { unsavedResults().beatTracks }
+    var unsavedBeats: [UUID: BeatTrack] { unsaved(dirtyBeats, from: beats) }
     /// Reference pictures captured since the last save.
-    var unsavedThumbnails: [UUID: ReferenceThumbnails] { unsavedResults().thumbnails }
+    var unsavedThumbnails: [UUID: ReferenceThumbnails] { unsaved(dirtyPictures, from: heldPictures) }
     /// Assets whose outdated saved beats are still to be deleted.
-    var discardedBeats: Set<UUID> { Set(pendingInvalidations.keys.filter { $0.kind == .beats }.map(\.id)) }
+    var discardedBeats: Set<UUID> { retiring(.beats) }
+    /// Assets whose outdated saved scores are still to be deleted.
+    var invalidatedScores: Set<UUID> { retiring(.scores) }
+
+    private func unsaved<Value>(_ dirty: [UUID: Int], from values: [UUID: Value]) -> [UUID: Value] {
+        dirty.keys.reduce(into: [:]) { result, id in result[id] = values[id] }
+    }
+
+    private func retiring(_ kind: AnalysisKind) -> Set<UUID> {
+        Set(pendingInvalidations.keys.filter { $0.kind == kind }.map(\.id))
+    }
 
     private func markDirty(_ keyPath: ReferenceWritableKeyPath<AssetAnalysis, [UUID: Int]>, _ id: UUID) -> Int {
         nextRevision += 1
@@ -886,7 +896,8 @@ final class AssetAnalysis {
     private func acknowledge(_ keyPath: ReferenceWritableKeyPath<AssetAnalysis, [UUID: Int]>, _ id: UUID, _ revision: Int) {
         guard self[keyPath: keyPath][id] == revision else { return }
         self[keyPath: keyPath][id] = nil
-        if dirtyPictures[id] == nil { heldPictures[id] = nil }
+        // Saved pictures are read back from the package when needed.
+        if keyPath == \AssetAnalysis.dirtyPictures { heldPictures[id] = nil }
     }
 
     /// Writes results held for a save, those that arrived while there was
