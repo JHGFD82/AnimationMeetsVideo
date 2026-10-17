@@ -79,10 +79,14 @@ None.
 
 The choice is just a layer ID held by the timeline view. The choices are
 the layers for which `EditingProject.layerHasBeats(_:tracks:)` holds,
-checked every time (`beatLayers(in:tracks:)` gives the same list), so when a layer is
-deleted (or its clips lose their beats) it **drops out of the picker and its
-markers disappear**, with no cleanup step. The choice is view state and is
-not saved with the project.
+checked every time (`beatLayers(in:tracks:)` gives the same list). It
+holds when the layer would get at least one marker: it looks clips up the
+same way `beatMarkers` does (the asset, its audio, the replacement offset,
+the half-open trim range) and asks the track whether any beat lies in the
+range with a binary search, without building the markers. So when a layer
+is deleted, its clips lose their beats, or its trims leave out every beat,
+it **drops out of the picker and its markers disappear**, with no cleanup
+step. The choice is view state and is not saved with the project.
 
 Markers are drawn as orange ticks in the ruler with faint lines down through
 the layers, under the playhead and ignoring the mouse. When zoomed out so

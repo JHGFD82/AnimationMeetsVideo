@@ -77,6 +77,12 @@ struct BeatTrack: Equatable, Sendable {
         indices(from: start, to: end).map { CMTime(value: times[$0], timescale: timescale) }
     }
 
+    /// Whether any beat lies in `start..<end`, by binary search, without
+    /// building the list `beats(from:to:)` returns.
+    func hasBeats(from start: CMTime, to end: CMTime) -> Bool {
+        !indices(from: start, to: end).isEmpty
+    }
+
     /// The indices of the beats in `start..<end`. The bounds are compared
     /// exactly rather than converted to `timescale`, which would round a
     /// bound that falls between two ticks onto one of them and so let in a
@@ -201,14 +207,11 @@ extension EditingProject {
     func beatMarkers(in layer: TimelineLayer, tracks: [UUID: BeatTrack]) -> [CMTime] {
         var markers: [CMTime] = []
         for clip in layer.clips {
-            guard case .media(let assetID) = clip.source, let track = tracks[assetID],
-                  let asset = mediaClip(id: assetID), playsAudio(clip)
-            else { continue }
-            let fileStart = asset.fileTime(forSourceTime: clip.trimStart)
-            for beat in track.beats(from: fileStart, to: asset.fileTime(forSourceTime: clip.trimEnd)) {
+            guard let played = playedBeats(of: clip, tracks: tracks) else { continue }
+            for beat in played.track.beats(from: played.fileStart, to: played.fileEnd) {
                 // A retimed clip plays the file faster or slower, so a beat
                 // lands where the footage under it does.
-                let source = CMTimeAdd(clip.trimStart, CMTimeSubtract(beat, fileStart))
+                let source = CMTimeAdd(clip.trimStart, CMTimeSubtract(beat, played.fileStart))
                 markers.append(clip.timelineTime(forSourceTime: source))
             }
         }
@@ -222,12 +225,25 @@ extension EditingProject {
         timeline.layers.filter { layerHasBeats($0, tracks: tracks) }
     }
 
-    /// True when any clip on the layer plays audio with beats.
+    /// True when `beatMarkers(in:tracks:)` would give the layer at least one
+    /// marker: some clip plays audio with a beat inside its trimmed range.
     func layerHasBeats(_ layer: TimelineLayer, tracks: [UUID: BeatTrack]) -> Bool {
         layer.clips.contains { clip in
-            guard case .media(let id) = clip.source, let track = tracks[id], playsAudio(clip) else { return false }
-            return !track.isEmpty
+            guard let played = playedBeats(of: clip, tracks: tracks) else { return false }
+            return played.track.hasBeats(from: played.fileStart, to: played.fileEnd)
         }
+    }
+
+    /// The beat track a clip plays and its trimmed range in the track's
+    /// file time, or nil when the clip plays no audio with detected beats.
+    /// Shared by the markers and the picker so they never disagree.
+    private func playedBeats(
+        of clip: TimelineClip, tracks: [UUID: BeatTrack]
+    ) -> (track: BeatTrack, fileStart: CMTime, fileEnd: CMTime)? {
+        guard case .media(let assetID) = clip.source, let track = tracks[assetID],
+              let asset = mediaClip(id: assetID), playsAudio(clip)
+        else { return nil }
+        return (track, asset.fileTime(forSourceTime: clip.trimStart), asset.fileTime(forSourceTime: clip.trimEnd))
     }
 }
 

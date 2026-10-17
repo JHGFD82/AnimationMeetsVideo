@@ -426,6 +426,61 @@ private func seconds(_ time: CMTime) -> Double { time.seconds }
         #expect(!offered.contains { $0.id == second.layerID })
     }
 
+    @Test func aLayerWhoseTrimsMissEveryBeatIsNotOffered() throws {
+        var project = EditingProject.empty
+        let song = audioAsset()
+        let ids = add(song, to: &project)
+        let index = try #require(project.timelines[0].layers.firstIndex { $0.id == ids.layerID })
+        // Between the beats at 0.5 s and 1.0 s, and ending exactly on the second.
+        project.timelines[0].layers[index].clips[0].trimStart = t(0.6)
+        project.timelines[0].layers[index].clips[0].trimEnd = t(1)
+        let tracks = [song.id: sample]
+
+        #expect(project.beatLayers(in: project.timelines[0], tracks: tracks).isEmpty)
+
+        project.timelines[0].layers[index].clips[0].trimEnd = t(1.1)
+        let layer = project.timelines[0].layers[index]
+        #expect(project.layerHasBeats(layer, tracks: tracks))
+        #expect(project.beatMarkers(in: layer, tracks: tracks).count == 1)
+    }
+
+    @Test func eligibilityUsesTheReplacedFilesOffset() throws {
+        var project = EditingProject.empty
+        let song = audioAsset()
+        let ids = add(song, to: &project)
+        let index = try #require(project.timelines[0].layers.firstIndex { $0.id == ids.layerID })
+        project.timelines[0].layers[index].clips[0].trimStart = t(0.6)
+        project.timelines[0].layers[index].clips[0].trimEnd = t(0.9)
+        let tracks = [song.id: sample]
+        #expect(!project.layerHasBeats(project.timelines[0].layers[index], tracks: tracks))
+
+        // File time is now 0.2...0.5 s later, which reaches the beat at 1.0 s.
+        project.setAlignmentOffset(t(0.2), forAsset: song.id)
+
+        #expect(project.layerHasBeats(project.timelines[0].layers[index], tracks: tracks))
+    }
+
+    @Test func aClipWhoseAssetIsGoneIsNotOffered() throws {
+        var project = EditingProject.empty
+        let song = audioAsset()
+        let ids = add(song, to: &project)
+        project.clips.removeAll()
+        let layer = try #require(project.timelines[0].layer(id: ids.layerID))
+
+        #expect(!project.layerHasBeats(layer, tracks: [song.id: sample]))
+        #expect(project.beatMarkers(in: layer, tracks: [song.id: sample]).isEmpty)
+    }
+
+    @Test func hasBeatsMatchesTheBeatsInTheRange() {
+        let bounds: [CMTime] = [-1, 0, 0.25, 0.5, 0.75, 1, 2, 2.0005, 3].map { t($0) }
+        for start in bounds {
+            for end in bounds {
+                let found = sample.hasBeats(from: start, to: end)
+                #expect(found == !sample.beats(from: start, to: end).isEmpty, "\(start.seconds)..<\(end.seconds)")
+            }
+        }
+    }
+
     @Test func deletingALayerRemovesItFromTheChoices() throws {
         var project = EditingProject.empty
         let song = audioAsset("song.wav"), other = audioAsset("other.wav")
