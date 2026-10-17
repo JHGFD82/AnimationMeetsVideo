@@ -25,17 +25,21 @@ struct TimelineInputMonitor: NSViewRepresentable {
     /// Called with a sideways distance in points (positive scrolls later in
     /// time). Return true to keep the event from scrolling anything else.
     let onScroll: (_ deltaX: CGFloat, _ deltaY: CGFloat, _ flags: NSEvent.ModifierFlags, _ x: CGFloat) -> Bool
+    /// Called when the fingers of a pinch lift.
+    var onMagnifyEnded: () -> Void = {}
 
     func makeNSView(context: Context) -> MonitorView {
         let view = MonitorView()
         view.onMagnify = onMagnify
         view.onScroll = onScroll
+        view.onMagnifyEnded = onMagnifyEnded
         return view
     }
 
     func updateNSView(_ view: MonitorView, context: Context) {
         view.onMagnify = onMagnify
         view.onScroll = onScroll
+        view.onMagnifyEnded = onMagnifyEnded
     }
 
     static func dismantleNSView(_ view: MonitorView, coordinator: ()) {
@@ -45,6 +49,7 @@ struct TimelineInputMonitor: NSViewRepresentable {
     final class MonitorView: NSView {
         var onMagnify: ((CGFloat, PinchAxis, CGFloat, CGPoint) -> Void)?
         var onScroll: ((CGFloat, CGFloat, NSEvent.ModifierFlags, CGFloat) -> Bool)?
+        var onMagnifyEnded: (() -> Void)?
         private var monitor: Any?
         /// The axis of the pinch in progress, fixed once its fingers are seen.
         private var pinchAxis: PinchAxis?
@@ -86,6 +91,7 @@ struct TimelineInputMonitor: NSViewRepresentable {
                 let height = window.contentView?.bounds.height ?? 0
                 let global = CGPoint(x: event.locationInWindow.x, y: height - event.locationInWindow.y)
                 onMagnify?(1 + event.magnification, axis, point.x, global)
+                if event.phase == .ended || event.phase == .cancelled { onMagnifyEnded?() }
                 return true
             case .scrollWheel:
                 // A mouse wheel reports lines, not points.

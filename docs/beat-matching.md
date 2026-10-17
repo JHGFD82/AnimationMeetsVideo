@@ -281,7 +281,13 @@ the pinned one), and wraps positions into the measure.
    layers, as on the timeline) and the timecode read the player on each
    display frame, and the waveform is drawn on its own, redrawn only by
    zooming and scrolling. The view doesn't follow the playhead, so the
-   person can browse the song and click where to hear while it plays. Keys: Space plays, M drops a
+   person can browse the song and click where to hear while it plays. The
+   view stops at the song's ends, with nothing shown before 0:00 or past
+   the end. Zooming out past the whole song squeezes the waveform toward
+   the pointer, over a darker surround, against more resistance the
+   further it goes, and it springs back when the pinch ends; the zoom
+   buttons and ⌘- give the same bump. With reduced motion it simply
+   stops. Keys: Space plays, M drops a
    beat or anchor at the playhead, ← → nudge the selected beat (⌥ one
    sample, ⇧ 10 ms; without a selection they move the playhead a second),
    ↑ ↓ select the previous and next beat, Delete, L loops, Return fills,

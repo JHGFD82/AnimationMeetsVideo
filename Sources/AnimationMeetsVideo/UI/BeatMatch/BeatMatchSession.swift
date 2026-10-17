@@ -62,6 +62,15 @@ final class BeatMatchSession {
         }
     }
     @ObservationIgnored private var hasFitted = false
+    /// How far the waveform is squeezed sideways, from 1 (not at all), by a
+    /// zoom out past the whole song, and the point it squeezes toward, as a
+    /// share of the width. It springs back when the pinch ends, so the
+    /// limit reads as an edge rather than a hard stop.
+    private(set) var zoomSquish: CGFloat = 1
+    private(set) var squishAnchor: CGFloat = 0.5
+    /// How far, in log of the zoom, the zoom has been pushed past the
+    /// whole song.
+    @ObservationIgnored private var overshoot = 0.0
 
     // MARK: Editing
 
@@ -523,11 +532,47 @@ final class BeatMatchSession {
     }
 
     /// Zooms by `factor` (above 1 zooms in) about a point `x` in the view.
-    func zoom(by factor: Double, aboutX x: CGFloat) {
+    /// Zooming out past the whole song squeezes the waveform instead,
+    /// against more resistance the further it goes. A pinch springs back
+    /// when it ends (`endPinch`); any other zoom bounces back at once.
+    func zoom(by factor: Double, aboutX x: CGFloat, pinching: Bool = false) {
+        guard factor > 0 else { return }
+        var factor = factor
+        // Zooming back in takes up the squeeze first.
+        if overshoot > 0, factor > 1 {
+            let back = min(log(factor), overshoot)
+            overshoot -= back
+            factor /= exp(back)
+        }
         let anchor = visibleStart + Double(x) * secondsPerPoint
-        secondsPerPoint = min(max(secondsPerPoint / factor, closestZoom), farthestZoom)
+        let wanted = secondsPerPoint / factor
+        secondsPerPoint = min(max(wanted, closestZoom), farthestZoom)
+        if wanted > farthestZoom { overshoot += log(wanted / farthestZoom) }
         visibleStart = anchor - Double(x) * secondsPerPoint
         clampView()
+        squeeze(aboutX: x)
+        if !pinching, overshoot > 0 {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(90))
+                self.endPinch()
+            }
+        }
+    }
+
+    /// Springs the squeeze back once the pinch's fingers lift.
+    func endPinch() {
+        overshoot = 0
+        guard zoomSquish != 1 else { return }
+        withAnimation(Design.Motion.respecting(.spring(response: 0.32, dampingFraction: 0.55))) { zoomSquish = 1 }
+    }
+
+    private func squeeze(aboutX x: CGFloat) {
+        guard !Design.Motion.isReduced else { return }
+        // Up to a fifth narrower, closing in more slowly as it goes.
+        let squish = CGFloat(1 - 0.2 * (1 - exp(-2.5 * overshoot)))
+        guard squish != zoomSquish else { return }
+        if viewWidth > 0 { squishAnchor = min(max(x / viewWidth, 0), 1) }
+        zoomSquish = squish
     }
 
     func scroll(byPoints points: CGFloat) {
@@ -551,9 +596,11 @@ final class BeatMatchSession {
         }
     }
 
+    /// The song's start sits at the left edge at most, and its end at the
+    /// right edge at least: nothing past either end is shown.
     private func clampView() {
         let span = Double(viewWidth) * secondsPerPoint
-        visibleStart = min(max(visibleStart, -span * 0.05), max(0, duration.seconds - span * 0.95))
+        visibleStart = min(max(visibleStart, 0), max(0, duration.seconds - span))
     }
 
     // MARK: Times

@@ -60,20 +60,11 @@ struct BeatMatchWaveform: View {
 
     var body: some View {
         GeometryReader { geometry in
-            Canvas { context, size in
-                draw(in: &context, size: size)
-            }
-            .background(alignment: .top) {
-                if let audio = session.audio {
-                    let top = Self.rulerHeight + Self.stripHeight
-                    WaveLayer(audio: audio, start: session.visibleStart, secondsPerPoint: session.secondsPerPoint)
-                        .frame(height: max(0, geometry.size.height - top))
-                        .offset(y: top)
-                }
-            }
-            .background(Design.Surface.sunken.color)
-            .overlay(alignment: .topLeading) { sectionStrip(width: geometry.size.width) }
-            .overlay { playheadRail(size: geometry.size) }
+            content(size: geometry.size)
+            // Squeezed by a zoom out past the whole song, over a darker
+            // surround, so the edge of the song shows.
+            .scaleEffect(x: session.zoomSquish, y: 1, anchor: UnitPoint(x: session.squishAnchor, y: 0.5))
+            .background(Design.Surface.well.color)
             .clipped()
             .contentShape(Rectangle())
             .gesture(dragGesture(height: geometry.size.height))
@@ -95,11 +86,12 @@ struct BeatMatchWaveform: View {
             }
             .background(
                 TimelineInputMonitor(
-                    onMagnify: { factor, _, x, _ in session.zoom(by: factor, aboutX: x) },
+                    onMagnify: { factor, _, x, _ in session.zoom(by: factor, aboutX: x, pinching: true) },
                     onScroll: { deltaX, deltaY, _, _ in
                         session.scroll(byPoints: abs(deltaX) >= abs(deltaY) ? deltaX : -deltaY)
                         return true
-                    }
+                    },
+                    onMagnifyEnded: { session.endPinch() }
                 )
             )
             .onChange(of: geometry.size.width, initial: true) { _, width in session.viewWidth = width }
@@ -116,6 +108,24 @@ struct BeatMatchWaveform: View {
         .accessibilityAction(named: "Move the selected beat 1 millisecond later") { session.nudgeSelected(by: 0.001) }
         .accessibilityAction(named: "Move the selected beat 1 millisecond earlier") { session.nudgeSelected(by: -0.001) }
         .accessibilityAction(named: "Delete the selected beat") { session.deleteSelectedBeat() }
+    }
+
+    /// The ruler, the strip and the waveform, with the playhead over them.
+    private func content(size: CGSize) -> some View {
+        Canvas { context, size in
+            draw(in: &context, size: size)
+        }
+        .background(alignment: .top) {
+            if let audio = session.audio {
+                let top = Self.rulerHeight + Self.stripHeight
+                WaveLayer(audio: audio, start: session.visibleStart, secondsPerPoint: session.secondsPerPoint)
+                    .frame(height: max(0, size.height - top))
+                    .offset(y: top)
+            }
+        }
+        .background(Design.Surface.sunken.color)
+        .overlay(alignment: .topLeading) { sectionStrip(width: size.width) }
+        .overlay { playheadRail(size: size) }
     }
 
     private var accessibilityValue: String {
