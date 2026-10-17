@@ -321,7 +321,9 @@ final class AssetAnalysis {
     }
     /// Why saved results were not used, by asset, as of the last read.
     private(set) var rejectedResults: [UUID: [AnalysisKind: AnalysisRejection]] = [:]
-    @ObservationIgnored private var invalidationTasks: [Invalidation: Task<Void, Never>] = [:]
+    /// The retirement under way for each result, with a token telling it
+    /// from a later one. At most one runs per result; it removes itself.
+    @ObservationIgnored private var invalidationTasks: [Invalidation: (token: Int, task: Task<Void, Never>)] = [:]
     /// The project last analyzed, checked again once the queue drains.
     @ObservationIgnored private var latestProject: EditingProject?
     /// The project as it is now, read when a job checks its inputs. Set by
@@ -343,6 +345,9 @@ final class AssetAnalysis {
     }
 
     /// Starts over for a different project, with whatever scores it had saved.
+    /// Retirements still pending are not lost: for the same package they are
+    /// kept, and the results they retire are left out of what is passed in;
+    /// for another package they are still carried out in the previous one.
     func reset(
         tracks: [UUID: ChangeScoreTrack] = [:],
         references: [UUID: AssetReference] = [:],
@@ -353,6 +358,13 @@ final class AssetAnalysis {
         rejected: [UUID: [AnalysisKind: AnalysisRejection]] = [:],
         packageURL: URL? = nil
     ) {
+        let previousPackage = self.packageURL, retiring = pendingInvalidations
+        let samePackage = previousPackage?.standardizedFileURL == packageURL?.standardizedFileURL
+        if let previousPackage, !samePackage {
+            for key in retiring.keys {
+                Task { _ = await attemptReporting(on: previousPackage) { try ProjectStore.invalidate(key.kind, for: key.id, in: $0) } }
+            }
+        }
         worker?.cancel()
         worker = nil
         generation += 1
@@ -370,7 +382,7 @@ final class AssetAnalysis {
         originalSources = [:]
         dirtyPictures = [:]
         heldPictures = [:]
-        pendingInvalidations = [:]
+        pendingInvalidations = samePackage ? retiring : [:]
         invalidationFailures = [:]
         checkedPackage = []
         loading = [:]
@@ -386,13 +398,15 @@ final class AssetAnalysis {
         self.references = references
         // A result that comes without the file it was computed from is not
         // known to describe any file, so it is left out and analyzed again.
-        self.tracks = tracks.filter { sources.scores[$0.key] != nil }
-        self.beats = beats.filter { sources.beats[$0.key] != nil }
+        // Nor is one retired, if it was read before its retirement held.
+        self.tracks = tracks.filter { sources.scores[$0.key] != nil && !isRetiring(.scores, of: $0.key) }
+        self.beats = beats.filter { sources.beats[$0.key] != nil && !isRetiring(.beats, of: $0.key) }
         // Original scores without a record of the original are not trusted.
         self.originalScores = originalScores.filter { sources.originalScores[$0.key] != nil }
         originalSources = sources.originalScores
         scoreSources = sources.scores.mapValues { ResultSource(path: nil, stamp: $0) }
         beatSources = sources.beats.mapValues { ResultSource(path: nil, stamp: $0) }
+        retryPendingInvalidations()
     }
 
     /// The one way the project's state reaches the analysis: retires jobs and
@@ -470,7 +484,7 @@ final class AssetAnalysis {
         let expectedGeneration = generation, epoch = packageEpoch
         let identity = clip.acceptedStamp, includingReference = !clip.referenceForgotten
         let url = clip.url
-        let earlier = invalidationTasks.filter { $0.key.id == id }.map(\.value)
+        let earlier = invalidationTasks.filter { $0.key.id == id }.map(\.value.task)
         Task {
             for task in earlier { await task.value }
             var saved = await backend.readSaved(package, id, identity, includingReference)
@@ -496,15 +510,17 @@ final class AssetAnalysis {
     /// Takes what a read found, for what has nothing in memory yet.
     private func publish(_ saved: SavedAnalysis, for id: UUID) {
         checkedPackage.insert(id)
+        // A result retired while it was read stays retired, even if the
+        // package could not be made to forget it yet.
         switch saved.scores {
-        case .valid(let track, let source) where tracks[id] == nil:
+        case .valid(let track, let source) where tracks[id] == nil && !isRetiring(.scores, of: id):
             tracks[id] = track
             scoreSources[id] = ResultSource(path: nil, stamp: source)
         case .rejected(let reason): rejectedResults[id, default: [:]][.scores] = reason
         default: break
         }
         switch saved.beats {
-        case .valid(let track, let source) where beats[id] == nil:
+        case .valid(let track, let source) where beats[id] == nil && !isRetiring(.beats, of: id):
             beats[id] = track
             beatSources[id] = ResultSource(path: nil, stamp: source)
         case .rejected(let reason): rejectedResults[id, default: [:]][.beats] = reason
@@ -572,18 +588,41 @@ final class AssetAnalysis {
         persistInvalidation(key)
     }
 
+    private func isRetiring(_ kind: AnalysisKind, of id: UUID) -> Bool {
+        pendingInvalidations[Invalidation(kind: kind, id: id)] != nil
+    }
+
+    /// A new result replaces whatever the package held, so a retirement still
+    /// pending for the old one is no longer wanted: run after the new write,
+    /// it would delete that. One already under way was queued ahead of the
+    /// write, and finds out it is no longer wanted when it ends.
+    private func supersedeInvalidation(_ kind: AnalysisKind, of id: UUID) {
+        let key = Invalidation(kind: kind, id: id)
+        pendingInvalidations[key] = nil
+        invalidationFailures[key] = nil
+    }
+
     /// Asks the package to retire a result. Queued behind any write already
     /// started, so an older write can't bring the file back. The result stays
-    /// pending, and the failure visible, until the package confirms.
+    /// pending, and the failure visible, until the package confirms. While
+    /// one attempt runs no other starts; if the retirement was asked again
+    /// meanwhile, or the package changed, it is tried again when that ends.
     private func persistInvalidation(_ key: Invalidation) {
-        guard let package = packageURL, let revision = pendingInvalidations[key] else { return }
+        guard let package = packageURL, let revision = pendingInvalidations[key], invalidationTasks[key] == nil else { return }
         let epoch = packageEpoch
-        invalidationTasks[key] = Task {
+        nextToken += 1
+        let token = nextToken
+        let task = Task {
             let failure = await attemptReporting(on: package) { package in
                 try ProjectStore.invalidate(key.kind, for: key.id, in: package)
             }
-            guard epoch == packageEpoch, pendingInvalidations[key] == revision else { return }
+            // Gone after a reset, which also dropped what it was for.
+            guard invalidationTasks[key]?.token == token else { return }
             invalidationTasks[key] = nil
+            guard epoch == packageEpoch, pendingInvalidations[key] == revision else {
+                persistInvalidation(key)
+                return
+            }
             if let failure {
                 invalidationFailures[key] = AnalysisFailure(
                     stage: key.kind == .scores ? .scenes : .beats, error: failure, file: nil, kind: .persistence
@@ -593,6 +632,7 @@ final class AssetAnalysis {
                 invalidationFailures[key] = nil
             }
         }
+        invalidationTasks[key] = (token, task)
     }
 
     /// Tries again to retire results whose retirement is not yet confirmed.
@@ -915,6 +955,7 @@ final class AssetAnalysis {
                 commit: { track in
                     tracks[id] = track
                     scoreSources[id] = source
+                    supersedeInvalidation(.scores, of: id)
                     let revision = markDirty(\.dirtyScores, id)
                     // While the asset's file is still the original, these are
                     // also the original's scores, kept for aligning a replacement.
@@ -955,7 +996,7 @@ final class AssetAnalysis {
                 commit: { track in
                     beats[id] = track
                     beatSources[id] = source
-                    pendingInvalidations[Invalidation(kind: .beats, id: id)] = nil
+                    supersedeInvalidation(.beats, of: id)
                     let revision = markDirty(\.dirtyBeats, id)
                     await persist(\.dirtyBeats, .beats, id, revision, to: packageURL, epoch: packageEpoch) {
                         try ProjectStore.writeBeats(track, for: id, in: $0, source: job.file.stamp)

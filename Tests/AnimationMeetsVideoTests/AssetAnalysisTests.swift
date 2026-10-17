@@ -746,6 +746,40 @@ final class Gate: @unchecked Sendable {
         }
     }
 
+    @Test func aFailedRetirementNeitherComesBackNorDeletesTheNewScore() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
+        let analysis = AssetAnalysis()
+        let gate = Gate()
+        scoring(analysis) {
+            await gate.wait()
+            return ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 9])
+        }
+        // The first change to the package, the retirement, fails.
+        let calls = Mutex(0)
+        analysis.backend.perform = { package, body in
+            if calls.increment() == 1 { throw CocoaError(.fileWriteNoPermission) }
+            try await PackageCoordinator.shared.run(on: [package]) { try body(package) }
+        }
+        analysis.reset(packageURL: package)
+
+        analysis.reanalyze(video.clips[0], in: video)
+        try await settle { !analysis.invalidationFailures.isEmpty && gate.arrived == 1 }
+        // The read found the old score still in the package and left it retired.
+        #expect(analysis.tracks[id] == nil)
+
+        gate.open()
+        try await settle { analysis.tracks[id] == track(9) && analysis.progress.isEmpty }
+        await analysis.writeHeldResults()
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(analysis.invalidationFailures.isEmpty)
+        #expect(ProjectStore.readVerifiedChangeScores(for: id, in: package, identity: stampA).value == track(9))
+    }
+
     // MARK: Inputs checked by the job itself
 
     @MainActor private final class ProjectBox {
