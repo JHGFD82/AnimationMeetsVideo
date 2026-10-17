@@ -202,7 +202,10 @@ extension BeatMap {
 
     /// Sets a section's beats per measure and renumbers.
     mutating func setBeatsPerMeasure(of id: UUID, to count: Int) {
-        updateSection(id) { $0.beatsPerMeasure = count }
+        updateSection(id) { section in
+            section.beatsPerMeasure = count
+            section.isMeasureSet = true
+        }
         recountPositions()
     }
 }

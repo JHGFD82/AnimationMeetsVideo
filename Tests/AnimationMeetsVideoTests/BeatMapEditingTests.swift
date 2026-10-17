@@ -92,6 +92,13 @@ private let snap = s(0.5)
         #expect(clamped.map { $0.seconds < 3 } == true)
     }
 
+    @Test func onlyAMeasureThePersonSetIsMarkedAsSet() {
+        var map = BeatMap.oneTempo(duration: song)
+        #expect(!map.sections[0].isMeasureSet)
+        map.setBeatsPerMeasure(of: map.sections[0].id, to: 4)
+        #expect(map.sections[0].isMeasureSet)
+    }
+
     @Test func settingAPositionRenumbersTheBeatsAfter() {
         var map = BeatMap(sections: [BeatSection(kind: .consistent, start: .zero, end: s(10), isConfirmed: true, beats:
             (0..<6).map { MappedBeat(time: s(Double($0)), isPinned: $0 == 0) }

@@ -563,6 +563,8 @@ struct ProjectFile: Codable {
         var start: TimeEntry
         var end: TimeEntry
         var beatsPerMeasure: Int
+        /// Absent unless the person set the beats per measure.
+        var measureSet: Bool?
         var steadiness: String
         var confirmed: Bool
         var beats: [BeatEntry]
@@ -573,6 +575,7 @@ struct ProjectFile: Codable {
             start = TimeEntry(section.start)
             end = TimeEntry(section.end)
             beatsPerMeasure = section.beatsPerMeasure
+            measureSet = section.isMeasureSet ? true : nil
             steadiness = section.steadiness.rawValue
             confirmed = section.isConfirmed
             beats = section.beats.map { BeatEntry(time: TimeEntry($0.time), position: $0.position, pinned: $0.isPinned ? true : nil) }
@@ -583,7 +586,7 @@ struct ProjectFile: Codable {
         var section: BeatSection {
             var section = BeatSection(
                 id: id, kind: BeatSection.Kind(rawValue: kind) ?? .none, start: start.time, end: end.time,
-                beatsPerMeasure: beatsPerMeasure, steadiness: BeatSection.Steadiness(rawValue: steadiness) ?? .click,
+                beatsPerMeasure: beatsPerMeasure, isMeasureSet: measureSet ?? false, steadiness: BeatSection.Steadiness(rawValue: steadiness) ?? .click,
                 isConfirmed: confirmed,
                 beats: beats.map { MappedBeat(time: $0.time.time, position: $0.position, isPinned: $0.pinned ?? false) }
             )
@@ -812,7 +815,7 @@ extension ProjectFile {
                 .required("id", .uuid),
                 .required("kind", .choice(BeatSection.Kind.allCases.map(\.rawValue), noun: "beat section kind")),
                 .required("start", .time), .required("end", .time),
-                .required("beatsPerMeasure", .integer),
+                .required("beatsPerMeasure", .integer), .optional("measureSet", .bool),
                 .required("steadiness", .choice(BeatSection.Steadiness.allCases.map(\.rawValue), noun: "steadiness")),
                 .required("confirmed", .bool),
                 .required("beats", .array(.object(object([

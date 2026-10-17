@@ -236,7 +236,7 @@ private struct Sandbox {
         let beat = CMTime(value: 52_917, timescale: 44_100)
         let section = BeatSection(
             kind: .consistent, start: .zero, end: CMTime(seconds: 10, preferredTimescale: 600),
-            beatsPerMeasure: 6, steadiness: .intent, isConfirmed: true,
+            beatsPerMeasure: 6, isMeasureSet: true, steadiness: .intent, isConfirmed: true,
             beats: [MappedBeat(time: beat, position: 1, isPinned: true), MappedBeat(time: CMTimeMultiply(beat, multiplier: 2), position: 2)]
         )
         let ramp = BeatSection(kind: .ramp, start: CMTime(seconds: 10, preferredTimescale: 600), end: CMTime(seconds: 12, preferredTimescale: 600))

@@ -39,7 +39,9 @@ step.
     section's to the next), or *none* (not analyzed, the same as unmarked;
     it is there so the person can say so).
   - **Beats per measure**: only the count. 4/4 and 4/8 both count 4, 3/4
-    counts 3, 6/8 counts 6.
+    counts 3, 6/8 counts 6. It is 4 until the person sets it, and the
+    section is labelled "4 beats a measure" only once they have
+    (`isMeasureSet`, saved as `measureSet`).
   - **Steady by**: *click* (produced to a click track; the default) or
     *intent* (played live, meant to be steady but drifting).
 - **Beats**, in order, each with its time, its **position** in the measure
@@ -139,7 +141,11 @@ start, and draws them before marking any:
   the song) on the left to the nearest one on the right. Double-clicking
   inside a section changes its kind to the chosen one.
 - Click inside a section to select it; its kind can be changed in the
-  panel, and Delete removes it.
+  panel, and Delete removes it. A lone section (as with one tempo) is
+  selected without asking.
+- The strip looks like the timeline's section lane: bronze chips named by
+  their kind, then the beats per measure once set, then the tempo once
+  filled.
 - Keyboard: F fills the gap at the playhead, and [ and ] move the
   selected section's start and end to the playhead, so none of it needs a
   drag. The same are buttons in the panel.
@@ -184,6 +190,7 @@ than 4000 Hz.
 An asset's `beatMap` in `project.json`, left out while it has no section:
 `usesSections` (only when true) and `sections`, each with its `id`, `kind`
 (`consistent`, `ramp` or `none`), `start` and `end`, `beatsPerMeasure`,
+`measureSet` (only when true),
 `steadiness` (`click` or `intent`), `confirmed`, and `beats`. Each beat has
 a `time`, its `position` and, only when true, `pinned`. Times are exact,
 so a beat nudged by a sample stays on that sample. Loading sorts the

@@ -95,6 +95,9 @@ struct BeatSection: Identifiable, Equatable, Sendable {
     var end: CMTime
     /// Only the count of beats in a measure: 4/4 and 4/8 are both 4.
     var beatsPerMeasure = 4
+    /// Whether the person set `beatsPerMeasure`, rather than it being the
+    /// default; only then is it shown on the section.
+    var isMeasureSet = false
     var steadiness = Steadiness.click
     /// True once the section has been filled, so its beats are the
     /// result rather than only the anchors the person placed.

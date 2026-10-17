@@ -31,7 +31,8 @@ struct BeatMatchWaveform: View {
     }
 
     static let rulerHeight: CGFloat = 18
-    static let stripHeight: CGFloat = 26
+    /// The section strip matches the timeline's section lane.
+    static let stripHeight: CGFloat = SectionLane.height
     /// How close, on screen, the pointer must be to grab an edge or a beat,
     /// and to click in against a neighbour.
     static let reach: CGFloat = 6
@@ -42,6 +43,7 @@ struct BeatMatchWaveform: View {
                 draw(in: &context, size: size)
             }
             .background(Design.Surface.sunken.color)
+            .overlay(alignment: .topLeading) { sectionStrip(width: geometry.size.width) }
             .clipped()
             .contentShape(Rectangle())
             .gesture(dragGesture(height: geometry.size.height))
@@ -93,7 +95,6 @@ struct BeatMatchWaveform: View {
             context.fill(Path(CGRect(x: x0, y: waveTop, width: x1 - x0, height: waveRect.height)), with: .color(Design.accent.opacity(0.08)))
         }
         drawWave(in: &context, rect: waveRect)
-        drawSections(in: &context, width: size.width)
         drawBeats(in: &context, rect: waveRect)
         let x = session.x(of: session.playhead)
         var line = Path()
@@ -160,50 +161,76 @@ struct BeatMatchWaveform: View {
         context.stroke(axis, with: .color(Design.textTertiary.opacity(0.4)), lineWidth: 1)
     }
 
-    private func drawSections(in context: inout GraphicsContext, width: CGFloat) {
-        let top = Self.rulerHeight + 2, height = Self.stripHeight - 4
-        for section in session.map.sections {
-            var x0 = session.x(of: section.start.seconds), x1 = session.x(of: section.end.seconds)
-            if case .edge(let id, let edge) = drag, id == section.id {
-                if edge == .start { x0 = dragX } else { x1 = dragX }
+    /// The sections, drawn as the timeline's section lane draws its own:
+    /// bronze chips with the kind (and measure and tempo, once known) for a
+    /// name. Drawn only; the waveform's drag does the editing.
+    private func sectionStrip(width: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.opacity(0.22)
+            ForEach(session.map.sections) { section in
+                let (x0, x1) = shownEdges(of: section)
+                if x1 > 0, x0 < width {
+                    sectionChip(section, width: max(2, x1 - x0))
+                        .offset(x: x0, y: 2)
+                }
             }
-            guard x1 > 0, x0 < width else { continue }
-            let rect = CGRect(x: x0, y: top, width: max(1, x1 - x0), height: height)
-            let selected = session.selectedSectionID == section.id
-            let shape = Path(roundedRect: rect, cornerRadius: Design.Radius.chip)
-            context.fill(shape, with: .color(Self.color(of: section.kind).opacity(selected ? 0.6 : 0.32)))
-            if selected { context.stroke(shape, with: .color(Design.accent), lineWidth: 1.5) }
-            if rect.width > 40 {
-                context.draw(
-                    Text(label(of: section)).font(Design.Typeface.micro).foregroundStyle(Design.textPrimary),
-                    at: CGPoint(x: max(rect.minX, 0) + 5, y: rect.midY), anchor: .leading
-                )
+            if case .draw(let from) = drag {
+                let x0 = session.x(of: from)
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .strokeBorder(Design.section, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                    .frame(width: abs(dragX - x0), height: Self.stripHeight - 4)
+                    .offset(x: min(dragX, x0), y: 2)
             }
         }
-        if case .draw(let from) = drag {
-            let x0 = session.x(of: from)
-            let rect = CGRect(x: min(x0, dragX), y: top, width: abs(dragX - x0), height: height)
-            context.stroke(Path(roundedRect: rect, cornerRadius: Design.Radius.chip), with: .color(Self.color(of: session.drawKind)), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+        .frame(width: width, height: Self.stripHeight, alignment: .topLeading)
+        .clipped()
+        .offset(y: Self.rulerHeight)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// A section's edges on screen, following an edge being dragged.
+    private func shownEdges(of section: BeatSection) -> (CGFloat, CGFloat) {
+        var x0 = session.x(of: section.start.seconds), x1 = session.x(of: section.end.seconds)
+        if case .edge(let id, let edge) = drag, id == section.id {
+            if edge == .start { x0 = dragX } else { x1 = dragX }
         }
+        return (x0, x1)
+    }
+
+    private func sectionChip(_ section: BeatSection, width: CGFloat) -> some View {
+        let isSelected = session.selectedSectionID == section.id
+        return RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+            .fill(Design.clipFill(Design.section, selected: isSelected))
+            .overlay {
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .strokeBorder(isSelected ? Design.textOnColor.opacity(0.95) : Design.section.opacity(0.85), lineWidth: isSelected ? 1.5 : 1)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .strokeBorder(Design.bevelEdge, lineWidth: 1)
+            }
+            .overlay(alignment: .leading) {
+                Text(label(of: section))
+                    .font(Design.Typeface.label.weight(.medium))
+                    .foregroundStyle(Design.textOnColor)
+                    .lineLimit(1)
+                    .padding(.horizontal, Design.Space.tight)
+            }
+            .opacity(section.kind == .none ? 0.6 : 1)
+            .frame(width: width, height: Self.stripHeight - 4)
+            .clipped()
     }
 
     private func label(of section: BeatSection) -> String {
         var parts = [section.kind.name]
         if section.kind != .none {
-            parts.append("\(section.beatsPerMeasure) a measure")
+            if section.isMeasureSet { parts.append("\(section.beatsPerMeasure) beats a measure") }
             if section.isConfirmed, let gap = BeatFitting.medianGap(of: section.beats.map(\.time.seconds)) {
                 parts.append(String(format: "%.2f BPM", 60 / gap))
             }
         }
         return parts.joined(separator: " · ")
-    }
-
-    static func color(of kind: BeatSection.Kind) -> Color {
-        switch kind {
-        case .consistent: Design.accent
-        case .ramp: Design.section
-        case .none: Design.ClipTone.unknown.color
-        }
     }
 
     private func drawBeats(in context: inout GraphicsContext, rect: CGRect) {
