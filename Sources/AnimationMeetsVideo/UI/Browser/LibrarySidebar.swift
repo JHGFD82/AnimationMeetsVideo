@@ -247,8 +247,8 @@ struct LibrarySidebar: View {
                         analysis.reanalyze(clip, in: project)
                     }
                     .disabled(analysis.progress[clip.id] != nil)
-                    if analysis.persistenceProblem(for: clip.id) != nil {
-                        Button("Retry Saving Results") {
+                    if let problem = analysis.persistenceProblem(for: clip.id) {
+                        Button(problem.kind == .unreadableProject ? "Retry Reading Results" : "Retry Saving Results") {
                             Task { await analysis.retryPersistence() }
                         }
                     }

@@ -319,6 +319,13 @@ final class AssetAnalysis {
     @ObservationIgnored private var unavailable: [UUID: AnalyzedFile] = [:]
     /// Assets whose saved results were looked for in the package already.
     @ObservationIgnored private var checkedPackage: Set<UUID> = []
+    /// Assets whose saved results could not be read, with why. Such an asset
+    /// is read again a few times on its own, at every update, and by
+    /// `retryPersistence`; it is not analyzed until a read succeeds.
+    private(set) var readFailures: [UUID: AnalysisFailure] = [:]
+    @ObservationIgnored private var readAttempts: [UUID: Int] = [:]
+    /// How many times a failed read is tried again without being asked.
+    private static let automaticReadRetries = 3
     /// Assets whose saved results are being read right now, with the token of
     /// that read. Nothing is decided about such an asset until the read is
     /// back, so a result already on disk is not analyzed a second time.
@@ -408,6 +415,8 @@ final class AssetAnalysis {
         pendingInvalidations = samePackage ? retiring : [:]
         invalidationFailures = [:]
         checkedPackage = []
+        readFailures = [:]
+        readAttempts = [:]
         loading = [:]
         changedFiles = [:]
         rejectedResults = rejected
@@ -450,6 +459,8 @@ final class AssetAnalysis {
         for id in loading.keys where !present.contains(id) { loading[id] = nil }
         for id in unavailable.keys where !present.contains(id) { unavailable[id] = nil }
         for id in rejectedResults.keys where !present.contains(id) { rejectedResults[id] = nil }
+        for id in readFailures.keys where !present.contains(id) { readFailures[id] = nil }
+        for id in readAttempts.keys where !present.contains(id) { readAttempts[id] = nil }
         checkedPackage.formIntersection(present)
         for clip in project.clips {
             let input = Self.input(of: clip)
@@ -523,10 +534,19 @@ final class AssetAnalysis {
                 saved = try await backend.readSaved(package, id, identity, includingReference)
             } catch {
                 // Not known to hold nothing, so not analyzed over: the asset
-                // stays unchecked, and is read again at the next update.
+                // stays unchecked, and is read again at the next update, and
+                // after a growing wait for the first few failures.
                 guard generation == expectedGeneration, loading[id] == token else { return }
                 NSLog("Couldn't read saved analysis: \(error.localizedDescription)")
                 loading[id] = nil
+                readFailures[id] = AnalysisFailure(stage: .scenes, error: error, file: nil, kind: .unreadableProject)
+                let attempt = readAttempts[id, default: 0] + 1
+                readAttempts[id] = attempt
+                guard attempt <= Self.automaticReadRetries else { return }
+                try? await Task.sleep(for: .seconds(1 << (attempt - 1)))
+                guard generation == expectedGeneration, loading[id] == nil, !checkedPackage.contains(id),
+                      let project = projectSource?() ?? latestProject else { return }
+                update(with: project)
                 return
             }
             // Results fit the file the project accepted; if the file on disk
@@ -541,6 +561,8 @@ final class AssetAnalysis {
             }
             guard generation == expectedGeneration, loading[id] == token else { return }
             loading[id] = nil
+            readFailures[id] = nil
+            readAttempts[id] = nil
             if epoch == packageEpoch { publish(saved, for: id) }
             // Either way, look at the asset again: with its results, or with
             // the package it has now.
@@ -747,18 +769,27 @@ final class AssetAnalysis {
         return .failure(rejectedResults[id]?[.originalScores]?.originalScoresReason ?? .notCaptured)
     }
 
-    /// A problem saving this asset's results, or retiring outdated ones, that
-    /// the person can act on with `retryPersistence`.
+    /// A problem reading this asset's saved results, saving them, or
+    /// retiring outdated ones, that the person can act on with
+    /// `retryPersistence`.
     func persistenceProblem(for id: UUID) -> AnalysisFailure? {
-        persistenceFailures.first { $0.key.id == id }?.value
+        readFailures[id]
+            ?? persistenceFailures.first { $0.key.id == id }?.value
             ?? invalidationFailures.first { $0.key.id == id }?.value
     }
 
-    var hasPersistenceProblems: Bool { !persistenceFailures.isEmpty || !invalidationFailures.isEmpty }
+    var hasPersistenceProblems: Bool {
+        !readFailures.isEmpty || !persistenceFailures.isEmpty || !invalidationFailures.isEmpty
+    }
 
-    /// Tries again to write results that could not be saved and to retire
-    /// outdated ones that could not be removed.
+    /// Tries again to read saved results that could not be read, to write
+    /// results that could not be saved, and to retire outdated ones that
+    /// could not be removed.
     func retryPersistence() async {
+        if !readFailures.isEmpty, let project = projectSource?() ?? latestProject {
+            readAttempts = [:]
+            update(with: project)
+        }
         retryPendingInvalidations()
         await writeHeldResults()
     }

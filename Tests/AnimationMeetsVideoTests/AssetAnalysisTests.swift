@@ -968,11 +968,36 @@ final class Gate: @unchecked Sendable {
         try await settle { reads.value == 1 && !analysis.isLoadingSaved }
         try await Task.sleep(for: .milliseconds(50))
         #expect(scored.value == 0)
+        // Shown in the library, with a way to try again.
+        #expect(analysis.persistenceProblem(for: id)?.kind == .unreadableProject)
 
-        analysis.update(with: video)
+        await analysis.retryPersistence()
         try await settle { analysis.tracks[id] != nil && !analysis.isLoadingSaved && analysis.progress.isEmpty }
         #expect(analysis.tracks[id] == track(1))
         #expect(scored.value == 0)
+        #expect(analysis.readFailures.isEmpty)
+    }
+
+    @Test func aReadThatFailsIsTriedAgainWithoutBeingAsked() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
+        let analysis = AssetAnalysis()
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 9]) }
+        observing(analysis) { self.stampA }
+        let live = analysis.backend, reads = Mutex(0)
+        analysis.backend.readSaved = { package, id, identity, includingReference in
+            if reads.increment() == 1 { throw CocoaError(.fileReadUnknown) }
+            return try await live.readSaved(package, id, identity, includingReference)
+        }
+        analysis.reset(packageURL: package)
+        analysis.update(with: video)
+
+        // Nothing else happens to the project; the read is retried anyway.
+        try await settle { analysis.tracks[id] == track(1) && analysis.readFailures.isEmpty }
+        #expect(reads.value == 2)
     }
 
     @Test func theMainActorRunsWhileASlowReadIsSuspended() async throws {

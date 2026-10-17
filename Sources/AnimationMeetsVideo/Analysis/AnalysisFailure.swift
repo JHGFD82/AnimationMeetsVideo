@@ -17,6 +17,9 @@ struct AnalysisFailure: Equatable, Sendable {
         case corruptMedia
         /// The result was made but could not be written into the project.
         case persistence
+        /// The project's saved results could not be read. Recorded under
+        /// the scene stage, though it holds for all of the asset's results.
+        case unreadableProject
         /// The work stopped without being asked to.
         case interrupted
         case other
@@ -28,6 +31,7 @@ struct AnalysisFailure: Equatable, Sendable {
             case .unsupportedMedia: "The file's format isn't supported for this."
             case .corruptMedia: "The file looks damaged."
             case .persistence: "The result couldn't be saved into the project."
+            case .unreadableProject: "The results saved in the project couldn't be read."
             case .interrupted: "The analysis was interrupted."
             case .other: "The analysis failed."
             }
@@ -44,6 +48,7 @@ struct AnalysisFailure: Equatable, Sendable {
     var title: String {
         switch (stage, kind) {
         case (_, .persistence): "Couldn't save results"
+        case (_, .unreadableProject): "Couldn't read saved results"
         case (.reference, _): "Reading the original failed"
         case (.scenes, _): "Scene detection failed"
         case (.pictures, _): "Saving pictures failed"

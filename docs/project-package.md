@@ -235,8 +235,10 @@ main actor, and is an explicit phase: `AssetAnalysis` decides what an asset
 still needs only after its saved results have been read and checked, so what
 the package already holds is never analyzed twice, and a read can't see a
 result whose retirement was already asked for. A read that fails is not
-taken to mean the package holds nothing: the asset is read again at the next
-update rather than analyzed over what may be there. The scorer, reference
+taken to mean the package holds nothing: the asset is not analyzed over what
+may be there, but read again at the next update and, for the first three
+failures, after a wait of 1, 2 and 4 seconds. The library shows "Couldn't
+read saved results" for it, with a Retry Reading Results command. The scorer, reference
 capture, picture capture and beat detector do their decoding and arithmetic
 on background tasks or the sample-reading queue, not on the main actor.
 Replacing an existing package (moving it to the Trash) and marking
