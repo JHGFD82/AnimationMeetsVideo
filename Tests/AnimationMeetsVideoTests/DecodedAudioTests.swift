@@ -99,7 +99,8 @@ private func at(_ count: Int64) -> CMTime { CMTime(value: count, timescale: CMTi
         var (placer, collected) = timed()
         try placer.append([1, 1], at: CMTime(seconds: 2, preferredTimescale: 600))
         #expect(placer.origin == Int64(2 * BeatDetector.sampleRate))
-        #expect(collected.samples == [1, 1])
+        let expected: [Float] = [1, 1]
+        #expect(collected.samples == expected)
     }
 
     @Test func theOriginComesFromTheFirstBufferWithSamples() throws {
@@ -107,7 +108,8 @@ private func at(_ count: Int64) -> CMTime { CMTime(value: count, timescale: CMTi
         try placer.append([], at: at(5))
         try placer.append([1], at: at(9))
         #expect(placer.origin == 9)
-        #expect(collected.samples == [1])
+        let expected: [Float] = [1]
+        #expect(collected.samples == expected)
     }
 
     @Test func aGapIsFilledWithSilence() throws {
@@ -115,7 +117,8 @@ private func at(_ count: Int64) -> CMTime { CMTime(value: count, timescale: CMTi
         try placer.append([1, 1, 1, 1], at: at(100))
         try placer.append([2, 2], at: at(110))
         try placer.append([3], at: at(112))
-        #expect(collected.samples == [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 2, 2, 3])
+        let expected: [Float] = [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 2, 2, 3]
+        #expect(collected.samples == expected)
         #expect(placer.fed == 13)
     }
 
@@ -126,7 +129,8 @@ private func at(_ count: Int64) -> CMTime { CMTime(value: count, timescale: CMTi
         // Entirely covered already.
         try placer.append([3, 3], at: at(4))
         try placer.append([4], at: at(7))
-        #expect(collected.samples == [1, 1, 1, 1, 1, 1, 2, 4])
+        let expected: [Float] = [1, 1, 1, 1, 1, 1, 2, 4]
+        #expect(collected.samples == expected)
     }
 
     @Test func roundingBetweenTimescalesIsNotAGap() throws {
@@ -134,7 +138,8 @@ private func at(_ count: Int64) -> CMTime { CMTime(value: count, timescale: CMTi
         try placer.append([1, 1, 1, 1], at: at(0))
         try placer.append([2], at: at(5))
         try placer.append([3], at: at(4))
-        #expect(collected.samples == [1, 1, 1, 1, 2, 3])
+        let expected: [Float] = [1, 1, 1, 1, 2, 3]
+        #expect(collected.samples == expected)
     }
 
     @Test func otherTimescalesAreConverted() throws {
@@ -151,7 +156,8 @@ private func at(_ count: Int64) -> CMTime { CMTime(value: count, timescale: CMTi
         try placer.append([1, 1], at: at(10))
         try placer.append([2], at: .invalid)
         try placer.append([3], at: at(13))
-        #expect(collected.samples == [1, 1, 2, 3])
+        let expected: [Float] = [1, 1, 2, 3]
+        #expect(collected.samples == expected)
     }
 
     @Test func aJumpPastTheLongestGapIsDamage() throws {
