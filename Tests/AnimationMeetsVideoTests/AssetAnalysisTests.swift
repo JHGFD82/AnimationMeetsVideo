@@ -814,6 +814,34 @@ final class Gate: @unchecked Sendable {
         #expect(ProjectStore.readVerifiedChangeScores(for: id, in: package, identity: stampA).value?.scores == [0, 9])
     }
 
+    @Test func aPendingRetirementSurvivesReopeningTheSamePackage() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        try ProjectStore.writeChangeScores(track(1), for: id, in: package, source: stampA)
+        let analysis = AssetAnalysis()
+        scoring(analysis) { throw NSError(domain: "test", code: 6) }
+        observing(analysis) { self.stampA }
+        let calls = Mutex(0)
+        analysis.backend.perform = { package, body in
+            if calls.increment() == 1 { throw CocoaError(.fileWriteNoPermission) }
+            try await PackageCoordinator.shared.run(on: [package]) { try body(package) }
+        }
+        analysis.reset(packageURL: package)
+        analysis.reanalyze(video.clips[0], in: video)
+        try await settle { !analysis.invalidationFailures.isEmpty && !analysis.isLoadingSaved && analysis.progress.isEmpty }
+        #expect(analysis.invalidatedScores == [id])
+
+        // Reopened before the retirement held: the score read back is left
+        // out, and the retirement is carried out in the package.
+        analysis.reset(tracks: [id: track(1)], sources: AnalysisSources(scores: [id: stampA]), packageURL: package)
+        #expect(analysis.tracks[id] == nil)
+        try await settle { analysis.invalidatedScores.isEmpty }
+        #expect(analysis.invalidationFailures.isEmpty)
+        #expect(ProjectStore.readChangeScores(for: id, in: package) == nil)
+    }
+
     // MARK: Inputs checked by the job itself
 
     @MainActor private final class ProjectBox {
@@ -1236,6 +1264,57 @@ final class Gate: @unchecked Sendable {
         analysis.backend.observeFile = { _ in AssetAnalysis.FileObservation(exists: true, stamp: stamp()) }
     }
 
+    @Test func aFailedScoreWriteStaysReportedWhenTheOriginalsWriteWorks() async throws {
+        let package = try makePackage()
+        defer { try? FileManager.default.removeItem(at: package) }
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 3]) }
+        observing(analysis) { self.stampA }
+        // The current scores are written first, then the original's.
+        let calls = Mutex(0)
+        analysis.backend.perform = { package, body in
+            if calls.increment() == 1 { throw CocoaError(.fileWriteNoPermission) }
+            try body(package)
+        }
+        analysis.reset(packageURL: package)
+        analysis.update(with: video)
+        try await settle { analysis.progress.isEmpty && analysis.originalScores[id] != nil }
+
+        #expect(analysis.persistenceFailures[.init(id: id, output: .scores)] != nil)
+        #expect(analysis.persistenceFailures[.init(id: id, output: .originalScores)] == nil)
+        #expect(analysis.unsavedTracks[id] != nil)
+        #expect(analysis.persistenceProblem(for: id)?.title == "Couldn't save results")
+    }
+
+    @Test func forgettingTheOriginalStopsAJobThatOnlyCapturesPictures() async throws {
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        let video = stamped(project(ids: [id]), stampA)
+        scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 3]) }
+        observing(analysis) { self.stampA }
+        let gate = Gate()
+        analysis.backend.capturePictures = { _, _, _ in
+            await gate.wait()
+            return ReferenceThumbnails(frames: [])
+        }
+        // Reference and scores are there; only the pictures are missing.
+        analysis.reset(tracks: [id: track(1)], references: [id: reference()], sources: AnalysisSources(scores: [id: stampA]))
+        analysis.update(with: video)
+        try await settle { gate.arrived == 1 }
+
+        var forgotten = video
+        forgotten.clips[0].referenceForgotten = true
+        analysis.dropForgottenReferences(in: forgotten)
+        gate.open()
+        try await Task.sleep(for: .milliseconds(50))
+        try await settle { analysis.progress.isEmpty }
+
+        #expect(!analysis.thumbnailed.contains(id))
+        #expect(analysis.unsavedThumbnails.isEmpty)
+    }
+
     @Test func aFileChangedOutsideTheAppIsNotAnalyzedUntilTheChangeIsAccepted() async throws {
         let package = try makePackage()
         defer { try? FileManager.default.removeItem(at: package) }
@@ -1288,15 +1367,20 @@ final class Gate: @unchecked Sendable {
         #expect(log.everHeldScores.isEmpty)
     }
 
-    @Test func aFileThatVanishesWhileItIsReadWaitsToComeBack() async throws {
+    /// A file that is gone has no stamp on a real disk; the stamp is kept too
+    /// in case something still reports it.
+    @Test(arguments: [false, true])
+    func aFileThatVanishesWhileItIsReadWaitsToComeBack(keepsItsStamp: Bool) async throws {
         let analysis = AssetAnalysis()
         let id = UUID()
         let video = stamped(project(ids: [id]), stampA)
         scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 1]) }
         // There when the job starts, gone once it has been read.
         let calls = Mutex(0), back = Mutex(0)
+        let stampA = stampA
         analysis.backend.observeFile = { _ in
-            AssetAnalysis.FileObservation(exists: calls.increment() == 1 || back.value == 1, stamp: self.stampA)
+            let exists = calls.increment() == 1 || back.value == 1
+            return AssetAnalysis.FileObservation(exists: exists, stamp: exists || keepsItsStamp ? stampA : nil)
         }
         analysis.update(with: video)
         try await settle { calls.value >= 2 && analysis.progress.isEmpty }
