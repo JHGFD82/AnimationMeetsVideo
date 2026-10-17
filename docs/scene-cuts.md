@@ -50,15 +50,21 @@ scene.
 1. `FrameScorer` decodes the first video track at 64x36 luma.
 2. For every frame it records the mean absolute luma difference from the
    previous frame, scaled to 0-255 (one byte per frame, first frame 0), with
-   the frame's real presentation timestamp.
+   the frame's real presentation timestamp. It also records the **skip
+   score**, the same difference from the frame two back (0 for the first
+   two frames), which says whether the picture came back after one frame.
 3. `SceneDetector` applies a threshold to those scores (see below).
 
 Notes and limits:
 
 - **Hard cuts** are detected reliably. **Dissolves, fades, and fast motion or
   flashes** are ambiguous, so sensitivity is adjustable and the scene list is
-  always editable. A flash frame (a one-frame bright spike) produces one cut,
-  not two, because cuts closer than the minimum scene length merge.
+  always editable. A **one-frame flash** is not a cut: the changes into and
+  out of it both rise to a cut, but its skip score (the frame after against
+  the frame before) does not, so the shot goes on. A hard cut through one
+  blended frame also changes twice in a row, but its skip score is large,
+  so it stays a cut. The skip score is measured against one frame's usual
+  change, so a flash during a camera move may still cut.
 - **Footage with no cuts** (a single static shot) yields one scene.
 - **Variable frame rate** files use their real timestamps, not an assumed rate.
 - A cut is a frame whose change **rises over the change around it** (the
@@ -168,7 +174,7 @@ In the package's `Reference/<asset id>/` folder:
 
 | Item | Status |
 | --- | --- |
-| `signature.bin`: the per-frame change scores (magic `AMVS`, version 1, little endian: timescale, frame count, an Int64 time per frame, one score byte per frame; about 9 bytes per frame). | Implemented. A damaged file, or one whose `provenance.json` record doesn't fit the current file, reads as "not analyzed" and is recomputed. |
+| `signature.bin`: the per-frame change scores (magic `AMVS`, version 3, little endian: timescale, frame count, an Int64 time per frame, one score byte per frame, one skip score byte per frame, then the empty stretches; about 10 bytes per frame). Versions 1 and 2 have no skip scores and still load; version 1 has no empty stretches. | Implemented. A damaged file, or one whose `provenance.json` record doesn't fit the current file, reads as "not analyzed" and is recomputed. |
 | `original-signature.bin`: the scores of the **original** footage, same format as `signature.bin`, with its own record in `provenance.json` naming the original file. | Implemented. Set aside when the asset's first file is scored, kept through replacement and re-detecting, used only to align a replacement (see [media-replacement.md](media-replacement.md)), deleted by Forget Original, and never made from a replacement file. A record that is missing, or names a different file than the saved reference does, makes it unavailable. |
 | `thumbs/<value>_<timescale>.jpg`: pictures of the original (256x144 JPEG, quality 0.7) at the first and last frame, just before and at each cut found at a loose sensitivity (strongest 600 cuts at most), and every 10 seconds. | Implemented. Captured once, after scoring, into a scratch folder that is renamed into place, so a `thumbs/` folder that exists is complete. |
 | Dense frames near used ranges | Not implemented. The sync dialog will have to match by cuts and intervals. |
@@ -243,12 +249,16 @@ unaffected.
   empty stretch between two pieces of footage is an `internalGaps` entry,
   distinct from footage that merely ends early.
 
-The scoring algorithm is now version 2. Scores of the file in use made by
-version 1 are made again (they may hold a cut at the first picture of a late
-file). The original's saved scores made by version 1 stay usable for
+The scoring algorithm is now version 3. Scores of the file in use made by
+an earlier version are made again: version 1 may hold a cut at the first
+picture of a late file, and neither has the skip scores that keep a flash
+from being a cut. The original's saved scores made by version 1 stay usable for
 aligning a replacement: they can't be made again without the original, and
-are never made from a replacement. Their one difference is that possible
-extra cut, one of the several that cut matching needs.
+are never made from a replacement. Without skip scores, a flash in them reads
+as a cut that a newly scored replacement does not have, and a version 1 file
+may hold an extra cut at the first picture. Cut matching counts the cuts that
+agree on one offset, so an unmatched cut on one side only lowers the
+suggestion's confidence a little.
 
 ## Failures and retries
 

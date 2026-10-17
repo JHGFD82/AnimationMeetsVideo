@@ -67,7 +67,12 @@ end; the boundary properties run over 400 seeded random tracks each.
    neighbours. As found: At 0.8 and above a
    steady 13/14 per frame fade yields a cut in the middle; the document
    says a slow dissolve isn't split.
-4. **A single flash frame is a scene change. (Medium.)** The change into and
+4. **A single flash frame was a scene change. (Medium; fixed.)** Fixed by
+   recording skip scores (the change from the frame two back) and not
+   cutting where the picture after a one-frame jump in and out is close to
+   the one before it; see [scene-cuts.md](scene-cuts.md). The scoring
+   algorithm went to version 3, so saved scores are made again. As found:
+   The change into and
    out of the flash both score about 115; the stronger-wins merge keeps the
    later one, so a cut lands on the frame after the flash.
 5. **Edge scenes can be shorter than the minimum. (Decided: kept.)**

@@ -184,6 +184,25 @@ private func frames(_ cuts: [CMTime]) -> [Int64] { cuts.map(\.value) }
         #expect(decoded == track)
     }
 
+    @Test func roundTripsSkipScores() throws {
+        let track = ChangeScoreTrack(
+            timescale: 24, times: [0, 1, 2, 3], scores: [0, 7, 255, 250], skipScores: [0, 0, 250, 4]
+        )
+        #expect(try ChangeScoreTrack(decoding: track.encoded()) == track)
+    }
+
+    @Test func aTrackWithoutSkipScoresStaysWithoutThem() throws {
+        // Saved before skip scores existed: it reads back as not having any,
+        // rather than as all zeros, which would read as flashes.
+        let track = ChangeScoreTrack(timescale: 24, times: [0, 1, 2], scores: [0, 9, 9])
+        #expect(try ChangeScoreTrack(decoding: track.encoded()).skipScores == nil)
+    }
+
+    @Test func skipScoresForTheFirstTwoFramesAreRejected() {
+        let track = ChangeScoreTrack(timescale: 24, times: [0, 1, 2], scores: [0, 9, 9], skipScores: [0, 5, 9])
+        #expect(throws: ChangeScoreTrackError.self) { try ChangeScoreTrack(decoding: track.encoded()) }
+    }
+
     @Test func usesOneByteOfScorePerFrame() {
         let frames = 1_000
         let track = ChangeScoreTrack(timescale: 1, times: (0..<Int64(frames)).map { $0 }, scores: Array(repeating: 0, count: frames))

@@ -252,7 +252,7 @@ import Testing
         let package = try makePackage(), id = UUID()
         defer { try? FileManager.default.removeItem(at: package) }
         try ProjectStore.writeOriginalScores(track, for: id, in: package, source: stamp)
-        try setAlgorithm(id, .originalScores, in: package, to: 3)
+        try setAlgorithm(id, .originalScores, in: package, to: AnalysisProvenance.current(for: .originalScores).algorithm + 1)
 
         guard case .rejected(.differentAlgorithm) = ProjectStore.readVerifiedOriginalScores(for: id, in: package) else {
             Issue.record("accepted an algorithm from the future")

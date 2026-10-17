@@ -12,6 +12,11 @@ struct ChangeScoreTrack: Equatable, Sendable {
     /// `scores[i]` is the picture change from frame `i - 1` to frame `i`,
     /// scaled so 255 is a completely different picture. `scores[0]` is 0.
     var scores: [UInt8]
+    /// `skipScores[i]` is the picture change from frame `i - 2` to frame `i`,
+    /// on the same scale: across frame `i - 1`, so a one-frame flash, which
+    /// changes a lot into and out of itself, changes little across. 0 where
+    /// there is no frame two back. Nil for tracks saved before they existed.
+    var skipScores: [UInt8]?
     /// Stretches of the file's time that hold no footage (empty edits, such
     /// as the second before a late first picture), in `timescale` units,
     /// ascending and apart. No frame lies in one, and no change is scored
@@ -33,21 +38,25 @@ struct ChangeScoreTrack: Equatable, Sendable {
 
     private static let magic: [UInt8] = Array("AMVS".utf8)
     /// 2 adds the empty spans after the scores. Version 1 files have none.
-    private static let version: UInt32 = 2
+    /// 3 adds the skip scores between the scores and the spans; a track
+    /// without them is still written as version 2.
+    private static let version: UInt32 = 3
 
     /// Compact binary form: a header, then every frame time, then the scores
-    /// (one byte per frame), then the empty spans: a count and a start and
-    /// end each. All integers are little endian.
+    /// (one byte per frame), then (version 3) the skip scores, one byte per
+    /// frame, then the empty spans: a count and a start and end each. All
+    /// integers are little endian.
     func encoded() -> Data {
         var data = Data(Self.magic)
         func append<T: FixedWidthInteger>(_ value: T) {
             withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
         }
-        append(Self.version)
+        append(skipScores == nil ? 2 : Self.version)
         append(timescale)
         append(UInt32(times.count))
         for time in times { append(time) }
         data.append(contentsOf: scores)
+        if let skipScores { data.append(contentsOf: skipScores) }
         append(UInt32(emptySpans.count))
         for span in emptySpans {
             append(span.start)
@@ -56,11 +65,13 @@ struct ChangeScoreTrack: Equatable, Sendable {
         return data
     }
 
-    init(timescale: Int32, times: [Int64], scores: [UInt8], emptySpans: [EmptySpan] = []) {
+    init(timescale: Int32, times: [Int64], scores: [UInt8], skipScores: [UInt8]? = nil, emptySpans: [EmptySpan] = []) {
         precondition(times.count == scores.count, "one score per frame")
+        precondition(skipScores.map { $0.count == times.count } ?? true, "one skip score per frame")
         self.timescale = timescale
         self.times = times
         self.scores = scores
+        self.skipScores = skipScores
         self.emptySpans = emptySpans
     }
 
@@ -80,16 +91,22 @@ struct ChangeScoreTrack: Equatable, Sendable {
         }
         offset = Self.magic.count
         let version = try read(UInt32.self)
-        guard version == 1 || version == 2 else { throw ChangeScoreTrackError.unsupportedVersion(version) }
+        guard (1...Self.version).contains(version) else { throw ChangeScoreTrackError.unsupportedVersion(version) }
         let timescale = try read(Int32.self)
         let count = Int(try read(UInt32.self))
-        guard timescale > 0, data.count - offset >= count * 9 else { throw ChangeScoreTrackError.truncated }
+        let bytesPerFrame = version >= 3 ? 10 : 9
+        guard timescale > 0, data.count - offset >= count * bytesPerFrame else { throw ChangeScoreTrackError.truncated }
 
         var times: [Int64] = []
         times.reserveCapacity(count)
         for _ in 0..<count { times.append(try read(Int64.self)) }
         let scores = [UInt8](data[(data.startIndex + offset)..<(data.startIndex + offset + count)])
         offset += count
+        var skipScores: [UInt8]?
+        if version >= 3 {
+            skipScores = [UInt8](data[(data.startIndex + offset)..<(data.startIndex + offset + count)])
+            offset += count
+        }
         var spans: [EmptySpan] = []
         if version == 1 {
             guard offset == data.count else { throw ChangeScoreTrackError.truncated }
@@ -98,7 +115,7 @@ struct ChangeScoreTrack: Equatable, Sendable {
             guard data.count - offset == spanCount * 16 else { throw ChangeScoreTrackError.truncated }
             for _ in 0..<spanCount { spans.append(EmptySpan(start: try read(Int64.self), end: try read(Int64.self))) }
         }
-        self.init(timescale: timescale, times: times, scores: scores, emptySpans: spans)
+        self.init(timescale: timescale, times: times, scores: scores, skipScores: skipScores, emptySpans: spans)
         try validate()
     }
 
@@ -107,7 +124,9 @@ struct ChangeScoreTrack: Equatable, Sendable {
     /// - `timescale` is positive;
     /// - frame times are not negative and strictly increase (a frame whose
     ///   time repeats or goes back is an error, not something to sort away);
-    /// - the first frame has no previous frame, so its score is 0;
+    /// - the first frame has no previous frame, so its score is 0, and
+    ///   skip scores, when there are any, number one per frame and are 0
+    ///   for the first two frames, which have no frame two back;
     /// - empty spans start at or after 0, are not empty themselves, ascend
     ///   without overlapping, and contain no frame.
     /// Every score value, 0 to 255, is valid. An empty track is valid.
@@ -125,6 +144,12 @@ struct ChangeScoreTrack: Equatable, Sendable {
             )
         }
         guard scores[0] == 0 else { throw ChangeScoreTrackError.invalid("The first frame has a score.") }
+        if let skipScores {
+            guard skipScores.count == times.count else { throw ChangeScoreTrackError.invalid("Frames and skip scores don't match.") }
+            guard skipScores.prefix(2).allSatisfy({ $0 == 0 }) else {
+                throw ChangeScoreTrackError.invalid("One of the first two frames has a skip score.")
+            }
+        }
     }
 
     private func validateEmptySpans() throws {
@@ -245,6 +270,25 @@ enum SceneDetector {
             : Double(around[middle])
     }
 
+    /// Whether frame `i` is a one-frame flash, or the frame just after one:
+    /// the changes into the flash and out of it both rise to a cut (`limit`,
+    /// in 0...255), but the change across it, from the frame before to the
+    /// frame after, does not, so the shot goes on. A hard cut through one
+    /// blended frame also changes twice in a row, but a lot across, so it
+    /// stays a cut. Measured against one frame's usual change, a flash during
+    /// a camera move may still cut. A track without skip scores can't tell.
+    private static func isFlash(_ i: Int, in track: ChangeScoreTrack, limit: Double) -> Bool {
+        guard let skips = track.skipScores else { return false }
+        let scores = track.scores
+        func rise(_ j: Int) -> Double { Double(scores[j]) - background(around: j, in: scores) }
+        func flash(at f: Int) -> Bool {
+            f >= 1 && f + 1 < scores.count
+                && rise(f) >= limit && rise(f + 1) >= limit
+                && Double(skips[f + 1]) - background(around: f, in: scores) < limit
+        }
+        return flash(at: i) || flash(at: i - 1)
+    }
+
     /// Cuts found by applying a sensitivity to the saved change scores.
     /// A cut is a frame whose change rises over the change around it by at
     /// least the threshold, and is a local peak. Measuring the rise rather
@@ -270,8 +314,9 @@ enum SceneDetector {
 
             let time = track.time(at: i)
             let sensitivity = sensitivity(at: mapping.original(fromFile: time), defaultSensitivity: defaultSensitivity, edits: edits)
+            let limit = threshold(forSensitivity: sensitivity) * 255
             let rise = Double(score) - background(around: i, in: scores)
-            guard rise / 255 >= threshold(forSensitivity: sensitivity) else { continue }
+            guard rise >= limit, !isFlash(i, in: track, limit: limit) else { continue }
 
             if let last = kept.last, track.times[i] - track.times[last.index] < minimumGap {
                 if rise > last.rise { kept[kept.count - 1] = (i, rise) }

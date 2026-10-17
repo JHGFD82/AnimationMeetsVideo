@@ -69,6 +69,8 @@ enum FrameScorer {
 
             var times: [Int64] = []
             var scores: [UInt8] = []
+            var skipScores: [UInt8] = []
+            var beforePrevious: [UInt8] = []
             var previous: [UInt8] = []
             var current: [UInt8] = []
             var lastReported = -1.0
@@ -96,10 +98,15 @@ enum FrameScorer {
                 // The first real frame after an empty stretch, at the start
                 // or in the middle, begins again: no change is scored
                 // across it.
-                if empty.separates(lastPresentation, presentation) { previous = [] }
+                if empty.separates(lastPresentation, presentation) {
+                    previous = []
+                    beforePrevious = []
+                }
                 lastPresentation = presentation
                 scores.append(previous.isEmpty ? 0 : meanAbsoluteDifference(previous, current))
+                skipScores.append(beforePrevious.isEmpty ? 0 : meanAbsoluteDifference(beforePrevious, current))
                 times.append(time.value)
+                beforePrevious = previous
                 swap(&previous, &current)
 
                 if duration > 0 {
@@ -115,7 +122,10 @@ enum FrameScorer {
                 throw ScoringError.readerFailed(reader.error?.localizedDescription ?? "unknown error", underlying: reader.error)
             }
             progress(1)
-            return ChangeScoreTrack(timescale: timescale, times: times, scores: scores, emptySpans: empty.spans(timescale: timescale))
+            return ChangeScoreTrack(
+                timescale: timescale, times: times, scores: scores, skipScores: skipScores,
+                emptySpans: empty.spans(timescale: timescale)
+            )
         }
     }
 

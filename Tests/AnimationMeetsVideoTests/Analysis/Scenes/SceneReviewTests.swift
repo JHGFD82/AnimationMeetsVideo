@@ -142,15 +142,24 @@ private func clip(_ frame: Int) -> CMTime { CMTime(value: Int64(frame), timescal
         #expect(cutTimes(track, sensitivity: 0.9).isEmpty)
     }
 
-    @Test func aSingleFlashFrameCausesAFalseCut() async throws {
+    @Test func aSingleFlashFrameIsNotACut() async throws {
         let (track, _) = try await SceneFixture.score(SceneFixture.constantRate(count: 60) {
             $0 == 30 ? SceneFixture.gray(255) : SceneFixture.stripes(shift: 0)
         })
-        // Into the flash and out of it both score high; the cut lands on the
-        // frame after the flash, though the shot did not change.
-        withKnownIssue("one white frame is reported as a scene change") {
-            #expect(cutTimes(track).isEmpty)
-        }
+        // Into the flash and out of it both score high, but the frame after
+        // it is the frame before it again.
+        #expect(track.scores[30] > 100 && track.scores[31] > 100)
+        #expect(cutTimes(track).isEmpty)
+    }
+
+    @Test func aHardCutThroughOneBlendedFrameIsStillACut() async throws {
+        // Two jumps in a row, like a flash, but the picture after them is
+        // not the picture before.
+        let (track, _) = try await SceneFixture.score(SceneFixture.constantRate(count: 48) {
+            $0 < 24 ? SceneFixture.gray(30) : ($0 == 24 ? SceneFixture.gray(125) : SceneFixture.gray(220))
+        })
+        #expect(track.scores[24] > 60 && track.scores[25] > 60)
+        #expect(cutTimes(track).count == 1)
     }
 
     @Test func sustainedCameraMotionIsNotCut() async throws {
