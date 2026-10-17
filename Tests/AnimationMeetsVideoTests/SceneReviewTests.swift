@@ -100,16 +100,26 @@ private func clip(_ frame: Int) -> CMTime { CMTime(value: Int64(frame), timescal
         expectAscending(track)
     }
 
-    @Test func aFileThatStartsLateGetsAnInventedFrameAtZeroToday() async throws {
-        // The reader reports a frame at 0 for the empty stretch before the
-        // first picture, and it is scored against the first real frame. At a
-        // high sensitivity that difference can read as a cut at the start of
-        // the picture. Recorded, not endorsed.
+    @Test func aFileThatStartsLateHasAFillerFrameAtZeroInItsScoresToday() async throws {
+        // The reader fills the empty stretch before the first picture with a
+        // black frame at 0 (luma 16, no duration). It is not part of the
+        // footage, but it is scored as a frame. Recorded; see the next test.
         let frames = SceneFixture.constantRate(count: 48, start: CMTime(value: 1, timescale: 1), color: twoShots(24))
         let (track, _) = try await SceneFixture.score(frames)
         #expect(track.frameCount == 49)
         #expect(track.times[0] == 0)
-        #expect(track.scores[1] > 0)
+        #expect(track.times[1] == 600)
+    }
+
+    @Test func theFillerFrameDoesNotMakeACutAtTheStartOfTheFootage() async throws {
+        // One bright shot that starts a second in. There is no scene change
+        // at 1 s: the footage begins there. Scored against the black filler,
+        // its first frame reads as a hard cut at every sensitivity.
+        let frames = SceneFixture.constantRate(count: 48, start: CMTime(value: 1, timescale: 1)) { _ in SceneFixture.gray(150) }
+        let (track, _) = try await SceneFixture.score(frames)
+        withKnownIssue("the first real frame is scored against a synthetic black frame") {
+            #expect(cutTimes(track, sensitivity: 0).isEmpty)
+        }
     }
 
     @Test func scenesFromARealFileCoverTheAssetWithoutGapsOrOverlaps() async throws {
@@ -280,8 +290,10 @@ private func clip(_ frame: Int) -> CMTime { CMTime(value: Int64(frame), timescal
         #expect(scenes.count == 2)
     }
 
-    @Test func aCutOnTheLastFrameLeavesAShorterThanMinimumSceneToday() {
-        // The minimum applies between cuts, not at the two ends of the asset.
+    @Test func shortScenesAtTheEndsOfAnAssetAreKept() {
+        // Policy: the 0.4 s minimum applies between cuts, not at the two ends
+        // of the asset. A genuine boundary near an end is not suppressed and
+        // no footage is dropped to enforce a length.
         let times = (0..<48).map(Int64.init)
         var scores = [UInt8](repeating: 2, count: 48)
         scores[0] = 0
@@ -291,10 +303,12 @@ private func clip(_ frame: Int) -> CMTime { CMTime(value: Int64(frame), timescal
         let scenes = SceneDetector.scenes(
             from: SceneDetector.cuts(in: track, defaultSensitivity: 0.5, edits: SceneEdits()), duration: clip(48)
         )
-        withKnownIssue("scenes at the ends can be shorter than the minimum scene length") {
-            #expect(scenes.allSatisfy { $0.duration.seconds >= SceneDetector.minimumSceneSeconds })
-        }
         #expect(scenes.count == 3)
+        #expect(scenes.first!.duration.seconds < SceneDetector.minimumSceneSeconds)
+        #expect(scenes.last!.duration.seconds < SceneDetector.minimumSceneSeconds)
+        // Nothing is dropped: the scenes still cover the whole asset.
+        #expect(scenes.first?.start == .zero && scenes.last?.end == clip(48))
+        for (a, b) in zip(scenes, scenes.dropFirst()) { #expect(a.end == b.start) }
     }
 
     @Test func aConstantPlateauIsCutOnlyAtTheEndOfTheTrack() {

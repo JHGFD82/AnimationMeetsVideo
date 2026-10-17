@@ -64,7 +64,9 @@ Notes and limits:
 - A cut is a frame whose change is at or over the threshold **and** is a
   local peak, so a slow dissolve or camera move is not split down the middle.
 - Cuts closer together than **0.4 seconds** are treated as one; the
-  stronger wins.
+  stronger wins. That minimum is between cuts, not a guarantee of every
+  scene's length: a boundary near the start or end of the asset is kept,
+  so the first and last scenes can be shorter.
 - Threshold as a fraction of 255 is `0.4 * exp(ln(0.03 / 0.4) * s)` for a
   sensitivity `s` from 0 to 1, so each step of the slider feels even. The
   default, balanced (0.5), is about 0.11, roughly 28 out of 255.

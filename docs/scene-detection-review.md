@@ -63,9 +63,13 @@ end; the boundary properties run over 400 seeded random tracks each.
 4. **A single flash frame is a scene change. (Medium.)** The change into and
    out of the flash both score about 115; the stronger-wins merge keeps the
    later one, so a cut lands on the frame after the flash.
-5. **Scenes at the two ends can be shorter than the minimum. (Low.)** The
-   0.4 s rule applies between cuts only; a cut 3 frames in or 2 frames from
-   the end is kept.
+5. **Edge scenes can be shorter than the minimum. (Decided: kept.)**
+   The 0.4 s rule applies between cuts only; a cut 3 frames in or 2 frames
+   from the end is kept. Policy for now: preserve short leading and
+   trailing scenes rather than drop footage or suppress a genuine boundary
+   to enforce a length. The minimum is a rule between cuts, not a guarantee
+   of every scene's length (`shortScenesAtTheEndsOfAnAssetAreKept`).
+
 6. **Frame times were not validated on load. (Low; fixed.)**
    `ChangeScoreTrack(decoding:)` accepted times that went backwards or
    repeated, and `autoCuts` then returned unsorted cuts. Now a track is
@@ -84,10 +88,18 @@ end; the boundary properties run over 400 seeded random tracks each.
   tie); the shot belongs to the one after it.
 - **Greedy merge**: cuts 0.3 s apart in a chain keep only the strongest, even
   when the outer two are 0.6 s apart.
-- **Late-start phantom frame**: the reader reports a frame at 0 for the
-  empty stretch before a late first picture; it is scored against the first
-  real frame (26/255 in the fixture), which reads as a cut at high
-  sensitivity.
+- **Late-start filler frame (not accepted as a limitation; open).** For a
+  file whose first picture comes after an empty stretch, the reader emits a
+  synthetic black frame at time 0 (luma 16, no duration) to fill it. The
+  scorer takes it as a frame, so the first real frame is scored against
+  black: bright footage reads as a hard cut at its own first frame at
+  every sensitivity, 0 included. The track's time range (0 to the asset's
+  duration) includes the empty stretch, so the frame cannot be told from
+  the range alone; the track's segments (`AVAssetTrackSegment.isEmpty`)
+  say where the empty stretch is. Proposed, not made: skip samples inside
+  an empty segment before scoring, so the track starts at the first
+  observed frame and the first frame scores 0. No threshold changes. See
+  `theFillerFrameDoesNotMakeACutAtTheStartOfTheFootage` (known issue).
 - **Scene thresholds** (0.4 to 0.03 of 255) were not changed; sensitivity 0.5
   needs about 28/255.
 
