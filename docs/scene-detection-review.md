@@ -1,8 +1,8 @@
 # Scene detection and splitting: review findings
 
 Status: **review notes** for existing behavior, with the tests that measure
-it (`SceneReviewTests.swift`, fixtures in `SceneFixtures.swift`). Nothing
-here changed detection thresholds or splitting code. Tests marked as known
+it (`SceneReviewTests.swift`, fixtures in `SceneFixtures.swift`). The
+review itself changed no code; fixes made since are marked below. Tests marked as known
 issues assert what should happen and are wrapped in `withKnownIssue`; the
 suite fails when a defect is fixed, as a reminder to remove the wrapper.
 
@@ -53,13 +53,18 @@ end; the boundary properties run over 400 seeded random tracks each.
    `alignmentOffset` from detected cuts (and add it when snapping a
    hand-placed cut to a frame, `nearestFrameTime`), and decide what the
    scene range covers when the file is shorter or longer than the original.
-2. **Sustained motion gets a cut on the last frame. (Medium.)** A plateau has
+2. **Sustained motion got a cut on the last frame. (Medium; fixed.)** Fixed
+   by measuring a cut as its rise over the median change of the frames
+   around it, so a steady change has no cut anywhere (see "Notes and limits"
+   in [scene-cuts.md](scene-cuts.md)). As found: A plateau has
    no peak, except that `i + 1 == frameCount` counts the end as lower, so
    any shot whose change stays over the threshold (a pan of a busy picture
    scores 30 to 57 a frame) ends in a one-frame scene at every sensitivity
    tried. A genuine mid-track plateau gets no cut at all, so the behavior
    depends on where the track ends.
-3. **A fade is split mid-way at high sensitivity. (Low.)** At 0.8 and above a
+3. **A fade was split mid-way at high sensitivity. (Low; fixed.)** Fixed by
+   the same change as 2: no frame of a steady fade rises over its
+   neighbours. As found: At 0.8 and above a
    steady 13/14 per frame fade yields a cut in the middle; the document
    says a slow dissolve isn't split.
 4. **A single flash frame is a scene change. (Medium.)** The change into and

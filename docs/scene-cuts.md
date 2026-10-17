@@ -61,8 +61,13 @@ Notes and limits:
   not two, because cuts closer than the minimum scene length merge.
 - **Footage with no cuts** (a single static shot) yields one scene.
 - **Variable frame rate** files use their real timestamps, not an assumed rate.
-- A cut is a frame whose change is at or over the threshold **and** is a
-  local peak, so a slow dissolve or camera move is not split down the middle.
+- A cut is a frame whose change **rises over the change around it** (the
+  median of up to four frames on each side) by at least the threshold, and
+  is a local peak. A steady change, a fade or a camera move, never rises
+  over itself, so it is not split at any sensitivity, and a track does not
+  end in a cut just because the picture is still changing at its end. A
+  hard cut during a camera move is measured against the move, so it needs
+  to stand out from it.
 - Cuts closer together than **0.4 seconds** are treated as one; the
   stronger wins. That minimum is between cuts, not a guarantee of every
   scene's length: a boundary near the start or end of the asset is kept,

@@ -227,9 +227,30 @@ enum SceneDetector {
         }?.value ?? edits.sensitivity ?? defaultSensitivity
     }
 
+    /// How many frames on each side of a frame make up the change around it.
+    static let backgroundRadius = 4
+
+    /// The usual change around frame `i`: the median of up to
+    /// `backgroundRadius` scores on each side, leaving `i` itself out. A
+    /// spike or two nearby doesn't move it, but a steady change does.
+    private static func background(around i: Int, in scores: [UInt8]) -> Double {
+        // The first frame scores 0 by definition, not by being still.
+        let before = scores[max(1, i - backgroundRadius)..<i]
+        let after = scores[min(i + 1, scores.count)..<min(i + 1 + backgroundRadius, scores.count)]
+        let around = (Array(before) + Array(after)).sorted()
+        guard !around.isEmpty else { return 0 }
+        let middle = around.count / 2
+        return around.count.isMultiple(of: 2)
+            ? (Double(around[middle - 1]) + Double(around[middle])) / 2
+            : Double(around[middle])
+    }
+
     /// Cuts found by applying a sensitivity to the saved change scores.
-    /// A cut is a frame whose change is over the threshold and is a local
-    /// peak, so a slow dissolve or a camera move isn't split in the middle.
+    /// A cut is a frame whose change rises over the change around it by at
+    /// least the threshold, and is a local peak. Measuring the rise rather
+    /// than the change itself means a steady change, a fade or a camera
+    /// move, is never split, however strong it is, and a track never ends
+    /// in a cut just because it ends while the picture is changing.
     /// The track is in the time of the file it was made from; with a
     /// `mapping` the cuts are returned in the original's time, and the
     /// sensitivity regions in `edits` (also original time) are read there.
@@ -241,7 +262,7 @@ enum SceneDetector {
         let scores = track.scores
         let minimumGap = Int64((minimumSceneSeconds * Double(track.timescale)).rounded())
 
-        var kept: [(index: Int, score: UInt8)] = []
+        var kept: [(index: Int, rise: Double)] = []
         for i in 1..<track.frameCount {
             let score = scores[i]
             let isPeak = score >= scores[i - 1] && (i + 1 == track.frameCount || score > scores[i + 1])
@@ -249,12 +270,13 @@ enum SceneDetector {
 
             let time = track.time(at: i)
             let sensitivity = sensitivity(at: mapping.original(fromFile: time), defaultSensitivity: defaultSensitivity, edits: edits)
-            guard Double(score) / 255 >= threshold(forSensitivity: sensitivity) else { continue }
+            let rise = Double(score) - background(around: i, in: scores)
+            guard rise / 255 >= threshold(forSensitivity: sensitivity) else { continue }
 
             if let last = kept.last, track.times[i] - track.times[last.index] < minimumGap {
-                if score > last.score { kept[kept.count - 1] = (i, score) }
+                if rise > last.rise { kept[kept.count - 1] = (i, rise) }
             } else {
-                kept.append((i, score))
+                kept.append((i, rise))
             }
         }
         return kept.map { mapping.original(fromFile: track.time(at: $0.index)) }

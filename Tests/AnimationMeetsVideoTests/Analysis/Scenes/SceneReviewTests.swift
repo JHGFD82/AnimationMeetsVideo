@@ -133,17 +133,13 @@ private func clip(_ frame: Int) -> CMTime { CMTime(value: Int64(frame), timescal
         #expect(cutTimes(track).isEmpty)
     }
 
-    @Test func aFadeIsSplitInTheMiddleAtHighSensitivity() async throws {
-        // The documentation says a slow dissolve is not split down the middle.
-        // At a high sensitivity a fade is: its per-frame change is steady and
-        // slightly over the threshold, and one frame of the steady stretch
-        // reads as a peak.
+    @Test func aFadeIsNotSplitEvenAtHighSensitivity() async throws {
+        // A fade's change is steady and over the threshold at high
+        // sensitivity; no frame of it rises over the frames around it.
         let (track, _) = try await SceneFixture.score(SceneFixture.constantRate(count: 60) {
             SceneFixture.fade(at: $0, from: 30, to: 220, start: 24, length: 12)
         })
-        withKnownIssue("a fade is split mid-way at sensitivity 0.9") {
-            #expect(cutTimes(track, sensitivity: 0.9).isEmpty)
-        }
+        #expect(cutTimes(track, sensitivity: 0.9).isEmpty)
     }
 
     @Test func aSingleFlashFrameCausesAFalseCut() async throws {
@@ -157,16 +153,21 @@ private func clip(_ frame: Int) -> CMTime { CMTime(value: Int64(frame), timescal
         }
     }
 
-    @Test func sustainedCameraMotionGetsAPhantomCutOnTheLastFrame() async throws {
-        let (track, duration) = try await SceneFixture.score(SceneFixture.constantRate(count: 48) {
+    @Test func sustainedCameraMotionIsNotCut() async throws {
+        // Every frame changes by about the same amount, to the last.
+        let (track, _) = try await SceneFixture.score(SceneFixture.constantRate(count: 48) {
             SceneFixture.stripes(shift: $0 * 12)
         })
-        // Every frame changes by the same amount. A plateau has no peak, except
-        // that the last frame counts as one, so the track ends in a one-frame scene.
-        withKnownIssue("steady motion over the threshold is cut at the final frame") {
-            #expect(cutTimes(track).isEmpty)
-        }
-        #expect(duration.seconds > 0)
+        #expect(cutTimes(track).isEmpty)
+    }
+
+    @Test func aHardCutDuringCameraMotionIsStillFound() async throws {
+        // A pan, then a cut to a still gray shot: the cut rises far over
+        // the motion around it.
+        let (track, _) = try await SceneFixture.score(SceneFixture.constantRate(count: 48) {
+            $0 < 24 ? SceneFixture.stripes(shift: $0 * 12) : SceneFixture.gray(230)
+        })
+        #expect(cutTimes(track) == [1.0])
     }
 
     @Test func aThreeFrameShotCollapsesToOneCutToday() async throws {
@@ -291,13 +292,19 @@ private func clip(_ frame: Int) -> CMTime { CMTime(value: Int64(frame), timescal
         for (a, b) in zip(scenes, scenes.dropFirst()) { #expect(a.end == b.start) }
     }
 
-    @Test func aConstantPlateauIsCutOnlyAtTheEndOfTheTrack() {
+    @Test func aConstantPlateauIsNotCutEvenWhereTheTrackEnds() {
         let times = (0..<100).map(Int64.init)
         let scores = (0..<100).map { $0 == 0 ? UInt8(0) : UInt8(60) }
         let track = ChangeScoreTrack(timescale: 24, times: times, scores: scores)
-        withKnownIssue("a plateau in the middle has no peak but one at the end does") {
-            #expect(SceneDetector.autoCuts(in: track, defaultSensitivity: 0.5).isEmpty)
-        }
+        #expect(SceneDetector.autoCuts(in: track, defaultSensitivity: 0.5).isEmpty)
+    }
+
+    @Test func aHardCutOnTheLastFrameIsStillFound() {
+        var scores = [UInt8](repeating: 2, count: 48)
+        scores[0] = 0
+        scores[47] = 200
+        let track = ChangeScoreTrack(timescale: 24, times: (0..<48).map(Int64.init), scores: scores)
+        #expect(SceneDetector.autoCuts(in: track, defaultSensitivity: 0.5).map { $0.value } == [47])
     }
 
     @Test func chainedMergesKeepOnlyTheStrongestOfThreeCloseCutsToday() {
