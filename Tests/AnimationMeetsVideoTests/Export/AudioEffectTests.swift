@@ -293,8 +293,10 @@ import Testing
         var (project, _, layerID) = try AudioMixSupport.project(playing: URL(filePath: "/dev/null"))
         let timelineID = project.rootTimelineID
         #expect(project.addEffect(.color, toLayer: layerID, in: timelineID) == nil)
-        let first = try #require(project.addEffect(.equalizer, toLayer: layerID, in: timelineID))
-        let second = try #require(project.addEffect(.compressor, toLayer: layerID, in: timelineID))
+        let firstAdded = project.addEffect(.equalizer, toLayer: layerID, in: timelineID)
+        let first = try #require(firstAdded)
+        let secondAdded = project.addEffect(.compressor, toLayer: layerID, in: timelineID)
+        let second = try #require(secondAdded)
         project.moveEffect(second, ofLayer: layerID, in: timelineID, toIndex: 0)
         #expect(project.timeline(id: timelineID)?.layer(id: layerID)?.audioEffects.map(\.id) == [second, first])
         project.removeEffect(first, fromLayer: layerID, in: timelineID)
@@ -305,7 +307,8 @@ import Testing
         var (project, _, layerID) = try AudioMixSupport.project(playing: URL(filePath: "/dev/null"))
         let timelineID = project.rootTimelineID
         let before = CompositionKey(project: project)
-        let eq = try #require(project.addEffect(.equalizer, toLayer: layerID, in: timelineID))
+        let eqAdded = project.addEffect(.equalizer, toLayer: layerID, in: timelineID)
+        let eq = try #require(eqAdded)
         let added = CompositionKey(project: project)
         #expect(added != before)
         project.editEffect(eq, ofLayer: layerID, in: timelineID) { $0.controls[3].enabled = true }

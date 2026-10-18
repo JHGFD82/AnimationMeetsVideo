@@ -1340,7 +1340,8 @@ private struct Sandbox {
         let layerID = UUID()
         let index = try #require(project.timelines.firstIndex { $0.id == timelineID })
         project.timelines[index].layers.append(TimelineLayer(id: layerID, kind: .sound, clips: []))
-        let eq = try #require(project.addEffect(.equalizer, toLayer: layerID, in: timelineID))
+        let eqAdded = project.addEffect(.equalizer, toLayer: layerID, in: timelineID)
+        let eq = try #require(eqAdded)
         project.editEffect(eq, ofLayer: layerID, in: timelineID) { effect in
             effect.controls[3].enabled = true
             effect.controls[3].setComponent(1, to: 5, at: .zero)
