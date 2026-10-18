@@ -48,9 +48,11 @@ final class EqualizerSpectrum: @unchecked Sendable {
 
     private let state = OSAllocatedUnfairLock(initialState: State())
     private let fft = vDSP_create_fftsetup(EqualizerSpectrum.log2n, FFTRadix(kFFTRadix2))!
+    /// A Hann window peaking at 1 (`HANN_NORM` peaks higher, which would
+    /// read 4 dB loud).
     private let window: [Float] = {
         var hann = [Float](repeating: 0, count: EqualizerSpectrum.windowSize)
-        vDSP_hann_window(&hann, vDSP_Length(EqualizerSpectrum.windowSize), Int32(vDSP_HANN_NORM))
+        vDSP_hann_window(&hann, vDSP_Length(EqualizerSpectrum.windowSize), Int32(vDSP_HANN_DENORM))
         return hann
     }()
 
