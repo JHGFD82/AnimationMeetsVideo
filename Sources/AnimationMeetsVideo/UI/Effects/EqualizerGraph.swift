@@ -98,7 +98,7 @@ struct EqualizerGraph: View {
                 x: 28, y: 6, width: max(proxy.size.width - 34, 10), height: max(proxy.size.height - 20, 10)
             ))
             ZStack(alignment: .topTrailing) {
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: spectrumMode == .off)) { frame in
+                SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 30, paused: spectrumMode == .off)) { frame in
                     Canvas { context, _ in
                         if spectrumMode != .off {
                             let reading = EqualizerSpectrum.shared.levels(of: effect.id, pre: spectrumMode == .pre, at: time.seconds)
