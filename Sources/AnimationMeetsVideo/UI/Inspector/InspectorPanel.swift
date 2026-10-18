@@ -179,6 +179,10 @@ struct InspectorPanel: View {
                                     { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerPan(layerID: layer.id))) }
                                 }
                             )
+                            LayerSoundEffectsList(
+                                project: $project, timelineID: timelineID, layer: layer,
+                                time: timeline.snappedToFrame(playheadTime)
+                            )
                         }
                     }
                 }

@@ -191,6 +191,22 @@ struct UISnapshots {
         )
     }
 
+    /// A Sound layer's sound effects in the inspector: an EQ and a
+    /// compressor, closed, and the menu to add more.
+    @Test func layerSoundEffectsList() throws {
+        var (project, _, layerID) = try AudioMixSupport.project(playing: URL(filePath: "/dev/null"))
+        let timelineID = project.rootTimelineID
+        project.addEffect(.equalizer, toLayer: layerID, in: timelineID)
+        project.addEffect(.compressor, toLayer: layerID, in: timelineID)
+        let layer = try #require(project.timeline(id: timelineID)?.layer(id: layerID))
+        try SnapshotSupport.render(
+            LayerSoundEffectsList(project: .constant(project), timelineID: timelineID, layer: layer, time: .zero)
+                .padding(8)
+                .background(Design.Surface.overlay.color),
+            "layer-sound-effects", size: CGSize(width: 300, height: 120)
+        )
+    }
+
     /// The larger EQ sheet's fields: two bands on, a 48 dB high cut.
     @Test func equalizerBandStrip() throws {
         var effect = Effect(kind: .equalizer)
