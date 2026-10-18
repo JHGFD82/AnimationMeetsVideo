@@ -55,6 +55,7 @@ extension EditingProject {
         let effect = clip.effects[index]
         guard effect.enabled else { return nil }
 
+        if effect.kind.isKeyframing { return keyframingNote(for: effect, in: clip) }
         if reachesNothing(clip, on: layer, in: timeline) {
             return EffectNote(text: "The layer this adjustment reaches down to is above it, so it reaches nothing.", dims: true)
         }

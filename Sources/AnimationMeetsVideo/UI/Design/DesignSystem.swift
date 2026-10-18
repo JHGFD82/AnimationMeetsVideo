@@ -123,6 +123,9 @@ enum Design {
     static let beat = hex(0xE09A3C)
     /// Keyframes share the snap tone — both mean "a moment you placed".
     static let keyframe = hex(0xFFC95C)
+    /// Keyframes a Keyframing effect wrote: the accent, since the effect
+    /// placed them, not the person.
+    static let generatedKeyframe = hex(0x4C8DFF)
 
     // MARK: - Structure and status
 

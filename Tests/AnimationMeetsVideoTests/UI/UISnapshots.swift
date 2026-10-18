@@ -251,6 +251,30 @@ struct UISnapshots {
         )
     }
 
+    /// A Wiggler writing to a rectangle's Position, above an Oscillator
+    /// whose target is gone: their Target, Component and Combine rows, the
+    /// curve in place of a thumbnail, the generated keyframes in the lane
+    /// and the note on the one that writes nothing.
+    @Test func keyframingEffectsPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let ids = [EffectKind.oscillator, .wiggler].map { project.addEffect($0, toClip: shape.clipID, in: timelineID) }
+        let oscillatorID = try #require(ids[0])
+        project.editEffect(oscillatorID, ofClip: shape.clipID, in: timelineID) {
+            $0.keyframing?.target = .control(effectID: UUID(), controlID: UUID())
+        }
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID),
+                playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "keyframing-effects-panel", size: CGSize(width: 560, height: 640)
+        )
+    }
+
     /// The shape button's popover: a row for each shape a new layer can
     /// start with.
     @Test func newShapePopover() throws {

@@ -48,7 +48,7 @@ struct EffectsPanel: View {
         var suggestedName: String
     }
 
-    private var timeline: Timeline? { project.timeline(id: timelineID) }
+    var timeline: Timeline? { project.timeline(id: timelineID) }
 
     private var selectedClip: TimelineClip? {
         guard let selection, selection.timelineID == timelineID else { return nil }
@@ -363,7 +363,8 @@ struct EffectsPanel: View {
         let stack = clip.stack(holding: effect.id) ?? \.effects
         let index = clip[keyPath: stack].index(of: effect.id) ?? 0
         let note = effect.kind.isAudio ? nil : project.note(forEffectAt: index, in: clip, on: c.layer, of: c.timeline)
-        let dimmed = effect.isNoOp || note?.dims == true
+        // A Keyframing effect draws nothing, but does its work while on.
+        let dimmed = (effect.kind.isKeyframing ? !effect.enabled : effect.isNoOp) || note?.dims == true
         labelled(
             EffectHeaderRow(
                 effect: effect,
@@ -371,6 +372,8 @@ struct EffectsPanel: View {
                 isSelected: state.selectedEffectID == effect.id && state.selectedControlID == nil,
                 clipID: clip.id,
                 thumbnail: thumbnails[effect.id],
+                showsCurve: effect.kind.isKeyframing,
+                accessibilitySummary: effect.kind.isKeyframing ? project.keyframingSummary(of: effect, in: clip) : nil,
                 isDimmed: dimmed,
                 isFlagged: !effect.pasteChanges.isEmpty,
                 onToggleCollapsed: { state.toggleCollapsed(effect.id) },
@@ -421,6 +424,9 @@ struct EffectsPanel: View {
                     }
                     .frame(height: EqualizerGraph.panelHeight)
                 )
+            }
+            if effect.kind.isKeyframing {
+                keyframingRows(effect, c, effectDimmed: dimmed)
             }
             ForEach(effect.controls) { control in
                 controlRow(control, of: effect, c, effectDimmed: dimmed)
@@ -474,7 +480,9 @@ struct EffectsPanel: View {
             .disabled(effect.controls.allSatisfy { $0.isNoOp && !$0.isAnimated } && effect.controls.count == effect.kind.controlKinds.count)
         Button("Rename") { renamingEffectID = effect.id }
         Button(effect.enabled ? "Disable" : "Enable") { editEffect(effect.id, in: clip) { $0.enabled.toggle() } }
-        if !effect.kind.isAudio {
+        if effect.kind.isKeyframing {
+            keyframingMenu(effect, clip)
+        } else if !effect.kind.isAudio {
             Toggle("Show Up to Here", isOn: Binding(
                 get: { state.showUpTo == EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) },
                 set: { state.showUpTo = $0 ? EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) : nil }

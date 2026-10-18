@@ -253,6 +253,54 @@ extension EditingProject {
     }
 }
 
+// MARK: - Reading
+
+extension EditingProject {
+    /// Why a Keyframing effect writes nothing, if it doesn't. It is dimmed
+    /// then, and what it wrote stays.
+    func keyframingNote(for effect: Effect, in clip: TimelineClip) -> EffectNote? {
+        guard let setup = effect.keyframing, setup.target != nil else {
+            return EffectNote(text: "Choose a control below it to write keyframes to.", dims: true)
+        }
+        if !keyframingTargetIsReachable(effect, in: clip) {
+            return EffectNote(text: "The control it writes to is gone or above it, so its keyframes stay as they are until it is pointed elsewhere.", dims: true)
+        }
+        if effect.kind == .beatKeys, setup.beatLayer == nil {
+            return EffectNote(text: "Choose a Sound or Music layer whose beat map it follows.", dims: true)
+        }
+        if effect.kind.reshapesTarget, setup.base.map({ $0.keyframes.count < 2 }) ?? false {
+            return EffectNote(text: "It reshapes the keyframes of the control it writes to, which has fewer than two.", dims: true)
+        }
+        return nil
+    }
+
+    /// How many keyframes a Keyframing effect has on its target.
+    func generatedKeyframeCount(of effect: Effect, in clip: TimelineClip) -> Int {
+        guard let target = effect.keyframing?.target, let number = clip.number(of: target) else { return 0 }
+        return number.keyframes.filter { $0.generatedBy == effect.id }.count
+    }
+
+    /// What VoiceOver reads for a Keyframing effect: "Wiggler, driving
+    /// Transform · Position, 48 keyframes".
+    func keyframingSummary(of effect: Effect, in clip: TimelineClip) -> String {
+        guard let target = effect.keyframing?.target else { return "\(effect.displayName), driving nothing" }
+        let count = generatedKeyframeCount(of: effect, in: clip)
+        return "\(effect.displayName), driving \(name(of: target, in: clip)), \(count) keyframe\(count == 1 ? "" : "s")"
+    }
+}
+
+extension KeyframingSetup {
+    /// Moves one end of the range to source time `time`, keeping the other
+    /// (the clip's own while there is no range). Refused where it would
+    /// leave nothing between them.
+    mutating func setRange(start: CMTime? = nil, end: CMTime? = nil, in clip: TimelineClip) {
+        let current = range ?? CMTimeRange(start: clip.trimStart, end: clip.trimEnd)
+        let new = CMTimeRange(start: start ?? current.start, end: end ?? current.end)
+        guard new.end > new.start else { return }
+        range = new == CMTimeRange(start: clip.trimStart, end: clip.trimEnd) ? nil : new
+    }
+}
+
 // MARK: - Making keyframes
 
 extension EditingProject {

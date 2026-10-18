@@ -225,6 +225,11 @@ struct EffectHeaderRow<MenuContent: View>: View {
     let clipID: UUID
     /// The clip's picture after this effect, at the playhead.
     var thumbnail: CGImage?
+    /// For an effect that draws nothing and writes keyframes: a curve in
+    /// place of the thumbnail.
+    var showsCurve = false
+    /// What VoiceOver reads for the name, when there is more to say.
+    var accessibilitySummary: String?
     var isDimmed = false
     /// Whether the effect has paste changes left to resolve, which marks
     /// its edge.
@@ -285,9 +290,17 @@ struct EffectHeaderRow<MenuContent: View>: View {
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) { isRenaming = true }
                     .onTapGesture(perform: onSelect)
+                    .accessibilityLabel(accessibilitySummary ?? effect.displayName)
             }
             Spacer(minLength: 2)
-            if let thumbnail {
+            if showsCurve {
+                Image(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
+                    .font(Design.Typeface.glyphSmall)
+                    .foregroundStyle(Design.generatedKeyframe)
+                    .frame(width: 32, height: 18)
+                    .help("Writes keyframes onto another control, and draws nothing itself")
+                    .accessibilityHidden(true)
+            } else if let thumbnail {
                 Image(decorative: thumbnail, scale: 2)
                     .resizable()
                     .interpolation(.medium)

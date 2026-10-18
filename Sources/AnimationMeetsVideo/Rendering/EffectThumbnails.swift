@@ -49,7 +49,8 @@ enum EffectThumbnails {
         let center = CGPoint(x: frame.width / 2, y: frame.height / 2)
         let thumbnail = CGSize(width: width, height: max(1, (width * frame.height / max(frame.width, 1)).rounded()))
         var result: [UUID: CGImage] = [:]
-        for (index, effect) in clip.effects.enumerated() {
+        // A Keyframing effect draws nothing, so it shows a curve instead.
+        for (index, effect) in clip.effects.enumerated() where !effect.kind.isKeyframing {
             var truncated = clip
             truncated.effects = Array(clip.effects.prefix(index + 1))
             let drawn = DrawClip(

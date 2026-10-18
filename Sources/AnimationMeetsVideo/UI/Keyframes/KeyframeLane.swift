@@ -1,16 +1,20 @@
 import CoreMedia
 import SwiftUI
 
-/// A keyframe as the lane draws it: where, and which sides are eased.
+/// A keyframe as the lane draws it: where, which sides are eased, and
+/// whether a Keyframing effect wrote it.
 struct KeyframeMark: Hashable {
     var time: CMTime
     var easedIn: Bool
     var easedOut: Bool
+    var isGenerated = false
 }
 
 extension AnimatedValue {
     var marks: [KeyframeMark] {
-        keyframes.map { KeyframeMark(time: $0.time, easedIn: $0.easeIn != nil, easedOut: $0.easeOut != nil) }
+        keyframes.map {
+            KeyframeMark(time: $0.time, easedIn: $0.easeIn != nil, easedOut: $0.easeOut != nil, isGenerated: $0.generatedBy != nil)
+        }
     }
 }
 
@@ -118,7 +122,7 @@ private struct KeyframeDiamond: View {
         let x = CGFloat(time.seconds) * pixelsPerSecond + dragX
         let shape = KeyframeMarkShape(easedIn: mark.easedIn, easedOut: mark.easedOut)
         shape
-            .fill(isAtPlayhead ? Design.keyframe : Design.textSecondary)
+            .fill(isAtPlayhead ? Design.keyframe : mark.isGenerated ? Design.generatedKeyframe : Design.textSecondary)
             .overlay { shape.stroke(Color.black.opacity(0.45), lineWidth: 0.5) }
             .frame(width: size, height: size)
             .frame(width: size + 6, height: height)
@@ -153,7 +157,7 @@ private struct KeyframeDiamond: View {
             }
             .help(time.formatted)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Keyframe at \(time.formatted)")
+            .accessibilityLabel("\(mark.isGenerated ? "Generated keyframe" : "Keyframe") at \(time.formatted)")
             .accessibilityValue(easeDescription)
             .accessibilityAddTraits(isAtPlayhead ? [.isButton, .isSelected] : .isButton)
             .accessibilityHint("Moves the playhead to it")

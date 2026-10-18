@@ -1,6 +1,6 @@
 # Keyframing effects
 
-Status: **step 1 of 4 built** (see [Building it](#building-it) for what
+Status: **steps 1 and 2 of 4 built** (see [Building it](#building-it) for what
 each step does and leaves out). A new **Keyframing** category in the
 Effects Library: effects that draw nothing and instead write keyframes
 onto other controls, from a sound (Audio Keys, as Trapcode Sound Keys
@@ -242,13 +242,20 @@ In order, each step usable on its own:
    - Keyframing effects are no-ops to the compositor and the sound taps,
      and have no animated ranges. They go only in the picture's stack, so
      a clip with no pictures can't have one yet.
-   - The Effects Library lists the category (it lists every kind), and the
-     panel shows each one's settings, but there is no Target row yet, so
-     each writes to the target it was given.
-2. **Library and panel**: the Target,
-   component and Combine rows, the range on the panel's ruler, the dimming
-   note for a target that's gone or above, the curve icon in place of a
-   thumbnail, Bake in the ⋯ menu, highlighted keyframes and VoiceOver.
+2. **Library and panel** (done). The Effects Library lists the category
+   with the others. In the panel a Keyframing effect has Target (None, each
+   target by effect and control name, and Unavailable for one that's gone
+   or above), Component (All or each of the target's, when it has more
+   than one), Combine (not for the kinds that reshape) and, for Beat Keys,
+   Beats From (the timeline's Sound and Music layers) above its settings.
+   Its ⋯ menu has Bake Keyframes and a Range menu (Start at Playhead, End at
+   Playhead, Whole Clip), with a note under the effect while a range is
+   set; dragging the range on the ruler is not done. It is dimmed only when
+   off or with a note: no target, one it can't reach, Beat Keys with no
+   layer, or a reshaper whose target has fewer than two keyframes. A curve
+   stands in for its thumbnail (none is drawn), keyframes it wrote are
+   drawn in the accent color in every lane and read as "Generated keyframe"
+   by VoiceOver, and its name reads as the summary above.
 3. **Out of date**: fingerprints of what each effect read, regenerating by
    itself when they change, Regenerate or Keep Edits after hand edits, and
    regenerating in a background task.

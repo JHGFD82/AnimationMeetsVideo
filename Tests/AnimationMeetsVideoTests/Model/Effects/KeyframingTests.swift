@@ -249,6 +249,40 @@ private struct KeyframingFixture {
         #expect(abs(f.value(.position, at: 0.5) - 50) < 0.5)
     }
 
+    @Test func notesSayWhyNothingIsWritten() {
+        var f = KeyframingFixture()
+        let id = f.add(.beatKeys)
+        let clip = f.clip, layer = f.project.clipAndLayer(f.clipID, in: f.timelineID)!.layer
+        let timeline = f.project.timeline(id: f.timelineID)!
+        // No layer to take beats from yet.
+        #expect(f.project.note(forEffectAt: 0, in: clip, on: layer, of: timeline)?.dims == true)
+        f.edit(id) { $0.keyframing?.target = nil }
+        let none = f.project.note(forEffectAt: 0, in: f.clip, on: layer, of: timeline)
+        #expect(none?.text.hasPrefix("Choose a control") == true)
+        let wiggler = f.add(.wiggler)
+        #expect(f.project.note(forEffectAt: 0, in: f.clip, on: layer, of: timeline) == nil)
+        #expect(f.project.keyframingSummary(of: f.effect(wiggler), in: f.clip).hasPrefix("Wiggler, driving Transform · Position, "))
+    }
+
+    @Test func aRangeWritesOnlyBetweenItsEnds() {
+        var f = KeyframingFixture()
+        let id = f.add(.oscillator)
+        f.point(id, at: .rotation)
+        let clip = f.clip
+        f.edit(id) { $0.keyframing?.setRange(start: seconds(1), in: clip) }
+        f.edit(id) { $0.keyframing?.setRange(end: seconds(2), in: clip) }
+        #expect(f.effect(id).keyframing?.range == CMTimeRange(start: seconds(1), end: seconds(2)))
+        #expect(abs(f.value(.rotation, at: 1.25) - 10) < 0.15)
+        #expect(f.value(.rotation, at: 0.5) == 0)
+        #expect(f.value(.rotation, at: 3) == 0)
+        // An end before the start is refused; both at the clip's is no range.
+        f.edit(id) { $0.keyframing?.setRange(end: seconds(0.5), in: clip) }
+        #expect(f.effect(id).keyframing?.range?.end == seconds(2))
+        f.edit(id) { $0.keyframing?.setRange(start: .zero, in: clip) }
+        f.edit(id) { $0.keyframing?.setRange(end: seconds(4), in: clip) }
+        #expect(f.effect(id).keyframing?.range == nil)
+    }
+
     @Test func aDuplicateWaitsForATargetOfItsOwn() {
         var f = KeyframingFixture()
         let id = f.add(.wiggler)
