@@ -601,7 +601,13 @@ struct EffectsPanel: View {
     @ViewBuilder
     private func controlMenu(_ control: EffectControl, of effect: Effect, in clip: TimelineClip) -> some View {
         Button("Reset") { editControl(control.id, of: effect, in: clip) { $0.reset() } }
-            .disabled(control.isNoOp && !control.isAnimated)
+            .disabled(control.isNoOp && !control.isAnimated && !control.squircle)
+        if control.kind == .cornerRadius, effect.kind == .rectangle {
+            Toggle("Squircle", isOn: Binding(
+                get: { control.squircle },
+                set: { value in editControl(control.id, of: effect, in: clip) { $0.squircle = value } }
+            ))
+        }
         Button(control.enabled ? "Disable" : "Enable") { editControl(control.id, of: effect, in: clip) { $0.enabled.toggle() } }
         Divider()
         Button("Delete", role: .destructive) {

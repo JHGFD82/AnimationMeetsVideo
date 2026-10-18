@@ -6,7 +6,8 @@ import Foundation
 /// (origin top left, y down), and how it is filled and stroked.
 struct ShapeStep: Equatable, Sendable {
     enum Outline: Equatable, Sendable {
-        case rectangle(CGRect, cornerRadius: Double)
+        /// With `squircle`, corners of continuous curvature.
+        case rectangle(CGRect, cornerRadius: Double, squircle: Bool)
         case ellipse(CGRect)
         /// A regular polygon, or with an inner radius a star, with its
         /// first point straight up from the center before `rotation`
@@ -39,7 +40,10 @@ struct ShapeStep: Equatable, Sendable {
             let size = values(.shapeSize)
             guard size.count == 2, size[0] > 0, size[1] > 0 else { return nil }
             let rect = CGRect(x: middle.x - size[0] / 2, y: middle.y - size[1] / 2, width: size[0], height: size[1])
-            outline = effect.kind == .ellipse ? .ellipse(rect) : .rectangle(rect, cornerRadius: max(0, single(.cornerRadius)))
+            let squircle = effect.control(.cornerRadius).map { $0.enabled && $0.squircle } ?? false
+            outline = effect.kind == .ellipse
+                ? .ellipse(rect)
+                : .rectangle(rect, cornerRadius: max(0, single(.cornerRadius)), squircle: squircle)
         case .polygon, .star:
             let radius = single(.radius)
             guard radius > 0 else { return nil }
@@ -61,7 +65,8 @@ struct ShapeStep: Equatable, Sendable {
     /// The outline as a path in the frame's pixels.
     var path: CGPath {
         switch outline {
-        case .rectangle(let rect, let radius):
+        case .rectangle(let rect, let radius, let squircle):
+            if squircle, radius > 0 { return Self.squirclePath(in: rect, cornerRadius: radius) }
             // Corners can be no rounder than half the shorter side.
             let corner = min(radius, rect.width / 2, rect.height / 2)
             return corner > 0
@@ -105,7 +110,7 @@ struct ShapeStep: Equatable, Sendable {
         func rect(_ r: CGRect) -> String { [r.minX, r.minY, r.width, r.height].map { n(Double($0)) }.joined(separator: ",") }
         var text: String
         switch outline {
-        case .rectangle(let r, let radius): text = "h r\(n(radius)) \(rect(r))"
+        case .rectangle(let r, let radius, let squircle): text = "h r\(n(radius))\(squircle ? "q" : "") \(rect(r))"
         case .ellipse(let r): text = "h e \(rect(r))"
         case .polygon(let c, let points, let radius, let inner, let corner, let rotation):
             text = "h p\(points) \(n(c.x)),\(n(c.y)) \(n(radius)) \(inner.map(n) ?? "-") \(n(corner)) \(n(rotation))"
@@ -113,6 +118,52 @@ struct ShapeStep: Equatable, Sendable {
         text += " f" + (fill ?? []).map(n).joined(separator: ",")
         text += " s" + (stroke?.keyText ?? "-")
         return text
+    }
+
+    /// How much further along each edge a squircle's corner reaches than a
+    /// circular corner of the same radius, close to Apple's app icons.
+    static let squircleReach = 1.6
+    /// The exponent of a squircle's corners: 2 would be a circle; higher
+    /// is squarer, with the corner flat where it meets the edge.
+    static let squircleExponent = 5.0
+
+    /// `rect` with squircle corners: each a quarter of a superellipse
+    /// (|x|ⁿ + |y|ⁿ = 1), whose curvature falls to nothing where it meets
+    /// the edge, so the corner eases into it instead of a circular arc
+    /// meeting it abruptly. A corner reaches `squircleReach * radius` along
+    /// each edge, at most half the shorter side, where the rectangle's sides
+    /// are all corner and it is a squircle through and through.
+    static func squirclePath(in rect: CGRect, cornerRadius: Double) -> CGPath {
+        let reach = min(cornerRadius * squircleReach, Double(min(rect.width, rect.height)) / 2)
+        guard reach > 0 else { return CGPath(rect: rect, transform: nil) }
+        let path = CGMutablePath()
+        // Clockwise on screen from the top left (y down): each corner with
+        // the direction along the edge into it and out of it.
+        let corners: [(corner: CGPoint, into: CGVector, out: CGVector)] = [
+            (CGPoint(x: rect.maxX, y: rect.minY), CGVector(dx: 1, dy: 0), CGVector(dx: 0, dy: 1)),
+            (CGPoint(x: rect.maxX, y: rect.maxY), CGVector(dx: 0, dy: 1), CGVector(dx: -1, dy: 0)),
+            (CGPoint(x: rect.minX, y: rect.maxY), CGVector(dx: -1, dy: 0), CGVector(dx: 0, dy: -1)),
+            (CGPoint(x: rect.minX, y: rect.minY), CGVector(dx: 0, dy: -1), CGVector(dx: 1, dy: 0)),
+        ]
+        // Enough steps that no chord strays a visible fraction of a pixel
+        // from the curve at the sizes a frame holds.
+        let steps = 48
+        let power = 2 / squircleExponent
+        for (index, (corner, u, v)) in corners.enumerated() {
+            for step in 0...steps {
+                // From the edge coming in (θ = π/2) round to the edge going out.
+                let theta = Double.pi / 2 * (1 - Double(step) / Double(steps))
+                let along = reach * pow(cos(theta), power)
+                let back = reach * pow(sin(theta), power)
+                // Measured from the corner region's inner point, `reach` back
+                // along the edge in and `reach` along the edge out.
+                let x = -reach + along, y = reach - back
+                let point = CGPoint(x: corner.x + u.dx * x + v.dx * y, y: corner.y + u.dy * x + v.dy * y)
+                if index == 0, step == 0 { path.move(to: point) } else { path.addLine(to: point) }
+            }
+        }
+        path.closeSubpath()
+        return path
     }
 
     /// A closed path through `vertices`, each corner rounded to at most

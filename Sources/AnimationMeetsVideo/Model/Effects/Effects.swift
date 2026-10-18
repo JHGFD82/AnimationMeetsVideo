@@ -489,6 +489,10 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     /// Whether editing one axis of a scale or a size changes the other in
     /// proportion.
     var linked = true
+    /// For a rectangle's Corners: rounded with continuous curvature, the
+    /// corner easing into the edge as an app icon's does, instead of a
+    /// circular arc meeting it abruptly. Found in the control's menu.
+    var squircle = false
 
     init(id: UUID = UUID(), kind: ControlKind, enabled: Bool = true) {
         self.id = id
@@ -532,6 +536,7 @@ struct EffectControl: Identifiable, Equatable, Sendable {
         let fresh = EffectControl(id: id, kind: kind, enabled: enabled)
         number = fresh.number
         choice = fresh.choice
+        squircle = fresh.squircle
     }
 
     /// Sets one component at `time` (a keyframe when animated). Linked

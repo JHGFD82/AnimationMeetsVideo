@@ -126,7 +126,11 @@ and saving all work on shapes as they are.
   (a whole number, 3 to 100), Radius, Rotation and, for a star, Inner
   Radius, with the first point straight up. Rectangle, Polygon and Star
   have Corners: the radius each corner is rounded to, as round as fits in
-  half of each edge beside it. All have Position (an offset of the
+  half of each edge beside it. A rectangle's Corners menu has **Squircle**:
+  each corner a quarter superellipse (exponent 5) reaching 1.6 times the
+  radius along each edge, easing into it the way app icons do; at its
+  roundest the whole rectangle is one squircle. Saved as `squircle` on the
+  control. All have Position (an offset of the
   shape's center from the frame's center), Fill and Stroke (colors with
   opacity, picked with a color well), Stroke Width, and the stroke's Edge,
   Join, Cap and Dash (see [Strokes](#strokes)). Turning Fill or Stroke off

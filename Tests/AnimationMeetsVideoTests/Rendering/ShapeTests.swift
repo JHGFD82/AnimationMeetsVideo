@@ -326,4 +326,42 @@ extension DrawingFixture {
         // A Stroke with nothing selected has nowhere to go.
         #expect(fixture.project.addFromLibrary(.stroke, in: fixture.timelineID, selectedClip: nil, playhead: playhead) == nil)
     }
+
+    @Test func aSquircleFillsMoreOfItsCornersThanACircle() async throws {
+        func corner(squircle: Bool) async throws -> Int {
+            var fixture = try DrawingFixture()
+            defer { fixture.cleanUp() }
+            // 60 square in the middle: from (34, 6) to (94, 66).
+            let shape = try fixture.addShape()
+            fixture.setControl(.shapeSize, [60, 60], ofClip: shape.clipID)
+            fixture.setControl(.cornerRadius, [25], ofClip: shape.clipID)
+            fixture.project.editClip(shape.clipID, in: fixture.timelineID) { clip in
+                if let index = clip.effects[0].controls.firstIndex(where: { $0.kind == .cornerRadius }) {
+                    clip.effects[0].controls[index].squircle = squircle
+                }
+            }
+            // On the top left diagonal: 27.6 from the circular corner's
+            // center, outside its radius of 25, but inside the squircle,
+            // whose corner reaches out to (37.9, 9.9).
+            return try await grayLevel(of: fixture.build(), at: second, x: 39.5 / 128, y: 11.5 / 72)
+        }
+        #expect(try await corner(squircle: false) < 60)
+        #expect(try await corner(squircle: true) > 180)
+    }
+
+    @Test func savingKeepsASquircle() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let shape = try fixture.addShape()
+        fixture.project.editClip(shape.clipID, in: fixture.timelineID) { clip in
+            if let index = clip.effects[0].controls.firstIndex(where: { $0.kind == .cornerRadius }) {
+                clip.effects[0].controls[index].squircle = true
+            }
+        }
+        let package = fixture.directory.appending(path: "Squircle.amv", directoryHint: .isDirectory)
+        try await ProjectStore.save(fixture.project, to: package)
+        let loaded = try await ProjectStore.load(from: package)
+        let read = try #require(loaded.project.clipAndLayer(shape.clipID, in: loaded.project.rootTimelineID)?.clip)
+        #expect(read.effects[0].control(.cornerRadius)?.squircle == true)
+    }
 }
