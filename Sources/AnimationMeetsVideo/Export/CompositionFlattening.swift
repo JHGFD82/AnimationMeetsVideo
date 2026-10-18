@@ -77,6 +77,10 @@ extension CompositionExporter {
                     shift: CMTimeAdd(offset, CMTimeSubtract(clip.startOffset, CMTimeMultiplyByFloat64(clip.trimStart, multiplier: 1 / rate))),
                     rate: rate
                 )
+                // Fades under its transitions and its neighbors', with the
+                // sound past its ends that a crossfade at a cut plays.
+                let audioFades = project.playsAudio(clip) ? project.audioFades(of: clip, among: clips) : ([], .zero, .zero)
+                let fadeStages = audioFades.fades.map { MixStage(id: clip.id, shift: offset, fade: $0.shifted(by: offset)) }
                 let lead = project.joinedLead(of: clip, among: clips) ?? .zero
                 var clipStack = stack(of: clip)
                 if project.playsVideo(clip) {
@@ -144,11 +148,32 @@ extension CompositionExporter {
                         // A retimed clip's sound is silent, or played at its
                         // new speed with or without its pitch changing.
                         if clip.isRetimed, clip.time.sound == .mute || clip.isReversed { placement.includesAudio = false }
-                        if placement.includesAudio, clip.hasOwnMix || clip.isRetimed {
+                        if placement.includesAudio, clip.hasOwnMix || clip.isRetimed || !fadeStages.isEmpty {
                             let sound = placement.copy()
                             sound.includesVideo = false
+                            var sounds = [sound]
+                            // The sound before its in point and after its out
+                            // point that a crossfade at a joined cut plays.
+                            // Only unretimed clips are joined.
+                            if !clip.isRetimed {
+                                if audioFades.head > .zero, let (head, _) = try await mediaPlacement(
+                                    of: clip, from: CMTimeSubtract(clip.trimStart, audioFades.head),
+                                    at: CMTimeSubtract(clip.startOffset, audioFades.head), for: audioFades.head,
+                                    project: project, frameSize: timeline.frameSize, window: window, offset: offset,
+                                    includesVideo: false, includesAudio: true
+                                ) {
+                                    sounds.insert(head, at: 0)
+                                }
+                                if audioFades.tail > .zero, let (tail, _) = try await mediaPlacement(
+                                    of: clip, from: clip.trimEnd, at: clip.endOffset, for: audioFades.tail,
+                                    project: project, frameSize: timeline.frameSize, window: window, offset: offset,
+                                    includesVideo: false, includesAudio: true
+                                ) {
+                                    sounds.append(tail)
+                                }
+                            }
                             let pitch: AVAudioTimePitchAlgorithm? = clip.isRetimed ? (clip.time.sound == .changePitch ? .varispeed : .spectral) : nil
-                            clipSound.append(TrackHost(placements: [sound], volume: [clipVolume] + volume, pitch: pitch))
+                            clipSound.append(TrackHost(placements: sounds, volume: [clipVolume] + fadeStages + volume, pitch: pitch))
                             placement.includesAudio = false
                         }
                         own.placements.append(placement)
@@ -236,7 +261,7 @@ extension CompositionExporter {
                         visiting: visiting,
                         window: nestedWindow,
                         offset: CMTimeAdd(offset, shift),
-                        outerVolume: [clipVolume] + volume,
+                        outerVolume: [clipVolume] + fadeStages + volume,
                         rootClipID: owner,
                         silent: silent,
                         hosts: &inner

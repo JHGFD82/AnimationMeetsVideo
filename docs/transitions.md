@@ -145,6 +145,11 @@ and after is its layers drawn over that.
   shape passes through, and it needs hardware a virtual Mac may lack.
   If the kernel can't compile, a morph is a cross dissolve.
 
+### Sound
+
+The clip's sound fades in and out under its transitions, and crossfades
+at a joined cut; see [audio.md](audio.md#under-transitions).
+
 ### Limits
 
 - A transition drawn from two pictures acts on the whole frame of the

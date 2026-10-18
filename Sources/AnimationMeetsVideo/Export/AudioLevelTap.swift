@@ -17,6 +17,9 @@ struct MixStage: Equatable, Sendable {
     /// How much faster the keyframes' time passes than the root's: a retimed
     /// clip's volume counts in its source time, which plays at its speed.
     var rate: Double = 1
+    /// Set for a stage that is a fade under a transition rather than the
+    /// clip's or layer's own volume and pan.
+    var fade: AudioFade?
 
     /// The stage's own time at root time `time`.
     func local(_ time: CMTime) -> CMTime {
@@ -95,6 +98,10 @@ final class MixCurves: @unchecked Sendable {
         let time = CMTime(seconds: seconds, preferredTimescale: 96_000)
         var gains = SIMD2<Float>(1, 1)
         for stage in stages {
+            if let fade = stage.fade {
+                gains *= fade.gain(at: seconds)
+                continue
+            }
             let volume = current.volume[stage.id], pan = panned ? current.pan[stage.id] : nil
             guard volume != nil || pan != nil else { continue }
             let local = stage.local(time)
@@ -126,7 +133,7 @@ enum AudioLevelTap {
             // a new one); their settings are read as it plays.
             let current = curves.current
             let effects = entry.stages.enumerated().flatMap { stage, entry in
-                (current.effects[entry.id] ?? []).map { (stage: stage, id: $0.id, kind: $0.kind) }
+                entry.fade != nil ? [] : (current.effects[entry.id] ?? []).map { (stage: stage, id: $0.id, kind: $0.kind) }
             }
             let context = TapContext(stages: entry.stages, effects: effects, curves: curves, meter: meter, meterIndex: index)
             guard let tap = makeTap(context) else { return nil }

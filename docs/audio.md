@@ -1,11 +1,13 @@
 # Audio levels
 
 Status: **implemented**: keyframed volume and pan on clips and on Sound
-and Music layers, sound effects (EQ, Compressor, Limiter) on clips, all
-applied in playback and export, and a meter of the whole mix. The level
-and pan math, saving, nesting, the mix's gain above unity, pan and each
-sound effect in the mix, and the meter's measurements and movement are
-unit tested (the mix by reading a composition through its audio mix). The
+and Music layers, sound effects (EQ, Compressor, Limiter) on clips,
+fades and crossfades under transitions, all applied in playback and
+export, and a meter of the whole mix. The level and pan math, saving,
+nesting, the mix's gain above unity, pan, fades and each sound effect in
+the mix, the fades at joined cuts, and the meter's measurements and
+movement are unit tested (the mix by reading a composition through its
+audio mix). The
 controls and the meter have not yet been driven on screen. What is not built is listed
 under [Not implemented yet](#not-implemented-yet).
 
@@ -120,6 +122,29 @@ which isn't made up for. Apple's voice isolation unit (`AUSoundIsolation`)
 isn't offered: it delays sound by about 76 ms, two frames, which would
 have to be made up by starting the clip's sound that much earlier.
 
+## Under transitions
+
+Sound fades under every transition of a clip that has sound, whatever the
+transition does to the picture, following the transition's curve
+(`AudioFade`). The fades are equal power (a sine rising, a cosine
+falling), so two clips crossfading are as loud halfway through as either
+alone, rather than 3 dB down.
+
+- A way in fades the clip's sound in over the transition, and a way out
+  fades it out. At an open end that is a fade from or to silence.
+- At a joined cut each clip's sound carries on through the transition on
+  its spare footage, as its picture does: the outgoing clip's past its
+  out point and the incoming clip's before its in point, so they
+  crossfade instead of one cutting off at the cut. A way in that joins
+  the clip before fades that clip out over the same span; a way out at a
+  cut fades the clip after in under it. Where there is no spare footage
+  the sound stops at the cut, partway through its fade.
+
+Each fade is a stage of the clip's track (`MixStage.fade`, in root time),
+so a nested timeline's clip fades all the sound inside it, and a clip with
+one has its sound on a track of its own. Fades come from the transitions,
+which are part of `CompositionKey`, so changing one rebuilds the player.
+
 ### Playback and export
 
 AVFoundation's own mix volume can't go above unity, so each composition
@@ -187,7 +212,7 @@ dropped on load.
 - Pan in the timeline's volume row and lines.
 - Dragging the level line up and down in the lane; levels are set in the
   field or with the fader.
-- Audio fades under transitions.
+- A way to keep a clip's sound from fading under a transition.
 - Sound effects on Sound and Music layers, and voice isolation (see
   [Sound effects](#sound-effects)).
 - Making up for a sound effect's delay.

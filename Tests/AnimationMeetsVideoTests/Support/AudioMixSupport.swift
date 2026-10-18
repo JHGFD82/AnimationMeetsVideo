@@ -43,9 +43,9 @@ enum AudioMixSupport {
         return (project, ids.clipID, ids.layerID)
     }
 
-    /// The loudest left and right samples of the root timeline's mix after
-    /// `skip` seconds, read in stereo.
-    static func loudest(of project: EditingProject, after skip: Double = 0) async throws -> SIMD2<Float> {
+    /// The loudest left and right samples of the root timeline's mix
+    /// between `skip` and `stop` seconds, read in stereo.
+    static func loudest(of project: EditingProject, after skip: Double = 0, before stop: Double = .infinity) async throws -> SIMD2<Float> {
         let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
         let reader = try AVAssetReader(asset: composed.composition)
         let output = AVAssetReaderAudioMixOutput(audioTracks: composed.composition.tracks(withMediaType: .audio), audioSettings: [
@@ -65,7 +65,7 @@ enum AudioMixSupport {
             let start = CMSampleBufferGetPresentationTimeStamp(buffer).seconds
             var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
             _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
-            for frame in 0..<chunk.count / 2 where start + Double(frame) / sampleRate >= skip {
+            for frame in 0..<chunk.count / 2 where (skip..<stop).contains(start + Double(frame) / sampleRate) {
                 loudest = pointwiseMax(loudest, SIMD2(abs(chunk[2 * frame]), abs(chunk[2 * frame + 1])))
             }
         }
