@@ -273,6 +273,11 @@ players, so it fades in while the one before fades out, and the two
 fades sum to a steady level across their 10 ms overlap. A drag is heard
 as a smooth run of grains following the playhead, up to 70 ms behind it.
 
+Each video frame is heard once. A grain plays from the start of the frame
+the playhead is on, and a move to where the newest grain already plays,
+or waits to, asks for nothing, so a drag across the many pixels of one
+frame plays it once rather than over and over until the next.
+
 The mix is read out through the composition's audio mix, as playback
 hears it, a second before the playhead and three after, and kept, so
 grains near each other cost nothing; moving outside it reads again. An

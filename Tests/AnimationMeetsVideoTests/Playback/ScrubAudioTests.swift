@@ -58,6 +58,28 @@ import Testing
         #expect(pacer.request(2.0, now: 11) == .play(2.0))
     }
 
+    /// A drag crosses many pixels in each frame; the frame is heard once.
+    @Test func aFrameIsHeardOnce() throws {
+        var pacer = GrainPacer(hop: 0.07, lead: 0.015)
+        #expect(pacer.request(1.0, now: 10) == .play(1.0))
+        // Still on the frame playing, long after it started: nothing.
+        #expect(pacer.request(1.0, now: 10.01) == .none)
+        #expect(pacer.request(1.0, now: 10.5) == .none)
+        // The next frame plays, at once since the grain is over.
+        #expect(pacer.request(1.04, now: 10.6) == .play(1.04))
+        // Waiting to play a frame, more moves within it change nothing.
+        #expect(pacer.request(1.08, now: 10.61) == .wait(until: 10.655))
+        #expect(pacer.request(1.08, now: 10.62) == .none)
+        // Back to the frame just played, before the next starts: that is
+        // the newest place, so it plays instead.
+        #expect(pacer.request(1.04, now: 10.63) == .none)
+        let fired = pacer.fire(now: 10.655)
+        #expect(fired?.seconds == 1.04)
+        // Playing from scratch again after a reset.
+        pacer.reset()
+        #expect(pacer.request(1.04, now: 12) == .play(1.04))
+    }
+
     @Test func withoutSoundThereIsNoGrain() async {
         let scrub = ScrubAudio()
         #expect(await scrub.samples(at: 1) == nil)

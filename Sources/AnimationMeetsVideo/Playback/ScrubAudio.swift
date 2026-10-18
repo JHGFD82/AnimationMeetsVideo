@@ -227,7 +227,9 @@ final class ScrubAudio: @unchecked Sendable {
 /// When scrub grains start. A move of the playhead with nothing playing
 /// starts one at once; moves while one plays wait for the next start, a
 /// hop after the last, and the newest of them plays from where the
-/// playhead is then. Times are seconds on the host clock.
+/// playhead is then. A move to where the newest grain already plays (or
+/// waits to) asks for nothing: a drag crosses many pixels in a frame, and
+/// a frame is heard once. Times are seconds on the host clock.
 struct GrainPacer: Equatable {
     enum Action: Equatable {
         /// Play from these seconds of the timeline now.
@@ -243,6 +245,8 @@ struct GrainPacer: Equatable {
     private var lastStart: Double?
     private var pending: Double?
     private var waiting = false
+    /// Where the last grain played from, in the timeline.
+    private var lastPlayed: Double?
 
     init(hop: Double, lead: Double) {
         self.hop = hop
@@ -250,6 +254,7 @@ struct GrainPacer: Equatable {
     }
 
     mutating func request(_ seconds: Double, now: Double) -> Action {
+        if seconds == (pending ?? lastPlayed) { return .none }
         if waiting {
             pending = seconds
             return .none
@@ -260,6 +265,7 @@ struct GrainPacer: Equatable {
             return .wait(until: lastStart + hop - lead)
         }
         lastStart = now
+        lastPlayed = seconds
         return .play(seconds)
     }
 
@@ -271,6 +277,7 @@ struct GrainPacer: Equatable {
         pending = nil
         let start = max(now, lastStart + hop)
         self.lastStart = start
+        lastPlayed = seconds
         return (seconds, start)
     }
 
@@ -278,5 +285,6 @@ struct GrainPacer: Equatable {
         lastStart = nil
         pending = nil
         waiting = false
+        lastPlayed = nil
     }
 }

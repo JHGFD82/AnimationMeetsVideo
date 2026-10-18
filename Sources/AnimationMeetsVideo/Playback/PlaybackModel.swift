@@ -310,7 +310,10 @@ final class PlaybackModel {
     /// playhead doesn't pile up zero-tolerance seeks.
     func seek(to time: CMTime) {
         if !isPlaying, UserDefaults.standard.object(forKey: Preferences.scrubAudio) as? Bool ?? true {
-            scrubAudio.play(at: time.seconds, deviceUID: outputUID)
+            // From the start of its frame, so every move within one frame
+            // asks for the same grain, which plays once.
+            let seconds = frameRate > 0 ? (time.seconds * frameRate + 1e-6).rounded(.down) / frameRate : time.seconds
+            scrubAudio.play(at: seconds, deviceUID: outputUID)
         }
         currentTime = time
         pendingSeek = time
