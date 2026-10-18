@@ -87,6 +87,9 @@ struct AnimationMeetsVideoApp: App {
                 project: $project, history: history, analysis: analysis,
                 replacement: replacement, packageURL: projectURL
             )
+                // The scene runs again at every edit; the editor follows
+                // the project on its own (see `EditorView.==`).
+                .equatable()
                 .mediaReplacementDialogs(project: $project, controller: replacement)
                 .onExternalProjectChange { checkForExternalProjectChange() }
                 .frame(minWidth: 1_100, minHeight: 700)
@@ -97,9 +100,8 @@ struct AnimationMeetsVideoApp: App {
                 .background(WindowCloseGuard(shouldClose: shouldCloseWindow))
                 .background(
                     Color.clear.sheet(isPresented: $showsProjectSettings) {
-                        // Read in the sheet's own view: read here, the
-                        // project would rebuild the whole window's content
-                        // at every edit.
+                        // Read in the sheet's own view, so the scene doesn't
+                        // read the project.
                         ProjectSettingsSheet(project: $project)
                     }
                 )

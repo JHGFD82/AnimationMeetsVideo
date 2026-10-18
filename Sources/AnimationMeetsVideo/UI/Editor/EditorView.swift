@@ -172,6 +172,22 @@ struct EditorView: View {
     }
 }
 
+extension EditorView: Equatable {
+    /// Whether the editor was made from the same things: the app's history,
+    /// analysis and replacement (the same objects) and package. The project
+    /// binding is left out: it reaches the same state each time, and the
+    /// editor follows the project through it. Without this, the app's scene,
+    /// which SwiftUI runs again whenever any of the app's state changes,
+    /// rebuilt the whole editor at every edit (the app marks it
+    /// `.equatable()`).
+    nonisolated static func == (lhs: EditorView, rhs: EditorView) -> Bool {
+        MainActor.assumeIsolated {
+            lhs.history === rhs.history && lhs.analysis === rhs.analysis
+                && lhs.replacement === rhs.replacement && lhs.packageURL == rhs.packageURL
+        }
+    }
+}
+
 /// A project kept where SwiftUI doesn't watch it, with the way to edit it,
 /// for a view that redraws on comparing what it shows rather than on every
 /// edit (see `EditorView.browserProject`).
