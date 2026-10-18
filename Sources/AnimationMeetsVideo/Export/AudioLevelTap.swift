@@ -192,8 +192,9 @@ enum AudioLevelTap {
         let meter: MixLevelMeter?
         let meterIndex: Int
         var format = AudioStreamBasicDescription()
-        /// The effects as Audio Units, made once the format is known.
-        private var units: [(stage: Int, unit: AudioEffectUnit)] = []
+        /// The effects as filters or Audio Units, made once the format is
+        /// known.
+        private var units: [(stage: Int, unit: SoundEffectProcessor)] = []
         /// Where the next buffer starts if playing carries straight on, in
         /// seconds; anything further off is a jump, which resets the units.
         private var expectedStart: Double?
@@ -227,7 +228,7 @@ enum AudioLevelTap {
             // An effect whose unit can't be made, or a format the units
             // can't take, plays the sound without it.
             units = effects.compactMap { effect in
-                AudioEffectUnit(effectID: effect.id, kind: effect.kind, format: format, maxFrames: maxFrames).map { (effect.stage, $0) }
+                SoundEffects.processor(effectID: effect.id, kind: effect.kind, format: format, maxFrames: maxFrames).map { (effect.stage, $0) }
             }
             expectedStart = nil
             if meter != nil, maxFrames > 0 {
@@ -275,12 +276,13 @@ enum AudioLevelTap {
                 for (_, unit) in units { unit.reset() }
             }
             let current = curves.current
+            let end = CMTimeAdd(heard, CMTime(seconds: Double(frames) / format.mSampleRate, preferredTimescale: 96_000))
             for (stage, unit) in units {
                 // An effect switched off or deleted since the mix was made
                 // is left out until the player is rebuilt.
                 let owner = stages[stage]
                 guard let effect = current.effects[owner.id]?.first(where: { $0.id == unit.effectID }) else { continue }
-                unit.apply(effect, at: owner.local(heard))
+                unit.apply(effect, from: owner.local(heard), to: owner.local(end))
                 unit.process(bufferList, frames: frames)
             }
         }

@@ -204,6 +204,12 @@ enum AnimatedParameter: Hashable {
         }
     }
 
+    /// One stored component limited to what the parameter allows there.
+    func clamped(_ component: Double, index: Int) -> Double {
+        if case .control(let kind, _, _, _) = self { return kind.clamped(component, index: index) }
+        return clamped(component)
+    }
+
     /// A shown value with its unit.
     func label(_ shown: Double) -> String {
         switch self {
@@ -213,6 +219,12 @@ enum AnimatedParameter: Hashable {
         case .anchorPoint: NumericExpression.format(shown, maxFractionDigits: 1) + " px"
         case .control(let kind, _, _, _): kind.label(shown)
         }
+    }
+
+    /// One component's shown value with its unit.
+    func label(_ shown: Double, component index: Int) -> String {
+        if case .control(let kind, _, _, _) = self { return kind.label(shown, component: index) }
+        return label(shown)
     }
 }
 

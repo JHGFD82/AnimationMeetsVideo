@@ -20,12 +20,23 @@ import Testing
         }
     }
 
+    /// Adds an EQ to the clip with `band` on and set to `values`.
+    private func addEQ(to clipID: UUID, in project: inout EditingProject, _ band: EqualizerBand, _ values: [Double]) throws {
+        let added = project.addEffect(.equalizer, toClip: clipID, in: project.rootTimelineID)
+        let effectID = try #require(added)
+        project.editEffect(effectID, ofClip: clipID, in: project.rootTimelineID) { effect in
+            guard let index = effect.controls.firstIndex(where: { $0.kind == band.controlKind }) else { return }
+            effect.controls[index].enabled = true
+            effect.controls[index].number = AnimatedValue(ComponentValue(values: values))
+        }
+    }
+
     @Test func theEQCutsTheTrebleOfAHighTone() async throws {
         let url = try AudioMixSupport.tone(frequency: 12_000)
         defer { try? FileManager.default.removeItem(at: url) }
         var (project, clipID, _) = try AudioMixSupport.project(playing: url)
         let before = try await AudioMixSupport.loudest(of: project, after: 0.2)
-        try add(.equalizer, to: clipID, in: &project, [.treble: -24])
+        try addEQ(to: clipID, in: &project, .highShelf, [8000, -24, EqualizerBand.flatQ])
         let after = try await AudioMixSupport.loudest(of: project, after: 0.2)
         #expect(abs(before.x - 0.25) < 0.01)
         // Twenty-four decibels is a sixteenth.
@@ -37,7 +48,7 @@ import Testing
         let url = try AudioMixSupport.tone(frequency: 200)
         defer { try? FileManager.default.removeItem(at: url) }
         var (project, clipID, _) = try AudioMixSupport.project(playing: url)
-        try add(.equalizer, to: clipID, in: &project, [.treble: -24])
+        try addEQ(to: clipID, in: &project, .highShelf, [8000, -24, EqualizerBand.flatQ])
         let level = try await AudioMixSupport.loudest(of: project, after: 0.2)
         #expect(abs(level.x - 0.25) < 0.02)
     }
@@ -68,7 +79,7 @@ import Testing
         let url = try AudioMixSupport.tone(frequency: 12_000)
         defer { try? FileManager.default.removeItem(at: url) }
         var (project, clipID, _) = try AudioMixSupport.project(playing: url)
-        try add(.equalizer, to: clipID, in: &project, [.treble: -24])
+        try addEQ(to: clipID, in: &project, .highShelf, [8000, -24, EqualizerBand.flatQ])
         let effectID = try #require(project.clipAndLayer(clipID, in: project.rootTimelineID)?.clip.audioEffects.first?.id)
         project.editEffect(effectID, ofClip: clipID, in: project.rootTimelineID) { $0.enabled = false }
         let level = try await AudioMixSupport.loudest(of: project, after: 0.2)
@@ -135,7 +146,10 @@ import Testing
         let eq = try #require(eqID)
         let before = CompositionKey(project: project)
         project.editEffect(eq, ofClip: clipID, in: timelineID) { effect in
-            effect.controls[1].setComponent(0, to: 6, at: .zero)
+            if let index = effect.controls.firstIndex(where: { $0.kind == .eqBell2 }) {
+                effect.controls[index].enabled = true
+                effect.controls[index].setComponent(1, to: 6, at: .zero)
+            }
             effect.name = "Brighter"
         }
         #expect(CompositionKey(project: project) == before)

@@ -393,14 +393,18 @@ struct ProjectFile: Codable {
                 if case .text(let name) = value { control.choice = name }
                 return control
             }
-            let fallback = control.number.value
+            control.number = number(default: control.number.value)
+            return control
+        }
+
+        /// Its numbers, keyframed or not, or `fallback` when it has none.
+        func number(default fallback: ComponentValue) -> AnimatedValue<ComponentValue> {
             let frames = (keyframes ?? []).compactMap { entry in
                 entry.value.components.map {
                     Keyframe(time: entry.time.time, value: $0, easeIn: entry.easeIn?.ease, easeOut: entry.easeOut?.ease)
                 }
             }
-            control.number = AnimatedValue(value?.components ?? frames.first?.value ?? fallback, keyframes: frames)
-            return control
+            return AnimatedValue(value?.components ?? frames.first?.value ?? fallback, keyframes: frames)
         }
     }
 
@@ -468,7 +472,19 @@ struct ProjectFile: Codable {
 
         var effect: Effect? {
             guard let kind = EffectKind(rawValue: kind) else { return nil }
-            var effect = Effect(id: id, kind: kind, name: name, controls: controls.compactMap(\.control))
+            var made = controls.compactMap(\.control)
+            let legacy = controls.filter { Equalizer.legacyNames.contains($0.kind) }
+            if kind == .equalizer, !legacy.isEmpty {
+                // Saved before the EQ had bands: played as it was heard,
+                // with any band saved alongside taking its place.
+                let migrated = Equalizer.controls(migrating: legacy.map {
+                    Equalizer.LegacyControl(
+                        name: $0.kind, id: $0.id, enabled: $0.enabled ?? true, number: $0.number(default: ComponentValue(values: [0]))
+                    )
+                })
+                made = migrated.map { old in made.first { $0.kind == old.kind } ?? old }
+            }
+            var effect = Effect(id: id, kind: kind, name: name, controls: made)
             effect.enabled = enabled ?? true
             effect.movesAnchor = movesAnchor ?? true
             effect.against = against
@@ -737,7 +753,15 @@ extension ProjectFile {
                 ], oneOf: [["asset", "timeline"]]))))
             }
             fields += extra
-            let controls = Dictionary(uniqueKeysWithValues: kind.controlKinds.map { ($0.rawValue, control($0)) })
+            var controls = Dictionary(uniqueKeysWithValues: kind.controlKinds.map { ($0.rawValue, control($0)) })
+            if kind == .equalizer {
+                // The controls it had before bands, which load as bands.
+                let legacy = object([
+                    .required("id", .uuid), .required("kind", .string), .optional("enabled", .bool),
+                    .optional("value", .number), .optional("keyframes", .array(keyframe(.number))),
+                ], oneOf: [["value", "keyframes"]])
+                for name in Equalizer.legacyNames { controls[name] = legacy }
+            }
             fields.append(.required("controls", .array(.tagged(key: "kind", noun: "control kind", controls))))
             return object(fields)
         }

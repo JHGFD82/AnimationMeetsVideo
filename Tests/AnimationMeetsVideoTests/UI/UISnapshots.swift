@@ -147,14 +147,18 @@ struct UISnapshots {
         )
     }
 
-    /// The effects panel for a sound clip: an EQ with its treble cut and a
+    /// The effects panel for a sound clip: an EQ with its high shelf cut and a
     /// compressor, then volume and pan.
     @Test func soundEffectsPanel() throws {
         var (project, clipID, layerID) = try AudioMixSupport.project(playing: URL(filePath: "/dev/null"), seconds: 8)
         let timelineID = project.rootTimelineID
         let eqID = project.addEffect(.equalizer, toClip: clipID, in: timelineID)
         let eq = try #require(eqID)
-        project.editEffect(eq, ofClip: clipID, in: timelineID) { $0.controls[4].setComponent(0, to: -6, at: .zero) }
+        project.editEffect(eq, ofClip: clipID, in: timelineID) { effect in
+            guard let index = effect.controls.firstIndex(where: { $0.kind == .eqHighShelf }) else { return }
+            effect.controls[index].enabled = true
+            effect.controls[index].setComponent(1, to: -6, at: .zero)
+        }
         project.addEffect(.compressor, toClip: clipID, in: timelineID)
         try SnapshotSupport.render(
             EffectsPanel(

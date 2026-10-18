@@ -199,7 +199,7 @@ struct KeyframeGraphView: View {
                         Circle().fill(Self.palette[index % Self.palette.count]).frame(width: 6, height: 6)
                         Text(names[index]).foregroundStyle(Design.textTertiary)
                     }
-                    Text(key.parameter.label(shown[index]))
+                    Text(key.parameter.label(shown[index], component: index))
                         .font(Design.Typeface.numericSmall)
                         .foregroundStyle(Design.textPrimary)
                 }
@@ -454,7 +454,7 @@ struct KeyframeGraphView: View {
         var moved = result.keyframes[index].value
         let shown = moved.values[component] + offset[component]
         let newShown = layout.value(atY: layout.y(shown) + dy)
-        moved.values[component] = key.parameter.clamped(newShown - offset[component])
+        moved.values[component] = key.parameter.clamped(newShown - offset[component], index: component)
         result.moveKeyframe(at: time, to: newTime)
         result.set(moved, at: newTime)
         selected = newTime

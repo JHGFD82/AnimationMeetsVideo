@@ -1295,6 +1295,43 @@ private struct Sandbox {
         }
     }
 
+    @Test func anEQSavedBeforeBandsLoadsAsBands() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, clipID, _) = sandbox.makeProject()
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: sandbox.projectJSON)) as? [String: Any])
+        let bassID = UUID()
+        editClip(&json) { clip in
+            clip["audioEffects"] = [[
+                "id": UUID().uuidString, "kind": "equalizer",
+                "controls": [
+                    ["id": UUID().uuidString, "kind": "lowCut", "value": 20],
+                    ["id": bassID.uuidString, "kind": "bass", "value": -6],
+                    ["id": UUID().uuidString, "kind": "mid", "value": 0],
+                    ["id": UUID().uuidString, "kind": "midFrequency", "keyframes": [
+                        ["time": "0s", "value": 500], ["time": "1s", "value": 2000],
+                    ]],
+                    ["id": UUID().uuidString, "kind": "treble", "value": 3, "enabled": false],
+                ],
+            ]]
+        }
+        try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]).write(to: sandbox.projectJSON)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter).project
+        let eq = try #require(loaded.clipAndLayer(clipID, in: loaded.rootTimelineID)?.clip.audioEffects.first)
+        #expect(eq.controls.map(\.kind) == Equalizer.controlKinds)
+        #expect(eq.control(.eqLowShelf)?.id == bassID)
+        #expect(eq.control(.eqLowShelf)?.values(at: .zero) == [100, -6, EqualizerBand.flatQ])
+        #expect(eq.control(.eqBell2)?.number.keyframes.count == 2)
+        #expect(eq.control(.eqHighShelf)?.enabled == false)
+        #expect(Equalizer.settings(of: eq, at: .zero).bands.map(\.band) == [.lowShelf, .bell2])
+
+        // Saved again, it is written as bands.
+        try await ProjectStore.save(loaded, to: sandbox.packageURL)
+        let written = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(written.contains("eqLowShelf") && !written.contains("\"bass\""))
+    }
+
     @Test func anInputOnAnEffectThatTakesNoneIsAnUnknownKey() async throws {
         let message = try await loadingMessage { json in
             editEffect(&json, 0) { $0["input"] = ["asset": UUID().uuidString] }

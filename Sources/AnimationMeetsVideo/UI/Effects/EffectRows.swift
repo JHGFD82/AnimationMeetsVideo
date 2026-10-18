@@ -40,6 +40,10 @@ struct ParameterRow<MenuContent: View>: View {
     /// What one point of dragging a value moves it.
     var dragStep: Double = 1
     var dragRange: (Int) -> ClosedRange<Double>? = { _ in nil }
+    /// For components that measure different things (an EQ band's
+    /// frequency, gain and Q): each one's unit and drag step.
+    var componentUnit: ((Int) -> String)?
+    var componentDragStep: ((Int) -> Double)?
     let isAnimated: Bool
     let isSelected: Bool
     /// Where the row's keyframes are, in the timeline's time.
@@ -103,7 +107,9 @@ struct ParameterRow<MenuContent: View>: View {
                 ForEach(components.indices, id: \.self) { index in
                     if index > 0 { Text(",").foregroundStyle(Design.textTertiary) }
                     NumericField(
-                        value: components[index], unit: unit, dragStep: dragStep, dragRange: dragRange(index)
+                        value: components[index], unit: componentUnit?(index) ?? unit,
+                        fractionDigits: componentDragStep.map { $0(index) < 0.1 ? 2 : 1 } ?? 1,
+                        dragStep: componentDragStep?(index) ?? dragStep, dragRange: dragRange(index)
                     ) { onSetComponent(index, $0) }
                 }
             }

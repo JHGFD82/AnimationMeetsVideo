@@ -522,7 +522,7 @@ struct EffectsPanel: View {
                     selected: control.choice ?? control.kind.defaultChoice ?? "",
                     isSelected: isSelected,
                     dragHandle: handle,
-                    isDimmed: effectDimmed || control.isNoOp,
+                    isDimmed: effectDimmed || choiceIsNoOp(control, of: effect),
                     onSelect: select,
                     onChoose: { choice in editControl(control.id, of: effect, in: clip) { $0.choice = choice } },
                     menu: menu
@@ -542,7 +542,9 @@ struct EffectsPanel: View {
                     components: control.values(at: c.sourceNow),
                     unit: control.kind.unit,
                     dragStep: control.kind.dragStep,
-                    dragRange: { _ in control.kind.range },
+                    dragRange: { control.kind.range(ofComponent: $0) },
+                    componentUnit: EqualizerBand(controlKind: control.kind) == nil ? nil : { control.kind.unit(ofComponent: $0) },
+                    componentDragStep: EqualizerBand(controlKind: control.kind) == nil ? nil : { control.kind.dragStep(ofComponent: $0) },
                     isAnimated: control.isAnimated,
                     isSelected: isSelected,
                     keyframeTimes: control.number.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
@@ -576,6 +578,13 @@ struct EffectsPanel: View {
             )
             .dropDestination(for: ControlMovePayload.self, action: dropControl)
         }
+    }
+
+    /// Whether a choice changes nothing: an EQ cut's slope does nothing
+    /// while its band is off.
+    private func choiceIsNoOp(_ control: EffectControl, of effect: Effect) -> Bool {
+        guard let band = EqualizerBand.allCases.first(where: { $0.slopeKind == control.kind }) else { return control.isNoOp }
+        return !control.enabled || effect.control(band.controlKind)?.isNoOp ?? true
     }
 
     /// A color control's value at the playhead as a color (its components

@@ -212,7 +212,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .polygon: [.points, .radius, .cornerRadius, .shapeRotation, .shapePosition] + Self.paintControls
         case .star: [.points, .radius, .innerRadius, .cornerRadius, .shapeRotation, .shapePosition] + Self.paintControls
         case .stroke: [.stroke, .strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash]
-        case .equalizer: [.lowCut, .bass, .mid, .midFrequency, .treble]
+        case .equalizer: Equalizer.controlKinds
         case .compressor: [.threshold, .headroom, .attack, .release, .makeup]
         case .limiter: [.drive, .limiterRelease]
         case .voiceIsolation: [.isolation]
@@ -229,7 +229,10 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case shapeSize, cornerRadius, shapePosition, fill, stroke, strokeWidth
     case strokeEdge, strokeJoin, strokeCap, dash
     case points, radius, innerRadius, shapeRotation
-    case lowCut, bass, mid, midFrequency, treble
+    /// The EQ's bands (see `EqualizerBand`), its cuts' slopes and its
+    /// output gain.
+    case eqLowCut, eqLowCutSlope, eqLowShelf, eqBell1, eqBell2, eqBell3, eqBell4
+    case eqHighShelf, eqHighCut, eqHighCutSlope, eqOutput
     case threshold, headroom, attack, release, makeup
     case drive, limiterRelease
     case isolation
@@ -267,11 +270,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .radius: "Radius"
         case .innerRadius: "Inner Radius"
         case .shapeRotation: "Rotation"
-        case .lowCut: "Low Cut"
-        case .bass: "Bass"
-        case .mid: "Mid"
-        case .midFrequency: "Mid Freq"
-        case .treble: "Treble"
+        case .eqLowCut, .eqLowShelf, .eqBell1, .eqBell2, .eqBell3, .eqBell4, .eqHighShelf, .eqHighCut:
+            EqualizerBand(controlKind: self)?.name ?? ""
+        case .eqLowCutSlope: "Low Slope"
+        case .eqHighCutSlope: "High Slope"
+        case .eqOutput: "Output"
         case .threshold: "Threshold"
         case .headroom: "Headroom"
         case .attack: "Attack"
@@ -295,7 +298,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .strokeEdge, .strokeJoin, .strokeCap, .dash: .rectangle
         case .points, .radius, .shapeRotation: .polygon
         case .innerRadius: .star
-        case .lowCut, .bass, .mid, .midFrequency, .treble: .equalizer
+        case .eqLowCut, .eqLowCutSlope, .eqLowShelf, .eqBell1, .eqBell2, .eqBell3, .eqBell4,
+             .eqHighShelf, .eqHighCut, .eqHighCutSlope, .eqOutput: .equalizer
         case .threshold, .headroom, .attack, .release, .makeup: .compressor
         case .drive, .limiterRelease: .limiter
         case .isolation: .voiceIsolation
@@ -324,6 +328,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .strokeEdge: StrokeEdge.allCases.map { ($0.rawValue, $0.name) }
         case .strokeJoin: StrokeJoin.allCases.map { ($0.rawValue, $0.name) }
         case .strokeCap: StrokeCap.allCases.map { ($0.rawValue, $0.name) }
+        case .eqLowCutSlope, .eqHighCutSlope: EqualizerSlope.allCases.map { ($0.rawValue, $0.name) }
         default: []
         }
     }
@@ -336,6 +341,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .strokeEdge: StrokeEdge.center.rawValue
         case .strokeJoin: StrokeJoin.miter.rawValue
         case .strokeCap: StrokeCap.butt.rawValue
+        case .eqLowCutSlope, .eqHighCutSlope: EqualizerSlope.db12.rawValue
         default: nil
         }
     }
@@ -363,8 +369,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .shapePosition: ["Δx", "Δy"]
         case .fill, .stroke: ["Red", "Green", "Blue", "Alpha"]
         case .dash: ["Dash", "Gap"]
-        case .strokeEdge, .strokeJoin, .strokeCap: []
-        default: [name]
+        case .strokeEdge, .strokeJoin, .strokeCap, .eqLowCutSlope, .eqHighCutSlope: []
+        default: EqualizerBand(controlKind: self)?.componentNames ?? [name]
         }
     }
 
@@ -389,9 +395,10 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .radius: [180]
         case .innerRadius: [90]
         case .shapeRotation: [0]
-        case .lowCut: [20]
-        case .bass, .mid, .treble, .makeup, .drive: [0]
-        case .midFrequency: [1000]
+        case .eqLowCut, .eqLowShelf, .eqBell1, .eqBell2, .eqBell3, .eqBell4, .eqHighShelf, .eqHighCut:
+            EqualizerBand(controlKind: self)?.defaultValues ?? []
+        case .eqLowCutSlope, .eqHighCutSlope: []
+        case .eqOutput, .makeup, .drive: [0]
         case .threshold: [-20]
         case .headroom: [5]
         case .attack: [10]
@@ -410,8 +417,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .rotation: "°"
         case .exposure: " stops"
         case .mode, .matteMode, .temperature, .tint, .lift, .gamma, .gain: ""
-        case .lowCut, .midFrequency: " Hz"
-        case .bass, .mid, .treble, .threshold, .headroom, .makeup, .drive: " dB"
+        // A band's components each have a unit of their own (see
+        // `unit(ofComponent:)`).
+        case .eqLowCut, .eqLowShelf, .eqBell1, .eqBell2, .eqBell3, .eqBell4, .eqHighShelf, .eqHighCut: ""
+        case .eqLowCutSlope, .eqHighCutSlope: ""
+        case .eqOutput, .threshold, .headroom, .makeup, .drive: " dB"
         case .attack, .release, .limiterRelease: " ms"
         }
     }
@@ -422,8 +432,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .exposure: 0.1
         case .lift, .gamma, .gain, .fill, .stroke: 0.01
-        case .headroom: 0.1
-        case .midFrequency: 10
+        case .headroom, .eqOutput: 0.1
         default: 1
         }
     }
@@ -447,9 +456,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .cornerRadius: 0...50_000
         case .strokeWidth: 0...10_000
         case .fill, .stroke: 0...1
-        case .lowCut: 20...1000
-        case .bass, .mid, .treble: -24...24
-        case .midFrequency: 100...10000
+        // A band's components each have a range of their own (see
+        // `range(ofComponent:)`).
+        case .eqLowCut, .eqLowShelf, .eqBell1, .eqBell2, .eqBell3, .eqBell4, .eqHighShelf, .eqHighCut: nil
+        case .eqLowCutSlope, .eqHighCutSlope: nil
+        case .eqOutput: Equalizer.gains
         case .threshold: -60...0
         case .headroom: 0.1...40
         case .attack: 1...300
@@ -472,6 +483,39 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     /// A shown value with its unit.
     func label(_ shown: Double) -> String {
         NumericExpression.format(shown, maxFractionDigits: dragStep < 1 ? 2 : 1) + unit
+    }
+
+    // MARK: Components
+
+    /// Whether a new control of this kind is on: an EQ's bands start off,
+    /// to be switched on as they're needed.
+    var startsEnabled: Bool { EqualizerBand(controlKind: self) == nil }
+
+    /// The unit of one component. Most controls' components share one; an
+    /// EQ band's frequency, gain and Q each have their own.
+    func unit(ofComponent index: Int) -> String {
+        EqualizerBand(controlKind: self)?.unit(ofComponent: index) ?? unit
+    }
+
+    /// What one component is limited to, if anything.
+    func range(ofComponent index: Int) -> ClosedRange<Double>? {
+        EqualizerBand(controlKind: self)?.range(ofComponent: index) ?? range
+    }
+
+    /// How far one point of dragging one component moves it.
+    func dragStep(ofComponent index: Int) -> Double {
+        EqualizerBand(controlKind: self)?.dragStep(ofComponent: index) ?? dragStep
+    }
+
+    /// One component limited to what the control allows there.
+    func clamped(_ component: Double, index: Int) -> Double {
+        guard EqualizerBand(controlKind: self) != nil, let range = range(ofComponent: index) else { return clamped(component) }
+        return min(max(component, range.lowerBound), range.upperBound)
+    }
+
+    /// One component's shown value with its unit.
+    func label(_ shown: Double, component index: Int) -> String {
+        NumericExpression.format(shown, maxFractionDigits: dragStep(ofComponent: index) < 1 ? 2 : 1) + unit(ofComponent: index)
     }
 }
 
@@ -520,6 +564,13 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     var isNoOp: Bool {
         guard enabled else { return true }
         guard kind.hasNeutralDefault else { return false }
+        if let band = EqualizerBand(controlKind: kind) {
+            // A cut always cuts; a shelf or bell does nothing at 0 dB,
+            // wherever it is.
+            guard let gain = band.gainIndex else { return false }
+            let values = number.isAnimated ? number.keyframes.map(\.value.values) : [number.value.values]
+            return values.allSatisfy { !$0.indices.contains(gain) || $0[gain] == 0 }
+        }
         if kind == .mode { return blendMode == .normal }
         if kind == .matteMode { return false }
         let defaults = ComponentValue(values: kind.defaultValues)
@@ -546,7 +597,7 @@ struct EffectControl: Identifiable, Equatable, Sendable {
         var values = number.value(at: time).values
         guard values.indices.contains(index) else { return }
         let old = values
-        values[index] = kind.clamped(newValue)
+        values[index] = kind.clamped(newValue, index: index)
         if kind.isLinkable, linked, values.count == 2 {
             let other = 1 - index
             values[other] = old[index] != 0 ? old[other] * newValue / old[index] : newValue
@@ -582,7 +633,7 @@ struct Effect: Identifiable, Equatable, Sendable {
         self.id = id
         self.kind = kind
         self.name = name
-        self.controls = controls ?? kind.controlKinds.map { EffectControl(kind: $0) }
+        self.controls = controls ?? kind.controlKinds.map { EffectControl(kind: $0, enabled: $0.startsEnabled) }
     }
 
     var displayName: String { name ?? kind.name }
@@ -654,7 +705,7 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// Puts back a control that was deleted, at the end.
     mutating func addControl(_ kind: ControlKind) {
         guard self.kind.controlKinds.contains(kind), control(kind) == nil else { return }
-        controls.append(EffectControl(kind: kind))
+        controls.append(EffectControl(kind: kind, enabled: kind.startsEnabled))
     }
 
     /// A copy with new IDs for the effect and its controls.

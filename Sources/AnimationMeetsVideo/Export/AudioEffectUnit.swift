@@ -4,14 +4,38 @@ import CoreMedia
 import Foundation
 import os
 
-/// One sound effect of a clip (an EQ, compressor or limiter) as one of
-/// Apple's Audio Units, run in place on the buffers of an audio track's tap
-/// (`AudioLevelTap`). The tap makes one per effect when it is prepared, sets
-/// its parameters from the effect's controls before each buffer, so edits
-/// and keyframes are heard as it plays, and throws it away when unprepared.
+/// One sound effect of a clip as a tap (`AudioLevelTap`) runs it: made
+/// when the tap is prepared, set from the effect's controls before each
+/// buffer, so edits and keyframes are heard as it plays, and thrown away
+/// when unprepared.
+protocol SoundEffectProcessor: AnyObject {
+    var effectID: UUID { get }
+    /// Sets it from `effect`'s controls for a buffer that plays from
+    /// `start` to `end`, in the clip's source time.
+    func apply(_ effect: Effect, from start: CMTime, to end: CMTime)
+    /// Runs `frames` frames of `buffers` through it, in place.
+    func process(_ buffers: UnsafeMutablePointer<AudioBufferList>, frames: Int)
+    /// Forgets the sound it has heard, after a jump in time.
+    func reset()
+}
+
+enum SoundEffects {
+    /// What runs an effect of `kind` on buffers in `format` of up to
+    /// `maxFrames`: the EQ's own filters, or one of Apple's Audio Units.
+    /// Nil for a picture effect, or when it can't be made.
+    static func processor(effectID: UUID, kind: EffectKind, format: AudioStreamBasicDescription, maxFrames: Int) -> SoundEffectProcessor? {
+        if kind == .equalizer { return EqualizerFilter(effectID: effectID, format: format) }
+        return AudioEffectUnit(effectID: effectID, kind: kind, format: format, maxFrames: maxFrames)
+    }
+}
+
+/// One sound effect of a clip (a compressor, limiter or voice isolation) as
+/// one of Apple's Audio Units, run in place on the buffers of an audio
+/// track's tap (`AudioLevelTap`). The EQ has filters of its own
+/// (`EqualizerFilter`).
 ///
 /// Only the tap's own thread touches a unit after it is made.
-final class AudioEffectUnit {
+final class AudioEffectUnit: SoundEffectProcessor {
     let effectID: UUID
     let kind: EffectKind
 
@@ -25,20 +49,16 @@ final class AudioEffectUnit {
     private var source: UnsafeMutableAudioBufferListPointer?
     private var sampleTime: Float64 = 0
 
-    /// How many bands the EQ uses: low cut, bass, mid and treble.
-    private static let equalizerBands: UInt32 = 4
-
     /// A unit for `kind` taking `format`, which must be non-interleaved
     /// 32-bit float, in buffers of up to `maxFrames`. Nil when the kind
     /// isn't a sound effect or the unit can't be made.
     init?(effectID: UUID, kind: EffectKind, format: AudioStreamBasicDescription, maxFrames: Int) {
         let subType: OSType
         switch kind {
-        case .equalizer: subType = kAudioUnitSubType_NBandEQ
         case .compressor: subType = kAudioUnitSubType_DynamicsProcessor
         case .limiter: subType = kAudioUnitSubType_PeakLimiter
         case .voiceIsolation: subType = kAudioUnitSubType_AUSoundIsolation
-        case .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke: return nil
+        case .equalizer, .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke: return nil
         }
         guard format.mFormatID == kAudioFormatLinearPCM, format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
               format.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0, format.mBitsPerChannel == 32,
@@ -68,7 +88,6 @@ final class AudioEffectUnit {
 
         var streamFormat = format
         var frames = UInt32(maxFrames)
-        var bands = Self.equalizerBands
         var callback = AURenderCallbackStruct(inputProc: Self.render, inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
         func size<T>(_: T) -> UInt32 { UInt32(MemoryLayout<T>.size) }
         var status = AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &streamFormat, size(streamFormat))
@@ -78,9 +97,6 @@ final class AudioEffectUnit {
         if status == noErr {
             status = AudioUnitSetProperty(unit, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0, &frames, size(frames))
         }
-        if status == noErr, kind == .equalizer {
-            status = AudioUnitSetProperty(unit, kAUNBandEQProperty_NumberOfBands, kAudioUnitScope_Global, 0, &bands, size(bands))
-        }
         if status == noErr {
             status = AudioUnitSetProperty(unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callback, size(callback))
         }
@@ -88,7 +104,6 @@ final class AudioEffectUnit {
         // Everything is set by now, so failing runs `deinit`, which lets go
         // of the unit and the buffers.
         guard status == noErr else { return nil }
-        if kind == .equalizer { setUpEqualizer() }
     }
 
     deinit {
@@ -114,7 +129,7 @@ final class AudioEffectUnit {
     /// How long a unit of `kind` holds sound back, in seconds, measured
     /// once from one made at 48 kHz, for working out before any tap is
     /// prepared how much earlier its sound must start. 0 for picture
-    /// effects.
+    /// effects and the EQ, whose filters don't look ahead.
     static func latency(of kind: EffectKind) -> Double {
         latencies.withLock { known in
             if let latency = known[kind] { return latency }
@@ -138,24 +153,14 @@ final class AudioEffectUnit {
 
     // MARK: Parameters
 
-    /// The bands' fixed parts: a high-pass for the low cut, shelves for
-    /// bass and treble, and a peak for the mid.
-    private func setUpEqualizer() {
-        let types: [Int] = [
-            kAUNBandEQFilterType_2ndOrderButterworthHighPass, kAUNBandEQFilterType_LowShelf,
-            kAUNBandEQFilterType_Parametric, kAUNBandEQFilterType_HighShelf,
-        ]
-        for (band, type) in types.enumerated() {
-            set(kAUNBandEQParam_FilterType + UInt32(band), Float(type))
-            set(kAUNBandEQParam_BypassBand + UInt32(band), 0)
-        }
-        set(kAUNBandEQParam_Frequency + 1, 100)
-        set(kAUNBandEQParam_Bandwidth + 2, 1)
-        set(kAUNBandEQParam_Frequency + 3, 8000)
-    }
-
     private func set(_ parameter: AudioUnitParameterID, _ value: Float) {
         AudioUnitSetParameter(unit, parameter, kAudioUnitScope_Global, 0, value, 0)
+    }
+
+    /// Sets the unit's parameters from `effect`'s controls at the buffer's
+    /// start: Audio Unit parameters hold for a whole buffer.
+    func apply(_ effect: Effect, from start: CMTime, to end: CMTime) {
+        apply(effect, at: start)
     }
 
     /// Sets the unit's parameters from `effect`'s controls at `time`, in
@@ -168,16 +173,6 @@ final class AudioEffectUnit {
             return Float(kind.clamped(shown))
         }
         switch kind {
-        case .equalizer:
-            // At its lowest the low cut is off rather than cutting below
-            // what can be heard anyway.
-            let lowCut = value(.lowCut)
-            set(kAUNBandEQParam_BypassBand, lowCut <= Float(ControlKind.lowCut.range!.lowerBound) ? 1 : 0)
-            set(kAUNBandEQParam_Frequency, lowCut)
-            set(kAUNBandEQParam_Gain + 1, value(.bass))
-            set(kAUNBandEQParam_Frequency + 2, value(.midFrequency))
-            set(kAUNBandEQParam_Gain + 2, value(.mid))
-            set(kAUNBandEQParam_Gain + 3, value(.treble))
         case .compressor:
             set(kDynamicsProcessorParam_Threshold, value(.threshold))
             set(kDynamicsProcessorParam_HeadRoom, value(.headroom))
@@ -189,7 +184,7 @@ final class AudioEffectUnit {
             set(kLimiterParam_DecayTime, value(.limiterRelease) / 1000)
         case .voiceIsolation:
             set(kAUSoundIsolationParam_WetDryMixPercent, value(.isolation))
-        case .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke:
+        case .equalizer, .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke:
             break
         }
     }
