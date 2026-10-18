@@ -78,7 +78,10 @@ struct ClipBlockView: View {
     let onSetTransitionDuration: (TransitionEdge, CMTime) -> Void
     /// Clips with pictures take effects dragged from the effects panel.
     let acceptsEffects: Bool
-    /// How many effects are in the clip's stack, for its badge.
+    /// Clips with sound take sound effects.
+    var acceptsSoundEffects = false
+    /// How many effects are in the clip's stacks, picture and sound, for
+    /// its badge.
     let effectCount: Int
     /// Draws the clip's volume as a line across it.
     let showsVolumeLine: Bool
@@ -221,7 +224,7 @@ struct ClipBlockView: View {
                                 Text("\(effectCount)").font(Design.Typeface.numericMicro)
                             }
                             .font(Design.Typeface.micro)
-                            .help("\(effectCount) effect\(effectCount == 1 ? "" : "s") in its stack")
+                            .help("\(effectCount) effect\(effectCount == 1 ? "" : "s") in its stacks")
                         }
                         if hasPasteChanges {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -310,9 +313,9 @@ struct ClipBlockView: View {
                     // The nearer end of the clip gets the transition.
                     let x = drawnX + location.x
                     onSetTransition(transition.kind, x - liveX < liveWidth / 2 ? .leading : .trailing)
-                } else if let effect = payload.effect, acceptsEffects {
+                } else if let effect = payload.effect, effect.kind.isAudio ? acceptsSoundEffects : acceptsEffects {
                     onAddEffect(effect.kind)
-                } else if let preset = payload.preset, acceptsEffects {
+                } else if let preset = payload.preset, acceptsEffects || acceptsSoundEffects {
                     onApplyPreset(preset.presetID)
                 } else {
                     return false
@@ -322,7 +325,7 @@ struct ClipBlockView: View {
             } isTargeted: { targeted in
                 // Whether this clip takes what is over it isn't known until
                 // the drop, so it lights for any drag it could take.
-                isDropTarget = targeted && (acceptsTransitions || acceptsEffects)
+                isDropTarget = targeted && (acceptsTransitions || acceptsEffects || acceptsSoundEffects)
             }
             .contextMenu { clipMenu }
             .onContinuousHover(coordinateSpace: .named(space)) { phase in

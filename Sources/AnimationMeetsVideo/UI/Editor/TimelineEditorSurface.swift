@@ -61,7 +61,7 @@ struct TimelineEditorSurface<Library: View>: View {
     }
 
     private var appliedEffects: AppliedEffects? {
-        selectedTimelineClip.map { AppliedEffects(clipID: $0.id, count: $0.effects.count) }
+        selectedTimelineClip.map { AppliedEffects(clipID: $0.id, count: $0.effects.count + $0.audioEffects.count) }
     }
 
     private enum BuildPhase { case idle, building, settling }

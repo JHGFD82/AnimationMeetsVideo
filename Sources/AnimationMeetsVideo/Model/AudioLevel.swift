@@ -61,10 +61,11 @@ enum AudioPan {
 }
 
 extension TimelineClip {
-    /// Whether the clip has a volume or pan of its own, which puts its
-    /// sound on a composition track of its own to be played through them.
+    /// Whether the clip has a volume, pan or enabled sound effect of its
+    /// own, which puts its sound on a composition track of its own to be
+    /// played through them.
     var hasOwnMix: Bool {
-        volume != AnimatedValue(0.0) || pan != AnimatedValue(0.0)
+        volume != AnimatedValue(0.0) || pan != AnimatedValue(0.0) || audioEffects.contains(where: \.enabled)
     }
 }
 

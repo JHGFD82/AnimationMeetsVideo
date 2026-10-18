@@ -68,6 +68,8 @@ struct ProjectFile: Codable {
         var anchorPoint: PropertyEntry<[Double]>?
         /// Absent while the stack is empty.
         var effects: [EffectEntry]?
+        /// The sound's effects; absent while there are none.
+        var audioEffects: [EffectEntry]?
         /// Decibels; absent while at 0 and not animated.
         var volume: PropertyEntry<Double>?
         /// −100 (left) to 100 (right); absent while centered and not
@@ -717,7 +719,7 @@ extension ProjectFile {
             switch kind {
             case .transform: fields.append(.optional("movesAnchor", .bool))
             case .blending: fields.append(.optional("against", .uuid))
-            case .color: break
+            case .color, .equalizer, .compressor, .limiter: break
             case .matte:
                 fields.append(.optional("input", .object(object([
                     .optional("asset", .uuid), .optional("timeline", .uuid),
@@ -778,7 +780,7 @@ extension ProjectFile {
             .optional("streams", .choice(["video", "audio"], noun: "stream")),
             .optional("transitionIn", transition), .optional("transitionOut", transition),
             .optional("anchorPoint", property(.numbers(count: 2))),
-            .optional("effects", effects),
+            .optional("effects", effects), .optional("audioEffects", effects),
             .optional("volume", property(.number)),
             .optional("pan", property(.number)),
             .optional("passThrough", .bool),

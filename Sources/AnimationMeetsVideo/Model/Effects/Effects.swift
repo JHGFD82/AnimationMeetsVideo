@@ -47,6 +47,7 @@ enum BlendMode: String, CaseIterable, Identifiable, Sendable {
 enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
     case foundations
     case mattes
+    case sound
 
     var id: Self { self }
 
@@ -54,6 +55,7 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .foundations: "Foundations"
         case .mattes: "Mattes"
+        case .sound: "Sound"
         }
     }
 }
@@ -100,12 +102,17 @@ struct EffectInput: Equatable, Sendable {
     var loops = false
 }
 
-/// The kinds of effect the library offers.
+/// The kinds of effect the library offers. Sound effects (see
+/// docs/audio.md, "Sound effects") go in a clip's `audioEffects` and play
+/// through Apple's Audio Units; the rest change its picture.
 enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     case transform
     case blending
     case color
     case matte
+    case equalizer
+    case compressor
+    case limiter
 
     var id: Self { self }
 
@@ -115,6 +122,9 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .blending: "Blending"
         case .color: "Color"
         case .matte: "Matte"
+        case .equalizer: "EQ"
+        case .compressor: "Compressor"
+        case .limiter: "Limiter"
         }
     }
 
@@ -122,8 +132,12 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .transform, .blending, .color: .foundations
         case .matte: .mattes
+        case .equalizer, .compressor, .limiter: .sound
         }
     }
+
+    /// Whether it works on the clip's sound rather than its picture.
+    var isAudio: Bool { category == .sound }
 
     var systemImage: String {
         switch self {
@@ -131,6 +145,9 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .blending: "circle.lefthalf.filled.righthalf.striped.horizontal"
         case .color: "slider.horizontal.3"
         case .matte: "circle.dashed.inset.filled"
+        case .equalizer: "slider.vertical.3"
+        case .compressor: "arrow.down.right.and.arrow.up.left"
+        case .limiter: "line.horizontal.star.fill.line.horizontal"
         }
     }
 
@@ -143,7 +160,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     /// single pixels, or move them, don't.
     var dependsOnPixelSize: Bool {
         switch self {
-        case .transform, .blending, .color, .matte: false
+        case .transform, .blending, .color, .matte, .equalizer, .compressor, .limiter: false
         }
     }
 
@@ -154,6 +171,9 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .blending: [.mode, .amount]
         case .color: [.exposure, .contrast, .saturation, .temperature, .tint, .lift, .gamma, .gain]
         case .matte: [.matteMode, .amount]
+        case .equalizer: [.lowCut, .bass, .mid, .midFrequency, .treble]
+        case .compressor: [.threshold, .headroom, .attack, .release, .makeup]
+        case .limiter: [.drive, .limiterRelease]
         }
     }
 }
@@ -164,6 +184,9 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case mode, amount
     case exposure, contrast, saturation, temperature, tint, lift, gamma, gain
     case matteMode
+    case lowCut, bass, mid, midFrequency, treble
+    case threshold, headroom, attack, release, makeup
+    case drive, limiterRelease
 
     var id: Self { self }
 
@@ -184,6 +207,17 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .lift: "Lift"
         case .gamma: "Gamma"
         case .gain: "Gain"
+        case .lowCut: "Low Cut"
+        case .bass: "Bass"
+        case .mid: "Mid"
+        case .midFrequency: "Mid Freq"
+        case .treble: "Treble"
+        case .threshold: "Threshold"
+        case .headroom: "Headroom"
+        case .attack: "Attack"
+        case .release, .limiterRelease: "Release"
+        case .makeup: "Makeup"
+        case .drive: "Drive"
         }
     }
 
@@ -195,6 +229,19 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .amount: .blending
         case .matteMode: .matte
         case .exposure, .contrast, .saturation, .temperature, .tint, .lift, .gamma, .gain: .color
+        case .lowCut, .bass, .mid, .midFrequency, .treble: .equalizer
+        case .threshold, .headroom, .attack, .release, .makeup: .compressor
+        case .drive, .limiterRelease: .limiter
+        }
+    }
+
+    /// Whether the control changes nothing at its default, so it can be
+    /// shown dimmed there. A compressor's or limiter's controls always
+    /// matter: at their defaults they still compress.
+    var hasNeutralDefault: Bool {
+        switch effectKind {
+        case .compressor, .limiter: false
+        default: true
         }
     }
 
@@ -222,6 +269,14 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .lift: [0, 0, 0, 0]
         case .gamma, .gain: [1, 1, 1, 1]
         case .mode, .matteMode: []
+        case .lowCut: [20]
+        case .bass, .mid, .treble, .makeup, .drive: [0]
+        case .midFrequency: [1000]
+        case .threshold: [-20]
+        case .headroom: [5]
+        case .attack: [10]
+        case .release: [100]
+        case .limiterRelease: [5]
         }
     }
 
@@ -232,6 +287,9 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .rotation: "°"
         case .exposure: " stops"
         case .mode, .matteMode, .temperature, .tint, .lift, .gamma, .gain: ""
+        case .lowCut, .midFrequency: " Hz"
+        case .bass, .mid, .treble, .threshold, .headroom, .makeup, .drive: " dB"
+        case .attack, .release, .limiterRelease: " ms"
         }
     }
 
@@ -241,6 +299,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .exposure: 0.1
         case .lift, .gamma, .gain: 0.01
+        case .headroom: 0.1
+        case .midFrequency: 10
         default: 1
         }
     }
@@ -256,6 +316,16 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .gamma: 0.01...10
         case .gain: 0...10
         case .position, .scale, .rotation, .mode, .matteMode: nil
+        case .lowCut: 20...1000
+        case .bass, .mid, .treble: -24...24
+        case .midFrequency: 100...10000
+        case .threshold: -60...0
+        case .headroom: 0.1...40
+        case .attack: 1...300
+        case .release: 10...3000
+        case .makeup: -20...40
+        case .drive: 0...24
+        case .limiterRelease: 1...40
         }
     }
 
@@ -312,6 +382,7 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     /// default throughout.
     var isNoOp: Bool {
         guard enabled else { return true }
+        guard kind.hasNeutralDefault else { return false }
         if kind == .mode { return blendMode == .normal }
         if kind == .matteMode { return false }
         let defaults = ComponentValue(values: kind.defaultValues)
@@ -386,7 +457,8 @@ struct Effect: Identifiable, Equatable, Sendable {
         controls.firstIndex { $0.id == id }
     }
 
-    /// True when nothing in the effect changes the picture.
+    /// True when nothing in the effect changes the picture, or for a
+    /// sound effect the sound.
     var isNoOp: Bool {
         guard enabled else { return true }
         if kind == .matte {
@@ -489,6 +561,24 @@ extension Array where Element == Effect {
 // MARK: - Clips
 
 extension TimelineClip {
+    /// The list effects of `kind` go in: the picture's stack, or the
+    /// sound's.
+    static func stack(for kind: EffectKind) -> WritableKeyPath<TimelineClip, [Effect]> {
+        kind.isAudio ? \.audioEffects : \.effects
+    }
+
+    /// The list holding the effect with ID `id`, if the clip has it.
+    func stack(holding id: UUID) -> WritableKeyPath<TimelineClip, [Effect]>? {
+        if effects.contains(where: { $0.id == id }) { return \.effects }
+        if audioEffects.contains(where: { $0.id == id }) { return \.audioEffects }
+        return nil
+    }
+
+    /// The effect with ID `id`, in either list.
+    func effect(id: UUID) -> Effect? {
+        stack(holding: id).flatMap { self[keyPath: $0].first { $0.id == id } }
+    }
+
     /// The span of time in which something in the clip's stack, or its
     /// anchor point, is between keyframes, in the clip's source time.
     var animatedSourceRanges: [ClosedRange<CMTime>] {
@@ -539,7 +629,7 @@ extension EditingProject {
         case .clipVolume(let clipID), .clipPan(let clipID), .anchorPoint(let clipID), .speed(let clipID):
             return "\(clipName(clipID, in: key.timelineID)) · \(key.parameter.name)"
         case .control(_, let clipID, let effectID, _):
-            let effect = clipAndLayer(clipID, in: key.timelineID)?.clip.effects.first { $0.id == effectID }
+            let effect = clipAndLayer(clipID, in: key.timelineID)?.clip.effect(id: effectID)
             return [clipName(clipID, in: key.timelineID), effect?.displayName, key.parameter.name]
                 .compactMap { $0 }.joined(separator: " · ")
         }
@@ -556,13 +646,19 @@ extension EditingProject {
 
 extension EditingProject {
     /// Adds a new effect of `kind` to a clip's stack, at `index` or at the
-    /// end. Clips with no pictures take none. Returns the effect's ID.
+    /// end: a sound effect to its sound's. Clips with no pictures take no
+    /// picture effects, and clips with no sound no sound effects. Returns
+    /// the effect's ID.
     @discardableResult
     mutating func addEffect(_ kind: EffectKind, toClip clipID: UUID, in timelineID: UUID, at index: Int? = nil) -> UUID? {
-        guard let clip = clipAndLayer(clipID, in: timelineID)?.clip, hasEffectStack(clip) else { return nil }
-        let effect = Effect.make(kind, among: clip.effects)
+        guard let clip = clipAndLayer(clipID, in: timelineID)?.clip,
+              kind.isAudio ? playsAudio(clip) : hasEffectStack(clip)
+        else { return nil }
+        let stack = TimelineClip.stack(for: kind)
+        let effect = Effect.make(kind, among: clip[keyPath: stack])
         editClip(clipID, in: timelineID) { clip in
-            clip.effects.insert(effect, at: min(max(index ?? clip.effects.count, 0), clip.effects.count))
+            let count = clip[keyPath: stack].count
+            clip[keyPath: stack].insert(effect, at: min(max(index ?? count, 0), count))
         }
         return effect.id
     }
@@ -570,21 +666,24 @@ extension EditingProject {
     /// Applies `change` to one effect of a clip.
     mutating func editEffect(_ effectID: UUID, ofClip clipID: UUID, in timelineID: UUID, _ change: (inout Effect) -> Void) {
         editClip(clipID, in: timelineID) { clip in
-            guard let index = clip.effects.index(of: effectID) else { return }
-            change(&clip.effects[index])
+            guard let stack = clip.stack(holding: effectID), let index = clip[keyPath: stack].index(of: effectID) else { return }
+            change(&clip[keyPath: stack][index])
         }
     }
 
     mutating func removeEffect(_ effectID: UUID, fromClip clipID: UUID, in timelineID: UUID) {
-        editClip(clipID, in: timelineID) { $0.effects.removeAll { $0.id == effectID } }
+        editClip(clipID, in: timelineID) { clip in
+            guard let stack = clip.stack(holding: effectID) else { return }
+            clip[keyPath: stack].removeAll { $0.id == effectID }
+        }
     }
 
-    /// Moves an effect to `index` in the stack (0 is the top).
+    /// Moves an effect to `index` in its stack (0 is the top).
     mutating func moveEffect(_ effectID: UUID, ofClip clipID: UUID, in timelineID: UUID, toIndex index: Int) {
         editClip(clipID, in: timelineID) { clip in
-            guard let from = clip.effects.index(of: effectID) else { return }
-            let effect = clip.effects.remove(at: from)
-            clip.effects.insert(effect, at: min(max(index, 0), clip.effects.count))
+            guard let stack = clip.stack(holding: effectID), let from = clip[keyPath: stack].index(of: effectID) else { return }
+            let effect = clip[keyPath: stack].remove(at: from)
+            clip[keyPath: stack].insert(effect, at: min(max(index, 0), clip[keyPath: stack].count))
         }
     }
 
@@ -593,10 +692,10 @@ extension EditingProject {
     mutating func duplicateEffect(_ effectID: UUID, ofClip clipID: UUID, in timelineID: UUID) -> UUID? {
         var copyID: UUID?
         editClip(clipID, in: timelineID) { clip in
-            guard let index = clip.effects.index(of: effectID) else { return }
-            let original = clip.effects[index]
-            let copy = original.duplicated(named: Effect.make(original.kind, among: clip.effects).name)
-            clip.effects.insert(copy, at: index + 1)
+            guard let stack = clip.stack(holding: effectID), let index = clip[keyPath: stack].index(of: effectID) else { return }
+            let original = clip[keyPath: stack][index]
+            let copy = original.duplicated(named: Effect.make(original.kind, among: clip[keyPath: stack]).name)
+            clip[keyPath: stack].insert(copy, at: index + 1)
             copyID = copy.id
         }
         return copyID
@@ -629,10 +728,12 @@ extension TimelineClip {
             self.time.speed.applyEase(preset, at: source)
             eased = true
         }
-        for e in effects.indices {
-            for c in effects[e].controls.indices where effects[e].controls[c].number.keyframe(at: source) != nil {
-                effects[e].controls[c].number.applyEase(preset, at: source)
-                eased = true
+        for stack in [\TimelineClip.effects, \.audioEffects] {
+            for e in self[keyPath: stack].indices {
+                for c in self[keyPath: stack][e].controls.indices where self[keyPath: stack][e].controls[c].number.keyframe(at: source) != nil {
+                    self[keyPath: stack][e].controls[c].number.applyEase(preset, at: source)
+                    eased = true
+                }
             }
         }
         return eased

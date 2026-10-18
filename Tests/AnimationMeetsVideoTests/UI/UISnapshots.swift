@@ -84,6 +84,25 @@ struct UISnapshots {
         )
     }
 
+    /// The effects panel for a sound clip: an EQ with its treble cut and a
+    /// compressor, then volume and pan.
+    @Test func soundEffectsPanel() throws {
+        var (project, clipID, layerID) = try AudioMixSupport.project(playing: URL(filePath: "/dev/null"), seconds: 8)
+        let timelineID = project.rootTimelineID
+        let eqID = project.addEffect(.equalizer, toClip: clipID, in: timelineID)
+        let eq = try #require(eqID)
+        project.editEffect(eq, ofClip: clipID, in: timelineID) { $0.controls[4].setComponent(0, to: -6, at: .zero) }
+        project.addEffect(.compressor, toClip: clipID, in: timelineID)
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clipID),
+                playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "sound-effects-panel", size: CGSize(width: 520, height: 520)
+        )
+    }
+
     /// Annotation ink: two finished strokes and one being drawn.
     @Test func annotations() throws {
         let model = AnnotationModel()

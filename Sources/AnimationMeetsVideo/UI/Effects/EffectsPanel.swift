@@ -241,6 +241,11 @@ struct EffectsPanel: View {
             }
             shutterRows(c)
             if project.playsAudio(clip) {
+                // Sound comes after pictures: its effects, then its volume
+                // and pan, in the order it is played through them.
+                ForEach(clip.audioEffects) { effect in
+                    effectRows(effect, c)
+                }
                 audioRow(.volume, c)
                 audioRow(.pan, c)
             }
@@ -342,8 +347,11 @@ struct EffectsPanel: View {
     private func effectRows(_ effect: Effect, _ c: RowContext) -> some View {
         let clip = c.clip
         let collapsed = state.isCollapsed(effect.id)
-        let index = clip.effects.index(of: effect.id) ?? 0
-        let note = project.note(forEffectAt: index, in: clip, on: c.layer, of: c.timeline)
+        // Sound effects are in a stack of their own, and have no notes
+        // about what the picture effects around them do.
+        let stack = clip.stack(holding: effect.id) ?? \.effects
+        let index = clip[keyPath: stack].index(of: effect.id) ?? 0
+        let note = effect.kind.isAudio ? nil : project.note(forEffectAt: index, in: clip, on: c.layer, of: c.timeline)
         let dimmed = effect.isNoOp || note?.dims == true
         labelled(
             EffectHeaderRow(
@@ -368,16 +376,19 @@ struct EffectsPanel: View {
             lane: emptyLane(c)
         )
         .dropDestination(for: ClipDropPayload.self) { payloads, _ in
-            guard let payload = payloads.first, let index = clip.effects.index(of: effect.id) else { return false }
+            guard let payload = payloads.first, let index = clip[keyPath: stack].index(of: effect.id) else { return false }
             if let move = payload.effectMove {
-                guard move.clipID == clip.id else { return false }
+                // An effect moves only within its own stack.
+                guard move.clipID == clip.id, clip.stack(holding: move.effectID) == stack else { return false }
                 project.moveEffect(move.effectID, ofClip: clip.id, in: timelineID, toIndex: index)
                 return true
             }
             if let added = payload.effect {
                 // Dropped on an effect: it goes in at that place and is
-                // selected, as one dropped below the stack is.
-                if let id = project.addEffect(added.kind, toClip: clip.id, in: timelineID, at: index) {
+                // selected, as one dropped below the stack is. One of the
+                // other stack goes at the end of its own.
+                let at = added.kind.isAudio == effect.kind.isAudio ? index : nil
+                if let id = project.addEffect(added.kind, toClip: clip.id, in: timelineID, at: at) {
                     state.select(effect: id)
                 }
                 return true
@@ -444,10 +455,12 @@ struct EffectsPanel: View {
             .disabled(effect.controls.allSatisfy { $0.isNoOp && !$0.isAnimated } && effect.controls.count == effect.kind.controlKinds.count)
         Button("Rename") { renamingEffectID = effect.id }
         Button(effect.enabled ? "Disable" : "Enable") { editEffect(effect.id, in: clip) { $0.enabled.toggle() } }
-        Toggle("Show Up to Here", isOn: Binding(
-            get: { state.showUpTo == EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) },
-            set: { state.showUpTo = $0 ? EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) : nil }
-        ))
+        if !effect.kind.isAudio {
+            Toggle("Show Up to Here", isOn: Binding(
+                get: { state.showUpTo == EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) },
+                set: { state.showUpTo = $0 ? EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) : nil }
+            ))
+        }
         if effect.kind == .transform {
             Toggle("Moves Anchor", isOn: Binding(
                 get: { effect.movesAnchor },
@@ -639,7 +652,13 @@ struct EffectsPanel: View {
     /// Pastes the copied effects below `effect`, or at the end of the stack.
     private func paste(in clip: TimelineClip, below effect: Effect?) {
         guard let bundle = EffectClipboard.shared.bundle else { return }
-        let index = effect.flatMap { clip.effects.index(of: $0.id) }.map { $0 + 1 }
+        // Below the effect when the first copied one goes in its stack.
+        let index = effect.flatMap { effect -> Int? in
+            guard bundle.effects.first?.effect.kind.isAudio == effect.kind.isAudio,
+                  let stack = clip.stack(holding: effect.id)
+            else { return nil }
+            return clip[keyPath: stack].index(of: effect.id).map { $0 + 1 }
+        }
         if let last = project.paste(bundle, ontoClip: clip.id, in: timelineID, at: index).last {
             state.select(effect: last)
         }
@@ -682,12 +701,13 @@ struct EffectsPanel: View {
         let key = event.charactersIgnoringModifiers?.lowercased()
         // Command-V pastes below the selected effect, or at the end of the
         // selected clip's stack.
-        if flags == .command, key == "v", let clip = selectedClip, project.hasEffectStack(clip), !EffectClipboard.shared.isEmpty {
-            paste(in: clip, below: clip.effects.first { $0.id == state.selectedEffectID })
+        if flags == .command, key == "v", let clip = selectedClip, project.hasEffectStack(clip) || project.playsAudio(clip),
+           !EffectClipboard.shared.isEmpty {
+            paste(in: clip, below: state.selectedEffectID.flatMap { clip.effect(id: $0) })
             return true
         }
         guard let clip = selectedClip, let effectID = state.selectedEffectID,
-              let effect = clip.effects.first(where: { $0.id == effectID })
+              let effect = clip.effect(id: effectID)
         else {
             return false
         }

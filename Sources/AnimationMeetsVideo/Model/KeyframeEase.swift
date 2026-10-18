@@ -241,8 +241,8 @@ extension EditingProject {
         case .speed(let clipID):
             return clipAndLayer(clipID, in: key.timelineID)?.clip.time.speed.asComponents
         case .control(_, let clipID, let effectID, let controlID):
-            let control = clipAndLayer(clipID, in: key.timelineID)?.clip.effects
-                .first { $0.id == effectID }?.controls.first { $0.id == controlID }
+            let control = clipAndLayer(clipID, in: key.timelineID)?.clip.effect(id: effectID)?
+                .controls.first { $0.id == controlID }
             return control.flatMap { $0.kind.isChoice ? nil : $0.number }
         }
     }
@@ -286,13 +286,9 @@ extension EditingProject {
                 time.speed = AnimatedValue(components: components)
             }
         case .control(_, let clipID, let effectID, let controlID):
-            editClip(clipID, in: key.timelineID) { clip in
-                guard let e = clip.effects.firstIndex(where: { $0.id == effectID }),
-                      let c = clip.effects[e].controls.firstIndex(where: { $0.id == controlID })
-                else {
-                    return
-                }
-                change(&clip.effects[e].controls[c].number)
+            editEffect(effectID, ofClip: clipID, in: key.timelineID) { effect in
+                guard let c = effect.controls.firstIndex(where: { $0.id == controlID }) else { return }
+                change(&effect.controls[c].number)
             }
         }
     }

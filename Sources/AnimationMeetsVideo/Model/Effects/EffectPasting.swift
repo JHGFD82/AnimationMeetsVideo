@@ -62,11 +62,12 @@ struct EffectBundle: Equatable, Sendable {
 }
 
 extension EditingProject {
-    /// The effects with these IDs in a clip's stack, in the order of the
-    /// stack, or the whole stack for nil. Nil if there is nothing to copy.
+    /// The effects with these IDs in a clip's stacks, in the order of the
+    /// stacks (the picture's, then the sound's), or both whole stacks for
+    /// nil. Nil if there is nothing to copy.
     func bundle(ofEffects ids: Set<UUID>?, fromClip clipID: UUID, in timelineID: UUID) -> EffectBundle? {
         guard let clip = clipAndLayer(clipID, in: timelineID)?.clip else { return nil }
-        let chosen = clip.effects.filter { ids?.contains($0.id) ?? true }
+        let chosen = (clip.effects + clip.audioEffects).filter { ids?.contains($0.id) ?? true }
         guard !chosen.isEmpty else { return nil }
         let names = Dictionary(clip.effects.map { ($0.id, $0.displayName) }, uniquingKeysWith: { first, _ in first })
         return EffectBundle(
@@ -84,22 +85,42 @@ extension EditingProject {
         )
     }
 
-    /// Pastes `bundle` into a clip's stack at `index` (the end for nil),
-    /// or in place of the whole stack. Returns the IDs of the new effects;
-    /// empty when the clip has no stack to put them in.
+    /// Pastes `bundle` into a clip's stacks at `index` (the end for nil),
+    /// or in place of the whole stacks. Picture effects go in the picture's
+    /// stack and sound effects in the sound's, each only if the clip has
+    /// one; `index` counts in the stack the bundle's first effect goes to,
+    /// and the other kind goes at the end of its own. Returns the IDs of
+    /// the new effects; empty when the clip has nowhere to put them.
     @discardableResult
     mutating func paste(
         _ bundle: EffectBundle, ontoClip clipID: UUID, in timelineID: UUID, at index: Int? = nil, replacingStack: Bool = false
     ) -> [UUID] {
-        guard let clip = clipAndLayer(clipID, in: timelineID)?.clip, hasEffectStack(clip), !bundle.isEmpty else { return [] }
-        let kept = replacingStack ? [] : clip.effects
-        let delta = CMTimeSubtract(clip.trimStart, bundle.origin)
-        let allowed = CMTimeRange(start: clip.trimStart, end: clip.trimEnd)
-
+        guard let clip = clipAndLayer(clipID, in: timelineID)?.clip, !bundle.isEmpty else { return [] }
+        let firstIsAudio = bundle.effects[0].effect.kind.isAudio
         var newIDs: [UUID: UUID] = [:]
+        var pastedIDs: [UUID] = []
+        for isAudio in [false, true] {
+            let items = bundle.effects.filter { $0.effect.kind.isAudio == isAudio }
+            guard !items.isEmpty, isAudio ? playsAudio(clip) : hasEffectStack(clip) else { continue }
+            let key: WritableKeyPath<TimelineClip, [Effect]> = isAudio ? \.audioEffects : \.effects
+            let stack = paste(items, origin: bundle.origin, into: replacingStack ? [] : clip[keyPath: key], of: clip,
+                              at: isAudio == firstIsAudio ? index : nil, newIDs: &newIDs, pasted: &pastedIDs)
+            editClip(clipID, in: timelineID) { $0[keyPath: key] = stack }
+        }
+        return pastedIDs
+    }
+
+    /// `kept` with `items` pasted in at `index`, their keyframes moved to
+    /// the clip and what couldn't come along noted.
+    private func paste(
+        _ items: [EffectBundle.Effect], origin: CMTime, into kept: [Effect], of clip: TimelineClip, at index: Int?,
+        newIDs: inout [UUID: UUID], pasted pastedIDs: inout [UUID]
+    ) -> [Effect] {
+        let delta = CMTimeSubtract(clip.trimStart, origin)
+        let allowed = CMTimeRange(start: clip.trimStart, end: clip.trimEnd)
         var stack = kept
         var pasted: [Effect] = []
-        for item in bundle.effects {
+        for item in items {
             var effect = item.effect.duplicated()
             newIDs[item.effect.id] = effect.id
             effect.input = nil
@@ -139,8 +160,8 @@ extension EditingProject {
         }
         let at = min(max(index ?? kept.count, 0), kept.count)
         stack.insert(contentsOf: pasted, at: at)
-        editClip(clipID, in: timelineID) { $0.effects = stack }
-        return pasted.map(\.id)
+        pastedIDs += pasted.map(\.id)
+        return stack
     }
 
     /// Whether `name` is what the kind's name or a number on it would be.
@@ -183,7 +204,7 @@ extension EditingProject {
         for timeline in timelines where ids?.contains(timeline.id) ?? true {
             for layer in timeline.layers {
                 for clip in layer.clips {
-                    for effect in clip.effects {
+                    for effect in clip.effects + clip.audioEffects {
                         for change in effect.pasteChanges {
                             entries.append(PasteChangeEntry(
                                 timelineID: timeline.id, timelineName: timeline.name,
@@ -212,6 +233,6 @@ extension EditingProject {
 
     /// Whether the clip has an effect with changes left to resolve.
     func hasUnresolvedPasteChanges(_ clip: TimelineClip) -> Bool {
-        clip.effects.contains { !$0.pasteChanges.isEmpty }
+        (clip.effects + clip.audioEffects).contains { !$0.pasteChanges.isEmpty }
     }
 }

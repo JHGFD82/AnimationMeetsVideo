@@ -645,6 +645,7 @@ enum ProjectStore {
                                 anchorPoint: clip.anchorPoint == AnimatedValue(Vector2.zero)
                                     ? nil : ProjectFile.PropertyEntry(clip.anchorPoint) { [$0.x, $0.y] },
                                 effects: clip.effects.isEmpty ? nil : clip.effects.map(ProjectFile.EffectEntry.init),
+                                audioEffects: clip.audioEffects.isEmpty ? nil : clip.audioEffects.map(ProjectFile.EffectEntry.init),
                                 volume: clip.volume == AnimatedValue(0.0) ? nil : ProjectFile.PropertyEntry(clip.volume) { $0 },
                                 pan: clip.pan == AnimatedValue(0.0) ? nil : ProjectFile.PropertyEntry(clip.pan) { $0 },
                                 passThrough: clip.passThrough ? true : nil,
@@ -802,7 +803,8 @@ enum ProjectStore {
                                 anchorPoint: clipEntry.anchorPoint?.property(default: .zero) {
                                     $0.count == 2 ? Vector2(x: $0[0], y: $0[1]) : nil
                                 } ?? AnimatedValue(Vector2.zero),
-                                effects: (clipEntry.effects ?? []).compactMap(\.effect),
+                                effects: (clipEntry.effects ?? []).compactMap(\.effect).filter { !$0.kind.isAudio },
+                                audioEffects: (clipEntry.audioEffects ?? []).compactMap(\.effect).filter(\.kind.isAudio),
                                 volume: clipEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0),
                                 pan: clipEntry.pan?.property(default: 0.0) { AudioPan.clamped($0) } ?? AnimatedValue(0.0),
                                 passThrough: clipEntry.passThrough ?? false,

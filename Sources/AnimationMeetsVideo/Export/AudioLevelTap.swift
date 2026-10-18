@@ -25,16 +25,19 @@ struct MixStage: Equatable, Sendable {
     }
 }
 
-/// Every clip's and layer's volume and pan curves, shared between the
-/// editor and the audio taps playing it. The editor swaps in new curves as
-/// they are edited; the taps read whichever set is current as each buffer
-/// plays, so a change is heard at once without rebuilding the player.
+/// Every clip's and layer's volume and pan curves, and every clip's sound
+/// effects, shared between the editor and the audio taps playing it. The
+/// editor swaps in new ones as they are edited; the taps read whichever set
+/// is current as each buffer plays, so a change is heard at once without
+/// rebuilding the player.
 final class MixCurves: @unchecked Sendable {
     /// Curves by clip or layer ID. Only those that aren't at their default
     /// throughout (0 dB, centered) are kept.
     struct Curves: Equatable, Sendable {
         var volume: [UUID: AnimatedValue<Double>] = [:]
         var pan: [UUID: AnimatedValue<Double>] = [:]
+        /// The enabled sound effects of each clip that has any, in order.
+        var effects: [UUID: [Effect]] = [:]
     }
 
     private let curves = OSAllocatedUnfairLock(initialState: Curves())
@@ -46,6 +49,8 @@ final class MixCurves: @unchecked Sendable {
     convenience init(volume: [UUID: AnimatedValue<Double>], pan: [UUID: AnimatedValue<Double>] = [:]) {
         self.init(Curves(volume: volume, pan: pan))
     }
+
+    var current: Curves { curves.withLock { $0 } }
 
     /// The curves of every clip and Sound or Music layer of `project`.
     static func of(_ project: EditingProject) -> Curves {
@@ -60,6 +65,8 @@ final class MixCurves: @unchecked Sendable {
                 for clip in layer.clips {
                     if clip.volume != flat { curves.volume[clip.id] = clip.volume }
                     if clip.pan != flat { curves.pan[clip.id] = clip.pan }
+                    let effects = clip.audioEffects.filter(\.enabled)
+                    if !effects.isEmpty { curves.effects[clip.id] = effects }
                 }
             }
         }
@@ -98,8 +105,9 @@ final class MixCurves: @unchecked Sendable {
     }
 }
 
-/// Applies volumes and pans to one composition audio track as it plays or
-/// exports, and reports what it lets through to a `MixLevelMeter`.
+/// Applies sound effects, volumes and pans to one composition audio track
+/// as it plays or exports, and reports what it lets through to a
+/// `MixLevelMeter`.
 enum AudioLevelTap {
     /// An audio mix with a tap on each of `tracks`.
     static func audioMix(
@@ -113,7 +121,14 @@ enum AudioLevelTap {
             // How retimed sound is played: at the new speed at its own pitch
             // (spectral), or like tape (varispeed).
             if let pitch = entry.pitch { parameters.audioTimePitchAlgorithm = pitch }
-            let context = TapContext(stages: entry.stages, curves: curves, meter: meter, meterIndex: index)
+            // Which effects the track plays through is fixed when the mix
+            // is made (a change to it changes `CompositionKey`, which makes
+            // a new one); their settings are read as it plays.
+            let current = curves.current
+            let effects = entry.stages.enumerated().flatMap { stage, entry in
+                (current.effects[entry.id] ?? []).map { (stage: stage, id: $0.id, kind: $0.kind) }
+            }
+            let context = TapContext(stages: entry.stages, effects: effects, curves: curves, meter: meter, meterIndex: index)
             guard let tap = makeTap(context) else { return nil }
             parameters.audioTapProcessor = tap
             return parameters
@@ -129,10 +144,13 @@ enum AudioLevelTap {
             finalize: { tap in
                 Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).release()
             },
-            prepare: { tap, _, format in
-                Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue().format = format.pointee
+            prepare: { tap, maxFrames, format in
+                Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
+                    .prepare(format: format.pointee, maxFrames: Int(maxFrames))
             },
-            unprepare: nil,
+            unprepare: { tap in
+                Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue().unprepare()
+            },
             process: { tap, frameCount, _, bufferList, frameCountOut, flagsOut in
                 var timeRange = CMTimeRange()
                 guard MTAudioProcessingTapGetSourceAudio(tap, frameCount, bufferList, flagsOut, &timeRange, frameCountOut) == noErr else {
@@ -155,16 +173,58 @@ enum AudioLevelTap {
     /// `prepare`.
     private final class TapContext: @unchecked Sendable {
         let stages: [MixStage]
+        /// The sound effects the track plays through, innermost stage
+        /// first, each with the index of the stage it belongs to.
+        let effects: [(stage: Int, id: UUID, kind: EffectKind)]
         let curves: MixCurves
         let meter: MixLevelMeter?
         let meterIndex: Int
         var format = AudioStreamBasicDescription()
+        /// The effects as Audio Units, made once the format is known.
+        private var units: [(stage: Int, unit: AudioEffectUnit)] = []
+        /// Where the next buffer starts if playing carries straight on, in
+        /// seconds; anything else is a jump, which resets the units.
+        private var expectedStart: Double?
 
-        init(stages: [MixStage], curves: MixCurves, meter: MixLevelMeter?, meterIndex: Int) {
+        init(stages: [MixStage], effects: [(stage: Int, id: UUID, kind: EffectKind)], curves: MixCurves, meter: MixLevelMeter?, meterIndex: Int) {
             self.stages = stages
+            self.effects = effects
             self.curves = curves
             self.meter = meter
             self.meterIndex = meterIndex
+        }
+
+        func prepare(format: AudioStreamBasicDescription, maxFrames: Int) {
+            self.format = format
+            // An effect whose unit can't be made, or a format the units
+            // can't take, plays the sound without it.
+            units = effects.compactMap { effect in
+                AudioEffectUnit(effectID: effect.id, kind: effect.kind, format: format, maxFrames: maxFrames).map { (effect.stage, $0) }
+            }
+            expectedStart = nil
+        }
+
+        func unprepare() {
+            units = []
+        }
+
+        /// Runs the buffer through the sound effects, each set as its
+        /// controls are at the buffer's start.
+        private func applyEffects(_ bufferList: UnsafeMutablePointer<AudioBufferList>, frames: Int, start: CMTime) {
+            let seconds = start.seconds
+            if let expected = expectedStart, abs(seconds - expected) > 1 / format.mSampleRate {
+                for (_, unit) in units { unit.reset() }
+            }
+            expectedStart = seconds + Double(frames) / format.mSampleRate
+            let current = curves.current
+            for (stage, unit) in units {
+                // An effect switched off or deleted since the mix was made
+                // is left out until the player is rebuilt.
+                let owner = stages[stage]
+                guard let effect = current.effects[owner.id]?.first(where: { $0.id == unit.effectID }) else { continue }
+                unit.apply(effect, at: owner.local(start))
+                unit.process(bufferList, frames: frames)
+            }
         }
 
         func process(_ bufferList: UnsafeMutablePointer<AudioBufferList>, frames: Int, start: CMTime) {
@@ -174,6 +234,7 @@ enum AudioLevelTap {
                   format.mFormatFlags & kAudioFormatFlagIsFloat != 0, format.mBitsPerChannel == 32,
                   format.mSampleRate > 0
             else { return }
+            if !units.isEmpty { applyEffects(bufferList, frames: frames, start: start) }
             let rate = format.mSampleRate
             let startSeconds = start.seconds
             let first = curves.gains(through: stages, at: startSeconds)

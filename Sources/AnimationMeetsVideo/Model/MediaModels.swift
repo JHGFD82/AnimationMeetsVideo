@@ -530,6 +530,9 @@ struct TimelineClip: Identifiable, Equatable {
     var anchorPoint = AnimatedValue(Vector2.zero)
     /// What is done to the picture, top to bottom (see `Effect`).
     var effects: [Effect] = []
+    /// What is done to the sound, top to bottom: effects whose kind
+    /// `isAudio`, played before the clip's volume and pan.
+    var audioEffects: [Effect] = []
     /// The volume of the clip's sound, in decibels (see `AudioLevel`),
     /// keyframed in the clip's source time. Clips with no sound have none.
     var volume = AnimatedValue(0.0)

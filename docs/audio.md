@@ -1,10 +1,11 @@
 # Audio levels
 
 Status: **implemented**: keyframed volume and pan on clips and on Sound
-and Music layers, applied in playback and export, and a meter of the whole
-mix. The level and pan math, saving, nesting, the mix's gain above unity,
-pan in the mix and the meter's measurements and movement are unit tested
-(the mix by reading a composition through its audio mix). The
+and Music layers, sound effects (EQ, Compressor, Limiter) on clips, all
+applied in playback and export, and a meter of the whole mix. The level
+and pan math, saving, nesting, the mix's gain above unity, pan and each
+sound effect in the mix, and the meter's measurements and movement are
+unit tested (the mix by reading a composition through its audio mix). The
 controls and the meter have not yet been driven on screen. What is not built is listed
 under [Not implemented yet](#not-implemented-yet).
 
@@ -78,6 +79,47 @@ volume whatever its pan: its composition track reaches the audio tap as one
 channel, which the mix then plays on both sides, and a tap can't add a
 channel. Panning mono needs a stereo copy of the file to play from instead.
 
+## Sound effects
+
+A clip with sound has a second stack for its sound (`audioEffects`), shown
+in the effects panel under its picture's stack and Shutter, above Volume
+and Pan: the sound plays through its effects top to bottom, then its volume
+and pan. The library's **Sound** category holds them; they are dragged onto
+a clip or into the stack, or double-clicked, like picture effects, and
+renamed, reordered, switched off, copied, pasted, saved in presets and
+keyframed the same way. A sound effect dropped on a picture effect goes at
+the end of the sound's stack, and an effect moves only within its own
+stack. Audio-only clips have a sound stack and no picture stack. Detaching
+a video clip's sound takes its sound effects with it.
+
+- **EQ**: **Low Cut** (a high-pass, 20 Hz to 1 kHz; off at 20 Hz), **Bass**
+  (a shelf at 100 Hz), **Mid** (a peak an octave wide at **Mid Freq**, 100
+  Hz to 10 kHz) and **Treble** (a shelf at 8 kHz), each ±24 dB. At its
+  defaults it changes nothing and is dimmed.
+- **Compressor**: **Threshold** (−60 to 0 dB), **Headroom** (how far over
+  the threshold sound may go before it is held down, 0.1 to 40 dB),
+  **Attack** (1 to 300 ms), **Release** (10 ms to 3 s) and **Makeup** gain
+  (−20 to +40 dB). It compresses at its defaults, so it is never dimmed.
+- **Limiter**: **Drive** (0 to +24 dB into it) and **Release** (1 to
+  40 ms); it holds the sound under full scale.
+
+They are Apple's Audio Units (`AUNBandEQ`, `AUDynamicsProcessor`,
+`AUPeakLimiter`), each made by the track's tap when it is prepared
+(`AudioEffectUnit`) and run in place on its buffers before the volume and
+pan. A clip with an enabled sound effect has its sound on a track of its
+own, as one with a volume or pan does. Settings are read from `MixCurves`
+as each buffer plays, at the buffer's start, so edits and keyframes are
+heard without a rebuild; which effects a track runs is part of
+`CompositionKey`, so adding, removing, reordering, switching on or off
+rebuilds the player. A jump in time (a seek or a loop) resets the units,
+so a compressor doesn't carry what it heard before. Effects on a nested
+timeline's clip run on each track inside it separately, not on their sum.
+
+The compressor delays its sound by about 5 ms and the limiter by 2 ms,
+which isn't made up for. Apple's voice isolation unit (`AUSoundIsolation`)
+isn't offered: it delays sound by about 76 ms, two frames, which would
+have to be made up by starting the clip's sound that much earlier.
+
 ### Playback and export
 
 AVFoundation's own mix volume can't go above unity, so each composition
@@ -133,7 +175,11 @@ A clip's `volume`, and a Sound or Music layer's, is written only when it
 isn't a steady 0 dB, as a property entry: `{"value": -6}` or
 `{"keyframes": [{"time": "0s", "value": 0}, …]}`. Values outside −60…+6
 are clamped on load. Its `pan` is written the same way while it isn't a
-steady center, and values outside −100…100 are clamped on load.
+steady center, and values outside −100…100 are clamped on load. A clip's
+sound effects are written as `audioEffects`, in the same shape as its
+`effects` (see [effects.md](effects.md#saving)), only while it has any; a
+picture effect in `audioEffects`, or a sound effect in `effects`, is
+dropped on load.
 
 ## Not implemented yet
 
@@ -142,5 +188,8 @@ steady center, and values outside −100…100 are clamped on load.
 - Dragging the level line up and down in the lane; levels are set in the
   field or with the fader.
 - Audio fades under transitions.
+- Sound effects on Sound and Music layers, and voice isolation (see
+  [Sound effects](#sound-effects)).
+- Making up for a sound effect's delay.
 - A meter per layer, and reading the mix while scrubbing or paused.
 - Loudness (LUFS) rather than peak level.

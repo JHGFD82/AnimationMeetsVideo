@@ -58,7 +58,9 @@ before blurring, put Scale above Blur. To blur first, drag it the other way.
 ## What has a stack
 
 Every visual clip has one: a media clip with pictures, a nested timeline,
-and later images, text and shapes. Audio-only clips have none. Layers no
+and later images, text and shapes. Audio-only clips have none. Clips with
+sound also have a stack of sound effects, described in
+[audio.md](audio.md#sound-effects). Layers no
 longer have a transform. Animation across several clips goes on an
 adjustment layer (see [Adjustment layers](#adjustment-layers)). Volume
 moves to clips too (see [Volume](#volume)).

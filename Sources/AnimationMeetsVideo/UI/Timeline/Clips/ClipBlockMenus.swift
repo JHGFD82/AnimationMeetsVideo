@@ -21,10 +21,10 @@ extension ClipBlockView {
         if case .timeline = clip.source {
             Toggle("Pass Through", isOn: Binding(get: { passesThrough }, set: { onSetPassThrough($0) }))
         }
-        if acceptsEffects {
+        if acceptsEffects || acceptsSoundEffects {
             Divider()
             Button("Copy Effects", action: onCopyEffects)
-                .disabled(clip.effects.isEmpty)
+                .disabled(clip.effects.isEmpty && clip.audioEffects.isEmpty)
             Button("Paste Effects", action: onPasteEffects)
                 .disabled(EffectClipboard.shared.isEmpty)
         }
