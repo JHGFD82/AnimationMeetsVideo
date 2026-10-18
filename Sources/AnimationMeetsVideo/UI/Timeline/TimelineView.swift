@@ -92,6 +92,7 @@ struct TimelineView: View {
     /// over it; nil otherwise.
     @State var newLayerHover: NewLayerHover?
     @State private var showingViewOptions = false
+    @State private var showingNewShape = false
     /// The layer whose beats are shown. Only layers that still have beats are
     /// offered, so a deleted layer simply stops matching and markers vanish.
     @State private var chosenBeatLayerID: UUID?
@@ -368,25 +369,19 @@ struct TimelineView: View {
                     }
                     .help("New adjustment layer: effects applied to the layers below it")
                     .accessibilityLabel("New adjustment layer")
-                    Menu {
-                        ForEach(EffectKind.allCases.filter(\.drawsShape)) { kind in
-                            Button(kind.name) { addShapeLayer(kind) }
-                        }
+                    Button {
+                        showingNewShape = true
                     } label: {
                         Image(systemName: "square.on.circle")
                     }
-                    // A menu draws and opens through the button style around
-                    // it, and the icon style around these buttons never opens
-                    // one; the standard style lets the menu style decide.
-                    .buttonStyle(.automatic)
-                    .menuStyle(.borderlessButton)
-                    // A borderless menu draws its glyph in the tint; quiet it
-                    // to match the other icon buttons.
-                    .tint(Design.textSecondary)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
                     .help("New shape layer at the playhead: a rectangle, ellipse, polygon or star, shaped in the effects panel")
                     .accessibilityLabel("New shape layer")
+                    .popover(isPresented: $showingNewShape) {
+                        NewShapePopover { kind in
+                            showingNewShape = false
+                            addShapeLayer(kind)
+                        }
+                    }
                 }
                 .buttonStyle(.icon)
                 .toggleStyle(.icon)

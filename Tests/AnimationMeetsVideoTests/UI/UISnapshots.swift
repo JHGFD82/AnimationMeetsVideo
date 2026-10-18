@@ -143,6 +143,15 @@ struct UISnapshots {
         )
     }
 
+    /// The shape button's popover: a row for each shape a new layer can
+    /// start with.
+    @Test func newShapePopover() throws {
+        try SnapshotSupport.render(
+            NewShapePopover(onAdd: { _ in }).background(Design.Surface.overlay.color),
+            "new-shape-popover", size: CGSize(width: 200, height: 150)
+        )
+    }
+
     /// The record popover before a take, with the last take's error.
     @Test func recordPopover() throws {
         try SnapshotSupport.render(
