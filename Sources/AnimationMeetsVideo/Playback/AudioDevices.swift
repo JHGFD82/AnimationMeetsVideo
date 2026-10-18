@@ -2,8 +2,9 @@ import CoreAudio
 import Foundation
 import Observation
 
-/// A device sound can play out of, as Core Audio's hardware layer lists it.
-struct AudioOutputDevice: Identifiable, Equatable, Sendable {
+/// A device sound can play out of or be recorded from, as Core Audio's
+/// hardware layer lists it.
+struct AudioDevice: Identifiable, Equatable, Sendable {
     let id: AudioObjectID
     /// What stays the same across launches and replugging; what the
     /// preferences store.
@@ -15,7 +16,16 @@ struct AudioOutputDevice: Identifiable, Equatable, Sendable {
 /// beat tick are set to play out of. See docs/audio.md, "Output devices".
 enum AudioDevices {
     /// Every device with somewhere to send sound, in the system's order.
-    static func outputs() -> [AudioOutputDevice] {
+    static func outputs() -> [AudioDevice] {
+        devices(scope: kAudioObjectPropertyScopeOutput)
+    }
+
+    /// Every device sound can be recorded from: microphones and interfaces.
+    static func inputs() -> [AudioDevice] {
+        devices(scope: kAudioObjectPropertyScopeInput)
+    }
+
+    private static func devices(scope: AudioObjectPropertyScope) -> [AudioDevice] {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain
         )
@@ -26,16 +36,59 @@ enum AudioDevices {
         return ids.compactMap { id in
             // Hidden devices are the system's own, such as the aggregate it
             // makes for the default device.
-            guard hasOutput(id), !isHidden(id), let uid = string(kAudioDevicePropertyDeviceUID, of: id),
+            guard hasStreams(id, scope: scope), !isHidden(id), let uid = string(kAudioDevicePropertyDeviceUID, of: id),
                   let name = string(kAudioObjectPropertyName, of: id)
             else { return nil }
-            return AudioOutputDevice(id: id, uid: uid, name: name)
+            return AudioDevice(id: id, uid: uid, name: name)
         }
     }
 
-    /// The device with `uid`, if it is plugged in now.
-    static func device(uid: String) -> AudioOutputDevice? {
+    /// The output device with `uid`, if it is plugged in now.
+    static func device(uid: String) -> AudioDevice? {
         outputs().first { $0.uid == uid }
+    }
+
+    /// The UID of the system's default output or input device.
+    static func defaultUID(input: Bool = false) -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: input ? kAudioHardwarePropertyDefaultInputDevice : kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain
+        )
+        var id = AudioObjectID(0)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &id) == noErr, id != 0 else {
+            return nil
+        }
+        return string(kAudioDevicePropertyDeviceUID, of: id)
+    }
+
+    /// How long after sound reaches an input device it arrives as samples:
+    /// the device's latency, its safety offset and its stream's, in seconds.
+    static func inputLatency(of id: AudioObjectID) -> Double {
+        func frames(_ selector: AudioObjectPropertySelector, of object: AudioObjectID, scope: AudioObjectPropertyScope) -> UInt32 {
+            var address = AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+            var value: UInt32 = 0
+            var size = UInt32(MemoryLayout<UInt32>.size)
+            return AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr ? value : 0
+        }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyNominalSampleRate, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain
+        )
+        var rate: Float64 = 0
+        var size = UInt32(MemoryLayout<Float64>.size)
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &rate) == noErr, rate > 0 else { return 0 }
+        var total = frames(kAudioDevicePropertyLatency, of: id, scope: kAudioObjectPropertyScopeInput)
+            + frames(kAudioDevicePropertySafetyOffset, of: id, scope: kAudioObjectPropertyScopeInput)
+        address.mSelector = kAudioDevicePropertyStreams
+        address.mScope = kAudioObjectPropertyScopeInput
+        size = 0
+        if AudioObjectGetPropertyDataSize(id, &address, 0, nil, &size) == noErr, size > 0 {
+            var streams = [AudioStreamID](repeating: 0, count: Int(size) / MemoryLayout<AudioStreamID>.size)
+            if AudioObjectGetPropertyData(id, &address, 0, nil, &size, &streams) == noErr, let first = streams.first {
+                total += frames(kAudioStreamPropertyLatency, of: first, scope: kAudioObjectPropertyScopeGlobal)
+            }
+        }
+        return Double(total) / rate
     }
 
     /// The device the editor's sound plays out of: the one chosen in
@@ -61,9 +114,9 @@ enum AudioDevices {
         DeviceListObservation(handler)
     }
 
-    private static func hasOutput(_ id: AudioObjectID) -> Bool {
+    private static func hasStreams(_ id: AudioObjectID, scope: AudioObjectPropertyScope) -> Bool {
         var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyStreams, mScope: kAudioObjectPropertyScopeOutput, mElement: kAudioObjectPropertyElementMain
+            mSelector: kAudioDevicePropertyStreams, mScope: scope, mElement: kAudioObjectPropertyElementMain
         )
         var size: UInt32 = 0
         return AudioObjectGetPropertyDataSize(id, &address, 0, nil, &size) == noErr && size > 0
@@ -104,14 +157,18 @@ final class DeviceListObservation {
     }
 }
 
-/// The output devices, kept up to date for a view to list.
+/// The output and input devices, kept up to date for a view to list.
 @MainActor
 @Observable
 final class AudioDeviceList {
-    private(set) var devices: [AudioOutputDevice] = AudioDevices.outputs()
+    private(set) var devices: [AudioDevice] = AudioDevices.outputs()
+    private(set) var inputs: [AudioDevice] = AudioDevices.inputs()
     @ObservationIgnored private var observation: DeviceListObservation?
 
     init() {
-        observation = AudioDevices.observe { [weak self] in self?.devices = AudioDevices.outputs() }
+        observation = AudioDevices.observe { [weak self] in
+            self?.devices = AudioDevices.outputs()
+            self?.inputs = AudioDevices.inputs()
+        }
     }
 }

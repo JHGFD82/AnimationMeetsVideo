@@ -40,8 +40,10 @@ Follow Google's change-description conventions for every commit.
   - `Rendering/`: drawing frames. `Compositor/` draws a frame's stack,
     `Transitions/` the transitions that need both pictures, and `Cache/`
     renders segments ahead; viewer quality stays at the top.
-  - `Playback/`: the shared player, beat ticks, mix meter and composition
-    key: playback logic that is not a view.
+  - `Playback/`: the shared player, beat ticks, mix meter, output devices
+    and composition key: playback logic that is not a view.
+  - `Recording/`: recording takes from input devices and other apps'
+    sound (Core Audio process taps), and placing them on the timeline.
   - `UI/`: SwiftUI views by area: `Editor/` (shell, toolbar, editor
     surface), `Timeline/` (with `Clips/` for what draws on one clip),
     `Effects/` (effects panel), `EffectsLibrary/` (effects and transitions

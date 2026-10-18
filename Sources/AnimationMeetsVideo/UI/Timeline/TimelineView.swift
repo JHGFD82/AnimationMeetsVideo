@@ -66,6 +66,11 @@ struct TimelineView: View {
     /// The chosen zoom, or nil while the whole timeline is fitted to the
     /// window. Kept in points per second, not relative to the fit, so
     /// moving a clip past the end doesn't rescale everything.
+    /// Records takes onto the timeline from the header's record button.
+    @State var recorder = AudioRecorder()
+    @State var showingRecord = false
+    @State var recordError: String?
+
     @State var zoomedPixelsPerSecond: CGFloat?
     @State var scrollX: CGFloat = 0
     @State var trackAreaWidth: CGFloat = 800
@@ -340,6 +345,17 @@ struct TimelineView: View {
                 .toggleStyle(.icon)
                 Groove(axis: .vertical).frame(height: 16)
                 HStack(spacing: 2) {
+                    Button {
+                        showingRecord = true
+                    } label: {
+                        Image(systemName: recorder.isRecording ? "record.circle.fill" : Design.Symbol.record)
+                            .foregroundStyle(recorder.isRecording ? Design.statusDanger : Design.textSecondary)
+                    }
+                    .help(recorder.isRecording ? "Recording: open to stop" : "Record a take from a microphone or an app onto a new Sound layer")
+                    .accessibilityLabel(recorder.isRecording ? "Recording" : "Record")
+                    .popover(isPresented: $showingRecord) {
+                        RecordPopover(recorder: recorder, onRecord: startRecording, onStop: stopRecording, error: recordError)
+                    }
                     Toggle(isOn: $snapping) {
                         Image(systemName: "arrow.right.and.line.vertical.and.arrow.left")
                     }

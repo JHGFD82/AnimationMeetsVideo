@@ -103,6 +103,18 @@ struct UISnapshots {
         )
     }
 
+    /// The record popover before a take, with the last take's error.
+    @Test func recordPopover() throws {
+        try SnapshotSupport.render(
+            RecordPopover(
+                recorder: AudioRecorder(), onRecord: { _, _ in }, onStop: {},
+                error: RecordingError.nothingRecorded.localizedDescription
+            )
+            .background(Design.Surface.overlay.color),
+            "record-popover", size: CGSize(width: 300, height: 230)
+        )
+    }
+
     /// Annotation ink: two finished strokes and one being drawn.
     @Test func annotations() throws {
         let model = AnnotationModel()

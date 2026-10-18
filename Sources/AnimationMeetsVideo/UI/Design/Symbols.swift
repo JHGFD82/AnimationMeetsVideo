@@ -35,5 +35,8 @@ extension Design {
 
         /// A saved stack of effects, in the library's Presets tab.
         static let preset = "bookmark"
+
+        /// Recording a take onto the timeline.
+        static let record = "record.circle"
     }
 }

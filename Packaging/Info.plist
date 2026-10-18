@@ -24,6 +24,10 @@
 	<string>public.app-category.video</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Animation Meets Video records voice-over and other takes from your microphone onto the timeline.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Animation Meets Video records the sound another app plays onto the timeline when you choose that app as a take's source.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>

@@ -3,8 +3,12 @@
 Status: **implemented**: keyframed volume and pan on clips and on Sound
 and Music layers, sound effects (EQ, Compressor, Limiter) on clips,
 fades and crossfades under transitions, all applied in playback and
-export, a meter of the whole mix with its short-term loudness, and
-exports mastered to a loudness target with peaks held under −1 dBFS. The
+export, a meter of the whole mix with its short-term loudness,
+exports mastered to a loudness target with peaks held under −1 dBFS, a
+choice of output devices, and takes recorded from inputs and other apps.
+Writing and placing a take are tested; capturing from a device or an
+app needs the system's permission prompts, so it isn't, and has not yet
+been tried in the running app. The
 loudness measurement is tested against BS.1770's reference levels and
 gates. The level and pan math, saving,
 nesting, the mix's gain above unity, pan, fades and each sound effect in
@@ -269,6 +273,41 @@ on a queue of its own and leaves the engine alone on the main thread
 until it is there. A chosen device that is unplugged plays out of the
 system's default, and the sound moves back when it is plugged in again;
 Settings keeps the choice, shown as an unplugged device.
+
+## Recording
+
+The record button in the timeline's header records a **take** onto the
+timeline. Its popover picks what to record from: an **input** (the
+default input, or any microphone or interface) or an **app**'s sound
+(any running app Core Audio knows, playing ones first). With **Play the
+timeline while recording** on (the default), the timeline plays from the
+playhead while the take records, for voice-over or for catching what a
+DAW or browser plays in time with the picture; off, the take lands at the
+playhead. **Stop** (or Return) ends it. The button stays red while a take
+records, and the popover shows its length and level. Both choices are
+remembered in the app's defaults.
+
+The take goes on a new Sound layer at the top of its area, as a clip of a
+new asset named for when it was recorded ("Recording 2026-10-17 at
+22.05.09"). The file is a 32-bit float CAF at the source's own rate,
+copied into the project's `Media/` folder, or for a project not saved yet
+kept in `Music/Animation Meets Video/Recordings`.
+
+- **Inputs** record through an audio engine's input node, pointed at the
+  chosen device (`InputCapture`). macOS asks once for the microphone.
+- **Apps** record through a Core Audio process tap on every process of
+  the app (a browser plays from its helpers), read by a private aggregate
+  device on the default output's clock (`AppCapture`). The app is still
+  heard. macOS asks once whether other apps' sound may be recorded.
+- Buffers are written as they arrive, off the main thread
+  (`TakeWriter`). Each carries the host time it reached the computer; the
+  first one that arrives once the timeline is moving is converted through
+  the player item's timebase to timeline time, and the take is placed
+  back from there by the frames that came before it. An input's own
+  latency (its device's latency, safety offset and stream latency) is
+  taken off first, so a voice lands where it was spoken against what was
+  heard. Sound clips aren't held to frames, so the take keeps that time
+  exactly.
 
 ## Saving
 
