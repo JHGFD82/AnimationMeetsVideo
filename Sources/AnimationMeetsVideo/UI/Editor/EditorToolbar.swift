@@ -12,7 +12,7 @@ struct EditorToolbar: View {
     let analysis: AssetAnalysis
     /// Pauses for an export, whose ProRes 422 output reuses its renders.
     let renderer: RenderScheduler
-    @State private var selectedPreset: ProResPreset = .proRes422
+    @State private var selectedFormat = ExportFormat.proRes422
     @AppStorage(Preferences.exportLoudness) private var loudness = LoudnessTarget.asMixed
     @State private var exportTask: Task<Void, Never>?
     @State private var exportProgress: Double = 0
@@ -96,15 +96,19 @@ struct EditorToolbar: View {
             // to export, and exporting it — so they sit together with no
             // gap, away from everything else on the rail.
             HStack(spacing: Design.Space.close) {
-                Picker("ProRes preset", selection: $selectedPreset) {
-                    ForEach(ProResPreset.allCases) { preset in
-                        Text(preset.rawValue).tag(preset)
+                Picker("Export format", selection: $selectedFormat) {
+                    ForEach(ExportFormat.allCases.filter { $0.movie != nil }) { format in
+                        Text(format.name).tag(format)
+                    }
+                    Divider()
+                    ForEach(ExportFormat.allCases.filter { $0.movie == nil }) { format in
+                        Text(format.name).tag(format)
                     }
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
                 .frame(width: 130)
-                .help("ProRes 422 exports reuse the stretches already rendered in the background; ProRes 4444 composites everything from the sources.")
+                .help("ProRes 422 exports reuse the stretches already rendered in the background; ProRes 4444 composites everything from the sources. WAV Mix is the sound alone; WAV Stems is a file for each layer with sound, unmastered.")
                 .disabled(isExporting)
 
                 Picker("Loudness", selection: $loudness) {
@@ -197,14 +201,20 @@ struct EditorToolbar: View {
             showsPasteChanges = true
             return
         }
+        let format = selectedFormat
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.quickTimeMovie]
-        panel.nameFieldStringValue = project.name
+        switch format {
+        case .proRes422, .proRes4444: panel.allowedContentTypes = [.quickTimeMovie]
+        case .wavMix: panel.allowedContentTypes = [.wav]
+        case .wavStems:
+            // The name is a new folder's, with a file per layer in it.
+            panel.message = "Stems are saved in a new folder with this name, one file for each layer with sound."
+        }
+        panel.nameFieldStringValue = format == .wavStems ? "\(project.name) Stems" : project.name
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         let snapshot = project
         let timelineID = activeTimelineID
-        let preset = selectedPreset
         let target = loudness
         let cache = renderer.cache
         exportProgress = 0
@@ -214,18 +224,23 @@ struct EditorToolbar: View {
                 exportTask = nil
                 renderer.setExporting(false)
             }
+            let progress: @Sendable (Double) -> Void = { fraction in
+                Task { @MainActor in exportProgress = fraction }
+            }
             do {
-                try await CompositionExporter.export(
-                    project: snapshot,
-                    timelineID: timelineID,
-                    preset: preset,
-                    loudness: target,
-                    to: url,
-                    cache: cache,
-                    progress: { fraction in
-                        Task { @MainActor in exportProgress = fraction }
-                    }
-                )
+                switch format {
+                case .proRes422, .proRes4444:
+                    try await CompositionExporter.export(
+                        project: snapshot, timelineID: timelineID, preset: format.movie ?? .proRes422,
+                        loudness: target, to: url, cache: cache, progress: progress
+                    )
+                case .wavMix:
+                    try await AudioExport.exportMix(project: snapshot, timelineID: timelineID, loudness: target, to: url, progress: progress)
+                case .wavStems:
+                    try await AudioExport.exportStems(
+                        project: snapshot, timelineID: timelineID, named: snapshot.name, in: url, progress: progress
+                    )
+                }
             } catch is CancellationError {
                 // The user cancelled; nothing to report.
             } catch {

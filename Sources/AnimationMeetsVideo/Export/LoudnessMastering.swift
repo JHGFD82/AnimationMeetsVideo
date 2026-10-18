@@ -113,14 +113,18 @@ enum LoudnessMastering {
         }
     }
 
-    /// Renders the mix to a CAF file at `url`: gained by `gain` dB, then
+    /// Renders the mix to a file at `url`, a 32-bit float CAF unless
+    /// `fileSettings` says otherwise: gained by `gain` dB, then, `limiting`,
     /// through a peak limiter that holds it under `ceiling`. The limiter
     /// looks ahead, so its first moments are dropped and its last flushed
-    /// out, keeping the sound in step with the picture.
+    /// out, keeping the sound in step with the picture. Unlimited, it is
+    /// the mix as it is, and samples past full scale clip in a file that
+    /// holds integers.
     static func render(
-        _ composed: ComposedTimeline, curves: MixCurves, gain: Double, to url: URL,
-        progress: @escaping @Sendable (Double) -> Void = { _ in }
+        _ composed: ComposedTimeline, curves: MixCurves, gain: Double = 0, limiting: Bool = true, to url: URL,
+        fileSettings: [String: Any]? = nil, progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws {
+        let fileSettings = HandedOver(value: fileSettings)
         let reading = try mixReader(composed, curves: curves, interleaved: false)
         let duration = composed.composition.duration.seconds
         try await SampleReading.run { isCancelled in
@@ -135,12 +139,14 @@ enum LoudnessMastering {
                 settings.controls[release].setComponent(0, to: ControlKind.limiterRelease.range!.upperBound, at: .zero)
             }
             limiter.apply(settings, at: .zero)
-            let file = try AVAudioFile(forWriting: url, settings: format.settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            let file = try AVAudioFile(
+                forWriting: url, settings: fileSettings.value ?? format.settings, commonFormat: .pcmFormatFloat32, interleaved: false
+            )
             // Into the limiter, which holds peaks at full scale, a little
             // louder than wanted, and out again under the ceiling.
-            let into = Float(pow(10, (gain - ceiling) / 20))
-            let out = Float(pow(10, ceiling / 20))
-            var toSkip = Int((limiter.latency * sampleRate).rounded())
+            let into = Float(pow(10, (gain - (limiting ? ceiling : 0)) / 20))
+            let out = limiting ? Float(pow(10, ceiling / 20)) : 1
+            var toSkip = limiting ? Int((limiter.latency * sampleRate).rounded()) : 0
             let latencyFrames = toSkip
 
             func push(_ frames: Int, fill: (UnsafeMutablePointer<Float>, Int) -> Void) throws {
@@ -150,7 +156,7 @@ enum LoudnessMastering {
                     for frame in 0..<frames { channels[channel][frame] *= into }
                 }
                 buffer.frameLength = AVAudioFrameCount(frames)
-                limiter.process(buffer.mutableAudioBufferList, frames: frames)
+                if limiting { limiter.process(buffer.mutableAudioBufferList, frames: frames) }
                 let skipped = min(toSkip, frames)
                 toSkip -= skipped
                 guard frames > skipped else { return }

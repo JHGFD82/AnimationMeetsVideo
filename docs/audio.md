@@ -274,6 +274,26 @@ until it is there. A chosen device that is unplugged plays out of the
 system's default, and the sound moves back when it is plugged in again;
 Settings keeps the choice, shown as an unplugged device.
 
+## Exporting sound
+
+Beside the ProRes formats, the export format menu offers the sound alone
+(`ExportFormat`, `AudioExport`), as 24-bit WAV at 48 kHz in stereo:
+
+- **WAV Mix**: the whole mix in one file, as playback hears it, mastered
+  to the Loudness menu's target like a movie's sound (see
+  [Loudness on export](#loudness-on-export)).
+- **WAV Stems**: a file for each layer of the timeline that has sound,
+  in a new folder with the name given, each named for the export and the
+  layer ("Cut - Music 1.wav"). Each holds only that layer: its clips with
+  their effects, volume, pan and fades, its own volume and pan, and the
+  sound of timelines nested on it. Stems aren't mastered, whatever the
+  Loudness menu says, so together they add up to the mix as mixed.
+
+Both read the mix out the way mastering does, through the composition's
+audio mix (`LoudnessMastering.render`, without its limiter unless a
+target is set). Samples past full scale clip in the file, as they would
+on any fixed-point delivery.
+
 ## Recording
 
 The record button in the timeline's header records a **take** onto the
