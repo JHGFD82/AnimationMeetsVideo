@@ -360,8 +360,8 @@ extension EditingProject {
         return slipped
     }
 
-    /// The length of a source with no footage to run out of (a still or an
-    /// adjustment): as long as anyone would want.
+    /// The length of a source with no footage to run out of (a still, an
+    /// adjustment or shapes): as long as anyone would want.
     static let unboundedLength = CMTime(value: 36_000, timescale: 1)
 
     func sourceDuration(for source: ClipSource) -> CMTime? {
@@ -369,7 +369,7 @@ extension EditingProject {
         case .media(let clip) where clip.kind == .image: Self.unboundedLength
         case .media(let clip): clip.duration
         case .timeline(let timeline): timeline.duration
-        case .adjustment: Self.unboundedLength
+        case .adjustment, .graphic: Self.unboundedLength
         case nil: nil
         }
     }

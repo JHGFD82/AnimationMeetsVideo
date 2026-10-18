@@ -22,7 +22,7 @@ accessibility are implemented (each document lists what remains).
 | [rendering.md](rendering.md) | Implemented. Drawing the viewer at reduced size (Auto, Full, Half, Quarter), rendering full-size frames in the background when idle, and reusing them in ProRes 422 exports. |
 | [accessibility.md](accessibility.md) | Implemented (core). Keyboard access to the playhead and clips, VoiceOver across the timeline, inspector, viewer and library, text contrast and reduced motion, the rules new UI follows, and what remains. |
 | [browser.md](browser.md) | Being built. The browser left of the viewer: Clips, Timelines and Presets tabs, filmstrips, skimming in the viewer, whole-clip and range drags, used-media underlines, and preset previews over generated footage. |
-| [graphic-layers.md](graphic-layers.md) | Stills built; shapes and text planned. Still images imported from files, and shapes and text made in the app and drawn as vectors: their model, how the compositor draws them without a track, keeping them sharp, and saving. |
+| [graphic-layers.md](graphic-layers.md) | Stills, rectangles and ellipses built; other shapes and text planned. Still images imported from files, and shapes and text made in the app and drawn as vectors: their model, how the compositor draws them without a track, keeping them sharp, and saving. |
 | [project-package.md](project-package.md) | The on-disk project format: a package folder with a JSON project file, assets, reference data, and a render cache. |
 
 ## Shared principles

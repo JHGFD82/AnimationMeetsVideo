@@ -24,9 +24,10 @@ struct InspectorPanel: View {
 
     private var maxDurationSeconds: Double? {
         switch info {
+        case .media(let clip) where clip.kind == .image: EditingProject.unboundedLength.seconds
         case .media(let clip): clip.duration.seconds
         case .timeline(let timeline): timeline.duration.seconds
-        case .adjustment: 36_000
+        case .adjustment, .graphic: EditingProject.unboundedLength.seconds
         case nil: nil
         }
     }
@@ -83,6 +84,8 @@ struct InspectorPanel: View {
                     InspectorRow("Colour", value: timeline.colorSpace.rawValue)
                 case .adjustment:
                     InspectorRow("Kind", value: "Adjustment")
+                case .graphic:
+                    InspectorRow("Kind", value: "Shapes")
                 case nil:
                     EmptyView()
                 }

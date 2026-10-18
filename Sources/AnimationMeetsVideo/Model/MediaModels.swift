@@ -57,6 +57,8 @@ struct EditingProject: Identifiable, Equatable {
         switch source {
         case .adjustment:
             return .adjustment
+        case .graphic:
+            return .graphic
         case .media(let mediaID):
             guard let clip = mediaClip(id: mediaID) else { return nil }
             return .media(clip)
@@ -501,6 +503,9 @@ enum ClipSource: Equatable {
     /// No picture of its own: its effect stack is applied to the layers
     /// below it. Only on an adjustment layer.
     case adjustment
+    /// Starts from transparency, so its picture is what the shapes in its
+    /// stack draw (see docs/graphic-layers.md).
+    case graphic
 }
 
 /// A placement of a clip (raw media or a nested timeline) on a layer, with
@@ -574,12 +579,14 @@ enum ResolvedClipInfo {
     case media(MediaClip)
     case timeline(Timeline)
     case adjustment
+    case graphic
 
     var name: String {
         switch self {
         case .media(let clip): clip.name
         case .timeline(let timeline): timeline.name
         case .adjustment: "Adjustment"
+        case .graphic: "Shapes"
         }
     }
 
@@ -588,6 +595,7 @@ enum ResolvedClipInfo {
         case .media(let clip): clip.kind.systemImage
         case .timeline: "rectangle.stack"
         case .adjustment: "slider.horizontal.below.rectangle"
+        case .graphic: "square.on.circle"
         }
     }
 
@@ -596,6 +604,7 @@ enum ResolvedClipInfo {
         case .media(let clip): clip.formatSummary
         case .timeline(let timeline): "Nested Timeline · \(timeline.timebaseSummary)"
         case .adjustment: "Adjustment · applies its effects to the layers below"
+        case .graphic: "Shapes · draws the shapes in its effects"
         }
     }
 
@@ -603,7 +612,7 @@ enum ResolvedClipInfo {
         switch self {
         case .media(let clip): clip.kind.hasPictures
         case .timeline(let timeline): !timeline.layers.isEmpty
-        case .adjustment: true
+        case .adjustment, .graphic: true
         }
     }
 
@@ -611,7 +620,7 @@ enum ResolvedClipInfo {
         switch self {
         case .media(let clip): clip.colorSpace.isHDR
         case .timeline(let timeline): timeline.colorSpace.isHDR
-        case .adjustment: false
+        case .adjustment, .graphic: false
         }
     }
 }

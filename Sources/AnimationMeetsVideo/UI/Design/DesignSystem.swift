@@ -98,7 +98,7 @@ enum Design {
     enum ClipTone {
         /// `audio` is sound; `music` is audio on a music layer, a greener
         /// neighbour of it so the two audio areas tell apart at a glance.
-        case video, nested, audio, music, adjustment, unknown
+        case video, nested, audio, music, adjustment, graphic, unknown
 
         var color: Color {
             switch self {
@@ -107,6 +107,7 @@ enum Design {
             case .audio: Design.hex(0x3F9E9A)
             case .music: Design.hex(0x5E9E4C)
             case .adjustment: Design.hex(0xB6609E)
+            case .graphic: Design.hex(0xA86A28)
             case .unknown: Design.hex(0x6A7280)
             }
         }
@@ -249,6 +250,7 @@ extension Design.ClipTone {
             }
         case .timeline: .nested
         case .adjustment: .adjustment
+        case .graphic: .graphic
         case nil: .unknown
         }
     }

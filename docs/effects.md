@@ -215,6 +215,13 @@ footage gets replaced):
   encoding. On a timeline's stored values the same Contrast would look
   different on PQ than on HLG or Rec. 709.
 
+## Shapes
+
+**Shapes** (Rectangle, Ellipse) draw a shape over the picture handed down
+to them, and the steps below act on both. A shape clip has no picture of
+its own, so its picture is its shapes. See
+[graphic-layers.md](graphic-layers.md#shapes).
+
 ## Mattes
 
 The second category is **Mattes**, effects that take an input (see

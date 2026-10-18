@@ -547,7 +547,7 @@ struct EffectsPanel: View {
                     isSelected: isSelected,
                     keyframeTimes: control.number.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
                     playhead: c.frameTime,
-                    linked: control.kind == .scale ? control.linked : nil,
+                    linked: control.kind.isLinkable ? control.linked : nil,
                     onToggleLink: { editControl(control.id, of: effect, in: clip) { $0.linked.toggle() } },
                     dragHandle: handle,
                     isDimmed: effectDimmed || control.isNoOp,
@@ -563,6 +563,7 @@ struct EffectsPanel: View {
                     },
                     onSeek: onSeek,
                     onShowGraph: graphs.map { graphs in { graphs.show(key) } },
+                    color: control.kind.isColor ? colorBinding(control, of: effect, c) : nil,
                     menu: menu
                 ),
                 lane: ParameterLane(
@@ -575,6 +576,26 @@ struct EffectsPanel: View {
             )
             .dropDestination(for: ControlMovePayload.self, action: dropControl)
         }
+    }
+
+    /// A color control's value at the playhead as a color (its components
+    /// read as sRGB, which is how they are drawn), setting all four at once.
+    private func colorBinding(_ control: EffectControl, of effect: Effect, _ c: RowContext) -> Binding<CGColor> {
+        Binding(
+            get: {
+                let rgba = control.values(at: c.sourceNow).map { CGFloat($0) }
+                guard rgba.count == 4 else { return CGColor(gray: 1, alpha: 1) }
+                return CGColor(srgbRed: rgba[0], green: rgba[1], blue: rgba[2], alpha: rgba[3])
+            },
+            set: { picked in
+                guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+                      let srgb = picked.converted(to: space, intent: .defaultIntent, options: nil),
+                      let parts = srgb.components, parts.count >= 4
+                else { return }
+                let values = parts.prefix(4).map { control.kind.clamped(Double($0)) }
+                editControl(control.id, of: effect, in: c.clip) { $0.number.set(ComponentValue(values: values), at: c.sourceNow) }
+            }
+        )
     }
 
     @ViewBuilder

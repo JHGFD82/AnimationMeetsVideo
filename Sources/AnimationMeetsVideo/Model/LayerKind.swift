@@ -43,7 +43,7 @@ extension EditingProject {
     func isAudioOnly(_ clip: TimelineClip) -> Bool {
         switch resolvedInfo(for: clip.source) {
         case .media(let media): media.kind == .audio || clip.streams == .audio
-        case .timeline, .adjustment, nil: false
+        case .timeline, .adjustment, .graphic, nil: false
         }
     }
 

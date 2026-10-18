@@ -45,9 +45,9 @@ struct ProjectFile: Codable {
     }
 
     struct SourceEntry: Codable {
-        enum Kind: String, Codable { case media, timeline, adjustment }
+        enum Kind: String, Codable { case media, timeline, adjustment, graphic }
         var kind: Kind
-        /// The asset or timeline; absent for an adjustment clip.
+        /// The asset or timeline; absent for an adjustment or shape clip.
         var id: UUID?
     }
 
@@ -352,7 +352,7 @@ struct ProjectFile: Codable {
         var kind: String
         /// Absent while enabled.
         var enabled: Bool?
-        /// Scale only; absent while linked.
+        /// Scale and shape size only; absent while as a new control's.
         var linked: Bool?
         var value: ControlValueEntry?
         var keyframes: [KeyframeEntry<ControlValueEntry>]?
@@ -361,7 +361,7 @@ struct ProjectFile: Codable {
             id = control.id
             kind = control.kind.rawValue
             enabled = control.enabled ? nil : false
-            linked = control.kind == .scale && !control.linked ? false : nil
+            linked = control.kind.isLinkable && control.linked != control.kind.linksByDefault ? control.linked : nil
             if control.kind.isChoice {
                 value = .text(control.choice ?? BlendMode.normal.rawValue)
             } else if control.number.isAnimated {
@@ -381,7 +381,7 @@ struct ProjectFile: Codable {
         var control: EffectControl? {
             guard let kind = ControlKind(rawValue: kind) else { return nil }
             var control = EffectControl(id: id, kind: kind, enabled: enabled ?? true)
-            control.linked = linked ?? true
+            control.linked = linked ?? kind.linksByDefault
             if kind.isChoice {
                 if case .text(let name) = value { control.choice = name }
                 return control
@@ -708,7 +708,7 @@ extension ProjectFile {
             } else {
                 fields += [.optional("value", value), .optional("keyframes", .array(keyframe(value)))]
             }
-            if kind == .scale { fields.append(.optional("linked", .bool)) }
+            if kind.isLinkable { fields.append(.optional("linked", .bool)) }
             return object(fields, oneOf: kind.isChoice ? [] : [["value", "keyframes"]])
         }
 
@@ -719,7 +719,7 @@ extension ProjectFile {
             switch kind {
             case .transform: fields.append(.optional("movesAnchor", .bool))
             case .blending: fields.append(.optional("against", .uuid))
-            case .color, .equalizer, .compressor, .limiter, .voiceIsolation: break
+            case .color, .rectangle, .ellipse, .equalizer, .compressor, .limiter, .voiceIsolation: break
             case .matte:
                 fields.append(.optional("input", .object(object([
                     .optional("asset", .uuid), .optional("timeline", .uuid),
@@ -774,6 +774,7 @@ extension ProjectFile {
                 "media": object([.required("kind", .string), .required("id", .uuid)]),
                 "timeline": object([.required("kind", .string), .required("id", .uuid)]),
                 "adjustment": object([.required("kind", .string)]),
+                "graphic": object([.required("kind", .string)]),
             ])),
             .required("startOffset", .time), .required("trimStart", .time), .required("trimEnd", .time),
             .required("autoMatteEnabled", .bool),

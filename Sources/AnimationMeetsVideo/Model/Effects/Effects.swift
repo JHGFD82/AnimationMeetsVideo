@@ -46,6 +46,7 @@ enum BlendMode: String, CaseIterable, Identifiable, Sendable {
 /// A group of effects in the library.
 enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
     case foundations
+    case shapes
     case mattes
     case sound
 
@@ -54,6 +55,7 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
     var name: String {
         switch self {
         case .foundations: "Foundations"
+        case .shapes: "Shapes"
         case .mattes: "Mattes"
         case .sound: "Sound"
         }
@@ -110,6 +112,10 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     case blending
     case color
     case matte
+    /// Shapes draw over the picture handed down to them (see
+    /// docs/graphic-layers.md, "Shapes").
+    case rectangle
+    case ellipse
     case equalizer
     case compressor
     case limiter
@@ -123,6 +129,8 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .blending: "Blending"
         case .color: "Color"
         case .matte: "Matte"
+        case .rectangle: "Rectangle"
+        case .ellipse: "Ellipse"
         case .equalizer: "EQ"
         case .compressor: "Compressor"
         case .limiter: "Limiter"
@@ -133,6 +141,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     var category: EffectCategory {
         switch self {
         case .transform, .blending, .color: .foundations
+        case .rectangle, .ellipse: .shapes
         case .matte: .mattes
         case .equalizer, .compressor, .limiter, .voiceIsolation: .sound
         }
@@ -141,12 +150,17 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     /// Whether it works on the clip's sound rather than its picture.
     var isAudio: Bool { category == .sound }
 
+    /// Whether it draws a shape.
+    var isShape: Bool { category == .shapes }
+
     var systemImage: String {
         switch self {
         case .transform: "arrow.up.left.and.down.right.and.arrow.up.right.and.down.left"
         case .blending: "circle.lefthalf.filled.righthalf.striped.horizontal"
         case .color: "slider.horizontal.3"
         case .matte: "circle.dashed.inset.filled"
+        case .rectangle: "rectangle"
+        case .ellipse: "circle"
         case .equalizer: "slider.vertical.3"
         case .compressor: "arrow.down.right.and.arrow.up.left"
         case .limiter: "line.horizontal.star.fill.line.horizontal"
@@ -160,10 +174,11 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     /// Whether the picture it makes depends on the size it is drawn at, so a
     /// nested timeline holding it can't have its move pushed into its
     /// layers (a blur whose radius is in pixels, say). Effects that work on
-    /// single pixels, or move them, don't.
+    /// single pixels, or move them, don't, and shapes are drawn at the size
+    /// they end up.
     var dependsOnPixelSize: Bool {
         switch self {
-        case .transform, .blending, .color, .matte, .equalizer, .compressor, .limiter, .voiceIsolation: false
+        case .transform, .blending, .color, .matte, .rectangle, .ellipse, .equalizer, .compressor, .limiter, .voiceIsolation: false
         }
     }
 
@@ -174,6 +189,8 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .blending: [.mode, .amount]
         case .color: [.exposure, .contrast, .saturation, .temperature, .tint, .lift, .gamma, .gain]
         case .matte: [.matteMode, .amount]
+        case .rectangle: [.shapeSize, .cornerRadius, .shapePosition, .fill, .stroke, .strokeWidth]
+        case .ellipse: [.shapeSize, .shapePosition, .fill, .stroke, .strokeWidth]
         case .equalizer: [.lowCut, .bass, .mid, .midFrequency, .treble]
         case .compressor: [.threshold, .headroom, .attack, .release, .makeup]
         case .limiter: [.drive, .limiterRelease]
@@ -188,6 +205,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case mode, amount
     case exposure, contrast, saturation, temperature, tint, lift, gamma, gain
     case matteMode
+    case shapeSize, cornerRadius, shapePosition, fill, stroke, strokeWidth
     case lowCut, bass, mid, midFrequency, treble
     case threshold, headroom, attack, release, makeup
     case drive, limiterRelease
@@ -212,6 +230,12 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .lift: "Lift"
         case .gamma: "Gamma"
         case .gain: "Gain"
+        case .shapeSize: "Size"
+        case .cornerRadius: "Corners"
+        case .shapePosition: "Position"
+        case .fill: "Fill"
+        case .stroke: "Stroke"
+        case .strokeWidth: "Stroke Width"
         case .lowCut: "Low Cut"
         case .bass: "Bass"
         case .mid: "Mid"
@@ -227,7 +251,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// The effect kind that lists the control.
+    /// The effect kind that lists the control; for one every shape lists,
+    /// the rectangle.
     var effectKind: EffectKind {
         switch self {
         case .position, .scale, .rotation, .opacity: .transform
@@ -235,6 +260,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .amount: .blending
         case .matteMode: .matte
         case .exposure, .contrast, .saturation, .temperature, .tint, .lift, .gamma, .gain: .color
+        case .shapeSize, .cornerRadius, .shapePosition, .fill, .stroke, .strokeWidth: .rectangle
         case .lowCut, .bass, .mid, .midFrequency, .treble: .equalizer
         case .threshold, .headroom, .attack, .release, .makeup: .compressor
         case .drive, .limiterRelease: .limiter
@@ -244,16 +270,29 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
 
     /// Whether the control changes nothing at its default, so it can be
     /// shown dimmed there. A compressor's, limiter's or voice isolation's
-    /// controls always matter: at their defaults they still work.
+    /// controls always matter: at their defaults they still work. So do a
+    /// shape's, which draw it.
     var hasNeutralDefault: Bool {
         switch effectKind {
-        case .compressor, .limiter, .voiceIsolation: false
+        case .compressor, .limiter, .voiceIsolation, .rectangle: false
         default: true
         }
     }
 
     /// Whether the control is a choice from a list rather than numbers.
     var isChoice: Bool { self == .mode || self == .matteMode }
+
+    /// Whether its two axes can be linked, so editing one changes the other
+    /// in proportion.
+    var isLinkable: Bool { self == .scale || self == .shapeSize }
+
+    /// Whether a new control's axes are linked: a scale's are, a shape's
+    /// size, whose width is usually set on its own, isn't.
+    var linksByDefault: Bool { self == .scale }
+
+    /// Whether the control is a color: red, green, blue and alpha, 0...1,
+    /// as the timeline's encoded values (as a transition's dip color is).
+    var isColor: Bool { self == .fill || self == .stroke }
 
     /// The names of its components, for a graph's legend.
     var componentNames: [String] {
@@ -262,6 +301,9 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .scale: ["x", "y"]
         case .mode, .matteMode: []
         case .lift, .gamma, .gain: ["All", "Red", "Green", "Blue"]
+        case .shapeSize: ["Width", "Height"]
+        case .shapePosition: ["Δx", "Δy"]
+        case .fill, .stroke: ["Red", "Green", "Blue", "Alpha"]
         default: [name]
         }
     }
@@ -276,6 +318,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .lift: [0, 0, 0, 0]
         case .gamma, .gain: [1, 1, 1, 1]
         case .mode, .matteMode: []
+        case .shapeSize: [640, 360]
+        case .cornerRadius, .strokeWidth: [0]
+        case .shapePosition: [0, 0]
+        case .fill: [1, 1, 1, 1]
+        case .stroke: [0, 0, 0, 1]
         case .lowCut: [20]
         case .bass, .mid, .treble, .makeup, .drive: [0]
         case .midFrequency: [1000]
@@ -290,7 +337,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
 
     var unit: String {
         switch self {
-        case .position: " px"
+        case .position, .shapeSize, .cornerRadius, .shapePosition, .strokeWidth: " px"
+        case .fill, .stroke: ""
         case .scale, .opacity, .amount, .contrast, .saturation, .isolation: "%"
         case .rotation: "°"
         case .exposure: " stops"
@@ -306,7 +354,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     var dragStep: Double {
         switch self {
         case .exposure: 0.1
-        case .lift, .gamma, .gain: 0.01
+        case .lift, .gamma, .gain, .fill, .stroke: 0.01
         case .headroom: 0.1
         case .midFrequency: 10
         default: 1
@@ -323,7 +371,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .lift: -1...1
         case .gamma: 0.01...10
         case .gain: 0...10
-        case .position, .scale, .rotation, .mode, .matteMode: nil
+        case .position, .scale, .rotation, .mode, .matteMode, .shapePosition: nil
+        case .shapeSize: 0...100_000
+        case .cornerRadius: 0...50_000
+        case .strokeWidth: 0...10_000
+        case .fill, .stroke: 0...1
         case .lowCut: 20...1000
         case .bass, .mid, .treble: -24...24
         case .midFrequency: 100...10000
@@ -360,13 +412,15 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     var number: AnimatedValue<ComponentValue>
     /// The option picked, for a choice: a `BlendMode` raw value.
     var choice: String?
-    /// Whether editing one scale axis scales the other in proportion.
+    /// Whether editing one axis of a scale or a size changes the other in
+    /// proportion.
     var linked = true
 
     init(id: UUID = UUID(), kind: ControlKind, enabled: Bool = true) {
         self.id = id
         self.kind = kind
         self.enabled = enabled
+        linked = kind.linksByDefault
         number = AnimatedValue(ComponentValue(values: kind.defaultValues))
         switch kind {
         case .mode: choice = BlendMode.normal.rawValue
@@ -418,7 +472,7 @@ struct EffectControl: Identifiable, Equatable, Sendable {
         guard values.indices.contains(index) else { return }
         let old = values
         values[index] = kind.clamped(newValue)
-        if kind == .scale, linked, values.count == 2 {
+        if kind.isLinkable, linked, values.count == 2 {
             let other = 1 - index
             values[other] = old[index] != 0 ? old[other] * newValue / old[index] : newValue
         }
@@ -664,7 +718,8 @@ extension EditingProject {
               kind.isAudio ? playsAudio(clip) : hasEffectStack(clip)
         else { return nil }
         let stack = TimelineClip.stack(for: kind)
-        let effect = Effect.make(kind, among: clip[keyPath: stack])
+        var effect = Effect.make(kind, among: clip[keyPath: stack])
+        if let frame = timeline(id: timelineID)?.frameSize { effect.sizeShape(to: frame) }
         editClip(clipID, in: timelineID) { clip in
             let count = clip[keyPath: stack].count
             clip[keyPath: stack].insert(effect, at: min(max(index ?? count, 0), count))

@@ -46,7 +46,7 @@ struct ParameterRow<MenuContent: View>: View {
     let keyframeTimes: [CMTime]
     /// The playhead, snapped to a frame.
     let playhead: CMTime
-    /// For a scale: whether its two axes are linked.
+    /// For a scale or a size: whether its two axes are linked.
     var linked: Bool?
     var onToggleLink: () -> Void = {}
     var dragHandle: AnyView?
@@ -59,6 +59,8 @@ struct ParameterRow<MenuContent: View>: View {
     let onToggleKeyframe: () -> Void
     let onSeek: (CMTime) -> Void
     var onShowGraph: (() -> Void)?
+    /// For a color: picked with a color well instead of typed as numbers.
+    var color: Binding<CGColor>?
     @ViewBuilder let menu: () -> MenuContent
 
     var body: some View {
@@ -88,14 +90,22 @@ struct ParameterRow<MenuContent: View>: View {
                         .foregroundStyle(linked ? Design.textPrimary : Design.textTertiary.opacity(0.5))
                 }
                 .buttonStyle(.plain)
-                .help(linked ? "Width and height scale together" : "Width and height scale separately")
+                .help(linked ? "Width and height change together" : "Width and height change separately")
             }
 
-            ForEach(components.indices, id: \.self) { index in
-                if index > 0 { Text(",").foregroundStyle(Design.textTertiary) }
-                NumericField(
-                    value: components[index], unit: unit, dragStep: dragStep, dragRange: dragRange(index)
-                ) { onSetComponent(index, $0) }
+            if let color {
+                ColorPicker(name, selection: color, supportsOpacity: true)
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .accessibilityLabel(name)
+                    .help("Pick the \(name.lowercased()) color and its opacity")
+            } else {
+                ForEach(components.indices, id: \.self) { index in
+                    if index > 0 { Text(",").foregroundStyle(Design.textTertiary) }
+                    NumericField(
+                        value: components[index], unit: unit, dragStep: dragStep, dragRange: dragRange(index)
+                    ) { onSetComponent(index, $0) }
+                }
             }
 
             Spacer(minLength: 2)

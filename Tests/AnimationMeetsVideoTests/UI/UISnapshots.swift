@@ -116,6 +116,33 @@ struct UISnapshots {
         )
     }
 
+    /// The effects panel for a shape clip: a rectangle with rounded corners,
+    /// an orange fill and a stroke, so the color wells show.
+    @Test func shapeEffectsPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        project.editClip(shape.clipID, in: timelineID) { clip in
+            for index in clip.effects[0].controls.indices {
+                switch clip.effects[0].controls[index].kind {
+                case .cornerRadius: clip.effects[0].controls[index].number = AnimatedValue(ComponentValue(values: [24]))
+                case .fill: clip.effects[0].controls[index].number = AnimatedValue(ComponentValue(values: [0.95, 0.55, 0.15, 1]))
+                case .strokeWidth: clip.effects[0].controls[index].number = AnimatedValue(ComponentValue(values: [6]))
+                default: break
+                }
+            }
+        }
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID),
+                playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "shape-effects-panel", size: CGSize(width: 520, height: 420)
+        )
+    }
+
     /// The record popover before a take, with the last take's error.
     @Test func recordPopover() throws {
         try SnapshotSupport.render(

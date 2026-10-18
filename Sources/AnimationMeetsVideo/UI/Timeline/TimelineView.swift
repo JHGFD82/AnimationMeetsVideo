@@ -368,6 +368,21 @@ struct TimelineView: View {
                     }
                     .help("New adjustment layer: effects applied to the layers below it")
                     .accessibilityLabel("New adjustment layer")
+                    Menu {
+                        ForEach([EffectKind.rectangle, .ellipse]) { kind in
+                            Button(kind.name) { addShapeLayer(kind) }
+                        }
+                    } label: {
+                        Image(systemName: "square.on.circle")
+                    }
+                    .menuStyle(.borderlessButton)
+                    // A borderless menu draws its glyph in the tint; quiet it
+                    // to match the other icon buttons.
+                    .tint(Design.textSecondary)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("New shape layer at the playhead: a rectangle or an ellipse, shaped in the effects panel")
+                    .accessibilityLabel("New shape layer")
                 }
                 .buttonStyle(.icon)
                 .toggleStyle(.icon)
@@ -1008,6 +1023,17 @@ struct TimelineView: View {
         // Selection goes by ID; the view hasn't seen the new clip yet.
         if let created {
             onSelectClip(created.layerID, TimelineClip(id: created.clipID, source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: .zero))
+        }
+    }
+
+    /// Puts a shape layer at the top of the stack, starting at the
+    /// playhead, and selects its clip.
+    private func addShapeLayer(_ kind: EffectKind) {
+        var created: (layerID: UUID, clipID: UUID)?
+        onEditProject { created = $0.addShapeLayer(kind, to: timelineID, from: playheadTime) }
+        // Selection goes by ID; the view hasn't seen the new clip yet.
+        if let created {
+            onSelectClip(created.layerID, TimelineClip(id: created.clipID, source: .graphic, startOffset: playheadTime, trimStart: .zero, trimEnd: .zero))
         }
     }
 

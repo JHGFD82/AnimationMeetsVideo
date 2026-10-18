@@ -317,6 +317,13 @@ extension CompositionExporter {
                         layerID: layer.id,
                         inputs: inputs
                     ))
+                case .graphic:
+                    // Transparency, which its stack draws shapes on.
+                    ownNodes.append(BuildNode(
+                        content: .graphic, stack: clipStack,
+                        range: CMTimeRange(start: CMTimeAdd(visible.start, offset), duration: visible.duration),
+                        owner: owner, layerID: layer.id, inputs: inputs
+                    ))
                 case .adjustment:
                     // No picture: its stack is applied to the layers it
                     // reaches while it plays.

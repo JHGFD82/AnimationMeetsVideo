@@ -614,6 +614,7 @@ enum ProjectStore {
             case .media(let id): mediaIDs.contains(id) ? ProjectFile.SourceEntry(kind: .media, id: id) : nil
             case .timeline(let id): timelineIDs.contains(id) ? ProjectFile.SourceEntry(kind: .timeline, id: id) : nil
             case .adjustment: ProjectFile.SourceEntry(kind: .adjustment, id: nil)
+            case .graphic: ProjectFile.SourceEntry(kind: .graphic, id: nil)
             }
         }
 
@@ -775,6 +776,7 @@ enum ProjectStore {
             case .media: entry.id.flatMap { importedClips[$0] != nil ? ClipSource.media($0) : nil }
             case .timeline: entry.id.flatMap { timelineIDs.contains($0) ? ClipSource.timeline($0) : nil }
             case .adjustment: .adjustment
+            case .graphic: .graphic
             }
         }
 

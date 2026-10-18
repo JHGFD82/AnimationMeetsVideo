@@ -29,24 +29,31 @@ enum EffectThumbnails {
         // Inside the clip, on its last frame at the latest.
         let last = CMTimeMaximum(clip.startOffset, CMTimeSubtract(clip.endOffset, timeline.frameDuration))
         let at = CMTimeMinimum(CMTimeMaximum(time, clip.startOffset), last)
-        guard let picture = await sourcePicture(of: clip, at: clip.sourceTime(atTimelineTime: at), in: project),
-              let buffer = pixelBuffer(from: picture)
-        else {
-            return [:]
+        let frame = timeline.frameSize
+        let content: DrawClip.Content
+        var buffer: CVPixelBuffer?
+        if clip.source == .graphic {
+            // Shapes start from transparency; there is no picture to read.
+            content = .graphic
+        } else {
+            guard let picture = await sourcePicture(of: clip, at: clip.sourceTime(atTimelineTime: at), in: project),
+                  let read = pixelBuffer(from: picture)
+            else {
+                return [:]
+            }
+            buffer = read
+            let base = fit(from: CGSize(width: picture.width, height: picture.height), to: frame)
+            content = .media(MediaDraw(trackID: 1, base: base, url: URL(fileURLWithPath: "/dev/null"), sourceStart: .zero, segmentStart: .zero))
         }
 
-        let frame = timeline.frameSize
         let center = CGPoint(x: frame.width / 2, y: frame.height / 2)
-        let base = fit(from: CGSize(width: picture.width, height: picture.height), to: frame)
         let thumbnail = CGSize(width: width, height: max(1, (width * frame.height / max(frame.width, 1)).rounded()))
         var result: [UUID: CGImage] = [:]
         for (index, effect) in clip.effects.enumerated() {
             var truncated = clip
             truncated.effects = Array(clip.effects.prefix(index + 1))
             let drawn = DrawClip(
-                content: .media(MediaDraw(
-                    trackID: 1, base: base, url: URL(fileURLWithPath: "/dev/null"), sourceStart: .zero, segmentStart: .zero
-                )),
+                content: content,
                 stack: ClipStack(clip: truncated, center: center, shift: .zero, colorSpace: timeline.colorSpace),
                 range: CMTimeRange(start: clip.startOffset, end: clip.endOffset), owner: clip.id
             )
@@ -86,7 +93,7 @@ enum EffectThumbnails {
             generator.requestedTimeToleranceBefore = .zero
             generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 10)
             return try? await generator.image(at: media.fileTime(forSourceTime: sourceTime)).image
-        case .adjustment:
+        case .adjustment, .graphic:
             // No picture of its own.
             return nil
         case .timeline(let id):

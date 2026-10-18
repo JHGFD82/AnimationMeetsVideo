@@ -12,6 +12,8 @@ struct DrawClip: @unchecked Sendable {
         case media(MediaDraw)
         case group(GroupDraw)
         case adjustment(AdjustmentDraw)
+        /// A shape clip: transparency, which its stack draws shapes on.
+        case graphic
     }
 
     var content: Content
@@ -105,11 +107,11 @@ struct MediaDraw: @unchecked Sendable {
     /// The picture of a still, drawn in place of a track's frames at every
     /// moment (see docs/graphic-layers.md).
     var still: StillPicture?
-
-    /// Every track the picture may be read from.
     /// The size of the track's frames before `base`, when they have no
     /// transparency; nil when they may, and for stills.
     var opaqueSize: CGSize?
+
+    /// Every track the picture may be read from.
     var trackIDs: [CMPersistentTrackID] {
         ([trackID] + [nextFrame].compactMap { $0 }.map(\.trackID) + echoes.map(\.trackID) + trails.map(\.trackID))
             .filter { $0 != kCMPersistentTrackID_Invalid }
@@ -200,6 +202,7 @@ extension DrawClip {
         case .media(let media): [(self, media)]
         case .group(let group): group.children.flatMap(\.leaves)
         case .adjustment(let adjustment): adjustment.reached.flatMap(\.leaves)
+        case .graphic: []
         }
     }
 
@@ -210,13 +213,14 @@ extension DrawClip {
         case .media(let media): return media.trackIDs + own
         case .group(let group): return group.children.flatMap(\.allTrackIDs) + own
         case .adjustment(let adjustment): return adjustment.reached.flatMap(\.allTrackIDs) + own
+        case .graphic: return own
         }
     }
 
     /// This clip and every clip inside it.
     var everyClip: [DrawClip] {
         switch content {
-        case .media: [self]
+        case .media, .graphic: [self]
         case .group(let group): [self] + group.children.flatMap(\.everyClip)
         case .adjustment(let adjustment): [self] + adjustment.reached.flatMap(\.everyClip)
         }

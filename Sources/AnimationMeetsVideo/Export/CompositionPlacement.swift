@@ -200,6 +200,8 @@ final class BuildNode {
         case still(StillPicture, url: URL, base: CGAffineTransform, trails: [(delay: CMTime, strength: Double)])
         case group(frameSize: CGSize, toOuter: CGAffineTransform, passThrough: Bool, children: [BuildNode])
         case adjustment(reachedLayerIDs: Set<UUID>, reachesAll: Bool)
+        /// A shape clip, drawn throughout the node's range.
+        case graphic
     }
 
     let content: Content
@@ -278,6 +280,8 @@ final class BuildNode {
                 )),
                 stack: stack, range: range, owner: owner, layerID: layerID, inputs: frozenInputs()
             )
+        case .graphic:
+            return DrawClip(content: .graphic, stack: stack, range: range, owner: owner, layerID: layerID, inputs: frozenInputs())
         case .adjustment(let reachedLayerIDs, let reachesAll):
             return DrawClip(
                 content: .adjustment(AdjustmentDraw(reachedLayerIDs: reachedLayerIDs, reachesAll: reachesAll)),

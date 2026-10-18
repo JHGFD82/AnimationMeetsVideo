@@ -314,6 +314,9 @@ struct Drawing {
         switch clip.content {
         case .adjustment:
             return nil
+        case .graphic:
+            // Transparency, for the stack's shapes to draw on.
+            picture = .empty()
         case .media(let media):
             guard let image = sourcePicture(of: media, clip: clip, at: time, trail: trail) else { return nil }
             picture = image.transformed(
@@ -532,6 +535,11 @@ struct Drawing {
 
     /// The steps of a clip's stack run on `picture`, in output pixels.
     /// Opacity the steps ask for is left in `opacity` for the caller.
+    ///
+    /// Shapes stay outlines while only moves follow them: each move is
+    /// applied to their outlines as well as to the picture, and they are
+    /// drawn, over the picture, when a step needs pixels or the stack ends.
+    /// So a shape scaled up is drawn at the size it ends up, not enlarged.
     private func runStack(
         _ steps: [ResolvedStep],
         on initial: CIImage,
@@ -545,20 +553,44 @@ struct Drawing {
     ) -> CIImage {
         var picture = initial
         var kept: [UUID: CIImage] = [:]
+        // Shapes not yet drawn, over the picture, bottom first.
+        var shapes: [ShapeRendering.Placed] = []
+        // From the frame's pixels to output pixels, where the clip's own
+        // frame is placed.
+        let frameToOutput = start
+            .concatenating(Self.flip(height: frameSize.height))
+            .concatenating(CGAffineTransform(scaleX: scale.width, y: scale.height))
         func settleOpacity() {
             guard opacity != 1 else { return }
             picture = picture.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
+            for index in shapes.indices { shapes[index].alpha *= opacity }
             opacity = 1
+        }
+        func drawShapes() {
+            guard !shapes.isEmpty else { return }
+            if let drawn = ShapeRendering.draw(shapes, within: canvasRect(of: frameSize)) {
+                picture = drawn.composited(over: picture)
+            }
+            shapes = []
         }
         for step in steps {
             switch step {
             case .place(let matrix, let factor):
-                picture = picture.transformed(by: inOutput(placed(matrix)))
+                let move = inOutput(placed(matrix))
+                picture = picture.transformed(by: move)
+                for index in shapes.indices { shapes[index].transform = shapes[index].transform.concatenating(move) }
                 opacity *= factor
+            case .shape(let shape):
+                // Over the picture as the steps above left it, opacity and
+                // all; the steps below act on both.
+                settleOpacity()
+                shapes.append(ShapeRendering.Placed(shape: shape, transform: frameToOutput))
             case .mark(let id):
                 settleOpacity()
+                drawShapes()
                 kept[id] = picture
             case .color(let ops):
+                drawShapes()
                 // Grading doesn't depend on where a pixel is, so it doesn't
                 // wait for the opacity either.
                 let canvas = canvasRect(of: frameSize)
@@ -567,10 +599,12 @@ struct Drawing {
                 }
             case .matte(let effectID, let mode, let amount):
                 settleOpacity()
+                drawShapes()
                 guard let input = clip.inputs[effectID], let matte = matteImage(input, frame: frameSize, start: start) else { continue }
                 picture = cut(picture, by: matte, mode: mode, amount: amount, frame: frameSize)
             case .blend(let mode, let amount, let against):
                 settleOpacity()
+                drawShapes()
                 let other: CIImage
                 if let against {
                     guard let earlier = kept[against] else { continue }
@@ -588,6 +622,7 @@ struct Drawing {
                 }
             }
         }
+        drawShapes()
         return picture
     }
 

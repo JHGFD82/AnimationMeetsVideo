@@ -459,7 +459,9 @@ struct ClipBlockView: View {
         let kind = switch info {
         case .timeline: "nested timeline"
         case .adjustment: "adjustment clip"
+        case .graphic: "shape clip"
         case .media(let media) where media.kind == .audio || clip.streams == .audio: "audio clip"
+        case .media(let media) where media.kind == .image: "still"
         case .media: "video clip"
         case nil: "missing clip"
         }

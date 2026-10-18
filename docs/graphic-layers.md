@@ -1,7 +1,8 @@
 # Images, shapes and text
 
-Status: stills are **built** (step 1, not yet tried in the running app);
-shapes and text are **planned** (see [Building it](#building-it)).
+Status: stills and the first shapes (rectangle and ellipse) are **built**
+(steps 1 and 2a, not yet tried in the running app); the other shapes and
+text are **planned** (see [Building it](#building-it)).
 Pictures that don't come from footage:
 still images imported from files, and shapes and text made in the app,
 drawn as vectors.
@@ -98,48 +99,64 @@ a still, is refused.
 
 ## Shapes
 
-A shape clip draws one or more paths made in the app. Its content is
-stored on the clip itself, in the project file, as plain numbers.
+Shapes are **effects**: a Rectangle or an Ellipse in a clip's stack draws
+its shape over the picture handed down to it, and the steps below act on
+both. That is the stack's own rule (see [effects.md](effects.md#the-idea-the-list-is-the-render-order)),
+and it means keyframes, eases, the graph editor, presets, copy and paste,
+and saving all work on shapes as they are.
 
-- **Model.** A `ClipSource.graphic` clip holds a `Graphic`: a list of
-  `ShapeItem`s drawn bottom first. Each has a path, a fill and a stroke.
-- **Paths.** A path is a closed flag and a list of vertices, each a
-  point with an in and an out tangent, in timeline pixels relative to the
-  clip's center. A path is keyframed whole (an `AnimatedValue` of a path):
-  between two keyframes with the same number of vertices each point and
-  tangent blends with the keyframes' ease; with different counts it holds
-  until the next keyframe.
-- **Primitives.** Rectangle (size, corner radius), ellipse (size), polygon
-  and star (points, radii, roundness) are parameters that make a path, so
-  they animate by their numbers, not by vertices. Converting one to a free
-  path keeps its current shape.
-- **Fill and stroke.** Color and opacity, animated; stroke width, join,
-  cap and dash pattern. Gradients (linear and radial, with stops) later.
+- **Shape clips.** `ClipSource.graphic` is a clip with no picture of its
+  own: it starts from transparency, so its picture is what its shapes
+  draw. Like an adjustment clip it has no length to run out of. The
+  timeline's toolbar makes one at the playhead on a new video layer
+  (New Shape Layer, Rectangle or Ellipse), five seconds long, holding one
+  shape sized to the frame. It is drawn in its own tone.
+- **Shapes on anything.** A shape can go in any visual clip's stack: a
+  box drawn over footage for a lower third, below a Transform that moves
+  both, is one clip. The effects library lists them under Shapes.
+- **Controls.** Size (width and height, which can be linked, but aren't
+  at first), Corners (Rectangle only: the radius, at most half the shorter
+  side), Position (an offset of the shape's center from the frame's
+  center), Fill and Stroke (colors with opacity, picked with a color
+  well) and Stroke Width (centered on the outline). Turning Fill or Stroke
+  off leaves it out. Colors are the timeline's encoded values, as a
+  transition's dip color is.
+- **Drawing.** A shape is filled and stroked with Core Graphics
+  (`ShapeRendering`), in 32-bit floats, into a picture the size of its
+  bounds in output pixels, kept within the canvas margin.
+- **Staying sharp.** While only moves (Transform's Position, Scale and
+  Rotation) follow a shape in the stack, they are applied to its outline,
+  not to pixels, and it is drawn once, at the size it ends up, when a step
+  needs pixels (Color, Blending, Matte) or the stack ends. A shape scaled
+  to 800% is as sharp as one made that size. Opacity after a shape is
+  applied as it is drawn. Transitions and nested timelines still move the
+  drawn picture.
+- **Render key.** A shape's step is part of the key, so changing a shape
+  re-renders it, and moving the clip doesn't.
+
+Still to come:
+
+- **Polygon and star** (points, radii, roundness): parameters that make a
+  path, so they animate by their numbers.
+- **Free paths.** A closed flag and a list of vertices, each a point with
+  an in and an out tangent, in pixels from the frame's center, keyframed
+  whole: between two keyframes with the same number of vertices each point
+  and tangent blends; with different counts it holds until the next.
+  Converting a primitive to a free path keeps its current shape. Editing
+  vertices needs the viewer's handles (step 4).
+- **Stroke joins, caps and dashes**, and gradient fills (linear and
+  radial, with stops).
 - **Path operations.** Union, intersection, subtraction and exclusion of
-  the items below (Core Graphics' `CGPath` boolean operations, macOS 13 and
-  later), offset paths, and **trim paths** (start, end and offset in
-  percent, for drawing a line on).
-- **Drawing.** The paths are filled and stroked with Core Graphics into a
-  pixel buffer the size of the picture's bounds in output pixels, then
-  handed to the stack like a still. A still is decoded once; a shape is
-  drawn again only when something it is drawn from changes, at the size
-  the viewer draws at.
-- **Staying sharp.** Scaling a shape with the Transform effect would
-  enlarge pixels. As a nested timeline's move is pushed into its layers
-  (see [effects.md](effects.md#keeping-it-sharp-and-cheap)), the stack's
-  leading place step is applied to the paths before they are drawn, while
-  everything before it in the stack works per pixel. A shape scaled to
-  800% is as sharp as one drawn that size.
-- **Size.** A shape's picture is the bounds of its paths with their
-  strokes, kept within the canvas margin; it has no frame of its own.
-  The anchor point is relative to the clip's center, which is the origin
-  of its paths.
+  shapes (Core Graphics' `CGPath` boolean operations, macOS 13 and later),
+  offset paths, and **trim paths** (start, end and offset in percent, for
+  drawing a line on).
 
 ## Text
 
-A text clip is a graphic whose item is a block of text, laid out with Core
-Text and drawn as glyph paths through the same code as shapes, so it has
-a fill and a stroke and stays sharp the same way.
+Text is a shape effect whose outline is a block of text, laid out with
+Core Text and drawn as glyph paths through the same code as the other
+shapes, so it has a fill and a stroke and stays sharp the same way. A
+text layer is a shape clip holding one.
 
 - **Content.** An attributed string: runs of font family, style, size,
   tracking, line height, fill and stroke. Alignment, a box width for
@@ -176,11 +193,12 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
 ## Saving
 
 - A still is an asset with `kind: "Image"`, written like any other.
-- A graphic clip is `source: {"kind": "graphic"}` with a `graphic` object
-  holding its items. Paths are arrays of vertices (`[x, y, inX, inY, outX,
-  outY]`) so they can be read and edited by hand; primitives keep their
-  parameters. Loading stays strict: an unknown item kind or field is an
-  error that names where it is.
+- A shape clip is `source: {"kind": "graphic"}`. Its shapes are effects
+  (`"rectangle"`, `"ellipse"`) written like any other, their controls as
+  numbers (colors as `[r, g, b, a]`). A size's link is written only when
+  it differs from a new control's. Free paths, when they come, will be
+  arrays of vertices (`[x, y, inX, inY, outX, outY]`) so they can be read
+  and edited by hand. Loading stays strict.
 - These are additions, so the format version stays the same: files
   without them read as before, and an older version of the app reports a
   file with them as invalid (strict loading names the unknown kind)
@@ -198,10 +216,16 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
    length, the render key after a move, missing files, saving (offline
    too) and replacement. Not yet: no UI snapshot (thumbnails load
    asynchronously), and HDR stills are untested.
-2. **Shapes.** `ClipSource.graphic`, the rectangle and ellipse, free paths
-   and their keyframes, fill and stroke, drawing at the size the
-   viewer draws at, pushing the leading move into the paths, and the
-   inspector controls. Then path operations, trim paths and polygons.
+2. **Shapes.** (a, done) `ClipSource.graphic`, the Rectangle and Ellipse
+   effects with fill and stroke, keeping shapes as outlines through moves,
+   the New Shape Layer menu, color wells in the effects panel, and saving.
+   `ShapeTests` draws shapes alone, over footage and in footage's own
+   stack, checks an ellipse against its bounds, translucency, a stroke
+   alone, sharpness at 800% (an edge that rasterizing first would blur
+   across eight pixels), render keys, and saving; the `UISnapshots`
+   case `shapeEffectsPanel` shows the controls. (b) Polygon and star,
+   stroke joins, caps and dashes, gradients. (c) Free paths and their
+   keyframes. (d) Path operations and trim paths.
 3. **Text.** Core Text layout and glyph paths, styling runs, the inspector
    editor, missing fonts, variable axes, then animators and text on a path.
 4. **Viewer handles.** Selecting a graphic clip in the viewer, handles for

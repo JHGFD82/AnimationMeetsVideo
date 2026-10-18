@@ -66,6 +66,78 @@ enum ResolvedStep: Equatable, Sendable {
     /// Cuts the picture with the input of the effect with this ID. `amount`
     /// is 0...1.
     case matte(effect: UUID, mode: MatteMode, amount: Double)
+    /// Draws a shape over the picture.
+    case shape(ShapeStep)
+}
+
+/// A shape as drawn at one moment: its outline in the frame's pixels
+/// (origin top left, y down), and how it is filled and stroked.
+struct ShapeStep: Equatable, Sendable {
+    enum Outline: Equatable, Sendable {
+        case rectangle(cornerRadius: Double)
+        case ellipse
+    }
+
+    var outline: Outline
+    /// The outline's bounds.
+    var rect: CGRect
+    /// Red, green, blue and alpha (0...1, not premultiplied); nil when it
+    /// isn't filled.
+    var fill: [Double]?
+    /// The same for the stroke, which is centered on the outline; nil
+    /// when it isn't stroked.
+    var stroke: [Double]?
+    var strokeWidth: Double
+
+    /// The shape of a Rectangle or Ellipse effect at source time `time`,
+    /// centered on `center` plus its Position. Nil when it draws nothing:
+    /// no size, or neither a fill nor a stroke that shows.
+    init?(_ effect: Effect, at time: CMTime, center: CGPoint) {
+        func values(_ kind: ControlKind) -> [Double] {
+            guard let control = effect.control(kind), control.enabled else { return kind.defaultValues }
+            return control.values(at: time)
+        }
+        /// A color that shows, if its control is on.
+        func color(_ kind: ControlKind) -> [Double]? {
+            guard let control = effect.control(kind), control.enabled else { return nil }
+            let rgba = control.values(at: time).map { min(max($0, 0), 1) }
+            return rgba.count == 4 && rgba[3] > 0 ? rgba : nil
+        }
+        let size = values(.shapeSize), offset = values(.shapePosition)
+        guard size.count == 2, offset.count == 2, size[0] > 0, size[1] > 0 else { return nil }
+        rect = CGRect(
+            x: center.x + offset[0] - size[0] / 2, y: center.y + offset[1] - size[1] / 2,
+            width: size[0], height: size[1]
+        )
+        switch effect.kind {
+        case .rectangle: outline = .rectangle(cornerRadius: max(0, values(.cornerRadius).first ?? 0))
+        case .ellipse: outline = .ellipse
+        default: return nil
+        }
+        fill = color(.fill)
+        strokeWidth = max(0, values(.strokeWidth).first ?? 0)
+        stroke = strokeWidth > 0 ? color(.stroke) : nil
+        guard fill != nil || stroke != nil else { return nil }
+    }
+
+    /// The outline as a path in the frame's pixels.
+    var path: CGPath {
+        switch outline {
+        case .rectangle(let radius):
+            // Corners can be no rounder than half the shorter side.
+            let corner = min(radius, rect.width / 2, rect.height / 2)
+            return corner > 0
+                ? CGPath(roundedRect: rect, cornerWidth: corner, cornerHeight: corner, transform: nil)
+                : CGPath(rect: rect, transform: nil)
+        case .ellipse:
+            return CGPath(ellipseIn: rect, transform: nil)
+        }
+    }
+
+    /// The bounds of what it draws, its stroke included.
+    var drawnBounds: CGRect {
+        stroke == nil ? rect : rect.insetBy(dx: -strokeWidth / 2, dy: -strokeWidth / 2)
+    }
 }
 
 enum StackFolding {
@@ -133,6 +205,12 @@ enum StackFolding {
                 guard amount > 0 else { continue }
                 flush()
                 steps.append(.matte(effect: effect.id, mode: take.matteMode, amount: amount))
+            case .rectangle, .ellipse:
+                // Drawn over what the steps above made of the picture, so
+                // they come first.
+                guard let shape = ShapeStep(effect, at: time, center: center) else { continue }
+                flush()
+                steps.append(.shape(shape))
             case .blending:
                 guard let mode = effect.control(.mode), mode.enabled, mode.blendMode != .normal else { continue }
                 var amount = 1.0

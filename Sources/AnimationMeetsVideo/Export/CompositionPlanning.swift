@@ -36,7 +36,7 @@ extension CompositionExporter {
                         breakpoints.append(copy.range.start)
                         breakpoints.append(copy.range.end)
                     }
-                case .adjustment:
+                case .adjustment, .graphic:
                     break
                 }
                 for input in clip.inputs.values {
@@ -160,6 +160,8 @@ extension CompositionExporter {
                 text += "G \(number(group.frameSize.width))x\(number(group.frameSize.height)) \(matrix(group.toOuter)) \(group.passThrough ? "pass" : "closed")\n"
             case .adjustment(let adjustment):
                 text += "A \(adjustment.reachesAll ? "all" : "some")\n"
+            case .graphic:
+                text += "S\n"
             }
             if let blur = clip.stack.shutter.motionBlur {
                 text += "B \(number(blur.angle)) \(blur.samples) \(number(clip.stack.frameDuration.seconds))\n"
@@ -182,6 +184,14 @@ extension CompositionExporter {
                         text += "g \(clip.stack.colorSpace.rawValue) " + ops.map { op in
                             "\(op.kind.rawValue):" + (0..<4).map { number(Double(op.value[$0])) }.joined(separator: ",")
                         }.joined(separator: " ")
+                    case .shape(let shape):
+                        switch shape.outline {
+                        case .rectangle(let radius): text += "h r\(number(radius))"
+                        case .ellipse: text += "h e"
+                        }
+                        text += " " + [shape.rect.minX, shape.rect.minY, shape.rect.width, shape.rect.height].map(number).joined(separator: ",")
+                        text += " f" + (shape.fill ?? []).map(number).joined(separator: ",")
+                        text += " s" + (shape.stroke ?? []).map(number).joined(separator: ",") + "@\(number(shape.strokeWidth))"
                     }
                     text += " "
                 }
@@ -211,7 +221,7 @@ extension CompositionExporter {
                 text += "(\n"
                 adjustment.reached.forEach(describe)
                 text += ")\n"
-            case .media:
+            case .media, .graphic:
                 break
             }
         }
