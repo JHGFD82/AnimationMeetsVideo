@@ -1,12 +1,19 @@
+import CoreMedia
 import SwiftUI
 
 /// The effects that can be added, grouped by category: a tab of the
 /// Effects Library at the right end of the timeline. Effects are dragged onto a clip or into the stack in the effects
-/// panel, or double-clicked to add them to the selected clip.
+/// panel, or double-clicked to add them to the selected clip. A shape
+/// dragged onto the timeline's video area, or double-clicked with no
+/// shape clip selected, starts a shape layer of its own.
 struct EffectsListPanel: View {
     @Binding var project: EditingProject
     let timelineID: UUID
     let selection: TimelineSelection?
+    /// Where a shape layer started by a double-click begins.
+    let playheadTime: CMTime
+    /// Selects a shape layer's clip once it is made.
+    let onSelect: (TimelineSelection) -> Void
     let state: EffectsPanelState
 
     var body: some View {
@@ -35,7 +42,7 @@ struct EffectsListPanel: View {
             }
             .sunken(.sunken)
 
-            Text("Drag an effect onto a clip or into the stack, or double-click it to add it to the selected clip.")
+            Text("Drag an effect onto a clip or into the stack, or double-click it to add it to the selected clip. A shape dragged onto empty timeline, or double-clicked with no shape clip selected, makes a shape layer.")
                 .font(Design.Typeface.micro)
                 .foregroundStyle(Design.textTertiary)
                 .padding(.horizontal, Design.Space.group)
@@ -47,11 +54,19 @@ struct EffectsListPanel: View {
         .panelSurface(.base)
     }
 
+    /// Adds to the selected clip, or for a shape with no shape clip
+    /// selected, makes a shape layer at the playhead (on footage a shape
+    /// goes by a drag).
     private func addToSelectedClip(_ kind: EffectKind) {
-        guard let selection, selection.timelineID == timelineID,
-              let id = project.addEffect(kind, toClip: selection.timelineClipID, in: timelineID)
-        else { return }
-        state.select(effect: id)
+        let selected = selection?.timelineID == timelineID ? selection?.timelineClipID : nil
+        switch project.addFromLibrary(kind, in: timelineID, selectedClip: selected, playhead: playheadTime) {
+        case .effect(let id):
+            state.select(effect: id)
+        case .shapeLayer(let layerID, let clipID):
+            onSelect(TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clipID))
+        case nil:
+            break
+        }
     }
 }
 
@@ -77,6 +92,8 @@ struct EffectLibraryChip: View {
         .beveledChip(fill: isHovering ? Design.Surface.floating.color : Design.Surface.overlay.color)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .help("\(kind.name): drag onto a clip or into the stack, or double-click to add it to the selected clip")
+        .help(kind.drawsShape
+            ? "\(kind.name): drag onto a clip or onto empty timeline, or double-click to make a shape layer (or add it to the selected shape clip)"
+            : "\(kind.name): drag onto a clip or into the stack, or double-click to add it to the selected clip")
     }
 }

@@ -50,3 +50,26 @@ extension EditingProject {
         return (layer.id, clip.id)
     }
 }
+
+/// What adding an effect from the Effects Library did.
+enum LibraryAddition: Equatable {
+    /// Added the effect with this ID to the clip.
+    case effect(UUID)
+    /// Made a shape layer holding the shape.
+    case shapeLayer(layerID: UUID, clipID: UUID)
+}
+
+extension EditingProject {
+    /// Adds `kind` as a double-click in the Effects Library does: to the
+    /// selected clip, except that a shape joins only a selected shape clip
+    /// and otherwise starts a shape layer of its own at `playhead`. Nil when
+    /// nothing could take it.
+    mutating func addFromLibrary(_ kind: EffectKind, in timelineID: UUID, selectedClip: UUID?, playhead: CMTime) -> LibraryAddition? {
+        let selected = selectedClip.flatMap { clipAndLayer($0, in: timelineID)?.clip }
+        if kind.drawsShape, selected?.source != .graphic {
+            return addShapeLayer(kind, to: timelineID, from: playhead).map { .shapeLayer(layerID: $0.layerID, clipID: $0.clipID) }
+        }
+        guard let selected else { return nil }
+        return addEffect(kind, toClip: selected.id, in: timelineID).map { .effect($0) }
+    }
+}

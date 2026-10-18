@@ -115,7 +115,12 @@ and saving all work on shapes as they are.
   library is sized the same way. It is drawn in its own tone.
 - **Shapes on anything.** A shape can go in any visual clip's stack: a
   box drawn over footage for a lower third, below a Transform that moves
-  both, is one clip. The effects library lists them under Shapes.
+  both, is one clip. The Effects Library lists them under Shapes. Dragged
+  onto a clip, a shape joins its stack; dragged onto the video area's
+  empty space, it makes a shape layer where it lands. Double-clicked, it
+  joins the selected clip if that is a shape clip, and otherwise makes a
+  shape layer at the playhead (`addFromLibrary`), so it never lands in
+  footage by accident.
 - **Controls.** Rectangle and Ellipse have a Size (width and height,
   which can be linked, but aren't at first); Polygon and Star have Points
   (a whole number, 3 to 100), Radius, Rotation and, for a star, Inner

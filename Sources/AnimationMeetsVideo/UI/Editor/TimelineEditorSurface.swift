@@ -260,6 +260,7 @@ struct TimelineEditorSurface<Library: View>: View {
                     if showsEffectsLibrary {
                         EffectsLibrary(
                             project: $project, timelineID: timelineID, selection: selection,
+                            playheadTime: playheadTime, onSelect: { selection = $0 },
                             state: effectsState, tab: $effectsLibraryTab, onClose: { showsEffectsLibrary = false }
                         )
                         .frame(width: 280)

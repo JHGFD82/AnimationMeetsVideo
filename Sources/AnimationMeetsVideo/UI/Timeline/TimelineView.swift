@@ -960,6 +960,15 @@ struct TimelineView: View {
             }
         }
         .frame(width: contentWidth, alignment: .topLeading)
+        // A shape from the Effects Library dropped on the video area, but
+        // not on a clip (which takes it into its stack), makes a shape layer
+        // where it lands. Library drags travel as URLs, media as text, so
+        // this doesn't catch media.
+        .dropDestination(for: ClipDropPayload.self) { payloads, location in
+            guard kind == .video, let shape = payloads.first?.effect?.kind, shape.drawsShape else { return false }
+            addShapeLayer(shape, at: CMTime(seconds: max(0, Double(location.x / pixelsPerSecond)), preferredTimescale: 600))
+            return true
+        }
     }
 
     // MARK: - Zoom and scrub
@@ -1025,14 +1034,15 @@ struct TimelineView: View {
         }
     }
 
-    /// Puts a shape layer at the top of the stack, starting at the
-    /// playhead, and selects its clip.
-    private func addShapeLayer(_ kind: EffectKind) {
+    /// Puts a shape layer at the top of the stack, starting at `start`
+    /// (the playhead unless given), and selects its clip.
+    private func addShapeLayer(_ kind: EffectKind, at start: CMTime? = nil) {
+        let start = start ?? playheadTime
         var created: (layerID: UUID, clipID: UUID)?
-        onEditProject { created = $0.addShapeLayer(kind, to: timelineID, from: playheadTime) }
+        onEditProject { created = $0.addShapeLayer(kind, to: timelineID, from: start) }
         // Selection goes by ID; the view hasn't seen the new clip yet.
         if let created {
-            onSelectClip(created.layerID, TimelineClip(id: created.clipID, source: .graphic, startOffset: playheadTime, trimStart: .zero, trimEnd: .zero))
+            onSelectClip(created.layerID, TimelineClip(id: created.clipID, source: .graphic, startOffset: start, trimStart: .zero, trimEnd: .zero))
         }
     }
 

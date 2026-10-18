@@ -297,4 +297,33 @@ extension DrawingFixture {
         #expect(ControlKind.strokeEdge.choiceOptions.map(\.id) == StrokeEdge.allCases.map(\.rawValue))
         #expect(ControlKind.mode.choiceOptions.map(\.id) == BlendMode.allCases.map(\.rawValue))
     }
+
+    @Test func aShapeFromTheLibraryStartsALayerUnlessAShapeClipIsSelected() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let footage = try await fixture.addClip(luma: 40)
+        let playhead = CMTime(seconds: 2, preferredTimescale: 600)
+        let layers = fixture.project.timelines[0].layers.count
+
+        // Nothing selected, or footage: a shape layer at the playhead.
+        let alone = fixture.project.addFromLibrary(.rectangle, in: fixture.timelineID, selectedClip: nil, playhead: playhead)
+        guard case .shapeLayer(_, let shapeClip)? = alone else { Issue.record("no shape layer"); return }
+        let onFootage = fixture.project.addFromLibrary(.star, in: fixture.timelineID, selectedClip: footage.clipID, playhead: playhead)
+        guard case .shapeLayer? = onFootage else { Issue.record("no shape layer over footage"); return }
+        #expect(fixture.project.timelines[0].layers.count == layers + 2)
+        let made = try #require(fixture.project.clipAndLayer(shapeClip, in: fixture.timelineID)?.clip)
+        #expect(made.source == .graphic)
+        #expect(made.startOffset == playhead)
+
+        // A shape clip selected: the shape joins it, as does a Stroke.
+        let joined = fixture.project.addFromLibrary(.ellipse, in: fixture.timelineID, selectedClip: shapeClip, playhead: playhead)
+        guard case .effect? = joined else { Issue.record("not added to the shape clip"); return }
+        _ = fixture.project.addFromLibrary(.stroke, in: fixture.timelineID, selectedClip: shapeClip, playhead: playhead)
+        let grown = try #require(fixture.project.clipAndLayer(shapeClip, in: fixture.timelineID)?.clip)
+        #expect(grown.effects.map(\.kind) == [.rectangle, .ellipse, .stroke])
+        #expect(fixture.project.timelines[0].layers.count == layers + 2)
+
+        // A Stroke with nothing selected has nowhere to go.
+        #expect(fixture.project.addFromLibrary(.stroke, in: fixture.timelineID, selectedClip: nil, playhead: playhead) == nil)
+    }
 }
