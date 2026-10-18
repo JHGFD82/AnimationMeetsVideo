@@ -85,18 +85,22 @@ Limits:
   pictures, or with anything keyframed or transitioning, is. Those are cut
   into pieces of at most 96 frames, so a render stopped by an edit loses
   little and finished pieces play as soon as they're done.
-- **Hidden layers.** A picture that hides everything under it leaves the
-  layers under it out of the stretch (`withoutHidden`), so two opaque
-  clips stacked full frame count as one picture: drawn live, or passed
-  through in export, never rendered. It hides them when its footage can't
-  be transparent (by codec: H.264, HEVC, ProRes 422, and ProRes 4444
-  written 24 bits deep; anything else counts as transparent), it has
-  nothing done to it throughout (no effects, opacity, transition, Blend,
-  Echo, Trails or Motion Blur), and it fills the timeline's frame without
-  being enlarged: an enlarged picture's edge pixels are mixed with the
-  transparency past them, so what is under it shows faintly there. Stills
-  never hide anything yet, and only a timeline's own layers are looked
-  at, not those inside nested timelines or reached by adjustment layers.
+- **Hidden layers.** A layer drawn only where a picture above it covers
+  solidly is left out of the stretch (`withoutHidden`), as is one drawn
+  wholly off the frame, so two opaque clips stacked in the same place
+  (full frame or letterboxed alike) count as one picture: drawn live, or
+  passed through in export, never rendered. A picture covers solidly when
+  its footage can't be transparent (by codec: H.264, HEVC, ProRes 422,
+  and ProRes 4444 written 24 bits deep; anything else counts as
+  transparent), it has nothing done to it throughout (no effects,
+  opacity, transition, Blend, Echo, Trails or Motion Blur), and it isn't
+  enlarged: an enlarged picture's edge pixels are mixed with the
+  transparency past them, so what is under it shows faintly there. Only
+  the pixels it covers whole count, so an edge between pixels leaves that
+  row to show what is under it. A layer below is left out only when it
+  is drawn plainly the same way, so where it lands is known. Stills never
+  cover anything yet, and only a timeline's own layers are looked at, not
+  those inside nested timelines or reached by adjustment layers.
 - **Time and Shutter.** A clip with Blend, Echo, Trails or Motion Blur draws
   the clip more than once, so its stretches are rendered like others, and
   its key holds the file time each frame comes from (when retimed), the
