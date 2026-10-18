@@ -1038,8 +1038,9 @@ final class Gate: @unchecked Sendable {
         let analysis = AssetAnalysis()
         scoring(analysis) { ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, 9]) }
         observing(analysis) { self.stampA }
-        let live = analysis.backend, reads = Mutex(0)
+        let live = analysis.backend, reads = Mutex(0), times = ReadTimes()
         analysis.backend.readSaved = { package, id, identity, includingReference in
+            times.record()
             if reads.increment() <= 2 { throw CocoaError(.fileReadUnknown) }
             return try await live.readSaved(package, id, identity, includingReference)
         }
@@ -1050,12 +1051,17 @@ final class Gate: @unchecked Sendable {
         for expected in [1, 2] {
             try await settle { reads.value == expected && !analysis.isLoadingSaved }
             for _ in 0..<3 { analysis.update(with: video) }
-            try await Task.sleep(for: .milliseconds(100))
-            #expect(reads.value == expected)
         }
         try await settle { analysis.tracks[id] == track(1) }
         #expect(reads.value == 3)
         #expect(analysis.readFailures.isEmpty)
+        // Each read after a failure waited out its retry delay (1 s, then
+        // 2 s): the updates sent meanwhile didn't read early. A busy machine
+        // only makes the gaps longer, so this holds under any load.
+        let gaps = times.gaps
+        #expect(gaps.count == 2)
+        #expect(gaps.first.map { $0 >= 0.9 } ?? false)
+        #expect(gaps.last.map { $0 >= 1.9 } ?? false)
     }
 
     @Test func theMainActorRunsWhileASlowReadIsSuspended() async throws {
@@ -1461,6 +1467,22 @@ final class Gate: @unchecked Sendable {
         let value = try #require(analysis.progress[id])
         #expect(value >= 0 && value <= 1)
         gate.open()
+    }
+}
+
+/// When each read happened, for checking the waits between them.
+final class ReadTimes: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [ContinuousClock.Instant] = []
+    func record() { lock.withLock { stored.append(.now) } }
+    /// The seconds between each read and the next.
+    var gaps: [Double] {
+        lock.withLock {
+            zip(stored, stored.dropFirst()).map { pair in
+                let gap = pair.1 - pair.0
+                return Double(gap.components.seconds) + Double(gap.components.attoseconds) / 1e18
+            }
+        }
     }
 }
 
