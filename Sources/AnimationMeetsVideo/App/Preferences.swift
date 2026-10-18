@@ -38,6 +38,12 @@ enum Preferences {
     static let showsEffectsLibrary = "showsEffectsLibrary"
     static let effectsLibraryTab = "effectsLibraryTab"
     static let showsAudioMeter = "showsAudioMeter"
+    /// The UID of the device the editor's sound plays out of; empty or
+    /// absent for the system's default (see `AudioDevices`).
+    static let playbackOutputDevice = "playbackOutputDevice"
+    /// The UID of the device the beat tick plays out of; empty or absent
+    /// for the same as the editor's sound.
+    static let clickOutputDevice = "clickOutputDevice"
     /// The `LoudnessTarget` exports are delivered at.
     static let exportLoudness = "exportLoudness"
     static let browserTab = "browserTab"

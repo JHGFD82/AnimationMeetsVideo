@@ -12,7 +12,7 @@ import SwiftUI
 /// the other at once.
 struct SettingsView: View {
     enum Tab: String, Hashable {
-        case viewer, timeline, library, layout
+        case viewer, timeline, sound, library, layout
     }
 
     @AppStorage("settingsTab") private var tab = Tab.viewer
@@ -25,6 +25,9 @@ struct SettingsView: View {
             TimelineSettings()
                 .tabItem { Label("Timeline", systemImage: "timeline.selection") }
                 .tag(Tab.timeline)
+            SoundSettings()
+                .tabItem { Label("Sound", systemImage: "speaker.wave.2") }
+                .tag(Tab.sound)
             LibrarySettings()
                 .tabItem { Label("Library", systemImage: "photo.on.rectangle") }
                 .tag(Tab.library)
@@ -125,6 +128,45 @@ private struct TimelineSettings: View {
         player.frequency = frequency
         player.volume = Float(volume)
         player.preview()
+    }
+}
+
+// MARK: - Sound
+
+private struct SoundSettings: View {
+    @AppStorage(Preferences.playbackOutputDevice) private var playbackDevice = ""
+    @AppStorage(Preferences.clickOutputDevice) private var clickDevice = ""
+    @State private var list = AudioDeviceList()
+
+    var body: some View {
+        SettingsPane {
+            SheetSection("Output") {
+                SheetRow("Playback", alignment: .center) {
+                    devicePicker("Playback output", selection: $playbackDevice, automatic: "System Default")
+                }
+                SheetRow("Beat tick", alignment: .center) {
+                    devicePicker("Beat tick output", selection: $clickDevice, automatic: "Same as Playback")
+                }
+                SheetNote("Play the timeline on the room's speakers and the tick only in your headphones, say. A device that is unplugged plays out of the system's default until it is back.")
+            }
+        }
+    }
+
+    /// The devices to choose from, with the automatic choice first and a
+    /// chosen device that is unplugged kept, marked, so it isn't lost.
+    private func devicePicker(_ label: String, selection: Binding<String>, automatic: String) -> some View {
+        Picker(label, selection: selection) {
+            Text(automatic).tag("")
+            Divider()
+            ForEach(list.devices) { device in
+                Text(device.name).tag(device.uid)
+            }
+            if !selection.wrappedValue.isEmpty, !list.devices.contains(where: { $0.uid == selection.wrappedValue }) {
+                Text("Unplugged Device").tag(selection.wrappedValue)
+            }
+        }
+        .labelsHidden()
+        .frame(maxWidth: 280, alignment: .leading)
     }
 }
 

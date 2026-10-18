@@ -252,6 +252,24 @@ samples, not true peak: sound between samples can go a little over it.
 Heavy limiting, when a quiet mix with sharp peaks is raised a long way,
 leaves the result a little under the target.
 
+## Output devices
+
+The Settings window's **Sound** tab picks where sound plays: **Playback**,
+the timeline's sound (System Default, or any output device), and **Beat
+tick** (Same as Playback, or its own), so the timeline can play on the
+room's speakers with the tick only in headphones. Beat Match uses the
+same two. Devices are listed from Core Audio's hardware layer
+(`AudioDevices`), leaving out hidden ones the system makes for itself,
+and stored by UID, which stays the same across launches and replugging.
+
+The player is pointed at its device with `audioOutputDeviceUniqueID`, and
+the tick's engine by setting its output unit's current device. A device
+can take seconds to wake (a display's speakers, say), so the tick moves
+on a queue of its own and leaves the engine alone on the main thread
+until it is there. A chosen device that is unplugged plays out of the
+system's default, and the sound moves back when it is plugged in again;
+Settings keeps the choice, shown as an unplugged device.
+
 ## Saving
 
 A clip's `volume`, and a Sound or Music layer's, is written only when it

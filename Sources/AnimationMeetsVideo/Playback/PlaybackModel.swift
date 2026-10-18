@@ -68,6 +68,7 @@ final class PlaybackModel {
     @ObservationIgnored private let liveRenderer = LiveFrameRenderer()
     @ObservationIgnored private var liveGovernor = LiveGovernor()
     @ObservationIgnored private var preferencesTask: Task<Void, Never>?
+    @ObservationIgnored private var deviceObservation: DeviceListObservation?
 
     private static let qualityKey = Preferences.previewQuality
     private static let motionBlurKey = Preferences.motionBlurInPreview
@@ -107,6 +108,19 @@ final class PlaybackModel {
                 self.readPreferences()
             }
         }
+        // A chosen device plugged in or out moves the sound to it or back
+        // to the system's default.
+        routeSound()
+        deviceObservation = AudioDevices.observe { [weak self] in self?.routeSound() }
+    }
+
+    /// Sends the sound and the beat tick to the devices chosen in Settings.
+    /// Setting only what differs keeps playback from stopping to reroute
+    /// on every unrelated change.
+    private func routeSound() {
+        let playback = AudioDevices.playbackUID
+        if player.audioOutputDeviceUniqueID != playback { player.audioOutputDeviceUniqueID = playback }
+        beatClicks.outputDeviceUID = AudioDevices.clicksUID
     }
 
     /// Takes up a quality or motion blur set elsewhere, such as in the
@@ -120,6 +134,7 @@ final class PlaybackModel {
         if let stored = defaults.object(forKey: Self.motionBlurKey) as? Bool, stored != motionBlurInPreview {
             motionBlurInPreview = stored
         }
+        routeSound()
     }
 
     private func watchStatus(of item: AVPlayerItem?) {

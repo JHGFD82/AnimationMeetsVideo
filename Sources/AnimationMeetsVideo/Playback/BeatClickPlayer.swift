@@ -51,6 +51,23 @@ final class BeatClickPlayer {
         }
     }
 
+    /// The device the tick plays out of, by its UID, or nil for the
+    /// system's default. Moving to it happens off the main thread: a
+    /// device can take seconds to wake (a display's speakers, say).
+    var outputDeviceUID: String? {
+        didSet {
+            guard outputDeviceUID != oldValue else { return }
+            switchDevice()
+        }
+    }
+
+    /// While the engine moves to another device on `engineQueue`, nothing
+    /// on the main thread touches it.
+    private var isSwitching = false
+    /// Counts switches, so only the newest one's ending is taken up.
+    private var switchCount = 0
+    private let engineQueue = DispatchQueue(label: "AnimationMeetsVideo.beat-clicks", qos: .userInitiated)
+
     /// The downbeat is an octave up, so this stops at 2000 Hz for the
     /// downbeat's 4000.
     nonisolated static let frequencyRange: ClosedRange<Double> = 200...2000
@@ -106,6 +123,7 @@ final class BeatClickPlayer {
     /// Plays one blip now, at the current pitch and volume: a downbeat's
     /// when asked for.
     func preview(downbeat: Bool = false) {
+        guard !isSwitching else { return }
         startEngine()
         guard engine.isRunning, let blip = currentBlip(downbeat: downbeat) else { return }
         previewNode.scheduleBuffer(blip, at: nil, options: .interrupts)
@@ -119,7 +137,7 @@ final class BeatClickPlayer {
         scheduledThrough = nil
         timer?.invalidate()
         timer = nil
-        guard isEnabled, !beats.isEmpty, engine.isRunning,
+        guard isEnabled, !beats.isEmpty, !isSwitching, engine.isRunning,
               let timebase = player.currentItem?.timebase, CMTimebaseGetRate(timebase) > 0
         else { return }
         clickNode.play()
@@ -156,29 +174,88 @@ final class BeatClickPlayer {
     // MARK: - Engine
 
     private func connectNodes() {
-        let sampleRate = engine.outputNode.outputFormat(forBus: 0).sampleRate
-        guard sampleRate > 0, let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
-            return
-        }
-        engine.connect(clickNode, to: engine.mainMixerNode, format: format)
-        engine.connect(previewNode, to: engine.mainMixerNode, format: format)
+        Self.connect(clickNode, previewNode, in: engine)
         blip = nil
         downbeatBlip = nil
     }
 
+    /// Connects the nodes at the output's sample rate.
+    private nonisolated static func connect(_ click: AVAudioPlayerNode, _ preview: AVAudioPlayerNode, in engine: AVAudioEngine) {
+        let sampleRate = engine.outputNode.outputFormat(forBus: 0).sampleRate
+        guard sampleRate > 0, let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
+            return
+        }
+        engine.connect(click, to: engine.mainMixerNode, format: format)
+        engine.connect(preview, to: engine.mainMixerNode, format: format)
+    }
+
+    /// Moves the engine to `outputDeviceUID`'s device, or the system's
+    /// default, on `engineQueue`, and takes up scheduling again once it is
+    /// there.
+    private func switchDevice() {
+        let device = outputDeviceUID.flatMap { AudioDevices.device(uid: $0)?.id } ?? Self.defaultOutputDevice()
+        let starts = isEnabled
+        clickNode.stop()
+        previewNode.stop()
+        isSwitching = true
+        switchCount += 1
+        let count = switchCount
+        // Handed to the queue whole; the main thread leaves them alone
+        // while `isSwitching`.
+        let parts = HandedOver(value: (engine, clickNode, previewNode))
+        engineQueue.async {
+            let (engine, click, preview) = parts.value
+            engine.stop()
+            if device != 0, let unit = engine.outputNode.audioUnit {
+                var device = device
+                AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
+            }
+            Self.connect(click, preview, in: engine)
+            if starts {
+                engine.prepare()
+                try? engine.start()
+            }
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, count == self.switchCount else { return }
+                    self.isSwitching = false
+                    self.blip = nil
+                    self.downbeatBlip = nil
+                    // Switched on or off while it moved.
+                    if self.isEnabled { self.startEngine() } else { self.stopEngine() }
+                    self.restart()
+                }
+            }
+        }
+    }
+
+    private nonisolated static func defaultOutputDevice() -> AudioDeviceID {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain
+        )
+        var device = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device)
+        return device
+    }
+
     private func startEngine() {
-        guard !engine.isRunning else { return }
+        guard !isSwitching, !engine.isRunning else { return }
         engine.prepare()
         try? engine.start()
     }
 
     private func stopEngine() {
+        guard !isSwitching else { return }
         clickNode.stop()
         previewNode.stop()
         engine.stop()
     }
 
     private func handleConfigurationChange() {
+        // A switch changes the configuration itself, and sets it up anew
+        // when it is done.
+        guard !isSwitching else { return }
         engine.stop()
         connectNodes()
         if isEnabled { startEngine() }

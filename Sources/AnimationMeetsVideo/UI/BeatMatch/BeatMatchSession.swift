@@ -100,6 +100,9 @@ final class BeatMatchSession {
         player = AVPlayer(playerItem: AVPlayerItem(url: url))
         player.actionAtItemEnd = .pause
         clicks = BeatClickPlayer(player: player)
+        // Out of the devices chosen in Settings, like the editor's sound.
+        player.audioOutputDeviceUniqueID = AudioDevices.playbackUID
+        clicks.outputDeviceUID = AudioDevices.clicksUID
         clicks.isEnabled = true
         player.volume = Float(songVolume)
         selectedSectionID = asset.beatMap.sections.first { $0.kind == .consistent && !$0.isConfirmed }?.id
