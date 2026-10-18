@@ -24,7 +24,7 @@ enum SoundEffects {
     /// `maxFrames`: the EQ's own filters, or one of Apple's Audio Units.
     /// Nil for a picture effect, or when it can't be made.
     static func processor(effectID: UUID, kind: EffectKind, format: AudioStreamBasicDescription, maxFrames: Int) -> SoundEffectProcessor? {
-        if kind == .equalizer { return EqualizerFilter(effectID: effectID, format: format) }
+        if kind == .equalizer { return EqualizerFilter(effectID: effectID, format: format, maxFrames: maxFrames) }
         return AudioEffectUnit(effectID: effectID, kind: kind, format: format, maxFrames: maxFrames)
     }
 }

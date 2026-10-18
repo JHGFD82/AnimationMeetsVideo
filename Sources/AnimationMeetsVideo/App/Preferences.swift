@@ -38,6 +38,9 @@ enum Preferences {
     static let showsEffectsLibrary = "showsEffectsLibrary"
     static let effectsLibraryTab = "effectsLibraryTab"
     static let showsAudioMeter = "showsAudioMeter"
+    /// An `EqualizerSpectrumMode` raw value: what an EQ's graph shows
+    /// behind its curves.
+    static let equalizerSpectrum = "equalizerSpectrum"
     /// The UID of the device the editor's sound plays out of; empty or
     /// absent for the system's default (see `AudioDevices`).
     static let playbackOutputDevice = "playbackOutputDevice"

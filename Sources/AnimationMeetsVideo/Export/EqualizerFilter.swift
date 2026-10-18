@@ -27,13 +27,20 @@ final class EqualizerFilter: SoundEffectProcessor {
     private var outputGain = 1.0
     /// Each section's two state values, per channel: `[channel][section * 2 + k]`.
     private var state: [[Double]]
+    /// The source time the current buffer plays from and to, in seconds,
+    /// for the graph's spectrum.
+    private var span = (start: 0.0, end: 0.0)
+    /// The buffer summed to mono before and after the EQ, while a graph
+    /// shows its spectrum.
+    private var pre: [Float]
+    private var post: [Float]
 
     /// How often the coefficients move while settings change, in frames.
     static let blockSize = 32
 
-    /// A filter for buffers of 32-bit float samples in `format`. Nil for
-    /// any other format.
-    init?(effectID: UUID, format: AudioStreamBasicDescription) {
+    /// A filter for buffers of up to `maxFrames` 32-bit float samples in
+    /// `format`. Nil for any other format.
+    init?(effectID: UUID, format: AudioStreamBasicDescription, maxFrames: Int) {
         guard format.mFormatID == kAudioFormatLinearPCM, format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
               format.mBitsPerChannel == 32, format.mChannelsPerFrame > 0, format.mSampleRate > 0
         else { return nil }
@@ -42,12 +49,15 @@ final class EqualizerFilter: SoundEffectProcessor {
         channelCount = Int(format.mChannelsPerFrame)
         interleaved = format.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0
         state = Array(repeating: [], count: channelCount)
+        pre = Array(repeating: 0, count: max(maxFrames, 0))
+        post = Array(repeating: 0, count: max(maxFrames, 0))
         sections.reserveCapacity(16)
     }
 
     func apply(_ effect: Effect, from start: CMTime, to end: CMTime) {
         from = Equalizer.settings(of: effect, at: start)
         to = end == start ? from : Equalizer.settings(of: effect, at: end)
+        span = (start.seconds, end.seconds)
     }
 
     func reset() {
@@ -58,9 +68,11 @@ final class EqualizerFilter: SoundEffectProcessor {
 
     func process(_ bufferList: UnsafeMutablePointer<AudioBufferList>, frames: Int) {
         guard frames > 0 else { return }
-        // Nothing to do while flat throughout; the state is kept, so
+        let recording = frames <= pre.count && EqualizerSpectrum.shared.isWatched(effectID)
+        // Nothing to filter while flat throughout; the state is kept, so
         // turning a band back on picks up cleanly.
-        if from.isFlat, to.isFlat { return }
+        let flat = from.isFlat && to.isFlat
+        if flat, !recording { return }
         let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
         var channels: [(UnsafeMutablePointer<Float>, Int)] = []
         if interleaved {
@@ -73,6 +85,25 @@ final class EqualizerFilter: SoundEffectProcessor {
             }
         }
         guard !channels.isEmpty else { return }
+        if recording { mix(channels, frames: frames, into: &pre) }
+        defer {
+            if recording {
+                if flat {
+                    for frame in 0..<frames { post[frame] = pre[frame] }
+                } else {
+                    mix(channels, frames: frames, into: &post)
+                }
+                pre.withUnsafeBufferPointer { before in
+                    post.withUnsafeBufferPointer { after in
+                        EqualizerSpectrum.shared.record(
+                            effectID, pre: before.baseAddress!, post: after.baseAddress!, frames: frames,
+                            start: span.start, end: span.end, sampleRate: sampleRate
+                        )
+                    }
+                }
+            }
+        }
+        if flat { return }
 
         let gliding = from != to
         var start = 0
@@ -89,6 +120,16 @@ final class EqualizerFilter: SoundEffectProcessor {
         // sound stops (denormals) and are inaudible.
         for channel in state.indices {
             for index in state[channel].indices where abs(state[channel][index]) < 1e-20 { state[channel][index] = 0 }
+        }
+    }
+
+    /// The channels' average, frame by frame, into `mono`.
+    private func mix(_ channels: [(UnsafeMutablePointer<Float>, Int)], frames: Int, into mono: inout [Float]) {
+        let share = 1 / Float(channels.count)
+        for frame in 0..<frames {
+            var sum: Float = 0
+            for (data, stride) in channels { sum += data[frame * stride] }
+            mono[frame] = sum * share
         }
     }
 

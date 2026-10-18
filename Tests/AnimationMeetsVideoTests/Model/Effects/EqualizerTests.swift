@@ -182,7 +182,7 @@ import Testing
     /// after `effect`, once the filters have settled.
     private func measuredGain(of effect: Effect, at frequency: Double, sampleRate: Double = 48_000) throws -> Double {
         let format = try #require(AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2))
-        let filter = try #require(EqualizerFilter(effectID: effect.id, format: format.streamDescription.pointee))
+        let filter = try #require(EqualizerFilter(effectID: effect.id, format: format.streamDescription.pointee, maxFrames: 4096))
         filter.apply(effect, from: .zero, to: .zero)
         let frames = 4096
         let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)))
@@ -234,5 +234,50 @@ import Testing
     @Test func aFlatEQPassesSoundUnchanged() throws {
         let effect = equalizer(.bell3, [2500, 0, 1])
         #expect(abs(try measuredGain(of: effect, at: 3000)) < 0.01)
+    }
+}
+
+/// The sound an EQ's graph shows behind its curves.
+@Suite struct EqualizerSpectrumTests {
+    /// Records `seconds` of a sine at `frequency` as buffers of 512, from
+    /// source time 10 s, the same before and after.
+    private func record(_ id: UUID, frequency: Double, seconds: Double = 0.5) {
+        let rate = 48_000.0, size = 512
+        var played = 0
+        while Double(played) < seconds * rate {
+            let samples = (0..<size).map { Float(sin(2 * Double.pi * frequency * Double(played + $0) / rate)) }
+            samples.withUnsafeBufferPointer { buffer in
+                EqualizerSpectrum.shared.record(
+                    id, pre: buffer.baseAddress!, post: buffer.baseAddress!, frames: size,
+                    start: 10 + Double(played) / rate, end: 10 + Double(played + size) / rate, sampleRate: rate
+                )
+            }
+            played += size
+        }
+    }
+
+    @Test func aWatchedEQShowsItsToneAtThePlayhead() throws {
+        let id = UUID()
+        EqualizerSpectrum.shared.watch(id)
+        defer { EqualizerSpectrum.shared.unwatch(id) }
+        record(id, frequency: 1000)
+        let reading = try #require(EqualizerSpectrum.shared.levels(of: id, pre: false, at: 10.4))
+        let loudest = reading.decibels.indices.max { reading.decibels[$0] < reading.decibels[$1] }!
+        #expect(abs(Double(loudest) * reading.binWidth - 1000) < reading.binWidth * 1.5)
+        // A full-scale sine reads near 0 dBFS, less what falls between bins.
+        #expect(reading.decibels[loudest] > -2 && reading.decibels[loudest] < 0.5)
+        #expect(reading.decibels[loudest * 3] < -60)
+    }
+
+    @Test func nothingIsShownForAMomentThatWasntPlayedOrAnEQNotWatched() {
+        let id = UUID()
+        record(id, frequency: 1000)
+        #expect(EqualizerSpectrum.shared.levels(of: id, pre: false, at: 10.4) == nil)
+        EqualizerSpectrum.shared.watch(id)
+        defer { EqualizerSpectrum.shared.unwatch(id) }
+        record(id, frequency: 1000)
+        // Before a whole window has played, and after the recording ends.
+        #expect(EqualizerSpectrum.shared.levels(of: id, pre: true, at: 10.05) == nil)
+        #expect(EqualizerSpectrum.shared.levels(of: id, pre: true, at: 20) == nil)
     }
 }

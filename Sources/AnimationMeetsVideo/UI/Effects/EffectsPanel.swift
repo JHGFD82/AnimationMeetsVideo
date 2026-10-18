@@ -31,6 +31,14 @@ struct EffectsPanel: View {
     @State private var presetError: String?
     /// The clip after each of its effects, at the playhead.
     @State private var thumbnails: [UUID: CGImage] = [:]
+    /// The EQ shown larger in a sheet.
+    @State private var expandedEqualizer: ExpandedEqualizer?
+
+    private struct ExpandedEqualizer: Identifiable {
+        var clipID: UUID
+        var effectID: UUID
+        var id: UUID { effectID }
+    }
 
     /// What a Save as Preset is saving.
     private struct PresetSave: Identifiable {
@@ -96,6 +104,9 @@ struct EffectsPanel: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(presetError ?? "")
+        }
+        .sheet(item: $expandedEqualizer) { item in
+            expandedEqualizerSheet(item)
         }
         .onChange(of: selection) { _, _ in
             state.clear()
@@ -403,6 +414,14 @@ struct EffectsPanel: View {
             pasteChangeRow(change, of: effect, in: clip)
         }
         if !collapsed {
+            if effect.kind == .equalizer {
+                besideLane(
+                    equalizerGraph(effect, of: clip, at: c.sourceNow, dimmed: dimmed) {
+                        expandedEqualizer = ExpandedEqualizer(clipID: clip.id, effectID: effect.id)
+                    }
+                    .frame(height: EqualizerGraph.panelHeight)
+                )
+            }
             ForEach(effect.controls) { control in
                 controlRow(control, of: effect, c, effectDimmed: dimmed)
             }
@@ -578,6 +597,47 @@ struct EffectsPanel: View {
             )
             .dropDestination(for: ControlMovePayload.self, action: dropControl)
         }
+    }
+
+    // MARK: EQ
+
+    private func equalizerGraph(_ effect: Effect, of clip: TimelineClip, at time: CMTime, dimmed: Bool, onExpand: (() -> Void)?) -> EqualizerGraph {
+        EqualizerGraph(
+            effect: effect, time: time, isDimmed: dimmed,
+            onEdit: { kind, change in
+                editEffect(effect.id, in: clip) { effect in
+                    if let index = effect.controls.firstIndex(where: { $0.kind == kind }) { change(&effect.controls[index]) }
+                }
+            },
+            onExpand: onExpand
+        )
+    }
+
+    /// The EQ at a size for fine work, editing the same controls.
+    @ViewBuilder
+    private func expandedEqualizerSheet(_ item: ExpandedEqualizer) -> some View {
+        VStack(alignment: .leading, spacing: Design.Space.step) {
+            if let clip = project.clipAndLayer(item.clipID, in: timelineID)?.clip, let effect = clip.effect(id: item.effectID), let timeline {
+                Text("\(project.clipName(clip.id, in: timelineID)) · \(effect.displayName)")
+                    .font(Design.Typeface.panelTitle)
+                    .foregroundStyle(Design.textPrimary)
+                let source = ClipLaneGeometry(clip: clip, timeline: timeline, width: 100)
+                    .clampedSource(atTimeline: timeline.snappedToFrame(playheadTime))
+                equalizerGraph(effect, of: clip, at: source, dimmed: effect.isNoOp, onExpand: nil)
+                    .frame(minWidth: 640, minHeight: 320)
+            } else {
+                Text("The EQ is no longer there.").foregroundStyle(Design.textSecondary)
+            }
+            HStack {
+                Text("Drag a band to move it, ⌥-drag to change its Q, double-click to switch it on or off.")
+                    .font(Design.Typeface.micro)
+                    .foregroundStyle(Design.textTertiary)
+                Spacer()
+                Button("Done") { expandedEqualizer = nil }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(Design.Space.group)
     }
 
     /// Whether a choice changes nothing: an EQ cut's slope does nothing

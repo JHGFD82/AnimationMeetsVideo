@@ -166,7 +166,28 @@ struct UISnapshots {
                 selection: TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clipID),
                 playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
             ),
-            "sound-effects-panel", size: CGSize(width: 520, height: 520)
+            "sound-effects-panel", size: CGSize(width: 520, height: 760)
+        )
+    }
+
+    /// The EQ's graph: a 24 dB low cut, a low shelf down, a narrow bell up
+    /// and a high shelf, over the frequency and gain grid.
+    @Test func equalizerGraph() throws {
+        var effect = Effect(kind: .equalizer)
+        for (kind, values) in [
+            (ControlKind.eqLowCut, [60, EqualizerBand.flatQ]), (.eqLowShelf, [150, -6, EqualizerBand.flatQ]),
+            (.eqBell2, [900, 9, 3]), (.eqHighShelf, [9000, 4, EqualizerBand.flatQ]),
+        ] {
+            guard let index = effect.controls.firstIndex(where: { $0.kind == kind }) else { continue }
+            effect.controls[index].enabled = true
+            effect.controls[index].number = AnimatedValue(ComponentValue(values: values))
+        }
+        if let slope = effect.controls.firstIndex(where: { $0.kind == .eqLowCutSlope }) { effect.controls[slope].choice = "24" }
+        try SnapshotSupport.render(
+            EqualizerGraph(effect: effect, time: .zero, onEdit: { _, _ in }, onExpand: {})
+                .frame(width: 480, height: 200)
+                .background(Design.Surface.overlay.color),
+            "equalizer-graph", size: CGSize(width: 480, height: 200)
         )
     }
 
