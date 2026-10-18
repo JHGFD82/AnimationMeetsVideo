@@ -284,7 +284,10 @@ enum LoudnessMastering {
         guard let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
             throw CompositionError.exportFailed("The mastered sound couldn't be added.")
         }
-        try track.insertTimeRange(CMTimeRange(start: .zero, duration: length), of: source, at: .zero)
+        // Held until inserted: a track whose asset is gone can't be.
+        try withExtendedLifetime(asset) {
+            try track.insertTimeRange(CMTimeRange(start: .zero, duration: length), of: source, at: .zero)
+        }
     }
 
     /// A reader of the whole mix, in stereo float at `sampleRate`.
