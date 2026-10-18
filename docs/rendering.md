@@ -85,6 +85,18 @@ Limits:
   pictures, or with anything keyframed or transitioning, is. Those are cut
   into pieces of at most 96 frames, so a render stopped by an edit loses
   little and finished pieces play as soon as they're done.
+- **Hidden layers.** A picture that hides everything under it leaves the
+  layers under it out of the stretch (`withoutHidden`), so two opaque
+  clips stacked full frame count as one picture: drawn live, or passed
+  through in export, never rendered. It hides them when its footage can't
+  be transparent (by codec: H.264, HEVC, ProRes 422, and ProRes 4444
+  written 24 bits deep; anything else counts as transparent), it has
+  nothing done to it throughout (no effects, opacity, transition, Blend,
+  Echo, Trails or Motion Blur), and it fills the timeline's frame without
+  being enlarged: an enlarged picture's edge pixels are mixed with the
+  transparency past them, so what is under it shows faintly there. Stills
+  never hide anything yet, and only a timeline's own layers are looked
+  at, not those inside nested timelines or reached by adjustment layers.
 - **Time and Shutter.** A clip with Blend, Echo, Trails or Motion Blur draws
   the clip more than once, so its stretches are rendered like others, and
   its key holds the file time each frame comes from (when retimed), the

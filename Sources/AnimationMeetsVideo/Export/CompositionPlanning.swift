@@ -63,6 +63,7 @@ extension CompositionExporter {
             let whole = CMTimeRange(start: breakpoints[index], end: breakpoints[index + 1])
             guard whole.duration > .zero else { continue }
             let clips = DrawClip.assembled(tree.compactMap { $0.pruned(to: whole) })
+                .withoutHidden(in: frameSize, over: whole, frame: frame)
             let leaves = clips.flatMap(\.leaves)
             let owners = Set(clips.map(\.owner))
 

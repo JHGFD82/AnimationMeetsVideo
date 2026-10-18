@@ -19,6 +19,10 @@ struct MediaTrackInfo: @unchecked Sendable {
     /// is (0, 0), and the size of the frame after rotation.
     let orientedTransform: CGAffineTransform
     let orientedSize: CGSize
+    /// The size of the video's frames as stored, when its codec can't
+    /// carry transparency; nil when the frames may have some, or there is
+    /// no video.
+    var opaqueSize: CGSize?
 }
 
 actor MediaTrackCache {
@@ -40,6 +44,7 @@ actor MediaTrackCache {
         var audioRange = CMTimeRange.invalid
         var transform = CGAffineTransform.identity
         var size = CGSize.zero
+        var opaqueSize: CGSize?
         if let video {
             videoRange = try await video.load(.timeRange)
             let natural = try await video.load(.naturalSize)
@@ -47,6 +52,9 @@ actor MediaTrackCache {
             let rect = CGRect(origin: .zero, size: natural).applying(preferred)
             transform = preferred.concatenating(CGAffineTransform(translationX: -rect.minX, y: -rect.minY))
             size = rect.size
+            if let format = try await video.load(.formatDescriptions).first, Self.isOpaque(format) {
+                opaqueSize = natural
+            }
         }
         var channels = 0
         if let audio {
@@ -65,10 +73,29 @@ actor MediaTrackCache {
             audioRange: audioRange,
             audioChannels: channels,
             orientedTransform: transform,
-            orientedSize: size
+            orientedSize: size,
+            opaqueSize: opaqueSize
         )
         entries[url] = info
         return info
+    }
+
+    /// Whether frames in `format` have no transparency: those of codecs
+    /// without an alpha channel, and ProRes 4444 written 24 bits deep.
+    /// Unknown codecs count as transparent.
+    static func isOpaque(_ format: CMFormatDescription) -> Bool {
+        switch CMFormatDescriptionGetMediaSubType(format) {
+        case kCMVideoCodecType_H264, kCMVideoCodecType_HEVC,
+             kCMVideoCodecType_AppleProRes422, kCMVideoCodecType_AppleProRes422HQ,
+             kCMVideoCodecType_AppleProRes422LT, kCMVideoCodecType_AppleProRes422Proxy,
+             kCMVideoCodecType_MPEG4Video, kCMVideoCodecType_MPEG2Video, kCMVideoCodecType_JPEG:
+            return true
+        case kCMVideoCodecType_AppleProRes4444, kCMVideoCodecType_AppleProRes4444XQ:
+            let depth = CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_Depth) as? Int
+            return depth == 24
+        default:
+            return false
+        }
     }
 }
 
@@ -230,7 +257,8 @@ final class BuildNode {
                     nextFrame: extras.next.flatMap { copy($0, 1) },
                     opticalFlow: extras.opticalFlow,
                     echoes: extras.echoes.compactMap { copy($0.placement, $0.strength) },
-                    trails: extras.trails.compactMap { copy($0.placement, $0.strength) }
+                    trails: extras.trails.compactMap { copy($0.placement, $0.strength) },
+                    opaqueSize: placement.info.opaqueSize
                 )),
                 stack: stack, range: range, owner: owner, layerID: layerID, inputs: frozenInputs()
             )

@@ -107,6 +107,9 @@ struct MediaDraw: @unchecked Sendable {
     var still: StillPicture?
 
     /// Every track the picture may be read from.
+    /// The size of the track's frames before `base`, when they have no
+    /// transparency; nil when they may, and for stills.
+    var opaqueSize: CGSize?
     var trackIDs: [CMPersistentTrackID] {
         ([trackID] + [nextFrame].compactMap { $0 }.map(\.trackID) + echoes.map(\.trackID) + trails.map(\.trackID))
             .filter { $0 != kCMPersistentTrackID_Invalid }
