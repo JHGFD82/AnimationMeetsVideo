@@ -40,7 +40,7 @@ struct EditorToolbar: View {
                 .font(Design.Typeface.panelTitle)
                 .foregroundStyle(Design.textPrimary)
             Spacer(minLength: Design.Space.group)
-            Menu(externalDisplay.isActive ? "On External Display" : "External Display") {
+            Menu {
                 ForEach(externalScreens.indices, id: \.self) { index in
                     let screen = externalScreens[index]
                     Button(screen.localizedName) {
@@ -61,9 +61,21 @@ struct EditorToolbar: View {
                         externalDisplay.stop()
                     }
                 }
+            } label: {
+                Image(systemName: Design.Symbol.externalDisplay)
             }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            // Lit while the viewer is out on another screen, as a toggle
+            // that is on; quiet otherwise, like the other icon buttons.
+            .tint(externalDisplay.isActive ? Design.accent : Design.textSecondary)
             .disabled(externalScreens.isEmpty && !externalDisplay.isActive)
-            .frame(width: 170)
+            .help(externalDisplay.isActive
+                  ? "Showing the viewer on an external display"
+                  : externalScreens.isEmpty ? "Connect a second display to show the viewer on it" : "Show the viewer on an external display")
+            .accessibilityLabel("External display")
+            .accessibilityValue(externalDisplay.isActive ? "On" : "Off")
 
             if !pasteChanges.isEmpty {
                 Button {

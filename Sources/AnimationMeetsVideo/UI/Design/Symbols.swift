@@ -30,6 +30,9 @@ extension Design {
         static let edit = "pencil"
         static let startOver = "arrow.counterclockwise"
 
+        /// Showing the viewer full screen on another display.
+        static let externalDisplay = "display"
+
         /// A saved stack of effects, in the library's Presets tab.
         static let preset = "bookmark"
     }
