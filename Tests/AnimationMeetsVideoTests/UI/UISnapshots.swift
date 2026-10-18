@@ -1,0 +1,72 @@
+import CoreMedia
+import Foundation
+import SwiftUI
+import Testing
+@testable import AnimationMeetsVideo
+
+/// Pictures of the editor's views, for checking a UI change by eye. Runs
+/// only with `SNAPSHOT_DIR` set (see `SnapshotSupport`), so CI and a
+/// plain `swift test` skip it. Add a test here when changing a view that
+/// has none.
+@MainActor
+@Suite(.serialized, .enabled(if: SnapshotSupport.isEnabled))
+struct UISnapshots {
+    /// The beat match panel at each step: choosing, drawing sections,
+    /// marking, and a filled section with a beat selected.
+    @Test func beatMatchSteps() async throws {
+        let song = try SnapshotSupport.clickSong(named: "beat-match-song")
+        let session = BeatMatchSession(asset: song, url: try #require(song.url))
+        defer { session.end() }
+        for _ in 0..<200 where session.audio == nil { try await Task.sleep(for: .milliseconds(50)) }
+        let size = CGSize(width: 1300, height: 520)
+        func render(_ name: String) throws {
+            try SnapshotSupport.render(BeatMatchView(session: session, onConfirm: {}, onCancel: {}), name, size: size)
+        }
+
+        try render("beat-match-1-choose")
+        session.chooseSections()
+        session.drawSection(from: 0, to: 18, snap: 0)
+        session.drawSection(from: 18, to: 22, snap: 0)
+        session.drawSection(from: 22, to: 40, snap: 0)
+        try render("beat-match-2-draw")
+        session.finishDrawing()
+        try render("beat-match-3-mark")
+        session.addBeat(at: 8.25, position: 1)
+        session.addBeat(at: 16.25, position: 1)
+        session.fillSelected()
+        for _ in 0..<100 where session.isFilling { try await Task.sleep(for: .milliseconds(50)) }
+        session.selectBeat(step: 1)
+        try render("beat-match-4-filled")
+    }
+
+    /// The whole editor with a song on a Music layer.
+    @Test func editor() throws {
+        let song = try SnapshotSupport.clickSong(named: "editor-song")
+        var project = EditingProject.empty
+        project.clips = [song]
+        project.putOnMusicLayer([song.id])
+        let editor = EditorView(
+            project: .constant(project), history: ProjectHistory(project: project), analysis: AssetAnalysis(),
+            replacement: MediaReplacementController(), packageURL: nil
+        )
+        try SnapshotSupport.render(editor, "editor", size: CGSize(width: 1500, height: 900))
+    }
+
+    /// Each tab of the Settings window. The window's tab is remembered,
+    /// so it is put back afterwards.
+    @Test func settingsWindow() throws {
+        let key = "settingsTab"
+        let remembered = UserDefaults.standard.object(forKey: key)
+        defer { UserDefaults.standard.set(remembered, forKey: key) }
+        for tab in ["viewer", "timeline", "library", "layout"] {
+            UserDefaults.standard.set(tab, forKey: key)
+            try SnapshotSupport.render(SettingsView(), "settings-\(tab)", size: CGSize(width: 460, height: 420))
+        }
+    }
+
+    @Test func projectSettings() throws {
+        try SnapshotSupport.render(
+            ProjectSettingsView(project: .empty) { _, _ in }, "project-settings", size: CGSize(width: 460, height: 300)
+        )
+    }
+}

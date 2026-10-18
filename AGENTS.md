@@ -55,6 +55,11 @@ Follow Google's change-description conventions for every commit.
   file; keep non-UI logic out of `UI/`.
 - Tests in `Tests/AnimationMeetsVideoTests` mirror the source folders, with
   shared fixtures and harnesses in `Support/`.
+- To look at a UI change without launching the app, run
+  `SNAPSHOT_DIR=<folder> swift test --filter UISnapshots`. It renders
+  the views in `Tests/AnimationMeetsVideoTests/UI/UISnapshots.swift` to
+  PNGs in that folder, and is skipped when the variable isn't set. Add a
+  case there for a view you change that has none.
 - New UI follows the rules in `docs/accessibility.md`: drawn or gesture-
   driven views need an accessibility element with actions, icon-only
   buttons need labels, and anything a drag does needs a keyboard path.
