@@ -170,13 +170,6 @@ struct ClipsTab: View {
         FilmstripLayout(duration: entry.seconds, interval: interval, cellSize: cellSize, width: width - Self.padding * 2)
     }
 
-    /// How far scene detection has got for a video still shown whole;
-    /// nil when nothing is being found for it.
-    private func detecting(_ entry: BrowserEntry) -> Double? {
-        guard case .asset = entry.id, entry.clip.kind == .video, analysis.tracks[entry.clip.id] == nil else { return nil }
-        return analysis.progress[entry.clip.id]
-    }
-
     // MARK: - Body
 
     var body: some View {
@@ -249,7 +242,7 @@ struct ClipsTab: View {
                 }
                 if case .asset = entry.id {
                     // Detection shows its progress across the strip instead.
-                    assetStatus(entry.clip, showsProgress: detecting(entry) == nil)
+                    AssetStatusLine(analysis: analysis, replacement: replacement, clip: entry.clip, stripShowsDetection: true)
                 }
             }
         }
@@ -281,7 +274,7 @@ struct ClipsTab: View {
                     .font(Design.Typeface.micro)
                     .foregroundStyle(Design.textTertiary)
             }
-            assetStatus(clip, showsProgress: true)
+            AssetStatusLine(analysis: analysis, replacement: replacement, clip: clip)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -300,7 +293,6 @@ struct ClipsTab: View {
 
     private func accessibilityName(_ entry: BrowserEntry, isUsed: Bool) -> String {
         var parts = [entry.sceneNumber.map { "Scene \($0) of \(entry.clip.name)" } ?? entry.clip.name, durationText(entry)]
-        if let progress = detecting(entry) { parts.append("detecting scenes, \(Int(progress * 100)) percent") }
         if isUsed { parts.append("used in a timeline") }
         if let range = picked.range, range.item == entry.id {
             parts.append("range \(timecode(range.start, entry)) to \(timecode(range.end, entry))")
@@ -321,7 +313,7 @@ struct ClipsTab: View {
             range: range.map { ($0.start, $0.end) },
             used: used,
             durationText: row == 0 ? durationText(entry) : nil,
-            detecting: row == 0 ? detecting(entry) : nil
+            detection: row == 0 && entry.id == .asset(entry.clip.id) ? analysis : nil
         )
         .overlay {
             FilmstripMouseView(
@@ -558,10 +550,9 @@ struct ClipsTab: View {
                 sensitivityTarget = SensitivityTarget(assetID: clip.id, scope: .asset)
             }
             .disabled(analysis.tracks[clip.id] == nil)
-            Button("Find Scenes Again") {
+            AnalysisIdleButton(title: "Find Scenes Again", analysis: analysis, assetID: clip.id) {
                 analysis.reanalyze(clip, in: project)
             }
-            .disabled(analysis.progress[clip.id] != nil)
         }
         if let problem = analysis.persistenceProblem(for: clip.id) {
             Button(problem.kind == .unreadableProject ? "Retry Reading Results" : "Retry Saving Results") {
@@ -569,10 +560,9 @@ struct ClipsTab: View {
             }
         }
         if analysis.firstFailure(for: clip.id) != nil {
-            Button("Retry Failed Analysis") {
+            AnalysisIdleButton(title: "Retry Failed Analysis", analysis: analysis, assetID: clip.id) {
                 analysis.retryFailures(for: clip.id, in: project)
             }
-            .disabled(analysis.progress[clip.id] != nil)
         }
         Divider()
         ReplaceMediaMenuItems(clip: clip, project: $project, analysis: analysis, controller: replacement, packageURL: packageURL)
@@ -651,48 +641,5 @@ struct ClipsTab: View {
             return "\(Int(range.lowerBound.rounded()))–\(Int(range.upperBound.rounded())) BPM"
         }
         return "\(Int(beats.beatsPerMinute.rounded())) BPM"
-    }
-
-    @ViewBuilder
-    private func assetStatus(_ clip: MediaClip, showsProgress: Bool) -> some View {
-        if showsProgress, let fraction = analysis.progress[clip.id] {
-            HStack(spacing: Design.Space.close) {
-                ProgressView(value: fraction)
-                    .controlSize(.small)
-                    .frame(width: 60)
-                Text(analysis.stages[clip.id]?.label ?? "Waiting…")
-                    .font(Design.Typeface.label)
-                    .foregroundStyle(Design.textTertiary)
-            }
-        } else if analysis.progress[clip.id] != nil {
-            EmptyView()
-        } else if replacement.missingMedia.contains(clip.id) {
-            Text("File missing")
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.statusWarning)
-                .help("Its clips play as gaps until the file is back. Control-click to replace it.")
-        } else if let failure = analysis.firstFailure(for: clip.id) {
-            Text(failure.title)
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.statusWarning)
-                .help(failure.detail)
-                .accessibilityHint(failure.detail)
-        } else if analysis.changedFiles[clip.id] != nil {
-            Text("File changed outside the app")
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.statusWarning)
-                .help("Scenes and beats aren't found until the change is checked. Control-click and choose \u{201C}File Changed — Check Sync…\u{201D}.")
-                .accessibilityHint("Scenes and beats aren't found until the change is checked.")
-        } else if let problem = analysis.persistenceProblem(for: clip.id) {
-            Text(problem.title)
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.statusWarning)
-                .help(problem.detail)
-                .accessibilityHint(problem.detail)
-        } else if let beats = analysis.beats[clip.id], !beats.isEmpty {
-            Text(Self.tempoText(beats))
-                .font(Design.Typeface.numericMicro)
-                .foregroundStyle(Design.textTertiary)
-        }
     }
 }
