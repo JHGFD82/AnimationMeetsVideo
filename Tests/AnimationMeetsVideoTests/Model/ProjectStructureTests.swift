@@ -83,4 +83,26 @@ import Testing
         let selected = TimelineSelection(timelineID: t, layerID: UUID(), timelineClipID: shape)
         #expect(BrowserPanel.Shown(structure: project.structure, activeTimelineID: t, selection: selected) != shown)
     }
+
+    @Test func theTimelineMenuStaysWhileAValueIsDragged() throws {
+        let (project, shape, footage) = try project()
+        let t = project.rootTimelineID
+        func actions(_ project: EditingProject, snapping: Bool = true, tool: TimelineTool = .arrow) -> TimelineActions {
+            TimelineActions(
+                togglePlayback: {}, step: { _ in }, goToStart: {}, goToEnd: {}, previousEdit: {}, nextEdit: {},
+                splitAtPlayhead: {}, nudge: { _ in }, deleteSelection: {}, isSnapping: snapping, toggleSnapping: {},
+                tool: tool, setTool: { _ in }, zoomIn: {}, zoomOut: {}, zoomToFit: {}, renderNow: nil,
+                timelineID: t, structure: project.structure
+            )
+        }
+        var dragged = project
+        dragged.editClip(shape, in: t) { $0.effects[0].controls[0].number = AnimatedValue(ComponentValue(values: [9, 9])) }
+        #expect(actions(dragged) == actions(project))
+
+        var moved = project
+        moved.editClip(footage, in: t) { $0.startOffset = CMTime(seconds: 1, preferredTimescale: 600) }
+        #expect(actions(moved) != actions(project))
+        #expect(actions(project, snapping: false) != actions(project))
+        #expect(actions(project, tool: .blade) != actions(project))
+    }
 }

@@ -108,7 +108,7 @@ struct EditorView: View {
         .preferredColorScheme(.dark)
         .tint(Design.accent)
         .environment(\.projectHistory, history)
-        .focusedSceneValue(\.showTapeScrubber) { [tapeScrubber, playback] in tapeScrubber.show(playback: playback) }
+        .focusedSceneValue(\.showTapeScrubber, TapeScrubberOpener { [tapeScrubber, playback] in tapeScrubber.show(playback: playback) })
         // The tape scrubber plays only the Main timeline.
         .onChange(of: activeTimeline.wrappedValue == project.rootTimelineID, initial: true) { _, isMain in
             tapeScrubber.isMainTimeline = isMain

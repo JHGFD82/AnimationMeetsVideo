@@ -99,7 +99,9 @@ extension TimelineView {
             zoomIn: { zoomAroundPlayhead(by: zoomStep) },
             zoomOut: { zoomAroundPlayhead(by: 1 / zoomStep) },
             zoomToFit: { fitToWindow() },
-            renderNow: renderer.flatMap { renderer in renderer.canRenderNow ? { renderer.renderNow() } : nil }
+            renderNow: renderer.flatMap { renderer in renderer.canRenderNow ? { renderer.renderNow() } : nil },
+            timelineID: timelineID,
+            structure: project.structure
         )
     }
 

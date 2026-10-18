@@ -1,13 +1,25 @@
 import SwiftUI
 
 private struct ShowTapeScrubberKey: FocusedValueKey {
-    typealias Value = () -> Void
+    typealias Value = TapeScrubberOpener
+}
+
+/// Opens the Tape Scrubber for the editor on screen. Always equal to
+/// another: the editor makes a new one each redraw, opening the same
+/// scrubber, and a value that differed every time would rebuild the menu
+/// bar on every edit.
+struct TapeScrubberOpener: Equatable {
+    let open: () -> Void
+
+    func callAsFunction() { open() }
+
+    static func == (lhs: TapeScrubberOpener, rhs: TapeScrubberOpener) -> Bool { true }
 }
 
 extension FocusedValues {
     /// Opens the Tape Scrubber for the editor on screen, which publishes
     /// it with `focusedSceneValue`.
-    var showTapeScrubber: (() -> Void)? {
+    var showTapeScrubber: TapeScrubberOpener? {
         get { self[ShowTapeScrubberKey.self] }
         set { self[ShowTapeScrubberKey.self] = newValue }
     }

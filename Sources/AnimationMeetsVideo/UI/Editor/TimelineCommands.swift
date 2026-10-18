@@ -24,6 +24,24 @@ struct TimelineActions {
     var zoomToFit: () -> Void
     /// Renders what still needs it now; nil when nothing does.
     var renderNow: (() -> Void)?
+    /// The timeline the actions work in, and the structure of the project
+    /// (`EditingProject.structure`) as the timeline had it when it made
+    /// them: what they read that may since have changed (see `==`).
+    var timelineID: UUID
+    var structure: EditingProject
+}
+
+extension TimelineActions: Equatable {
+    /// Whether the menu would offer the same and the actions do the same:
+    /// the same timeline and structure, which they act on (where clips are,
+    /// the timeline's length), and the same snapping, tool and render
+    /// state, which the menu shows. The playhead, selection and zoom they
+    /// read as they run. A new set for every redraw would rebuild the menu
+    /// bar on every step of dragging a value, which changes none of these.
+    nonisolated static func == (lhs: TimelineActions, rhs: TimelineActions) -> Bool {
+        lhs.timelineID == rhs.timelineID && lhs.isSnapping == rhs.isSnapping && lhs.tool == rhs.tool
+            && (lhs.renderNow == nil) == (rhs.renderNow == nil) && lhs.structure == rhs.structure
+    }
 }
 
 private struct TimelineActionsKey: FocusedValueKey {

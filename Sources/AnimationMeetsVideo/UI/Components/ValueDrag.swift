@@ -67,7 +67,11 @@ final class ValueDragSession {
         case .leftMouseDragged:
             distance += Double(event.deltaX)
             onMove(distance, event.modifierFlags.intersection(.deviceIndependentFlagsMask))
-            return false
+            // Taken here: passed on, every move would be hit-tested through
+            // the whole window and run its gestures, for nothing, since the
+            // pointer is held still. The mouse-up still goes on, ending the
+            // field's own gesture.
+            return true
         case .leftMouseUp:
             finish(cancelled: false)
             return false
