@@ -177,7 +177,7 @@ private struct LayoutSettings: View {
                     }
                     .disabled(!isCustom)
                 }
-                SheetNote("Puts every panel back to its first-launch size and place: the library, inspector, effects and timeline, which are open, and the timeline's areas and layer heights. Projects are untouched.")
+                SheetNote("Puts every panel back to its first-launch size and place: the library, inspector, effects and timeline, which are open, and the timeline's areas and layer heights. Projects are untouched. Also in the Window menu.")
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
