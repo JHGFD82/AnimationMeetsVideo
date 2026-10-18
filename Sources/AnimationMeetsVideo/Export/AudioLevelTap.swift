@@ -118,7 +118,7 @@ final class MixCurves: @unchecked Sendable {
 enum AudioLevelTap {
     /// An audio mix with a tap on each of `tracks`.
     static func audioMix(
-        for tracks: [(track: AVAssetTrack, stages: [MixStage], pitch: AVAudioTimePitchAlgorithm?)],
+        for tracks: [ComposedAudioTrack],
         curves: MixCurves,
         meter: MixLevelMeter?
     ) -> AVAudioMix {
@@ -135,7 +135,9 @@ enum AudioLevelTap {
             let effects = entry.stages.enumerated().flatMap { stage, entry in
                 entry.fade != nil ? [] : (current.effects[entry.id] ?? []).map { (stage: stage, id: $0.id, kind: $0.kind) }
             }
-            let context = TapContext(stages: entry.stages, effects: effects, curves: curves, meter: meter, meterIndex: index)
+            let context = TapContext(
+                stages: entry.stages, effects: effects, latency: entry.latency, curves: curves, meter: meter, meterIndex: index
+            )
             guard let tap = makeTap(context) else { return nil }
             parameters.audioTapProcessor = tap
             return parameters
@@ -183,6 +185,9 @@ enum AudioLevelTap {
         /// The sound effects the track plays through, innermost stage
         /// first, each with the index of the stage it belongs to.
         let effects: [(stage: Int, id: UUID, kind: EffectKind)]
+        /// How far ahead of when it is heard the track's sound reaches the
+        /// tap, in seconds; its curves and the meter go by when it is heard.
+        let latency: Double
         let curves: MixCurves
         let meter: MixLevelMeter?
         let meterIndex: Int
@@ -198,9 +203,13 @@ enum AudioLevelTap {
         private var weighted: UnsafeMutablePointer<Float>?
         private var weightedCapacity = 0
 
-        init(stages: [MixStage], effects: [(stage: Int, id: UUID, kind: EffectKind)], curves: MixCurves, meter: MixLevelMeter?, meterIndex: Int) {
+        init(
+            stages: [MixStage], effects: [(stage: Int, id: UUID, kind: EffectKind)], latency: Double,
+            curves: MixCurves, meter: MixLevelMeter?, meterIndex: Int
+        ) {
             self.stages = stages
             self.effects = effects
+            self.latency = latency
             self.curves = curves
             self.meter = meter
             self.meterIndex = meterIndex
@@ -253,7 +262,7 @@ enum AudioLevelTap {
 
         /// Runs the buffer through the sound effects, each set as its
         /// controls are at the buffer's start.
-        private func applyEffects(_ bufferList: UnsafeMutablePointer<AudioBufferList>, frames: Int, start: CMTime) {
+        private func applyEffects(_ bufferList: UnsafeMutablePointer<AudioBufferList>, frames: Int, start: CMTime, heard: CMTime) {
             let seconds = start.seconds
             if let expected = expectedStart, abs(seconds - expected) > 1 / format.mSampleRate {
                 for (_, unit) in units { unit.reset() }
@@ -264,7 +273,7 @@ enum AudioLevelTap {
                 // is left out until the player is rebuilt.
                 let owner = stages[stage]
                 guard let effect = current.effects[owner.id]?.first(where: { $0.id == unit.effectID }) else { continue }
-                unit.apply(effect, at: owner.local(start))
+                unit.apply(effect, at: owner.local(heard))
                 unit.process(bufferList, frames: frames)
             }
         }
@@ -281,10 +290,12 @@ enum AudioLevelTap {
             if let expected = expectedStart, abs(start.seconds - expected) > 1 / format.mSampleRate {
                 for index in weighting.indices { weighting[index].reset() }
             }
-            if !units.isEmpty { applyEffects(bufferList, frames: frames, start: start) }
+            // When the sound is heard, once its effects' delay puts it back.
+            let heard = CMTimeAdd(start, CMTime(seconds: latency, preferredTimescale: 96_000))
+            if !units.isEmpty { applyEffects(bufferList, frames: frames, start: start, heard: heard) }
             expectedStart = start.seconds + Double(frames) / format.mSampleRate
             let rate = format.mSampleRate
-            let startSeconds = start.seconds
+            let startSeconds = heard.seconds
             let first = curves.gains(through: stages, at: startSeconds)
             let last = curves.gains(through: stages, at: startSeconds + Double(frames) / rate)
 

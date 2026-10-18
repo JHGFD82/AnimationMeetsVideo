@@ -113,6 +113,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     case equalizer
     case compressor
     case limiter
+    case voiceIsolation
 
     var id: Self { self }
 
@@ -125,6 +126,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .equalizer: "EQ"
         case .compressor: "Compressor"
         case .limiter: "Limiter"
+        case .voiceIsolation: "Voice Isolation"
         }
     }
 
@@ -132,7 +134,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .transform, .blending, .color: .foundations
         case .matte: .mattes
-        case .equalizer, .compressor, .limiter: .sound
+        case .equalizer, .compressor, .limiter, .voiceIsolation: .sound
         }
     }
 
@@ -148,6 +150,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .equalizer: "slider.vertical.3"
         case .compressor: "arrow.down.right.and.arrow.up.left"
         case .limiter: "line.horizontal.star.fill.line.horizontal"
+        case .voiceIsolation: "person.wave.2"
         }
     }
 
@@ -160,7 +163,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     /// single pixels, or move them, don't.
     var dependsOnPixelSize: Bool {
         switch self {
-        case .transform, .blending, .color, .matte, .equalizer, .compressor, .limiter: false
+        case .transform, .blending, .color, .matte, .equalizer, .compressor, .limiter, .voiceIsolation: false
         }
     }
 
@@ -174,6 +177,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .equalizer: [.lowCut, .bass, .mid, .midFrequency, .treble]
         case .compressor: [.threshold, .headroom, .attack, .release, .makeup]
         case .limiter: [.drive, .limiterRelease]
+        case .voiceIsolation: [.isolation]
         }
     }
 }
@@ -187,6 +191,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case lowCut, bass, mid, midFrequency, treble
     case threshold, headroom, attack, release, makeup
     case drive, limiterRelease
+    case isolation
 
     var id: Self { self }
 
@@ -218,6 +223,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .release, .limiterRelease: "Release"
         case .makeup: "Makeup"
         case .drive: "Drive"
+        case .isolation: "Isolation"
         }
     }
 
@@ -232,15 +238,16 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .lowCut, .bass, .mid, .midFrequency, .treble: .equalizer
         case .threshold, .headroom, .attack, .release, .makeup: .compressor
         case .drive, .limiterRelease: .limiter
+        case .isolation: .voiceIsolation
         }
     }
 
     /// Whether the control changes nothing at its default, so it can be
-    /// shown dimmed there. A compressor's or limiter's controls always
-    /// matter: at their defaults they still compress.
+    /// shown dimmed there. A compressor's, limiter's or voice isolation's
+    /// controls always matter: at their defaults they still work.
     var hasNeutralDefault: Bool {
         switch effectKind {
-        case .compressor, .limiter: false
+        case .compressor, .limiter, .voiceIsolation: false
         default: true
         }
     }
@@ -277,13 +284,14 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .attack: [10]
         case .release: [100]
         case .limiterRelease: [5]
+        case .isolation: [100]
         }
     }
 
     var unit: String {
         switch self {
         case .position: " px"
-        case .scale, .opacity, .amount, .contrast, .saturation: "%"
+        case .scale, .opacity, .amount, .contrast, .saturation, .isolation: "%"
         case .rotation: "°"
         case .exposure: " stops"
         case .mode, .matteMode, .temperature, .tint, .lift, .gamma, .gain: ""
@@ -326,6 +334,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .makeup: -20...40
         case .drive: 0...24
         case .limiterRelease: 1...40
+        case .isolation: 0...100
         }
     }
 

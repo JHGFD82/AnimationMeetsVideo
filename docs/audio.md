@@ -118,6 +118,9 @@ a video clip's sound takes its sound effects with it.
   (−20 to +40 dB). It compresses at its defaults, so it is never dimmed.
 - **Limiter**: **Drive** (0 to +24 dB into it) and **Release** (1 to
   40 ms); it holds the sound under full scale.
+- **Voice Isolation**: **Isolation** (0 to 100%, how much of the isolated
+  voice is heard against the original), Apple's machine-learning voice
+  isolation, for dialogue under music or noise. It is never dimmed.
 
 They are Apple's Audio Units (`AUNBandEQ`, `AUDynamicsProcessor`,
 `AUPeakLimiter`), each made by the track's tap when it is prepared
@@ -131,10 +134,15 @@ rebuilds the player. A jump in time (a seek or a loop) resets the units,
 so a compressor doesn't carry what it heard before. Effects on a nested
 timeline's clip run on each track inside it separately, not on their sum.
 
-The compressor delays its sound by about 5 ms and the limiter by 2 ms,
-which isn't made up for. Apple's voice isolation unit (`AUSoundIsolation`)
-isn't offered: it delays sound by about 76 ms, two frames, which would
-have to be made up by starting the clip's sound that much earlier.
+Some of these hold sound back: the compressor by about 5 ms, the limiter
+by 2 and voice isolation by about 76, two frames. That is made up for
+where the composition is built: each audio track's sound is placed
+earlier by the delay of the effects it plays through (each kind's delay
+measured once from a unit made at 48 kHz, `AudioEffectUnit.latency(of:)`),
+so the effects put it back where it was edited. Sound that would then
+start before the timeline is cut off there. The track's tap goes by when
+its sound is heard, its own time plus that delay, for its volume, pan,
+fades, effects' keyframes and the meter.
 
 ## Under transitions
 
@@ -397,9 +405,7 @@ dropped on load.
 - Dragging the level line up and down in the lane; levels are set in the
   field or with the fader.
 - A way to keep a clip's sound from fading under a transition.
-- Sound effects on Sound and Music layers, and voice isolation (see
-  [Sound effects](#sound-effects)).
-- Making up for a sound effect's delay.
+- Sound effects on Sound and Music layers.
 - A meter per layer, and a meter reading while scrubbing or paused.
 - Integrated loudness of the timeline in the editor, and loudness range.
 - A true-peak ceiling.

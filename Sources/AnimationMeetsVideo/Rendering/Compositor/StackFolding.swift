@@ -142,7 +142,7 @@ enum StackFolding {
                 guard amount > 0 else { continue }
                 flush()
                 steps.append(.blend(mode: mode.blendMode, amount: amount, against: effect.against))
-            case .equalizer, .compressor, .limiter:
+            case .equalizer, .compressor, .limiter, .voiceIsolation:
                 // Sound effects live in a clip's `audioEffects`, played by
                 // its audio track's tap.
                 continue

@@ -1,6 +1,8 @@
 import AudioToolbox
+import AVFoundation
 import CoreMedia
 import Foundation
+import os
 
 /// One sound effect of a clip (an EQ, compressor or limiter) as one of
 /// Apple's Audio Units, run in place on the buffers of an audio track's tap
@@ -35,6 +37,7 @@ final class AudioEffectUnit {
         case .equalizer: subType = kAudioUnitSubType_NBandEQ
         case .compressor: subType = kAudioUnitSubType_DynamicsProcessor
         case .limiter: subType = kAudioUnitSubType_PeakLimiter
+        case .voiceIsolation: subType = kAudioUnitSubType_AUSoundIsolation
         case .transform, .blending, .color, .matte: return nil
         }
         guard format.mFormatID == kAudioFormatLinearPCM, format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
@@ -108,6 +111,25 @@ final class AudioEffectUnit {
         return seconds
     }
 
+    /// How long a unit of `kind` holds sound back, in seconds, measured
+    /// once from one made at 48 kHz, for working out before any tap is
+    /// prepared how much earlier its sound must start. 0 for picture
+    /// effects.
+    static func latency(of kind: EffectKind) -> Double {
+        latencies.withLock { known in
+            if let latency = known[kind] { return latency }
+            var latency = 0.0
+            if kind.isAudio, let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2),
+               let unit = AudioEffectUnit(effectID: UUID(), kind: kind, format: format.streamDescription.pointee, maxFrames: 4096) {
+                latency = unit.latency
+            }
+            known[kind] = latency
+            return latency
+        }
+    }
+
+    private static let latencies = OSAllocatedUnfairLock(initialState: [EffectKind: Double]())
+
     /// Forgets the sound it has heard, after a jump in time, so the
     /// compressor's envelope and the filters' state don't carry over.
     func reset() {
@@ -165,6 +187,8 @@ final class AudioEffectUnit {
         case .limiter:
             set(kLimiterParam_PreGain, value(.drive))
             set(kLimiterParam_DecayTime, value(.limiterRelease) / 1000)
+        case .voiceIsolation:
+            set(kAUSoundIsolationParam_WetDryMixPercent, value(.isolation))
         case .transform, .blending, .color, .matte:
             break
         }

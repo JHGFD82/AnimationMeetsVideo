@@ -97,17 +97,26 @@ enum CompositionExporter {
         }
 
         let composition = AVMutableComposition()
-        var audioTracks: [(track: AVAssetTrack, stages: [MixStage], pitch: AVAudioTimePitchAlgorithm?)] = []
+        var audioTracks: [ComposedAudioTrack] = []
         /// A stretch of some source's picture, to fill time after the last clip.
         var filler: (track: AVAssetTrack, range: CMTimeRange)?
+        let mix = MixCurves.of(project)
+        /// Where the last sound ends, as placed, before any is moved earlier.
+        var soundEnd = CMTime.zero
         /// Clips and layers with a pan; mono sound played through any of
         /// them plays from a stereo copy, which can be panned.
-        let panned = Set(MixCurves.of(project).pan.keys)
+        let panned = Set(mix.pan.keys)
 
         for host in hosts {
             var videoTrack: AVMutableCompositionTrack?
             var audioTrack: AVMutableCompositionTrack?
             let pans = host.volume.contains { $0.fade == nil && panned.contains($0.id) }
+            // The sound effects it plays through hold it back; it starts
+            // that much earlier, so it is heard where it was placed.
+            let latency = host.volume.filter { $0.fade == nil }
+                .flatMap { mix.effects[$0.id] ?? [] }
+                .reduce(0) { $0 + AudioEffectUnit.latency(of: $1.kind) }
+            let ahead = CMTime(seconds: latency, preferredTimescale: 96_000)
 
             for placement in host.placements {
                 let info = placement.info
@@ -146,7 +155,9 @@ enum CompositionExporter {
                 }
                 if let sourceAudio = audioInfo.audio, placement.includesAudio {
                     for piece in placement.pieces {
-                        guard let (file, at, length) = piece.within(audioInfo.audioRange) else { continue }
+                        guard let placed = piece.within(audioInfo.audioRange) else { continue }
+                        soundEnd = CMTimeMaximum(soundEnd, CMTimeAdd(placed.at, placed.length))
+                        guard let (file, at, length) = Self.moved(placed, earlierBy: ahead) else { continue }
                         if audioTrack == nil {
                             audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
                         }
@@ -159,12 +170,17 @@ enum CompositionExporter {
             }
 
             if let audioTrack {
-                audioTracks.append((audioTrack, host.volume, host.pitch))
+                audioTracks.append(ComposedAudioTrack(track: audioTrack, stages: host.volume, pitch: host.pitch, latency: latency))
             }
         }
 
         guard composition.duration > .zero else {
             throw CompositionError.emptyTimeline
+        }
+        // Sound moved earlier for its effects' delay mustn't end the
+        // composition early, or what the effects still hold is never heard.
+        if composition.duration < soundEnd {
+            try await padSound(of: composition, to: soundEnd)
         }
         // Sections can run past the last clip. A composition ends with its
         // last media (an empty edit at the end doesn't count), so a frame of
@@ -206,6 +222,62 @@ enum CompositionExporter {
         return ComposedTimeline(
             composition: composition, videoComposition: videoComposition,
             segments: plan.map(\.segment), cachedKeys: cachedKeys, audioTracks: audioTracks
+        )
+    }
+
+    /// Fills a composition's sound out to `end` with silence on a track of
+    /// its own: an empty stretch at the end doesn't count toward its length,
+    /// but silence does, and the other tracks' taps run on through it.
+    static func padSound(of composition: AVMutableComposition, to end: CMTime) async throws {
+        // 16-bit: silence needs no more.
+        let silence = StereoProxies.folder.appending(path: "silence-16.caf")
+        if !FileManager.default.fileExists(atPath: silence.path) {
+            try FileManager.default.createDirectory(at: StereoProxies.folder, withIntermediateDirectories: true)
+            guard let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2),
+                  let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 48_000)
+            else { return }
+            buffer.frameLength = 48_000
+            for channel in 0..<2 { buffer.floatChannelData![channel].update(repeating: 0, count: 48_000) }
+            let partial = StereoProxies.folder.appending(path: "silence-\(UUID().uuidString).caf")
+            try AVAudioFile(forWriting: partial, settings: [
+                AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 2,
+                AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+            ], commonFormat: .pcmFormatFloat32, interleaved: false).write(from: buffer)
+            try? FileManager.default.moveItem(at: partial, to: silence)
+            try? FileManager.default.removeItem(at: partial)
+        }
+        // Kept while its track is used: a track whose asset is gone can't
+        // be inserted from.
+        let asset = AVURLAsset(url: silence)
+        guard let source = try await asset.loadTracks(withMediaType: .audio).first,
+              let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+        else { return }
+        var at = composition.duration
+        try withExtendedLifetime(asset) {
+            while at < end {
+                let length = CMTimeMinimum(CMTimeSubtract(end, at), CMTime(value: 1, timescale: 1))
+                try track.insertTimeRange(CMTimeRange(start: .zero, duration: length), of: source, at: at)
+                at = CMTimeAdd(at, length)
+            }
+        }
+    }
+
+    /// A stretch of sound placed `earlier` before where it plays, for effects
+    /// that hold it back that long. What would fall before the start of the
+    /// timeline is left out, in proportion for retimed sound. Nil when none
+    /// is left.
+    static func moved(
+        _ piece: (file: CMTimeRange, at: CMTime, length: CMTime), earlierBy earlier: CMTime
+    ) -> (file: CMTimeRange, at: CMTime, length: CMTime)? {
+        guard earlier > .zero else { return piece }
+        let at = CMTimeSubtract(piece.at, earlier)
+        guard at < .zero else { return (piece.file, at, piece.length) }
+        let cut = CMTimeMultiplyByFloat64(at, multiplier: -1)
+        guard cut < piece.length else { return nil }
+        let fileCut = CMTimeMultiplyByFloat64(cut, multiplier: piece.file.duration.seconds / piece.length.seconds)
+        return (
+            CMTimeRange(start: CMTimeAdd(piece.file.start, fileCut), duration: CMTimeSubtract(piece.file.duration, fileCut)),
+            .zero, CMTimeSubtract(piece.length, cut)
         )
     }
 

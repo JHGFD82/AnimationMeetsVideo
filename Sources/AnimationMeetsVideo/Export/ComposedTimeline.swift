@@ -13,7 +13,7 @@ struct ComposedTimeline: @unchecked Sendable {
     /// Keys of the segments drawn from the render cache.
     var cachedKeys: Set<String> = []
     /// Each audio track, with the layers whose volumes it plays through.
-    var audioTracks: [(track: AVAssetTrack, stages: [MixStage], pitch: AVAudioTimePitchAlgorithm?)] = []
+    var audioTracks: [ComposedAudioTrack] = []
 
     /// A mix that plays each audio track at its layers' volumes, read from
     /// `curves` as it plays, and measures the result into `meter`.
@@ -43,4 +43,17 @@ struct ComposedTimeline: @unchecked Sendable {
         scaled.renderSize = CGSize(width: even(videoComposition.renderSize.width), height: even(videoComposition.renderSize.height))
         return scaled
     }
+}
+
+/// One audio track of a composition and how it is mixed.
+struct ComposedAudioTrack {
+    var track: AVAssetTrack
+    /// The volumes, pans, fades and sound effects it plays through,
+    /// innermost first.
+    var stages: [MixStage]
+    /// How retimed sound is played, if it is.
+    var pitch: AVAudioTimePitchAlgorithm?
+    /// How much earlier than it is heard its sound is placed, in seconds:
+    /// the delay of the sound effects it plays through, which put it back.
+    var latency: Double = 0
 }

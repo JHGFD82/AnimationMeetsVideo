@@ -719,7 +719,7 @@ extension ProjectFile {
             switch kind {
             case .transform: fields.append(.optional("movesAnchor", .bool))
             case .blending: fields.append(.optional("against", .uuid))
-            case .color, .equalizer, .compressor, .limiter: break
+            case .color, .equalizer, .compressor, .limiter, .voiceIsolation: break
             case .matte:
                 fields.append(.optional("input", .object(object([
                     .optional("asset", .uuid), .optional("timeline", .uuid),

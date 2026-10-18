@@ -150,3 +150,87 @@ import Testing
         #expect(Effect(kind: .equalizer).isNoOp)
     }
 }
+
+/// Sound effects that hold sound back are made up for, so the sound is
+/// heard where it was placed.
+@Suite struct EffectLatencyTests {
+    private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferredTimescale: 48_000) }
+
+    @Test func soundIsPlacedEarlierAndTrimmedAtTheStart() throws {
+        let piece = (file: CMTimeRange(start: seconds(2), duration: seconds(1)), at: seconds(0.05), length: seconds(1))
+        let later = try #require(CompositionExporter.moved(piece, earlierBy: seconds(0.02)))
+        #expect(abs(later.at.seconds - 0.03) < 1e-6 && later.file == piece.file)
+        // Before the timeline's start it's cut off, from the file too.
+        let cut = try #require(CompositionExporter.moved(piece, earlierBy: seconds(0.08)))
+        #expect(cut.at == .zero)
+        #expect(abs(cut.file.start.seconds - 2.03) < 1e-6 && abs(cut.length.seconds - 0.97) < 1e-6)
+        // Retimed at half speed: the file is cut by half as much.
+        let slow = (file: CMTimeRange(start: seconds(2), duration: seconds(1)), at: seconds(0), length: seconds(2))
+        let slowCut = try #require(CompositionExporter.moved(slow, earlierBy: seconds(0.1)))
+        #expect(abs(slowCut.file.start.seconds - 2.05) < 1e-6)
+        #expect(CompositionExporter.moved((piece.file, .zero, seconds(0.01)), earlierBy: seconds(0.02)) == nil)
+    }
+
+    @Test func voiceIsolationRendersAWholeMix() async throws {
+        let url = try AudioMixSupport.tone(frequency: 440, amplitude: 0.25, seconds: 2)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var (project, clipID, _) = try AudioMixSupport.project(playing: url, seconds: 2)
+        let added = project.addEffect(.voiceIsolation, toClip: clipID, in: project.rootTimelineID)
+        #expect(added != nil)
+        let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
+        #expect(composed.audioTracks.first.map { $0.latency > 0.03 } ?? false)
+        let rendered = FileManager.default.temporaryDirectory.appending(path: "amv-isolate-\(UUID().uuidString).caf")
+        defer { try? FileManager.default.removeItem(at: rendered) }
+        try await LoudnessMastering.render(composed, curves: MixCurves(MixCurves.of(project)), limiting: false, to: rendered)
+        let file = try AVAudioFile(forReading: rendered)
+        #expect(abs(Double(file.length) / file.processingFormat.sampleRate - 2) < 0.01)
+    }
+
+    @Test func theDelayingUnitsAreKnown() {
+        #expect(AudioEffectUnit.latency(of: .equalizer) == 0)
+        #expect(AudioEffectUnit.latency(of: .compressor) > 0.001)
+        #expect(AudioEffectUnit.latency(of: .voiceIsolation) > 0.03)
+        #expect(AudioEffectUnit.latency(of: .color) == 0)
+    }
+
+    /// Where the loudest sample of the mix is, in seconds.
+    private func loudestMoment(of project: EditingProject) async throws -> Double {
+        let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
+        let rendered = FileManager.default.temporaryDirectory.appending(path: "amv-latency-\(UUID().uuidString).caf")
+        defer { try? FileManager.default.removeItem(at: rendered) }
+        try await LoudnessMastering.render(composed, curves: MixCurves(MixCurves.of(project)), limiting: false, to: rendered)
+        let file = try AVAudioFile(forReading: rendered)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
+        try file.read(into: buffer)
+        var best = (index: 0, level: Float(0))
+        for index in 0..<Int(buffer.frameLength) where abs(buffer.floatChannelData![0][index]) > best.level {
+            best = (index, abs(buffer.floatChannelData![0][index]))
+        }
+        return Double(best.index) / file.processingFormat.sampleRate
+    }
+
+    @Test func aClickThroughTheCompressorLandsWhereItWasPlaced() async throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "amv-click-\(UUID().uuidString).wav")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 96_000))
+        buffer.frameLength = 96_000
+        for channel in 0..<2 {
+            buffer.floatChannelData![channel].update(repeating: 0, count: 96_000)
+            // A short click at 1 s.
+            for index in 48_000..<48_024 { buffer.floatChannelData![channel][index] = 0.5 }
+        }
+        try AVAudioFile(forWriting: url, settings: format.settings).write(from: buffer)
+        var (project, clipID, _) = try AudioMixSupport.project(playing: url, seconds: 2)
+        let added = project.addEffect(.compressor, toClip: clipID, in: project.rootTimelineID)
+        let effectID = try #require(added)
+        // A gentle setting, so the click comes through.
+        project.editEffect(effectID, ofClip: clipID, in: project.rootTimelineID) { effect in
+            if let index = effect.controls.firstIndex(where: { $0.kind == .threshold }) {
+                effect.controls[index].setComponent(0, to: 0, at: .zero)
+            }
+        }
+        let moment = try await loudestMoment(of: project)
+        #expect(abs(moment - 1) < 0.002)
+    }
+}
