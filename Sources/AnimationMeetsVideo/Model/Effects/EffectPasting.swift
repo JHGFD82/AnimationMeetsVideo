@@ -107,6 +107,11 @@ extension EditingProject {
                               at: isAudio == firstIsAudio ? index : nil, newIDs: &newIDs, pasted: &pastedIDs)
             editClip(clipID, in: timelineID) { $0[keyPath: key] = stack }
         }
+        if let pasted = clipAndLayer(clipID, in: timelineID)?.clip {
+            for effect in pasted.effects where effect.kind.isKeyframing && pastedIDs.contains(effect.id) {
+                regenerateKeyframes(ofEffect: effect.id, onClip: clipID, in: timelineID)
+            }
+        }
         return pastedIDs
     }
 
@@ -157,6 +162,31 @@ extension EditingProject {
                 effect.name = Effect.make(effect.kind, among: stack + pasted).name
             }
             pasted.append(effect)
+        }
+        // A Keyframing effect follows the control it wrote to when that came
+        // along, and otherwise waits to be pointed at one. What it wrote
+        // there is marked as the pasted effect's.
+        for p in pasted.indices {
+            guard let setup = pasted[p].keyframing else { continue }
+            var moved = setup
+            // The clip's own volume is still there to write to.
+            moved.target = setup.target == .volume ? .volume : nil
+            if case .control(let effectID, let controlID)? = setup.target,
+               let original = items.first(where: { $0.effect.id == effectID })?.effect,
+               let c = original.controlIndex(controlID), let newEffectID = newIDs[effectID],
+               let t = pasted.firstIndex(where: { $0.id == newEffectID }), pasted[t].controls.indices.contains(c) {
+                moved.target = .control(effectID: newEffectID, controlID: pasted[t].controls[c].id)
+                moved.base = setup.base?.shifted(by: delta)
+                let oldID = items[p].effect.id, newID = pasted[p].id
+                let number = pasted[t].controls[c].number
+                pasted[t].controls[c].number = AnimatedValue(number.value, keyframes: number.keyframes.map { keyframe in
+                    var marked = keyframe
+                    if marked.generatedBy == oldID { marked.generatedBy = newID }
+                    return marked
+                })
+            }
+            moved.range = setup.range.map { CMTimeRange(start: CMTimeAdd($0.start, delta), duration: $0.duration) }
+            pasted[p].keyframing = moved
         }
         let at = min(max(index ?? kept.count, 0), kept.count)
         stack.insert(contentsOf: pasted, at: at)

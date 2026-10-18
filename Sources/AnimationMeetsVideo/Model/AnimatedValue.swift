@@ -37,6 +37,10 @@ struct Keyframe<Value: Interpolatable>: Equatable, Sendable {
     var value: Value
     var easeIn: KeyframeEase?
     var easeOut: KeyframeEase?
+    /// The Keyframing effect that wrote it, so making its keyframes again
+    /// replaces only its own (see docs/keyframing-effects.md). Nil for one
+    /// set by hand.
+    var generatedBy: UUID?
 }
 
 /// A property that is either a single value or animated by keyframes.

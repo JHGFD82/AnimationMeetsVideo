@@ -143,6 +143,31 @@ private struct Sandbox {
         #expect(restored.effects[0].input?.loops == false && restored.effects[0].input?.offset == .zero)
     }
 
+    @Test func roundTripKeepsKeyframingEffectsAndWhatTheyWrote() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, _) = sandbox.makeProject()
+        let timelineID = project.rootTimelineID
+        let added = [EffectKind.transform, .wiggler, .oscillator].map { project.addEffect($0, toClip: clipID, in: timelineID) }
+        let transformID = try #require(added[0]), wigglerID = try #require(added[1]), oscillatorID = try #require(added[2])
+        let rotation = try #require(project.clipAndLayer(clipID, in: timelineID)?.clip.effect(id: transformID)?.control(.rotation))
+        project.editEffect(oscillatorID, ofClip: clipID, in: timelineID) {
+            $0.keyframing?.target = .control(effectID: transformID, controlID: rotation.id)
+            $0.keyframing?.combine = .multiply
+            $0.keyframing?.range = CMTimeRange(start: CMTime(value: 1, timescale: 2), end: CMTime(value: 3, timescale: 2))
+        }
+        let before = try #require(project.clipAndLayer(clipID, in: timelineID)?.clip)
+        #expect(before.effect(id: wigglerID)?.keyframing?.base != nil)
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+
+        let restored = try #require(loaded.project.clipAndLayer(clipID, in: timelineID)?.clip)
+        #expect(restored.effects == before.effects)
+        let marks = Set(restored.effect(id: transformID)?.controls.flatMap { $0.number.keyframes.compactMap(\.generatedBy) } ?? [])
+        #expect(marks == [wigglerID, oscillatorID])
+    }
+
     @Test func roundTripKeepsUnresolvedPasteChanges() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }

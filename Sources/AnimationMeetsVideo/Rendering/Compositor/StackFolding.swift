@@ -160,6 +160,10 @@ enum StackFolding {
                 // Sound effects live in a clip's `audioEffects`, played by
                 // its audio track's tap.
                 continue
+            case .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot:
+                // Keyframing effects draw nothing: the keyframes they wrote
+                // are on the controls below.
+                continue
             }
         }
         flush()

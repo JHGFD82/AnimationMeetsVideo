@@ -266,6 +266,20 @@ struct ProjectFile: Codable {
         var value: Value
         var easeIn: EaseEntry?
         var easeOut: EaseEntry?
+        /// The Keyframing effect that wrote it; absent for one set by hand.
+        var generatedBy: UUID?
+
+        init<V>(_ keyframe: Keyframe<V>, value: Value) {
+            time = TimeEntry(keyframe.time)
+            self.value = value
+            easeIn = keyframe.easeIn.map(EaseEntry.init)
+            easeOut = keyframe.easeOut.map(EaseEntry.init)
+            generatedBy = keyframe.generatedBy
+        }
+
+        func keyframe<V>(_ value: V) -> Keyframe<V> {
+            Keyframe(time: time.time, value: value, easeIn: easeIn?.ease, easeOut: easeOut?.ease, generatedBy: generatedBy)
+        }
     }
 
     /// A keyframe side's temporal ease (`KeyframeEase`).
@@ -288,23 +302,14 @@ struct ProjectFile: Codable {
 
         init<V: Interpolatable>(_ property: AnimatedValue<V>, encode: (V) -> Value) {
             if property.isAnimated {
-                keyframes = property.keyframes.map {
-                    KeyframeEntry(
-                        time: TimeEntry($0.time), value: encode($0.value),
-                        easeIn: $0.easeIn.map(EaseEntry.init), easeOut: $0.easeOut.map(EaseEntry.init)
-                    )
-                }
+                keyframes = property.keyframes.map { KeyframeEntry($0, value: encode($0.value)) }
             } else {
                 value = encode(property.value)
             }
         }
 
         func property<V: Interpolatable>(default fallback: V, decode: (Value) -> V?) -> AnimatedValue<V> {
-            let frames = (keyframes ?? []).compactMap { entry in
-                decode(entry.value).map {
-                    Keyframe(time: entry.time.time, value: $0, easeIn: entry.easeIn?.ease, easeOut: entry.easeOut?.ease)
-                }
-            }
+            let frames = (keyframes ?? []).compactMap { entry in decode(entry.value).map(entry.keyframe) }
             return AnimatedValue(value.flatMap(decode) ?? frames.first?.value ?? fallback, keyframes: frames)
         }
     }
@@ -371,12 +376,7 @@ struct ProjectFile: Codable {
             if control.kind.isChoice {
                 value = .text(control.choice ?? control.kind.defaultChoice ?? "")
             } else if control.number.isAnimated {
-                keyframes = control.number.keyframes.map {
-                    KeyframeEntry(
-                        time: TimeEntry($0.time), value: ControlValueEntry($0.value),
-                        easeIn: $0.easeIn.map(EaseEntry.init), easeOut: $0.easeOut.map(EaseEntry.init)
-                    )
-                }
+                keyframes = control.number.keyframes.map { KeyframeEntry($0, value: ControlValueEntry($0.value)) }
             } else {
                 value = ControlValueEntry(control.number.value)
             }
@@ -399,11 +399,7 @@ struct ProjectFile: Codable {
 
         /// Its numbers, keyframed or not, or `fallback` when it has none.
         func number(default fallback: ComponentValue) -> AnimatedValue<ComponentValue> {
-            let frames = (keyframes ?? []).compactMap { entry in
-                entry.value.components.map {
-                    Keyframe(time: entry.time.time, value: $0, easeIn: entry.easeIn?.ease, easeOut: entry.easeOut?.ease)
-                }
-            }
+            let frames = (keyframes ?? []).compactMap { entry in entry.value.components.map(entry.keyframe) }
             return AnimatedValue(value?.components ?? frames.first?.value ?? fallback, keyframes: frames)
         }
     }
@@ -434,6 +430,55 @@ struct ProjectFile: Codable {
         }
     }
 
+    /// What a Keyframing effect writes to and how (`KeyframingSetup`).
+    struct KeyframingEntry: Codable {
+        /// The control's effect and ID, or `volume`; absent with no target.
+        var effect: UUID?
+        var control: UUID?
+        var volume: Bool?
+        /// Absent while it drives every component.
+        var component: Int?
+        /// Absent for Add.
+        var combine: String?
+        /// Absent for the whole clip.
+        var start: TimeEntry?
+        var end: TimeEntry?
+        /// Absent until it has written.
+        var base: PropertyEntry<ControlValueEntry>?
+        var beatLayer: UUID?
+
+        init(_ setup: KeyframingSetup) {
+            switch setup.target {
+            case .control(let effectID, let controlID)?:
+                effect = effectID
+                control = controlID
+            case .volume?: volume = true
+            case nil: break
+            }
+            component = setup.component
+            combine = setup.combine == .add ? nil : setup.combine.rawValue
+            start = setup.range.map { TimeEntry($0.start) }
+            end = setup.range.map { TimeEntry($0.end) }
+            base = setup.base.map { PropertyEntry($0, encode: ControlValueEntry.init) }
+            beatLayer = setup.beatLayer
+        }
+
+        var setup: KeyframingSetup {
+            var setup = KeyframingSetup()
+            if let effect, let control {
+                setup.target = .control(effectID: effect, controlID: control)
+            } else if volume == true {
+                setup.target = .volume
+            }
+            setup.component = component
+            setup.combine = combine.flatMap(KeyframingCombine.init(rawValue:)) ?? .add
+            if let start, let end { setup.range = CMTimeRange(start: start.time, end: end.time) }
+            setup.base = base?.property(default: ComponentValue(values: [])) { $0.components }
+            setup.beatLayer = beatLayer
+            return setup
+        }
+    }
+
     /// One effect of a clip's stack. `kind` is an `EffectKind` name such as
     /// `"transform"`.
     struct EffectEntry: Codable {
@@ -450,6 +495,8 @@ struct ProjectFile: Codable {
         var against: UUID?
         /// For an effect that takes a picture, the one dropped on it.
         var input: InputEntry?
+        /// For a Keyframing effect, what it writes to.
+        var keyframing: KeyframingEntry?
         /// Absent unless some are unresolved.
         var pasteChanges: [PasteChangeRecord]?
         /// Presets only: what the effect's input and Against were called
@@ -466,6 +513,7 @@ struct ProjectFile: Codable {
             movesAnchor = effect.kind == .transform && !effect.movesAnchor ? false : nil
             against = effect.kind == .blending ? effect.against : nil
             input = effect.kind.takesInput ? effect.input.map(InputEntry.init) : nil
+            keyframing = effect.keyframing.map(KeyframingEntry.init)
             pasteChanges = effect.pasteChanges.isEmpty ? nil : effect.pasteChanges.map(PasteChangeRecord.init)
             controls = effect.controls.map(ControlEntry.init)
         }
@@ -489,6 +537,7 @@ struct ProjectFile: Codable {
             effect.movesAnchor = movesAnchor ?? true
             effect.against = against
             effect.input = input?.input
+            if kind.isKeyframing { effect.keyframing = keyframing?.setup ?? KeyframingSetup() }
             effect.pasteChanges = (pasteChanges ?? []).compactMap(\.change)
             return effect
         }
@@ -713,9 +762,16 @@ extension ProjectFile {
         static func keyframe(_ value: JSONShape) -> JSONShape {
             .object(object([
                 .required("time", .time), .required("value", value),
-                .optional("easeIn", ease), .optional("easeOut", ease),
+                .optional("easeIn", ease), .optional("easeOut", ease), .optional("generatedBy", .uuid),
             ]))
         }
+        static let keyframing = object([
+            .optional("effect", .uuid), .optional("control", .uuid), .optional("volume", .bool),
+            .optional("component", .integer),
+            .optional("combine", .choice(KeyframingCombine.allCases.map(\.rawValue), noun: "combine mode")),
+            .optional("start", .time), .optional("end", .time),
+            .optional("base", property(.numberOrNumbers)), .optional("beatLayer", .uuid),
+        ])
         static func property(_ value: JSONShape) -> JSONShape {
             .object(object([.optional("value", value), .optional("keyframes", .array(keyframe(value)))], oneOf: [["value", "keyframes"]]))
         }
@@ -749,6 +805,8 @@ extension ProjectFile {
             case .transform: fields.append(.optional("movesAnchor", .bool))
             case .blending: fields.append(.optional("against", .uuid))
             case .color, .rectangle, .ellipse, .polygon, .star, .stroke, .equalizer, .compressor, .limiter, .voiceIsolation: break
+            case .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot:
+                fields.append(.optional("keyframing", .object(keyframing)))
             case .matte:
                 fields.append(.optional("input", .object(object([
                     .optional("asset", .uuid), .optional("timeline", .uuid),

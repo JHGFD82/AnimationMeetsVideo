@@ -140,7 +140,7 @@ extension AnimatedValue where Value: KeyframeComponents {
         AnimatedValue<ComponentValue>(
             ComponentValue(values: value.components),
             keyframes: keyframes.map {
-                Keyframe(time: $0.time, value: ComponentValue(values: $0.value.components), easeIn: $0.easeIn, easeOut: $0.easeOut)
+                Keyframe(time: $0.time, value: ComponentValue(values: $0.value.components), easeIn: $0.easeIn, easeOut: $0.easeOut, generatedBy: $0.generatedBy)
             }
         )
     }
@@ -149,7 +149,7 @@ extension AnimatedValue where Value: KeyframeComponents {
         self.init(
             Value(components: components.value.values),
             keyframes: components.keyframes.map {
-                Keyframe(time: $0.time, value: Value(components: $0.value.values), easeIn: $0.easeIn, easeOut: $0.easeOut)
+                Keyframe(time: $0.time, value: Value(components: $0.value.values), easeIn: $0.easeIn, easeOut: $0.easeOut, generatedBy: $0.generatedBy)
             }
         )
     }

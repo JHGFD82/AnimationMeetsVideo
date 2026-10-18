@@ -48,6 +48,9 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
     case foundations
     case shapes
     case mattes
+    /// Effects that draw nothing and write keyframes onto other controls
+    /// instead (see docs/keyframing-effects.md).
+    case keyframing
     case sound
 
     var id: Self { self }
@@ -57,6 +60,7 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
         case .foundations: "Foundations"
         case .shapes: "Shapes"
         case .mattes: "Mattes"
+        case .keyframing: "Keyframing"
         case .sound: "Sound"
         }
     }
@@ -126,6 +130,15 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     case compressor
     case limiter
     case voiceIsolation
+    /// Keyframing effects (see docs/keyframing-effects.md): each writes
+    /// keyframes onto a control below it, and draws nothing.
+    case beatKeys
+    case wiggler
+    case oscillator
+    case smoother
+    case looper
+    case timeStep
+    case overshoot
 
     var id: Self { self }
 
@@ -144,6 +157,13 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .compressor: "Compressor"
         case .limiter: "Limiter"
         case .voiceIsolation: "Voice Isolation"
+        case .beatKeys: "Beat Keys"
+        case .wiggler: "Wiggler"
+        case .oscillator: "Oscillator"
+        case .smoother: "Smoother"
+        case .looper: "Looper"
+        case .timeStep: "Time Step"
+        case .overshoot: "Overshoot"
         }
     }
 
@@ -153,11 +173,25 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .rectangle, .ellipse, .polygon, .star, .stroke: .shapes
         case .matte: .mattes
         case .equalizer, .compressor, .limiter, .voiceIsolation: .sound
+        case .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: .keyframing
         }
     }
 
     /// Whether it works on the clip's sound rather than its picture.
     var isAudio: Bool { category == .sound }
+
+    /// Whether it writes keyframes onto another control rather than
+    /// changing the picture or the sound.
+    var isKeyframing: Bool { category == .keyframing }
+
+    /// For a Keyframing effect: whether it reshapes the target's own
+    /// keyframes, rather than making a signal combined with them.
+    var reshapesTarget: Bool {
+        switch self {
+        case .smoother, .looper, .timeStep, .overshoot: true
+        default: false
+        }
+    }
 
     /// Whether it is one of the shapes, or strokes them.
     var isShape: Bool { category == .shapes }
@@ -180,6 +214,13 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .compressor: "arrow.down.right.and.arrow.up.left"
         case .limiter: "line.horizontal.star.fill.line.horizontal"
         case .voiceIsolation: "person.wave.2"
+        case .beatKeys: "metronome"
+        case .wiggler: "scribble.variable"
+        case .oscillator: "waveform.path"
+        case .smoother: "point.topleft.down.to.point.bottomright.curvepath"
+        case .looper: "repeat"
+        case .timeStep: "stairs"
+        case .overshoot: "arrowshape.bounce.right"
         }
     }
 
@@ -195,6 +236,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke,
              .equalizer, .compressor, .limiter, .voiceIsolation: false
+        case .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: false
         }
     }
 
@@ -217,6 +259,13 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .compressor: [.threshold, .headroom, .attack, .release, .makeup]
         case .limiter: [.drive, .limiterRelease]
         case .voiceIsolation: [.isolation]
+        case .beatKeys: [.beatSelection, .everyBeats, .beatOffset, .accent, .beatShape, .peak, .decay, .tolerance]
+        case .wiggler: [.wiggleFrequency, .magnitude, .wiggleType, .octaves, .wiggleDimensions, .seed, .tolerance]
+        case .oscillator: [.wave, .oscillatorFrequency, .amplitude, .phase, .fade, .tolerance]
+        case .smoother: [.smoothing, .tolerance]
+        case .looper: [.loopMode, .loopSide, .tolerance]
+        case .timeStep: [.hold]
+        case .overshoot: [.stiffness, .damping, .mass, .tolerance]
         }
     }
 }
@@ -237,6 +286,12 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case threshold, headroom, attack, release, makeup
     case drive, limiterRelease
     case isolation
+    /// Keyframing effects' settings (see `EffectKind.isKeyframing`).
+    case beatSelection, everyBeats, beatOffset, accent, beatShape, peak, decay
+    case wiggleFrequency, magnitude, wiggleType, octaves, wiggleDimensions, seed
+    case wave, oscillatorFrequency, amplitude, phase, fade
+    case smoothing, loopMode, loopSide, hold, stiffness, damping, mass
+    case tolerance
 
     var id: Self { self }
 
@@ -283,6 +338,31 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .makeup: "Makeup"
         case .drive: "Drive"
         case .isolation: "Isolation"
+        case .beatSelection: "Beats"
+        case .everyBeats: "Every"
+        case .beatOffset: "Offset"
+        case .accent: "Accent"
+        case .beatShape: "Shape"
+        case .peak: "Peak"
+        case .decay: "Decay"
+        case .wiggleFrequency, .oscillatorFrequency: "Frequency"
+        case .magnitude: "Magnitude"
+        case .wiggleType: "Type"
+        case .octaves: "Octaves"
+        case .wiggleDimensions: "Dimensions"
+        case .seed: "Seed"
+        case .wave: "Wave"
+        case .amplitude: "Amplitude"
+        case .phase: "Phase"
+        case .fade: "Fade"
+        case .smoothing: "Strength"
+        case .loopMode: "Mode"
+        case .loopSide: "Repeat"
+        case .hold: "Hold"
+        case .stiffness: "Stiffness"
+        case .damping: "Damping"
+        case .mass: "Mass"
+        case .tolerance: "Tolerance"
         }
     }
 
@@ -304,6 +384,13 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .threshold, .headroom, .attack, .release, .makeup: .compressor
         case .drive, .limiterRelease: .limiter
         case .isolation: .voiceIsolation
+        case .beatSelection, .everyBeats, .beatOffset, .accent, .beatShape, .peak, .decay: .beatKeys
+        case .wiggleFrequency, .magnitude, .wiggleType, .octaves, .wiggleDimensions, .seed, .tolerance: .wiggler
+        case .wave, .oscillatorFrequency, .amplitude, .phase, .fade: .oscillator
+        case .smoothing: .smoother
+        case .loopMode, .loopSide: .looper
+        case .hold: .timeStep
+        case .stiffness, .damping, .mass: .overshoot
         }
     }
 
@@ -314,6 +401,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     var hasNeutralDefault: Bool {
         switch effectKind {
         case .compressor, .limiter, .voiceIsolation: false
+        // A Keyframing effect's settings are what it makes keyframes from.
+        case _ where effectKind.isKeyframing: false
         default: !effectKind.isShape
         }
     }
@@ -330,6 +419,13 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .strokeJoin: StrokeJoin.allCases.map { ($0.rawValue, $0.name) }
         case .strokeCap: StrokeCap.allCases.map { ($0.rawValue, $0.name) }
         case .eqLowCutSlope, .eqHighCutSlope: EqualizerSlope.allCases.map { ($0.rawValue, $0.name) }
+        case .beatSelection: BeatSelection.allCases.map { ($0.rawValue, $0.name) }
+        case .beatShape: BeatShape.allCases.map { ($0.rawValue, $0.name) }
+        case .wiggleType: WiggleType.allCases.map { ($0.rawValue, $0.name) }
+        case .wiggleDimensions: WiggleDimensions.allCases.map { ($0.rawValue, $0.name) }
+        case .wave: OscillatorWave.allCases.map { ($0.rawValue, $0.name) }
+        case .loopMode: LoopMode.allCases.map { ($0.rawValue, $0.name) }
+        case .loopSide: LoopSide.allCases.map { ($0.rawValue, $0.name) }
         default: []
         }
     }
@@ -343,6 +439,13 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .strokeJoin: StrokeJoin.miter.rawValue
         case .strokeCap: StrokeCap.butt.rawValue
         case .eqLowCutSlope, .eqHighCutSlope: EqualizerSlope.db12.rawValue
+        case .beatSelection: BeatSelection.every.rawValue
+        case .beatShape: BeatShape.pulse.rawValue
+        case .wiggleType: WiggleType.smooth.rawValue
+        case .wiggleDimensions: WiggleDimensions.independent.rawValue
+        case .wave: OscillatorWave.sine.rawValue
+        case .loopMode: LoopMode.cycle.rawValue
+        case .loopSide: LoopSide.after.rawValue
         default: nil
         }
     }
@@ -371,6 +474,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .fill, .stroke: ["Red", "Green", "Blue", "Alpha"]
         case .dash: ["Dash", "Gap"]
         case .strokeEdge, .strokeJoin, .strokeCap, .eqLowCutSlope, .eqHighCutSlope: []
+        case _ where isChoice: []
         default: EqualizerBand(controlKind: self)?.componentNames ?? [name]
         }
     }
@@ -406,6 +510,21 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .release: [100]
         case .limiterRelease: [5]
         case .isolation: [100]
+        case .beatSelection, .beatShape, .wiggleType, .wiggleDimensions, .wave, .loopMode, .loopSide: []
+        case .everyBeats: [1]
+        case .beatOffset: [0]
+        case .accent: [50]
+        case .peak, .magnitude, .amplitude: [10]
+        case .decay: [250]
+        case .wiggleFrequency: [2]
+        case .octaves, .seed, .oscillatorFrequency: [1]
+        case .phase, .fade: [0]
+        case .smoothing: [5]
+        case .hold: [2]
+        case .stiffness: [200]
+        case .damping: [8]
+        case .mass: [1]
+        case .tolerance: [0.5]
         }
     }
 
@@ -423,7 +542,17 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .eqLowCut, .eqLowShelf, .eqBell1, .eqBell2, .eqBell3, .eqBell4, .eqHighShelf, .eqHighCut: ""
         case .eqLowCutSlope, .eqHighCutSlope: ""
         case .eqOutput, .threshold, .headroom, .makeup, .drive: " dB"
-        case .attack, .release, .limiterRelease: " ms"
+        case .attack, .release, .limiterRelease, .decay: " ms"
+        // A Keyframing effect's amounts are in its target's units.
+        case .beatSelection, .beatShape, .wiggleType, .wiggleDimensions, .wave, .loopMode, .loopSide: ""
+        case .peak, .magnitude, .amplitude, .octaves, .seed, .stiffness, .damping, .mass: ""
+        case .everyBeats, .beatOffset: " beats"
+        case .accent, .tolerance: "%"
+        case .wiggleFrequency: "/s"
+        case .oscillatorFrequency: " Hz"
+        case .phase: "°"
+        case .fade: " s"
+        case .smoothing, .hold: " frames"
         }
     }
 
@@ -434,6 +563,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .exposure: 0.1
         case .lift, .gamma, .gain, .fill, .stroke: 0.01
         case .headroom, .eqOutput: 0.1
+        case .wiggleFrequency, .oscillatorFrequency, .fade, .tolerance, .mass: 0.1
         default: 1
         }
     }
@@ -470,13 +600,36 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .drive: 0...24
         case .limiterRelease: 1...40
         case .isolation: 0...100
+        case .beatSelection, .beatShape, .wiggleType, .wiggleDimensions, .wave, .loopMode, .loopSide: nil
+        case .peak, .magnitude, .amplitude, .phase: nil
+        case .everyBeats: 1...64
+        case .beatOffset: 0...63
+        case .accent: 0...1000
+        case .decay: 0...10_000
+        case .wiggleFrequency, .oscillatorFrequency: 0...60
+        case .octaves: 1...8
+        case .seed: 0...100_000
+        case .fade: 0...60
+        case .smoothing: 1...240
+        case .hold: 1...120
+        case .stiffness: 1...10_000
+        case .damping: 0...1000
+        case .mass: 0.01...100
+        case .tolerance: 0...50
         }
     }
 
-    /// A component limited to what the control allows; a count of points
-    /// is whole.
+    /// Whether the control counts something, so it holds whole numbers.
+    var isWhole: Bool {
+        switch self {
+        case .points, .everyBeats, .beatOffset, .octaves, .seed, .smoothing, .hold: true
+        default: false
+        }
+    }
+
+    /// A component limited to what the control allows; a count is whole.
     func clamped(_ component: Double) -> Double {
-        let whole = self == .points ? component.rounded() : component
+        let whole = isWhole ? component.rounded() : component
         guard let range else { return whole }
         return min(max(whole, range.lowerBound), range.upperBound)
     }
@@ -625,6 +778,9 @@ struct Effect: Identifiable, Equatable, Sendable {
     var against: UUID?
     /// For an effect that takes one: the picture dropped on it.
     var input: EffectInput?
+    /// For a Keyframing effect: what it writes to and how (nil for every
+    /// other kind).
+    var keyframing: KeyframingSetup?
     /// What pasting or applying a preset couldn't bring over, until each is
     /// marked resolved (see docs/effects.md, "Paste changes").
     var pasteChanges: [PasteChange] = []
@@ -635,9 +791,16 @@ struct Effect: Identifiable, Equatable, Sendable {
         self.kind = kind
         self.name = name
         self.controls = controls ?? kind.controlKinds.map { EffectControl(kind: $0, enabled: $0.startsEnabled) }
+        keyframing = kind.isKeyframing ? KeyframingSetup() : nil
     }
 
     var displayName: String { name ?? kind.name }
+
+    /// The value of a choice control, or nil if the effect lacks it.
+    func choice<Option: RawRepresentable>(_ kind: ControlKind, as type: Option.Type = Option.self) -> Option?
+    where Option.RawValue == String {
+        control(kind).flatMap { $0.choice }.flatMap(Option.init(rawValue:))
+    }
 
     func control(_ kind: ControlKind) -> EffectControl? {
         controls.first { $0.kind == kind }
@@ -651,6 +814,8 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// sound effect the sound.
     var isNoOp: Bool {
         guard enabled else { return true }
+        // It wrote its keyframes onto another control, which draws them.
+        if kind.isKeyframing { return true }
         if kind == .matte {
             // Without a picture to cut with, or at 0%, nothing changes.
             guard input != nil else { return true }
@@ -688,7 +853,9 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// Back to a new effect's controls, all at their defaults, keeping its
     /// ID and name.
     mutating func reset() {
+        let setup = keyframing
         self = Effect(id: id, kind: kind, name: name)
+        keyframing = setup
     }
 
     /// Deletes a control. Without it the effect does nothing for it.
@@ -724,7 +891,7 @@ struct Effect: Identifiable, Equatable, Sendable {
 
     /// The span of time in which any enabled control is between keyframes.
     var animatedRanges: [ClosedRange<CMTime>] {
-        guard enabled else { return [] }
+        guard enabled, !kind.isKeyframing else { return [] }
         return controls.compactMap { $0.enabled ? $0.animatedRange : nil }
     }
 }
@@ -836,9 +1003,10 @@ extension EditingProject {
 
 extension EditingProject {
     /// Adds a new effect of `kind` to a clip's stack, at `index` or at the
-    /// end: a sound effect to its sound's. Clips with no pictures take no
-    /// picture effects, and clips with no sound no sound effects. Returns
-    /// the effect's ID.
+    /// end (a Keyframing effect at the top): a sound effect to its sound's.
+    /// Clips with no pictures take no picture effects, and clips with no
+    /// sound no sound effects. A Keyframing effect writes to the first
+    /// control below it that no other one does. Returns the effect's ID.
     @discardableResult
     mutating func addEffect(_ kind: EffectKind, toClip clipID: UUID, in timelineID: UUID, at index: Int? = nil) -> UUID? {
         guard let clip = clipAndLayer(clipID, in: timelineID)?.clip,
@@ -847,22 +1015,48 @@ extension EditingProject {
         let stack = TimelineClip.stack(for: kind)
         var effect = Effect.make(kind, among: clip[keyPath: stack])
         if let frame = timeline(id: timelineID)?.frameSize { effect.sizeShape(to: frame) }
-        editClip(clipID, in: timelineID) { clip in
-            let count = clip[keyPath: stack].count
-            clip[keyPath: stack].insert(effect, at: min(max(index ?? count, 0), count))
+        let count = clip[keyPath: stack].count
+        let at = min(max(index ?? (kind.isKeyframing ? 0 : count), 0), count)
+        var placed = clip
+        placed[keyPath: stack].insert(effect, at: at)
+        if kind.isKeyframing {
+            // The first that no other Keyframing effect writes to, since two
+            // on one control would undo each other.
+            let taken = Set(placed.effects.compactMap { $0.keyframing?.target })
+            let targets = keyframingTargets(forEffectAt: at, in: placed)
+            effect.keyframing?.target = targets.first { !taken.contains($0) } ?? targets.first
         }
+        editClip(clipID, in: timelineID) { clip in
+            clip[keyPath: stack].insert(effect, at: at)
+        }
+        if kind.isKeyframing { regenerateKeyframes(ofEffect: effect.id, onClip: clipID, in: timelineID) }
         return effect.id
     }
 
-    /// Applies `change` to one effect of a clip.
+    /// Applies `change` to one effect of a clip. A Keyframing effect then
+    /// makes its keyframes again; one pointed somewhere else leaves what it
+    /// wrote on its old target as plain keyframes.
     mutating func editEffect(_ effectID: UUID, ofClip clipID: UUID, in timelineID: UUID, _ change: (inout Effect) -> Void) {
+        var before: Effect?
+        var after: Effect?
         editClip(clipID, in: timelineID) { clip in
             guard let stack = clip.stack(holding: effectID), let index = clip[keyPath: stack].index(of: effectID) else { return }
+            before = clip[keyPath: stack][index]
             change(&clip[keyPath: stack][index])
+            after = clip[keyPath: stack][index]
+            if let old = before?.keyframing?.target, old != after?.keyframing?.target {
+                clip.releaseKeyframes(of: effectID, on: old)
+            }
+        }
+        if let after, after.kind.isKeyframing, after != before {
+            regenerateKeyframes(ofEffect: effectID, onClip: clipID, in: timelineID)
         }
     }
 
+    /// Removes an effect. A Keyframing effect takes what it wrote with it,
+    /// putting its target back as it was.
     mutating func removeEffect(_ effectID: UUID, fromClip clipID: UUID, in timelineID: UUID) {
+        restoreKeyframingBase(ofEffect: effectID, onClip: clipID, in: timelineID)
         editClip(clipID, in: timelineID) { clip in
             guard let stack = clip.stack(holding: effectID) else { return }
             clip[keyPath: stack].removeAll { $0.id == effectID }
@@ -885,7 +1079,9 @@ extension EditingProject {
         editClip(clipID, in: timelineID) { clip in
             guard let stack = clip.stack(holding: effectID), let index = clip[keyPath: stack].index(of: effectID) else { return }
             let original = clip[keyPath: stack][index]
-            let copy = original.duplicated(named: Effect.make(original.kind, among: clip[keyPath: stack]).name)
+            var copy = original.duplicated(named: Effect.make(original.kind, among: clip[keyPath: stack]).name)
+            // Two effects writing to one control would undo each other.
+            copy.keyframing?.target = nil
             clip[keyPath: stack].insert(copy, at: index + 1)
             copyID = copy.id
         }

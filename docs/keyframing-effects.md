@@ -1,6 +1,7 @@
 # Keyframing effects
 
-Status: **planned, not implemented**. A new **Keyframing** category in the
+Status: **step 1 of 4 built** (see [Building it](#building-it) for what
+each step does and leaves out). A new **Keyframing** category in the
 Effects Library: effects that draw nothing and instead write keyframes
 onto other controls, from a sound (Audio Keys, as Trapcode Sound Keys
 does in After Effects), from a song's beats, from noise (Wiggler, as
@@ -193,3 +194,64 @@ effects still plays the same.
 - Audio Keys from a sound that isn't on the timeline (an input from the
   browser).
 - Motion Sketch: recording a mouse path as Position keyframes.
+
+## Building it
+
+In order, each step usable on its own:
+
+1. **Model, generators and saving** (done). `EffectKind` has Beat Keys,
+   Wiggler, Oscillator, Smoother, Looper, Time Step and Overshoot in
+   `EffectCategory.keyframing`; Audio Keys comes with step 4. A kind's
+   settings are ordinary controls (`ControlKind.wiggleFrequency`, `.seed`,
+   `.loopMode` and so on), so they save, load strictly and edit like any
+   other, and the numeric ones can be keyframed: a Wiggler's Magnitude can
+   fade in, and a keyframed Frequency is integrated so the phase never
+   jumps. What the effect writes to is its `KeyframingSetup`: the target (a
+   control, or `volume`), one component or all, Combine, the range (source
+   time, nil for the clip) and the base curve, saved as the effect's
+   `keyframing`. Generated keyframes carry `generatedBy`.
+   - **Targets** are the numeric controls of the effects below it, except
+     other Keyframing effects', then those of the clip's sound effects
+     (all of them, not only the EQ's) and its volume. A new one goes at the
+     top of the stack and takes the first target no other Keyframing effect
+     writes to. A duplicate has none until it's pointed somewhere. A pasted
+     one follows its target when that was pasted with it, and otherwise
+     waits for one (a Volume target is kept). Pointing one elsewhere leaves
+     what it wrote on the old target as plain keyframes.
+   - **Making keyframes** happens at once whenever the effect is edited
+     (`EditingProject.editEffect`), on the main thread. Every kind samples
+     each timeline frame of the range as heard (`KeyframeSampling`) and is
+     reduced by Tolerance; Time Step is reduced only where it is exactly
+     straight, so its holds survive. Kept keyframes are linear. Writing one
+     keyframe per beat or cycle with eases is not done.
+   - **Combine** applies to Beat Keys, Wiggler and Oscillator. Multiply
+     scales by the signal as a percent more (30 makes 130%). Smoother,
+     Looper, Time Step and Overshoot reshape the base and ignore it.
+   - **The base** is taken the first time the effect writes, and every
+     regeneration starts from it, so hand edits to the target are lost when
+     the effect is edited again (step 3 asks first). Deleting the effect
+     puts the base back; Bake (`bakeKeyframing`) removes the effect and
+     keeps its keyframes, unmarked.
+   - **Beat Keys** reads a layer's confirmed beat map (as the timeline's
+     beat markers do, without detected beats), counting Every and Offset
+     from the first beat at or after the range's start. Accent applies to
+     downbeats when every beat is chosen.
+   - **Overshoot** adds, after each of the base's keyframes in the range, a
+     damped spring set going at the speed the curve arrived (ω = √(k/m),
+     decay c/2m), summed over keyframes so a new one never jumps.
+   - Keyframing effects are no-ops to the compositor and the sound taps,
+     and have no animated ranges. They go only in the picture's stack, so
+     a clip with no pictures can't have one yet.
+   - The Effects Library lists the category (it lists every kind), and the
+     panel shows each one's settings, but there is no Target row yet, so
+     each writes to the target it was given.
+2. **Library and panel**: the Target,
+   component and Combine rows, the range on the panel's ruler, the dimming
+   note for a target that's gone or above, the curve icon in place of a
+   thumbnail, Bake in the ⋯ menu, highlighted keyframes and VoiceOver.
+3. **Out of date**: fingerprints of what each effect read, regenerating by
+   itself when they change, Regenerate or Keep Edits after hand edits, and
+   regenerating in a background task.
+4. **Audio Keys**: the spectrogram in `AssetAnalysis`, a source's sound as
+   heard, the boxes and their fields.
+
