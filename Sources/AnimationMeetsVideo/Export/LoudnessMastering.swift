@@ -211,12 +211,21 @@ enum LoudnessMastering {
     /// Takes out the composition's audio tracks and puts the sound of the
     /// file at `url` in their place, from the start.
     static func replaceAudio(of composition: AVMutableComposition, with url: URL) async throws {
+        // Taken first: a composition of sound alone is empty without it.
+        let length = composition.duration
+        for track in composition.tracks(withMediaType: .audio) { composition.removeTrack(track) }
+        try await addAudio(to: composition, from: url, upTo: length)
+    }
+
+    /// Adds the sound of the file at `url` to the composition as a track of
+    /// its own, after its others, from the start and for no longer than
+    /// `length`.
+    static func addAudio(to composition: AVMutableComposition, from url: URL, upTo length: CMTime) async throws {
         let asset = AVURLAsset(url: url)
         guard let source = try await asset.loadTracks(withMediaType: .audio).first else {
             throw CompositionError.exportFailed("The mastered sound couldn't be read.")
         }
-        let length = CMTimeMinimum(try await asset.load(.duration), composition.duration)
-        for track in composition.tracks(withMediaType: .audio) { composition.removeTrack(track) }
+        let length = CMTimeMinimum(try await asset.load(.duration), length)
         guard let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
             throw CompositionError.exportFailed("The mastered sound couldn't be added.")
         }

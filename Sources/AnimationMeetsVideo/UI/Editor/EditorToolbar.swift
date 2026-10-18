@@ -14,6 +14,7 @@ struct EditorToolbar: View {
     let renderer: RenderScheduler
     @State private var selectedFormat = ExportFormat.proRes422
     @AppStorage(Preferences.exportLoudness) private var loudness = LoudnessTarget.asMixed
+    @AppStorage(Preferences.exportAudioTracks) private var audioTracks = ExportAudioTracks.mix
     @State private var exportTask: Task<Void, Never>?
     @State private var exportProgress: Double = 0
     @State private var exportError: String?
@@ -111,16 +112,28 @@ struct EditorToolbar: View {
                 .help("ProRes 422 exports reuse the stretches already rendered in the background; ProRes 4444 composites everything from the sources. WAV Mix is the sound alone; WAV Stems is a file for each layer with sound, unmastered.")
                 .disabled(isExporting)
 
-                Picker("Loudness", selection: $loudness) {
-                    ForEach(LoudnessTarget.allCases) { target in
-                        Text(target.name).tag(target)
+                // The sound of the export: its loudness, and for a movie
+                // whether the stems come along on tracks of their own.
+                Menu {
+                    Picker("Loudness", selection: $loudness) {
+                        ForEach(LoudnessTarget.allCases) { target in
+                            Text("\(target.name), \(target.detail)").tag(target)
+                        }
                     }
+                    .pickerStyle(.inline)
+                    Picker("Movie sound tracks", selection: $audioTracks) {
+                        ForEach(ExportAudioTracks.allCases) { tracks in
+                            Text(tracks.name).tag(tracks)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Text(audioTracks == .mixAndStems ? "\(loudness.name) + Stems" : loudness.name)
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(width: 110)
-                .help("How loud the export's sound is: \(loudness.name), \(loudness.detail). A target gains the whole mix to that loudness and holds its peaks under −1 dBFS.")
-                .accessibilityLabel("Export loudness")
+                .frame(width: 140)
+                .help("The export's sound: how loud (\(loudness.name), \(loudness.detail)), holding peaks under −1 dBFS when a target is set, and whether a movie also carries a track for each layer with sound after the mix.")
+                .accessibilityLabel("Export sound")
+                .accessibilityValue(audioTracks == .mixAndStems ? "\(loudness.name), with stems" : loudness.name)
                 .disabled(isExporting)
 
                 if isExporting {
@@ -216,6 +229,7 @@ struct EditorToolbar: View {
         let snapshot = project
         let timelineID = activeTimelineID
         let target = loudness
+        let tracks = audioTracks
         let cache = renderer.cache
         exportProgress = 0
         renderer.setExporting(true)
@@ -232,7 +246,7 @@ struct EditorToolbar: View {
                 case .proRes422, .proRes4444:
                     try await CompositionExporter.export(
                         project: snapshot, timelineID: timelineID, preset: format.movie ?? .proRes422,
-                        loudness: target, to: url, cache: cache, progress: progress
+                        loudness: target, audioTracks: tracks, to: url, cache: cache, progress: progress
                     )
                 case .wavMix:
                     try await AudioExport.exportMix(project: snapshot, timelineID: timelineID, loudness: target, to: url, progress: progress)

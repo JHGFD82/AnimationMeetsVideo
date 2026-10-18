@@ -30,6 +30,22 @@ enum ExportFormat: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// The sound tracks a movie export has: the mix alone, or the mix and then
+/// a stereo track for each layer with sound, for a mixer to rework.
+enum ExportAudioTracks: String, CaseIterable, Identifiable, Sendable {
+    case mix
+    case mixAndStems
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .mix: "Mix"
+        case .mixAndStems: "Mix and Stems"
+        }
+    }
+}
+
 /// Exports a timeline's sound as 24-bit WAV files at 48 kHz, read out of
 /// the composition through its audio mix as playback hears it. See
 /// docs/audio.md, "Exporting sound".
@@ -83,7 +99,7 @@ enum AudioExport {
     /// the files in layer order.
     @discardableResult
     static func exportStems(
-        project: EditingProject, timelineID: UUID, named name: String, in folder: URL,
+        project: EditingProject, timelineID: UUID, named name: String, in folder: URL, asWAV: Bool = true,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> [URL] {
         guard let timeline = project.timeline(id: timelineID),
@@ -103,11 +119,11 @@ enum AudioExport {
                 .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
             if used.contains(file) { file += " \(number + 1)" }
             used.insert(file)
-            let url = folder.appending(path: file + ".wav")
+            let url = folder.appending(path: file + (asWAV ? ".wav" : ".caf"))
             try? FileManager.default.removeItem(at: url)
             let done = Double(number), count = Double(layers.count)
             try await LoudnessMastering.render(
-                composed, curves: MixCurves(MixCurves.of(solo)), limiting: false, to: url, fileSettings: fileSettings,
+                composed, curves: MixCurves(MixCurves.of(solo)), limiting: false, to: url, fileSettings: asWAV ? fileSettings : nil,
                 progress: { progress((done + $0) / count) }
             )
             files.append(url)

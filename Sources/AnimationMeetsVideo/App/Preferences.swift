@@ -48,6 +48,9 @@ enum Preferences {
     static let recordWhilePlaying = "recordWhilePlaying"
     /// What takes are recorded from (see `RecordPopover`).
     static let recordingSource = "recordingSource"
+    /// Whether movie exports carry each layer's stem after the mix
+    /// (`ExportAudioTracks`).
+    static let exportAudioTracks = "exportAudioTracks"
     /// The `LoudnessTarget` exports are delivered at.
     static let exportLoudness = "exportLoudness"
     static let browserTab = "browserTab"

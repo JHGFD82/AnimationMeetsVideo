@@ -289,6 +289,15 @@ Beside the ProRes formats, the export format menu offers the sound alone
   sound of timelines nested on it. Stems aren't mastered, whatever the
   Loudness menu says, so together they add up to the mix as mixed.
 
+A movie's sound can be split the same way. The toolbar's sound menu
+(beside the format, holding the loudness target too) picks **Movie sound
+tracks**: **Mix** (the default) or **Mix and Stems**, which gives the
+movie a stereo track of the mix first and then one per layer with sound,
+in layer order, for a mixer to rework (`CompositionExporter.addStems`).
+The mix track is mastered when a target is set; the stems never are. The
+export session keeps the tracks apart since none of them goes through an
+audio mix any more.
+
 Both read the mix out the way mastering does, through the composition's
 audio mix (`LoudnessMastering.render`, without its limiter unless a
 target is set). Samples past full scale clip in the file, as they would
@@ -354,3 +363,5 @@ dropped on load.
 - A meter per layer, and reading the mix while scrubbing or paused.
 - Integrated loudness of the timeline in the editor, and loudness range.
 - A true-peak ceiling, and a report after export of what mastering did.
+- Surround (5.1) sound: there is no surround panning to fill its channels.
+- Names on a movie's stem tracks.

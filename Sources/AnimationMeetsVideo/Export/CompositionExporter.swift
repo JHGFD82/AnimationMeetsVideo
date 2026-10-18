@@ -195,6 +195,30 @@ enum CompositionExporter {
         )
     }
 
+    /// Lays `composed`'s sound out as the mix on one track, then a stem for
+    /// each layer with sound on a track each, rendered into `scratch`. The
+    /// mix is rendered too unless `mixed` (mastered already). Returns the
+    /// stems' files; none when the timeline has no sound.
+    static func addStems(
+        to composed: ComposedTimeline, project: EditingProject, timelineID: UUID, curves: MixCurves, mixed: Bool, in scratch: URL,
+        progress: @escaping @Sendable (Double) -> Void = { _ in }
+    ) async throws -> [URL] {
+        guard !composed.audioTracks.isEmpty else { return [] }
+        let length = composed.composition.duration
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        if !mixed {
+            let mix = scratch.appending(path: "mix.caf")
+            try await LoudnessMastering.render(composed, curves: curves, limiting: false, to: mix) { progress($0 / 3) }
+            try await LoudnessMastering.replaceAudio(of: composed.composition, with: mix)
+        }
+        let stems = try await AudioExport.exportStems(
+            project: project, timelineID: timelineID, named: "stem", in: scratch, asWAV: false,
+            progress: { progress(1.0 / 3 + $0 * 2 / 3) }
+        )
+        for stem in stems { try await LoudnessMastering.addAudio(to: composed.composition, from: stem, upTo: length) }
+        return stems
+    }
+
     /// Cancelling the calling task cancels the export, deletes the partial
     /// file, and throws `CancellationError`. A ProRes 422 export plays the
     /// stretches already rendered into `cache` from there instead of
@@ -209,6 +233,7 @@ enum CompositionExporter {
         timelineID: UUID,
         preset: ProResPreset,
         loudness: LoudnessTarget = .asMixed,
+        audioTracks: ExportAudioTracks = .mix,
         to url: URL,
         cache: RenderCache? = nil,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
@@ -222,7 +247,17 @@ enum CompositionExporter {
             progress: { progress($0 / 10) }
         )
         defer { mastered.map { try? FileManager.default.removeItem(at: $0.file) } }
-        let exportShare = mastered == nil ? 1.0 : 0.9
+        // Stems go on tracks of their own after the mix, which then has to
+        // be a track of its own too, rendered unless it was mastered.
+        let scratch = FileManager.default.temporaryDirectory.appending(path: "export-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let rendered = audioTracks == .mixAndStems
+            ? try await addStems(to: composed, project: project, timelineID: timelineID, curves: curves, mixed: mastered != nil, in: scratch) {
+                progress(0.1 + 0.1 * $0)
+            }
+            : []
+        let premixed = mastered != nil || !rendered.isEmpty
+        let exportShare = rendered.isEmpty ? (mastered == nil ? 1.0 : 0.9) : 0.8
 
         let isCompatible = await AVAssetExportSession.compatibility(
             ofExportPreset: preset.avPresetName,
@@ -237,8 +272,8 @@ enum CompositionExporter {
             throw CompositionError.noExportSession
         }
         exportSession.videoComposition = composed.videoComposition
-        // Mastered sound is already mixed, in a track of its own.
-        exportSession.audioMix = mastered == nil ? composed.audioMix(curves: curves) : nil
+        // Mastered or rendered sound is already mixed, in tracks of its own.
+        exportSession.audioMix = premixed ? nil : composed.audioMix(curves: curves)
 
         // The save panel already confirmed replacing an existing file, but
         // AVAssetExportSession refuses to write over one.

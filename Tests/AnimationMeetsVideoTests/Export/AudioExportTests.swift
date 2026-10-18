@@ -69,3 +69,56 @@ import Testing
         }
     }
 }
+
+@Suite struct StemTrackTests {
+    @Test func aMovieCarriesTheMixThenAStemPerLayer() async throws {
+        let low = try AudioMixSupport.tone(frequency: 220, amplitude: 0.2, seconds: 1)
+        let high = try AudioMixSupport.tone(frequency: 880, amplitude: 0.4, seconds: 1)
+        defer {
+            try? FileManager.default.removeItem(at: low)
+            try? FileManager.default.removeItem(at: high)
+        }
+        var (project, _, _) = try AudioMixSupport.project(playing: low)
+        let media = MediaClip(
+            name: "High", kind: .audio, url: high, duration: CMTime(value: 1, timescale: 1),
+            frameRate: 0, colorSpace: .rec709, codecName: "PCM", hasAudio: true
+        )
+        _ = project.importClip(media, intoTimeline: project.rootTimelineID)
+        let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
+        let scratch = FileManager.default.temporaryDirectory.appending(path: "amv-split-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let stems = try await CompositionExporter.addStems(
+            to: composed, project: project, timelineID: project.rootTimelineID,
+            curves: MixCurves(MixCurves.of(project)), mixed: false, in: scratch
+        )
+        #expect(stems.count == 2)
+        let tracks = composed.composition.tracks(withMediaType: .audio)
+        #expect(tracks.count == 3)
+        // Each track on its own, as the movie will carry it.
+        var levels: [Float] = []
+        for track in tracks {
+            let reader = try AVAssetReader(asset: composed.composition)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true,
+                AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false,
+            ])
+            reader.add(output)
+            let reading = HandedOver(value: (reader, output))
+            let loudest = try await SampleReading.run { _ in
+                let (reader, output) = reading.value
+                reader.startReading()
+                var loudest: Float = 0
+                while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
+                    var samples = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
+                    _ = samples.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
+                    loudest = max(loudest, samples.map(abs).max() ?? 0)
+                }
+                return loudest
+            }
+            levels.append(loudest)
+        }
+        // The mix holds both tones; each stem one.
+        #expect(levels[0] > 0.45)
+        #expect(levels[1...].sorted().enumerated().allSatisfy { abs($1 - [0.2, 0.4][$0]) < 0.01 })
+    }
+}
