@@ -257,7 +257,12 @@ twice, in stereo float at 48 kHz, off the cooperative pool
    sound stays in step with the picture.
 
 The file's sound then replaces the composition's audio tracks and the
-export runs without an audio mix. A mix with nothing in it, or nothing
+export runs without an audio mix. The render measures what it writes, and
+when the export is done a note says what mastering did: what the mix
+measured, how far it was raised or lowered and to what, how far the
+limiter held peaks down (with a warning past 6 dB, where it can be
+heard), and the loudest peak (`LoudnessMastering.Report`). WAV Mix
+exports report the same. A mix with nothing in it, or nothing
 above R128's −70 LUFS gate, is exported as mixed. The ceiling is on
 samples, not true peak: sound between samples can go a little over it.
 Heavy limiting, when a quiet mix with sharp peaks is raised a long way,
@@ -397,6 +402,6 @@ dropped on load.
 - Making up for a sound effect's delay.
 - A meter per layer, and a meter reading while scrubbing or paused.
 - Integrated loudness of the timeline in the editor, and loudness range.
-- A true-peak ceiling, and a report after export of what mastering did.
+- A true-peak ceiling.
 - Surround (5.1) sound: there is no surround panning to fill its channels.
 - Names on a movie's stem tracks.

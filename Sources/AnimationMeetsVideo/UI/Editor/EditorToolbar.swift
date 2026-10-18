@@ -18,6 +18,8 @@ struct EditorToolbar: View {
     @State private var exportTask: Task<Void, Never>?
     @State private var exportProgress: Double = 0
     @State private var exportError: String?
+    /// What mastering did to the last export's sound, shown when it is done.
+    @State private var masteringReport: String?
     @State private var showsPasteChanges = false
     /// Whether the Paste Changes list was opened by trying to export.
     @State private var exportAfterAccepting = false
@@ -177,6 +179,14 @@ struct EditorToolbar: View {
         } message: {
             Text(exportError ?? "")
         }
+        .alert(
+            "Export Finished",
+            isPresented: Binding(get: { masteringReport != nil }, set: { if !$0 { masteringReport = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(masteringReport ?? "")
+        }
     }
 
     /// Selects the clip an entry is on, with the effects panel open at it.
@@ -241,25 +251,41 @@ struct EditorToolbar: View {
             let progress: @Sendable (Double) -> Void = { fraction in
                 Task { @MainActor in exportProgress = fraction }
             }
+            // Only shown once the export is done.
+            let report = ReportBox()
             do {
                 switch format {
                 case .proRes422, .proRes4444:
                     try await CompositionExporter.export(
                         project: snapshot, timelineID: timelineID, preset: format.movie ?? .proRes422,
-                        loudness: target, audioTracks: tracks, to: url, cache: cache, progress: progress
+                        loudness: target, audioTracks: tracks, to: url, cache: cache, progress: progress,
+                        onMastered: { report.value = $0 }
                     )
                 case .wavMix:
-                    try await AudioExport.exportMix(project: snapshot, timelineID: timelineID, loudness: target, to: url, progress: progress)
+                    report.value = try await AudioExport.exportMix(
+                        project: snapshot, timelineID: timelineID, loudness: target, to: url, progress: progress
+                    )
                 case .wavStems:
                     try await AudioExport.exportStems(
                         project: snapshot, timelineID: timelineID, named: snapshot.name, in: url, progress: progress
                     )
                 }
+                masteringReport = report.value?.summary
             } catch is CancellationError {
                 // The user cancelled; nothing to report.
             } catch {
                 exportError = error.localizedDescription
             }
         }
+    }
+}
+
+/// Hands the mastering report out of the export's callback.
+private final class ReportBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: LoudnessMastering.Report?
+    var value: LoudnessMastering.Report? {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
     }
 }

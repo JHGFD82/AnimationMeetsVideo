@@ -35,6 +35,10 @@ import Testing
         // A sine at 0.0316 on both sides is −30 LUFS.
         #expect(abs(report.measured - -30) < 0.2)
         #expect(abs(report.gain - 14) < 0.2)
+        // A sine's peaks sit 3 dB over its loudness: under the ceiling.
+        #expect(abs(report.result - -16) < 0.3)
+        #expect(report.limiting == 0)
+        #expect(report.peak < LoudnessMastering.ceiling)
         let rendered = try measureFile(file)
         #expect(abs(rendered.lufs - -16) < 0.3)
         #expect(abs(rendered.seconds - 3) < 0.01)
@@ -67,9 +71,33 @@ import Testing
         let (report, file) = try #require(result)
         defer { try? FileManager.default.removeItem(at: file) }
         #expect(report.gain > 6)
+        #expect(report.limiting > 3)
+        #expect(report.peak <= LoudnessMastering.ceiling + 0.1)
+        #expect(report.summary.contains("held its peaks down by up to"))
         let rendered = try measureFile(file)
         #expect(rendered.peak <= Float(pow(10, LoudnessMastering.ceiling / 20)) + 0.01)
         #expect(rendered.peak > 0.5)
+    }
+
+    @Test func theReportReads() {
+        let gentle = LoudnessMastering.Report(measured: -22.34, gain: 8.34, result: -14, peak: -1, limiting: 2.1)
+        #expect(gentle.summary == "The mix measured −22.3 LUFS and was raised 8.3 dB to −14 LUFS. The limiter held its peaks down by up to 2.1 dB. The loudest peak is −1 dBFS.")
+        let hard = LoudnessMastering.Report(measured: -30, gain: 16, result: -14.4, peak: -1, limiting: 9)
+        #expect(hard.summary.contains("which can be heard"))
+        let down = LoudnessMastering.Report(measured: -9, gain: -5, result: -14, peak: -4.2, limiting: 0)
+        #expect(down.summary == "The mix measured −9 LUFS and was lowered 5 dB to −14 LUFS. Its peaks needed no limiting. The loudest peak is −4.2 dBFS.")
+    }
+
+    @Test func aMasteredWAVReportsToo() async throws {
+        let url = try AudioMixSupport.tone(frequency: 997, amplitude: 0.0316, seconds: 3)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let (project, _, _) = try AudioMixSupport.project(playing: url, seconds: 3)
+        let out = FileManager.default.temporaryDirectory.appending(path: "amv-report-\(UUID().uuidString).wav")
+        defer { try? FileManager.default.removeItem(at: out) }
+        let report = try await AudioExport.exportMix(project: project, timelineID: project.rootTimelineID, loudness: .broadcast, to: out)
+        #expect(abs((report?.result ?? 0) - -23) < 0.3)
+        let asMixed = try await AudioExport.exportMix(project: project, timelineID: project.rootTimelineID, loudness: .asMixed, to: out)
+        #expect(asMixed == nil)
     }
 
     @Test func asMixedChangesNothing() async throws {

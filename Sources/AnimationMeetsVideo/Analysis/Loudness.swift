@@ -113,11 +113,22 @@ struct LoudnessMeasurement: Sendable {
     /// for.
     mutating func add(interleaved samples: UnsafeBufferPointer<Float>) {
         let channels = filters.count
-        let frames = samples.count / channels
+        add(frames: samples.count / channels) { frame, channel in samples[frame * channels + channel] }
+    }
+
+    /// Feeds `frames` frames given one buffer per channel, for the
+    /// channels it was made for.
+    mutating func add(planar channels: [UnsafePointer<Float>], frames: Int) {
+        guard channels.count == filters.count else { return }
+        add(frames: frames) { frame, channel in channels[channel][frame] }
+    }
+
+    private mutating func add(frames: Int, sample: (Int, Int) -> Float) {
+        let channels = filters.count
         for frame in 0..<frames {
             var sum = 0.0
             for channel in 0..<channels {
-                let sample = samples[frame * channels + channel]
+                let sample = sample(frame, channel)
                 peak = max(peak, abs(sample))
                 let weighted = Double(filters[channel](sample))
                 sum += weighted * weighted

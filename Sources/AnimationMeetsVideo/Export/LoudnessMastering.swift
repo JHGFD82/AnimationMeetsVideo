@@ -65,6 +65,51 @@ enum LoudnessMastering {
         var measured: Double
         /// The gain applied, in dB.
         var gain: Double
+        /// What it came out at: its integrated loudness, in LUFS, and its
+        /// loudest sample, in dBFS.
+        var result: Double = Loudness.silence
+        var peak: Double = -.infinity
+        /// The most the limiter held a peak down, in dB; 0 when it never
+        /// had to.
+        var limiting: Double = 0
+
+        init(measured: Double, gain: Double, rendered: Rendered) {
+            self.measured = measured
+            self.gain = gain
+            result = rendered.output.integrated
+            peak = rendered.output.peak > 0 ? 20 * log10(Double(rendered.output.peak)) : -.infinity
+            limiting = rendered.limiting
+        }
+
+        init(measured: Double, gain: Double, result: Double, peak: Double, limiting: Double) {
+            self.measured = measured
+            self.gain = gain
+            self.result = result
+            self.peak = peak
+            self.limiting = limiting
+        }
+
+        /// A sentence or two for the person who exported.
+        var summary: String {
+            func number(_ value: Double) -> String { Loudness.label(value) }
+            let direction = gain >= 0 ? "raised" : "lowered"
+            var text = "The mix measured \(number(measured)) LUFS and was \(direction) \(NumericExpression.format(abs(gain), maxFractionDigits: 1)) dB to \(number(result)) LUFS."
+            if limiting >= 0.1 {
+                text += " The limiter held its peaks down by up to \(NumericExpression.format(limiting, maxFractionDigits: 1)) dB"
+                text += limiting >= 6 ? ", which can be heard: mixing it louder, or with fewer sharp peaks, would need less." : "."
+            } else {
+                text += " Its peaks needed no limiting."
+            }
+            text += " The loudest peak is \(number(peak)) dBFS."
+            return text
+        }
+    }
+
+    /// What a render wrote: its loudness and peak, and the most the limiter
+    /// held a peak down, in dB.
+    struct Rendered: Sendable {
+        var output: LoudnessMeasurement
+        var limiting: Double
     }
 
     /// Masters `composed`'s sound to `target` in place: measures it, renders
@@ -80,9 +125,9 @@ enum LoudnessMastering {
         guard measurement.integrated.isFinite else { return nil }
         let gain = lufs - measurement.integrated
         let url = directory.appending(path: "mastered-\(UUID().uuidString).caf")
-        try await render(composed, curves: curves, gain: gain, to: url) { progress(0.5 + $0 / 2) }
+        let rendered = try await render(composed, curves: curves, gain: gain, to: url) { progress(0.5 + $0 / 2) }
         try await replaceAudio(of: composed.composition, with: url)
-        return (Report(measured: measurement.integrated, gain: gain), url)
+        return (Report(measured: measurement.integrated, gain: gain, rendered: rendered), url)
     }
 
     /// The loudness of the mix as it plays.
@@ -120,15 +165,19 @@ enum LoudnessMastering {
     /// out, keeping the sound in step with the picture. Unlimited, it is
     /// the mix as it is, and samples past full scale clip in a file that
     /// holds integers.
+    @discardableResult
     static func render(
         _ composed: ComposedTimeline, curves: MixCurves, gain: Double = 0, limiting: Bool = true, to url: URL,
         fileSettings: [String: Any]? = nil, progress: @escaping @Sendable (Double) -> Void = { _ in }
-    ) async throws {
+    ) async throws -> Rendered {
         let fileSettings = HandedOver(value: fileSettings)
         let reading = try mixReader(composed, curves: curves, interleaved: false)
         let duration = composed.composition.duration.seconds
-        try await SampleReading.run { isCancelled in
+        return try await SampleReading.run { isCancelled in
             let (reader, output) = reading.value
+            var written = LoudnessMeasurement(sampleRate: sampleRate, channels: 2)
+            // The loudest sample into the limiter; it holds full scale.
+            var loudestIn: Float = 0
             guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2),
                   let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(chunk)),
                   let limiter = AudioEffectUnit(effectID: UUID(), kind: .limiter, format: format.streamDescription.pointee, maxFrames: chunk)
@@ -153,7 +202,10 @@ enum LoudnessMastering {
                 let channels = buffer.floatChannelData!
                 for channel in 0..<2 {
                     fill(channels[channel], channel)
-                    for frame in 0..<frames { channels[channel][frame] *= into }
+                    for frame in 0..<frames {
+                        channels[channel][frame] *= into
+                        loudestIn = max(loudestIn, abs(channels[channel][frame]))
+                    }
                 }
                 buffer.frameLength = AVAudioFrameCount(frames)
                 if limiting { limiter.process(buffer.mutableAudioBufferList, frames: frames) }
@@ -165,6 +217,7 @@ enum LoudnessMastering {
                     for frame in skipped..<frames { data[frame - skipped] = data[frame] * out }
                 }
                 buffer.frameLength = AVAudioFrameCount(frames - skipped)
+                written.add(planar: [UnsafePointer(channels[0]), UnsafePointer(channels[1])], frames: frames - skipped)
                 try file.write(from: buffer)
             }
 
@@ -205,6 +258,8 @@ enum LoudnessMastering {
                 try push(frames) { destination, _ in destination.update(repeating: 0, count: frames) }
                 flushed -= frames
             }
+            let over = limiting && loudestIn > 1 ? 20 * log10(Double(loudestIn)) : 0
+            return Rendered(output: written, limiting: over)
         }
     }
 

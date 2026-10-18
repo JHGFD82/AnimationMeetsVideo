@@ -62,18 +62,21 @@ enum AudioExport {
     ] }
 
     /// The whole mix to `url`, mastered to `loudness` (see
-    /// `LoudnessMastering`) unless that is as mixed.
+    /// `LoudnessMastering`) unless that is as mixed. Returns what mastering
+    /// did, when it did.
+    @discardableResult
     static func exportMix(
         project: EditingProject, timelineID: UUID, loudness: LoudnessTarget, to url: URL,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
-    ) async throws {
+    ) async throws -> LoudnessMastering.Report? {
         let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: timelineID)
         guard !composed.audioTracks.isEmpty else { throw CompositionError.exportFailed("The timeline has no sound.") }
         let curves = MixCurves(MixCurves.of(project))
         var gain = 0.0
         var limiting = false
+        var measured = Loudness.silence
         if let target = loudness.lufs {
-            let measured = try await LoudnessMastering.measure(composed, curves: curves) { progress($0 / 2) }.integrated
+            measured = try await LoudnessMastering.measure(composed, curves: curves) { progress($0 / 2) }.integrated
             if measured.isFinite {
                 gain = target - measured
                 limiting = true
@@ -82,10 +85,11 @@ enum AudioExport {
         let share = loudness.lufs == nil ? 1.0 : 0.5
         try? FileManager.default.removeItem(at: url)
         do {
-            try await LoudnessMastering.render(
+            let rendered = try await LoudnessMastering.render(
                 composed, curves: curves, gain: gain, limiting: limiting, to: url, fileSettings: fileSettings,
                 progress: { progress(1 - share + $0 * share) }
             )
+            return limiting ? LoudnessMastering.Report(measured: measured, gain: gain, rendered: rendered) : nil
         } catch {
             try? FileManager.default.removeItem(at: url)
             throw error

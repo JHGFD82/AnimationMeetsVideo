@@ -250,7 +250,8 @@ enum CompositionExporter {
         audioTracks: ExportAudioTracks = .mix,
         to url: URL,
         cache: RenderCache? = nil,
-        progress: @escaping @Sendable (Double) -> Void = { _ in }
+        progress: @escaping @Sendable (Double) -> Void = { _ in },
+        onMastered: @escaping @Sendable (LoudnessMastering.Report) -> Void = { _ in }
     ) async throws -> Int {
         let composed = try await buildComposedTimeline(
             for: project, timelineID: timelineID, cache: preset.reusesRenders ? cache : nil
@@ -261,6 +262,7 @@ enum CompositionExporter {
             progress: { progress($0 / 10) }
         )
         defer { mastered.map { try? FileManager.default.removeItem(at: $0.file) } }
+        if let mastered { onMastered(mastered.report) }
         // Stems go on tracks of their own after the mix, which then has to
         // be a track of its own too, rendered unless it was mastered.
         let scratch = FileManager.default.temporaryDirectory.appending(path: "export-\(UUID().uuidString)", directoryHint: .isDirectory)
