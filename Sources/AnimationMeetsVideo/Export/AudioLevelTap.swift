@@ -192,6 +192,11 @@ enum AudioLevelTap {
         /// Where the next buffer starts if playing carries straight on, in
         /// seconds; anything else is a jump, which resets the units.
         private var expectedStart: Double?
+        /// The left and right K-weighting filters for the meter's loudness,
+        /// and each frame's weighted squares, made once the format is known.
+        private var weighting: [KWeighting] = []
+        private var weighted: UnsafeMutablePointer<Float>?
+        private var weightedCapacity = 0
 
         init(stages: [MixStage], effects: [(stage: Int, id: UUID, kind: EffectKind)], curves: MixCurves, meter: MixLevelMeter?, meterIndex: Int) {
             self.stages = stages
@@ -209,10 +214,41 @@ enum AudioLevelTap {
                 AudioEffectUnit(effectID: effect.id, kind: effect.kind, format: format, maxFrames: maxFrames).map { (effect.stage, $0) }
             }
             expectedStart = nil
+            if meter != nil, maxFrames > 0 {
+                weighting = Array(repeating: KWeighting(sampleRate: format.mSampleRate), count: 2)
+                weighted?.deallocate()
+                weighted = .allocate(capacity: maxFrames)
+                weightedCapacity = maxFrames
+            }
         }
 
         func unprepare() {
             units = []
+            weighted?.deallocate()
+            weighted = nil
+            weightedCapacity = 0
+        }
+
+        deinit {
+            weighted?.deallocate()
+        }
+
+        /// Each frame's K-weighted squares summed over left and right, for
+        /// the meter's loudness. A single channel plays on both sides, so
+        /// it counts twice.
+        private func weigh(_ channels: [(UnsafeMutablePointer<Float>, Int)], frames: Int) -> UnsafePointer<Float>? {
+            guard let weighted, frames <= weightedCapacity, weighting.count == 2 else { return nil }
+            let stereo = channels.count > 1
+            for frame in 0..<frames {
+                let left = weighting[0](channels[0].0[frame * channels[0].1])
+                if stereo {
+                    let right = weighting[1](channels[1].0[frame * channels[1].1])
+                    weighted[frame] = left * left + right * right
+                } else {
+                    weighted[frame] = 2 * left * left
+                }
+            }
+            return UnsafePointer(weighted)
         }
 
         /// Runs the buffer through the sound effects, each set as its
@@ -222,7 +258,6 @@ enum AudioLevelTap {
             if let expected = expectedStart, abs(seconds - expected) > 1 / format.mSampleRate {
                 for (_, unit) in units { unit.reset() }
             }
-            expectedStart = seconds + Double(frames) / format.mSampleRate
             let current = curves.current
             for (stage, unit) in units {
                 // An effect switched off or deleted since the mix was made
@@ -241,7 +276,13 @@ enum AudioLevelTap {
                   format.mFormatFlags & kAudioFormatFlagIsFloat != 0, format.mBitsPerChannel == 32,
                   format.mSampleRate > 0
             else { return }
+            // A jump in time (a seek, a loop) starts the effects and the
+            // loudness filters afresh.
+            if let expected = expectedStart, abs(start.seconds - expected) > 1 / format.mSampleRate {
+                for index in weighting.indices { weighting[index].reset() }
+            }
             if !units.isEmpty { applyEffects(bufferList, frames: frames, start: start) }
+            expectedStart = start.seconds + Double(frames) / format.mSampleRate
             let rate = format.mSampleRate
             let startSeconds = start.seconds
             let first = curves.gains(through: stages, at: startSeconds)
@@ -286,6 +327,7 @@ enum AudioLevelTap {
             }
             meter?.record(
                 left: channels[0], right: channels.count > 1 ? channels[1] : channels[0],
+                weighted: weigh(channels, frames: frames),
                 frames: frames, sampleRate: rate, start: startSeconds, track: meterIndex
             )
         }

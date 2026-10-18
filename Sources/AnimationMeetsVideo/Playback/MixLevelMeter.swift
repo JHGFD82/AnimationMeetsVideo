@@ -33,6 +33,8 @@ final class MixLevelMeter: @unchecked Sendable {
         var squares = SIMD2<Float>.zero
         var count = 0
         var peak = SIMD2<Float>.zero
+        /// The K-weighted squares summed over both channels, for loudness.
+        var weighted: Float = 0
     }
 
     private let entries = OSAllocatedUnfairLock(
@@ -56,10 +58,13 @@ final class MixLevelMeter: @unchecked Sendable {
 
     /// Records `frames` samples of a track starting at composition time
     /// `start`, each channel given as its first sample and the distance
-    /// between samples. A window played again is averaged with itself, so
+    /// between samples, and `weighted`, each frame's K-weighted squares
+    /// summed over both channels (see `KWeighting`), when it is measured
+    /// for loudness. A window played again is averaged with itself, so
     /// replaying doesn't make it louder.
     func record(
         left: (UnsafeMutablePointer<Float>, Int), right: (UnsafeMutablePointer<Float>, Int),
+        weighted: UnsafePointer<Float>? = nil,
         frames: Int, sampleRate: Double, start: Double, track: Int
     ) {
         guard track < Self.maximumTracks, frames > 0, sampleRate > 0, start.isFinite else { return }
@@ -70,24 +75,55 @@ final class MixLevelMeter: @unchecked Sendable {
             let end = min(frames, max(frame + 1, Int(windowEnd.rounded(.up))))
             var squares = SIMD2<Float>.zero
             var peak = SIMD2<Float>.zero
+            var weightedSum: Float = 0
             for index in frame..<end {
                 let l = left.0[index * left.1], r = right.0[index * right.1]
                 squares += SIMD2(l * l, r * r)
                 peak = pointwiseMax(peak, SIMD2(abs(l), abs(r)))
+                if let weighted { weightedSum += weighted[index] }
             }
             let count = end - frame
-            let measured = (squares: squares, peak: peak)
+            let measured = (squares: squares, peak: peak, weighted: weightedSum)
             entries.withLock { entries in
                 let slot = Self.slot(window: window, track: track)
                 if entries[slot].window == window {
                     entries[slot].squares += measured.squares
                     entries[slot].count += count
                     entries[slot].peak = pointwiseMax(entries[slot].peak, measured.peak)
+                    entries[slot].weighted += measured.weighted
                 } else {
-                    entries[slot] = Entry(window: window, squares: measured.squares, count: count, peak: measured.peak)
+                    entries[slot] = Entry(
+                        window: window, squares: measured.squares, count: count, peak: measured.peak, weighted: measured.weighted
+                    )
                 }
             }
             frame = end
+        }
+    }
+
+    /// The loudness, in LUFS, of the `seconds` before `at`: 3 for EBU
+    /// R128's short-term loudness, 0.4 for its momentary. Tracks are added
+    /// by power, as for the levels. Nil when nothing was measured then.
+    func loudness(at time: Double, over seconds: Double = 3) -> Double? {
+        guard time.isFinite else { return nil }
+        let last = Self.window(at: time)
+        let count = max(1, Int((seconds * Self.windowsPerSecond).rounded()))
+        return entries.withLock { entries in
+            var power = 0.0
+            var measured = 0
+            for window in (last - count + 1)...last {
+                var heard = false
+                for track in 0..<Self.maximumTracks {
+                    let entry = entries[Self.slot(window: window, track: track)]
+                    guard entry.window == window, entry.count > 0 else { continue }
+                    power += Double(entry.weighted) / Double(entry.count)
+                    heard = true
+                }
+                if heard { measured += 1 }
+            }
+            // Windows nothing was measured in, such as before playing
+            // started, are left out rather than read as silence.
+            return measured == 0 ? nil : Loudness.lufs(meanSquare: power / Double(measured))
         }
     }
 

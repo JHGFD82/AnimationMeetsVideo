@@ -5,7 +5,8 @@ import SwiftUI
 /// The level of every audio track together, left and right, beside the
 /// timeline while it plays: green to −18 dBFS, yellow to −6, red above, a
 /// mark holding the recent peak, and a lamp on top of each channel that
-/// lights once it reaches full scale (click to clear). Reads what the
+/// lights once it reaches full scale (click to clear), and under them the
+/// short-term loudness (the last three seconds, in LUFS). Reads what the
 /// player's audio taps measured at the playhead (`MixLevelMeter`).
 ///
 /// The scale is drawn once; only the bars and peak marks move, as Core
@@ -19,19 +20,27 @@ struct AudioMeterView: View {
     /// Redraws once after the clip lamps are cleared while paused.
     @State private var clearedCount = 0
 
-    /// - Parameter showing: What the meter starts at, for a snapshot.
-    init(playback: PlaybackModel, showing: MeterBallistics = MeterBallistics()) {
+    /// Shown in place of a measured loudness, for a snapshot.
+    private let shownLoudness: Double?
+
+    /// - Parameters:
+    ///   - showing: What the meter starts at, for a snapshot.
+    ///   - loudness: The loudness to show instead of the player's.
+    init(playback: PlaybackModel, showing: MeterBallistics = MeterBallistics(), loudness: Double? = nil) {
         self.playback = playback
         _ballistics = State(initialValue: BallisticsBox(value: showing))
+        shownLoudness = loudness
     }
 
     var body: some View {
         let box = ballistics
         SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !playback.isPlaying && box.isSettled)) { context in
+            let time = playback.player.currentTime().seconds
             let meter = box.advance(
                 to: context.date.timeIntervalSinceReferenceDate,
-                peak: playback.isPlaying ? playback.mixMeter.reading(at: playback.player.currentTime().seconds).peak : nil
+                peak: playback.isPlaying ? playback.mixMeter.reading(at: time).peak : nil
             )
+            let loudness = shownLoudness ?? (playback.isPlaying ? playback.mixMeter.loudness(at: time) : nil)
             VStack(spacing: Design.Space.tight) {
                 HStack(spacing: 3) {
                     lamp(meter.clipped[0])
@@ -58,6 +67,7 @@ struct AudioMeterView: View {
                 .accessibilityElement()
                 .accessibilityLabel("Audio level")
                 .accessibilityValue("left \(Self.spoken(meter.level[0])), right \(Self.spoken(meter.level[1]))")
+                loudnessReadout(loudness)
             }
         }
         .padding(.vertical, Design.Space.step)
@@ -70,6 +80,24 @@ struct AudioMeterView: View {
     /// A level as VoiceOver reads it: "−12 decibels", or "silent".
     private static func spoken(_ decibels: Double) -> String {
         decibels <= MeterBallistics.floor ? "silent" : "\(Int(decibels.rounded())) decibels"
+    }
+
+    /// The short-term loudness, or a dash while nothing is playing.
+    private func loudnessReadout(_ lufs: Double?) -> some View {
+        VStack(spacing: 0) {
+            Text(lufs.map(Loudness.label) ?? "–")
+                .font(Design.Typeface.numericMicro)
+                .foregroundStyle(lufs == nil ? Design.textTertiary : Design.textPrimary)
+            Text("LUFS")
+                .font(Design.Typeface.micro)
+                .foregroundStyle(Design.textTertiary)
+        }
+        .padding(.leading, MeterLayout.scaleWidth)
+        .frame(maxWidth: .infinity)
+        .help("Short-term loudness: every track together over the last three seconds, in LUFS")
+        .accessibilityElement()
+        .accessibilityLabel("Loudness")
+        .accessibilityValue(lufs.map { $0.isFinite ? "\(Int($0.rounded())) LUFS" : "silent" } ?? "not playing")
     }
 
     private func lamp(_ lit: Bool) -> some View {

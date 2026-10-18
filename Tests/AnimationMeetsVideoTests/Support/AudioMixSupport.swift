@@ -45,7 +45,9 @@ enum AudioMixSupport {
 
     /// The loudest left and right samples of the root timeline's mix
     /// between `skip` and `stop` seconds, read in stereo.
-    static func loudest(of project: EditingProject, after skip: Double = 0, before stop: Double = .infinity) async throws -> SIMD2<Float> {
+    static func loudest(
+        of project: EditingProject, after skip: Double = 0, before stop: Double = .infinity, meter: MixLevelMeter? = nil
+    ) async throws -> SIMD2<Float> {
         let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
         let reader = try AVAssetReader(asset: composed.composition)
         let output = AVAssetReaderAudioMixOutput(audioTracks: composed.composition.tracks(withMediaType: .audio), audioSettings: [
@@ -56,7 +58,7 @@ enum AudioMixSupport {
             AVLinearPCMIsNonInterleaved: false,
             AVNumberOfChannelsKey: 2,
         ])
-        output.audioMix = composed.audioMix(curves: MixCurves(MixCurves.of(project)))
+        output.audioMix = composed.audioMix(curves: MixCurves(MixCurves.of(project)), meter: meter)
         reader.add(output)
         #expect(reader.startReading())
         var loudest = SIMD2<Float>.zero

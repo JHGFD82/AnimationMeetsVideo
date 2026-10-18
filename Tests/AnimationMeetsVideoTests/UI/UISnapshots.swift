@@ -62,7 +62,7 @@ struct UISnapshots {
         meter.update(peak: SIMD2(1, 0.3), at: now - 0.5)
         meter.update(peak: SIMD2(0.5, 0.25), at: now)
         try SnapshotSupport.render(
-            AudioMeterView(playback: PlaybackModel(), showing: meter),
+            AudioMeterView(playback: PlaybackModel(), showing: meter, loudness: -14.2),
             "audio-meter", size: CGSize(width: 60, height: 300)
         )
     }

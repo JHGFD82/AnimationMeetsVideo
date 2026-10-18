@@ -3,7 +3,9 @@
 Status: **implemented**: keyframed volume and pan on clips and on Sound
 and Music layers, sound effects (EQ, Compressor, Limiter) on clips,
 fades and crossfades under transitions, all applied in playback and
-export, and a meter of the whole mix. The level and pan math, saving,
+export, and a meter of the whole mix with its short-term loudness. The
+loudness measurement is tested against BS.1770's reference levels and
+gates. The level and pan math, saving,
 nesting, the mix's gain above unity, pan, fades and each sound effect in
 the mix, the fades at joined cuts, and the meter's measurements and
 movement are unit tested (the mix by reading a composition through its
@@ -194,6 +196,27 @@ square root of the sum of the tracks' squares. That is exact for unrelated
 sounds and reads up to 3 dB low for the same sound on two tracks. A window
 played again is averaged with itself, so replaying doesn't read louder.
 
+### Loudness
+
+Under the bars the meter shows the mix's **short-term loudness**: every
+track over the last three seconds, in LUFS, as EBU R128 and ITU-R BS.1770
+measure it (`Loudness`). Each tap K-weights what it lets through, after
+volume and pan, with a filter per channel (`KWeighting`: a high shelf of
+about +4 dB above 2 kHz and a high-pass below about 40 Hz), and the meter
+keeps each window's weighted power beside its levels. Loudness is
+−0.691 + 10·log10 of the weighted power summed over left and right, so a
+full-scale 997 Hz sine on both channels reads 0 LUFS. A mono track plays
+on both sides and counts twice. Tracks are added by power, with the same
+caveat as the levels. It reads a dash while nothing plays, and windows
+nothing was measured in (before playing started) are left out rather than
+read as silence.
+
+`LoudnessMeasurement` measures a whole program the same way: its
+integrated loudness, gated as R128 has it (400 ms blocks every 100 ms,
+leaving out those under −70 LUFS and then those more than 10 LU under the
+rest), its loudest momentary (400 ms) and short-term loudness, and its
+loudest sample.
+
 ## Saving
 
 A clip's `volume`, and a Sound or Music layer's, is written only when it
@@ -217,4 +240,4 @@ dropped on load.
   [Sound effects](#sound-effects)).
 - Making up for a sound effect's delay.
 - A meter per layer, and reading the mix while scrubbing or paused.
-- Loudness (LUFS) rather than peak level.
+- Integrated loudness of the timeline in the editor, and loudness range.
