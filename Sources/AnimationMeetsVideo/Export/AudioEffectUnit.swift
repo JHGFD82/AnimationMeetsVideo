@@ -99,6 +99,15 @@ final class AudioEffectUnit {
         list.unsafeMutablePointer.deallocate()
     }
 
+    /// How long the unit holds sound back, in seconds: the compressor and
+    /// limiter look ahead.
+    var latency: Double {
+        var seconds: Float64 = 0
+        var size = UInt32(MemoryLayout<Float64>.size)
+        AudioUnitGetProperty(unit, kAudioUnitProperty_Latency, kAudioUnitScope_Global, 0, &seconds, &size)
+        return seconds
+    }
+
     /// Forgets the sound it has heard, after a jump in time, so the
     /// compressor's envelope and the filters' state don't carry over.
     func reset() {

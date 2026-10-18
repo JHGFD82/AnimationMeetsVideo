@@ -3,7 +3,8 @@
 Status: **implemented**: keyframed volume and pan on clips and on Sound
 and Music layers, sound effects (EQ, Compressor, Limiter) on clips,
 fades and crossfades under transitions, all applied in playback and
-export, and a meter of the whole mix with its short-term loudness. The
+export, a meter of the whole mix with its short-term loudness, and
+exports mastered to a loudness target with peaks held under −1 dBFS. The
 loudness measurement is tested against BS.1770's reference levels and
 gates. The level and pan math, saving,
 nesting, the mix's gain above unity, pan, fades and each sound effect in
@@ -217,6 +218,40 @@ leaving out those under −70 LUFS and then those more than 10 LU under the
 rest), its loudest momentary (400 ms) and short-term loudness, and its
 loudest sample.
 
+## Loudness on export
+
+The **Loudness** menu beside the export format (remembered in the app's
+defaults) sets how loud the export's sound is (`LoudnessTarget`):
+
+- **As Mixed** (the default): the mix as it is, mixed by the export
+  session through the taps as in playback.
+- **−14 LUFS** for streaming services, **−16 LUFS** for podcasts and
+  Apple's spec, **−23 LUFS** for EBU R128 broadcast.
+
+With a target, the sound is mastered before the pictures are exported
+(`LoudnessMastering`), taking the first tenth of the progress bar.
+AVFoundation's audio mix has taps on its tracks but none on their sum,
+so there is nowhere to put a limiter on the whole mix while the export
+session mixes it. Instead the mix is read out through its audio mix
+twice, in stereo float at 48 kHz, off the cooperative pool
+(`SampleReading`):
+
+1. Once to measure its integrated loudness (`LoudnessMeasurement`).
+2. Once to render it to a temporary CAF file: gained by the difference
+   from the target, pushed 1 dB into Apple's peak limiter
+   (`AUPeakLimiter`, as an `AudioEffectUnit`, with its longest release
+   so held peaks don't pump) and brought 1 dB down again, so peaks are
+   held under **−1 dBFS**. The limiter looks ahead by about 2 ms; that
+   much is dropped from the start and flushed out at the end, so the
+   sound stays in step with the picture.
+
+The file's sound then replaces the composition's audio tracks and the
+export runs without an audio mix. A mix with nothing in it, or nothing
+above R128's −70 LUFS gate, is exported as mixed. The ceiling is on
+samples, not true peak: sound between samples can go a little over it.
+Heavy limiting, when a quiet mix with sharp peaks is raised a long way,
+leaves the result a little under the target.
+
 ## Saving
 
 A clip's `volume`, and a Sound or Music layer's, is written only when it
@@ -241,3 +276,4 @@ dropped on load.
 - Making up for a sound effect's delay.
 - A meter per layer, and reading the mix while scrubbing or paused.
 - Integrated loudness of the timeline in the editor, and loudness range.
+- A true-peak ceiling, and a report after export of what mastering did.

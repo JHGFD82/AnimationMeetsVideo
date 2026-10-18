@@ -60,17 +60,22 @@ enum AudioMixSupport {
         ])
         output.audioMix = composed.audioMix(curves: MixCurves(MixCurves.of(project)), meter: meter)
         reader.add(output)
-        #expect(reader.startReading())
-        var loudest = SIMD2<Float>.zero
-        while let buffer = output.copyNextSampleBuffer() {
-            guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
-            let start = CMSampleBufferGetPresentationTimeStamp(buffer).seconds
-            var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
-            _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
-            for frame in 0..<chunk.count / 2 where (skip..<stop).contains(start + Double(frame) / sampleRate) {
-                loudest = pointwiseMax(loudest, SIMD2(abs(chunk[2 * frame]), abs(chunk[2 * frame + 1])))
+        let reading = HandedOver(value: (reader, output))
+        // Off the cooperative pool: reading blocks (see `SampleReading`).
+        return try await SampleReading.run { _ in
+            let (reader, output) = reading.value
+            #expect(reader.startReading())
+            var loudest = SIMD2<Float>.zero
+            while let buffer = output.copyNextSampleBuffer() {
+                guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
+                let start = CMSampleBufferGetPresentationTimeStamp(buffer).seconds
+                var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
+                _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
+                for frame in 0..<chunk.count / 2 where (skip..<stop).contains(start + Double(frame) / sampleRate) {
+                    loudest = pointwiseMax(loudest, SIMD2(abs(chunk[2 * frame]), abs(chunk[2 * frame + 1])))
+                }
             }
+            return loudest
         }
-        return loudest
     }
 }

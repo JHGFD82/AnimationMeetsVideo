@@ -38,6 +38,8 @@ enum Preferences {
     static let showsEffectsLibrary = "showsEffectsLibrary"
     static let effectsLibraryTab = "effectsLibraryTab"
     static let showsAudioMeter = "showsAudioMeter"
+    /// The `LoudnessTarget` exports are delivered at.
+    static let exportLoudness = "exportLoudness"
     static let browserTab = "browserTab"
     static let timelineAreaLayout = "timelineAreaLayout"
     static let effectsPanelShowsKeyframeLanes = "effectsPanelShowsKeyframeLanes"

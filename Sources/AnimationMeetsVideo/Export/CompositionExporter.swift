@@ -200,12 +200,15 @@ enum CompositionExporter {
     /// stretches already rendered into `cache` from there instead of
     /// compositing them again; renders are ProRes 422 themselves, so a 4444
     /// export always composites from the sources to keep its extra detail.
-    /// Returns how many rendered segments were reused.
+    /// With a loudness target other than as mixed, the sound is mastered
+    /// to it first (`LoudnessMastering`), which takes the first tenth of
+    /// the progress. Returns how many rendered segments were reused.
     @discardableResult
     static func export(
         project: EditingProject,
         timelineID: UUID,
         preset: ProResPreset,
+        loudness: LoudnessTarget = .asMixed,
         to url: URL,
         cache: RenderCache? = nil,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
@@ -213,6 +216,13 @@ enum CompositionExporter {
         let composed = try await buildComposedTimeline(
             for: project, timelineID: timelineID, cache: preset.reusesRenders ? cache : nil
         )
+        let curves = MixCurves(MixCurves.of(project))
+        let mastered = try await LoudnessMastering.master(
+            composed, curves: curves, to: loudness, in: FileManager.default.temporaryDirectory,
+            progress: { progress($0 / 10) }
+        )
+        defer { mastered.map { try? FileManager.default.removeItem(at: $0.file) } }
+        let exportShare = mastered == nil ? 1.0 : 0.9
 
         let isCompatible = await AVAssetExportSession.compatibility(
             ofExportPreset: preset.avPresetName,
@@ -227,7 +237,8 @@ enum CompositionExporter {
             throw CompositionError.noExportSession
         }
         exportSession.videoComposition = composed.videoComposition
-        exportSession.audioMix = composed.audioMix(curves: MixCurves(MixCurves.of(project)))
+        // Mastered sound is already mixed, in a track of its own.
+        exportSession.audioMix = mastered == nil ? composed.audioMix(curves: curves) : nil
 
         // The save panel already confirmed replacing an existing file, but
         // AVAssetExportSession refuses to write over one.
@@ -237,7 +248,7 @@ enum CompositionExporter {
         let progressTask = Task {
             for await state in states {
                 if case .exporting(let exportProgress) = state {
-                    progress(exportProgress.fractionCompleted)
+                    progress(1 - exportShare + exportProgress.fractionCompleted * exportShare)
                 }
             }
         }

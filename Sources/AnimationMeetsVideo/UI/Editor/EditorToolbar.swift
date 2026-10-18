@@ -13,6 +13,7 @@ struct EditorToolbar: View {
     /// Pauses for an export, whose ProRes 422 output reuses its renders.
     let renderer: RenderScheduler
     @State private var selectedPreset: ProResPreset = .proRes422
+    @AppStorage(Preferences.exportLoudness) private var loudness = LoudnessTarget.asMixed
     @State private var exportTask: Task<Void, Never>?
     @State private var exportProgress: Double = 0
     @State private var exportError: String?
@@ -106,6 +107,18 @@ struct EditorToolbar: View {
                 .help("ProRes 422 exports reuse the stretches already rendered in the background; ProRes 4444 composites everything from the sources.")
                 .disabled(isExporting)
 
+                Picker("Loudness", selection: $loudness) {
+                    ForEach(LoudnessTarget.allCases) { target in
+                        Text(target.name).tag(target)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(width: 110)
+                .help("How loud the export's sound is: \(loudness.name), \(loudness.detail). A target gains the whole mix to that loudness and holds its peaks under −1 dBFS.")
+                .accessibilityLabel("Export loudness")
+                .disabled(isExporting)
+
                 if isExporting {
                     ProgressView(value: exportProgress)
                         .controlSize(.small)
@@ -192,6 +205,7 @@ struct EditorToolbar: View {
         let snapshot = project
         let timelineID = activeTimelineID
         let preset = selectedPreset
+        let target = loudness
         let cache = renderer.cache
         exportProgress = 0
         renderer.setExporting(true)
@@ -205,6 +219,7 @@ struct EditorToolbar: View {
                     project: snapshot,
                     timelineID: timelineID,
                     preset: preset,
+                    loudness: target,
                     to: url,
                     cache: cache,
                     progress: { fraction in
