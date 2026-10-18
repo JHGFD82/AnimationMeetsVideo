@@ -168,12 +168,7 @@ struct AnimationMeetsVideoApp: App {
                 .disabled(projectURL == nil)
             }
             TimelineCommands()
-            CommandGroup(after: .windowArrangement) {
-                Button("Reset Panel Layout") {
-                    Preferences.resetLayout()
-                }
-                .help("Put every panel back to its first-launch size and place")
-            }
+            WindowCommands()
         }
 
         // App > Settings… (⌘,): how the editor behaves for every project.

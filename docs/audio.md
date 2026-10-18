@@ -3,7 +3,8 @@
 Status: **implemented**: keyframed volume and pan on clips and on Sound
 and Music layers, sound effects (EQ, Compressor, Limiter) on clips,
 fades and crossfades under transitions, all applied in playback and
-export, a meter of the whole mix with its short-term loudness,
+export, scrubbing by grains and like tape, a meter of the whole mix
+with its short-term loudness,
 exports mastered to a loudness target with peaks held under −1 dBFS, a
 choice of output devices, and takes recorded from inputs and other apps.
 Writing and placing a take are tested; capturing from a device or an
@@ -308,6 +309,47 @@ grains near each other cost nothing; moving outside it reads again. An
 edit forgets what was read, since it may change the sound. All of it
 (reading, the engine, scheduling) runs on one queue of its own, and
 playing lets go of its engine.
+
+## Tape scrubbing
+
+**Window > Tape Scrubber** opens a small floating box with a slit, and
+the ridged edge of a dial standing out of it (`TapeScrubberView`). It
+plays the Main timeline's sound the way tape sounds rocked by hand
+across a playback head: without a break, at the speed and direction the
+dial is turned, its pitch going up and down with the speed
+(`TapeScrub`). The playhead and picture follow. While another timeline
+is open the dial is dimmed and doesn't turn.
+
+The speed comes from how far the dial has been dragged since it was
+grabbed (`TapeScrub.rate(forDrag:)`): slow at first and faster the
+further it goes, up to 8 times normal; to the left it plays backwards.
+Dragging back past where it was grabbed reverses it. Letting go brings
+the tape to rest, and the playhead onto the start of the frame it
+stopped in. Holding the Left or Right Arrow key runs it at normal
+speed that way, four times with Shift; VoiceOver's adjust plays half a
+second either way.
+
+Nothing waits on the dial. The engine starts when the window opens and
+runs until it closes, so grabbing it doesn't wait for a device. The
+speed asked for goes to the render thread through an atomic, and the
+render thread moves its head over the mix one output frame at a time
+(`TapeTransport`), so a turn is heard within one output buffer, about
+10 ms. The head's speed glides toward the dial's with a 15 ms time
+constant, too short to feel but enough that a jump in speed doesn't
+click; it reads between samples with a cubic, and below 0.03 times
+normal the sound fades away, as tape's does, rather than holding one
+sample. It stops at either end of the timeline.
+
+The mix is read out through the composition's audio mix, as playback
+hears it, in two-second pieces: the one the tape is in, two ahead the
+way it is going and one behind, read on a queue of its own, one at a
+time so a move elsewhere is seen at once, and let go of further than
+four away. Each piece reads a quarter second before it and throws that
+away, so effects that need sound before they say anything (Voice
+Isolation) are running by its start. A piece not read yet plays as
+silence. Moving the playhead any other way cues the tape there and
+reads around it, ready for the next grab; an edit forgets what was
+read.
 
 ## Output devices
 

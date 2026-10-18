@@ -147,41 +147,7 @@ final class ScrubAudio: @unchecked Sendable {
 
     /// Reads the mix from `start` for `before + after` seconds.
     private func read(from start: Double) -> (start: Double, left: [Float], right: [Float])? {
-        guard let composed, let curves, !composed.audioTracks.isEmpty,
-              let reader = try? AVAssetReader(asset: composed.composition)
-        else { return nil }
-        let output = AVAssetReaderAudioMixOutput(audioTracks: composed.composition.tracks(withMediaType: .audio), audioSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleaved: false,
-            AVSampleRateKey: Self.sampleRate,
-            AVNumberOfChannelsKey: 2,
-        ])
-        output.audioMix = composed.audioMix(curves: curves)
-        reader.add(output)
-        reader.timeRange = CMTimeRange(
-            start: CMTime(seconds: start, preferredTimescale: 48_000),
-            duration: CMTime(seconds: Self.before + Self.after, preferredTimescale: 48_000)
-        )
-        guard reader.startReading() else { return nil }
-        var left: [Float] = [], right: [Float] = []
-        var first: Double?
-        while let buffer = output.copyNextSampleBuffer() {
-            guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
-            if first == nil { first = CMSampleBufferGetPresentationTimeStamp(buffer).seconds }
-            var samples = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
-            _ = samples.withUnsafeMutableBytes {
-                CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!)
-            }
-            for frame in 0..<samples.count / 2 {
-                left.append(samples[2 * frame])
-                right.append(samples[2 * frame + 1])
-            }
-        }
-        guard let first, !left.isEmpty else { return nil }
-        return (first, left, right)
+        MixReading.read(composed, curves: curves, from: start, duration: Self.before + Self.after, sampleRate: Self.sampleRate)
     }
 
     private func schedule(_ grain: (left: [Float], right: [Float]), at start: Double?, deviceUID: String?) {

@@ -305,6 +305,7 @@ struct TimelineEditorSurface<Library: View>: View {
             // `body`, which also runs for selection and playhead changes.
             playback.mixCurves.replace(with: MixCurves.of(project))
             playback.scrubAudio.forget()
+            playback.tapeScrub.forget()
             // Show Up to Here lets go of an effect that is gone.
             if effectsState.showUpTo != nil, partialView == nil { effectsState.showUpTo = nil }
         }
@@ -336,6 +337,13 @@ struct TimelineEditorSurface<Library: View>: View {
         // Wherever it stops, playing or scrubbing, is where rendering starts.
         .onChange(of: playheadTime) { _, time in
             renderer?.playhead = time
+        }
+        // The tape scrubber moves the player while paused; the parked
+        // playhead goes with it.
+        .onChange(of: playback.currentTime) { _, time in
+            guard playback.isTapeScrubbing else { return }
+            renderer?.noteActivity()
+            playheadTime = time
         }
         .onChange(of: playback.isPlaying) { _, playing in
             // The parked playhead doesn't follow playback (see

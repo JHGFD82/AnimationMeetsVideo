@@ -43,6 +43,13 @@ final class PlaybackModel {
     let mixMeter = MixLevelMeter()
     /// Plays the mix under the playhead as it is moved while paused.
     let scrubAudio = ScrubAudio()
+    /// Plays the mix at the Tape Scrubber's speed while its window is open.
+    let tapeScrub = TapeScrub()
+    /// True while the tape scrubber moves the playhead, which the
+    /// timeline's parked playhead then follows.
+    private(set) var isTapeScrubbing = false
+    @ObservationIgnored private var tapeFollower: Task<Void, Never>?
+    @ObservationIgnored private var isHoldingTape = false
     /// The device the sound plays out of, as last routed.
     @ObservationIgnored private var outputUID: String?
     /// The paused frame drawn at full size, shown over the player while it
@@ -126,6 +133,7 @@ final class PlaybackModel {
         outputUID = playback
         if player.audioOutputDeviceUniqueID != playback { player.audioOutputDeviceUniqueID = playback }
         beatClicks.outputDeviceUID = AudioDevices.clicksUID
+        tapeScrub.route(deviceUID: playback)
     }
 
     /// Takes up a quality or motion blur set elsewhere, such as in the
@@ -169,6 +177,7 @@ final class PlaybackModel {
         item.audioMix = composed.audioMix(curves: mixCurves, meter: mixMeter)
         mixMeter.reset()
         scrubAudio.setComposition(composed, curves: mixCurves)
+        tapeScrub.setComposition(composed, curves: mixCurves)
         // The old still stays until the new one is drawn (or turns out not
         // to be needed): clearing it here would uncover the player's
         // smaller picture for a moment on every rebuild.
@@ -217,6 +226,7 @@ final class PlaybackModel {
             clearLive()
             // Playing lets go of the scrub engine and its device.
             scrubAudio.stop()
+            if isTapeScrubbing { stopTape() }
         }
         drawingOptions.update(isPlaying: playing)
         sampling?.cancel()
@@ -309,7 +319,15 @@ final class PlaybackModel {
     /// target replaces any that was queued behind it, so dragging the
     /// playhead doesn't pile up zero-tolerance seeks.
     func seek(to time: CMTime) {
-        if !isPlaying, UserDefaults.standard.object(forKey: Preferences.scrubAudio) as? Bool ?? true {
+        if isTapeScrubbing { stopTape() }
+        tapeScrub.cue(time.seconds)
+        move(to: time)
+    }
+
+    /// Moves the playhead and seeks the player, playing a grain of the
+    /// mix there unless the tape scrubber is playing it already.
+    private func move(to time: CMTime, playsGrain: Bool = true) {
+        if playsGrain, !isPlaying, UserDefaults.standard.object(forKey: Preferences.scrubAudio) as? Bool ?? true {
             // From the start of its frame, so every move within one frame
             // asks for the same grain, which plays once.
             let seconds = frameRate > 0 ? (time.seconds * frameRate + 1e-6).rounded(.down) / frameRate : time.seconds
@@ -344,5 +362,72 @@ final class PlaybackModel {
             player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
         }
         player.play()
+    }
+
+    // MARK: Tape scrubbing
+
+    /// Readies the tape scrubber on the playback device, at the playhead,
+    /// for when its dial is grabbed.
+    func openTape() {
+        tapeScrub.open(deviceUID: outputUID)
+        tapeScrub.cue(currentTime.seconds)
+    }
+
+    /// Lets the tape scrubber's engine go, its window closed.
+    func closeTape() {
+        stopTape()
+        tapeScrub.close()
+    }
+
+    /// Runs the tape at `rate` (times normal speed, backwards when
+    /// negative, still at 0) while the dial is held. The playhead follows
+    /// it.
+    func scrubTape(rate: Double) {
+        isHoldingTape = true
+        if !isTapeScrubbing {
+            if isPlaying {
+                player.pause()
+                tapeScrub.cue(player.currentTime().seconds)
+            }
+            isTapeScrubbing = true
+            tapeFollower = Task { [weak self] in await self?.followTape() }
+        }
+        tapeScrub.setRate(rate)
+    }
+
+    /// Lets go of the dial: the tape comes to rest.
+    func releaseTape() {
+        isHoldingTape = false
+        tapeScrub.setRate(0)
+    }
+
+    /// Moves the playhead to where the tape is, each screen refresh or so,
+    /// until the dial is let go and the tape comes to rest; then onto the
+    /// start of the frame it stopped in, where the tape is put too.
+    private func followTape() async {
+        while !Task.isCancelled {
+            let time = CMTime(seconds: tapeScrub.position, preferredTimescale: 600_000)
+            if !isHoldingTape, tapeScrub.isStopped {
+                let seconds = frameRate > 0 ? (time.seconds * frameRate + 1e-6).rounded(.down) / frameRate : time.seconds
+                let frame = CMTime(seconds: seconds, preferredTimescale: 600_000)
+                tapeScrub.cue(frame.seconds)
+                move(to: frame, playsGrain: false)
+                tapeFollower = nil
+                isTapeScrubbing = false
+                return
+            }
+            if CMTimeCompare(time, currentTime) != 0 { move(to: time, playsGrain: false) }
+            try? await Task.sleep(for: .milliseconds(15))
+        }
+    }
+
+    /// Stops the tape where it is, at once, for another move of the
+    /// playhead.
+    private func stopTape() {
+        isHoldingTape = false
+        tapeScrub.setRate(0)
+        tapeFollower?.cancel()
+        tapeFollower = nil
+        isTapeScrubbing = false
     }
 }

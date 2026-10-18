@@ -67,6 +67,19 @@ struct UISnapshots {
         )
     }
 
+    /// The Tape Scrubber's box, its dial ready, and dimmed while a timeline
+    /// other than Main is open.
+    @Test func tapeScrubber() throws {
+        let playback = PlaybackModel()
+        try SnapshotSupport.render(
+            VStack(spacing: 0) {
+                TapeScrubberView(playback: playback, isAvailable: true).frame(width: 384, height: 104)
+                TapeScrubberView(playback: playback, isAvailable: false).frame(width: 384, height: 104)
+            },
+            "tape-scrubber", size: CGSize(width: 384, height: 208)
+        )
+    }
+
     /// A clip's sound rows: a steady volume, and a pan keyframed from left
     /// to right with the playhead on its first keyframe.
     @Test func audioPropertyRows() throws {

@@ -33,6 +33,10 @@ keyboard (the library's list uses the arrows).
 | P / S / R / T, L | Show position, scale, rotation, opacity, or volume rows |
 | F9 | Easy ease the keyframes at the playhead; Shift for ease in, ⌘⇧ for ease out |
 
+The Tape Scrubber (Window menu) runs the sound like tape while the Left
+or Right Arrow key is held, at four times normal speed with Shift; its
+dial is one element whose adjust action plays half a second either way.
+
 Moving the playhead from the keyboard pauses playback, and scrolls the
 playhead to the middle of the view when it lands out of view.
 

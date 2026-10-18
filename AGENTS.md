@@ -49,7 +49,8 @@ Follow Google's change-description conventions for every commit.
     `Effects/` (effects panel), `EffectsLibrary/` (effects and transitions
     to drag onto clips), `Keyframes/` (graph editors), `Browser/` (clips,
     timelines and presets), `Inspector/`, `Viewer/`, `BeatMatch/`,
-    `Replacement/`, `Settings/` (the app's Settings window; its keys are
+    `Replacement/`, `TapeScrubber/` (the Tape Scrubber's dial and panel),
+    `Settings/` (the app's Settings window; its keys are
     in `App/Preferences.swift`), `Design/` (design system, shared styling,
     icon buttons and command symbols) and
     `Components/` for shared controls.

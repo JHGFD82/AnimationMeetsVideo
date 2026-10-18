@@ -24,6 +24,7 @@ struct EditorView: View {
     @State private var externalDisplay = ExternalDisplayController()
     @State private var renderer = RenderScheduler()
     @State private var beatMatch = BeatMatchController()
+    @State private var tapeScrubber = TapeScrubberWindow()
 
     init(
         project: Binding<EditingProject>,
@@ -88,6 +89,12 @@ struct EditorView: View {
         .preferredColorScheme(.dark)
         .tint(Design.accent)
         .environment(\.projectHistory, history)
+        .focusedSceneValue(\.showTapeScrubber) { [tapeScrubber, playback] in tapeScrubber.show(playback: playback) }
+        // The tape scrubber plays only the Main timeline.
+        .onChange(of: activeTimeline.wrappedValue == project.rootTimelineID, initial: true) { _, isMain in
+            tapeScrubber.isMainTimeline = isMain
+        }
+        .onDisappear { tapeScrubber.close() }
         .onChange(of: project.id) { _, _ in
             activeTimelineID = project.rootTimelineID
             selection = nil
