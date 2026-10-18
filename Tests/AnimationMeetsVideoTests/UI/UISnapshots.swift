@@ -52,6 +52,21 @@ struct UISnapshots {
         try SnapshotSupport.render(editor, "editor", size: CGSize(width: 1500, height: 900))
     }
 
+    /// The audio meter mid-song: left in the red with a held peak, right
+    /// in the yellow, and the left clip lamp lit.
+    @Test func audioMeter() throws {
+        // Read at about the time the snapshot is taken, so the bars
+        // haven't fallen by then.
+        let now = Date().timeIntervalSinceReferenceDate + 0.3
+        var meter = MeterBallistics()
+        meter.update(peak: SIMD2(1, 0.3), at: now - 0.5)
+        meter.update(peak: SIMD2(0.5, 0.25), at: now)
+        try SnapshotSupport.render(
+            AudioMeterView(playback: PlaybackModel(), showing: meter),
+            "audio-meter", size: CGSize(width: 60, height: 300)
+        )
+    }
+
     /// Each tab of the Settings window. The window's tab is remembered,
     /// so it is put back afterwards.
     @Test func settingsWindow() throws {
