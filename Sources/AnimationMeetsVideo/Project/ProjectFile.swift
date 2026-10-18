@@ -525,6 +525,9 @@ struct ProjectFile: Codable {
         /// −100 (left) to 100 (right), on Sound and Music layers; absent
         /// while centered and not animated.
         var pan: PropertyEntry<Double>?
+        /// Sound and Music layers' sound effects; absent while there are
+        /// none.
+        var audioEffects: [EffectEntry]?
         /// True for an adjustment layer; absent otherwise.
         var adjustment: Bool?
         /// The lowest layer an adjustment layer reached, in projects saved
@@ -835,6 +838,7 @@ extension ProjectFile {
             .required("id", .uuid), .optional("customName", .string),
             .required("kind", .choice(LayerKind.allCases.map(\.rawValue), noun: "layer kind")),
             .required("clips", .array(clip)), .optional("volume", property(.number)), .optional("pan", property(.number)),
+            .optional("audioEffects", effects),
             .optional("adjustment", .bool), .optional("reach", .uuid),
         ]))
         let timeline = JSONShape.object(object([

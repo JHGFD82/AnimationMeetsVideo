@@ -659,6 +659,8 @@ enum ProjectStore {
                             ? ProjectFile.PropertyEntry(layer.volume) { $0 } : nil,
                         pan: layer.kind.isAudio && layer.pan != AnimatedValue(0.0)
                             ? ProjectFile.PropertyEntry(layer.pan) { $0 } : nil,
+                        audioEffects: layer.kind.isAudio && !layer.audioEffects.isEmpty
+                            ? layer.audioEffects.map(ProjectFile.EffectEntry.init) : nil,
                         adjustment: layer.isAdjustment ? true : nil
                     )
                 },
@@ -821,6 +823,7 @@ enum ProjectStore {
                         },
                         volume: layerEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0),
                         pan: layerEntry.pan?.property(default: 0.0) { AudioPan.clamped($0) } ?? AnimatedValue(0.0),
+                        audioEffects: (layerEntry.audioEffects ?? []).compactMap(\.effect).filter(\.kind.isAudio),
                         isAdjustment: layerEntry.adjustment ?? false
                     )
                 },

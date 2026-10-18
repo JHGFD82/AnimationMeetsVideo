@@ -1332,6 +1332,26 @@ private struct Sandbox {
         #expect(written.contains("eqLowShelf") && !written.contains("\"bass\""))
     }
 
+    @Test func aSoundLayersEffectsAreSavedAndLoaded() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+        let timelineID = project.rootTimelineID
+        let layerID = UUID()
+        let index = try #require(project.timelines.firstIndex { $0.id == timelineID })
+        project.timelines[index].layers.append(TimelineLayer(id: layerID, kind: .sound, clips: []))
+        let eq = try #require(project.addEffect(.equalizer, toLayer: layerID, in: timelineID))
+        project.editEffect(eq, ofLayer: layerID, in: timelineID) { effect in
+            effect.controls[3].enabled = true
+            effect.controls[3].setComponent(1, to: 5, at: .zero)
+        }
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter).project
+        let effects = loaded.timeline(id: timelineID)?.layer(id: layerID)?.audioEffects
+        #expect(effects == project.timeline(id: timelineID)?.layer(id: layerID)?.audioEffects)
+        #expect(effects?.first?.controls[3].values(at: .zero)[1] == 5)
+    }
+
     @Test func anInputOnAnEffectThatTakesNoneIsAnUnknownKey() async throws {
         let message = try await loadingMessage { json in
             editEffect(&json, 0) { $0["input"] = ["asset": UUID().uuidString] }

@@ -64,6 +64,8 @@ final class MixCurves: @unchecked Sendable {
                 if layer.kind.isAudio {
                     if layer.volume != flat { curves.volume[layer.id] = layer.volume }
                     if layer.pan != flat { curves.pan[layer.id] = layer.pan }
+                    let effects = layer.audioEffects.filter(\.enabled)
+                    if !effects.isEmpty { curves.effects[layer.id] = effects }
                 }
                 for clip in layer.clips {
                     if clip.volume != flat { curves.volume[clip.id] = clip.volume }
@@ -268,22 +270,44 @@ enum AudioLevelTap {
             return UnsafePointer(weighted)
         }
 
-        /// Runs the buffer through the sound effects, each set as its
-        /// controls are at the buffer's start.
-        private func applyEffects(_ bufferList: UnsafeMutablePointer<AudioBufferList>, frames: Int, start: CMTime, heard: CMTime) {
-            let seconds = start.seconds
-            if let expected = expectedStart, abs(seconds - expected) > Self.jumpTolerance {
-                for (_, unit) in units { unit.reset() }
-            }
-            let current = curves.current
+        /// Runs the buffer through the sound effects of stage `stage`, each
+        /// set as its controls are over the buffer.
+        private func applyEffects(
+            ofStage stage: Int, _ bufferList: UnsafeMutablePointer<AudioBufferList>, frames: Int,
+            heard: CMTime, current: MixCurves.Curves
+        ) {
+            let owner = stages[stage]
             let end = CMTimeAdd(heard, CMTime(seconds: Double(frames) / format.mSampleRate, preferredTimescale: 96_000))
-            for (stage, unit) in units {
+            for (index, unit) in units where index == stage {
                 // An effect switched off or deleted since the mix was made
                 // is left out until the player is rebuilt.
-                let owner = stages[stage]
                 guard let effect = current.effects[owner.id]?.first(where: { $0.id == unit.effectID }) else { continue }
                 unit.apply(effect, from: owner.local(heard), to: owner.local(end))
                 unit.process(bufferList, frames: frames)
+            }
+        }
+
+        /// Multiplies the channels by gains ramping from `first` to `last`
+        /// over the buffer. The first channel is left and the second right.
+        /// A pan keeps the nearer side as it is, so the louder of the two
+        /// gains is the volume (less any pans that pull opposite ways): what
+        /// a single channel, which can't be panned, and any channels past
+        /// the second get.
+        private func applyGains(_ first: SIMD2<Float>, _ last: SIMD2<Float>, to channels: [(UnsafeMutablePointer<Float>, Int)], frames: Int) {
+            guard first != SIMD2(1, 1) || last != SIMD2(1, 1) else { return }
+            let stereo = channels.count > 1
+            for (index, (data, stride)) in channels.enumerated() {
+                let (from, to): (Float, Float) = switch index {
+                case 0 where stereo: (first.x, last.x)
+                case 1: (first.y, last.y)
+                default: (first.max(), last.max())
+                }
+                var gain = from
+                let step = frames > 1 ? (to - from) / Float(frames - 1) : 0
+                for frame in 0..<frames {
+                    data[frame * stride] *= gain
+                    gain += step
+                }
             }
         }
 
@@ -298,15 +322,14 @@ enum AudioLevelTap {
             // loudness filters afresh.
             if let expected = expectedStart, abs(start.seconds - expected) > Self.jumpTolerance {
                 for index in weighting.indices { weighting[index].reset() }
+                for (_, unit) in units { unit.reset() }
             }
             // When the sound is heard, once its effects' delay puts it back.
             let heard = CMTimeAdd(start, CMTime(seconds: latency, preferredTimescale: 96_000))
-            if !units.isEmpty { applyEffects(bufferList, frames: frames, start: start, heard: heard) }
             expectedStart = start.seconds + Double(frames) / format.mSampleRate
             let rate = format.mSampleRate
             let startSeconds = heard.seconds
-            let first = curves.gains(through: stages, at: startSeconds)
-            let last = curves.gains(through: stages, at: startSeconds + Double(frames) / rate)
+            let endSeconds = startSeconds + Double(frames) / rate
 
             let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
             let interleaved = format.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0
@@ -324,26 +347,29 @@ enum AudioLevelTap {
             }
             guard !channels.isEmpty else { return }
 
-            // The first channel is left and the second right. A pan keeps
-            // the nearer side as it is, so the louder of the two gains is
-            // the volume (less any pans that pull opposite ways): what a
-            // single channel, which can't be panned, and any channels past
-            // the second get.
-            if first != SIMD2(1, 1) || last != SIMD2(1, 1) {
-                let stereo = channels.count > 1
-                for (index, (data, stride)) in channels.enumerated() {
-                    let (from, to): (Float, Float) = switch index {
-                    case 0 where stereo: (first.x, last.x)
-                    case 1: (first.y, last.y)
-                    default: (first.max(), last.max())
+            if units.isEmpty {
+                applyGains(
+                    curves.gains(through: stages, at: startSeconds), curves.gains(through: stages, at: endSeconds),
+                    to: channels, frames: frames
+                )
+            } else {
+                // Stage by stage, as a channel strip: a clip's effects, then
+                // its volume and pan, then its layer's effects, then the
+                // layer's volume and pan, and so on outward. Gains between
+                // effects are gathered and applied together.
+                let current = curves.current
+                var first = SIMD2<Float>(1, 1), last = SIMD2<Float>(1, 1)
+                for index in stages.indices {
+                    if units.contains(where: { $0.stage == index }) {
+                        applyGains(first, last, to: channels, frames: frames)
+                        first = SIMD2(1, 1)
+                        last = SIMD2(1, 1)
+                        applyEffects(ofStage: index, bufferList, frames: frames, heard: heard, current: current)
                     }
-                    var gain = from
-                    let step = frames > 1 ? (to - from) / Float(frames - 1) : 0
-                    for frame in 0..<frames {
-                        data[frame * stride] *= gain
-                        gain += step
-                    }
+                    first *= curves.gains(through: [stages[index]], at: startSeconds)
+                    last *= curves.gains(through: [stages[index]], at: endSeconds)
                 }
+                applyGains(first, last, to: channels, frames: frames)
             }
             meter?.record(
                 left: channels[0], right: channels.count > 1 ? channels[1] : channels[0],

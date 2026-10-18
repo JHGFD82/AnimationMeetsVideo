@@ -34,6 +34,8 @@ struct CompositionKey: Equatable {
                 }
                 copy.layers[index].volume = AnimatedValue(0.0)
                 copy.layers[index].pan = panned(copy.layers[index].pan)
+                copy.layers[index].audioEffects = copy.layers[index].audioEffects
+                    .filter(\.enabled).map { Effect(id: $0.id, kind: $0.kind, controls: []) }
                 for clip in copy.layers[index].clips.indices {
                     let hasOwn = copy.layers[index].clips[clip].hasOwnMix
                     copy.layers[index].clips[clip].volume = AnimatedValue(hasOwn ? 1.0 : 0.0)

@@ -485,6 +485,10 @@ struct TimelineLayer: Identifiable, Equatable {
     /// applied after each clip's own pan (see `AudioPan`), keyframed in
     /// this timeline's time.
     var pan = AnimatedValue(0.0)
+    /// The sound effects a Sound or Music layer plays everything on it
+    /// through, after each clip's own and before the layer's volume and
+    /// pan, keyframed in this timeline's time. Video layers have none.
+    var audioEffects: [Effect] = []
     /// Whether the layer holds adjustment clips (and only them), whose
     /// stacks are applied to the layers below. See docs/effects.md,
     /// "Adjustment layers". The layer is a video layer in every other way.

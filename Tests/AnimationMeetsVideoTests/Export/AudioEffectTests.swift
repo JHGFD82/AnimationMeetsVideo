@@ -248,3 +248,68 @@ import Testing
         #expect(abs(moment - 1) < 0.002)
     }
 }
+
+/// Sound effects on Sound and Music layers.
+@Suite struct LayerSoundEffectTests {
+    /// Adds a sound effect of `kind` to the layer, with `change` made to it.
+    private func add(_ kind: EffectKind, toLayer layerID: UUID, in project: inout EditingProject, _ change: (inout Effect) -> Void) throws {
+        let added = project.addEffect(kind, toLayer: layerID, in: project.rootTimelineID)
+        let effectID = try #require(added)
+        project.editEffect(effectID, ofLayer: layerID, in: project.rootTimelineID, change)
+    }
+
+    @Test func aLayersEQCutsEverythingOnIt() async throws {
+        let url = try AudioMixSupport.tone(frequency: 12_000)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var (project, _, layerID) = try AudioMixSupport.project(playing: url)
+        try add(.equalizer, toLayer: layerID, in: &project) { effect in
+            guard let index = effect.controls.firstIndex(where: { $0.kind == .eqHighShelf }) else { return }
+            effect.controls[index].enabled = true
+            effect.controls[index].number = AnimatedValue(ComponentValue(values: [8000, -24, EqualizerBand.flatQ]))
+        }
+        let level = try await AudioMixSupport.loudest(of: project, after: 0.2)
+        #expect(level.x < 0.25 / 8)
+    }
+
+    @Test func aClipsVolumeComesBeforeItsLayersEffects() async throws {
+        let url = try AudioMixSupport.tone(frequency: 440)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var (project, clipID, layerID) = try AudioMixSupport.project(playing: url)
+        // The clip at a quarter, then 24 dB of drive into the layer's
+        // limiter: as a channel strip, the limiter hears the quieter sound
+        // and drives it up to full scale. The other way round, the clip's
+        // volume would bring the limited sound back down to about 0.25.
+        project.editClip(clipID, in: project.rootTimelineID) { $0.volume = AnimatedValue(-12) }
+        try add(.limiter, toLayer: layerID, in: &project) { effect in
+            guard let index = effect.controls.firstIndex(where: { $0.kind == .drive }) else { return }
+            effect.controls[index].setComponent(0, to: 24, at: .zero)
+        }
+        let level = try await AudioMixSupport.loudest(of: project, after: 0.2)
+        #expect(level.x > 0.55)
+        #expect(level.x <= 1.01)
+    }
+
+    @Test func onlyAudioLayersTakeSoundEffects() throws {
+        var (project, _, layerID) = try AudioMixSupport.project(playing: URL(filePath: "/dev/null"))
+        let timelineID = project.rootTimelineID
+        #expect(project.addEffect(.color, toLayer: layerID, in: timelineID) == nil)
+        let first = try #require(project.addEffect(.equalizer, toLayer: layerID, in: timelineID))
+        let second = try #require(project.addEffect(.compressor, toLayer: layerID, in: timelineID))
+        project.moveEffect(second, ofLayer: layerID, in: timelineID, toIndex: 0)
+        #expect(project.timeline(id: timelineID)?.layer(id: layerID)?.audioEffects.map(\.id) == [second, first])
+        project.removeEffect(first, fromLayer: layerID, in: timelineID)
+        #expect(project.timeline(id: timelineID)?.layer(id: layerID)?.audioEffects.map(\.id) == [second])
+    }
+
+    @Test func addingALayerEffectRebuildsButChangingItDoesNot() throws {
+        var (project, _, layerID) = try AudioMixSupport.project(playing: URL(filePath: "/dev/null"))
+        let timelineID = project.rootTimelineID
+        let before = CompositionKey(project: project)
+        let eq = try #require(project.addEffect(.equalizer, toLayer: layerID, in: timelineID))
+        let added = CompositionKey(project: project)
+        #expect(added != before)
+        project.editEffect(eq, ofLayer: layerID, in: timelineID) { $0.controls[3].enabled = true }
+        #expect(CompositionKey(project: project) == added)
+        #expect(MixCurves.of(project).effects[layerID]?.map(\.id) == [eq])
+    }
+}
