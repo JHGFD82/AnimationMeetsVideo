@@ -7,6 +7,10 @@ import Foundation
 /// in. Built when the timeline is, so drawing needs nothing from the
 /// project.
 struct ClipStack: @unchecked Sendable {
+    /// The timeline clip it was made from, so a drawing can take that clip's
+    /// new values without being built again (`DrawClip.withValues`). Nil
+    /// for a picture drawn as it is, such as a render.
+    var clipID: UUID?
     var effects: [Effect] = []
     var anchorPoint = AnimatedValue(Vector2.zero)
     /// Center of the frame of the timeline the clip is in, which is the
@@ -39,6 +43,7 @@ struct ClipStack: @unchecked Sendable {
             effects: clip.effects, anchorPoint: clip.anchorPoint, center: center, shift: shift,
             sourceShift: CMTimeSubtract(clip.startOffset, clip.trimStart), edges: edges, colorSpace: colorSpace
         )
+        clipID = clip.id
         retimed = clip.isRetimed ? clip : nil
         shutter = clip.shutter
         self.frameDuration = frameDuration

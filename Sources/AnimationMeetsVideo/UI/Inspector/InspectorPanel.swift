@@ -84,6 +84,7 @@ struct InspectorPanel: View {
                     InspectorRow("Colour", value: timeline.colorSpace.rawValue)
                 case .adjustment:
                     InspectorRow("Kind", value: "Adjustment")
+                    reachPicker
                 case .graphic:
                     InspectorRow("Kind", value: "Shapes")
                 case nil:
@@ -295,6 +296,44 @@ struct InspectorPanel: View {
         )
     }
 }
+
+// The reach of a selected adjustment clip.
+extension InspectorPanel {
+    /// How far down the adjustment clip reaches: every layer below, or down
+    /// to a video layer below, as in its context menu.
+    @ViewBuilder
+    var reachPicker: some View {
+        if let selection, let timelineClip, timelineClip.source == .adjustment,
+           let timeline = project.timeline(id: timelineID), let layer = timeline.layer(id: selection.layerID) {
+            let options = project.reachOptions(below: layer, in: timeline)
+            HStack(alignment: .firstTextBaseline, spacing: Design.Space.step) {
+                Text("Reach")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textTertiary)
+                Spacer(minLength: Design.Space.step)
+                Picker("Reach", selection: Binding(
+                    get: { timelineClip.reach },
+                    set: { project.setReach(ofClip: timelineClip.id, in: timelineID, toLayer: $0) }
+                )) {
+                    Text("All Layers Below").tag(UUID?.none)
+                    ForEach(options) { option in
+                        Text("Down to \(project.displayName(of: option, in: timeline))").tag(UUID?.some(option.id))
+                    }
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+            }
+            if project.reachesNothing(timelineClip, on: layer, in: timeline) {
+                Text("The layer this adjustment reaches down to is above it, so it reaches nothing.")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
 
 /// A block of related controls in the inspector. Each is a raised card on
 /// the panel, which is what separates one group of options from the next —

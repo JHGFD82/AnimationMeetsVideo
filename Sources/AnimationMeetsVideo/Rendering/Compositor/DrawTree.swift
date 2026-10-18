@@ -240,3 +240,65 @@ extension DrawClip {
         everyClip.contains { $0.stack.hasTransitions }
     }
 }
+
+extension DrawClip {
+    /// The same drawing with each clip's effects and anchor point as they
+    /// are in `clips` (every clip of the project, by ID): what a drag of a
+    /// value changes, and all it changes when the project's structure is
+    /// the same (`EditingProject.structure`). The viewer redraws its paused
+    /// frame from this rather than building the timeline again. Nil when a
+    /// picture in it isn't drawn from a clip's own stack, as a render
+    /// isn't, so it can't follow the edit.
+    func withValues(from clips: [UUID: TimelineClip]) -> DrawClip? {
+        guard let id = stack.clipID else { return nil }
+        var copy = self
+        if let clip = clips[id] {
+            copy.stack.effects = clip.effects
+            copy.stack.anchorPoint = clip.anchorPoint
+        }
+        switch content {
+        case .group(var group):
+            var children: [DrawClip] = []
+            for child in group.children {
+                guard let patched = child.withValues(from: clips) else { return nil }
+                children.append(patched)
+            }
+            group.children = children
+            copy.content = .group(group)
+        case .adjustment(var adjustment):
+            var reached: [DrawClip] = []
+            for clip in adjustment.reached {
+                guard let patched = clip.withValues(from: clips) else { return nil }
+                reached.append(patched)
+            }
+            adjustment.reached = reached
+            copy.content = .adjustment(adjustment)
+        case .media, .graphic:
+            break
+        }
+        for (effectID, input) in inputs {
+            guard case .group(var group) = input else { continue }
+            var children: [DrawClip] = []
+            for child in group.children {
+                guard let patched = child.withValues(from: clips) else { return nil }
+                children.append(patched)
+            }
+            group.children = children
+            copy.inputs[effectID] = .group(group)
+        }
+        return copy
+    }
+}
+
+extension EditingProject {
+    /// Every clip of every timeline, by ID.
+    var clipsByID: [UUID: TimelineClip] {
+        var clips: [UUID: TimelineClip] = [:]
+        for timeline in timelines {
+            for layer in timeline.layers {
+                for clip in layer.clips { clips[clip.id] = clip }
+            }
+        }
+        return clips
+    }
+}

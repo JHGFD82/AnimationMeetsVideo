@@ -27,11 +27,15 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
     /// What the viewer asks of drawing while it plays; nil to draw everything
     /// at full quality, as export does.
     let options: DrawingOptions?
+    /// Where the frames it is drawn from are kept, for the viewer to draw
+    /// the frame again with new values without decoding (see
+    /// `LiveFrameRenderer`); nil to keep nothing.
+    let capture: SourceCapture?
 
     init(
         timeRange: CMTimeRange, clips: [DrawClip], passthrough: CMPersistentTrackID = kCMPersistentTrackID_Invalid,
         renderSize: CGSize, colorSpace: ProjectColorSpace, canvasMargin: Double = EditingProject.defaultCanvasMargin,
-        meter: RenderMeter? = nil, options: DrawingOptions? = nil
+        meter: RenderMeter? = nil, options: DrawingOptions? = nil, capture: SourceCapture? = nil
     ) {
         self.timeRange = timeRange
         self.clips = clips
@@ -41,8 +45,38 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
         self.canvasMargin = canvasMargin
         self.meter = meter
         self.options = options
+        self.capture = capture
         requiredSourceTrackIDs = Set(clips.flatMap(\.allTrackIDs)).sorted().map { NSNumber(value: $0) }
     }
+
+    /// The same stretch drawing `clips` instead.
+    func drawing(_ clips: [DrawClip], capture: SourceCapture? = nil) -> LayeredInstruction {
+        LayeredInstruction(
+            timeRange: timeRange, clips: clips, passthrough: passthroughTrackID, renderSize: renderSize,
+            colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options, capture: capture
+        )
+    }
+}
+
+/// The decoded frames one frame of the viewer was drawn from, by track, with
+/// the stretch's instruction and the size it was drawn at, kept so the frame
+/// can be drawn again with new values. Written by the compositor's queue,
+/// read after the frame is done.
+final class SourceCapture: @unchecked Sendable {
+    struct Recorded {
+        var instruction: LayeredInstruction
+        var frames: [CMPersistentTrackID: CVPixelBuffer]
+        var size: CGSize
+    }
+
+    private let lock = NSLock()
+    private var drawn: Recorded?
+
+    func record(_ instruction: LayeredInstruction, frames: [CMPersistentTrackID: CVPixelBuffer], size: CGSize) {
+        lock.withLock { drawn = Recorded(instruction: instruction, frames: frames, size: size) }
+    }
+
+    var recorded: Recorded? { lock.withLock { drawn } }
 }
 
 /// Draws a timeline with Core Image on the GPU through Metal, for the viewer
@@ -103,6 +137,15 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                 }
                 let started = CACurrentMediaTime()
                 let size = request.renderContext.size
+                if let capture = instruction.capture {
+                    // Every frame it may draw, kept for drawing it again.
+                    var frames: [CMPersistentTrackID: CVPixelBuffer] = [:]
+                    for value in instruction.requiredSourceTrackIDs ?? [] {
+                        guard let id = (value as? NSNumber)?.int32Value else { continue }
+                        frames[id] = request.sourceFrame(byTrackID: id)
+                    }
+                    capture.record(instruction, frames: frames, size: size)
+                }
                 let image = Self.compose(instruction, at: request.compositionTime, outputSize: size) {
                     request.sourceFrame(byTrackID: $0)
                 }

@@ -80,6 +80,28 @@ struct UISnapshots {
         try SnapshotSupport.render(editor, "adjustment-reach", size: CGSize(width: 1500, height: 900))
     }
 
+    /// The inspector for an adjustment clip reaching down to one layer,
+    /// with a Music layer below that isn't offered.
+    @Test func adjustmentInspector() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        project.timelines[0].layers.append(TimelineLayer(customName: nil, kind: .music, clips: []))
+        let shape = project.addShapeLayer(.rectangle, to: t)
+        let shapeLayer = try #require(shape).layerID
+        let added = project.addAdjustmentLayer(to: t)
+        let adjustment = try #require(added)
+        project.setReach(ofClip: adjustment.clipID, in: t, toLayer: shapeLayer)
+        let clip = try #require(project.clipAndLayer(adjustment.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: adjustment.layerID, timelineClipID: adjustment.clipID),
+                info: .adjustment, timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "adjustment-inspector", size: CGSize(width: 340, height: 420)
+        )
+    }
+
     /// The audio meter mid-song: left in the red with a held peak, right
     /// in the yellow, and the left clip lamp lit.
     @Test func audioMeter() throws {
