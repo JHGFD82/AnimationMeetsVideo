@@ -1,9 +1,9 @@
 import CoreMedia
 import SwiftUI
 
-/// The playhead drawn over the tracks. While playing it follows the player
-/// itself, so only this view redraws on each tick rather than the whole
-/// timeline; parked, it shows `parked`.
+/// The playhead drawn over the tracks. While playing it runs on the
+/// player's own clock (`PlayheadRail.Following`), so following it redraws
+/// nothing, not even this view; parked, it shows `parked`.
 struct LivePlayheadRail: View {
     let playback: PlaybackModel
     let parked: CMTime
@@ -16,22 +16,23 @@ struct LivePlayheadRail: View {
     let height: CGFloat
 
     var body: some View {
-        let playing = playback.isPlaying
-        let time = playing ? playback.currentTime : parked
-        let x = viewport.x(atSeconds: time.seconds)
-        // Checked here because this is the one view that sees every tick;
-        // the page turn itself is a scroll of the whole timeline.
-        let leftView = playing && onLeaveView != nil && (x < 0 || x > viewport.width)
+        let x = viewport.x(atSeconds: parked.seconds)
         PlayheadRail(
             playheadX: x,
             isPlayheadVisible: (-1...(viewport.width + 1)).contains(x),
             snapX: snapX,
-            height: height
+            height: height,
+            following: playback.isPlaying
+                ? PlayheadRail.Following(
+                    player: playback.player,
+                    pixelsPerSecond: viewport.pixelsPerSecond,
+                    originX: viewport.x(atSeconds: 0),
+                    seconds: viewport.contentSeconds,
+                    onLeaveView: onLeaveView
+                )
+                : nil
         )
         .frame(width: viewport.width, height: height)
-        .onChange(of: leftView) { _, left in
-            if left { onLeaveView?(time) }
-        }
     }
 }
 

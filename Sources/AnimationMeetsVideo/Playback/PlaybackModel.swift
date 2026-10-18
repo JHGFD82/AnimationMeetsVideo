@@ -186,6 +186,11 @@ final class PlaybackModel {
 
     private func playStateChanged(_ playing: Bool) {
         guard playing != isPlaying else { return }
+        // The periodic ticks only come every 30th of a second; the parked
+        // playhead should land exactly where playing stopped. Not while a
+        // seek is in flight: its target is already set, and the player
+        // hasn't reached it yet.
+        if !playing, !isSeeking { currentTime = player.currentTime() }
         isPlaying = playing
         if playing { clearLive() }
         drawingOptions.update(isPlaying: playing)

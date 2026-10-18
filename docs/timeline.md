@@ -179,16 +179,23 @@ drags on the layers are free for the tools. It lands on frames and stays
 within the timeline.
 
 While playing, only the playhead line and the timeline's timecode follow
-the player (`LivePlayheadRail`, which reads the player's time itself).
-The rest of the editor reads the parked playhead, which catches up when
-playback stops, so playback doesn't redraw every layer on every tick. The
+the player. The line runs on the player's own clock: it sits in an
+`AVSynchronizedLayer` bound to the player's item, with one linear Core
+Animation across the timeline, so it moves on every display frame and
+stays with play, pause and seeks without any view being redrawn
+(`PlayheadRail.Following`). The animation is replaced only when the zoom,
+scroll or player item changes. The rest of the editor reads the parked
+playhead, which catches up when playback stops, so playback doesn't
+redraw every layer on every tick. The
 values shown in property rows and the inspector hold still while playing
 for the same reason.
 
 Zoomed in, the view **follows the playhead** while playing: each time the
 playhead runs off the edge of the view, the view turns a page so it is
 just inside the left edge again (and starting playback with the playhead
-out of view brings it into view). The view options can turn this off.
+out of view brings it into view). The player reports the playhead
+reaching the right edge with a boundary time observer, and seeks with
+its time-jumped notification, so following needs no per-frame check. The view options can turn this off.
 Moving the playhead from the keyboard scrolls it to the middle when it
 lands out of view.
 
