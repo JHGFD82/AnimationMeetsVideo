@@ -200,6 +200,25 @@ enum Design {
         /// The viewer's running timecode: the one number big enough to read
         /// across the desk.
         static let timecode = Font.system(size: 13, weight: .medium, design: .monospaced)
+
+        /// The start window's heading: the only text set larger than a
+        /// sheet's title.
+        static let display = Font.system(size: 19, weight: .semibold)
+        /// Tiny labels drawn on the work itself: a layer's badge, a beat's
+        /// number in its tag. Below 10 points, so only for a word or a
+        /// figure that the shape around it also explains.
+        static let tag = Font.system(size: 9, weight: .semibold)
+        static let numericTag = Font.system(size: 9, weight: .bold, design: .monospaced)
+        /// Scale readings on graphs and meters, which sit on the drawing.
+        static let numericScale = Font.system(size: 9, design: .monospaced)
+
+        /// Glyphs. `icon` is an icon button's symbol; `glyphSmall` and
+        /// `glyphTiny` are disclosure chevrons and markers inside rows,
+        /// sized to sit on a 10 or 11 point line.
+        static let icon = Font.system(size: 13)
+        static let glyphLarge = Font.system(size: 15)
+        static let glyphSmall = Font.system(size: 9)
+        static let glyphTiny = Font.system(size: 8)
     }
 
     // MARK: -
