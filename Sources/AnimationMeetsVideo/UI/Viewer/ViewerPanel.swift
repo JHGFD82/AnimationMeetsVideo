@@ -81,7 +81,7 @@ struct ViewerPanel: View {
                 Button {
                     playback.togglePlayback()
                 } label: {
-                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                    Image(systemName: playback.isPlaying ? Design.Symbol.pause : Design.Symbol.play)
                         .frame(width: 20)
                         .contentTransition(.symbolEffect(.replace))
                 }
@@ -101,9 +101,12 @@ struct ViewerPanel: View {
                         set: { playback.motionBlurInPreview = $0 }
                     ))
                 } label: {
-                    Image(systemName: "camera.filters")
+                    Image(systemName: Design.Symbol.viewOptions)
                 }
                 .menuStyle(.borderlessButton)
+                // A borderless menu draws its glyph in the tint; quiet it
+                // to match the other icon buttons.
+                .tint(Design.textSecondary)
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .help("Preview options. Motion Blur in Preview draws clips' motion blur in the viewer; export and renders always draw it.")

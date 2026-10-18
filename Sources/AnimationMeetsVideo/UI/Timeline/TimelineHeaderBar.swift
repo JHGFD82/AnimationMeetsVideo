@@ -21,8 +21,9 @@ struct TimelineHeaderBar: View {
             Button {
                 showingSettings = true
             } label: {
-                Image(systemName: "gearshape")
+                Image(systemName: Design.Symbol.settings)
             }
+            .buttonStyle(.icon)
             .help("Timeline settings")
             .accessibilityLabel("Timeline settings")
             .disabled(currentTimeline == nil)
@@ -31,6 +32,7 @@ struct TimelineHeaderBar: View {
             } label: {
                 Image(systemName: "plus.rectangle.on.rectangle")
             }
+            .buttonStyle(.icon)
             .help("New timeline")
             .accessibilityLabel("New timeline")
 

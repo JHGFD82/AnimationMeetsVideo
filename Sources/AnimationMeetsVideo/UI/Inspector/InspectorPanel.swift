@@ -215,9 +215,9 @@ struct InspectorPanel: View {
                     Button {
                         project.removeTransition(at: edge, of: clip.id, in: timelineID, layer: selection.layerID)
                     } label: {
-                        Image(systemName: "minus.circle")
+                        Image(systemName: Design.Symbol.remove)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.icon)
                     .help("Remove transition")
                     .accessibilityLabel("Remove \(transition.kind.name) at the \(edge == .leading ? "start" : "end")")
                 }

@@ -39,16 +39,16 @@ struct BrowserPanel: View {
                 Button {
                     showingSettings.toggle()
                 } label: {
-                    Image(systemName: "slider.horizontal.below.rectangle")
+                    Image(systemName: Design.Symbol.viewOptions)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.icon)
                 .help("Thumbnail settings")
                 .accessibilityLabel("Thumbnail settings")
                 .popover(isPresented: $showingSettings, arrowEdge: .bottom) { settings }
                 Button(action: importMedia) {
-                    Image(systemName: "plus")
+                    Image(systemName: Design.Symbol.add)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.icon)
                 .help("Import media")
                 .accessibilityLabel("Import media")
             }

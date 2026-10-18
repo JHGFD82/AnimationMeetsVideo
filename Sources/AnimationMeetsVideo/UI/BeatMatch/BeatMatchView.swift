@@ -58,7 +58,7 @@ struct BeatMatchView: View {
         HStack(spacing: Design.Space.group) {
             HStack(spacing: Design.Space.step) {
                 Button(action: session.togglePlayback) {
-                    Image(systemName: session.isPlaying ? "pause.fill" : "play.fill")
+                    Image(systemName: session.isPlaying ? Design.Symbol.pause : Design.Symbol.play)
                         .frame(width: 18)
                 }
                 .help(session.isPlaying ? "Pause (Space)" : "Play (Space)")
@@ -74,7 +74,7 @@ struct BeatMatchView: View {
                         .accessibilityValue(time)
                 }
                 Toggle(isOn: $session.isLooping) {
-                    Image(systemName: "repeat")
+                    Image(systemName: Design.Symbol.loop)
                 }
                 .toggleStyle(.icon)
                 .disabled(session.selectedBeat == nil)
@@ -98,7 +98,7 @@ struct BeatMatchView: View {
             if session.hasBeats {
                 HStack(spacing: 2) {
                     Toggle(isOn: $session.clicksOn) {
-                        Image(systemName: "metronome")
+                        Image(systemName: Design.Symbol.tick)
                     }
                     .toggleStyle(.icon)
                     .help("Play a tick on every beat; downbeats an octave up")
@@ -118,13 +118,13 @@ struct BeatMatchView: View {
             }
             Spacer()
             HStack(spacing: 2) {
-                Button(action: session.zoomOut) { Image(systemName: "minus.magnifyingglass") }
+                Button(action: session.zoomOut) { Image(systemName: Design.Symbol.zoomOut) }
                     .help("Zoom out (⌘-)")
                     .accessibilityLabel("Zoom out")
-                Button(action: session.zoomIn) { Image(systemName: "plus.magnifyingglass") }
+                Button(action: session.zoomIn) { Image(systemName: Design.Symbol.zoomIn) }
                     .help("Zoom in (⌘=)")
                     .accessibilityLabel("Zoom in")
-                Button(action: session.fit) { Image(systemName: "arrow.left.and.right.square") }
+                Button(action: session.fit) { Image(systemName: Design.Symbol.zoomToFit) }
                     .help("Fit the whole song (⌘0)")
                     .accessibilityLabel("Fit the whole song")
             }
@@ -190,7 +190,7 @@ struct BeatMatchView: View {
     private var footer: some View {
         HStack(spacing: Design.Space.step) {
             Button { confirmingStartOver = true } label: {
-                Image(systemName: "arrow.counterclockwise")
+                Image(systemName: Design.Symbol.startOver)
             }
             .buttonStyle(.icon)
             .disabled(session.step == .chooseMode)
@@ -357,7 +357,7 @@ struct BeatMatchView: View {
     private var modeChoice: some View {
         VStack(alignment: .leading, spacing: Design.Space.step) {
             modeCard(
-                "One Tempo", symbol: "metronome",
+                "One Tempo", symbol: Design.Symbol.tick,
                 detail: "The whole song is one consistent section.",
                 action: session.chooseOneTempo
             )
@@ -456,7 +456,7 @@ struct BeatMatchView: View {
                         }
                     }
                     .labelsHidden()
-                    Button { session.isDrawing = true } label: { Image(systemName: "pencil") }
+                    Button { session.isDrawing = true } label: { Image(systemName: Design.Symbol.edit) }
                         .buttonStyle(.icon)
                         .help("Edit sections")
                         .accessibilityLabel("Edit sections")

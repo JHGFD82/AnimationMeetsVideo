@@ -305,68 +305,75 @@ struct TimelineView: View {
                         set: { areaLayout.setShownLayerHeightFraction($0) }
                     )
                 )
-                ControlGroup {
-                    Button { zoomAroundPlayhead(by: 1 / zoomStep) } label: { Image(systemName: "minus.magnifyingglass") }
+                // Grouped by what they act on: the view, editing, then
+                // which panels are open.
+                HStack(spacing: 2) {
+                    Button { zoomAroundPlayhead(by: 1 / zoomStep) } label: { Image(systemName: Design.Symbol.zoomOut) }
                         .help("Zoom out (-)")
                         .accessibilityLabel("Zoom out")
-                    Button { zoomAroundPlayhead(by: zoomStep) } label: { Image(systemName: "plus.magnifyingglass") }
+                    Button { zoomAroundPlayhead(by: zoomStep) } label: { Image(systemName: Design.Symbol.zoomIn) }
                         .help("Zoom in (=)")
                         .accessibilityLabel("Zoom in")
+                    Button {
+                        showingViewOptions = true
+                    } label: {
+                        Image(systemName: Design.Symbol.viewOptions)
+                    }
+                    .help("View options")
+                    .accessibilityLabel("View options")
+                    .popover(isPresented: $showingViewOptions) {
+                        ViewOptionsPopover(
+                            zoomFraction: zoomFractionBinding, onFit: fitToWindow, areaLayout: $areaLayout,
+                            followsPlayhead: $followsPlayhead,
+                            beatLayers: beatLayerChoices, beatLayerID: beatLayerSelection,
+                            clickOnBeats: $clickOnBeats, clickFrequency: $beatClickFrequency,
+                            clickVolume: $beatClickVolume, onPreviewClick: { beatClicks.preview() }
+                        )
+                    }
+                    Toggle(isOn: $areaLayout.showsSections) {
+                        Image(systemName: "rectangle.split.3x1")
+                    }
+                    .help(areaLayout.showsSections ? "Hide the sections row" : "Show the sections row")
+                    .accessibilityLabel("Sections row")
                 }
-                .fixedSize()
-                Button {
-                    showingViewOptions = true
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
+                .buttonStyle(.icon)
+                .toggleStyle(.icon)
+                Groove(axis: .vertical).frame(height: 16)
+                HStack(spacing: 2) {
+                    Toggle(isOn: $snapping) {
+                        Image(systemName: "arrow.right.and.line.vertical.and.arrow.left")
+                    }
+                    .help(snapping ? "Snapping on: edges snap to clips, the playhead and beat markers (N)" : "Snapping off (N)")
+                    .accessibilityLabel("Snapping")
+                    Button {
+                        addAdjustmentLayer()
+                    } label: {
+                        Image(systemName: "slider.horizontal.below.rectangle")
+                    }
+                    .help("New adjustment layer: effects applied to the layers below it")
+                    .accessibilityLabel("New adjustment layer")
                 }
-                .help("View options")
-                .accessibilityLabel("View options")
-                .popover(isPresented: $showingViewOptions) {
-                    ViewOptionsPopover(
-                        zoomFraction: zoomFractionBinding, onFit: fitToWindow, areaLayout: $areaLayout,
-                        followsPlayhead: $followsPlayhead,
-                        beatLayers: beatLayerChoices, beatLayerID: beatLayerSelection,
-                        clickOnBeats: $clickOnBeats, clickFrequency: $beatClickFrequency,
-                        clickVolume: $beatClickVolume, onPreviewClick: { beatClicks.preview() }
-                    )
+                .buttonStyle(.icon)
+                .toggleStyle(.icon)
+                Groove(axis: .vertical).frame(height: 16)
+                HStack(spacing: 2) {
+                    Toggle(isOn: $showsEffectsLibrary) {
+                        Image(systemName: "square.grid.2x2")
+                    }
+                    .help(showsEffectsLibrary ? "Hide the Effects Library" : "Show the Effects Library")
+                    .accessibilityLabel("Effects Library")
+                    Toggle(isOn: $showsMeter) {
+                        Image(systemName: "chart.bar.fill")
+                    }
+                    .help(showsMeter ? "Hide the audio meter" : "Show the audio meter: every track together, left and right")
+                    .accessibilityLabel("Audio meter")
+                    Toggle(isOn: $showsSidePanel) {
+                        Image(systemName: "sidebar.right")
+                    }
+                    .help(showsSidePanel ? "Hide the inspector and effects" : "Show the inspector and effects (⇧E for the selected clip's effects)")
+                    .accessibilityLabel("Inspector and effects")
                 }
-                Toggle(isOn: $snapping) {
-                    Image(systemName: "arrow.right.and.line.vertical.and.arrow.left")
-                }
-                .toggleStyle(.button)
-                .help(snapping ? "Snapping on: edges snap to clips, the playhead and beat markers (N)" : "Snapping off (N)")
-                .accessibilityLabel("Snapping")
-                Toggle(isOn: $areaLayout.showsSections) {
-                    Image(systemName: "rectangle.split.3x1")
-                }
-                .toggleStyle(.button)
-                .help(areaLayout.showsSections ? "Hide the sections row" : "Show the sections row")
-                .accessibilityLabel("Sections row")
-                Toggle(isOn: $showsEffectsLibrary) {
-                    Image(systemName: "square.grid.2x2")
-                }
-                .toggleStyle(.button)
-                .help(showsEffectsLibrary ? "Hide the Effects Library" : "Show the Effects Library")
-                .accessibilityLabel("Effects Library")
-                Button {
-                    addAdjustmentLayer()
-                } label: {
-                    Image(systemName: "slider.horizontal.below.rectangle")
-                }
-                .help("New adjustment layer: effects applied to the layers below it")
-                .accessibilityLabel("New adjustment layer")
-                Toggle(isOn: $showsSidePanel) {
-                    Image(systemName: "sidebar.right")
-                }
-                .toggleStyle(.button)
-                .help(showsSidePanel ? "Hide the inspector and effects" : "Show the inspector and effects (⇧E for the selected clip's effects)")
-                .accessibilityLabel("Inspector and effects")
-                Toggle(isOn: $showsMeter) {
-                    Image(systemName: "chart.bar.fill")
-                }
-                .toggleStyle(.button)
-                .help(showsMeter ? "Hide the audio meter" : "Show the audio meter: every track together, left and right")
-                .accessibilityLabel("Audio meter")
+                .toggleStyle(.icon)
             }
             .padding(.horizontal, Design.Space.rail)
             .padding(.vertical, Design.Space.close)

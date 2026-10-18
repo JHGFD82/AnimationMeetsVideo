@@ -75,7 +75,7 @@ struct PresetsList: View {
                             .foregroundStyle(Design.textTertiary)
                     }
                 } icon: {
-                    Image(systemName: "slider.horizontal.3")
+                    Image(systemName: Design.Symbol.preset)
                         .foregroundStyle(Design.accent)
                 }
                 .draggable(PresetDragPayload(presetID: preset.id))

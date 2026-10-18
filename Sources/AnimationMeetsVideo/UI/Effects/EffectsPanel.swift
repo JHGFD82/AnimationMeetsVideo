@@ -62,8 +62,7 @@ struct EffectsPanel: View {
                 }
                 Spacer()
                 Toggle(isOn: $showsKeyframeLanes) { Image(systemName: "timeline.selection") }
-                    .toggleStyle(.button)
-                    .buttonStyle(.borderless)
+                    .toggleStyle(.icon)
                     .help(showsKeyframeLanes ? "Hide the keyframe timeline" : "Show the keyframe timeline")
                     .accessibilityLabel("Keyframe timeline")
                     .accessibilityValue(showsKeyframeLanes ? "Shown" : "Hidden")
