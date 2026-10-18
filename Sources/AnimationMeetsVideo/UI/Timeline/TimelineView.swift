@@ -375,6 +375,10 @@ struct TimelineView: View {
                     } label: {
                         Image(systemName: "square.on.circle")
                     }
+                    // A menu draws and opens through the button style around
+                    // it, and the icon style around these buttons never opens
+                    // one; the standard style lets the menu style decide.
+                    .buttonStyle(.automatic)
                     .menuStyle(.borderlessButton)
                     // A borderless menu draws its glyph in the tint; quiet it
                     // to match the other icon buttons.
