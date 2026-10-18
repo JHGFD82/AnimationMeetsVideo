@@ -25,15 +25,19 @@ struct CompositionKey: Equatable {
                 // Volume, pan and sound effects' settings are applied as
                 // the sound plays (`AudioLevelTap`), without rebuilding the
                 // player. What counts is whether a clip has any of its own,
-                // which puts its sound on a track of its own, and which
-                // effects its tap runs: the player has to be rebuilt for
-                // those.
+                // which puts its sound on a track of its own, whether a pan
+                // is off center, which plays mono sound from a stereo copy,
+                // and which effects its tap runs: the player has to be
+                // rebuilt for those.
+                func panned(_ pan: AnimatedValue<Double>) -> AnimatedValue<Double> {
+                    AnimatedValue(pan == AnimatedValue(0.0) ? 0.0 : 1.0)
+                }
                 copy.layers[index].volume = AnimatedValue(0.0)
-                copy.layers[index].pan = AnimatedValue(0.0)
+                copy.layers[index].pan = panned(copy.layers[index].pan)
                 for clip in copy.layers[index].clips.indices {
                     let hasOwn = copy.layers[index].clips[clip].hasOwnMix
                     copy.layers[index].clips[clip].volume = AnimatedValue(hasOwn ? 1.0 : 0.0)
-                    copy.layers[index].clips[clip].pan = AnimatedValue(0.0)
+                    copy.layers[index].clips[clip].pan = panned(copy.layers[index].clips[clip].pan)
                     copy.layers[index].clips[clip].audioEffects = copy.layers[index].clips[clip].audioEffects
                         .filter(\.enabled).map { Effect(id: $0.id, kind: $0.kind, controls: []) }
                 }

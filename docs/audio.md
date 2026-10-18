@@ -83,10 +83,17 @@ Pan is a row under volume in the effects panel and in the inspector's
 **Sound** and **Layer sound** groups, with its own graph editor. The
 timeline shows volume only.
 
-Pan works on stereo sound. A mono file's sound stays centered at its
-volume whatever its pan: its composition track reaches the audio tap as one
-channel, which the mix then plays on both sides, and a tap can't add a
-channel. Panning mono needs a stereo copy of the file to play from instead.
+A mono file's composition track reaches the audio tap as one channel,
+which the mix then plays on both sides, and a tap can't add a channel. So
+mono sound played through any pan that is off center plays from a stereo
+copy of its file instead (`StereoProxies`): the same sound on both
+channels, 24-bit, with silence for a sound track that starts late so file
+times mean the same. A copy is made the first time it is needed, on the
+reading queue, and kept in the user's Caches folder, named for the file's
+path, size and modification date, so a changed file gets a new one.
+Whether each pan is centered is part of `CompositionKey`, so moving one
+off center rebuilds the player onto the copy; moving it further doesn't.
+A file whose copy can't be made plays centered.
 
 ## Sound effects
 
@@ -381,7 +388,6 @@ dropped on load.
 
 ## Not implemented yet
 
-- Panning mono sound (see [Pan](#pan)).
 - Pan in the timeline's volume row and lines.
 - Dragging the level line up and down in the lane; levels are set in the
   field or with the fader.

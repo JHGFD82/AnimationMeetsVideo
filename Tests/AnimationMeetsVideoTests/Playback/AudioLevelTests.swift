@@ -164,19 +164,63 @@ import Testing
         #expect(abs(level.y - 0.0625) < 0.005)
     }
 
-    /// A mono track's tap only sees its one channel, which the mix then
-    /// plays on both sides, so its pan can't apply: it stays centered at
-    /// its volume rather than turning down.
-    @Test func aMonoSoundStaysCenteredAtItsVolume() async throws {
+    /// A mono track's tap only sees its one channel, so a panned mono clip
+    /// plays from a stereo copy of its file, which pans like stereo.
+    @Test func aMonoSoundPansFromItsStereoCopy() async throws {
         let url = try AudioMixSupport.tone(channels: 1)
         defer { try? FileManager.default.removeItem(at: url) }
         var (project, _, layerID) = try AudioMixSupport.project(playing: url)
         project.editPan(of: layerID, in: project.rootTimelineID) { $0.set(100, at: .zero) }
         project.editVolume(of: layerID, in: project.rootTimelineID) { $0.set(-6, at: .zero) }
         let level = try await AudioMixSupport.loudest(of: project)
-        let expected = 0.25 * AudioLevel.gain(decibels: -6)
-        #expect(abs(level.x - expected) < 0.005)
-        #expect(abs(level.y - expected) < 0.005)
+        #expect(level.x < 0.001)
+        #expect(abs(level.y - 0.25 * AudioLevel.gain(decibels: -6)) < 0.005)
+
+        // Made once: the same copy serves the next build.
+        let copy = try #require(StereoProxies.cacheName(for: url))
+        let made = try FileManager.default.attributesOfItem(atPath: StereoProxies.folder.appending(path: copy).path)[.modificationDate] as? Date
+        _ = try await AudioMixSupport.loudest(of: project)
+        let again = try FileManager.default.attributesOfItem(atPath: StereoProxies.folder.appending(path: copy).path)[.modificationDate] as? Date
+        #expect(made == again)
+        try? FileManager.default.removeItem(at: StereoProxies.folder.appending(path: copy))
+    }
+
+    /// Centered, mono plays from its own file, as before.
+    @Test func aCenteredMonoSoundNeedsNoCopy() async throws {
+        let url = try AudioMixSupport.tone(channels: 1)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let (project, _, _) = try AudioMixSupport.project(playing: url)
+        let level = try await AudioMixSupport.loudest(of: project)
+        #expect(abs(level.x - 0.25) < 0.005 && abs(level.y - 0.25) < 0.005)
+        let copy = try #require(StereoProxies.cacheName(for: url))
+        #expect(!FileManager.default.fileExists(atPath: StereoProxies.folder.appending(path: copy).path))
+    }
+
+    @Test func aChangedFileGetsANewCopy() throws {
+        let url = try AudioMixSupport.tone(channels: 1)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let before = StereoProxies.cacheName(for: url)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: 60)], ofItemAtPath: url.path)
+        #expect(before != nil)
+        #expect(StereoProxies.cacheName(for: url) != before)
+    }
+
+    /// Moving a pan off center rebuilds the player, to use the copy; moving
+    /// it further doesn't.
+    @Test func aPanLeavingTheCenterRebuilds() throws {
+        let url = URL(filePath: "/dev/null")
+        var (project, clipID, layerID) = try AudioMixSupport.project(playing: url)
+        let t = project.rootTimelineID
+        let centered = CompositionKey(project: project)
+        project.editPan(of: layerID, in: t) { $0.set(30, at: .zero) }
+        let panned = CompositionKey(project: project)
+        project.editPan(of: layerID, in: t) { $0.set(-80, at: .zero) }
+        #expect(panned != centered)
+        #expect(CompositionKey(project: project) == panned)
+        project.editClip(clipID, in: t) { $0.volume.set(-3, at: .zero) }
+        let withVolume = CompositionKey(project: project)
+        project.editClip(clipID, in: t) { $0.pan.set(20, at: .zero) }
+        #expect(CompositionKey(project: project) != withVolume)
     }
 }
 

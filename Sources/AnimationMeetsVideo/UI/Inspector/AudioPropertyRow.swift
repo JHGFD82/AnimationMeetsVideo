@@ -47,7 +47,7 @@ enum AudioProperty {
     var help: String {
         switch self {
         case .volume: "Volume from mute to +6 dB; 0 dB plays the media as it is"
-        case .pan: "Pan from left to right; centered plays the media as it is. Mono sound stays centered"
+        case .pan: "Pan from left to right; centered plays the media as it is"
         }
     }
 

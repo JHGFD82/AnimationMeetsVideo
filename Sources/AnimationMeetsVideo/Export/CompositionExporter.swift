@@ -100,13 +100,27 @@ enum CompositionExporter {
         var audioTracks: [(track: AVAssetTrack, stages: [MixStage], pitch: AVAudioTimePitchAlgorithm?)] = []
         /// A stretch of some source's picture, to fill time after the last clip.
         var filler: (track: AVAssetTrack, range: CMTimeRange)?
+        /// Clips and layers with a pan; mono sound played through any of
+        /// them plays from a stereo copy, which can be panned.
+        let panned = Set(MixCurves.of(project).pan.keys)
 
         for host in hosts {
             var videoTrack: AVMutableCompositionTrack?
             var audioTrack: AVMutableCompositionTrack?
+            let pans = host.volume.contains { $0.fade == nil && panned.contains($0.id) }
 
             for placement in host.placements {
                 let info = placement.info
+                var audioInfo = info
+                if pans, placement.includesAudio, info.audioChannels == 1 {
+                    do {
+                        if let stereo = try await StereoProxies.stereo(for: info) { audioInfo = stereo }
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        // Without its copy the sound plays centered.
+                    }
+                }
                 if let sourceVideo = info.video, placement.includesVideo {
                     var playing: CMTimeRange?
                     for piece in placement.pieces {
@@ -130,9 +144,9 @@ enum CompositionExporter {
                         placement.drawRange = playing
                     }
                 }
-                if let sourceAudio = info.audio, placement.includesAudio {
+                if let sourceAudio = audioInfo.audio, placement.includesAudio {
                     for piece in placement.pieces {
-                        guard let (file, at, length) = piece.within(info.audioRange) else { continue }
+                        guard let (file, at, length) = piece.within(audioInfo.audioRange) else { continue }
                         if audioTrack == nil {
                             audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
                         }

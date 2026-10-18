@@ -13,6 +13,8 @@ struct MediaTrackInfo: @unchecked Sendable {
     let audio: AVAssetTrack?
     let videoRange: CMTimeRange
     let audioRange: CMTimeRange
+    /// How many channels its sound has; 0 without sound.
+    var audioChannels = 0
     /// The track's preferredTransform shifted so the rotated frame's origin
     /// is (0, 0), and the size of the frame after rotation.
     let orientedTransform: CGAffineTransform
@@ -46,8 +48,13 @@ actor MediaTrackCache {
             transform = preferred.concatenating(CGAffineTransform(translationX: -rect.minX, y: -rect.minY))
             size = rect.size
         }
+        var channels = 0
         if let audio {
             audioRange = try await audio.load(.timeRange)
+            if let format = try await audio.load(.formatDescriptions).first,
+               let basic = CMAudioFormatDescriptionGetStreamBasicDescription(format) {
+                channels = Int(basic.pointee.mChannelsPerFrame)
+            }
         }
 
         let info = MediaTrackInfo(
@@ -56,6 +63,7 @@ actor MediaTrackCache {
             audio: audio,
             videoRange: videoRange,
             audioRange: audioRange,
+            audioChannels: channels,
             orientedTransform: transform,
             orientedSize: size
         )
