@@ -609,8 +609,20 @@ struct EffectsPanel: View {
                     if let index = effect.controls.firstIndex(where: { $0.kind == kind }) { change(&effect.controls[index]) }
                 }
             },
-            onExpand: onExpand
+            onExpand: onExpand,
+            readPaused: pausedSpectrumReader(for: clip)
         )
+    }
+
+    /// Reads an EQ's spectrum from the clip's own file while paused: only
+    /// a media clip has one. Its source time is the file's, less any shift
+    /// from replacing the file.
+    private func pausedSpectrumReader(for clip: TimelineClip) -> EqualizerGraph.PausedReader? {
+        guard case .media(let mediaID) = clip.source, let media = project.mediaClip(id: mediaID), let url = media.url else { return nil }
+        let offset = media.alignmentOffset
+        return { pre, effect, time in
+            await EqualizerSpectrum.levels(ofFile: url, endingAt: CMTimeAdd(time, offset), through: effect, at: time, pre: pre)
+        }
     }
 
     /// The EQ at a size for fine work, editing the same controls.
@@ -625,11 +637,16 @@ struct EffectsPanel: View {
                     .clampedSource(atTimeline: timeline.snappedToFrame(playheadTime))
                 equalizerGraph(effect, of: clip, at: source, dimmed: effect.isNoOp, onExpand: nil)
                     .frame(minWidth: 640, minHeight: 320)
+                EqualizerBandStrip(effect: effect, time: source) { kind, change in
+                    editEffect(effect.id, in: clip) { effect in
+                        if let index = effect.controls.firstIndex(where: { $0.kind == kind }) { change(&effect.controls[index]) }
+                    }
+                }
             } else {
                 Text("The EQ is no longer there.").foregroundStyle(Design.textSecondary)
             }
             HStack {
-                Text("Drag a band to move it, ⌥-drag to change its Q, double-click to switch it on or off.")
+                Text("Drag a band to move it, ⌥-drag or scroll over it to change its Q, double-click to switch it on or off.")
                     .font(Design.Typeface.micro)
                     .foregroundStyle(Design.textTertiary)
                 Spacer()

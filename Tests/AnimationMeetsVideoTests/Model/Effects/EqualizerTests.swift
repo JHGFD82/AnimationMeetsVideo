@@ -281,3 +281,24 @@ import Testing
         #expect(EqualizerSpectrum.shared.levels(of: id, pre: true, at: 20) == nil)
     }
 }
+
+/// The spectrum a graph shows while paused, read from the clip's file.
+@Suite struct PausedEqualizerSpectrumTests {
+    @Test func aFileIsReadAtThePlayheadBeforeAndAfterTheEQ() async throws {
+        let url = try AudioMixSupport.tone(frequency: 1000)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var effect = Effect(kind: .equalizer)
+        let index = try #require(effect.controls.firstIndex { $0.kind == .eqBell2 })
+        effect.controls[index].enabled = true
+        effect.controls[index].number = AnimatedValue(ComponentValue(values: [1000, -12, 1]))
+        let at = CMTime(value: 1, timescale: 2)
+        let before = try #require(await EqualizerSpectrum.levels(ofFile: url, endingAt: at, through: effect, at: .zero, pre: true))
+        let after = try #require(await EqualizerSpectrum.levels(ofFile: url, endingAt: at, through: effect, at: .zero, pre: false))
+        let bin = Int((1000 / before.binWidth).rounded())
+        let loudest = before.decibels.indices.max { before.decibels[$0] < before.decibels[$1] }!
+        #expect(abs(loudest - bin) <= 1)
+        #expect(abs((before.decibels[loudest] - after.decibels[loudest]) - 12) < 1)
+        // Too early in the file for a whole window.
+        #expect(await EqualizerSpectrum.levels(ofFile: url, endingAt: CMTime(value: 1, timescale: 100), through: effect, at: .zero, pre: true) == nil)
+    }
+}

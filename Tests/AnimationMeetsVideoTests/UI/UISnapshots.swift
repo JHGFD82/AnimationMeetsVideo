@@ -191,6 +191,23 @@ struct UISnapshots {
         )
     }
 
+    /// The larger EQ sheet's fields: two bands on, a 48 dB high cut.
+    @Test func equalizerBandStrip() throws {
+        var effect = Effect(kind: .equalizer)
+        for (kind, values) in [(ControlKind.eqBell1, [320, -3.5, 1.4]), (.eqHighCut, [12_000, EqualizerBand.flatQ])] {
+            guard let index = effect.controls.firstIndex(where: { $0.kind == kind }) else { continue }
+            effect.controls[index].enabled = true
+            effect.controls[index].number = AnimatedValue(ComponentValue(values: values))
+        }
+        if let slope = effect.controls.firstIndex(where: { $0.kind == .eqHighCutSlope }) { effect.controls[slope].choice = "48" }
+        try SnapshotSupport.render(
+            EqualizerBandStrip(effect: effect, time: .zero, onEdit: { _, _ in })
+                .padding(8)
+                .background(Design.Surface.overlay.color),
+            "equalizer-band-strip", size: CGSize(width: 520, height: 300)
+        )
+    }
+
     /// The effects panel for a shape clip: a rectangle with rounded corners,
     /// an orange fill and a stroke, so the color wells show.
     @Test func shapeEffectsPanel() throws {

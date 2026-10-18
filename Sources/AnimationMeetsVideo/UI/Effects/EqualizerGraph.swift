@@ -52,12 +52,13 @@ enum EqualizerSpectrumMode: String, CaseIterable, Identifiable {
 /// An EQ effect's bands on a graph (see docs/equalizer.md, "The graph"):
 /// each band's curve faintly in its color, the whole EQ's in bold, and a
 /// dot per band to drag. Drag a dot to move its frequency and gain,
-/// ⌥-drag to change its Q, ⇧-drag to move along one axis only; dragging a
+/// ⌥-drag or scroll over it to change its Q, ⇧-drag to move along one axis only; dragging a
 /// band that's off turns it on, and double-clicking one switches it on or
 /// off. The curves come from the same coefficients the sound is filtered
 /// with, so what is drawn is what is heard. Behind them is the spectrum of
 /// the sound at the playhead while it plays (`EqualizerSpectrum`), after
-/// the EQ or before it.
+/// the EQ or before it, and while paused the clip's own sound there, read
+/// from its file (`readPaused`).
 ///
 /// With a band picked (clicked, or reached with Tab), the arrow keys move
 /// its frequency and gain and ⌥ with up and down changes its Q; VoiceOver
@@ -70,6 +71,12 @@ struct EqualizerGraph: View {
     /// Changes the control of one band, or the output, of the effect.
     let onEdit: (ControlKind, (inout EffectControl) -> Void) -> Void
     var onExpand: (() -> Void)?
+    /// Reads the spectrum at the playhead from the clip's file, for when
+    /// nothing is playing; nil for a clip without a file of its own.
+    var readPaused: PausedReader?
+
+    typealias Reading = (decibels: [Float], binWidth: Double)
+    typealias PausedReader = (_ pre: Bool, _ effect: Effect, _ time: CMTime) async -> Reading?
 
     @Environment(\.projectHistory) private var history
     @AppStorage(Preferences.equalizerSpectrum) private var spectrumMode = EqualizerSpectrumMode.post
@@ -77,6 +84,24 @@ struct EqualizerGraph: View {
     @State private var picked: EqualizerBand?
     @State private var drag: DragState?
     @FocusState private var isFocused: Bool
+    /// The spectrum read from the file while paused, and where.
+    @State private var paused: PausedReading?
+    /// Ends a scroll's undo step once scrolling stops.
+    @State private var scrollEnd: Task<Void, Never>?
+
+    private struct PausedReading {
+        var time: CMTime
+        var pre: Bool
+        var reading: Reading
+    }
+
+    /// What a paused reading depends on: reading again when any of it
+    /// changes, once it has held still a moment.
+    private struct PausedRequest: Equatable {
+        var time: CMTime
+        var mode: EqualizerSpectrumMode
+        var effect: Effect
+    }
 
     /// The height it takes in the effects panel.
     static let panelHeight: CGFloat = 150
@@ -101,7 +126,9 @@ struct EqualizerGraph: View {
                 SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 30, paused: spectrumMode == .off)) { frame in
                     Canvas { context, _ in
                         if spectrumMode != .off {
-                            let reading = EqualizerSpectrum.shared.levels(of: effect.id, pre: spectrumMode == .pre, at: time.seconds)
+                            let pre = spectrumMode == .pre
+                            let reading = EqualizerSpectrum.shared.levels(of: effect.id, pre: pre, at: time.seconds)
+                                ?? paused.flatMap { $0.time == time && $0.pre == pre ? $0.reading : nil }
                             spectrum.update(reading, now: frame.date.timeIntervalSinceReferenceDate)
                             drawSpectrum(in: &context, layout: layout)
                         }
@@ -109,6 +136,7 @@ struct EqualizerGraph: View {
                     }
                 }
                     .contentShape(Rectangle())
+                    .background(ScrollWheelMonitor { deltaY, location in scroll(deltaY, at: location, layout: layout) })
                     .gesture(dragGesture(layout))
                     .onTapGesture(count: 2, coordinateSpace: .local) { location in
                         guard let band = self.band(near: location, layout: layout) else { return }
@@ -152,6 +180,7 @@ struct EqualizerGraph: View {
                 .padding(6)
             }
         }
+        .task(id: PausedRequest(time: time, mode: spectrumMode, effect: effect)) { await readPausedSpectrum() }
         .onAppear { EqualizerSpectrum.shared.watch(effect.id) }
         .onDisappear { EqualizerSpectrum.shared.unwatch(effect.id) }
         .opacity(isDimmed ? 0.55 : 1)
@@ -237,6 +266,40 @@ struct EqualizerGraph: View {
             control.setComponent(EqualizerBand.frequencyIndex, to: frequency, at: time)
             if let index = band.gainIndex { control.setComponent(index, to: gain, at: time) }
         }
+    }
+
+    /// Scrolling over a band's dot changes its Q: an octave narrower per
+    /// 120 points up. A scroll is one undo, ending when it stops.
+    private func scroll(_ deltaY: CGFloat, at location: CGPoint, layout: EqualizerGraphLayout) -> Bool {
+        guard drag == nil, let band = self.band(near: location, layout: layout) else { return false }
+        if scrollEnd == nil { history?.beginGesture() }
+        scrollEnd?.cancel()
+        scrollEnd = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            history?.endGesture()
+            scrollEnd = nil
+        }
+        picked = band
+        let q = values(of: band)[band.qIndex] * pow(2, Double(deltaY) / 120)
+        onEdit(band.controlKind) { control in
+            control.enabled = true
+            control.setComponent(band.qIndex, to: q, at: time)
+        }
+        return true
+    }
+
+    /// While nothing plays, the spectrum at the playhead from the clip's
+    /// file, once the playhead and settings have held still for 200 ms.
+    private func readPausedSpectrum() async {
+        guard spectrumMode != .off, let readPaused else { return }
+        try? await Task.sleep(for: .milliseconds(200))
+        let pre = spectrumMode == .pre
+        // Playing: the taps' recordings cover it.
+        guard !Task.isCancelled, EqualizerSpectrum.shared.levels(of: effect.id, pre: pre, at: time.seconds) == nil else { return }
+        let reading = await readPaused(pre, effect, time)
+        guard !Task.isCancelled else { return }
+        paused = reading.map { PausedReading(time: time, pre: pre, reading: $0) }
     }
 
     /// A twelfth of an octave, 0.5 dB, or a sixth of an octave of Q per press.

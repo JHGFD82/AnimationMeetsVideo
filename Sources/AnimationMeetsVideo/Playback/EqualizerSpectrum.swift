@@ -1,4 +1,5 @@
 import Accelerate
+import AVFoundation
 import Foundation
 import os
 
@@ -134,7 +135,7 @@ final class EqualizerSpectrum: @unchecked Sendable {
 
     /// Each bin's level of a windowed FFT of `frame`, in dBFS: a full-scale
     /// sine reads about 0 dB in its bin.
-    private func decibels(of input: [Float]) -> [Float] {
+    fileprivate func decibels(of input: [Float]) -> [Float] {
         let size = Self.windowSize, bins = size / 2
         var frame = [Float](repeating: 0, count: size)
         vDSP_vmul(input, 1, window, 1, &frame, 1, vDSP_Length(size))
@@ -160,6 +161,70 @@ final class EqualizerSpectrum: @unchecked Sendable {
         // zrip doubles, and a Hann window halves, a sine's N/2.
         let fullScale = Float(size) / 2
         return magnitudes.map { 20 * log10(max($0 / fullScale, 1e-6)) }
+    }
+}
+
+// MARK: - From the file
+
+extension EqualizerSpectrum {
+    /// The spectrum of a media file's sound in the window ending at
+    /// `fileTime`, read from the file itself, for a graph while nothing is
+    /// playing. After the EQ (`pre` false) it is run through `effect` as set
+    /// at `effectTime`, in the clip's source time. Effects above the EQ in
+    /// the sound's stack, and the clip's volume, aren't applied. Nil when
+    /// the file has no sound there or can't be read.
+    static func levels(
+        ofFile url: URL, endingAt fileTime: CMTime, through effect: Effect, at effectTime: CMTime, pre: Bool
+    ) async -> (decibels: [Float], binWidth: Double)? {
+        let sampleRate = 48_000.0
+        // A little more than a window, so the filters settle first.
+        let span = 0.25
+        let start = max(0, fileTime.seconds - span)
+        guard fileTime.seconds - start >= Double(windowSize) / sampleRate else { return nil }
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .audio).first else { return nil }
+        let handed = HandedOver(value: (asset, track))
+        let samples: [Float]? = try? await SampleReading.run { isCancelled in
+            let (asset, track) = handed.value
+            let reader = try AVAssetReader(asset: asset)
+            reader.timeRange = CMTimeRange(
+                start: CMTime(seconds: start, preferredTimescale: 48_000),
+                end: CMTime(seconds: fileTime.seconds, preferredTimescale: 48_000)
+            )
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true,
+                AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false,
+                AVNumberOfChannelsKey: 1, AVSampleRateKey: sampleRate,
+            ])
+            reader.add(output)
+            guard reader.startReading() else { return nil }
+            var samples: [Float] = []
+            while !isCancelled(), let buffer = output.copyNextSampleBuffer() {
+                guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
+                let length = CMBlockBufferGetDataLength(block)
+                var chunk = [Float](repeating: 0, count: length / 4)
+                chunk.withUnsafeMutableBytes { bytes in
+                    _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: bytes.baseAddress!)
+                }
+                samples += chunk
+            }
+            if isCancelled() { throw CancellationError() }
+            return samples
+        }
+        guard var samples, samples.count >= windowSize else { return nil }
+        if !pre {
+            guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+                  let filter = EqualizerFilter(effectID: effect.id, format: format.streamDescription.pointee, maxFrames: samples.count),
+                  let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
+                  let channel = buffer.floatChannelData?[0]
+            else { return nil }
+            buffer.frameLength = AVAudioFrameCount(samples.count)
+            samples.withUnsafeBufferPointer { channel.update(from: $0.baseAddress!, count: samples.count) }
+            filter.apply(effect, from: effectTime, to: effectTime)
+            filter.process(buffer.mutableAudioBufferList, frames: samples.count)
+            samples = Array(UnsafeBufferPointer(start: channel, count: samples.count))
+        }
+        return (shared.decibels(of: Array(samples.suffix(windowSize))), sampleRate / Double(windowSize))
     }
 }
 
