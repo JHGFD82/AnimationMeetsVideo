@@ -195,8 +195,15 @@ enum AudioLevelTap {
         /// The effects as Audio Units, made once the format is known.
         private var units: [(stage: Int, unit: AudioEffectUnit)] = []
         /// Where the next buffer starts if playing carries straight on, in
-        /// seconds; anything else is a jump, which resets the units.
+        /// seconds; anything further off is a jump, which resets the units.
         private var expectedStart: Double?
+        /// How far off a buffer's start may be and still carry straight on.
+        /// A player stamps its buffers loosely, a few milliseconds either way
+        /// of where the last one ended, though the sound runs on unbroken;
+        /// resetting on that silenced voice isolation, which needs 76 ms of
+        /// sound before it says anything. A seek, even by one frame, is
+        /// further.
+        static let jumpTolerance = 0.02
         /// The left and right K-weighting filters for the meter's loudness,
         /// and each frame's weighted squares, made once the format is known.
         private var weighting: [KWeighting] = []
@@ -264,7 +271,7 @@ enum AudioLevelTap {
         /// controls are at the buffer's start.
         private func applyEffects(_ bufferList: UnsafeMutablePointer<AudioBufferList>, frames: Int, start: CMTime, heard: CMTime) {
             let seconds = start.seconds
-            if let expected = expectedStart, abs(seconds - expected) > 1 / format.mSampleRate {
+            if let expected = expectedStart, abs(seconds - expected) > Self.jumpTolerance {
                 for (_, unit) in units { unit.reset() }
             }
             let current = curves.current
@@ -287,7 +294,7 @@ enum AudioLevelTap {
             else { return }
             // A jump in time (a seek, a loop) starts the effects and the
             // loudness filters afresh.
-            if let expected = expectedStart, abs(start.seconds - expected) > 1 / format.mSampleRate {
+            if let expected = expectedStart, abs(start.seconds - expected) > Self.jumpTolerance {
                 for index in weighting.indices { weighting[index].reset() }
             }
             // When the sound is heard, once its effects' delay puts it back.

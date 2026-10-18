@@ -131,7 +131,11 @@ as each buffer plays, at the buffer's start, so edits and keyframes are
 heard without a rebuild; which effects a track runs is part of
 `CompositionKey`, so adding, removing, reordering, switching on or off
 rebuilds the player. A jump in time (a seek or a loop) resets the units,
-so a compressor doesn't carry what it heard before. Effects on a nested
+so a compressor doesn't carry what it heard before. A jump is a buffer
+starting more than 20 ms from where the last one ended: the player stamps
+its buffers loosely, a few milliseconds either way, though the sound runs
+on unbroken, and resetting on that kept voice isolation, which needs
+76 ms of sound before it says anything, at half its level. Effects on a nested
 timeline's clip run on each track inside it separately, not on their sum.
 
 Some of these hold sound back: the compressor by about 5 ms, the limiter
