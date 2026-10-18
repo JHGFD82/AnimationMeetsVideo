@@ -57,7 +57,12 @@ struct TimelineView: View {
     let onEditProject: ((inout EditingProject) -> Void) -> Void
     @Binding var showsEffectsLibrary: Bool
     @Binding var showsSidePanel: Bool
-    @Binding var showsEffects: Bool
+    /// Whether the effects panel is shown, and the way to show or hide it.
+    /// A value, not a binding: the binding the surface makes for it at each
+    /// redraw counts as changed every time, and redrew the timeline twice
+    /// per edit.
+    let showsEffects: Bool
+    let setShowsEffects: (Bool) -> Void
     @Binding var showsMeter: Bool
     /// What is selected in the effects panel, which gets the Delete key
     /// while it has something selected.

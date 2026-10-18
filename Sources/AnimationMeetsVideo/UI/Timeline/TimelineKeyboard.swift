@@ -63,7 +63,7 @@ extension TimelineView {
         default: break
         }
         if key == "e", flags == .shift {
-            showsEffects.toggle()
+            setShowsEffects(!showsEffects)
             return true
         }
         if key == "n", !flags.contains(.shift) {

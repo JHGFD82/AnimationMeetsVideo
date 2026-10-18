@@ -491,12 +491,10 @@ struct TimelineEditorSurface<Library: View>: View {
                 onEditProject: { change in change(&project) },
                 showsEffectsLibrary: $showsEffectsLibrary,
                 showsSidePanel: $showsSidePanel,
-                showsEffects: Binding(
-                    get: { showsSidePanel && sideTab == .effects },
-                    set: { on in
-                        if on { showsSidePanel = true; sideTab = .effects } else { sideTab = .inspector }
-                    }
-                ),
+                showsEffects: showsSidePanel && sideTab == .effects,
+                setShowsEffects: { on in
+                    if on { showsSidePanel = true; sideTab = .effects } else { sideTab = .inspector }
+                },
                 showsMeter: $showsMeter,
                 effectsState: effectsState
             )
