@@ -132,7 +132,8 @@ the snap line's arrival.
   of seconds may read better.
 - **Announcements**: VoiceOver isn't told when an edit lands (a split, a
   nudge refused at a neighbor), so the result must be found by reading.
-- **Annotations** on the external display are pointer-only.
+- **Annotations** on the external display are drawn with the pointer only;
+  VoiceOver can clear them (a Clear annotations action) but not draw.
 - **Dialogs and alerts** use standard controls and should work, but have
   not been checked with VoiceOver.
 - Nothing here has been tested with VoiceOver on a real machine yet; the

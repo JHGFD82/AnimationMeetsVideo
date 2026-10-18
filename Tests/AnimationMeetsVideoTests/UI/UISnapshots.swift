@@ -67,6 +67,24 @@ struct UISnapshots {
         )
     }
 
+    /// Annotation ink: two finished strokes and one being drawn.
+    @Test func annotations() throws {
+        let model = AnnotationModel()
+        model.beginStroke(at: CGPoint(x: 40, y: 60))
+        for x in stride(from: 50.0, through: 260, by: 10) { model.appendPoint(CGPoint(x: x, y: 60 + (x - 40) * 0.4)) }
+        model.endStroke()
+        model.beginStroke(at: CGPoint(x: 60, y: 200))
+        model.appendPoint(CGPoint(x: 160, y: 150))
+        model.appendPoint(CGPoint(x: 260, y: 200))
+        model.endStroke()
+        model.beginStroke(at: CGPoint(x: 300, y: 40))
+        for y in stride(from: 50.0, through: 220, by: 10) { model.appendPoint(CGPoint(x: 300 + sin(y / 20) * 30, y: y)) }
+        try SnapshotSupport.render(
+            AnnotationOverlay(model: model).background(Color.black),
+            "annotations", size: CGSize(width: 400, height: 260)
+        )
+    }
+
     /// Each tab of the Settings window. The window's tab is remembered,
     /// so it is put back afterwards.
     @Test func settingsWindow() throws {
