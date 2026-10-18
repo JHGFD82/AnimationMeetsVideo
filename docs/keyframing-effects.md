@@ -126,9 +126,11 @@ Recomputing an FFT every time a slider moves would be slow on a long
 song, so the expensive part is done once per audio file and kept:
 
 - A **spectrogram** per asset: 48 bands, log-spaced from 20 Hz to
-  20 kHz, as power, every 1/100 s (a 4096-point `vDSP.FFT` with a Hann
-  window, hop 10 ms, as the beat analysis does). As 16-bit floats that is
-  about 3.4 MB per hour of sound. It is computed by `AssetAnalysis` in
+  20 kHz, every 1/50 s (a 4096-point `vDSP.FFT` with a Hann window, hop
+  20 ms, more than a frame's resolution at 30 fps). Each band's level is
+  one byte, in half-decibel steps from −128 dB to 0 dB, so a file costs
+  2.4 KB per second of sound: about 430 KB for a three-minute song,
+  8.6 MB per hour. It is computed by `AssetAnalysis` in
   the background with the waveform and beats, and stored with them as
   disposable data, in the asset's time, so moving or trimming a clip
   doesn't recompute it.
