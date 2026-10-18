@@ -163,6 +163,19 @@ Limits:
   still fit at the larger size, bring it back up. Each drag starts at
   full size, and the frame after it is full size. The player item is
   swapped once, when the mouse is released.
+- **Values without a build.** A paused frame drawn from a build keeps
+  the decoded frames it was drawn from and the stretch's drawing
+  (`SourceCapture`). An edit that changes only values, which leaves the
+  project's `structure` the same (effect controls, anchor points, volume
+  and pan), is then drawn from those: each clip's new values go into the
+  drawing (`DrawClip.withValues`) and the one frame is composed again
+  off the main thread (`PlaybackModel.redrawLive`), about 6 ms on an HD
+  timeline of three layers and a shape against about 46 ms to build and
+  draw. The timeline is built when the drag ends, or for an edit that
+  isn't a drag (a color well) once edits pause for 0.3 s, and renders
+  follow when it is idle. A moved playhead, a changed structure, playing,
+  or a rendered stretch under the playhead (which can't take new values)
+  builds as below; a build begun before such a frame doesn't draw over it.
 - **Following other edits.** Each change builds a new composition, and while paused the
   frame under the playhead is drawn from it (`LiveFrameRenderer`, latest
   request wins) and shown over the player. A build is never cancelled by

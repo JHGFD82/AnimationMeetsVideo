@@ -53,6 +53,9 @@ struct TimelineEditorSurface<Library: View>: View {
     /// A value is being dragged, so the viewer waits (`rebuildDeferred`).
     @State private var isGesturing = false
     @State private var rebuildDeferred = false
+    /// The build that follows edits drawn without one (`redrawLive`), once
+    /// they have paused for `settleDelay`.
+    @State private var settledRebuild: Task<Void, Never>?
 
     /// How many effects the selected clip has, to notice one being applied.
     private struct AppliedEffects: Equatable {
@@ -331,6 +334,22 @@ struct TimelineEditorSurface<Library: View>: View {
                 // Retiming is judged by playing, not by the frame at the
                 // playhead: wait for the mouse to be released.
                 rebuildDeferred = true
+            } else if playback.redrawLive(viewedProject, structure: viewedProject.structure, interactive: isGesturing) {
+                // Only values changed: the paused frame is drawn again
+                // from what the last build decoded, with nothing built.
+                // The timeline is built when the drag ends, or once the
+                // edits pause, and renders follow when it is idle.
+                if isGesturing {
+                    rebuildDeferred = true
+                } else {
+                    settledRebuild?.cancel()
+                    let delay = settleDelay
+                    settledRebuild = Task {
+                        try? await Task.sleep(for: delay)
+                        guard !Task.isCancelled else { return }
+                        rebuildPlayerItem()
+                    }
+                }
             } else {
                 rebuildPlayerItem()
             }
@@ -586,6 +605,11 @@ struct TimelineEditorSurface<Library: View>: View {
         buildID = id
         buildPhase = .building
         rebuildQueued = false
+        settledRebuild?.cancel()
+        settledRebuild = nil
+        // A frame drawn without a build after this one starts is newer than
+        // what this one will draw.
+        let redraws = playback.liveRedraws
         /// Ends this build, starting the queued one if there is one. A
         /// build replaced since it began leaves things to its successor.
         func finish() {
@@ -608,7 +632,9 @@ struct TimelineEditorSurface<Library: View>: View {
                 renderer?.update(project: realProject, timelineID: tID, segments: isPartial ? [] : composed.segments)
                 let wasPaused = player.timeControlStatus == .paused
                 if wasPaused, !resetPosition, player.currentItem != nil {
-                    playback.showLive(composed, interactive: isGesturing)
+                    if playback.liveRedraws == redraws {
+                        playback.showLive(composed, interactive: isGesturing, structure: project.structure)
+                    }
                     if isGesturing {
                         // The item is swapped when the drag ends.
                         rebuildDeferred = true

@@ -35,6 +35,11 @@ final class LiveFrameRenderer {
         var structure: EditingProject
         var time: CMTime
         var capture: SourceCapture
+        /// How the frame drawn from the build was tagged and how deep it was,
+        /// which a frame drawn again takes, so the two look the same: the
+        /// image generator tags video as the player shows it.
+        var colorSpace: CGColorSpace?
+        var deep: Bool
     }
 
     /// A frame to draw again from the scene, with these values.
@@ -43,7 +48,8 @@ final class LiveFrameRenderer {
         var frames: [CMPersistentTrackID: CVPixelBuffer]
         var size: CGSize
         var time: CMTime
-        var colorSpace: ProjectColorSpace
+        var colorSpace: CGColorSpace?
+        var deep: Bool
         var interactive: Bool
     }
 
@@ -84,7 +90,8 @@ final class LiveFrameRenderer {
         }
         enqueue(.redraw(Redraw(
             instruction: recorded.instruction.drawing(drawn), frames: recorded.frames, size: recorded.size,
-            time: time, colorSpace: recorded.instruction.colorSpace, interactive: interactive
+            time: time, colorSpace: scene.colorSpace ?? recorded.instruction.colorSpace.cgColorSpace, deep: scene.deep,
+            interactive: interactive
         )))
         return true
     }
@@ -113,8 +120,11 @@ final class LiveFrameRenderer {
                     interactive = request.interactive
                     let capture = request.structure == nil ? nil : SourceCapture()
                     image = await Self.draw(request, capture: capture)
-                    if let capture, let structure = request.structure, image != nil, self.generation == mine {
-                        self.scene = Scene(structure: structure, time: request.time, capture: capture)
+                    if let capture, let structure = request.structure, let image, self.generation == mine {
+                        self.scene = Scene(
+                            structure: structure, time: request.time, capture: capture,
+                            colorSpace: image.colorSpace, deep: image.bitsPerComponent > 8
+                        )
                     }
                 case .redraw(let redraw):
                     interactive = redraw.interactive
@@ -159,7 +169,7 @@ final class LiveFrameRenderer {
             let image = LayeredCompositor.compose(redraw.instruction, at: redraw.time, outputSize: redraw.size) { redraw.frames[$0] }
             return context.createCGImage(
                 image, from: CGRect(origin: .zero, size: redraw.size),
-                format: redraw.colorSpace.isHDR ? .RGBAh : .RGBA8, colorSpace: redraw.colorSpace.cgColorSpace
+                format: redraw.deep ? .RGBAh : .RGBA8, colorSpace: redraw.colorSpace
             )
         }.value
     }

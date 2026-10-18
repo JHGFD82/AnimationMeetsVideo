@@ -192,12 +192,38 @@ final class PlaybackModel {
     /// at a size the renderer keeps up with, stepping down to a quarter
     /// of the pixels when frames take too long and back up when they
     /// don't (`LiveGovernor`); the frame after the drag is full size.
-    func showLive(_ composed: ComposedTimeline, interactive: Bool = false) {
+    ///
+    /// `structure` is that of the project `composed` was built from
+    /// (`EditingProject.structure`): the frame then keeps what it was drawn
+    /// from, so a later edit of values alone can be drawn without a build
+    /// (`redrawLive`).
+    func showLive(_ composed: ComposedTimeline, interactive: Bool = false, structure: EditingProject? = nil) {
         guard !isPlaying, !isSeeking, player.currentItem != nil else { return }
         if !interactive { liveGovernor.reset() }
         let scale = interactive ? min(level.scale, liveGovernor.level.scale) : level.scale
-        liveRenderer.submit(.init(composed: composed, scale: scale, time: player.currentTime(), interactive: interactive))
+        liveRenderer.submit(.init(
+            composed: composed, scale: scale, time: player.currentTime(), interactive: interactive, structure: structure
+        ))
     }
+
+    /// Draws the paused frame again with `project`'s values, from the frame
+    /// last drawn from a build, when only values have changed since
+    /// (`structure` is `project.structure`). Then only the clips' new values
+    /// are drawn, in a few milliseconds, with nothing built or decoded, as
+    /// a drag of a value wants. False when it can't (playing, the playhead
+    /// moved, the structure changed, a render shows there): the timeline
+    /// is to be built as usual.
+    func redrawLive(_ project: EditingProject, structure: EditingProject, interactive: Bool) -> Bool {
+        guard !isPlaying, !isSeeking, player.currentItem != nil,
+              liveRenderer.redraw(with: project, structure: structure, time: player.currentTime(), interactive: interactive)
+        else { return false }
+        liveRedraws += 1
+        return true
+    }
+
+    /// How many frames `redrawLive` has drawn, so a build begun before one
+    /// doesn't put its older picture over it.
+    @ObservationIgnored private(set) var liveRedraws = 0
 
     private func receiveLiveFrame(_ image: CGImage, seconds: Double, interactive: Bool) {
         guard !isPlaying, !isSeeking else { return }
