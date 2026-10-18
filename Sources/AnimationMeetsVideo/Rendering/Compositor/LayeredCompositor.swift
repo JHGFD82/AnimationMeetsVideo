@@ -773,7 +773,7 @@ final class SDRLayeredCompositor: LayeredCompositor, @unchecked Sendable {
     override class var pixelFormat: OSType { kCVPixelFormatType_32BGRA }
 }
 
-private extension ProjectColorSpace {
+extension ProjectColorSpace {
     /// Tags a rendered frame so the player and the exporter read its colors
     /// as the timeline's.
     func attach(to buffer: CVPixelBuffer) {

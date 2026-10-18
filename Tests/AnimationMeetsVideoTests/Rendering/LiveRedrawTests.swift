@@ -1,5 +1,6 @@
 import CoreGraphics
 import CoreMedia
+import CoreVideo
 import Foundation
 import Testing
 @testable import AnimationMeetsVideo
@@ -7,22 +8,35 @@ import Testing
 /// The viewer's paused frame drawn again with new values from what the last
 /// build decoded (`LiveFrameRenderer.redraw`), as dragging a value does.
 @MainActor @Suite struct LiveRedrawTests {
-    /// The green level at a point of `image`, as fractions from the top left.
-    private func level(_ image: CGImage, x: Double, y: Double) throws -> Int {
-        let width = image.width, height = image.height
-        var pixels = [UInt8](repeating: 0, count: width * height * 4)
-        let context = try #require(CGContext(
-            data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
-            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ))
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-        let px = min(width - 1, Int(Double(width) * x)), py = min(height - 1, Int(Double(height) * y))
-        return Int(pixels[(py * width + px) * 4 + 1])
+    /// The encoded green level (0...255) at a point of `picture`, as
+    /// fractions from the top left: the bytes as drawn, without any color
+    /// conversion, so an image and a frame compare as the compositor drew
+    /// them.
+    private func level(_ picture: CoverPicture, x: Double, y: Double) throws -> Int {
+        switch picture {
+        case .image(let image):
+            let data = try #require(image.dataProvider?.data as Data?)
+            let px = min(image.width - 1, Int(Double(image.width) * x)), py = min(image.height - 1, Int(Double(image.height) * y))
+            #expect(image.bitsPerPixel == 32)
+            let alphaFirst = [CGImageAlphaInfo.first, .premultipliedFirst, .noneSkipFirst].contains(image.alphaInfo)
+            let little = image.bitmapInfo.contains(.byteOrder32Little)
+            // Green is second from the alpha end in ARGB and RGBA alike.
+            let green = alphaFirst == little ? 1 : 2
+            return Int(data[py * image.bytesPerRow + px * 4 + green])
+        case .frame(let buffer):
+            #expect(CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_32BGRA)
+            CVPixelBufferLockBaseAddress(buffer, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+            let base = try #require(CVPixelBufferGetBaseAddress(buffer)).assumingMemoryBound(to: UInt8.self)
+            let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
+            let px = min(width - 1, Int(Double(width) * x)), py = min(height - 1, Int(Double(height) * y))
+            return Int(base[py * CVPixelBufferGetBytesPerRow(buffer) + px * 4 + 1])
+        }
     }
 
     /// The next frame the renderer draws.
-    private func nextFrame(_ renderer: LiveFrameRenderer, _ start: () -> Void) async throws -> CGImage {
-        let frame: CGImage? = await withCheckedContinuation { continuation in
+    private func nextFrame(_ renderer: LiveFrameRenderer, _ start: () -> Void) async throws -> CoverPicture {
+        let frame: CoverPicture? = await withCheckedContinuation { continuation in
             var resumed = false
             renderer.onFrame = { image, _, _ in
                 guard !resumed else { return }
@@ -61,6 +75,7 @@ import Testing
             redrawn = renderer.redraw(with: fixture.project, structure: fixture.project.structure, time: time, interactive: true)
         }
         #expect(redrawn == true)
+        guard case .frame = second else { Issue.record("not drawn as a frame"); return }
         let fast = try level(second, x: 0.5, y: 0.5)
         #expect(fast < 80)
 

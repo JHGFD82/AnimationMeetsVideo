@@ -7,8 +7,8 @@ import SwiftUI
 /// against), so playback goes through the public `AVPlayerLayer` API instead.
 struct PlayerLayerView: NSViewRepresentable {
     let player: AVPlayer
-    /// A full-size picture of the paused frame, shown over the video.
-    var still: CGImage?
+    /// A picture of the paused frame, shown over the video.
+    var still: CoverPicture?
 
     func makeNSView(context: Context) -> PlayerContainerView {
         let view = PlayerContainerView()
@@ -67,12 +67,12 @@ final class PlayerContainerView: NSView {
         }
     }
 
-    var still: CGImage? {
+    var still: CoverPicture? {
         didSet {
-            guard still !== oldValue else { return }
+            guard still.map({ !$0.isSame(as: oldValue) }) ?? (oldValue != nil) else { return }
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            stillLayer.contents = still
+            stillLayer.contents = still?.layerContents
             stillLayer.isHidden = still == nil
             CATransaction.commit()
         }

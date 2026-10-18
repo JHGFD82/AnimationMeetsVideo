@@ -35,10 +35,8 @@ final class LiveFrameRenderer {
         var structure: EditingProject
         var time: CMTime
         var capture: SourceCapture
-        /// How the frame drawn from the build was tagged and how deep it was,
-        /// which a frame drawn again takes, so the two look the same: the
-        /// image generator tags video as the player shows it.
-        var colorSpace: CGColorSpace?
+        /// Whether the frame drawn from the build was deeper than 8 bits,
+        /// which a frame drawn again keeps.
         var deep: Bool
     }
 
@@ -48,7 +46,6 @@ final class LiveFrameRenderer {
         var frames: [CMPersistentTrackID: CVPixelBuffer]
         var size: CGSize
         var time: CMTime
-        var colorSpace: CGColorSpace?
         var deep: Bool
         var interactive: Bool
     }
@@ -60,7 +57,7 @@ final class LiveFrameRenderer {
 
     /// Called with each finished picture, how long it took to draw, and
     /// whether it was for a drag in progress.
-    var onFrame: ((CGImage, Double, Bool) -> Void)?
+    var onFrame: ((CoverPicture, Double, Bool) -> Void)?
 
     private var latest: Job?
     private var worker: Task<Void, Never>?
@@ -90,8 +87,7 @@ final class LiveFrameRenderer {
         }
         enqueue(.redraw(Redraw(
             instruction: recorded.instruction.drawing(drawn), frames: recorded.frames, size: recorded.size,
-            time: time, colorSpace: scene.colorSpace ?? recorded.instruction.colorSpace.cgColorSpace, deep: scene.deep,
-            interactive: interactive
+            time: time, deep: scene.deep, interactive: interactive
         )))
         return true
     }
@@ -113,26 +109,24 @@ final class LiveFrameRenderer {
             while let self, self.generation == mine, let job = self.latest {
                 self.latest = nil
                 let started = ContinuousClock.now
-                let image: CGImage?
+                let picture: CoverPicture?
                 var interactive = false
                 switch job {
                 case .build(let request):
                     interactive = request.interactive
                     let capture = request.structure == nil ? nil : SourceCapture()
-                    image = await Self.draw(request, capture: capture)
+                    let image = await Self.draw(request, capture: capture)
                     if let capture, let structure = request.structure, let image, self.generation == mine {
-                        self.scene = Scene(
-                            structure: structure, time: request.time, capture: capture,
-                            colorSpace: image.colorSpace, deep: image.bitsPerComponent > 8
-                        )
+                        self.scene = Scene(structure: structure, time: request.time, capture: capture, deep: image.bitsPerComponent > 8)
                     }
+                    picture = image.map(CoverPicture.image)
                 case .redraw(let redraw):
                     interactive = redraw.interactive
-                    image = await Self.draw(redraw)
+                    picture = await Self.draw(redraw).map(CoverPicture.frame)
                 }
                 let (seconds, attoseconds) = (ContinuousClock.now - started).components
                 guard self.generation == mine else { return }
-                if let image { self.onFrame?(image, Double(seconds) + Double(attoseconds) / 1e18, interactive) }
+                if let picture { self.onFrame?(picture, Double(seconds) + Double(attoseconds) / 1e18, interactive) }
             }
             if let self, self.generation == mine { self.worker = nil }
         }
@@ -156,21 +150,33 @@ final class LiveFrameRenderer {
     }
 
     /// Colors as they are: the compositor's values are the timeline's
-    /// encoding, which the picture is tagged with, as the player's are.
+    /// encoding, which the frame is tagged with, as the player's are.
     nonisolated private static let context: CIContext = {
         let options: [CIContextOption: Any] = [.workingColorSpace: NSNull(), .outputColorSpace: NSNull(), .cacheIntermediates: false]
         return MetalDevice.shared.map { CIContext(mtlDevice: $0, options: options) } ?? CIContext(options: options)
     }()
 
-    private static func draw(_ redraw: Redraw) async -> CGImage? {
+    /// The frame composed again, into a surface tagged with the timeline's
+    /// colors exactly as the compositor tags the player's frames, so the
+    /// screen shows it as it shows the video, color-matched on the GPU.
+    private static func draw(_ redraw: Redraw) async -> CVPixelBuffer? {
         let job = HandedOver(value: redraw)
-        return await Task.detached(priority: .userInitiated) {
+        return await Task.detached(priority: .userInitiated) { () -> HandedOver<CVPixelBuffer>? in
             let redraw = job.value
             let image = LayeredCompositor.compose(redraw.instruction, at: redraw.time, outputSize: redraw.size) { redraw.frames[$0] }
-            return context.createCGImage(
-                image, from: CGRect(origin: .zero, size: redraw.size),
-                format: redraw.deep ? .RGBAh : .RGBA8, colorSpace: redraw.colorSpace
+            var buffer: CVPixelBuffer?
+            let attributes: [String: Any] = [
+                kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any],
+                kCVPixelBufferMetalCompatibilityKey as String: true,
+            ]
+            CVPixelBufferCreate(
+                nil, Int(redraw.size.width), Int(redraw.size.height),
+                redraw.deep ? kCVPixelFormatType_64RGBAHalf : kCVPixelFormatType_32BGRA, attributes as CFDictionary, &buffer
             )
-        }.value
+            guard let buffer else { return nil }
+            context.render(image, to: buffer, bounds: CGRect(origin: .zero, size: redraw.size), colorSpace: nil)
+            redraw.instruction.colorSpace.attach(to: buffer)
+            return HandedOver(value: buffer)
+        }.value?.value
     }
 }

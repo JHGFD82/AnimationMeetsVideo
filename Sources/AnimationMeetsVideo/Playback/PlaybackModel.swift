@@ -61,9 +61,9 @@ final class PlaybackModel {
     /// holds the composition from before it. Shown over everything until
     /// the player item is swapped, so the viewer follows a drag without
     /// swapping the item at every step.
-    private(set) var liveFrame: CGImage?
+    private(set) var liveFrame: CoverPicture?
     /// What the viewer shows over the player, if anything.
-    var cover: CGImage? { liveFrame ?? still }
+    var cover: CoverPicture? { liveFrame ?? still.map(CoverPicture.image) }
 
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
@@ -225,10 +225,10 @@ final class PlaybackModel {
     /// doesn't put its older picture over it.
     @ObservationIgnored private(set) var liveRedraws = 0
 
-    private func receiveLiveFrame(_ image: CGImage, seconds: Double, interactive: Bool) {
+    private func receiveLiveFrame(_ picture: CoverPicture, seconds: Double, interactive: Bool) {
         guard !isPlaying, !isSeeking else { return }
         if interactive { liveGovernor.record(seconds: seconds) }
-        liveFrame = image
+        liveFrame = picture
         // A still of what was edited away mustn't show once this goes.
         clearStill()
     }

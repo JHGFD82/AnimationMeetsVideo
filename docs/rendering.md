@@ -175,7 +175,11 @@ Limits:
   isn't a drag (a color well) once edits pause for 0.3 s, and renders
   follow when it is idle. A moved playhead, a changed structure, playing,
   or a rendered stretch under the playhead (which can't take new values)
-  builds as below; a build begun before such a frame doesn't draw over it.
+  builds as below; a build begun before such a frame doesn't draw over it. Such a frame is drawn into a surface tagged with the
+  timeline's colors as the compositor tags the player's frames
+  (`CoverPicture.frame`), so the screen color-matches it on the GPU as it
+  does the video; an image would be converted on the main thread each
+  time it is shown.
 - **Following other edits.** Each change builds a new composition, and while paused the
   frame under the playhead is drawn from it (`LiveFrameRenderer`, latest
   request wins) and shown over the player. A build is never cancelled by
