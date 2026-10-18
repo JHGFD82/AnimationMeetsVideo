@@ -102,6 +102,8 @@ struct ClipBlockView: View {
     /// Opens the beat match panel for the clip's song; nil for clips that
     /// aren't on a Music layer.
     var onBeatMatch: (() -> Void)? = nil
+    /// For an adjustment clip: what it reaches, and the choices.
+    var reach: ReachMenu? = nil
 
     /// The clip as it will be if the current drag ends now. After a drop
     /// it stays up until the edited clip comes back down from the project:
@@ -477,6 +479,7 @@ struct ClipBlockView: View {
         if let transition = clip.transitionIn { parts.append("\(transition.kind.name) at the start") }
         if let transition = clip.transitionOut { parts.append("\(transition.kind.name) at the end") }
         if hasLinkedAudio { parts.append("with its own sound") }
+        if let reach { parts.append("reaches \(reach.summary)") }
         return parts.joined(separator: ", ")
     }
 
@@ -504,6 +507,12 @@ struct ClipBlockView: View {
         }
         if let onBeatMatch {
             Button("Beat match", action: onBeatMatch)
+        }
+        if let reach {
+            Button("Reach all layers below") { reach.onChoose(nil) }
+            ForEach(reach.options, id: \.id) { option in
+                Button("Reach down to \(option.name)") { reach.onChoose(option.id) }
+            }
         }
     }
 

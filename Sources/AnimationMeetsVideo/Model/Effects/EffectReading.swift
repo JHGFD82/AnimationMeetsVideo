@@ -55,7 +55,7 @@ extension EditingProject {
         let effect = clip.effects[index]
         guard effect.enabled else { return nil }
 
-        if clip.source == .adjustment, reachesNothing(layer, in: timeline) {
+        if reachesNothing(clip, on: layer, in: timeline) {
             return EffectNote(text: "The layer this adjustment reaches down to is above it, so it reaches nothing.", dims: true)
         }
         if passesThrough(clip), effect.kind != .transform {

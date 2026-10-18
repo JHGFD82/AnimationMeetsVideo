@@ -28,7 +28,7 @@ blends onto the layers below it. Every other rule follows from this:
 - Pictures an effect uses as input (a matte, a map) aren't layers, so
   they're nowhere in the order: they come from the browser (see
   [Inputs](#inputs)).
-- The one exception is an adjustment layer, which can set how far down its
+- The one exception is an adjustment clip, which can set how far down its
   effect falls (see [Reach](#reach)).
 
 When a new feature needs an order, it gets this one.
@@ -456,9 +456,11 @@ layers goes here, keyframed in the adjustment clip's time.
 ### Reach
 
 Other apps apply an adjustment to everything below it. Here each
-adjustment layer has a **Reach**: All Layers Below (the default), or down
-to a chosen layer. For example, it can reach only the one layer under it,
-with all that layer's clips, or three of the five layers below.
+adjustment clip has a **Reach** of its own, set from the clip's context
+menu: All Layers Below (the default), or down to a chosen layer. For
+example, it can reach only the one layer under it, with all that layer's
+clips, or three of the five layers below. Two clips on one adjustment
+layer can reach different depths.
 
 - **Reach stops at the edge of its own timeline**, even inside a nested
   timeline set to pass through, so an adjustment inside a nested timeline
@@ -469,8 +471,10 @@ with all that layer's clips, or three of the five layers below.
   layer is deleted, the reach goes back to All Layers Below. If the chosen
   layer is moved above the adjustment layer, the adjustment reaches nothing
   and is dimmed with a note.
-- In the timeline, a bracket at the adjustment layer's left edge spans the
-  layers it reaches.
+- In the timeline, each adjustment clip draws a box over its own time that
+  reaches down over the layers it adjusts, brighter while the clip is
+  selected. One that reaches nothing gets a dashed outline around the clip
+  alone.
 
 ### How it draws
 
@@ -810,12 +814,14 @@ In order, each step usable on its own:
    layer flagged `isAdjustment`, holding adjustment clips (`ClipSource.adjustment`:
    no media, any length, and keyframes count from the clip's own start). The
    timeline header's button adds one at the top of the stack, spanning the
-   timeline, and its header menu sets Reach to every layer below or down to
-   any layer under it. Reach is saved as the layer's ID (`reach`, written only
-   when it isn't every layer below), goes back to every layer below when that
+   timeline, and each adjustment clip's context menu sets its Reach to every
+   layer below or down to any layer under it. Reach is saved on the clip as
+   the layer's ID (`reach`, written only when it isn't every layer below;
+   projects that saved one reach on the layer have it copied onto the
+   layer's clips when loaded), goes back to every layer below when that
    layer is deleted, and reaches nothing, with a note in the panel, when the
-   layer is moved above the adjustment. A bracket along the adjustment
-   layer's left edge spans the layers it reaches. Drawing follows the
+   layer is moved above the adjustment. Each adjustment clip draws a box
+   down over the layers it reaches. Drawing follows the
    Below / With / Adjusted / Coverage / Result steps above: the tree gives
    each adjustment the clips of the layers it reaches (`DrawClip.assembled`,
    lowest adjustment first, so one reaching down to another gets it as it is

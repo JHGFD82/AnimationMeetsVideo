@@ -21,9 +21,9 @@ import Testing
         let timeline = try #require(p.timeline(id: t))
         #expect(timeline.layers.first?.id == created.layerID)
         let layer = timeline.layers[0]
-        #expect(layer.isAdjustment && layer.kind == .video && layer.reach == nil)
+        #expect(layer.isAdjustment && layer.kind == .video)
         let clip = layer.clips[0]
-        #expect(clip.source == .adjustment && clip.startOffset == .zero)
+        #expect(clip.source == .adjustment && clip.startOffset == .zero && clip.reach == nil)
         #expect(clip.trimmedDuration == timeline.frameAligned(CMTime(value: 10, timescale: 1), .down))
         #expect(p.hasEffectStack(clip) && p.playsVideo(clip) && !p.playsAudio(clip))
         #expect(p.displayName(of: layer, in: timeline) == "Adjustment 1")
@@ -59,12 +59,17 @@ import Testing
         let t = p.rootTimelineID
         let addedLayer = p.addAdjustmentLayer(to: t, at: 1)   // between layers[0] and layers[1]
         let added = try #require(addedLayer)
-        func reached() -> [UUID] {
+        func clip() -> (TimelineClip, TimelineLayer, Timeline) {
             let timeline = p.timeline(id: t)!
-            return p.reachedLayers(of: timeline.layer(id: added.layerID)!, in: timeline).map(\.id)
+            let layer = timeline.layer(id: added.layerID)!
+            return (layer.clips[0], layer, timeline)
+        }
+        func reached() -> [UUID] {
+            let (clip, layer, timeline) = clip()
+            return p.reachedLayers(of: clip, on: layer, in: timeline).map(\.id)
         }
         #expect(reached() == [layers[1], layers[2], layers[3]])
-        p.setReach(of: added.layerID, in: t, toLayer: layers[2])
+        p.setReach(ofClip: added.clipID, in: t, toLayer: layers[2])
         #expect(reached() == [layers[1], layers[2]])
         // Adding a layer in between doesn't change where it stops.
         let media = MediaClip(name: "m", kind: .video, url: nil, duration: CMTime(value: 1, timescale: 1), frameRate: 24, colorSpace: .rec709, codecName: "H.264")
@@ -74,11 +79,11 @@ import Testing
         // Moved above the adjustment, the chosen layer is reached by nothing.
         p.moveLayer(layers[2], in: t, toIndex: 0)
         #expect(reached().isEmpty)
-        let timeline = p.timeline(id: t)!
-        #expect(p.reachesNothing(timeline.layer(id: added.layerID)!, in: timeline))
+        let (moved, layer, timeline) = clip()
+        #expect(p.reachesNothing(moved, on: layer, in: timeline))
         // Deleted, the reach goes back to every layer below.
         p.deleteLayer(layers[2], in: t)
-        #expect(p.timeline(id: t)!.layer(id: added.layerID)!.reach == nil)
+        #expect(clip().0.reach == nil)
         #expect(!reached().isEmpty)
     }
 
@@ -86,8 +91,32 @@ import Testing
         var (p, _) = project(layers: 1)
         let addedAdded = p.addAdjustmentLayer(to: p.rootTimelineID)
         let added = try #require(addedAdded)
-        p.setReach(of: added.layerID, in: p.rootTimelineID, toLayer: UUID())
-        #expect(p.timeline(id: p.rootTimelineID)!.layer(id: added.layerID)!.reach == nil)
+        p.setReach(ofClip: added.clipID, in: p.rootTimelineID, toLayer: UUID())
+        #expect(p.clipAndLayer(added.clipID, in: p.rootTimelineID)?.clip.reach == nil)
+    }
+
+    @Test func eachAdjustmentClipHasAReachOfItsOwn() throws {
+        var (p, layers) = project(layers: 3)
+        let t = p.rootTimelineID
+        let addedLayer = p.addAdjustmentLayer(to: t, duration: CMTime(value: 4, timescale: 1))
+        let added = try #require(addedLayer)
+        p.split(added.clipID, in: t, layer: added.layerID, atTimelineTime: CMTime(value: 2, timescale: 1))
+        let clips = try #require(p.timeline(id: t)?.layer(id: added.layerID)?.clips)
+        #expect(clips.count == 2)
+        p.setReach(ofClip: clips[1].id, in: t, toLayer: layers[0])
+        let timeline = try #require(p.timeline(id: t))
+        let layer = try #require(timeline.layer(id: added.layerID))
+        #expect(p.reachedLayers(of: layer.clips[0], on: layer, in: timeline).map(\.id) == layers)
+        #expect(p.reachedLayers(of: layer.clips[1], on: layer, in: timeline).map(\.id) == [layers[0]])
+        #expect(p.reach(of: layer.clips[0], on: layer, in: timeline).all && !p.reach(of: layer.clips[1], on: layer, in: timeline).all)
+    }
+
+    @Test func onlyAdjustmentClipsTakeAReach() throws {
+        var (p, layers) = project(layers: 2)
+        let t = p.rootTimelineID
+        let picture = try #require(p.timeline(id: t)?.layer(id: layers[0])?.clips.first)
+        p.setReach(ofClip: picture.id, in: t, toLayer: layers[1])
+        #expect(p.clipAndLayer(picture.id, in: t)?.clip.reach == nil)
     }
 
     @Test func movingAnAdjustmentClipToANewLayerMakesAnAdjustmentLayer() throws {

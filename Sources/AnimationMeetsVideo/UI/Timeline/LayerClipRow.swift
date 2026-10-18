@@ -90,6 +90,9 @@ struct LayerClipRow: View {
     /// the clip itself.
     let onEditTime: (UUID, (inout ClipTime) -> Void) -> Void
     let onEditClip: (UUID, (inout TimelineClip) -> Void) -> Void
+    /// Sets how far down an adjustment clip reaches: to a layer, or every
+    /// layer below for nil.
+    let onSetReach: (UUID, UUID?) -> Void
 
     /// While a slip shortens a clip: how far the clips after it move in.
     private struct FollowerShift: Equatable {
@@ -141,6 +144,22 @@ struct LayerClipRow: View {
               project.mediaClip(id: assetID)?.url != nil, let beatMatch
         else { return nil }
         return { [project] in beatMatch.open(assetID: assetID, in: project) }
+    }
+
+    /// An adjustment clip's reach choices: every layer below its layer, or
+    /// down to any one of them. Nil for other clips.
+    private func reachMenu(for clip: TimelineClip) -> ReachMenu? {
+        guard clip.source == .adjustment, let timeline = project.timeline(id: timelineID),
+              let index = timeline.layers.firstIndex(where: { $0.id == layer.id })
+        else {
+            return nil
+        }
+        return ReachMenu(
+            current: clip.reach,
+            options: timeline.layers[(index + 1)...].map { ($0.id, project.displayName(of: $0, in: timeline)) },
+            summary: project.reachDescription(of: clip, in: timeline),
+            onChoose: { bottom in onSetReach(clip.id, bottom) }
+        )
     }
 
     var body: some View {
@@ -208,7 +227,8 @@ struct LayerClipRow: View {
                     playsSound: project.playsAudio(clip),
                     onEditTime: { change in onEditTime(clip.id, change) },
                     onEditClip: { change in onEditClip(clip.id, change) },
-                    onBeatMatch: beatMatchAction(for: clip)
+                    onBeatMatch: beatMatchAction(for: clip),
+                    reach: reachMenu(for: clip)
                 )
                 .offset(x: shiftX(of: clip))
                 // Clips slide aside as a drag makes room, but not when the

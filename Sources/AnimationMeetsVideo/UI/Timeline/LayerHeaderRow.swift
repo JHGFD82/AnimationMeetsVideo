@@ -19,17 +19,6 @@ extension EditingProject {
     }
 }
 
-/// What an adjustment layer's header offers to set its reach.
-struct ReachMenu {
-    /// The layer it reaches down to; nil for every layer below.
-    var current: UUID?
-    /// The layers below it, which it can reach down to.
-    var options: [(id: UUID, name: String)]
-    /// What it reaches, in words.
-    var summary: String
-    let onChoose: (UUID?) -> Void
-}
-
 struct LayerHeaderRow: View {
     let number: Int
     let layer: TimelineLayer
@@ -60,9 +49,6 @@ struct LayerHeaderRow: View {
     let isSelected: Bool
     let onSelect: () -> Void
     let onDelete: () -> Void
-    /// For an adjustment layer: what it reaches, and the choices. Nil for
-    /// other layers.
-    var reach: ReachMenu?
 
     @State private var isEditingName = false
     @State private var draftName: String = ""
@@ -97,7 +83,7 @@ struct LayerHeaderRow: View {
                 Image(systemName: "slider.horizontal.below.rectangle")
                     .font(Design.Typeface.label)
                     .foregroundStyle(Design.ClipTone.adjustment.color)
-                    .help(reach.map { "Adjustment layer · reaches: \($0.summary)" } ?? "Adjustment layer")
+                    .help("Adjustment layer")
             }
             if isEditingName {
                 TextField(displayName, text: $draftName)
@@ -178,25 +164,6 @@ struct LayerHeaderRow: View {
                 Divider()
                 Button(isChannelsExpanded ? "Hide Channels" : "Show Channels", action: onToggleChannels)
             }
-            if let reach {
-                Divider()
-                Menu("Reach: \(reach.summary)") {
-                    Button {
-                        reach.onChoose(nil)
-                    } label: {
-                        if reach.current == nil { Image(systemName: "checkmark") }
-                        Text("All Layers Below")
-                    }
-                    ForEach(reach.options, id: \.id) { option in
-                        Button {
-                            reach.onChoose(option.id)
-                        } label: {
-                            if reach.current == option.id { Image(systemName: "checkmark") }
-                            Text("Down to \(option.name)")
-                        }
-                    }
-                }
-            }
             Divider()
             Button("Delete Layer", role: .destructive, action: onDelete)
         }
@@ -234,9 +201,6 @@ extension LayerHeaderRow: Equatable {
                 && lhs.height == rhs.height && lhs.canMoveUp == rhs.canMoveUp && lhs.canMoveDown == rhs.canMoveDown
                 && lhs.isExpanded == rhs.isExpanded && lhs.isAudioExpanded == rhs.isAudioExpanded
                 && lhs.isChannelsExpanded == rhs.isChannelsExpanded && lhs.isSelected == rhs.isSelected
-                && lhs.reach?.current == rhs.reach?.current && lhs.reach?.summary == rhs.reach?.summary
-                && lhs.reach?.options.map(\.id) == rhs.reach?.options.map(\.id)
-                && lhs.reach?.options.map(\.name) == rhs.reach?.options.map(\.name)
         }
     }
 }

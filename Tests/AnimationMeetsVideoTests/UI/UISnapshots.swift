@@ -52,6 +52,34 @@ struct UISnapshots {
         try SnapshotSupport.render(editor, "editor", size: CGSize(width: 1500, height: 900))
     }
 
+    /// The editor with an adjustment layer over three shape layers: its
+    /// first clip reaches every layer below, its second only the one under
+    /// it, each drawn as a box down over the layers it reaches.
+    @Test func adjustmentReach() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let ten = CMTime(value: 10, timescale: 1)
+        var shapes: [UUID] = []
+        for kind in [EffectKind.rectangle, .ellipse, .star] {
+            let added = project.addShapeLayer(kind, to: t, duration: ten)
+            shapes.append(try #require(added).layerID)
+        }
+        let added = project.addAdjustmentLayer(to: t, duration: CMTime(value: 4, timescale: 1))
+        let adjustment = try #require(added)
+        project.split(adjustment.clipID, in: t, layer: adjustment.layerID, atTimelineTime: CMTime(value: 2, timescale: 1))
+        let second = try #require(project.timeline(id: t)?.layer(id: adjustment.layerID)?.clips.last)
+        // Shape layers go on top, so the last added is just under the adjustment.
+        project.setReach(ofClip: second.id, in: t, toLayer: shapes[2])
+        // Tall enough to show every layer.
+        UserDefaults.standard.set(560.0, forKey: Preferences.timelineHeight)
+        defer { UserDefaults.standard.removeObject(forKey: Preferences.timelineHeight) }
+        let editor = EditorView(
+            project: .constant(project), history: ProjectHistory(project: project), analysis: AssetAnalysis(),
+            replacement: MediaReplacementController(), packageURL: nil
+        )
+        try SnapshotSupport.render(editor, "adjustment-reach", size: CGSize(width: 1500, height: 900))
+    }
+
     /// The audio meter mid-song: left in the red with a held peak, right
     /// in the yellow, and the left clip lamp lit.
     @Test func audioMeter() throws {

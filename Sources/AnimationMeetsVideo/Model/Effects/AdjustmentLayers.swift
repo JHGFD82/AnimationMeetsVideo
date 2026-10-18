@@ -2,8 +2,8 @@ import CoreMedia
 import Foundation
 
 // Adjustment layers (see docs/effects.md, "Adjustment layers"): layers of
-// adjustment clips, whose stacks are applied to the layers below them, as far
-// down as their reach.
+// adjustment clips, whose stacks are applied to the layers below them, each
+// clip as far down as its own reach.
 
 extension EditingProject {
     /// Adds an adjustment layer holding one adjustment clip, at `index` in
@@ -31,42 +31,46 @@ extension EditingProject {
         return (layer.id, clip.id)
     }
 
-    /// Sets how far down an adjustment layer reaches: down to the layer
+    /// Sets how far down an adjustment clip reaches: down to the layer
     /// `bottomLayerID`, or every layer below it for nil.
-    mutating func setReach(of layerID: UUID, in timelineID: UUID, toLayer bottomLayerID: UUID?) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
-              timelines[tIndex].layers[lIndex].isAdjustment
+    mutating func setReach(ofClip clipID: UUID, in timelineID: UUID, toLayer bottomLayerID: UUID?) {
+        guard let timeline = timeline(id: timelineID),
+              let clip = clipAndLayer(clipID, in: timelineID)?.clip, clip.source == .adjustment
         else {
             return
         }
-        if let bottomLayerID, !timelines[tIndex].layers.contains(where: { $0.id == bottomLayerID }) { return }
-        timelines[tIndex].layers[lIndex].reach = bottomLayerID
+        if let bottomLayerID, timeline.layer(id: bottomLayerID) == nil { return }
+        editClip(clipID, in: timelineID) { $0.reach = bottomLayerID }
     }
 
-    /// The layers an adjustment layer reaches, top to bottom: those below it
-    /// down to the one it reaches to. None when that layer has been moved
-    /// above it.
-    func reachedLayers(of layer: TimelineLayer, in timeline: Timeline) -> [TimelineLayer] {
-        guard layer.isAdjustment, let index = timeline.layers.firstIndex(where: { $0.id == layer.id }) else { return [] }
+    /// The layers an adjustment clip on `layer` reaches, top to bottom, and
+    /// whether that is every layer below it: those below its layer down to
+    /// the one it reaches to. None when that layer has been moved above it.
+    func reach(of clip: TimelineClip, on layer: TimelineLayer, in timeline: Timeline) -> (layers: [TimelineLayer], all: Bool) {
+        guard clip.source == .adjustment, let index = timeline.layers.firstIndex(where: { $0.id == layer.id }) else { return ([], false) }
         let below = Array(timeline.layers[(index + 1)...])
-        guard let bottom = layer.reach, let bottomIndex = timeline.layers.firstIndex(where: { $0.id == bottom }) else {
-            return below
+        guard let bottom = clip.reach, let bottomIndex = timeline.layers.firstIndex(where: { $0.id == bottom }) else {
+            return (below, true)
         }
-        guard bottomIndex > index else { return [] }
-        return Array(timeline.layers[(index + 1)...bottomIndex])
+        guard bottomIndex > index else { return ([], false) }
+        return (Array(timeline.layers[(index + 1)...bottomIndex]), false)
     }
 
-    /// Whether the layer an adjustment layer reaches down to is above it, so
+    /// The layers an adjustment clip on `layer` reaches, top to bottom.
+    func reachedLayers(of clip: TimelineClip, on layer: TimelineLayer, in timeline: Timeline) -> [TimelineLayer] {
+        reach(of: clip, on: layer, in: timeline).layers
+    }
+
+    /// Whether the layer an adjustment clip reaches down to is above it, so
     /// it reaches nothing.
-    func reachesNothing(_ layer: TimelineLayer, in timeline: Timeline) -> Bool {
-        guard layer.isAdjustment, layer.reach != nil else { return false }
-        return reachedLayers(of: layer, in: timeline).isEmpty
+    func reachesNothing(_ clip: TimelineClip, on layer: TimelineLayer, in timeline: Timeline) -> Bool {
+        guard clip.source == .adjustment, clip.reach != nil else { return false }
+        return reachedLayers(of: clip, on: layer, in: timeline).isEmpty
     }
 
-    /// What an adjustment layer reaches, in words, for its menu and notes.
-    func reachDescription(of layer: TimelineLayer, in timeline: Timeline) -> String {
-        guard let bottom = layer.reach, let target = timeline.layer(id: bottom) else { return "All Layers Below" }
+    /// What an adjustment clip reaches, in words, for its menu and notes.
+    func reachDescription(of clip: TimelineClip, in timeline: Timeline) -> String {
+        guard let bottom = clip.reach, let target = timeline.layer(id: bottom) else { return "All Layers Below" }
         return "Down to \(displayName(of: target, in: timeline))"
     }
 }

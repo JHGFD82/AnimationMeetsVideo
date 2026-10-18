@@ -674,8 +674,7 @@ struct TimelineView: View {
                             selectedSectionID = nil
                             onSelectLayer()
                         },
-                        onDelete: { deleteLayer(layer.id) },
-                        reach: reachMenu(for: layer)
+                        onDelete: { deleteLayer(layer.id) }
                     )
                     .equatable()
                     if shownJoint(in: layer) != nil {
@@ -739,7 +738,6 @@ struct TimelineView: View {
             }
             Color.clear.frame(height: newLayerRowHeight)
         }
-        .overlay(alignment: .topLeading) { reachBrackets(of: layers) }
     }
 
     /// Resizes a layer from its names-column divider, `dy` from where the
@@ -761,42 +759,43 @@ struct TimelineView: View {
         }
     }
 
-    /// The reach choices of an adjustment layer: every layer below it, or
-    /// down to any one of them.
-    private func reachMenu(for layer: TimelineLayer) -> ReachMenu? {
-        guard layer.isAdjustment, let index = timeline.layers.firstIndex(where: { $0.id == layer.id }) else { return nil }
-        return ReachMenu(
-            current: layer.reach,
-            options: timeline.layers[(index + 1)...].map { ($0.id, project.displayName(of: $0, in: timeline)) },
-            summary: project.reachDescription(of: layer, in: timeline),
-            onChoose: { bottom in onEditProject { $0.setReach(of: layer.id, in: timelineID, toLayer: bottom) } }
-        )
-    }
-
-    /// A bracket at the left edge of each adjustment layer in the area,
-    /// spanning the layers it reaches (in the same area), so what an
-    /// adjustment affects can be read off the stack.
-    private func reachBrackets(of layers: [TimelineLayer]) -> some View {
+    /// A box under each adjustment clip, spanning its time and reaching
+    /// down over the layers it adjusts (those in the same area), so what an
+    /// adjustment affects can be read off the timeline. Brighter while the
+    /// clip is selected; dashed around the clip alone when the layer it
+    /// reaches down to is above it.
+    private func reachBoxes(of layers: [TimelineLayer], pixelsPerSecond: CGFloat) -> some View {
         let tops = tops(of: layers)
         return ZStack(alignment: .topLeading) {
             ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
                 if layer.isAdjustment {
-                    let reached = project.reachedLayers(of: layer, in: timeline)
-                    let last = reached.last.flatMap { target in layers.firstIndex { $0.id == target.id } }
-                    let bottom = (last ?? index)
-                    let y0 = tops[index]
-                    let y1 = tops[bottom] + blockHeight(of: layers[bottom]) - separatorHeight
-                    RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .fill(Design.ClipTone.adjustment.color.opacity(reached.isEmpty ? 0.35 : 0.9))
-                        .frame(width: 3, height: max(4, y1 - y0))
-                        .offset(x: 1, y: y0)
-                        .help(reached.isEmpty && layer.reach != nil
-                            ? "Reaches nothing: the layer it reached down to is above it"
-                            : "Reaches: \(project.reachDescription(of: layer, in: timeline))")
-                        .allowsHitTesting(false)
+                    ForEach(layer.clips) { clip in
+                        let reached = project.reachedLayers(of: clip, on: layer, in: timeline)
+                        let bottom = reached.compactMap { target in layers.firstIndex { $0.id == target.id } }.max() ?? index
+                        let isSelected = selection?.timelineClipID == clip.id
+                        let tone = Design.ClipTone.adjustment.color
+                        let shape = RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                        let y0 = tops[index]
+                        let y1 = tops[bottom] + blockHeight(of: layers[bottom]) - separatorHeight
+                        shape
+                            .fill(tone.opacity(reached.isEmpty ? 0 : isSelected ? 0.12 : 0.06))
+                            .overlay {
+                                shape.strokeBorder(
+                                    tone.opacity(reached.isEmpty ? 0.4 : isSelected ? 0.95 : 0.55),
+                                    style: StrokeStyle(lineWidth: isSelected ? 1.5 : 1, dash: reached.isEmpty ? [4, 3] : [])
+                                )
+                            }
+                            .frame(
+                                width: max(2, CGFloat(CMTimeSubtract(clip.endOffset, clip.startOffset).seconds) * pixelsPerSecond),
+                                height: max(4, y1 - y0)
+                            )
+                            .offset(x: clip.startOffset.seconds * pixelsPerSecond, y: y0)
+                    }
                 }
             }
         }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     /// A fixed-height groove between layers, so the two columns line up and
@@ -892,6 +891,9 @@ struct TimelineView: View {
                         },
                         onEditClip: { clipID, change in
                             onEditProject { $0.editClip(clipID, in: timelineID, change) }
+                        },
+                        onSetReach: { clipID, bottom in
+                            onEditProject { $0.setReach(ofClip: clipID, in: timelineID, toLayer: bottom) }
                         }
                     )
                     // Rows that would draw the same aren't redrawn, so
@@ -962,6 +964,7 @@ struct TimelineView: View {
             }
         }
         .frame(width: contentWidth, alignment: .topLeading)
+        .overlay(alignment: .topLeading) { reachBoxes(of: areaLayers(kind), pixelsPerSecond: pixelsPerSecond) }
         // A shape from the Effects Library dropped on the video area, but
         // not on a clip (which takes it into its stack), makes a shape layer
         // where it lands. Library drags travel as URLs, media as text, so

@@ -177,14 +177,14 @@ private struct Sandbox {
         var grade = Effect(kind: .color, controls: [EffectControl(kind: .saturation)])
         grade.controls[0].number = AnimatedValue(ComponentValue(values: [40]))
         project.editClip(added.clipID, in: t) { $0.effects = [grade] }
-        project.setReach(of: added.layerID, in: t, toLayer: mediaLayer)
+        project.setReach(ofClip: added.clipID, in: t, toLayer: mediaLayer)
 
         try await ProjectStore.save(project, to: sandbox.packageURL)
         let json = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
         #expect(json.contains("\"adjustment\" : true") && json.contains("\"reach\""))
         let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
         let layer = try #require(loaded.project.timeline(id: t)?.layer(id: added.layerID))
-        #expect(layer.isAdjustment && layer.reach == mediaLayer && layer.kind == .video)
+        #expect(layer.isAdjustment && layer.clips[0].reach == mediaLayer && layer.kind == .video)
         #expect(layer.clips[0].source == .adjustment && layer.clips[0].effects == [grade])
         #expect(layer.clips[0] == project.timeline(id: t)!.layer(id: added.layerID)!.clips[0])
 
@@ -205,7 +205,23 @@ private struct Sandbox {
             .replacingOccurrences(of: "\"adjustment\" : true", with: "\"adjustment\" : true,\n          \"reach\" : \"\(UUID().uuidString)\"")
         try edited.write(to: sandbox.projectJSON, atomically: true, encoding: .utf8)
         let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
-        #expect(loaded.project.timeline(id: project.rootTimelineID)!.layer(id: added.layerID)!.reach == nil)
+        #expect(loaded.project.clipAndLayer(added.clipID, in: project.rootTimelineID)?.clip.reach == nil)
+    }
+
+    @Test func aLayerReachFromAnOlderProjectGoesOntoItsClips() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+        let t = project.rootTimelineID
+        let mediaLayer = project.timeline(id: t)!.layers[0].id
+        let added = project.addAdjustmentLayer(to: t)!
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        // Saved as older versions did: the reach on the layer.
+        let edited = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+            .replacingOccurrences(of: "\"adjustment\" : true", with: "\"adjustment\" : true,\n          \"reach\" : \"\(mediaLayer.uuidString)\"")
+        try edited.write(to: sandbox.projectJSON, atomically: true, encoding: .utf8)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.project.clipAndLayer(added.clipID, in: t)?.clip.reach == mediaLayer)
     }
 
     @Test func plainClipsWriteNoStackAnchorOrVolume() async throws {

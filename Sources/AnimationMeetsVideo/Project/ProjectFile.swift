@@ -82,6 +82,9 @@ struct ProjectFile: Codable {
         var time: ClipTimeEntry?
         /// Absent while there is no motion blur and no trails.
         var shutter: ShutterEntry?
+        /// The lowest layer an adjustment clip reaches; absent for every
+        /// layer below it.
+        var reach: UUID?
     }
 
     /// Echo or trails: `count` copies, `delay` apart, each `decay` as strong
@@ -504,8 +507,9 @@ struct ProjectFile: Codable {
         var pan: PropertyEntry<Double>?
         /// True for an adjustment layer; absent otherwise.
         var adjustment: Bool?
-        /// The lowest layer an adjustment layer reaches; absent for every
-        /// layer below it.
+        /// The lowest layer an adjustment layer reached, in projects saved
+        /// before each adjustment clip had a reach of its own: read into
+        /// the layer's clips, and never written.
         var reach: UUID?
     }
 
@@ -786,6 +790,7 @@ extension ProjectFile {
             .optional("volume", property(.number)),
             .optional("pan", property(.number)),
             .optional("passThrough", .bool),
+            .optional("reach", .uuid),
             .optional("time", .object(object([
                 .optional("speed", property(.number)),
                 .optional("frameBlending", .choice(["blend", "opticalFlow"], noun: "frame blending")),

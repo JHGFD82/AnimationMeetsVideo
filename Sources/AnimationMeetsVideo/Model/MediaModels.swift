@@ -224,13 +224,15 @@ struct EditingProject: Identifiable, Equatable {
         timelines[tIndex].layers[lIndex].clips.removeAll { $0.id == id }
     }
 
-    /// Removes a layer and every clip on it. An adjustment layer that
+    /// Removes a layer and every clip on it. An adjustment clip that
     /// reached down to it goes back to reaching every layer below.
     mutating func deleteLayer(_ layerID: UUID, in timelineID: UUID) {
         guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return }
         timelines[tIndex].layers.removeAll { $0.id == layerID }
-        for l in timelines[tIndex].layers.indices where timelines[tIndex].layers[l].reach == layerID {
-            timelines[tIndex].layers[l].reach = nil
+        for l in timelines[tIndex].layers.indices {
+            for c in timelines[tIndex].layers[l].clips.indices where timelines[tIndex].layers[l].clips[c].reach == layerID {
+                timelines[tIndex].layers[l].clips[c].reach = nil
+            }
         }
     }
 
@@ -487,10 +489,6 @@ struct TimelineLayer: Identifiable, Equatable {
     /// stacks are applied to the layers below. See docs/effects.md,
     /// "Adjustment layers". The layer is a video layer in every other way.
     var isAdjustment = false
-    /// For an adjustment layer: the lowest layer its effect reaches, stored
-    /// as that layer's ID rather than a count so it stays put as layers are
-    /// added and moved. Nil reaches every layer below.
-    var reach: UUID?
 
     var duration: CMTime {
         clips.map(\.endOffset).max(by: { $0.seconds < $1.seconds }) ?? .zero
@@ -553,6 +551,11 @@ struct TimelineClip: Identifiable, Equatable {
     /// What it does with its finished picture (motion blur and trails),
     /// below its transitions. See `ClipShutter`.
     var shutter = ClipShutter()
+    /// For an adjustment clip: the lowest layer its effect reaches, stored
+    /// as that layer's ID rather than a count so it stays put as layers are
+    /// added and moved. Nil, or a layer not in its timeline, reaches every
+    /// layer below.
+    var reach: UUID?
 
     /// The length of the part of the source the clip plays. How long it lasts
     /// on the timeline is `placedDuration`, which differs when it is retimed.

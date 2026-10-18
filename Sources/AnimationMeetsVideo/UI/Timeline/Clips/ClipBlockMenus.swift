@@ -1,10 +1,25 @@
 import CoreMedia
 import SwiftUI
 
+/// What an adjustment clip's menu offers to set its reach.
+struct ReachMenu {
+    /// The layer it reaches down to; nil for every layer below.
+    var current: UUID?
+    /// The layers below its layer, which it can reach down to.
+    var options: [(id: UUID, name: String)]
+    /// What it reaches, in words.
+    var summary: String
+    let onChoose: (UUID?) -> Void
+}
+
 // The context menus of a clip block and of the transitions on it.
 extension ClipBlockView {
     @ViewBuilder
     var clipMenu: some View {
+        if let reach {
+            reachMenu(reach)
+            Divider()
+        }
         if let transition = clip.transitionIn {
             Button("Remove \(transition.kind.name) at Start") { onRemoveTransition(.leading) }
         }
@@ -32,6 +47,27 @@ extension ClipBlockView {
             Divider()
             timeMenu
             if acceptsEffects { shutterMenu }
+        }
+    }
+
+    /// How far down an adjustment clip reaches: every layer below, or down
+    /// to one of them.
+    func reachMenu(_ reach: ReachMenu) -> some View {
+        Menu("Reach: \(reach.summary)") {
+            Button {
+                reach.onChoose(nil)
+            } label: {
+                if reach.current == nil { Image(systemName: "checkmark") }
+                Text("All Layers Below")
+            }
+            ForEach(reach.options, id: \.id) { option in
+                Button {
+                    reach.onChoose(option.id)
+                } label: {
+                    if reach.current == option.id { Image(systemName: "checkmark") }
+                    Text("Down to \(option.name)")
+                }
+            }
         }
     }
 

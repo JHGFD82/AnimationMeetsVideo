@@ -31,17 +31,6 @@ extension CompositionExporter {
 
         let center = CGPoint(x: timeline.frameSize.width / 2, y: timeline.frameSize.height / 2)
         var result: [BuildNode] = []
-        /// The layers below an adjustment layer that its effect reaches.
-        func reach(of layer: TimelineLayer) -> (layers: Set<UUID>, all: Bool) {
-            guard let index = timeline.layers.firstIndex(where: { $0.id == layer.id }) else { return ([], false) }
-            let below = timeline.layers[(index + 1)...]
-            guard let bottom = layer.reach, let bottomIndex = timeline.layers.firstIndex(where: { $0.id == bottom }) else {
-                return (Set(below.map(\.id)), true)
-            }
-            // Reaching down to a layer that is above it reaches nothing.
-            guard bottomIndex > index else { return ([], false) }
-            return (Set(timeline.layers[(index + 1)...bottomIndex].map(\.id)), false)
-        }
         for layer in timeline.layers {
             // Sound and Music layers act as a fader and pan over their
             // clips' own; video layers have neither of their own.
@@ -327,9 +316,9 @@ extension CompositionExporter {
                 case .adjustment:
                     // No picture: its stack is applied to the layers it
                     // reaches while it plays.
-                    let reached = reach(of: layer)
+                    let reached = project.reach(of: clip, on: layer, in: timeline)
                     ownNodes.append(BuildNode(
-                        content: .adjustment(reachedLayerIDs: reached.layers, reachesAll: reached.all),
+                        content: .adjustment(reachedLayerIDs: Set(reached.layers.map(\.id)), reachesAll: reached.all),
                         stack: clipStack,
                         range: CMTimeRange(start: CMTimeAdd(visible.start, offset), duration: visible.duration),
                         owner: owner,
