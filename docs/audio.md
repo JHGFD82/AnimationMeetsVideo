@@ -109,10 +109,10 @@ the end of the sound's stack, and an effect moves only within its own
 stack. Audio-only clips have a sound stack and no picture stack. Detaching
 a video clip's sound takes its sound effects with it.
 
-- **EQ**: **Low Cut** (a high-pass, 20 Hz to 1 kHz; off at 20 Hz), **Bass**
-  (a shelf at 100 Hz), **Mid** (a peak an octave wide at **Mid Freq**, 100
-  Hz to 10 kHz) and **Treble** (a shelf at 8 kHz), each ±24 dB. At its
-  defaults it changes nothing and is dimmed.
+- **EQ**: eight parametric bands (a low and high cut, two shelves and four
+  bells), each off until switched on, edited on a graph over a live
+  spectrum; see [equalizer.md](equalizer.md). At its defaults it changes
+  nothing and is dimmed.
 - **Compressor**: **Threshold** (−60 to 0 dB), **Headroom** (how far over
   the threshold sound may go before it is held down, 0.1 to 40 dB),
   **Attack** (1 to 300 ms), **Release** (10 ms to 3 s) and **Makeup** gain
@@ -123,10 +123,11 @@ a video clip's sound takes its sound effects with it.
   voice is heard against the original), Apple's machine-learning voice
   isolation, for dialogue under music or noise. It is never dimmed.
 
-They are Apple's Audio Units (`AUNBandEQ`, `AUDynamicsProcessor`,
-`AUPeakLimiter`), each made by the track's tap when it is prepared
-(`AudioEffectUnit`) and run in place on its buffers before the volume and
-pan. A clip with an enabled sound effect has its sound on a track of its
+The EQ is the app's own filters (`EqualizerFilter`); the others are
+Apple's Audio Units (`AUDynamicsProcessor`, `AUPeakLimiter`,
+`AUSoundIsolation`, as `AudioEffectUnit`). Each is made by the track's
+tap when it is prepared (`SoundEffects.processor`) and run in place on its
+buffers before the volume and pan. A clip with an enabled sound effect has its sound on a track of its
 own, as one with a volume or pan does. Settings are read from `MixCurves`
 as each buffer plays, at the buffer's start, so edits and keyframes are
 heard without a rebuild; which effects a track runs is part of
@@ -448,8 +449,6 @@ dropped on load.
 ## Not implemented yet
 
 - Pan in the timeline's volume row and lines.
-- An 8-band parametric EQ edited on a graph over a live spectrum, planned in
-  [equalizer.md](equalizer.md).
 - Dragging the level line up and down in the lane; levels are set in the
   field or with the fader.
 - A way to keep a clip's sound from fading under a transition.

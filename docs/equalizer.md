@@ -1,136 +1,180 @@
 # Equalizer
 
-Status: **planned, not implemented**. A parametric EQ on every clip with
-sound and every Sound and Music layer, edited on a graph with a live
-spectrum behind it, applied in playback and export by the taps that
-already apply volume ([audio.md](audio.md#playback-and-export)).
+Status: **implemented**: the EQ sound effect's eight bands, its filters in
+playback and export, the graph with its live spectrum, keyboard and
+VoiceOver access, and loading EQs saved before it had bands. The filters,
+curves, migration and spectrum are unit tested (the filters against the
+drawn curve, through real buffers); the graph has a UI snapshot but has
+not yet been driven on screen. What remains is under [Not yet](#not-yet).
+
+The EQ is one of the clip's [sound effects](audio.md#sound-effects): it
+goes in the sound's stack from the library's Sound category, can be used
+more than once, reordered, switched off, copied and saved in presets,
+and plays before the clip's volume and pan, as a channel strip's EQ
+comes before its fader.
 
 ## Why not Logic Pro's Channel EQ
 
-The app has no EQ today, so there is nothing to keep. Logic Pro's Channel
-EQ can't be borrowed: Logic's own plug-ins ship inside the Logic app and
-aren't registered as system Audio Units, so no other app can load them,
-and copying their interface would copy Apple's design. What macOS does
-offer to any app:
+Logic Pro's Channel EQ can't be borrowed: Logic's own plug-ins ship inside
+the Logic app and aren't registered as system Audio Units, so no other app
+can load them. What macOS offers any app:
 
 | Option | What it gives | Why or why not |
 | --- | --- | --- |
-| `AUNBandEQ` (`AVAudioUnitEQ`) | Up to 16 bands of parametric, shelf, pass and stop filters. | Only a generic slider view, and its exact filter shapes aren't documented, so a graph drawn by the app could disagree with what is heard. It also runs in `AVAudioEngine`, not in the composition's audio mix, so it would need an Audio Unit hosted inside each tap. |
-| `AUGraphicEQ` | 10 or 31 fixed bands. | A graphic EQ, not the parametric kind the request describes. |
-| Accelerate's `vDSP_biquadm` | Multichannel cascades of biquad filters, with coefficient ramps built in. | **Chosen.** The app computes each band's coefficients itself, so the graph is exactly the filter heard; it runs inside the existing `AudioLevelTap` with no extra Audio Unit; and `vDSP_biquadm_SetTargetsDouble` ramps to new coefficients over a buffer, so dragging a band or playing keyframes doesn't click. |
+| `AUNBandEQ` | Up to 16 bands of parametric, shelf, pass and stop filters. | What the EQ first used. Its exact filter shapes aren't documented, so a graph drawn by the app could disagree with what is heard. |
+| `AUGraphicEQ` | 10 or 31 fixed bands. | A graphic EQ, not a parametric one. |
+| The app's own biquads | Second-order sections with the Audio EQ Cookbook's coefficients. | **Chosen.** The graph and the filters use the same coefficients, so the curve is exactly what is heard, and the coefficients can glide within a buffer. Eight bands in stereo at 48 kHz is a few hundred thousand multiply-adds a second, so writing the loop out costs nothing worth Accelerate's `vDSP_biquad` setups. |
 
-The layout follows the channel-strip convention that Logic, Final Cut
-Pro and most DAWs share: a cut and a shelf at each end and parametric
-bands between, over a spectrum. That convention is common to the field,
-not Logic's.
+The layout follows the channel-strip convention Logic, Final Cut Pro and
+most DAWs share: a cut and a shelf at each end and bells between. That
+convention is common to the field, not Logic's.
 
 ## Bands
 
-Eight bands, each off until touched, in this order:
+Eight bands, each off until switched on, then a slope for each cut and
+an output gain, in this order in the effects panel:
 
-| Band | Type | Default frequency | Choices |
+| Band | Shape | Default frequency | Default Q |
 | --- | --- | --- | --- |
-| 1 | Low Cut | 30 Hz | Slope 6, 12, 24 or 48 dB per octave |
-| 2 | Low Shelf | 100 Hz | |
-| 3–6 | Bell | 250 Hz, 800 Hz, 2.5 kHz, 6 kHz | |
-| 7 | High Shelf | 10 kHz | |
-| 8 | High Cut | 18 kHz | Slope 6, 12, 24 or 48 dB per octave |
+| Low Cut | high-pass | 30 Hz | 0.71 |
+| Low Shelf | shelf | 100 Hz | 0.71 |
+| Bell 1–4 | peak | 250 Hz, 800 Hz, 2.5 kHz, 6 kHz | 1 |
+| High Shelf | shelf | 10 kHz | 0.71 |
+| High Cut | low-pass | 18 kHz | 0.71 |
 
-- **Frequency** 20 Hz to 20 kHz, **Gain** −24 to +24 dB (shelves and
-  bells), **Q** 0.1 to 18 (bells; shelves and cuts take it as resonance).
-- Coefficients are the Audio EQ Cookbook's (Robert Bristow-Johnson's)
-  formulas, recomputed for each track's sample rate. A cut steeper than
-  12 dB per octave is a cascade of second-order sections, so 48 dB is
-  four.
-- **Output** gain −24 to +24 dB after the bands, for matching loudness.
-- Every band's on state, frequency, gain and Q, and Output, is keyframed
-  like any control, in the clip's source time (a layer's in its
-  timeline's). That is what the [Keyframing](keyframing-effects.md)
-  effects can drive: an Audio Keys or Wiggler on a bell's frequency is a
-  filter sweep.
+- Each band is one control (`EqualizerBand`): a cut's components are its
+  **frequency** and **Q**, a shelf's or bell's its frequency, **gain** and Q.
+  The control's on switch is the band's. Its components keyframe together,
+  in the clip's source time, with the usual eases and graph editor.
+- **Frequency** 20 Hz to 20 kHz, **gain** −24 to +24 dB, **Q** 0.1 to 18.
+  On a cut, Q is resonance: above 0.71 it bumps up before it falls.
+- **Low Slope** and **High Slope** set each cut to 6, 12 (the default), 24
+  or 48 dB per octave. Steeper than 12 is a Butterworth cascade whose last
+  section takes the band's Q; 6 is first-order and ignores Q.
+- **Output**: −24 to +24 dB after the bands.
+- Coefficients are the Audio EQ Cookbook's (Robert Bristow-Johnson's),
+  computed for the track's sample rate, with frequencies kept under
+  0.49 of it.
+- A new EQ, or one whose bands are all off or at 0 dB, changes nothing and
+  is dimmed. A cut always counts, wherever it sits. A cut's slope row is
+  dimmed while its band is off.
 
-**Order in the sound's path**: EQ, then the clip's volume, then the
-layer's EQ and the layer's volume, then those of the nested clips and
-layers it sits in, as a channel strip's EQ comes before its fader.
+Controls whose components measure different things now say so:
+`ControlKind.unit(ofComponent:)`, `range(ofComponent:)` and
+`dragStep(ofComponent:)` give each its own, used by the panel's fields
+and the graph editor. A band's row reads "800 Hz, 4 dB, 1".
 
 ## The graph
 
-The EQ opens in the effects panel from an **EQ** row above Volume (with
-the Volume row, the panel's sound section), and in a larger sheet from
-that row's expand button.
+Above an EQ's band rows, beside an empty lane (`EqualizerGraph`); its
+expand button shows it larger in a sheet.
 
-- **Axes**: frequency on a log scale, 20 Hz to 20 kHz, labeled at 50,
-  100, 200, 500, 1k, 2k, 5k, 10k; gain −24 to +24 dB with a line at 0.
-- **Curves**: each band's response faintly in its color, and the sum in
-  bold. They are computed from the same coefficients the tap uses: the
-  magnitude of each biquad at 256 log-spaced frequencies, in a few
-  microseconds, so the curve follows the drag exactly.
-- **Nodes**: one dot per band, at its frequency and gain (on the 0 line
-  for cuts). Drag to move both; ⌥-drag or scroll to change Q, ⇧-drag to
-  move along one axis; double-click to switch the band on or off.
-  Dragging a band that's off turns it on.
-- **Spectrum**: the sound under the playhead behind the curves, while
-  playing, after the EQ (**Pre** in the graph's menu shows it before).
-  The tap already measures each buffer for the meter; it also writes the
-  samples into a ring buffer that a 4096-point FFT (`vDSP.FFT`, as
-  `OnsetAnalyzer` uses) reads 30 times a second, smoothed with the
-  meter's ballistics.
-- **Band strip** under the graph: for each band, its on switch, type,
-  and frequency, gain and Q fields (typing arithmetic works, as in every
-  numeric field), with the keyframe stopwatch and diamonds as on other
-  rows.
+- **Axes**: frequency on a log scale from 20 Hz to 20 kHz, labeled at 50,
+  100, 200, 500, 1k, 2k, 5k and 10k; gain from −24 to +24 dB with a line
+  at 0.
+- **Curves**: each band that's on as a faint line and fill in its color,
+  and the whole EQ in bold, from the same coefficients the filters use
+  (`Equalizer.response`).
+- **Dots**: one per band, at its frequency and gain (a cut's on 0 dB),
+  filled when on and hollow when off. Drag one to move its frequency and
+  gain; ⌥-drag up or down to narrow or widen its Q (an octave per 40
+  points); ⇧-drag to move along one axis. Dragging a band that's off turns
+  it on, and double-clicking one switches it on or off. A drag is one
+  undo. While the band is keyframed, a drag sets a keyframe at the
+  playhead, as editing its fields does.
+- **Spectrum**: behind the curves, the sound at the playhead while it
+  plays, after the EQ (the default) or before it, or off, from the
+  waveform button; the choice is remembered per Mac. It reads from 0 dBFS
+  at the top to −90 at the bottom, rising at once and falling at the
+  meter's 24 dB a second.
 
-### Accessibility
+### How the spectrum is read
 
-Following [accessibility.md](accessibility.md): the graph is one
-accessibility element per band, named "Band 3, Bell, 800 hertz, plus 4
-decibels", with adjustable actions for gain and custom actions for
-frequency up and down and Q wider and narrower. With a band focused, the
-arrow keys move its frequency (left, right, by a twelfth of an octave)
-and gain (up, down, by 0.5 dB), and ⌥ with them changes Q. Everything a
-drag does is reachable from the band strip's fields.
+The EQ's filter records each buffer, summed to mono, before and after
+filtering (`EqualizerSpectrum`), stamped with the clip's source time it
+plays at, about 1.4 s of it. Players decode ahead of what is heard, so the
+graph doesn't take the newest samples: 30 times a second it takes the
+4096 that end at the playhead's source time, windowed with a Hann window
+and run through an FFT (`vDSP_fft_zrip`, as beat detection does). With
+nothing recorded at that moment (paused, or scrubbed somewhere not yet
+played) the spectrum falls away. Only EQs whose graph is showing record,
+so other tracks and exports don't pay for it. An EQ on a nested
+timeline's clip runs on each track inside it, so its spectrum shows
+whichever track played last.
+
+### Keyboard and VoiceOver
+
+Following [accessibility.md](accessibility.md): clicking a dot picks its
+band and focuses the graph; Tab and ⇧Tab step through the bands. The
+left and right arrows move the picked band's frequency by a twelfth of
+an octave, up and down its gain by 0.5 dB, and ⌥ with up and down its Q
+by a sixth of an octave. VoiceOver reaches each band as an element of its
+own ("Bell 2, on, 800 hertz, 4 decibels, Q 1"), adjusting its gain (a
+cut's frequency), with actions to switch it on or off, raise or lower its
+frequency, and narrow or widen it. Every value is also a field in the
+band's row.
 
 ## Playback and export
 
-`AudioLevelTap` gains a filter stage before its gain: for each volume
-stage of a track (`VolumeStage`) that has an EQ, one `vDSP_biquadm`
-setup with as many sections as that EQ's active bands need, for the
-track's channel count. Like volume curves, EQ settings live in a shared
-store the editor replaces as they change, so an edit is heard at once and
-EQ is left out of `CompositionKey`. On each buffer the tap reads the
-settings at the buffer's time and, if they changed, sets new targets;
-the ramp over the buffer keeps keyframed sweeps smooth. An EQ with every
-band off costs nothing.
+Each EQ is run by `EqualizerFilter`, which the track's tap makes in place
+of an Audio Unit (`SoundEffects.processor`), on the same footing as the
+compressor, limiter and voice isolation (see
+[audio.md](audio.md#sound-effects)): settings are read from `MixCurves`
+as each buffer plays, so edits and keyframes are heard without rebuilding
+the player, and a jump in time clears the filters' memory.
 
-A clip with an EQ of its own gets a composition audio track of its own,
-as a clip with a volume of its own does today.
+The filter reads the settings at the buffer's start and end. When they
+differ (a keyframed sweep, a drag) it rebuilds the coefficients every 32
+frames along the way, frequencies and Qs moving on a log scale and gains
+in decibels, instead of once per buffer, which would step audibly. The
+sections run in doubles (transposed direct form II), and tiny values left
+in their memory are cleared after each buffer so silence doesn't slow
+them. Switching a band on or off changes which sections run, so they
+start from silence. A flat EQ is skipped. The EQ doesn't look ahead, so
+it adds no delay.
 
 ## Saving
 
-Written only when some band is on, as part of the clip's or layer's
-entry:
+Each band is a control in the effect's entry, as for any effect, written
+with `"enabled": false` while off:
 
 ```json
-"eq" : { "bands" : [ { "band" : 4, "type" : "bell", "frequency" : { "value" : 800 }, "gain" : { "value" : 4 }, "q" : { "value" : 1.2 } } ] }
+{ "id" : "…", "kind" : "eqBell2", "value" : [800, 4, 1] }
 ```
 
-Values outside their ranges are clamped on load. Bands not listed are
-off, at their defaults.
+EQs saved before bands, with `lowCut`, `bass`, `mid`, `midFrequency` and
+`treble` controls, load as the bands they sounded like
+(`Equalizer.controls(migrating:)`): the low cut as a 12 dB Low Cut (off if
+it sat at 20 Hz, as it was then), bass as the Low Shelf at 100 Hz, the mid
+as Bell 2 an octave wide (Q 1.41) at the mid frequency, and treble as the
+High Shelf at 8 kHz, keeping their IDs, keyframes and eases. A mid whose
+gain and frequency were keyframed apart gets keyframes at the times of
+both. They're saved as bands from then on. The old filters were Apple's,
+so the shelves' shapes differ slightly from before.
 
 ## Testing
 
-- Each band type's computed response against the cookbook formulas, and
-  against white noise filtered through `vDSP_biquadm` and measured by FFT,
-  within 0.1 dB, at 44.1, 48 and 96 kHz.
-- All bands off passes samples through unchanged.
-- A keyframed sweep rendered through the tap has no step larger than the
-  ramp allows (no clicks).
-- Export of a clip with an EQ matches playback, through
-  `AVAssetReaderAudioMixOutput` as the volume tests read the mix.
-- A UI snapshot of the graph with a few bands on.
+- Each shape's response: a bell's gain at its center, shelves half their
+  gain at their frequency, cuts 3 dB down at theirs and their slope an
+  octave past it, a resonant cut's bump, the whole curve as the sum.
+- What the filter does to a sine against the drawn curve, within 0.1 dB,
+  for every shape at 44.1, 48 and 96 kHz; a flat EQ passes sound
+  unchanged.
+- Settings: bands that are on, slopes, ranges, per-component units, and
+  sweeps on a log scale.
+- Migration of old controls, static and keyframed, and loading an old
+  project file and saving it again as bands.
+- The spectrum shows a recorded tone in its bin near 0 dBFS, and nothing
+  for a moment not played or an EQ not watched.
+- Playback through a composition's audio mix: a high shelf cuts a high
+  tone and leaves a low one.
+- A UI snapshot of the graph.
 
 ## Not yet
 
+- Scroll to change Q, as Logic does; ⌥-drag does it today.
+- EQ on Sound and Music layers, as sound effects generally (see
+  [audio.md](audio.md#not-implemented-yet)).
 - Linear-phase filtering, dynamic EQ and a match EQ.
-- Presets for EQ settings (until then, copy and paste the row).
 - A spectrum while paused, of the sound around the playhead.
+- A band strip in the larger sheet; the fields are in the panel's rows.

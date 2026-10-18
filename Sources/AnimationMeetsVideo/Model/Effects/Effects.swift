@@ -106,7 +106,8 @@ struct EffectInput: Equatable, Sendable {
 
 /// The kinds of effect the library offers. Sound effects (see
 /// docs/audio.md, "Sound effects") go in a clip's `audioEffects` and play
-/// through Apple's Audio Units; the rest change its picture.
+/// through the EQ's own filters or Apple's Audio Units; the rest change
+/// its picture.
 enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     case transform
     case blending
