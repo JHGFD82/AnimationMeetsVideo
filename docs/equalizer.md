@@ -7,7 +7,8 @@ curves, migration and spectrum are unit tested (the filters against the
 drawn curve, through real buffers); the graph has a UI snapshot but has
 not yet been driven on screen. What remains is under [Not yet](#not-yet).
 
-The EQ is one of the clip's [sound effects](audio.md#sound-effects): it
+The EQ is one of the [sound effects](audio.md#sound-effects) of a clip,
+or of a Sound or Music layer (see [On layers](audio.md#on-layers)): it
 goes in the sound's stack from the library's Sound category, can be used
 more than once, reordered, switched off, copied and saved in presets,
 and plays before the clip's volume and pan, as a channel strip's EQ
@@ -67,7 +68,10 @@ and the graph editor. A band's row reads "800 Hz, 4 dB, 1".
 ## The graph
 
 Above an EQ's band rows, beside an empty lane (`EqualizerGraph`); its
-expand button shows it larger in a sheet.
+expand button shows it larger in a sheet, with a field for every band's
+frequency, gain and Q, each cut's slope and the output
+(`EqualizerBandStrip`). On a layer it is in the inspector, with the same
+fields under it.
 
 - **Axes**: frequency on a log scale from 20 Hz to 20 kHz, labeled at 50,
   100, 200, 500, 1k, 2k, 5k and 10k; gain from −24 to +24 dB with a line
@@ -77,8 +81,9 @@ expand button shows it larger in a sheet.
   (`Equalizer.response`).
 - **Dots**: one per band, at its frequency and gain (a cut's on 0 dB),
   filled when on and hollow when off. Drag one to move its frequency and
-  gain; ⌥-drag up or down to narrow or widen its Q (an octave per 40
-  points); ⇧-drag to move along one axis. Dragging a band that's off turns
+  gain; ⌥-drag up or down, or scroll over it, to narrow or widen its Q (an
+  octave per 40 points dragged, or 120 scrolled; a scroll is one undo once
+  it stops, and scrolling anywhere else scrolls the panel); ⇧-drag to move along one axis. Dragging a band that's off turns
   it on, and double-clicking one switches it on or off. A drag is one
   undo. While the band is keyframed, a drag sets a keyframe at the
   playhead, as editing its fields does.
@@ -97,7 +102,13 @@ graph doesn't take the newest samples: 30 times a second it takes the
 4096 that end at the playhead's source time, windowed with a Hann window
 and run through an FFT (`vDSP_fft_zrip`, as beat detection does). With
 nothing recorded at that moment (paused, or scrubbed somewhere not yet
-played) the spectrum falls away. Only EQs whose graph is showing record,
+played), and the playhead and settings still for 200 ms, a media clip's
+spectrum is read from its file instead: a quarter second ending at the
+playhead (its source time plus the asset's alignment offset), mixed to
+mono at 48 kHz and, after the EQ, run through a copy of it. That reading
+leaves out the effects above the EQ and the clip's volume. A nested
+timeline, a generated clip or an EQ on a layer has no one file, so its
+spectrum falls away while paused. Only EQs whose graph is showing record,
 so other tracks and exports don't pay for it. An EQ on a nested
 timeline's clip runs on each track inside it, so its spectrum shows
 whichever track played last.
@@ -172,9 +183,7 @@ so the shelves' shapes differ slightly from before.
 
 ## Not yet
 
-- Scroll to change Q, as Logic does; ⌥-drag does it today.
-- EQ on Sound and Music layers, as sound effects generally (see
-  [audio.md](audio.md#not-implemented-yet)).
 - Linear-phase filtering, dynamic EQ and a match EQ.
-- A spectrum while paused, of the sound around the playhead.
-- A band strip in the larger sheet; the fields are in the panel's rows.
+- A spectrum while paused for a nested timeline or a layer's EQ.
+- A layer EQ's spectrum mixes the layer's tracks: each records into the
+  same place, so it shows whichever played last.

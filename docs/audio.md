@@ -127,7 +127,10 @@ The EQ is the app's own filters (`EqualizerFilter`); the others are
 Apple's Audio Units (`AUDynamicsProcessor`, `AUPeakLimiter`,
 `AUSoundIsolation`, as `AudioEffectUnit`). Each is made by the track's
 tap when it is prepared (`SoundEffects.processor`) and run in place on its
-buffers before the volume and pan. A clip with an enabled sound effect has its sound on a track of its
+buffers. A track goes through its stages as a channel strip does: a
+clip's effects, then its volume and pan, then its layer's effects and
+the layer's volume and pan, then those of the nested clips and layers it
+sits in. A clip with an enabled sound effect has its sound on a track of its
 own, as one with a volume or pan does. Settings are read from `MixCurves`
 as each buffer plays, at the buffer's start, so edits and keyframes are
 heard without a rebuild; which effects a track runs is part of
@@ -139,6 +142,27 @@ its buffers loosely, a few milliseconds either way, though the sound runs
 on unbroken, and resetting on that kept voice isolation, which needs
 76 ms of sound before it says anything, at half its level. Effects on a nested
 timeline's clip run on each track inside it separately, not on their sum.
+
+### On layers
+
+Sound and Music layers have a sound stack of their own
+(`TimelineLayer.audioEffects`) that everything on the layer plays
+through, after each clip's own effects, volume and pan and before the
+layer's volume and pan. It is edited in the inspector's **Layer sound**
+group, under the layer's volume and pan, while a clip on the layer is
+selected (`LayerSoundEffectsList`): **Add Sound Effect** adds one at the
+end; each has an on switch, opens to show its settings (an EQ's graph and
+band fields, the others' fields), and has a menu to move it up or down,
+reset or delete it. Its keyframes count in the timeline's time, as the
+layer's volume's do; values are set at the playhead, keying where a
+setting is already animated, but the inspector can't animate one yet.
+Saved as the layer's `audioEffects`, in the same shape as a clip's, only
+while it has any.
+
+Like effects on a nested timeline's clip, a layer's effects run on each
+of the layer's tracks separately: the layer's own track, and each clip
+with a mix of its own. For an EQ that is the same as running on their
+sum; a compressor reacts to each track alone.
 
 Some of these hold sound back: the compressor by about 5 ms, the limiter
 by 2 and voice isolation by about 76, two frames. That is made up for
@@ -452,7 +476,8 @@ dropped on load.
 - Dragging the level line up and down in the lane; levels are set in the
   field or with the fader.
 - A way to keep a clip's sound from fading under a transition.
-- Sound effects on Sound and Music layers.
+- Animating a layer's sound effects from the inspector, and dragging
+  them from the library onto a layer.
 - A meter per layer, and a meter reading while scrubbing or paused.
 - Integrated loudness of the timeline in the editor, and loudness range.
 - A true-peak ceiling.
