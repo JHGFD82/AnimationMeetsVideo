@@ -147,16 +147,12 @@ struct LayerClipRow: View {
     }
 
     /// An adjustment clip's reach choices: every layer below its layer, or
-    /// down to any one of them. Nil for other clips.
+    /// down to any video layer below. Nil for other clips.
     private func reachMenu(for clip: TimelineClip) -> ReachMenu? {
-        guard clip.source == .adjustment, let timeline = project.timeline(id: timelineID),
-              let index = timeline.layers.firstIndex(where: { $0.id == layer.id })
-        else {
-            return nil
-        }
+        guard clip.source == .adjustment, let timeline = project.timeline(id: timelineID) else { return nil }
         return ReachMenu(
             current: clip.reach,
-            options: timeline.layers[(index + 1)...].map { ($0.id, project.displayName(of: $0, in: timeline)) },
+            options: project.reachOptions(below: layer, in: timeline).map { ($0.id, project.displayName(of: $0, in: timeline)) },
             summary: project.reachDescription(of: clip, in: timeline),
             onChoose: { bottom in onSetReach(clip.id, bottom) }
         )

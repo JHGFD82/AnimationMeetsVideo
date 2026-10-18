@@ -31,16 +31,24 @@ extension EditingProject {
         return (layer.id, clip.id)
     }
 
-    /// Sets how far down an adjustment clip reaches: down to the layer
-    /// `bottomLayerID`, or every layer below it for nil.
+    /// Sets how far down an adjustment clip reaches: down to the video
+    /// layer `bottomLayerID`, or every layer below it for nil.
     mutating func setReach(ofClip clipID: UUID, in timelineID: UUID, toLayer bottomLayerID: UUID?) {
         guard let timeline = timeline(id: timelineID),
               let clip = clipAndLayer(clipID, in: timelineID)?.clip, clip.source == .adjustment
         else {
             return
         }
-        if let bottomLayerID, timeline.layer(id: bottomLayerID) == nil { return }
+        if let bottomLayerID, timeline.layer(id: bottomLayerID)?.kind != .video { return }
         editClip(clipID, in: timelineID) { $0.reach = bottomLayerID }
+    }
+
+    /// The layers an adjustment clip on `layer` can be set to reach down
+    /// to: the video layers below it. Sound and Music layers have no
+    /// picture to adjust, so they aren't offered.
+    func reachOptions(below layer: TimelineLayer, in timeline: Timeline) -> [TimelineLayer] {
+        guard let index = timeline.layers.firstIndex(where: { $0.id == layer.id }) else { return [] }
+        return timeline.layers[(index + 1)...].filter { $0.kind == .video }
     }
 
     /// The layers an adjustment clip on `layer` reaches, top to bottom, and

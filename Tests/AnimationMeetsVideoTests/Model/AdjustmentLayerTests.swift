@@ -111,6 +111,21 @@ import Testing
         #expect(p.reach(of: layer.clips[0], on: layer, in: timeline).all && !p.reach(of: layer.clips[1], on: layer, in: timeline).all)
     }
 
+    @Test func reachIsOfferedAndTakenOnlyForVideoLayers() throws {
+        var (p, layers) = project(layers: 1)
+        let t = p.rootTimelineID
+        p.timelines[0].layers.append(TimelineLayer(customName: nil, kind: .music, clips: []))
+        p.timelines[0].layers.append(TimelineLayer(customName: nil, kind: .sound, clips: []))
+        let addedLayer = p.addAdjustmentLayer(to: t)
+        let added = try #require(addedLayer)
+        let timeline = try #require(p.timeline(id: t))
+        let adjustment = try #require(timeline.layer(id: added.layerID))
+        #expect(p.reachOptions(below: adjustment, in: timeline).map(\.id) == layers)
+        let music = try #require(timeline.layers.first { $0.kind == .music })
+        p.setReach(ofClip: added.clipID, in: t, toLayer: music.id)
+        #expect(p.clipAndLayer(added.clipID, in: t)?.clip.reach == nil)
+    }
+
     @Test func onlyAdjustmentClipsTakeAReach() throws {
         var (p, layers) = project(layers: 2)
         let t = p.rootTimelineID
