@@ -104,6 +104,7 @@ final class BeatMatchSession {
         player.audioOutputDeviceUniqueID = AudioDevices.playbackUID
         clicks.outputDeviceUID = AudioDevices.clicksUID
         clicks.isEnabled = true
+        midi = MIDITaps { [weak self] hostTime in self?.addBeat(atHostTime: hostTime) }
         player.volume = Float(songVolume)
         selectedSectionID = asset.beatMap.sections.first { $0.kind == .consistent && !$0.isConfirmed }?.id
             ?? asset.beatMap.sections.first?.id
@@ -492,6 +493,8 @@ final class BeatMatchSession {
         var seconds: Double
     }
     @ObservationIgnored private var tapRun: TapRun?
+    /// Taps on MIDI pads and keys, while the session is open.
+    @ObservationIgnored private var midi: MIDITaps?
     /// Taps further apart than this, in seconds, start a new run.
     static let longestTapGap = 4.0
 
@@ -501,7 +504,19 @@ final class BeatMatchSession {
     /// A run starts again after a pause, a seek, a gap or a new section;
     /// its first tap numbers as any added beat does.
     func addBeatAtPlayhead() {
-        let seconds = livePlayhead
+        tap(at: livePlayhead)
+    }
+
+    /// A note played on a MIDI pad or key at `hostTime`: as M, but where
+    /// the song was when it was played rather than when it was handled.
+    func addBeat(atHostTime hostTime: UInt64) {
+        guard isPlaying, let timebase = player.currentItem?.timebase else { return addBeatAtPlayhead() }
+        let played = CMSyncConvertTime(CMClockMakeHostTimeFromSystemUnits(hostTime), from: CMClockGetHostTimeClock(), to: timebase)
+        guard played.isNumeric else { return addBeatAtPlayhead() }
+        tap(at: CMTimeSubtract(played, alignment).seconds)
+    }
+
+    private func tap(at seconds: Double) {
         guard isPlaying else { return addBeat(at: seconds) }
         let time = sampleTime(seconds)
         var position: Int?

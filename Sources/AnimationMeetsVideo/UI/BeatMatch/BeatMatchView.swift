@@ -338,6 +338,9 @@ struct BeatMatchView: View {
 
     /// A full-width command with its key beside its name, so the sidebar's
     /// buttons line up in one column and the keys can be learned.
+    /// What dropping a beat says about tapping.
+    static let tapHelp = "Drops a beat where the song is. Tap M, or any note on a MIDI pad or keyboard, along with the song to place beats in a row; MIDI taps land where they were played."
+
     private func command(
         _ title: String, key: String? = nil, role: ButtonRole? = nil, prominent: Bool = false,
         action: @escaping () -> Void
@@ -497,6 +500,7 @@ struct BeatMatchView: View {
             group("Beats") {
                 command(section.pinnedBeats.isEmpty ? "Drop Anchor at Playhead" : "Drop Beat at Playhead", key: "M",
                         action: session.addBeatAtPlayhead)
+                    .help(Self.tapHelp)
                 fillCommand(section.isConfirmed ? "Reanalyze" : "Fill Beats", prominent: !section.isConfirmed)
                     .disabled(section.pinnedBeats.count < 2 || session.audio == nil || session.isFilling)
                     .help(section.isConfirmed ? "Keep the pinned beats and fit the rest to them (Return)" : "Find the tempo from the two anchors and fill the section (Return)")
@@ -508,6 +512,7 @@ struct BeatMatchView: View {
         } else if section.kind == .ramp {
             group("Beats") {
                 command("Drop Beat at Playhead", key: "M", action: session.addBeatAtPlayhead)
+                    .help(Self.tapHelp)
                 fillCommand(section.isConfirmed ? "Reanalyze Ramp" : "Fill Ramp", prominent: !section.isConfirmed)
                     .disabled(session.audio == nil || session.isFilling)
             }

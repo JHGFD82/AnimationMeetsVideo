@@ -69,7 +69,8 @@ step.
    first tap is 1 in a section not filled yet, and follows the beat before
    it in a filled one. Tapped beats are pinned, so a fill keeps them (each
    moved onto its onset within 15 ms); one tapped well off the beat bends
-   the grid until it is moved or deleted.
+   the grid until it is moved or deleted. Any note on a MIDI pad or
+   keyboard taps the same way (see [Tapping on MIDI](#tapping-on-midi)).
 2. **Line them up.** The tick plays on each anchor while the song plays.
    Drag the anchor on the waveform, which zooms down to single samples.
    From the keyboard (and VoiceOver), ← → move the selected anchor by
@@ -250,6 +251,17 @@ the waveform under it never moves. The downbeat (position
 timeline's view options; they are one pair of settings, remembered across
 launches. The pitch slider stops at 2000 Hz, so the downbeat goes no higher
 than 4000 Hz.
+
+## Tapping on MIDI
+
+While the Beat Match panel is open, a note-on (with a velocity) on any
+channel of any MIDI source taps as M does: from a pad, a keyboard or a
+DAW, plugged in before or while the panel is open (`MIDITaps`, through
+Core MIDI). A key press is placed wherever the song is when the main
+thread gets to it, tens of milliseconds late at times; a MIDI note carries
+the host time it arrived at, which is converted through the song player's
+timebase to the song's time, so it lands where it was played. While the
+song is paused a MIDI tap drops a beat at the playhead, as M does.
 
 ## Saving
 
