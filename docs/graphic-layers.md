@@ -1,7 +1,8 @@
 # Images, shapes and text
 
-Status: **planned**; step 1 (stills) is being built (see
-[Building it](#building-it)). Pictures that don't come from footage:
+Status: stills are **built** (step 1, not yet tried in the running app);
+shapes and text are **planned** (see [Building it](#building-it)).
+Pictures that don't come from footage:
 still images imported from files, and shapes and text made in the app,
 drawn as vectors.
 
@@ -33,7 +34,7 @@ browser, kept by path, never modified, and replaceable.
 - **Kinds.** `MediaKind.image`, `"Image"` in the project file. Anything
   ImageIO reads as an image: PNG, JPEG, HEIC, TIFF, GIF, WebP, PSD (flattened)
   and camera raw files. An animated GIF or PNG shows its first frame.
-- **Import.** The browser's Import panel and drops take image files.
+- **Import.** The browser's Import panel takes image files.
   `MediaImporter` asks ImageIO for the picture's size, orientation and
   color profile without decoding it. The asset's codec is the file's type
   ("PNG", "HEIC") and its color space is Rec. 709 unless the picture is
@@ -41,7 +42,10 @@ browser, kept by path, never modified, and replaceable.
   space, just as for footage.
 - **Length.** The asset's duration is the length a still gets when placed
   from the browser: 5 seconds. Its clips can then be trimmed out to any
-  length (`sourceDuration(for:)` is unbounded, as for adjustments).
+  length (`sourceDuration(for:)` is unbounded, as for adjustments), and a
+  transition at a cut has as much of a still as it wants on either side.
+  Not yet: like an adjustment clip, a still's leading edge can't be
+  dragged earlier than its source time 0, where it started.
 - **Orientation.** The EXIF orientation is applied when decoding, so the
   picture is upright as the person sees it in Finder.
 - **Color.** The compositor works on encoded values without color
@@ -184,12 +188,16 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
 
 ## Building it
 
-1. **Stills.** `MediaKind.image`, import through ImageIO, the still cache
-   and color conversion, `MediaDraw.still`, the black frame for
-   compositions without footage, the render key, the browser thumbnail,
-   skipping analysis, the project file, and refusing replacement across
-   kinds. Tests draw a still over footage and alone, check orientation and
-   alpha, and that moving one keeps its render key.
+1. **Stills** (done). `MediaKind.image`, import through ImageIO, the
+   still cache (`StillImages`) and color conversion, `MediaDraw.still`,
+   spare frames under transitions at cuts, the black frame for
+   compositions without footage (`BlankFrame`), the render key, thumbnails
+   in the browser and on timeline clips, skipping analysis, the project
+   file, and replacement. `StillTests` draws a still alone and over
+   footage, checks transparency, orientation, trimming past the placed
+   length, the render key after a move, missing files, saving (offline
+   too) and replacement. Not yet: no UI snapshot (thumbnails load
+   asynchronously), and HDR stills are untested.
 2. **Shapes.** `ClipSource.graphic`, the rectangle and ellipse, free paths
    and their keyframes, fill and stroke, drawing at the size the
    viewer draws at, pushing the leading move into the paths, and the

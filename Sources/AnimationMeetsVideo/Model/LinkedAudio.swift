@@ -5,10 +5,10 @@ import Foundation
 
 extension EditingProject {
     /// Whether the clip draws pictures: video it hasn't had its picture
-    /// taken from, and nested timelines.
+    /// taken from, stills, and nested timelines.
     func playsVideo(_ clip: TimelineClip) -> Bool {
         switch resolvedInfo(for: clip.source) {
-        case .media(let media): media.kind == .video && clip.streams != .audio
+        case .media(let media): media.kind.hasPictures && clip.streams != .audio
         case .timeline, .adjustment: true
         case nil: false
         }

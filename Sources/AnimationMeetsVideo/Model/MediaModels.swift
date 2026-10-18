@@ -601,7 +601,7 @@ enum ResolvedClipInfo {
 
     var isVideo: Bool {
         switch self {
-        case .media(let clip): clip.kind == .video
+        case .media(let clip): clip.kind.hasPictures
         case .timeline(let timeline): !timeline.layers.isEmpty
         case .adjustment: true
         }
@@ -667,18 +667,29 @@ struct MediaClip: Identifiable, Equatable {
     var formatSummary: String {
         "\(kind.rawValue) · \(codecName) · \(colorSpace.rawValue)"
     }
+
+    /// How long a still lasts when placed from the browser. It is a still's
+    /// `duration`; its clips can then be trimmed to any length.
+    static let stillLength = CMTime(value: 5, timescale: 1)
 }
 
-enum MediaKind: String {
+enum MediaKind: String, CaseIterable {
     case video = "Video"
     case audio = "Audio"
+    /// A still picture (see docs/graphic-layers.md): no time of its own,
+    /// so its clips can last as long as anyone wants.
+    case image = "Image"
 
     var systemImage: String {
         switch self {
         case .video: "film"
         case .audio: "waveform"
+        case .image: "photo"
         }
     }
+
+    /// Whether it has pictures to draw.
+    var hasPictures: Bool { self != .audio }
 }
 
 enum ProjectColorSpace: String, CaseIterable, Identifiable {

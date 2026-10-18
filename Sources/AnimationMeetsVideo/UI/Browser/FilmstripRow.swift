@@ -78,7 +78,7 @@ struct FilmstripRow: View {
 
     @ViewBuilder
     private func cellView(_ cell: FilmstripLayout.Cell) -> some View {
-        if entry.clip.kind == .video {
+        if entry.clip.kind.hasPictures {
             FilmstripThumbnail(
                 url: entry.clip.url,
                 time: entry.clip.fileTime(forSourceTime: CMTimeAdd(entry.start, CMTime(seconds: cell.start, preferredTimescale: 600))),

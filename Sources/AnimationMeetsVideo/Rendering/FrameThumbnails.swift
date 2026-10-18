@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import CoreMedia
+import ImageIO
 
 /// Small pictures of a file's frames, for filmstrips, scene lists and
 /// replacement checks. Made on request and kept in memory only (see
@@ -50,8 +51,10 @@ enum FrameThumbnails {
         "\(url.path)|\(Int((height * 2).rounded(.up)))"
     }
 
+    /// A still is the same picture at every time, so it is kept once.
     private static func key(url: URL, time: CMTime, height: CGFloat) -> NSString {
-        "\(url.path)|\(time.value)/\(time.timescale)|\(Int((height * 2).rounded(.up)))" as NSString
+        let time = MediaImporter.isImage(url) ? .zero : time
+        return "\(url.path)|\(time.value)/\(time.timescale)|\(Int((height * 2).rounded(.up)))" as NSString
     }
 
     /// The frame at `time` in the file, at most `height` points tall (drawn
@@ -63,9 +66,10 @@ enum FrameThumbnails {
         let key = key(url: url, time: time, height: height)
         if let cached = cache.object(forKey: key) { return cached }
 
-        let generator = generator(for: url, pixels: pixels)
         guard await limiter.acquire() else { return nil }
-        let made = await render(HandedOver(value: generator), time: time)
+        let made = MediaImporter.isImage(url)
+            ? await still(url: url, pixels: pixels)
+            : await render(HandedOver(value: generator(for: url, pixels: pixels)), time: time)
         await limiter.release()
 
         guard let made else { return nil }
@@ -86,6 +90,18 @@ enum FrameThumbnails {
         generator.maximumSize = CGSize(width: pixels * 16 / 9, height: pixels)
         generators[key] = generator
         return generator
+    }
+
+    /// A still's thumbnail, upright, from ImageIO without decoding the whole
+    /// picture when the file holds a smaller one.
+    private nonisolated static func still(url: URL, pixels: Int) async -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: pixels * 16 / 9,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
     private nonisolated static func render(_ generator: HandedOver<AVAssetImageGenerator>, time: CMTime) async -> CGImage? {

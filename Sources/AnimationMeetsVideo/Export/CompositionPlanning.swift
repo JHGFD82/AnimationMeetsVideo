@@ -90,7 +90,7 @@ extension CompositionExporter {
             // stretch's frames as they are.
             var straight: CMPersistentTrackID?
             if allowsPassthrough, !needsRender, clips.count == 1, case .media(let media) = clips[0].content,
-               media.base == .identity, clips[0].stack.isNoOp(over: whole, frame: frame) {
+               media.still == nil, media.base == .identity, clips[0].stack.isNoOp(over: whole, frame: frame) {
                 straight = media.trackID
             }
             guard needsRender else {
@@ -140,6 +140,12 @@ extension CompositionExporter {
 
         func describe(_ clip: DrawClip) {
             switch clip.content {
+            case .media(let media) where media.still != nil:
+                // The same picture throughout, so no file time: moving it
+                // keeps its render.
+                let stamp = FileStamp(url: media.url)
+                text += "I \(media.url.path) \(stamp?.byteCount ?? -1) \(number(stamp?.modified ?? 0)) \(matrix(media.base))"
+                text += " trails:" + media.trails.map { "\(number($0.strength))@\(number($0.delay.seconds))" }.joined(separator: ",") + "\n"
             case .media(let media):
                 let stamp = FileStamp(url: media.url)
                 let fileStart = CMTimeAdd(media.sourceStart, CMTimeSubtract(range.start, media.segmentStart))

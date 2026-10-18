@@ -1,19 +1,24 @@
 import AVFoundation
 import CoreMedia
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 enum MediaImportError: LocalizedError {
     case noTracks
+    case unreadableImage
 
     var errorDescription: String? {
         switch self {
         case .noTracks: "The file has no readable audio or video tracks."
+        case .unreadableImage: "The picture in the file can't be read."
         }
     }
 }
 
 enum MediaImporter {
     static func importClip(at url: URL) async throws -> MediaClip {
+        if isImage(url) { return try importStill(at: url) }
         let asset = AVURLAsset(url: url)
         let duration = try await asset.load(.duration)
         let tracks = try await asset.load(.tracks)
@@ -52,6 +57,65 @@ enum MediaImporter {
             hasAudio: !audioTracks.isEmpty,
             acceptedStamp: FileStamp(url: url)
         )
+    }
+
+    /// Whether the file is a picture, by its type: from its extension, or
+    /// without one, from the file. A movie whose type also counts as an
+    /// image (none common does) is read as a movie.
+    static func isImage(_ url: URL) -> Bool {
+        let named = url.pathExtension.isEmpty ? nil : UTType(filenameExtension: url.pathExtension)
+        guard let type = named ?? (try? url.resourceValues(forKeys: [.contentTypeKey]))?.contentType else { return false }
+        return type.conforms(to: .image) && !type.conforms(to: .movie)
+    }
+
+    /// A still, read with ImageIO without decoding its pixels: its type
+    /// names the codec, and a picture with a gain map or an HDR profile is
+    /// HDR (see docs/graphic-layers.md).
+    static func importStill(at url: URL) throws -> MediaClip {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil), CGImageSourceGetCount(source) > 0,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int, width > 0,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int, height > 0
+        else {
+            throw MediaImportError.unreadableImage
+        }
+        let type = CGImageSourceGetType(source).flatMap { UTType($0 as String) }
+        return MediaClip(
+            name: url.deletingPathExtension().lastPathComponent,
+            kind: .image,
+            url: url,
+            duration: MediaClip.stillLength,
+            frameRate: 0,
+            colorSpace: stillColorSpace(source),
+            codecName: type?.preferredFilenameExtension?.uppercased() ?? "Image",
+            acceptedStamp: FileStamp(url: url)
+        )
+    }
+
+    /// A still's size in pixels as it is shown, its orientation applied.
+    static func stillSize(at url: URL) -> CGSize? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int
+        else { return nil }
+        // Orientations 5 to 8 turn the picture a quarter.
+        let turned = (properties[kCGImagePropertyOrientation] as? Int).map { $0 >= 5 } ?? false
+        return turned ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
+    }
+
+    private static func stillColorSpace(_ source: CGImageSource) -> ProjectColorSpace {
+        for kind in [kCGImageAuxiliaryDataTypeISOGainMap, kCGImageAuxiliaryDataTypeHDRGainMap]
+        where CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, kind) != nil {
+            return .rec2020PQ
+        }
+        guard let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let space = image.colorSpace, CGColorSpaceUsesITUR_2100TF(space)
+        else {
+            return .rec709
+        }
+        let name = space.name.map { $0 as String } ?? ""
+        return name.contains("HLG") ? .rec2020HLG : .rec2020PQ
     }
 
     static func codecName(for formatDescription: CMFormatDescription) -> String {

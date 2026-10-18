@@ -178,7 +178,7 @@ struct ClipBlockView: View {
         // A video clip on a layer tall enough shows its footage under a band
         // of its colour that holds its name, so the name keeps its contrast.
         let pictures: MediaClip? = {
-            guard case .media(let media)? = info, media.kind == .video,
+            guard case .media(let media)? = info, media.kind.hasPictures,
                   height - Self.labelBand >= ClipThumbnails.minimumHeight
             else { return nil }
             return media

@@ -49,6 +49,11 @@ three tiers. A replacement with no differences in tiers 2 and 3 that
 aligns at the offset already in effect is applied without opening a
 dialog, which keeps folder replacement quiet for the files that match.
 
+Stills (see [graphic-layers.md](graphic-layers.md)) have no time to fall
+out of sync, so another picture replaces a still without anything being
+compared or asked. A still can't replace footage or sound, nor they a
+still; the replacement is refused with a message saying so.
+
 ### 1. Adjusted silently
 
 | Difference | Handling |

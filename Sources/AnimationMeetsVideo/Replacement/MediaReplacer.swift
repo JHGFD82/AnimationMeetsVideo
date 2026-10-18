@@ -53,6 +53,21 @@ struct ReplacementAnalysis: Sendable {
     }
 }
 
+/// Why a file can't replace an asset whatever is in it.
+enum ReplacementKindError: LocalizedError {
+    /// A still replaced by footage or sound, or the other way round.
+    case stillAndFootage(originalIsStill: Bool)
+
+    var errorDescription: String? {
+        switch self {
+        case .stillAndFootage(let originalIsStill):
+            originalIsStill
+                ? "A still can only be replaced by another picture."
+                : "Footage and sound can't be replaced by a still."
+        }
+    }
+}
+
 enum MediaReplacer {
     /// One video frame at the project's frame rate, or a 24th of a second.
     static func tolerance(frameRate: Double) -> CMTime {
@@ -75,6 +90,13 @@ enum MediaReplacer {
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> ReplacementAnalysis {
         let replacement = try await MediaImporter.importClip(at: url)
+        if asset.kind == .image || replacement.kind == .image {
+            guard asset.kind == replacement.kind else {
+                throw ReplacementKindError.stillAndFootage(originalIsStill: asset.kind == .image)
+            }
+            progress(1)
+            return stillReplacement(replacement, at: url)
+        }
         let captured = try await ReferenceCapture.capture(url: url) { progress($0 * 0.5) }
 
         guard let reference else {
@@ -132,6 +154,25 @@ enum MediaReplacer {
             proposedOffset: proposed, missingRanges: missing, usedRanges: usedRanges,
             cutMatchingUnavailable: cutMatchingUnavailable,
             audioWasCompared: reference.audioEnvelope != nil && captured.audioEnvelope != nil
+        )
+    }
+
+    /// A picture replacing a still: it has no time to fall out of sync, so
+    /// nothing is compared and it goes ahead without questions.
+    private static func stillReplacement(_ replacement: MediaClip, at url: URL) -> ReplacementAnalysis {
+        let stamp = FileStamp(url: url)
+        let size = MediaImporter.stillSize(at: url) ?? .zero
+        let snapshot = AssetMetadataSnapshot(
+            fileName: url.lastPathComponent, originalPath: url.path, byteCount: stamp?.byteCount ?? 0, modified: stamp?.modified,
+            isVideo: false, durationValue: replacement.duration.value, durationTimescale: replacement.duration.timescale,
+            frameRate: 0, width: Int(size.width), height: Int(size.height), codecName: replacement.codecName,
+            colorPrimaries: nil, colorTransfer: nil, colorMatrix: nil, audioSampleRate: nil,
+            capturedAt: Date().timeIntervalSince1970
+        )
+        return ReplacementAnalysis(
+            replacement: replacement, snapshot: snapshot, audioEnvelope: nil,
+            hasReference: true, report: MediaComparison.Report(), suggestion: nil, verdict: .aligned,
+            proposedOffset: .zero, missingRanges: [], usedRanges: []
         )
     }
 }

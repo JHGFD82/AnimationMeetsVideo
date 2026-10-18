@@ -422,6 +422,9 @@ struct Drawing {
             guard strength < 1 else { return image }
             return image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(strength))])
         }
+        // A still is the same picture at every moment, and has no other
+        // frames to mix in.
+        if let still = media.still { return still.image }
         guard var image = frame(trail?.trackID ?? media.trackID) else { return nil }
         if trail != nil { return image }
 

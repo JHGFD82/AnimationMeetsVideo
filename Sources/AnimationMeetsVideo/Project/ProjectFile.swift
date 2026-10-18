@@ -838,7 +838,7 @@ extension ProjectFile {
             .optional("previousPaths", .array(.string)),
             .optional("fileStamp", .object(object([.required("byteCount", .integer), .optional("modified", .number)]))),
             .optional("referenceForgotten", .bool),
-            .optional("kind", .choice(["Video", "Audio"], noun: "media kind")), .optional("duration", .time),
+            .optional("kind", .choice(MediaKind.allCases.map(\.rawValue), noun: "media kind")), .optional("duration", .time),
             .optional("frameRate", .number), .optional("codec", .string),
             .optional("colorSpace", .choice(ProjectColorSpace.allCases.map(\.rawValue), noun: "color space")),
             .optional("hasAudio", .bool),

@@ -500,8 +500,9 @@ final class AssetAnalysis {
             guard owners[clip.id] == nil, changedFiles[clip.id] == nil else { continue }
             let wantsScores = clip.kind == .video && tracks[clip.id] == nil && failure(.scenes, for: clip.id) == nil
             // Reference data describes the original, so it is never taken
-            // from a file that replaced it.
-            let canCapture = input.canCaptureReference
+            // from a file that replaced it. Stills have none: replacing one
+            // needs no alignment.
+            let canCapture = input.canCaptureReference && clip.kind != .image
             let wantsReference = canCapture && references[clip.id] == nil && failure(.reference, for: clip.id) == nil
             // Pictures are chosen from the scores, so they need scores to exist or be coming.
             let wantsThumbnails = clip.kind == .video && canCapture && !thumbnailed.contains(clip.id)

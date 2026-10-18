@@ -127,10 +127,38 @@ extension CompositionExporter {
                     }
                 }
 
+                /// `source`'s pictures from `sourceStart` placed at
+                /// `placedStart` for `duration`, drawn through `stack`:
+                /// footage on a track of `host`, or a still's picture.
+                func spare(
+                    _ source: TimelineClip, from sourceStart: CMTime, at placedStart: CMTime, for duration: CMTime,
+                    stack: ClipStack, host: TrackHost
+                ) async throws -> BuildNode? {
+                    if let still = try await stillDraw(of: source, project: project, in: timeline) {
+                        let shown = CMTimeRange(start: placedStart, duration: duration).intersection(window)
+                        guard shown.isValid, shown.duration > .zero else { return nil }
+                        return BuildNode(
+                            content: .still(still.picture, url: still.url, base: still.base, trails: []), stack: stack,
+                            range: CMTimeRange(start: CMTimeAdd(shown.start, offset), duration: shown.duration),
+                            owner: owner, layerID: layer.id
+                        )
+                    }
+                    guard let (placement, base) = try await mediaPlacement(
+                        of: source, from: sourceStart, at: placedStart, for: duration,
+                        project: project, frameSize: timeline.frameSize, window: window, offset: offset,
+                        includesVideo: true, includesAudio: false
+                    ) else { return nil }
+                    host.placements.append(placement)
+                    return BuildNode(content: .media(placement, base: base, extras: PlacementExtras()), stack: stack, range: .invalid, owner: owner, layerID: layer.id)
+                }
+
                 switch clip.source {
                 case .media(let mediaID):
+                    let still = try await stillDraw(of: clip, project: project, in: timeline)
                     let main: (Placement, CGAffineTransform)?
-                    if clip.isRetimed {
+                    if still != nil {
+                        main = nil
+                    } else if clip.isRetimed {
                         main = try await retimedPlacement(
                             of: clip, project: project, frameSize: timeline.frameSize, frameDuration: timeline.frameDuration,
                             window: window, offset: offset,
@@ -213,6 +241,22 @@ extension CompositionExporter {
                             ))
                         }
                     }
+                    if let still, project.playsVideo(clip) {
+                        let shown = CMTimeRange(start: clip.startOffset, end: clip.endOffset).intersection(window)
+                        if shown.isValid, shown.duration > .zero {
+                            // Its trails are its own picture at earlier
+                            // moments; a still has no other frames to blend
+                            // or echo.
+                            let trails = (clip.shutter.trails?.clamped).map { trails in
+                                (1...trails.count).map { k in (delay: CMTimeMultiply(trails.delay, multiplier: Int32(k)), strength: pow(trails.decay, Double(k))) }
+                            } ?? []
+                            ownNodes.append(BuildNode(
+                                content: .still(still.picture, url: still.url, base: still.base, trails: trails), stack: clipStack,
+                                range: CMTimeRange(start: CMTimeAdd(shown.start, offset), duration: shown.duration),
+                                owner: owner, layerID: layer.id, inputs: inputs
+                            ))
+                        }
+                    }
                     // Where this clip meets its neighbor at a cut, the
                     // neighbor's frames beyond its trim play underneath the
                     // transition, so a dissolve blends the two clips rather
@@ -222,32 +266,26 @@ extension CompositionExporter {
                     // Without spare frames there is nothing to show, and the
                     // transition plays over the layers below.
                     let durations = clipStack.edges == nil ? (leading: CMTime.zero, trailing: CMTime.zero) : clip.effectiveTransitionDurations(lead: lead)
-                    if lead > .zero, let (placement, base) = try await mediaPlacement(
-                        of: clip, from: CMTimeSubtract(clip.trimStart, lead), at: CMTimeSubtract(clip.startOffset, lead), for: lead,
-                        project: project, frameSize: timeline.frameSize, window: window, offset: offset,
-                        includesVideo: true, includesAudio: false
+                    if lead > .zero, let node = try await spare(
+                        clip, from: CMTimeSubtract(clip.trimStart, lead), at: CMTimeSubtract(clip.startOffset, lead), for: lead,
+                        stack: clipStack, host: overlay
                     ) {
-                        overlay.placements.append(placement)
-                        overlayNodes.append(BuildNode(content: .media(placement, base: base, extras: PlacementExtras()), stack: clipStack, range: .invalid, owner: owner, layerID: layer.id))
+                        overlayNodes.append(node)
                     }
                     if durations.leading > .zero, let previous = project.predecessor(joining: clip, among: clips),
-                       let (placement, base) = try await mediaPlacement(
-                           of: previous, from: previous.trimEnd, at: clip.startOffset, for: durations.leading,
-                           project: project, frameSize: timeline.frameSize, window: window, offset: offset,
-                           includesVideo: true, includesAudio: false
+                       let node = try await spare(
+                           previous, from: previous.trimEnd, at: clip.startOffset, for: durations.leading,
+                           stack: stack(of: previous), host: underlay
                        ) {
-                        underlay.placements.append(placement)
-                        underlayNodes.append(BuildNode(content: .media(placement, base: base, extras: PlacementExtras()), stack: stack(of: previous), range: .invalid, owner: owner, layerID: layer.id))
+                        underlayNodes.append(node)
                     }
                     if durations.trailing > .zero, let next = project.successor(joining: clip, among: clips),
-                       let (placement, base) = try await mediaPlacement(
-                           of: next, from: CMTimeSubtract(next.trimStart, durations.trailing),
+                       let node = try await spare(
+                           next, from: CMTimeSubtract(next.trimStart, durations.trailing),
                            at: CMTimeSubtract(clip.endOffset, durations.trailing), for: durations.trailing,
-                           project: project, frameSize: timeline.frameSize, window: window, offset: offset,
-                           includesVideo: true, includesAudio: false
+                           stack: stack(of: next), host: underlay
                        ) {
-                        underlay.placements.append(placement)
-                        underlayNodes.append(BuildNode(content: .media(placement, base: base, extras: PlacementExtras()), stack: stack(of: next), range: .invalid, owner: owner, layerID: layer.id))
+                        underlayNodes.append(node)
                     }
                 case .timeline(let nestedID):
                     guard let nested = project.timeline(id: nestedID) else { continue }
@@ -322,7 +360,7 @@ extension CompositionExporter {
         includesAudio: Bool
     ) async throws -> (Placement, CGAffineTransform)? {
         guard case .media(let mediaID) = clip.source,
-              let media = project.mediaClip(id: mediaID), let url = media.url
+              let media = project.mediaClip(id: mediaID), media.kind != .image, let url = media.url
         else {
             return nil
         }
@@ -368,7 +406,7 @@ extension CompositionExporter {
         includesAudio: Bool
     ) async throws -> (Placement, CGAffineTransform)? {
         guard case .media(let mediaID) = clip.source,
-              let media = project.mediaClip(id: mediaID), let url = media.url
+              let media = project.mediaClip(id: mediaID), media.kind != .image, let url = media.url
         else {
             return nil
         }
@@ -402,6 +440,26 @@ extension CompositionExporter {
         }
         let base = info.orientedTransform.concatenating(fitTransform(from: info.orientedSize, to: frameSize))
         return (Placement(info: info, pieces: pieces, includesVideo: includesVideo, includesAudio: includesAudio), base)
+    }
+
+    /// A still clip's picture for `timeline`, decoded, with the transform that
+    /// fits it into the timeline's frame. Nil when the clip isn't a still,
+    /// or its file is missing while building for the viewer (see
+    /// `skipsMissingMedia`).
+    static func stillDraw(
+        of clip: TimelineClip, project: EditingProject, in timeline: Timeline
+    ) async throws -> (picture: StillPicture, url: URL, base: CGAffineTransform)? {
+        guard case .media(let mediaID) = clip.source, let media = project.mediaClip(id: mediaID), media.kind == .image else {
+            return nil
+        }
+        guard let url = media.url, FileManager.default.fileExists(atPath: url.path) else {
+            if skipsMissingMedia { return nil }
+            throw CompositionError.missingMedia(media.name)
+        }
+        guard let picture = await StillImages.shared.picture(at: url, frameSize: timeline.frameSize, colorSpace: timeline.colorSpace) else {
+            throw MediaImportError.unreadableImage
+        }
+        return (picture, url, fitTransform(from: picture.size, to: timeline.frameSize))
     }
 
     /// Scales `source` to fit inside `target` (aspect-preserving) and centers it.

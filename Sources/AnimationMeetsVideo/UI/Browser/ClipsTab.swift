@@ -406,7 +406,7 @@ struct ClipsTab: View {
     /// a picture not yet made. With how many things are dragged when there
     /// are several.
     static func dragImage(of clip: MediaClip, at start: CMTime, size: CGSize, count: Int) -> NSImage {
-        let picture = clip.kind == .video ? clip.url.flatMap {
+        let picture = clip.kind.hasPictures ? clip.url.flatMap {
             FrameThumbnails.nearestCached(url: $0, time: clip.fileTime(forSourceTime: start), height: size.height)
         } : nil
         let waveform = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?

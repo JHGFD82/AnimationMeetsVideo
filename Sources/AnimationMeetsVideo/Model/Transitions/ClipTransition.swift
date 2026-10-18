@@ -471,9 +471,17 @@ extension EditingProject {
 
     /// Footage past the outgoing clip's out point and before the incoming
     /// clip's in point: what a joining transition plays besides the clips.
+    /// A still is the same picture before its in point as after it, so it
+    /// has as much as anyone wants on either side.
     func spareFootage(outgoing: TimelineClip, incoming: TimelineClip) -> (tail: CMTime, head: CMTime) {
         let length = sourceDuration(for: outgoing.source) ?? outgoing.trimEnd
-        return (CMTimeMaximum(.zero, CMTimeSubtract(length, outgoing.trimEnd)), CMTimeMaximum(.zero, incoming.trimStart))
+        let head = isStill(incoming) ? Self.unboundedLength : CMTimeMaximum(.zero, incoming.trimStart)
+        return (CMTimeMaximum(.zero, CMTimeSubtract(length, outgoing.trimEnd)), head)
+    }
+
+    /// Whether the clip shows a still.
+    func isStill(_ clip: TimelineClip) -> Bool {
+        if case .media(let media) = resolvedInfo(for: clip.source) { media.kind == .image } else { false }
     }
 
     /// The length and lead a joining transition can have. Before the cut

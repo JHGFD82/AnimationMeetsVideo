@@ -179,7 +179,7 @@ struct BrowserPanel: View {
     /// copy is what's imported.
     private func importMedia() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.movie, .audio]
+        panel.allowedContentTypes = [.movie, .audio, .image]
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         // Starts as the project's setting, and can differ for one import.

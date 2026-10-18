@@ -57,6 +57,7 @@ enum CompositionExporter {
     /// or changed on disk.
     static func forgetCachedMedia(at url: URL) async {
         await MediaTrackCache.shared.forget(url)
+        await StillImages.shared.forget(url)
     }
 
     /// With `forPreview` the viewer may draw at a reduced size, so every
@@ -174,7 +175,17 @@ enum CompositionExporter {
             }
         }
 
-        guard composition.duration > .zero else {
+        let tree = nodes.compactMap { $0.frozen() }
+        // Stills have no track, so with no footage there is nothing to give
+        // the composition pictures or a length: a black frame stands in.
+        var blank: AVURLAsset?
+        if filler == nil, !tree.isEmpty {
+            blank = try await BlankFrame.asset()
+            if let blank, let track = try await blank.loadTracks(withMediaType: .video).first {
+                filler = (track, try await track.load(.timeRange))
+            }
+        }
+        guard composition.duration > .zero || blank != nil else {
             throw CompositionError.emptyTimeline
         }
         // Sound moved earlier for its effects' delay mustn't end the
@@ -185,16 +196,24 @@ enum CompositionExporter {
         // Sections can run past the last clip. A composition ends with its
         // last media (an empty edit at the end doesn't count), so a frame of
         // some source is stretched over the rest on a track of its own. No
-        // instruction shows that track, so the stretch plays as black.
-        if composition.duration < timeline.duration, let filler,
+        // instruction shows that track, so the stretch plays as black. The
+        // black frame for stills covers everything, so there is always a
+        // video track to draw, however long the sound runs.
+        if composition.duration < timeline.duration || blank != nil, let filler,
            let track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
-            let gap = CMTimeRange(start: composition.duration, end: timeline.duration)
+            let gap = blank != nil
+                ? CMTimeRange(start: .zero, end: CMTimeMaximum(composition.duration, timeline.duration))
+                : CMTimeRange(start: composition.duration, end: timeline.duration)
             let piece = CMTimeRange(start: filler.range.start, duration: CMTimeMinimum(filler.range.duration, frameDuration(for: timeline.frameRate)))
-            try track.insertTimeRange(piece, of: filler.track, at: gap.start)
+            try withExtendedLifetime(blank) {
+                try track.insertTimeRange(piece, of: filler.track, at: gap.start)
+            }
             track.scaleTimeRange(CMTimeRange(start: gap.start, duration: piece.duration), toDuration: gap.duration)
         }
+        guard composition.duration > .zero else {
+            throw CompositionError.emptyTimeline
+        }
 
-        let tree = nodes.compactMap { $0.frozen() }
         var plan = planRanges(
             tree: tree, overallDuration: composition.duration, allowsPassthrough: !forPreview,
             frameSize: timeline.frameSize, frameRate: timeline.frameRate, colorSpace: timeline.colorSpace,

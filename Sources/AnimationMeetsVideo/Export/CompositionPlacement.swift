@@ -168,14 +168,17 @@ enum BuildInput {
 final class BuildNode {
     enum Content {
         case media(Placement, base: CGAffineTransform, extras: PlacementExtras)
+        /// A still, drawn throughout the node's range with no track. Its
+        /// trails are its own picture at earlier moments.
+        case still(StillPicture, url: URL, base: CGAffineTransform, trails: [(delay: CMTime, strength: Double)])
         case group(frameSize: CGSize, toOuter: CGAffineTransform, passThrough: Bool, children: [BuildNode])
         case adjustment(reachedLayerIDs: Set<UUID>, reachesAll: Bool)
     }
 
     let content: Content
     let stack: ClipStack
-    /// Where the clip is drawn in root time, for a group or an adjustment.
-    /// A picture's is where its track puts it.
+    /// Where the clip is drawn in root time, for a group, an adjustment or a
+    /// still. Footage's is where its track puts it.
     let range: CMTimeRange
     let owner: UUID
     /// The layer of its timeline the clip is on.
@@ -228,6 +231,22 @@ final class BuildNode {
                     opticalFlow: extras.opticalFlow,
                     echoes: extras.echoes.compactMap { copy($0.placement, $0.strength) },
                     trails: extras.trails.compactMap { copy($0.placement, $0.strength) }
+                )),
+                stack: stack, range: range, owner: owner, layerID: layerID, inputs: frozenInputs()
+            )
+        case .still(let picture, let url, let base, let trails):
+            return DrawClip(
+                content: .media(MediaDraw(
+                    trackID: kCMPersistentTrackID_Invalid, base: base, url: url,
+                    sourceStart: .zero, segmentStart: range.start,
+                    trails: trails.map { trail in
+                        TrackCopy(
+                            trackID: kCMPersistentTrackID_Invalid,
+                            range: CMTimeRange(start: CMTimeAdd(range.start, trail.delay), duration: range.duration),
+                            strength: trail.strength, delay: trail.delay
+                        )
+                    },
+                    still: picture
                 )),
                 stack: stack, range: range, owner: owner, layerID: layerID, inputs: frozenInputs()
             )

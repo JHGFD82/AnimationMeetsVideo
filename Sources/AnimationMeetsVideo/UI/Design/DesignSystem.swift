@@ -245,6 +245,7 @@ extension Design.ClipTone {
             switch mediaClip.kind {
             case .video: streams == .audio ? .audio : .video
             case .audio: .audio
+            case .image: .video
             }
         case .timeline: .nested
         case .adjustment: .adjustment

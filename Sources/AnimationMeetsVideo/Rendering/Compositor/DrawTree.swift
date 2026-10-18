@@ -73,8 +73,9 @@ struct TrackCopy: Equatable, Sendable {
     var delay = CMTime.zero
 }
 
-/// A picture read from a composition track.
+/// A picture read from a composition track, or a still, which has none.
 struct MediaDraw: @unchecked Sendable {
+    /// Invalid for a still.
     var trackID: CMPersistentTrackID
     /// Orients the track's frames and fits them into the frame of the
     /// timeline the clip is in (pixels, origin top left).
@@ -99,12 +100,16 @@ struct MediaDraw: @unchecked Sendable {
     /// For Echo: earlier frames, nearest first, layered under the current one.
     var echoes: [TrackCopy] = []
     /// For Trails: the footage as it was at earlier moments, nearest first,
-    /// for copies of the finished clip.
+    /// for copies of the finished clip. A still's copies have no track.
     var trails: [TrackCopy] = []
+    /// The picture of a still, drawn in place of a track's frames at every
+    /// moment (see docs/graphic-layers.md).
+    var still: StillPicture?
 
     /// Every track the picture may be read from.
     var trackIDs: [CMPersistentTrackID] {
-        [trackID] + [nextFrame].compactMap { $0 }.map(\.trackID) + echoes.map(\.trackID) + trails.map(\.trackID)
+        ([trackID] + [nextFrame].compactMap { $0 }.map(\.trackID) + echoes.map(\.trackID) + trails.map(\.trackID))
+            .filter { $0 != kCMPersistentTrackID_Invalid }
     }
 
     /// The same, keeping only the copies that have frames throughout `range`.
