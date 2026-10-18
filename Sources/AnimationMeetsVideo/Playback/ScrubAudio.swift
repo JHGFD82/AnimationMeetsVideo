@@ -1,7 +1,6 @@
 import AVFoundation
 import CoreMedia
 import Foundation
-import os
 
 /// Plays a short grain of the mix wherever the playhead is moved while
 /// paused, so a cut or a beat can be found by ear as well as by eye. See
@@ -10,8 +9,14 @@ import os
 /// The mix around the playhead is read out through the composition's audio
 /// mix, as playback hears it, a few seconds at a time, and kept; grains come
 /// from that. Everything (reading, the engine, scheduling) happens on one
-/// serial queue, and a request that a newer one has overtaken is dropped,
-/// so a fast drag plays only where the playhead is now.
+/// serial queue.
+///
+/// A grain is never cut off: that is what made scrubbing crackle, a hard
+/// stop mid-waveform for every move of a drag. Grains are paced instead
+/// (`GrainPacer`): while the playhead keeps moving, each starts `hop` after
+/// the last, from wherever the playhead is by then, on the other of two
+/// players, so it fades in while the last one fades out. The fades are
+/// raised cosines, which sum to a steady level across the overlap.
 final class ScrubAudio: @unchecked Sendable {
     /// How much of the mix is read at once: a little before the playhead
     /// and more after, since scrubbing mostly moves forward.
@@ -20,21 +25,28 @@ final class ScrubAudio: @unchecked Sendable {
     /// One grain: long enough to tell what it is, short enough to follow a
     /// drag.
     static let grain = 0.08
-    /// Each end of a grain fades over this, so it doesn't click.
-    static let fade = 0.005
+    /// Each end of a grain fades over this, so it doesn't click; it is
+    /// also how much one grain overlaps the next.
+    static let fade = 0.01
+    /// How far apart grains start while the playhead keeps moving.
+    static let hop = grain - fade
+    /// How far ahead of its start a grain is handed to its player.
+    static let lead = 0.015
     static let sampleRate = 48_000.0
 
     private let queue = DispatchQueue(label: "AnimationMeetsVideo.scrub-audio", qos: .userInitiated)
-    /// Requests by number; a job whose number isn't the newest is dropped.
-    private let latest = OSAllocatedUnfairLock(initialState: 0)
 
     // Touched only on `queue`.
     private var composed: ComposedTimeline?
     private var curves: MixCurves?
     private var cache: (start: Double, left: [Float], right: [Float])?
     private var engine: AVAudioEngine?
-    private var node: AVAudioPlayerNode?
+    /// Two players, taken in turn, so a grain fades in while the one before
+    /// it fades out on the other.
+    private var nodes: [AVAudioPlayerNode] = []
+    private var nextNode = 0
     private var deviceUID: String?
+    private var pacer = GrainPacer(hop: hop, lead: lead)
 
     /// Takes up a new composition to read from, forgetting what was read
     /// of the old one.
@@ -57,28 +69,29 @@ final class ScrubAudio: @unchecked Sendable {
     /// with `deviceUID` (nil for the system's default).
     func play(at seconds: Double, deviceUID: String?) {
         guard seconds.isFinite else { return }
-        let number = latest.withLock { value in
-            value += 1
-            return value
-        }
         queue.async {
-            guard self.latest.withLock({ $0 }) == number else { return }
-            guard let grain = self.grain(at: max(0, seconds)) else { return }
-            // A newer request came in while reading: it plays instead.
-            guard self.latest.withLock({ $0 }) == number else { return }
-            self.schedule(grain, deviceUID: deviceUID)
+            switch self.pacer.request(max(0, seconds), now: Self.now()) {
+            case .play(let seconds):
+                self.play(seconds, at: nil, deviceUID: deviceUID)
+            case .wait(let until):
+                self.queue.asyncAfter(deadline: .now() + max(0, until - Self.now())) {
+                    guard let next = self.pacer.fire(now: Self.now()) else { return }
+                    self.play(next.seconds, at: next.start, deviceUID: deviceUID)
+                }
+            case .none:
+                break
+            }
         }
     }
 
-    /// Stops what is playing and lets the engine go, after a while of not
-    /// being used.
+    /// Stops what is playing and lets the engine go.
     func stop() {
-        latest.withLock { $0 += 1 }
         queue.async {
-            self.node?.stop()
+            self.pacer.reset()
+            for node in self.nodes { node.stop() }
             self.engine?.stop()
             self.engine = nil
-            self.node = nil
+            self.nodes = []
         }
     }
 
@@ -105,13 +118,31 @@ final class ScrubAudio: @unchecked Sendable {
         var left = Array(cache.left[first..<end]), right = Array(cache.right[first..<end])
         let fade = min(left.count / 2, Int(Self.fade * Self.sampleRate))
         for index in 0..<fade {
-            let gain = Float(index) / Float(fade)
+            let gain = Self.fadeIn(Float(index) / Float(fade))
             left[index] *= gain
             right[index] *= gain
             left[left.count - 1 - index] *= gain
             right[right.count - 1 - index] *= gain
         }
         return (left, right)
+    }
+
+    /// A raised cosine from 0 to 1 over 0...1: it starts and ends flat, so
+    /// it doesn't click, and with its mirror image it sums to 1.
+    static func fadeIn(_ x: Float) -> Float {
+        0.5 - 0.5 * cos(.pi * min(max(x, 0), 1))
+    }
+
+    /// Now on the host clock, in seconds.
+    private static func now() -> Double {
+        AVAudioTime.seconds(forHostTime: mach_absolute_time())
+    }
+
+    /// Plays the grain at `seconds`, starting at `start` on the host clock
+    /// in seconds, or at once.
+    private func play(_ seconds: Double, at start: Double?, deviceUID: String?) {
+        guard let grain = grain(at: seconds) else { return }
+        schedule(grain, at: start, deviceUID: deviceUID)
     }
 
     /// Reads the mix from `start` for `before + after` seconds.
@@ -153,36 +184,99 @@ final class ScrubAudio: @unchecked Sendable {
         return (first, left, right)
     }
 
-    private func schedule(_ grain: (left: [Float], right: [Float]), deviceUID: String?) {
+    private func schedule(_ grain: (left: [Float], right: [Float]), at start: Double?, deviceUID: String?) {
         guard let format = AVAudioFormat(standardFormatWithSampleRate: Self.sampleRate, channels: 2),
               let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(grain.left.count)),
-              let node = startEngine(deviceUID: deviceUID, format: format)
+              startEngine(deviceUID: deviceUID, format: format)
         else { return }
         buffer.frameLength = AVAudioFrameCount(grain.left.count)
         buffer.floatChannelData![0].update(from: grain.left, count: grain.left.count)
         buffer.floatChannelData![1].update(from: grain.right, count: grain.right.count)
-        node.scheduleBuffer(buffer, at: nil, options: .interrupts)
+        // The other player from last time, whose grain ended a hop ago:
+        // nothing is cut off. A start already past plays at once.
+        let node = nodes[nextNode]
+        nextNode = (nextNode + 1) % nodes.count
+        let when = start.flatMap { $0 > Self.now() ? AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: $0)) : nil }
+        node.scheduleBuffer(buffer, at: when)
         node.play()
     }
 
-    /// The engine, started on `deviceUID`'s device, made again when the
-    /// device changed.
-    private func startEngine(deviceUID: String?, format: AVAudioFormat) -> AVAudioPlayerNode? {
-        if let engine, let node, engine.isRunning, self.deviceUID == deviceUID { return node }
+    /// Starts the engine on `deviceUID`'s device, making it again when the
+    /// device changed. False when it can't start.
+    private func startEngine(deviceUID: String?, format: AVAudioFormat) -> Bool {
+        if let engine, engine.isRunning, !nodes.isEmpty, self.deviceUID == deviceUID { return true }
         engine?.stop()
         let engine = AVAudioEngine()
-        let node = AVAudioPlayerNode()
-        engine.attach(node)
+        let nodes = [AVAudioPlayerNode(), AVAudioPlayerNode()]
+        for node in nodes { engine.attach(node) }
         if let device = deviceUID.flatMap({ AudioDevices.device(uid: $0)?.id }), let unit = engine.outputNode.audioUnit {
             var device = device
             AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
         }
-        engine.connect(node, to: engine.mainMixerNode, format: format)
+        for node in nodes { engine.connect(node, to: engine.mainMixerNode, format: format) }
         engine.prepare()
-        guard (try? engine.start()) != nil else { return nil }
+        guard (try? engine.start()) != nil else { return false }
         self.engine = engine
-        self.node = node
+        self.nodes = nodes
+        nextNode = 0
         self.deviceUID = deviceUID
-        return node
+        return true
+    }
+}
+
+/// When scrub grains start. A move of the playhead with nothing playing
+/// starts one at once; moves while one plays wait for the next start, a
+/// hop after the last, and the newest of them plays from where the
+/// playhead is then. Times are seconds on the host clock.
+struct GrainPacer: Equatable {
+    enum Action: Equatable {
+        /// Play from these seconds of the timeline now.
+        case play(Double)
+        /// Come back at this time (`fire`), a lead before the next start.
+        case wait(until: Double)
+        /// A wait is already set; the newest request will play then.
+        case none
+    }
+
+    let hop: Double
+    let lead: Double
+    private var lastStart: Double?
+    private var pending: Double?
+    private var waiting = false
+
+    init(hop: Double, lead: Double) {
+        self.hop = hop
+        self.lead = lead
+    }
+
+    mutating func request(_ seconds: Double, now: Double) -> Action {
+        if waiting {
+            pending = seconds
+            return .none
+        }
+        if let lastStart, now < lastStart + hop {
+            pending = seconds
+            waiting = true
+            return .wait(until: lastStart + hop - lead)
+        }
+        lastStart = now
+        return .play(seconds)
+    }
+
+    /// At the time a wait asked for: what to play, and when it starts,
+    /// exactly a hop after the last. Nil when it was reset meanwhile.
+    mutating func fire(now: Double) -> (seconds: Double, start: Double)? {
+        waiting = false
+        guard let seconds = pending, let lastStart else { return nil }
+        pending = nil
+        let start = max(now, lastStart + hop)
+        self.lastStart = start
+        return (seconds, start)
+    }
+
+    mutating func reset() {
+        lastStart = nil
+        pending = nil
+        waiting = false
     }
 }

@@ -260,10 +260,18 @@ leaves the result a little under the target.
 
 While paused, moving the playhead (dragging it, clicking the ruler,
 stepping with the arrow keys, jumping to a keyframe) plays a moment of the
-mix where it lands: 80 ms, faded over 5 ms at each end so it doesn't
-click, out of the playback device (`ScrubAudio`). A fast drag plays only
-where the playhead is now: requests that a newer one overtook are
-dropped. The Settings window's Sound tab turns it off.
+mix where it lands: an 80 ms grain whose ends fade over 10 ms with a
+raised cosine, out of the playback device (`ScrubAudio`). The Settings
+window's Sound tab turns it off.
+
+A grain is never cut off, since a hard stop mid-waveform clicks, and a
+drag makes dozens of them a second. Grains are paced (`GrainPacer`): the
+first move plays at once; moves while a grain plays wait for the next
+start, exactly 70 ms after the last, and only the newest of them plays,
+from where the playhead is by then. Each grain goes to the other of two
+players, so it fades in while the one before fades out, and the two
+fades sum to a steady level across their 10 ms overlap. A drag is heard
+as a smooth run of grains following the playhead, up to 70 ms behind it.
 
 The mix is read out through the composition's audio mix, as playback
 hears it, a second before the playhead and three after, and kept, so
