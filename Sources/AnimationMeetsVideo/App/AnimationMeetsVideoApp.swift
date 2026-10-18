@@ -97,12 +97,10 @@ struct AnimationMeetsVideoApp: App {
                 .background(WindowCloseGuard(shouldClose: shouldCloseWindow))
                 .background(
                     Color.clear.sheet(isPresented: $showsProjectSettings) {
-                        ProjectSettingsView(project: project) { name, copies in
-                            var changed = project
-                            changed.name = name
-                            changed.copiesMediaOnImport = copies
-                            if changed != project { project = changed }
-                        }
+                        // Read in the sheet's own view: read here, the
+                        // project would rebuild the whole window's content
+                        // at every edit.
+                        ProjectSettingsSheet(project: $project)
                     }
                 )
                 // A project opened from Finder (double-click, or dropped on

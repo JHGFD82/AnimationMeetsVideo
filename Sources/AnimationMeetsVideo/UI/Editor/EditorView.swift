@@ -72,7 +72,8 @@ struct EditorView: View {
                 renderer: renderer
             )
             TimelineEditorSurface(
-                project: $project, timelineID: activeTimeline, selection: $selection,
+                project: $project, timelineID: activeTimeline.wrappedValue,
+                selectTimeline: { [activeTimeline] in activeTimeline.wrappedValue = $0 }, selection: $selection,
                 playback: playback, analysis: analysis, offlineMedia: replacement.missingMedia
             ) {
                 BrowserPanel(

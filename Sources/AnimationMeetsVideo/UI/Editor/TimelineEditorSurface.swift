@@ -8,7 +8,13 @@ import SwiftUI
 /// timeline below runs the full width of the window.
 struct TimelineEditorSurface<Library: View>: View {
     @Binding var project: EditingProject
-    @Binding var timelineID: UUID
+    /// The timeline shown, which the surface only reads. A value rather
+    /// than a binding: a binding made for each redraw of the editor, as the
+    /// active timeline's is, counts as changed every time and redrew the
+    /// whole surface on every edit.
+    let timelineID: UUID
+    /// Shows another timeline, as the header's timeline menu does.
+    var selectTimeline: (UUID) -> Void = { _ in }
     @Binding var selection: TimelineSelection?
     let playback: PlaybackModel
     let analysis: AssetAnalysis
@@ -168,7 +174,7 @@ struct TimelineEditorSurface<Library: View>: View {
             let resolvedTimelineHeight = min(max(CGFloat(timelineHeight), minTimelineHeight), maxTimelineHeight)
 
             VStack(spacing: 0) {
-                TimelineHeaderBar(project: $project, timelineID: $timelineID)
+                TimelineHeaderBar(project: $project, timelineID: Binding(get: { timelineID }, set: selectTimeline))
 
                 HStack(spacing: 0) {
                     library()
@@ -709,14 +715,15 @@ enum SidePanelTab: String, CaseIterable, Identifiable {
 extension TimelineEditorSurface where Library == EmptyView {
     init(
         project: Binding<EditingProject>,
-        timelineID: Binding<UUID>,
+        timelineID: UUID,
+        selectTimeline: @escaping (UUID) -> Void = { _ in },
         selection: Binding<TimelineSelection?>,
         playback: PlaybackModel,
         analysis: AssetAnalysis,
         offlineMedia: Set<UUID> = []
     ) {
         self.init(
-            project: project, timelineID: timelineID, selection: selection,
+            project: project, timelineID: timelineID, selectTimeline: selectTimeline, selection: selection,
             playback: playback, analysis: analysis, offlineMedia: offlineMedia
         ) {
             EmptyView()

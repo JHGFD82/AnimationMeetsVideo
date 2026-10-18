@@ -50,3 +50,18 @@ struct ProjectSettingsView: View {
         }
     }
 }
+
+/// The project settings for a sheet, reading the project only once shown,
+/// so the scene that presents it doesn't depend on the project.
+struct ProjectSettingsSheet: View {
+    @Binding var project: EditingProject
+
+    var body: some View {
+        ProjectSettingsView(project: project) { name, copies in
+            var changed = project
+            changed.name = name
+            changed.copiesMediaOnImport = copies
+            if changed != project { project = changed }
+        }
+    }
+}

@@ -112,10 +112,8 @@ private struct ExternalViewerContent: View {
             } else {
                 TimelineEditorSurface(
                     project: $project,
-                    timelineID: Binding(
-                        get: { independentTimelineID ?? primaryTimelineID },
-                        set: { independentTimelineID = $0 }
-                    ),
+                    timelineID: independentTimelineID ?? primaryTimelineID,
+                    selectTimeline: { independentTimelineID = $0 },
                     selection: $independentSelection,
                     playback: independentPlayback,
                     analysis: analysis
