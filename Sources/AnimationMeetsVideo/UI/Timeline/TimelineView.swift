@@ -201,9 +201,15 @@ struct TimelineView: View {
         channelsRevealed.contains(layer.id) && canShowChannels(of: layer)
     }
 
+    /// Adjustment layers' one fixed height: their clips have no picture or
+    /// sound to show, only a name, so they aren't resized.
+    static let adjustmentRowHeight: CGFloat = 28
+
     /// The clips' row: the layer's height, doubled (with a floor) on sound
-    /// layers showing their channels, so each gets a band.
+    /// layers showing their channels, so each gets a band. Adjustment
+    /// layers are always `adjustmentRowHeight`.
     private func clipRowHeight(of layer: TimelineLayer) -> CGFloat {
+        if layer.isAdjustment { return Self.adjustmentRowHeight }
         let height = areaLayout.height(of: layer.id, kind: layer.kind)
         guard layer.kind != .video, showsChannels(of: layer) else { return height }
         return max(height, Self.channelBandHeight) * 2
@@ -717,14 +723,17 @@ struct TimelineView: View {
                     separator
                 }
                 .overlay(alignment: .bottom) {
-                    LayerResizeDivider(
-                        onChanged: { dy, flags in resizeLayer(layer, by: dy, flags: flags) },
-                        onEnded: { layerResize = nil },
-                        onStep: { step in
-                            areaLayout.setHeight(areaLayout.height(of: layer.id, kind: layer.kind) + step, of: layer.id, kind: layer.kind)
-                        }
-                    )
-                    .offset(y: LayerResizeDivider.hitHeight / 2)
+                    // Adjustment layers keep one height.
+                    if !layer.isAdjustment {
+                        LayerResizeDivider(
+                            onChanged: { dy, flags in resizeLayer(layer, by: dy, flags: flags) },
+                            onEnded: { layerResize = nil },
+                            onStep: { step in
+                                areaLayout.setHeight(areaLayout.height(of: layer.id, kind: layer.kind) + step, of: layer.id, kind: layer.kind)
+                            }
+                        )
+                        .offset(y: LayerResizeDivider.hitHeight / 2)
+                    }
                 }
                 // Alternating tone, faint enough to read as banding rather
                 // than as two kinds of layer. With the grooves it is what

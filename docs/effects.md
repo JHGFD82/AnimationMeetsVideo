@@ -475,6 +475,8 @@ layer can reach different depths.
   reaches down over the layers it adjusts, brighter while the clip is
   selected. One that reaches nothing gets a dashed outline around the clip
   alone.
+- Adjustment layers have one fixed, compact height: their clips show only
+  a name, so they aren't resized like other layers.
 
 ### How it draws
 
