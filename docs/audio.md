@@ -114,6 +114,7 @@ are clamped on load.
 ## Not implemented yet
 
 - Pan.
+- An EQ, planned in [equalizer.md](equalizer.md).
 - Dragging the level line up and down in the lane; levels are set in the
   field or with the fader.
 - Audio fades under transitions.
