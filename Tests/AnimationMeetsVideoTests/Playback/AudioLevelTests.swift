@@ -55,6 +55,25 @@ import Testing
         #expect(sound.effects.isEmpty)
     }
 
+    /// A clip's first volume moves its sound onto a track of its own, so
+    /// the player has to be rebuilt; later level changes don't.
+    @Test func aClipsOwnVolumeRebuildsOnlyWhenItAppears() throws {
+        var project = EditingProject.empty
+        let media = MediaClip(
+            name: "Tone", kind: .audio, url: nil, duration: CMTime(value: 2, timescale: 1),
+            frameRate: 0, colorSpace: .rec709, codecName: "PCM", hasAudio: true
+        )
+        let imported = project.importClip(media, intoTimeline: project.rootTimelineID)
+        let ids = try #require(imported)
+        let flat = CompositionKey(project: project)
+        project.editClip(ids.clipID, in: project.rootTimelineID) { $0.volume.set(-6, at: .zero) }
+        let lowered = CompositionKey(project: project)
+        project.editClip(ids.clipID, in: project.rootTimelineID) { $0.volume.set(-12, at: .zero) }
+        let lowerStill = CompositionKey(project: project)
+        #expect(lowered != flat)
+        #expect(lowerStill == lowered)
+    }
+
     /// Plays a constant tone through the composition's audio mix the way an
     /// export does, and checks the layer's volume and the meter.
     @Test func theMixAppliesVolumeAboveUnityAndMetersIt() async throws {
