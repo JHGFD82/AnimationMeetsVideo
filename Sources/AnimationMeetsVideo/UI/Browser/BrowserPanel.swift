@@ -20,8 +20,10 @@ enum BrowserTab: String, CaseIterable, Identifiable {
 /// The browser left of the viewer: what can go into a timeline, in tabs.
 /// See docs/browser.md.
 struct BrowserPanel: View {
-    @Binding var project: EditingProject
-    @Binding var activeTimelineID: UUID
+    /// The project, read and edited through an object SwiftUI doesn't
+    /// watch, so only `==` decides when the browser redraws.
+    let access: ProjectAccess
+    let activeTimelineID: UUID
     @Binding var selection: TimelineSelection?
     let analysis: AssetAnalysis
     let replacement: MediaReplacementController
@@ -30,6 +32,11 @@ struct BrowserPanel: View {
     /// comparison uses (see `==`): the bindings always read the current
     /// values.
     let shown: Shown
+
+    private var project: EditingProject {
+        get { access.value }
+        nonmutating set { access.binding.wrappedValue = newValue }
+    }
 
     struct Shown: Equatable {
         /// The project without its values (`EditingProject.structure`):
@@ -67,7 +74,7 @@ struct BrowserPanel: View {
             switch tab {
             case .clips:
                 ClipsTab(
-                    project: $project, activeTimelineID: activeTimelineID, selection: $selection,
+                    project: access.binding, activeTimelineID: activeTimelineID, selection: $selection,
                     analysis: analysis, replacement: replacement, packageURL: packageURL
                 )
             case .timelines: timelinesList

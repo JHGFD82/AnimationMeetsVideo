@@ -25,8 +25,8 @@ struct EditorView: View {
     @State private var renderer = RenderScheduler()
     @State private var beatMatch = BeatMatchController()
     @State private var tapeScrubber = TapeScrubberWindow()
-    /// The project as the browser reads it (see `browserProject`).
-    @State private var browserCopy = UnobservedProject()
+    /// The project as the browser reads and edits it (see `browserProject`).
+    @State private var browserAccess = ProjectAccess()
 
     init(
         project: Binding<EditingProject>,
@@ -43,19 +43,18 @@ struct EditorView: View {
         self._activeTimelineID = State(initialValue: project.wrappedValue.rootTimelineID)
     }
 
-    /// The project for the browser, read from a copy SwiftUI doesn't watch.
-    /// Reading `project` itself would redraw the browser on every edit,
-    /// however its `==` compares; this way it redraws only when what it
-    /// shows changes. The copy is the project as of this redraw, and edits
-    /// go to the project.
-    private var browserProject: Binding<EditingProject> {
-        let copy = browserCopy
-        copy.value = project
+    /// The project for the browser, through an object SwiftUI doesn't
+    /// watch, brought up to date at each redraw. Reading `project` itself, or
+    /// a `Binding(get:set:)` made for each redraw, which SwiftUI takes as
+    /// changed every time, would redraw the browser on every edit however
+    /// its `==` compares; this way it redraws only when what it shows
+    /// changes. Edits go to the project.
+    private var browserProject: ProjectAccess {
+        let access = browserAccess
+        access.value = project
         let project = $project
-        return Binding(get: { copy.value }, set: { newValue in
-            copy.value = newValue
-            project.wrappedValue = newValue
-        })
+        access.write = { project.wrappedValue = $0 }
+        return access
     }
 
     var body: some View {
@@ -77,7 +76,7 @@ struct EditorView: View {
                 playback: playback, analysis: analysis, offlineMedia: replacement.missingMedia
             ) {
                 BrowserPanel(
-                    project: browserProject, activeTimelineID: activeTimeline, selection: $selection,
+                    access: browserProject, activeTimelineID: activeTimeline.wrappedValue, selection: $selection,
                     analysis: analysis, replacement: replacement, packageURL: packageURL,
                     shown: BrowserPanel.Shown(structure: project.structure, activeTimelineID: activeTimelineID, selection: selection)
                 )
@@ -172,9 +171,21 @@ struct EditorView: View {
     }
 }
 
-/// A project kept where SwiftUI doesn't watch it, for a view that redraws
-/// on comparing what it shows rather than on every edit (see
-/// `EditorView.browserProject`).
-final class UnobservedProject {
+/// A project kept where SwiftUI doesn't watch it, with the way to edit it,
+/// for a view that redraws on comparing what it shows rather than on every
+/// edit (see `EditorView.browserProject`).
+final class ProjectAccess {
+    /// The project as of the owner's last redraw, or the last edit made
+    /// through this.
     var value = EditingProject.empty
+    /// Puts an edited project in place of the owner's.
+    var write: (EditingProject) -> Void = { _ in }
+
+    /// Reads and edits the project, for views below that take a binding.
+    var binding: Binding<EditingProject> {
+        Binding(get: { self.value }, set: { newValue in
+            self.value = newValue
+            self.write(newValue)
+        })
+    }
 }
