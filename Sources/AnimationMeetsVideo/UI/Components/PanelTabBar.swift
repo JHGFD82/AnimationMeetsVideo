@@ -25,20 +25,21 @@ struct PanelTabBar<Tab: Hashable & Identifiable, Accessory: View>: View {
 
     var body: some View {
         HStack(spacing: Design.Space.close) {
-            Picker("", selection: $selection) {
-                ForEach(tabs) { tab in
-                    Text(tab[keyPath: title]).tag(tab)
-                }
+            // A segmented control doesn't shrink, so in a narrow panel it
+            // pushed the panel's own buttons out of sight. It steps down a
+            // size first, so the buttons stay.
+            ViewThatFits(in: .horizontal) {
+                tabPicker
+                tabPicker.controlSize(.small)
+                tabPicker.controlSize(.mini)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
             accessory()
             if let onClose {
                 Button(action: onClose) {
-                    Image(systemName: "xmark")
+                    Image(systemName: Design.Symbol.close)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.icon)
                 .help(closeHelp)
                 .accessibilityLabel(closeHelp)
             }
@@ -46,6 +47,17 @@ struct PanelTabBar<Tab: Hashable & Identifiable, Accessory: View>: View {
         .padding(.horizontal, Design.Space.group)
         .padding(.vertical, Design.Space.close)
         .rail(.raised)
+    }
+
+    private var tabPicker: some View {
+        Picker("", selection: $selection) {
+            ForEach(tabs) { tab in
+                Text(tab[keyPath: title]).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
     }
 }
 
