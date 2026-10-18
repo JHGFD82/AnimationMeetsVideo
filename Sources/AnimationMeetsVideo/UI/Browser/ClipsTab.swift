@@ -57,7 +57,10 @@ struct BrowserEntry: Identifiable {
 /// clip until its scenes are found, with their progress across its top,
 /// and is then replaced by its scenes under its name. See docs/browser.md.
 struct ClipsTab: View {
-    @Binding var project: EditingProject
+    /// The project, read and edited through an object SwiftUI doesn't
+    /// watch: the tab redraws when the browser does, which compares what it
+    /// shows, not at every edit (see `BrowserPanel`).
+    let access: ProjectAccess
     let activeTimelineID: UUID
     @Binding var selection: TimelineSelection?
     let analysis: AssetAnalysis
@@ -76,6 +79,11 @@ struct ClipsTab: View {
     @State private var cursor: BrowserItemID?
     @State private var coverageCache = SceneCoverageCache()
     @FocusState private var focused: Bool
+
+    private var project: EditingProject {
+        get { access.value }
+        nonmutating set { access.binding.wrappedValue = newValue }
+    }
 
     private static let padding: CGFloat = 10
     /// How close to a range's end a press grabs its handle.
@@ -212,10 +220,10 @@ struct ClipsTab: View {
             coverageCache.keep(only: Set(project.clips.map(\.id)))
         }
         .sheet(item: $sensitivityTarget) { target in
-            SensitivitySheet(project: $project, target: target, track: analysis.tracks[target.assetID])
+            SensitivitySheet(project: access.binding, target: target, track: analysis.tracks[target.assetID])
         }
         .sheet(item: $previewTarget) { target in
-            ScenePreviewSheet(project: $project, target: target, track: analysis.tracks[target.assetID])
+            ScenePreviewSheet(project: access.binding, target: target, track: analysis.tracks[target.assetID])
         }
         .sunken(.sunken)
     }
@@ -565,7 +573,7 @@ struct ClipsTab: View {
             }
         }
         Divider()
-        ReplaceMediaMenuItems(clip: clip, project: $project, analysis: analysis, controller: replacement, packageURL: packageURL)
+        ReplaceMediaMenuItems(clip: clip, project: access.binding, analysis: analysis, controller: replacement, packageURL: packageURL)
     }
 
     @ViewBuilder

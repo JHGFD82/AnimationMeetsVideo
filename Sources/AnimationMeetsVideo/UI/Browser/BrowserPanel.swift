@@ -74,7 +74,7 @@ struct BrowserPanel: View {
             switch tab {
             case .clips:
                 ClipsTab(
-                    project: access.binding, activeTimelineID: activeTimelineID, selection: $selection,
+                    access: access, activeTimelineID: activeTimelineID, selection: $selection,
                     analysis: analysis, replacement: replacement, packageURL: packageURL
                 )
             case .timelines: timelinesList
