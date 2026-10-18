@@ -103,7 +103,7 @@ struct ParameterLane: View {
                 Image(systemName: systemImage)
                 Text("\(count)")
             }
-            .font(.system(size: 8))
+            .font(Design.Typeface.glyphTiny)
             .foregroundStyle(Design.textTertiary)
             .padding(.horizontal, 3)
             .allowsHitTesting(false)

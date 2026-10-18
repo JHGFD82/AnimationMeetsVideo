@@ -86,7 +86,7 @@ struct LayerHeaderRow: View {
                     Color.clear
                 }
             }
-            .font(.system(size: 9, weight: .semibold))
+            .font(Design.Typeface.tag)
             .foregroundStyle(Design.textTertiary)
             .frame(width: 12)
             Text("\(number)")

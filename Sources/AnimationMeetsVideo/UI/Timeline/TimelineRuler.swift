@@ -54,7 +54,7 @@ struct TimelineRuler: View {
                 }
                 let time = CMTimeMultiply(frameDuration, multiplier: Int32(clamping: frame))
                 let label = Text(time.compactTimecode(frameRate: frameRate))
-                    .font(.system(size: 10, weight: landmark.weight, design: .monospaced))
+                    .font(Design.Typeface.numericMicro.weight(landmark.weight))
                     .foregroundStyle(landmark == .none ? Design.textTertiary : Design.textPrimary)
                 context.draw(label, at: CGPoint(x: x + 3, y: 18), anchor: .leading)
             case .mid:

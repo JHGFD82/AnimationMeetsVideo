@@ -209,6 +209,8 @@ enum Design {
         /// figure that the shape around it also explains.
         static let tag = Font.system(size: 9, weight: .semibold)
         static let numericTag = Font.system(size: 9, weight: .bold, design: .monospaced)
+        /// Two figures in a tag sized for one.
+        static let numericTagCompact = Font.system(size: 8, weight: .bold, design: .monospaced)
         /// Scale readings on graphs and meters, which sit on the drawing.
         static let numericScale = Font.system(size: 9, design: .monospaced)
 

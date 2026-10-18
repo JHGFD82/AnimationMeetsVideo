@@ -13,7 +13,7 @@ extension EffectsPanel {
         besideLane(
             HStack(alignment: .top, spacing: 4) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 9))
+                    .font(Design.Typeface.glyphSmall)
                     .padding(.top, 1)
                 Text(change.message)
                     .font(Design.Typeface.micro)

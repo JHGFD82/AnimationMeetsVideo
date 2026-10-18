@@ -106,7 +106,7 @@ struct ParameterRow<MenuContent: View>: View {
                     Image(systemName: "chart.xyaxis.line").foregroundStyle(Design.textSecondary)
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 9))
+                .font(Design.Typeface.glyphSmall)
                 .help("Open \(name.lowercased())'s graph editor to shape its eases")
             }
             RowMenu(content: menu)
@@ -146,7 +146,7 @@ struct ParameterRow<MenuContent: View>: View {
             .help("Next keyframe")
         }
         .buttonStyle(.plain)
-        .font(.system(size: 8))
+        .font(Design.Typeface.glyphTiny)
     }
 }
 
@@ -227,7 +227,7 @@ struct EffectHeaderRow<MenuContent: View>: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "line.3.horizontal")
-                .font(.system(size: 9))
+                .font(Design.Typeface.glyphSmall)
                 .foregroundStyle(Design.textTertiary)
                 .frame(width: 12)
                 .contentShape(Rectangle())
@@ -341,7 +341,7 @@ struct EffectNoteRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 4) {
             Image(systemName: note.dims ? "exclamationmark.triangle" : "info.circle")
-                .font(.system(size: 9))
+                .font(Design.Typeface.glyphSmall)
             Text(note.text)
                 .font(Design.Typeface.micro)
                 .fixedSize(horizontal: false, vertical: true)

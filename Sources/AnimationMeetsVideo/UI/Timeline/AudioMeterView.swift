@@ -76,7 +76,7 @@ struct AudioMeterView: View {
         for mark in Self.marks {
             let y = y(ofDecibels: mark, height: size.height)
             context.draw(
-                Text(mark == 0 ? "0" : "\(Int(-mark))").font(.system(size: 8, design: .monospaced)).foregroundStyle(Design.textTertiary),
+                Text(mark == 0 ? "0" : "\(Int(-mark))").font(Design.Typeface.numericScale).foregroundStyle(Design.textTertiary),
                 at: CGPoint(x: scaleWidth - 3, y: min(max(y, 5), size.height - 5)), anchor: .trailing
             )
         }

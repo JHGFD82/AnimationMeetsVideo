@@ -480,7 +480,7 @@ struct EffectsPanel: View {
         let clip = c.clip
         let handle = AnyView(
             Image(systemName: "line.3.horizontal")
-                .font(.system(size: 8))
+                .font(Design.Typeface.glyphTiny)
                 .foregroundStyle(Design.textTertiary)
                 .frame(width: 12)
                 .contentShape(Rectangle())

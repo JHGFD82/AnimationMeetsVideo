@@ -336,7 +336,7 @@ struct BeatMatchWaveform: View {
             let key = "\(tag.beat.position)\(tag.isSelected ? "s" : "")"
             let number = numbers[key] ?? context.resolve(
                 Text("\(tag.beat.position)")
-                    .font(.system(size: tag.beat.position > 9 ? 8 : 9, weight: .bold, design: .monospaced))
+                    .font(tag.beat.position > 9 ? Design.Typeface.numericTagCompact : Design.Typeface.numericTag)
                     .foregroundStyle(tag.isSelected ? Design.textOnColor : Design.Surface.well.color)
             )
             numbers[key] = number

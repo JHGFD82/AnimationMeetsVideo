@@ -13,7 +13,7 @@ struct ProjectStartView: View {
                 TimelineMark()
                 VStack(alignment: .leading, spacing: Design.Space.close) {
                     Text("Animation Meets Video")
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(Design.Typeface.display)
                         .foregroundStyle(Design.textPrimary)
                     Text("A project is a folder on disk. Make one first and everything after it — the media you import, the scenes and beats found in it, the frames rendered in the background — is written there as it happens, not held in memory until you remember to save.")
                         .font(Design.Typeface.body)

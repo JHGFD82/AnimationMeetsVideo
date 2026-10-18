@@ -237,14 +237,14 @@ struct KeyframeGraphView: View {
             let y = layout.y(shown)
             context.fill(Path(CGRect(x: plot.minX, y: y, width: plot.width, height: 0.5)), with: .color(.white.opacity(0.08)))
             context.draw(
-                Text(key.parameter.label(shown)).font(.system(size: 9, design: .monospaced)).foregroundStyle(Design.textTertiary),
+                Text(key.parameter.label(shown)).font(Design.Typeface.numericScale).foregroundStyle(Design.textTertiary),
                 at: CGPoint(x: plot.minX - 6, y: y), anchor: .trailing
             )
         }
         for (seconds, anchor) in [(layout.times.lowerBound, UnitPoint.topLeading), (layout.times.upperBound, .topTrailing)] {
             let time = CMTime(seconds: max(0, seconds), preferredTimescale: 6000)
             context.draw(
-                Text(time.timecode(frameRate: timeline.frameRate)).font(.system(size: 9, design: .monospaced)).foregroundStyle(Design.textTertiary),
+                Text(time.timecode(frameRate: timeline.frameRate)).font(Design.Typeface.numericScale).foregroundStyle(Design.textTertiary),
                 at: CGPoint(x: layout.x(seconds), y: plot.maxY + 4), anchor: anchor
             )
         }

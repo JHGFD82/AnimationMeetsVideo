@@ -82,7 +82,7 @@ private struct TransitionTile: View {
     var body: some View {
         VStack(spacing: Design.Space.close) {
             Image(systemName: kind.systemImage)
-                .font(.title3)
+                .font(Design.Typeface.glyphLarge)
                 .foregroundStyle(isHovering ? Design.textPrimary : Design.textSecondary)
                 .frame(maxWidth: .infinity, minHeight: 40)
                 .beveledChip(

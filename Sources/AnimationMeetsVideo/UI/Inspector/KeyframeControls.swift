@@ -8,7 +8,7 @@ struct PropertyRowIcon: View {
 
     var body: some View {
         Image(systemName: systemName)
-            .font(.system(size: 10))
+            .font(Design.Typeface.micro)
             .frame(width: 18, height: 18)
             .contentShape(Rectangle())
     }
