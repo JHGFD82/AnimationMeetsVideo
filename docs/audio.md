@@ -256,6 +256,22 @@ samples, not true peak: sound between samples can go a little over it.
 Heavy limiting, when a quiet mix with sharp peaks is raised a long way,
 leaves the result a little under the target.
 
+## Scrubbing
+
+While paused, moving the playhead (dragging it, clicking the ruler,
+stepping with the arrow keys, jumping to a keyframe) plays a moment of the
+mix where it lands: 80 ms, faded over 5 ms at each end so it doesn't
+click, out of the playback device (`ScrubAudio`). A fast drag plays only
+where the playhead is now: requests that a newer one overtook are
+dropped. The Settings window's Sound tab turns it off.
+
+The mix is read out through the composition's audio mix, as playback
+hears it, a second before the playhead and three after, and kept, so
+grains near each other cost nothing; moving outside it reads again. An
+edit forgets what was read, since it may change the sound. All of it
+(reading, the engine, scheduling) runs on one queue of its own, and
+playing lets go of its engine.
+
 ## Output devices
 
 The Settings window's **Sound** tab picks where sound plays: **Playback**,
@@ -360,7 +376,7 @@ dropped on load.
 - Sound effects on Sound and Music layers, and voice isolation (see
   [Sound effects](#sound-effects)).
 - Making up for a sound effect's delay.
-- A meter per layer, and reading the mix while scrubbing or paused.
+- A meter per layer, and a meter reading while scrubbing or paused.
 - Integrated loudness of the timeline in the editor, and loudness range.
 - A true-peak ceiling, and a report after export of what mastering did.
 - Surround (5.1) sound: there is no surround panning to fill its channels.

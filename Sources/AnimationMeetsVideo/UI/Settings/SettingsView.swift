@@ -136,6 +136,7 @@ private struct TimelineSettings: View {
 private struct SoundSettings: View {
     @AppStorage(Preferences.playbackOutputDevice) private var playbackDevice = ""
     @AppStorage(Preferences.clickOutputDevice) private var clickDevice = ""
+    @AppStorage(Preferences.scrubAudio) private var scrubAudio = true
     @State private var list = AudioDeviceList()
 
     var body: some View {
@@ -148,6 +149,13 @@ private struct SoundSettings: View {
                     devicePicker("Beat tick output", selection: $clickDevice, automatic: "Same as Playback")
                 }
                 SheetNote("Play the timeline on the room's speakers and the tick only in your headphones, say. A device that is unplugged plays out of the system's default until it is back.")
+            }
+            Groove()
+            SheetSection("Scrubbing") {
+                SheetRow("Playhead", alignment: .center) {
+                    Toggle("Play the sound under it as it moves", isOn: $scrubAudio)
+                }
+                SheetNote("While paused, dragging or stepping the playhead plays a moment of the mix at each place it stops.")
             }
         }
     }

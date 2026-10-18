@@ -44,6 +44,8 @@ enum Preferences {
     /// The UID of the device the beat tick plays out of; empty or absent
     /// for the same as the editor's sound.
     static let clickOutputDevice = "clickOutputDevice"
+    /// Whether moving the playhead while paused plays the sound under it.
+    static let scrubAudio = "scrubAudio"
     /// Whether the timeline plays while a take is recorded.
     static let recordWhilePlaying = "recordWhilePlaying"
     /// What takes are recorded from (see `RecordPopover`).

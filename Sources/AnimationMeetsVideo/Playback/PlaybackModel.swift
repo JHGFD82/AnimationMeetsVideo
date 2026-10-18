@@ -41,6 +41,10 @@ final class PlaybackModel {
     let mixCurves = MixCurves()
     /// How loud the mix is, measured by the same taps, for the meter.
     let mixMeter = MixLevelMeter()
+    /// Plays the mix under the playhead as it is moved while paused.
+    let scrubAudio = ScrubAudio()
+    /// The device the sound plays out of, as last routed.
+    @ObservationIgnored private var outputUID: String?
     /// The paused frame drawn at full size, shown over the player while it
     /// draws smaller. Auto keeps playing's level while paused, so pressing
     /// play doesn't swap the composition; this is what keeps paused frames
@@ -119,6 +123,7 @@ final class PlaybackModel {
     /// on every unrelated change.
     private func routeSound() {
         let playback = AudioDevices.playbackUID
+        outputUID = playback
         if player.audioOutputDeviceUniqueID != playback { player.audioOutputDeviceUniqueID = playback }
         beatClicks.outputDeviceUID = AudioDevices.clicksUID
     }
@@ -163,6 +168,7 @@ final class PlaybackModel {
         item.videoComposition = composed.videoComposition(scaledBy: level.scale)
         item.audioMix = composed.audioMix(curves: mixCurves, meter: mixMeter)
         mixMeter.reset()
+        scrubAudio.setComposition(composed, curves: mixCurves)
         // The old still stays until the new one is drawn (or turns out not
         // to be needed): clearing it here would uncover the player's
         // smaller picture for a moment on every rebuild.
@@ -207,7 +213,11 @@ final class PlaybackModel {
         // hasn't reached it yet.
         if !playing, !isSeeking { currentTime = player.currentTime() }
         isPlaying = playing
-        if playing { clearLive() }
+        if playing {
+            clearLive()
+            // Playing lets go of the scrub engine and its device.
+            scrubAudio.stop()
+        }
         drawingOptions.update(isPlaying: playing)
         sampling?.cancel()
         sampling = nil
@@ -299,6 +309,9 @@ final class PlaybackModel {
     /// target replaces any that was queued behind it, so dragging the
     /// playhead doesn't pile up zero-tolerance seeks.
     func seek(to time: CMTime) {
+        if !isPlaying, UserDefaults.standard.object(forKey: Preferences.scrubAudio) as? Bool ?? true {
+            scrubAudio.play(at: time.seconds, deviceUID: outputUID)
+        }
         currentTime = time
         pendingSeek = time
         clearLive()

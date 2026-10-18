@@ -304,6 +304,7 @@ struct TimelineEditorSurface<Library: View>: View {
             // rebuild. Worked out here, once per edit, rather than in
             // `body`, which also runs for selection and playhead changes.
             playback.mixCurves.replace(with: MixCurves.of(project))
+            playback.scrubAudio.forget()
             // Show Up to Here lets go of an effect that is gone.
             if effectsState.showUpTo != nil, partialView == nil { effectsState.showUpTo = nil }
         }
