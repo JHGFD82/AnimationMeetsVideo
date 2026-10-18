@@ -303,7 +303,7 @@ struct TimelineEditorSurface<Library: View>: View {
             // taps read them as they play, so an edit is heard without a
             // rebuild. Worked out here, once per edit, rather than in
             // `body`, which also runs for selection and playhead changes.
-            playback.volumeCurves.replace(with: VolumeCurves.of(project))
+            playback.mixCurves.replace(with: MixCurves.of(project))
             // Show Up to Here lets go of an effect that is gone.
             if effectsState.showUpTo != nil, partialView == nil { effectsState.showUpTo = nil }
         }

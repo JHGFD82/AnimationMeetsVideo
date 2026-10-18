@@ -374,7 +374,7 @@ private let frame = CMTime(value: 1, timescale: 24)
             let (project, _) = try project(sound: sound, speed: 50, in: directory)
             let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
             #expect(abs(composed.composition.duration.seconds - 4) < 0.05)
-            let audioMix = composed.audioMix(curves: VolumeCurves(VolumeCurves.of(project)))
+            let audioMix = composed.audioMix(curves: MixCurves(MixCurves.of(project)))
             let mix = try #require(audioMix as? AVMutableAudioMix)
             #expect(mix.inputParameters.first?.audioTimePitchAlgorithm == expected)
         }

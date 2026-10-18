@@ -646,6 +646,7 @@ enum ProjectStore {
                                     ? nil : ProjectFile.PropertyEntry(clip.anchorPoint) { [$0.x, $0.y] },
                                 effects: clip.effects.isEmpty ? nil : clip.effects.map(ProjectFile.EffectEntry.init),
                                 volume: clip.volume == AnimatedValue(0.0) ? nil : ProjectFile.PropertyEntry(clip.volume) { $0 },
+                                pan: clip.pan == AnimatedValue(0.0) ? nil : ProjectFile.PropertyEntry(clip.pan) { $0 },
                                 passThrough: clip.passThrough ? true : nil,
                                 time: ProjectFile.ClipTimeEntry(clip.time),
                                 shutter: ProjectFile.ShutterEntry(clip.shutter)
@@ -653,6 +654,8 @@ enum ProjectStore {
                         },
                         volume: layer.kind.isAudio && layer.volume != AnimatedValue(0.0)
                             ? ProjectFile.PropertyEntry(layer.volume) { $0 } : nil,
+                        pan: layer.kind.isAudio && layer.pan != AnimatedValue(0.0)
+                            ? ProjectFile.PropertyEntry(layer.pan) { $0 } : nil,
                         adjustment: layer.isAdjustment ? true : nil,
                         reach: layer.isAdjustment ? layer.reach : nil
                     )
@@ -801,12 +804,14 @@ enum ProjectStore {
                                 } ?? AnimatedValue(Vector2.zero),
                                 effects: (clipEntry.effects ?? []).compactMap(\.effect),
                                 volume: clipEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0),
+                                pan: clipEntry.pan?.property(default: 0.0) { AudioPan.clamped($0) } ?? AnimatedValue(0.0),
                                 passThrough: clipEntry.passThrough ?? false,
                                 time: clipEntry.time?.time ?? ClipTime(),
                                 shutter: clipEntry.shutter?.shutter ?? ClipShutter()
                             )
                         },
                         volume: layerEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0),
+                        pan: layerEntry.pan?.property(default: 0.0) { AudioPan.clamped($0) } ?? AnimatedValue(0.0),
                         isAdjustment: layerEntry.adjustment ?? false,
                         // A reach that names no layer of this timeline reaches every layer below.
                         reach: (layerEntry.adjustment ?? false) ? layerEntry.reach.flatMap { layerIDs.contains($0) ? $0 : nil } : nil

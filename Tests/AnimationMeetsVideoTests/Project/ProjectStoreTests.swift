@@ -98,6 +98,8 @@ private struct Sandbox {
             $0.anchorPoint.setAnimated(true, at: .zero)
             $0.anchorPoint.set(Vector2(x: 12, y: -4), at: CMTime(value: 2, timescale: 1))
             $0.volume.set(-6, at: .zero)
+            $0.pan.setAnimated(true, at: .zero)
+            $0.pan.set(-40, at: CMTime(value: 1, timescale: 1))
             $0.passThrough = true
             $0.time.speed.setAnimated(true, at: .zero)
             $0.time.speed.set(300, at: CMTime(value: 3, timescale: 1))
@@ -118,6 +120,7 @@ private struct Sandbox {
         #expect(restored.effects == saved.effects)
         #expect(restored.anchorPoint == saved.anchorPoint)
         #expect(restored.volume == saved.volume)
+        #expect(restored.pan == saved.pan)
     }
 
     @Test func roundTripKeepsAnEffectsInput() async throws {
@@ -285,6 +288,12 @@ private struct Sandbox {
         let restored = try #require(loaded.project.timeline(id: timelineID)?.layers.first?.volume)
         #expect(restored == saved)
         #expect(restored.keyframes.count == 3)
+
+        project.editPan(of: layerID, in: timelineID) { $0.set(250, at: .zero) }
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let panned = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        // Clamped to hard right on the way in.
+        #expect(panned.project.timeline(id: timelineID)?.layers.first?.pan == AnimatedValue(100.0))
     }
 
     @Test func roundTripKeepsStreamsAndTransitions() async throws {

@@ -97,7 +97,7 @@ enum CompositionExporter {
         }
 
         let composition = AVMutableComposition()
-        var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage], pitch: AVAudioTimePitchAlgorithm?)] = []
+        var audioTracks: [(track: AVAssetTrack, stages: [MixStage], pitch: AVAudioTimePitchAlgorithm?)] = []
         /// A stretch of some source's picture, to fill time after the last clip.
         var filler: (track: AVAssetTrack, range: CMTimeRange)?
 
@@ -227,7 +227,7 @@ enum CompositionExporter {
             throw CompositionError.noExportSession
         }
         exportSession.videoComposition = composed.videoComposition
-        exportSession.audioMix = composed.audioMix(curves: VolumeCurves(VolumeCurves.of(project)))
+        exportSession.audioMix = composed.audioMix(curves: MixCurves(MixCurves.of(project)))
 
         // The save panel already confirmed replacing an existing file, but
         // AVAssetExportSession refuses to write over one.

@@ -33,6 +33,41 @@ enum AudioLevel {
     }
 }
 
+/// Where a clip's or layer's sound sits between the speakers, from −100
+/// (left only) through 0 (as the media is) to +100 (right only). It is a
+/// balance: moving toward one side turns the other channel down, and the
+/// near one stays as it is, so the center is unchanged rather than 3 dB
+/// down. Keyframes blend linearly.
+enum AudioPan {
+    static let range = -100.0...100.0
+
+    static func clamped(_ pan: Double) -> Double {
+        guard pan.isFinite else { return pan > 0 ? range.upperBound : range.lowerBound }
+        return min(max(pan, range.lowerBound), range.upperBound)
+    }
+
+    /// The left and right channels' gain factors.
+    static func gains(_ pan: Double) -> SIMD2<Float> {
+        let p = Float(clamped(pan) / 100)
+        return SIMD2(min(1, 1 - p), min(1, 1 + p))
+    }
+
+    /// "C", "L 30" or "R 100".
+    static func label(_ pan: Double) -> String {
+        let number = NumericExpression.format(abs(clamped(pan)), maxFractionDigits: 0)
+        if number == "0" { return "C" }
+        return (pan < 0 ? "L " : "R ") + number
+    }
+}
+
+extension TimelineClip {
+    /// Whether the clip has a volume or pan of its own, which puts its
+    /// sound on a composition track of its own to be played through them.
+    var hasOwnMix: Bool {
+        volume != AnimatedValue(0.0) || pan != AnimatedValue(0.0)
+    }
+}
+
 extension TimelineLayer {
     /// The layer's volume at `time` in its timeline, as a gain factor.
     func gain(at time: CMTime) -> Float {
@@ -50,6 +85,16 @@ extension EditingProject {
             return
         }
         change(&timelines[tIndex].layers[lIndex].volume)
+    }
+
+    /// Applies `change` to a layer's pan, as `editVolume` does its volume.
+    mutating func editPan(of layerID: UUID, in timelineID: UUID, _ change: (inout AnimatedValue<Double>) -> Void) {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        else {
+            return
+        }
+        change(&timelines[tIndex].layers[lIndex].pan)
     }
 
     /// Whether any clip on the layer makes sound, so its volume matters.

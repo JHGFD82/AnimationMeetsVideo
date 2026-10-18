@@ -140,8 +140,10 @@ extension EditingProject {
                 return clip
             }
             // Clips' keyframes count in their source's time, which a new
-            // rate doesn't change; a layer's volume counts in the timeline's.
+            // rate doesn't change; a layer's volume and pan count in the
+            // timeline's.
             layer.volume.moveKeyframeTimes(nearest)
+            layer.pan.moveKeyframeTimes(nearest)
             timelines[tIndex].layers[lIndex] = layer
         }
 

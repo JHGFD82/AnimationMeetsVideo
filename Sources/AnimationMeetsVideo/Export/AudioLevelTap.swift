@@ -4,75 +4,107 @@ import Foundation
 import MediaToolbox
 import os
 
-/// One volume a composition audio track plays through: a clip's own (which
-/// counts in the clip's source time) or a Sound or Music layer's fader
-/// (which counts in its timeline's time), then those of the clips and
+/// One volume and pan a composition audio track plays through: a clip's
+/// own (which count in the clip's source time) or a Sound or Music layer's
+/// (which count in its timeline's time), then those of the clips and
 /// layers of the timelines it is nested in.
-struct VolumeStage: Equatable, Sendable {
+struct MixStage: Equatable, Sendable {
     /// The ID of the clip or the layer.
     let id: UUID
-    /// Root time minus the time the volume's keyframes count in, when they
+    /// Root time minus the time the stage's keyframes count in, when they
     /// count at the root's pace.
     let shift: CMTime
     /// How much faster the keyframes' time passes than the root's: a retimed
     /// clip's volume counts in its source time, which plays at its speed.
     var rate: Double = 1
+
+    /// The stage's own time at root time `time`.
+    func local(_ time: CMTime) -> CMTime {
+        let local = CMTimeSubtract(time, shift)
+        return rate == 1 ? local : CMTimeMultiplyByFloat64(local, multiplier: rate)
+    }
 }
 
-/// Every clip's and layer's volume curve, shared between the editor and the audio
-/// taps playing it. The editor swaps in new curves as volumes are edited;
-/// the taps read whichever set is current as each buffer plays, so a change
-/// is heard at once without rebuilding the player.
-final class VolumeCurves: @unchecked Sendable {
-    private let curves = OSAllocatedUnfairLock(initialState: [UUID: AnimatedValue<Double>]())
+/// Every clip's and layer's volume and pan curves, shared between the
+/// editor and the audio taps playing it. The editor swaps in new curves as
+/// they are edited; the taps read whichever set is current as each buffer
+/// plays, so a change is heard at once without rebuilding the player.
+final class MixCurves: @unchecked Sendable {
+    /// Curves by clip or layer ID. Only those that aren't at their default
+    /// throughout (0 dB, centered) are kept.
+    struct Curves: Equatable, Sendable {
+        var volume: [UUID: AnimatedValue<Double>] = [:]
+        var pan: [UUID: AnimatedValue<Double>] = [:]
+    }
 
-    init(_ curves: [UUID: AnimatedValue<Double>] = [:]) {
+    private let curves = OSAllocatedUnfairLock(initialState: Curves())
+
+    init(_ curves: Curves = Curves()) {
         self.curves.withLock { $0 = curves }
     }
 
-    /// The curves of every clip and Sound or Music layer of `project` that
-    /// isn't at 0 dB throughout, by ID.
-    static func of(_ project: EditingProject) -> [UUID: AnimatedValue<Double>] {
-        var curves: [UUID: AnimatedValue<Double>] = [:]
+    convenience init(volume: [UUID: AnimatedValue<Double>], pan: [UUID: AnimatedValue<Double>] = [:]) {
+        self.init(Curves(volume: volume, pan: pan))
+    }
+
+    /// The curves of every clip and Sound or Music layer of `project`.
+    static func of(_ project: EditingProject) -> Curves {
+        var curves = Curves()
+        let flat = AnimatedValue(0.0)
         for timeline in project.timelines {
             for layer in timeline.layers {
-                if layer.kind.isAudio, layer.volume != AnimatedValue(0.0) {
-                    curves[layer.id] = layer.volume
+                if layer.kind.isAudio {
+                    if layer.volume != flat { curves.volume[layer.id] = layer.volume }
+                    if layer.pan != flat { curves.pan[layer.id] = layer.pan }
                 }
-                for clip in layer.clips where clip.volume != AnimatedValue(0.0) {
-                    curves[clip.id] = clip.volume
+                for clip in layer.clips {
+                    if clip.volume != flat { curves.volume[clip.id] = clip.volume }
+                    if clip.pan != flat { curves.pan[clip.id] = clip.pan }
                 }
             }
         }
         return curves
     }
 
-    func replace(with new: [UUID: AnimatedValue<Double>]) {
+    func replace(with new: Curves) {
         curves.withLock { $0 = new }
     }
 
-    /// The gain of a track playing through `stages` at root time `seconds`.
-    func gain(through stages: [VolumeStage], at seconds: Double) -> Float {
-        guard !stages.isEmpty else { return 1 }
+    /// The gain of a track playing through `stages` at root time `seconds`,
+    /// from their volumes alone.
+    func gain(through stages: [MixStage], at seconds: Double) -> Float {
+        gains(through: stages, at: seconds, panned: false).x
+    }
+
+    /// The left and right gains of a track playing through `stages` at root
+    /// time `seconds`: their volumes, and their pans one after another.
+    func gains(through stages: [MixStage], at seconds: Double) -> SIMD2<Float> {
+        gains(through: stages, at: seconds, panned: true)
+    }
+
+    private func gains(through stages: [MixStage], at seconds: Double, panned: Bool) -> SIMD2<Float> {
+        guard !stages.isEmpty else { return SIMD2(1, 1) }
         let current = curves.withLock { $0 }
         let time = CMTime(seconds: seconds, preferredTimescale: 96_000)
-        var gain: Float = 1
+        var gains = SIMD2<Float>(1, 1)
         for stage in stages {
-            guard let curve = current[stage.id] else { continue }
-            let local = CMTimeSubtract(time, stage.shift)
-            gain *= AudioLevel.gain(decibels: curve.value(at: stage.rate == 1 ? local : CMTimeMultiplyByFloat64(local, multiplier: stage.rate)))
+            let volume = current.volume[stage.id], pan = panned ? current.pan[stage.id] : nil
+            guard volume != nil || pan != nil else { continue }
+            let local = stage.local(time)
+            if let volume { gains *= AudioLevel.gain(decibels: volume.value(at: local)) }
+            if let pan { gains *= AudioPan.gains(pan.value(at: local)) }
         }
-        return gain
+        return gains
     }
 }
 
-/// Applies layer volumes to one composition audio track as it plays or
+/// Applies volumes and pans to one composition audio track as it plays or
 /// exports, and reports what it lets through to a `MixLevelMeter`.
 enum AudioLevelTap {
     /// An audio mix with a tap on each of `tracks`.
     static func audioMix(
-        for tracks: [(track: AVAssetTrack, stages: [VolumeStage], pitch: AVAudioTimePitchAlgorithm?)],
-        curves: VolumeCurves,
+        for tracks: [(track: AVAssetTrack, stages: [MixStage], pitch: AVAudioTimePitchAlgorithm?)],
+        curves: MixCurves,
         meter: MixLevelMeter?
     ) -> AVAudioMix {
         let mix = AVMutableAudioMix()
@@ -122,13 +154,13 @@ enum AudioLevelTap {
     /// What one tap knows. Only its tap's own thread touches it after
     /// `prepare`.
     private final class TapContext: @unchecked Sendable {
-        let stages: [VolumeStage]
-        let curves: VolumeCurves
+        let stages: [MixStage]
+        let curves: MixCurves
         let meter: MixLevelMeter?
         let meterIndex: Int
         var format = AudioStreamBasicDescription()
 
-        init(stages: [VolumeStage], curves: VolumeCurves, meter: MixLevelMeter?, meterIndex: Int) {
+        init(stages: [MixStage], curves: MixCurves, meter: MixLevelMeter?, meterIndex: Int) {
             self.stages = stages
             self.curves = curves
             self.meter = meter
@@ -144,8 +176,8 @@ enum AudioLevelTap {
             else { return }
             let rate = format.mSampleRate
             let startSeconds = start.seconds
-            let first = curves.gain(through: stages, at: startSeconds)
-            let last = curves.gain(through: stages, at: startSeconds + Double(frames) / rate)
+            let first = curves.gains(through: stages, at: startSeconds)
+            let last = curves.gains(through: stages, at: startSeconds + Double(frames) / rate)
 
             let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
             let interleaved = format.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0
@@ -163,10 +195,21 @@ enum AudioLevelTap {
             }
             guard !channels.isEmpty else { return }
 
-            if first != 1 || last != 1 {
-                let step = frames > 1 ? (last - first) / Float(frames - 1) : 0
-                for (data, stride) in channels {
-                    var gain = first
+            // The first channel is left and the second right. A pan keeps
+            // the nearer side as it is, so the louder of the two gains is
+            // the volume (less any pans that pull opposite ways): what a
+            // single channel, which can't be panned, and any channels past
+            // the second get.
+            if first != SIMD2(1, 1) || last != SIMD2(1, 1) {
+                let stereo = channels.count > 1
+                for (index, (data, stride)) in channels.enumerated() {
+                    let (from, to): (Float, Float) = switch index {
+                    case 0 where stereo: (first.x, last.x)
+                    case 1: (first.y, last.y)
+                    default: (first.max(), last.max())
+                    }
+                    var gain = from
+                    let step = frames > 1 ? (to - from) / Float(frames - 1) : 0
                     for frame in 0..<frames {
                         data[frame * stride] *= gain
                         gain += step

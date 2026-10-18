@@ -138,11 +138,11 @@ final class TrackHost {
     /// The volumes the track plays through: the clip's own if it has one,
     /// the layer's if it has one, then those of the clips and layers of the
     /// timelines it is nested in.
-    var volume: [VolumeStage] = []
+    var volume: [MixStage] = []
     /// How the sound is retimed, when it is; nil to leave it to AVFoundation.
     var pitch: AVAudioTimePitchAlgorithm?
 
-    init(placements: [Placement] = [], volume: [VolumeStage] = [], pitch: AVAudioTimePitchAlgorithm? = nil) {
+    init(placements: [Placement] = [], volume: [MixStage] = [], pitch: AVAudioTimePitchAlgorithm? = nil) {
         self.placements = placements
         self.volume = volume
         self.pitch = pitch

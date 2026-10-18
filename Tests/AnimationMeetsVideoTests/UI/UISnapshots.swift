@@ -67,6 +67,23 @@ struct UISnapshots {
         )
     }
 
+    /// A clip's sound rows: a steady volume, and a pan keyframed from left
+    /// to right with the playhead on its first keyframe.
+    @Test func audioPropertyRows() throws {
+        var pan = AnimatedValue(-60.0)
+        pan.setAnimated(true, at: .zero)
+        pan.set(40, at: CMTime(value: 2, timescale: 1))
+        try SnapshotSupport.render(
+            VStack(spacing: 6) {
+                AudioPropertyRow(value: AnimatedValue(-4.5), time: .zero, onEdit: { _ in }, onSeek: { _ in })
+                AudioPropertyRow(property: .pan, value: pan, time: .zero, onEdit: { _ in }, onSeek: { _ in }, onShowGraph: {})
+            }
+            .padding(8)
+            .background(Design.Surface.overlay.color),
+            "audio-property-rows", size: CGSize(width: 320, height: 70)
+        )
+    }
+
     /// Annotation ink: two finished strokes and one being drawn.
     @Test func annotations() throws {
         let model = AnnotationModel()

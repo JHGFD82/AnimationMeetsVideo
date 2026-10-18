@@ -102,8 +102,9 @@ Planned changes to [audio.md](audio.md):
 - Detaching a video clip's sound gives the new sound clip the same clip
   volume.
 - A clip's volume is a pinned row at the bottom of the effects panel, below
-  Shutter, since sound comes after pictures. An audio clip, which has no
-  stack, shows only this row. The **L** key's row in the timeline stays
+  Shutter, since sound comes after pictures, with its pan (see
+  [audio.md](audio.md#pan)) under it. An audio clip, which has no stack,
+  shows only these rows. The **L** key's row in the timeline stays
   the layer volume on Sound and Music layers; clip volume is drawn as a
   line across each clip block while L is on.
 

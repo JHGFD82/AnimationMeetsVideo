@@ -477,6 +477,10 @@ struct TimelineLayer: Identifiable, Equatable {
     /// each clip's own, in decibels (see `AudioLevel`), keyframed in this
     /// timeline's time. Video layers have none, only their clips do.
     var volume = AnimatedValue(0.0)
+    /// Where a Sound or Music layer's sound sits between the speakers,
+    /// applied after each clip's own pan (see `AudioPan`), keyframed in
+    /// this timeline's time.
+    var pan = AnimatedValue(0.0)
     /// Whether the layer holds adjustment clips (and only them), whose
     /// stacks are applied to the layers below. See docs/effects.md,
     /// "Adjustment layers". The layer is a video layer in every other way.
@@ -529,6 +533,9 @@ struct TimelineClip: Identifiable, Equatable {
     /// The volume of the clip's sound, in decibels (see `AudioLevel`),
     /// keyframed in the clip's source time. Clips with no sound have none.
     var volume = AnimatedValue(0.0)
+    /// Where the clip's sound sits between the speakers (see `AudioPan`),
+    /// keyframed in the clip's source time like its volume.
+    var pan = AnimatedValue(0.0)
     /// For a nested timeline: draw its layers straight into the timeline
     /// it is placed in instead of as one picture (see docs/effects.md).
     var passThrough = false

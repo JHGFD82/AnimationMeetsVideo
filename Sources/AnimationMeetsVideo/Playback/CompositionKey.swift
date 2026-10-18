@@ -22,14 +22,17 @@ struct CompositionKey: Equatable {
             copy.name = ""
             for index in copy.layers.indices {
                 copy.layers[index].customName = nil
-                // Volume is applied as the sound plays (`AudioLevelTap`),
-                // without rebuilding the player. Only whether a clip has a
-                // volume of its own counts: that puts its sound on a track
-                // of its own, which the player has to be rebuilt for.
+                // Volume and pan are applied as the sound plays
+                // (`AudioLevelTap`), without rebuilding the player. Only
+                // whether a clip has either of its own counts: that puts
+                // its sound on a track of its own, which the player has to
+                // be rebuilt for.
                 copy.layers[index].volume = AnimatedValue(0.0)
+                copy.layers[index].pan = AnimatedValue(0.0)
                 for clip in copy.layers[index].clips.indices {
-                    let hasOwn = copy.layers[index].clips[clip].volume != AnimatedValue(0.0)
+                    let hasOwn = copy.layers[index].clips[clip].hasOwnMix
                     copy.layers[index].clips[clip].volume = AnimatedValue(hasOwn ? 1.0 : 0.0)
+                    copy.layers[index].clips[clip].pan = AnimatedValue(0.0)
                 }
             }
             for index in copy.sections.indices {

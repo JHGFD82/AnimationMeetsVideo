@@ -70,6 +70,9 @@ struct ProjectFile: Codable {
         var effects: [EffectEntry]?
         /// Decibels; absent while at 0 and not animated.
         var volume: PropertyEntry<Double>?
+        /// −100 (left) to 100 (right); absent while centered and not
+        /// animated.
+        var pan: PropertyEntry<Double>?
         /// Nested timelines only; absent unless set.
         var passThrough: Bool?
         /// Absent while the clip plays at its source's own speed with nothing
@@ -494,6 +497,9 @@ struct ProjectFile: Codable {
         /// Decibels, on Sound and Music layers; absent while at 0 and not
         /// animated.
         var volume: PropertyEntry<Double>?
+        /// −100 (left) to 100 (right), on Sound and Music layers; absent
+        /// while centered and not animated.
+        var pan: PropertyEntry<Double>?
         /// True for an adjustment layer; absent otherwise.
         var adjustment: Bool?
         /// The lowest layer an adjustment layer reaches; absent for every
@@ -774,6 +780,7 @@ extension ProjectFile {
             .optional("anchorPoint", property(.numbers(count: 2))),
             .optional("effects", effects),
             .optional("volume", property(.number)),
+            .optional("pan", property(.number)),
             .optional("passThrough", .bool),
             .optional("time", .object(object([
                 .optional("speed", property(.number)),
@@ -789,7 +796,7 @@ extension ProjectFile {
         let layer = JSONShape.object(object([
             .required("id", .uuid), .optional("customName", .string),
             .required("kind", .choice(LayerKind.allCases.map(\.rawValue), noun: "layer kind")),
-            .required("clips", .array(clip)), .optional("volume", property(.number)),
+            .required("clips", .array(clip)), .optional("volume", property(.number)), .optional("pan", property(.number)),
             .optional("adjustment", .bool), .optional("reach", .uuid),
         ]))
         let timeline = JSONShape.object(object([

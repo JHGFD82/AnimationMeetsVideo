@@ -677,8 +677,8 @@ struct TimelineView: View {
                             }
                     }
                     if showsVolume(of: layer) {
-                        VolumePropertyRow(
-                            volume: layer.volume,
+                        AudioPropertyRow(
+                            value: layer.volume,
                             time: frameTime,
                             onEdit: { change in onEditVolume(layer.id, change) },
                             onSeek: onScrub,

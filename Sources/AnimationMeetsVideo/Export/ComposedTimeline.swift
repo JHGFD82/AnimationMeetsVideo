@@ -13,11 +13,11 @@ struct ComposedTimeline: @unchecked Sendable {
     /// Keys of the segments drawn from the render cache.
     var cachedKeys: Set<String> = []
     /// Each audio track, with the layers whose volumes it plays through.
-    var audioTracks: [(track: AVAssetTrack, stages: [VolumeStage], pitch: AVAudioTimePitchAlgorithm?)] = []
+    var audioTracks: [(track: AVAssetTrack, stages: [MixStage], pitch: AVAudioTimePitchAlgorithm?)] = []
 
     /// A mix that plays each audio track at its layers' volumes, read from
     /// `curves` as it plays, and measures the result into `meter`.
-    func audioMix(curves: VolumeCurves, meter: MixLevelMeter? = nil) -> AVAudioMix? {
+    func audioMix(curves: MixCurves, meter: MixLevelMeter? = nil) -> AVAudioMix? {
         audioTracks.isEmpty ? nil : AudioLevelTap.audioMix(for: audioTracks, curves: curves, meter: meter)
     }
 

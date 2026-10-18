@@ -1,9 +1,10 @@
 # Audio levels
 
-Status: **implemented**: keyframed volume on clips and on Sound and Music
-layers, applied in playback and export, and a meter of the whole mix. The level math, saving, nesting, the
-mix's gain above unity and the meter's measurements and movement are unit
-tested (the mix by reading a composition through its audio mix). The
+Status: **implemented**: keyframed volume and pan on clips and on Sound
+and Music layers, applied in playback and export, and a meter of the whole
+mix. The level and pan math, saving, nesting, the mix's gain above unity,
+pan in the mix and the meter's measurements and movement are unit tested
+(the mix by reading a composition through its audio mix). The
 controls and the meter have not yet been driven on screen. What is not built is listed
 under [Not implemented yet](#not-implemented-yet).
 
@@ -54,24 +55,46 @@ The row's label column holds the stopwatch, the level (click it to type
 decibels; arithmetic works), a fader, and the keyframe buttons. Its lane
 draws the level as a line across the clips, mute at the bottom and +6 dB at
 the top with a faint line at 0 dB, and the keyframes as diamonds to click,
-drag in time or delete. The inspector shows the same row as **Volume** for
-the selected clip, and as **Layer volume** for a Sound or Music layer. Right-click the row
-to reset it to 0 dB.
+drag in time or delete. The inspector shows the same row under **Sound**
+for the selected clip, and under **Layer sound** for a Sound or Music
+layer. Right-click the row to reset it to 0 dB.
+
+## Pan
+
+Clips with sound and Sound and Music layers also have a **pan**
+(`TimelineClip.pan`, `TimelineLayer.pan`), from **L 100** through **C** to
+**R 100**, keyframed like volume and stored as −100…100 (`AudioPan`). It is
+a balance: moving toward one side turns the other channel down and leaves
+the near one as it is, so a centered pan plays the media unchanged rather
+than 3 dB down. A layer's pan applies after its clips' own, so a clip
+panned left on a layer panned right comes out quieter on both sides.
+
+Pan is a row under volume in the effects panel and in the inspector's
+**Sound** and **Layer sound** groups, with its own graph editor. The
+timeline shows volume only.
+
+Pan works on stereo sound. A mono file's sound stays centered at its
+volume whatever its pan: its composition track reaches the audio tap as one
+channel, which the mix then plays on both sides, and a tap can't add a
+channel. Panning mono needs a stereo copy of the file to play from instead.
 
 ### Playback and export
 
 AVFoundation's own mix volume can't go above unity, so each composition
 audio track gets a processing tap (`AudioLevelTap`) that multiplies its
-samples by its layers' gain, ramping across each buffer. Each track knows
+samples by its layers' gain, and each channel by its side of the pans,
+ramping across each buffer. Each track knows
 the volumes it plays through, innermost first, with the time shift of each
-(`VolumeStage`, for a clip or a layer); nested timelines add the stages of
-the clips and layers they sit in. A clip with a volume of its own has its
-sound on a composition track of its own.
+(`MixStage`, for a clip or a layer); nested timelines add the stages of
+the clips and layers they sit in. A clip with a volume or pan of its own
+has its sound on a composition track of its own.
 
-The curves themselves live in a shared store (`VolumeCurves`) that the
-editor replaces whenever a volume changes. The taps read it as they play,
-so an edit is heard at once: volume is left out of `CompositionKey` and
-doesn't rebuild the player. Export builds its own store from the project.
+The curves themselves live in a shared store (`MixCurves`) that the
+editor replaces whenever a volume or pan changes. The taps read it as they
+play, so an edit is heard at once: levels are left out of `CompositionKey`
+and don't rebuild the player. Only whether a clip has a volume or pan of
+its own is kept in the key, since that gives it a track of its own. Export
+builds its own store from the project.
 
 ### Sound of a retimed clip
 
@@ -109,11 +132,13 @@ played again is averaged with itself, so replaying doesn't read louder.
 A clip's `volume`, and a Sound or Music layer's, is written only when it
 isn't a steady 0 dB, as a property entry: `{"value": -6}` or
 `{"keyframes": [{"time": "0s", "value": 0}, …]}`. Values outside −60…+6
-are clamped on load.
+are clamped on load. Its `pan` is written the same way while it isn't a
+steady center, and values outside −100…100 are clamped on load.
 
 ## Not implemented yet
 
-- Pan.
+- Panning mono sound (see [Pan](#pan)).
+- Pan in the timeline's volume row and lines.
 - Dragging the level line up and down in the lane; levels are set in the
   field or with the fader.
 - Audio fades under transitions.

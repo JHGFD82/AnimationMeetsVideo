@@ -28,15 +28,35 @@ import Testing
         var fade = AnimatedValue(0.0)
         fade.setAnimated(true, at: .zero)
         fade.set(-20, at: CMTime(value: 2, timescale: 1))
-        let curves = VolumeCurves([inner: AnimatedValue(6.0), outer: fade])
+        let curves = MixCurves(volume: [inner: AnimatedValue(6.0), outer: fade])
         // The outer timeline's time is the root's; the inner one starts 5 s in.
         let stages = [
-            VolumeStage(id: inner, shift: CMTime(value: 5, timescale: 1)),
-            VolumeStage(id: outer, shift: .zero),
+            MixStage(id: inner, shift: CMTime(value: 5, timescale: 1)),
+            MixStage(id: outer, shift: .zero),
         ]
         #expect(abs(curves.gain(through: stages, at: 1) - AudioLevel.gain(decibels: 6 - 10)) < 0.0001)
         #expect(abs(curves.gain(through: stages, at: 3) - AudioLevel.gain(decibels: 6 - 20)) < 0.0001)
-        #expect(curves.gain(through: [VolumeStage(id: UUID(), shift: .zero)], at: 1) == 1)
+        #expect(curves.gain(through: [MixStage(id: UUID(), shift: .zero)], at: 1) == 1)
+    }
+
+    @Test func panIsABalance() {
+        #expect(AudioPan.gains(0) == SIMD2(1, 1))
+        #expect(AudioPan.gains(-100) == SIMD2(1, 0))
+        #expect(AudioPan.gains(50) == SIMD2(0.5, 1))
+        #expect(AudioPan.gains(400) == SIMD2(0, 1))
+        #expect(AudioPan.label(0) == "C")
+        #expect(AudioPan.label(-30) == "L 30")
+        #expect(AudioPan.label(100) == "R 100")
+    }
+
+    @Test func pansStackWithVolumes() {
+        let clip = UUID(), layer = UUID()
+        let curves = MixCurves(volume: [layer: AnimatedValue(-20.0)], pan: [clip: AnimatedValue(-50.0), layer: AnimatedValue(50.0)])
+        let gains = curves.gains(through: [MixStage(id: clip, shift: .zero), MixStage(id: layer, shift: .zero)], at: 0)
+        #expect(abs(gains.x - 0.05) < 0.0001)
+        #expect(abs(gains.y - 0.05) < 0.0001)
+        // The volume alone leaves the pans out.
+        #expect(abs(curves.gain(through: [MixStage(id: layer, shift: .zero)], at: 0) - 0.1) < 0.0001)
     }
 
     @Test func detachedSoundKeepsItsVolume() throws {
@@ -103,7 +123,7 @@ import Testing
 
         let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
         let meter = MixLevelMeter()
-        let mix = composed.audioMix(curves: VolumeCurves(VolumeCurves.of(project)), meter: meter)
+        let mix = composed.audioMix(curves: MixCurves(MixCurves.of(project)), meter: meter)
 
         let reader = try AVAssetReader(asset: composed.composition)
         let output = AVAssetReaderAudioMixOutput(audioTracks: composed.composition.tracks(withMediaType: .audio), audioSettings: [
@@ -130,6 +150,87 @@ import Testing
         #expect(abs(reading.rms.x - expected) < 0.01)
         #expect(abs(reading.peak.y - expected) < 0.01)
         #expect(meter.reading(at: 0.5).peak.x < 0.001)
+    }
+}
+
+@Suite struct PanMixTests {
+    /// Writes a 1 s tone of 0.25 on every channel.
+    private func tone(channels: AVAudioChannelCount) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appending(path: "amv-pan-\(UUID().uuidString).wav")
+        let rate = 48_000.0
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: channels, interleaved: false))
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(rate)))
+        buffer.frameLength = AVAudioFrameCount(rate)
+        for channel in 0..<Int(channels) {
+            buffer.floatChannelData![channel].update(repeating: 0.25, count: Int(rate))
+        }
+        try file.write(from: buffer)
+        return url
+    }
+
+    /// The loudest left and right samples of the timeline's mix, read in
+    /// stereo the way an export reads it.
+    private func loudest(of project: EditingProject) async throws -> SIMD2<Float> {
+        let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
+        let reader = try AVAssetReader(asset: composed.composition)
+        let output = AVAssetReaderAudioMixOutput(audioTracks: composed.composition.tracks(withMediaType: .audio), audioSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+            AVNumberOfChannelsKey: 2,
+        ])
+        output.audioMix = composed.audioMix(curves: MixCurves(MixCurves.of(project)))
+        reader.add(output)
+        #expect(reader.startReading())
+        var loudest = SIMD2<Float>.zero
+        while let buffer = output.copyNextSampleBuffer() {
+            guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
+            var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
+            _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
+            for frame in 0..<chunk.count / 2 {
+                loudest = pointwiseMax(loudest, SIMD2(abs(chunk[2 * frame]), abs(chunk[2 * frame + 1])))
+            }
+        }
+        return loudest
+    }
+
+    private func project(playing url: URL) throws -> (EditingProject, (clipID: UUID, layerID: UUID)) {
+        var project = EditingProject.empty
+        let media = MediaClip(
+            name: "Tone", kind: .audio, url: url, duration: CMTime(value: 1, timescale: 1),
+            frameRate: 0, colorSpace: .rec709, codecName: "PCM", hasAudio: true
+        )
+        let imported = project.importClip(media, intoTimeline: project.rootTimelineID)
+        let ids = try #require(imported)
+        return (project, (ids.clipID, ids.layerID))
+    }
+
+    @Test func aClipsPanTurnsTheOtherSideDown() async throws {
+        let url = try tone(channels: 2)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var (project, ids) = try project(playing: url)
+        project.editClip(ids.clipID, in: project.rootTimelineID) { $0.pan.set(-75, at: .zero) }
+        let level = try await loudest(of: project)
+        #expect(abs(level.x - 0.25) < 0.005)
+        #expect(abs(level.y - 0.0625) < 0.005)
+    }
+
+    /// A mono track's tap only sees its one channel, which the mix then
+    /// plays on both sides, so its pan can't apply: it stays centered at
+    /// its volume rather than turning down.
+    @Test func aMonoSoundStaysCenteredAtItsVolume() async throws {
+        let url = try tone(channels: 1)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var (project, ids) = try project(playing: url)
+        project.editPan(of: ids.layerID, in: project.rootTimelineID) { $0.set(100, at: .zero) }
+        project.editVolume(of: ids.layerID, in: project.rootTimelineID) { $0.set(-6, at: .zero) }
+        let level = try await loudest(of: project)
+        let expected = 0.25 * AudioLevel.gain(decibels: -6)
+        #expect(abs(level.x - expected) < 0.005)
+        #expect(abs(level.y - expected) < 0.005)
     }
 }
 

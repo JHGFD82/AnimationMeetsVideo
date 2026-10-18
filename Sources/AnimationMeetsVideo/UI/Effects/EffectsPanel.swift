@@ -241,7 +241,8 @@ struct EffectsPanel: View {
             }
             shutterRows(c)
             if project.playsAudio(clip) {
-                volumeRow(c)
+                audioRow(.volume, c)
+                audioRow(.pan, c)
             }
             Spacer(minLength: 0)
         }
@@ -575,26 +576,30 @@ struct EffectsPanel: View {
         }
     }
 
-    // MARK: Volume
+    // MARK: Sound
 
-    private func volumeRow(_ c: RowContext) -> some View {
+    private func audioRow(_ property: AudioProperty, _ c: RowContext) -> some View {
         let clip = c.clip
-        let key = ParameterKey(timelineID: timelineID, parameter: .clipVolume(clipID: clip.id))
+        let value = property == .volume ? clip.volume : clip.pan
+        let keyPath: WritableKeyPath<TimelineClip, AnimatedValue<Double>> = property == .volume ? \.volume : \.pan
+        let parameter: AnimatedParameter = property == .volume ? .clipVolume(clipID: clip.id) : .clipPan(clipID: clip.id)
+        let key = ParameterKey(timelineID: timelineID, parameter: parameter)
         return labelled(
-            VolumePropertyRow(
-                volume: clip.volume,
+            AudioPropertyRow(
+                property: property,
+                value: value,
                 time: c.sourceNow,
-                onEdit: { change in editClip(clip.id) { change(&$0.volume) } },
+                onEdit: { change in editClip(clip.id) { change(&$0[keyPath: keyPath]) } },
                 onSeek: { onSeek(clip.timelineTime(forSourceTime: $0)) },
                 onShowGraph: graphs.map { graphs in { graphs.show(key) } }
             )
             .padding(.horizontal, 8),
             lane: ParameterLane(
-                marks: clip.volume.marks, geometry: c.geometry, playhead: c.frameTime, height: EffectsPanelMetrics.rowHeight,
+                marks: value.marks, geometry: c.geometry, playhead: c.frameTime, height: EffectsPanelMetrics.rowHeight,
                 onSeek: onSeek,
-                onMove: { from, to in editClip(clip.id) { $0.volume.moveKeyframe(at: from, to: to) } },
-                onDelete: { time in editClip(clip.id) { $0.volume.removeKeyframe(at: time) } },
-                onEase: { time, preset in editClip(clip.id) { $0.volume.applyEase(preset, at: time) } }
+                onMove: { from, to in editClip(clip.id) { $0[keyPath: keyPath].moveKeyframe(at: from, to: to) } },
+                onDelete: { time in editClip(clip.id) { $0[keyPath: keyPath].removeKeyframe(at: time) } },
+                onEase: { time, preset in editClip(clip.id) { $0[keyPath: keyPath].applyEase(preset, at: time) } }
             )
         )
     }

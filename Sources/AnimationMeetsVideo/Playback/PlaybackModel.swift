@@ -38,7 +38,7 @@ final class PlaybackModel {
     let meter = RenderMeter()
     /// The layers' volumes, which the player's audio taps read as they
     /// play; the editor replaces them as volumes are edited.
-    let volumeCurves = VolumeCurves()
+    let mixCurves = MixCurves()
     /// How loud the mix is, measured by the same taps, for the meter.
     let mixMeter = MixLevelMeter()
     /// The paused frame drawn at full size, shown over the player while it
@@ -146,7 +146,7 @@ final class PlaybackModel {
         self.composed = composed
         self.frameRate = frameRate
         item.videoComposition = composed.videoComposition(scaledBy: level.scale)
-        item.audioMix = composed.audioMix(curves: volumeCurves, meter: mixMeter)
+        item.audioMix = composed.audioMix(curves: mixCurves, meter: mixMeter)
         mixMeter.reset()
         // The old still stays until the new one is drawn (or turns out not
         // to be needed): clearing it here would uncover the player's

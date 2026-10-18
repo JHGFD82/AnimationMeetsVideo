@@ -155,11 +155,13 @@ extension AnimatedValue where Value: KeyframeComponents {
     }
 }
 
-/// A value that can be keyframed: a layer's volume, or something on a clip:
-/// its volume, its anchor point or one of an effect's controls.
+/// A value that can be keyframed: a layer's volume or pan, or something on
+/// a clip: its volume, pan, anchor point or one of an effect's controls.
 enum AnimatedParameter: Hashable {
     case layerVolume(layerID: UUID)
     case clipVolume(clipID: UUID)
+    case layerPan(layerID: UUID)
+    case clipPan(clipID: UUID)
     case anchorPoint(clipID: UUID)
     case speed(clipID: UUID)
     case control(ControlKind, clipID: UUID, effectID: UUID, controlID: UUID)
@@ -167,6 +169,7 @@ enum AnimatedParameter: Hashable {
     var name: String {
         switch self {
         case .layerVolume, .clipVolume: "Volume"
+        case .layerPan, .clipPan: "Pan"
         case .speed: "Speed"
         case .anchorPoint: "Anchor Point"
         case .control(let kind, _, _, _): kind.name
@@ -177,6 +180,7 @@ enum AnimatedParameter: Hashable {
     var componentNames: [String] {
         switch self {
         case .layerVolume, .clipVolume: ["Level"]
+        case .layerPan, .clipPan: ["Pan"]
         case .speed: ["Speed"]
         case .anchorPoint: ["x", "y"]
         case .control(let kind, _, _, _): kind.componentNames
@@ -193,6 +197,7 @@ enum AnimatedParameter: Hashable {
     func clamped(_ component: Double) -> Double {
         switch self {
         case .layerVolume, .clipVolume: AudioLevel.clamped(component)
+        case .layerPan, .clipPan: AudioPan.clamped(component)
         case .speed: ClipTime.clampedSpeed(component)
         case .anchorPoint: component
         case .control(let kind, _, _, _): kind.clamped(component)
@@ -203,6 +208,7 @@ enum AnimatedParameter: Hashable {
     func label(_ shown: Double) -> String {
         switch self {
         case .layerVolume, .clipVolume: AudioLevel.label(shown)
+        case .layerPan, .clipPan: AudioPan.label(shown)
         case .speed: NumericExpression.format(shown, maxFractionDigits: 1) + "%"
         case .anchorPoint: NumericExpression.format(shown, maxFractionDigits: 1) + " px"
         case .control(let kind, _, _, _): kind.label(shown)
@@ -226,6 +232,10 @@ extension EditingProject {
             return timeline.layer(id: layerID)?.volume.asComponents
         case .clipVolume(let clipID):
             return clipAndLayer(clipID, in: key.timelineID)?.clip.volume.asComponents
+        case .layerPan(let layerID):
+            return timeline.layer(id: layerID)?.pan.asComponents
+        case .clipPan(let clipID):
+            return clipAndLayer(clipID, in: key.timelineID)?.clip.pan.asComponents
         case .anchorPoint(let clipID):
             return clipAndLayer(clipID, in: key.timelineID)?.clip.anchorPoint.asComponents
         case .speed(let clipID):
@@ -250,6 +260,17 @@ extension EditingProject {
                 var components = clip.volume.asComponents
                 change(&components)
                 clip.volume = AnimatedValue(components: components)
+            }
+        case .layerPan(let layerID):
+            guard let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }) else { return }
+            var components = timelines[tIndex].layers[lIndex].pan.asComponents
+            change(&components)
+            timelines[tIndex].layers[lIndex].pan = AnimatedValue(components: components)
+        case .clipPan(let clipID):
+            editClip(clipID, in: key.timelineID) { clip in
+                var components = clip.pan.asComponents
+                change(&components)
+                clip.pan = AnimatedValue(components: components)
             }
         case .anchorPoint(let clipID):
             editClip(clipID, in: key.timelineID) { clip in

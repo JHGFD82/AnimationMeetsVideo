@@ -17,7 +17,7 @@ extension CompositionExporter {
         visiting: Set<UUID>,
         window: CMTimeRange,
         offset: CMTime,
-        outerVolume: [VolumeStage],
+        outerVolume: [MixStage],
         rootClipID: UUID?,
         silent: Bool = false,
         hosts: inout [TrackHost]
@@ -43,9 +43,9 @@ extension CompositionExporter {
             return (Set(timeline.layers[(index + 1)...bottomIndex].map(\.id)), false)
         }
         for layer in timeline.layers {
-            // Sound and Music layers act as a fader over their clips' own
-            // volumes; video layers have no volume of their own.
-            let layerVolume = layer.kind.isAudio ? [VolumeStage(id: layer.id, shift: offset)] : []
+            // Sound and Music layers act as a fader and pan over their
+            // clips' own; video layers have neither of their own.
+            let layerVolume = layer.kind.isAudio ? [MixStage(id: layer.id, shift: offset)] : []
             let volume = layerVolume + outerVolume
             let clips = layer.clips.sorted(by: { $0.startOffset < $1.startOffset })
             let own = TrackHost(volume: volume)
@@ -56,8 +56,8 @@ extension CompositionExporter {
             // Frames shown under a transition at a cut, on a track of their
             // own below the layer's so the two can overlap.
             let underlay = TrackHost()
-            // The sound of clips with a volume of their own, each on a track
-            // of its own to be played through that volume.
+            // The sound of clips with a volume or pan of their own, each on
+            // a track of its own to be played through them.
             var clipSound: [TrackHost] = []
             // The footage again, for frame blending, echo and trails.
             var copyHosts: [TrackHost] = []
@@ -72,12 +72,11 @@ extension CompositionExporter {
                 // retimed clip plays through at its speed (at the speed it
                 // starts at, when that is changing).
                 let rate = abs(clip.speed(atSource: clip.trimStart)) / 100
-                let clipVolume = VolumeStage(
+                let clipVolume = MixStage(
                     id: clip.id,
                     shift: CMTimeAdd(offset, CMTimeSubtract(clip.startOffset, CMTimeMultiplyByFloat64(clip.trimStart, multiplier: 1 / rate))),
                     rate: rate
                 )
-                let hasOwnVolume = clip.volume != AnimatedValue(0.0)
                 let lead = project.joinedLead(of: clip, among: clips) ?? .zero
                 var clipStack = stack(of: clip)
                 if project.playsVideo(clip) {
@@ -145,7 +144,7 @@ extension CompositionExporter {
                         // A retimed clip's sound is silent, or played at its
                         // new speed with or without its pitch changing.
                         if clip.isRetimed, clip.time.sound == .mute || clip.isReversed { placement.includesAudio = false }
-                        if placement.includesAudio, hasOwnVolume || clip.isRetimed {
+                        if placement.includesAudio, clip.hasOwnMix || clip.isRetimed {
                             let sound = placement.copy()
                             sound.includesVideo = false
                             let pitch: AVAudioTimePitchAlgorithm? = clip.isRetimed ? (clip.time.sound == .changePitch ? .varispeed : .spectral) : nil

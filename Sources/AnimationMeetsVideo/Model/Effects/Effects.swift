@@ -533,10 +533,10 @@ extension EditingProject {
     func parameterTitle(of key: ParameterKey) -> String {
         guard let timeline = timeline(id: key.timelineID) else { return key.parameter.name }
         switch key.parameter {
-        case .layerVolume(let layerID):
+        case .layerVolume(let layerID), .layerPan(let layerID):
             guard let layer = timeline.layer(id: layerID) else { return key.parameter.name }
-            return "\(displayName(of: layer, in: timeline)) · Volume"
-        case .clipVolume(let clipID), .anchorPoint(let clipID), .speed(let clipID):
+            return "\(displayName(of: layer, in: timeline)) · \(key.parameter.name)"
+        case .clipVolume(let clipID), .clipPan(let clipID), .anchorPoint(let clipID), .speed(let clipID):
             return "\(clipName(clipID, in: key.timelineID)) · \(key.parameter.name)"
         case .control(_, let clipID, let effectID, _):
             let effect = clipAndLayer(clipID, in: key.timelineID)?.clip.effects.first { $0.id == effectID }
@@ -606,8 +606,8 @@ extension EditingProject {
 // MARK: - Easing at the playhead
 
 extension TimelineClip {
-    /// Applies an ease to every keyframe the clip's anchor point, volume and
-    /// effect controls have at `time` in the timeline, for the F9 keys.
+    /// Applies an ease to every keyframe the clip's anchor point, volume,
+    /// pan and effect controls have at `time` in the timeline, for the F9 keys.
     /// Returns whether there was one.
     @discardableResult
     mutating func easeKeyframes(atTimelineTime time: CMTime, _ preset: KeyframeEase.Preset) -> Bool {
@@ -619,6 +619,10 @@ extension TimelineClip {
         }
         if volume.keyframe(at: source) != nil {
             volume.applyEase(preset, at: source)
+            eased = true
+        }
+        if pan.keyframe(at: source) != nil {
+            pan.applyEase(preset, at: source)
             eased = true
         }
         if self.time.speed.keyframe(at: source) != nil {
