@@ -29,9 +29,9 @@ struct BrowserPanel: View {
     @State private var importError: String?
     @State private var presets = PresetsModel()
     @State private var showingSettings = false
-    @AppStorage("browserTab") private var tab = BrowserTab.clips
-    @AppStorage("browserThumbnailInterval") private var interval = ThumbnailInterval.all
-    @AppStorage("browserThumbnailSize") private var thumbnailSize = ThumbnailSize.medium
+    @AppStorage(Preferences.browserTab) private var tab = BrowserTab.clips
+    @AppStorage(Preferences.thumbnailInterval) private var interval = ThumbnailInterval.all
+    @AppStorage(Preferences.thumbnailSize) private var thumbnailSize = ThumbnailSize.medium
 
     var body: some View {
         VStack(spacing: 0) {

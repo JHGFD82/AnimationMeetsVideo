@@ -78,7 +78,7 @@ struct TimelineView: View {
     @State private var channelsRevealed: Set<UUID> = []
     /// Which areas show, how they share the height, and each one's layer
     /// height (its vertical zoom).
-    @AppStorage("timelineAreaLayout") var areaLayout = TimelineAreaLayout()
+    @AppStorage(Preferences.timelineAreaLayout) var areaLayout = TimelineAreaLayout()
     /// Area heights when a drag of the boundary between two areas began.
     @State private var boundaryDragStart: [LayerKind: CGFloat]?
     @State var geometryStore = TimelineGeometryStore()
@@ -111,9 +111,9 @@ struct TimelineView: View {
     @State var tool: TimelineTool = .arrow
     /// The section selected in the lane under the ruler, for Delete.
     @State var selectedSectionID: UUID?
-    @AppStorage("snapping") var snapping = true
+    @AppStorage(Preferences.snapping) var snapping = true
     /// Whether the view pages along with the playhead while playing.
-    @AppStorage("followsPlayhead") private var followsPlayhead = true
+    @AppStorage(Preferences.followsPlayhead) private var followsPlayhead = true
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
     @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
@@ -123,7 +123,7 @@ struct TimelineView: View {
 
     /// How close, on screen, an edge must come to a target to snap to it.
     private let snapDistance: CGFloat = 8
-    @AppStorage("clickOnBeats") private var clickOnBeats = false
+    @AppStorage(Preferences.clickOnBeats) private var clickOnBeats = false
     @AppStorage(ClickToneSettings.frequencyKey) private var beatClickFrequency = ClickToneSettings.defaultFrequency
     @AppStorage(ClickToneSettings.volumeKey) private var beatClickVolume = ClickToneSettings.defaultVolume
 

@@ -64,8 +64,8 @@ struct ClipsTab: View {
     let replacement: MediaReplacementController
     let packageURL: URL?
 
-    @AppStorage("browserThumbnailInterval") private var interval = ThumbnailInterval.all
-    @AppStorage("browserThumbnailSize") private var thumbnailSize = ThumbnailSize.medium
+    @AppStorage(Preferences.thumbnailInterval) private var interval = ThumbnailInterval.all
+    @AppStorage(Preferences.thumbnailSize) private var thumbnailSize = ThumbnailSize.medium
     @State private var picked = BrowserSelection<BrowserItemID>()
     @State private var width: CGFloat = 240
     @State private var sensitivityTarget: SensitivityTarget?

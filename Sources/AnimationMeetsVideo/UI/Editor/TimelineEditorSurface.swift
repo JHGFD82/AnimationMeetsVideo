@@ -33,20 +33,20 @@ struct TimelineEditorSurface<Library: View>: View {
     @State private var renderRebuildPending = false
     /// As tall as the person makes it, not as tall as its layers need: its
     /// areas share whatever height it has and scroll the rest.
-    @AppStorage("timelineHeight") private var timelineHeight: Double = 280
+    @AppStorage(Preferences.timelineHeight) private var timelineHeight: Double = 280
     /// The Effects Library at the right end of the timeline, and which tab it is on.
-    @AppStorage("showsEffectsLibrary") private var showsEffectsLibrary = false
-    @AppStorage("effectsLibraryTab") private var effectsLibraryTab = EffectsLibraryTab.effects
+    @AppStorage(Preferences.showsEffectsLibrary) private var showsEffectsLibrary = false
+    @AppStorage(Preferences.effectsLibraryTab) private var effectsLibraryTab = EffectsLibraryTab.effects
     /// The area beside the viewer, and which tab it is on. The tab only
     /// changes when the person picks one or an effect is applied.
-    @AppStorage("showsSidePanel") private var showsSidePanel = true
-    @AppStorage("sidePanelTab") private var sideTab = SidePanelTab.inspector
+    @AppStorage(Preferences.showsSidePanel) private var showsSidePanel = true
+    @AppStorage(Preferences.sidePanelTab) private var sideTab = SidePanelTab.inspector
     /// Each side panel tab keeps its own width, and so does the browser.
-    @AppStorage("effectsPanelWidth") private var effectsPanelWidth = 640.0
-    @AppStorage("inspectorPanelWidth") private var inspectorPanelWidth = 280.0
-    @AppStorage("browserWidth") private var browserWidth = 260.0
+    @AppStorage(Preferences.effectsPanelWidth) private var effectsPanelWidth = 640.0
+    @AppStorage(Preferences.inspectorPanelWidth) private var inspectorPanelWidth = 280.0
+    @AppStorage(Preferences.browserWidth) private var browserWidth = 260.0
     @State private var effectsState = EffectsPanelState()
-    @AppStorage("showsAudioMeter") private var showsMeter = false
+    @AppStorage(Preferences.showsAudioMeter) private var showsMeter = false
     /// The graph editors this surface has open, one HUD per parameter.
     @State private var graphs = KeyframeGraphHUDs()
 

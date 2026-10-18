@@ -19,7 +19,7 @@ struct EffectsPanel: View {
     @Environment(KeyframeGraphHUDs.self) var graphs: KeyframeGraphHUDs?
     /// Whether each row shows its keyframe lane, with the ruler and
     /// playhead over them. Kept between launches.
-    @AppStorage("effectsPanelShowsKeyframeLanes") var showsKeyframeLanes = true
+    @AppStorage(Preferences.effectsPanelShowsKeyframeLanes) var showsKeyframeLanes = true
     @State private var renamingEffectID: UUID?
     /// The clip whose speed was last refused for crossing zero, until its
     /// speed is next edited.

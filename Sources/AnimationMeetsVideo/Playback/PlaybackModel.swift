@@ -67,9 +67,10 @@ final class PlaybackModel {
     @ObservationIgnored private var stillTask: Task<Void, Never>?
     @ObservationIgnored private let liveRenderer = LiveFrameRenderer()
     @ObservationIgnored private var liveGovernor = LiveGovernor()
+    @ObservationIgnored private var preferencesTask: Task<Void, Never>?
 
-    private static let qualityKey = "previewQuality"
-    private static let motionBlurKey = "motionBlurInPreview"
+    private static let qualityKey = Preferences.previewQuality
+    private static let motionBlurKey = Preferences.motionBlurInPreview
 
     init() {
         let player = AVPlayer()
@@ -98,6 +99,26 @@ final class PlaybackModel {
         itemObservation = player.observe(\.currentItem, options: [.initial, .new]) { [weak self] player, _ in
             let item = player.currentItem
             Task { @MainActor in self?.watchStatus(of: item) }
+        }
+        // The Settings window writes the same defaults; follow it.
+        preferencesTask = Task { [weak self] in
+            for await _ in NotificationCenter.default.notifications(named: UserDefaults.didChangeNotification) {
+                guard let self else { return }
+                self.readPreferences()
+            }
+        }
+    }
+
+    /// Takes up a quality or motion blur set elsewhere, such as in the
+    /// Settings window. Setting only what differs keeps this from writing
+    /// the defaults back, and from redrawing on every unrelated change.
+    private func readPreferences() {
+        let defaults = UserDefaults.standard
+        if let stored = defaults.string(forKey: Self.qualityKey).flatMap(PreviewQuality.init(rawValue:)), stored != quality {
+            quality = stored
+        }
+        if let stored = defaults.object(forKey: Self.motionBlurKey) as? Bool, stored != motionBlurInPreview {
+            motionBlurInPreview = stored
         }
     }
 

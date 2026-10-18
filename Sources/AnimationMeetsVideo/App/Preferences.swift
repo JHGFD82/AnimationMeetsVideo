@@ -1,0 +1,64 @@
+import Foundation
+
+/// What the app remembers between launches, by its `UserDefaults` key.
+///
+/// These are the person's, not the project's: they hold for every project
+/// and live in the app's defaults, not in `project.json`. Each key used to
+/// be a string literal at the view that read it, and some views read the
+/// same key under the same literal twice. The Settings window and the
+/// panels now name them here, so they can't drift apart.
+enum Preferences {
+    // MARK: Viewer
+
+    /// A `PreviewQuality` raw value.
+    static let previewQuality = "previewQuality"
+    static let motionBlurInPreview = "motionBlurInPreview"
+
+    // MARK: Timeline
+
+    static let snapping = "snapping"
+    static let followsPlayhead = "followsPlayhead"
+    static let clickOnBeats = "clickOnBeats"
+
+    // MARK: Library
+
+    /// A `ThumbnailInterval` raw value.
+    static let thumbnailInterval = "browserThumbnailInterval"
+    /// A `ThumbnailSize` raw value.
+    static let thumbnailSize = "browserThumbnailSize"
+
+    // MARK: Layout
+
+    static let timelineHeight = "timelineHeight"
+    static let browserWidth = "browserWidth"
+    static let inspectorPanelWidth = "inspectorPanelWidth"
+    static let effectsPanelWidth = "effectsPanelWidth"
+    static let showsSidePanel = "showsSidePanel"
+    static let sidePanelTab = "sidePanelTab"
+    static let showsEffectsLibrary = "showsEffectsLibrary"
+    static let effectsLibraryTab = "effectsLibraryTab"
+    static let showsAudioMeter = "showsAudioMeter"
+    static let browserTab = "browserTab"
+    static let timelineAreaLayout = "timelineAreaLayout"
+    static let effectsPanelShowsKeyframeLanes = "effectsPanelShowsKeyframeLanes"
+
+    /// Everything about where the panels are and how big: their sizes,
+    /// which are open and on which tab, and the timeline's areas.
+    static let layoutKeys = [
+        timelineHeight, browserWidth, inspectorPanelWidth, effectsPanelWidth,
+        showsSidePanel, sidePanelTab, showsEffectsLibrary, effectsLibraryTab,
+        showsAudioMeter, browserTab, timelineAreaLayout, effectsPanelShowsKeyframeLanes,
+    ]
+
+    /// Puts the panels back as a first launch has them. Views read these
+    /// through `@AppStorage`, which falls back to its default once the
+    /// key is gone, so an open window rearranges at once.
+    static func resetLayout(in defaults: UserDefaults = .standard) {
+        for key in layoutKeys { defaults.removeObject(forKey: key) }
+    }
+
+    /// Whether any panel has been moved, resized, opened or closed.
+    static func hasCustomLayout(in defaults: UserDefaults = .standard) -> Bool {
+        layoutKeys.contains { defaults.object(forKey: $0) != nil }
+    }
+}
