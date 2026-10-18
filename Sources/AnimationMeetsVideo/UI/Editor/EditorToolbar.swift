@@ -39,7 +39,9 @@ struct EditorToolbar: View {
     }
 
     var body: some View {
-        HStack(spacing: Design.Space.group) {
+        // Once a redraw: it looks through the app's windows.
+        let externalScreens = externalScreens
+        return HStack(spacing: Design.Space.group) {
             Text(project.name)
                 .font(Design.Typeface.panelTitle)
                 .foregroundStyle(Design.textPrimary)

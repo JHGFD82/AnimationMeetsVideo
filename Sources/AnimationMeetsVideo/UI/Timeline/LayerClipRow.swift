@@ -23,6 +23,9 @@ struct LayerClipRow: View {
     let name: String
     let frameRate: Double
     let project: EditingProject
+    /// `project.structure`, worked out once for every row: what the row's
+    /// actions read beyond its own layer (see `==`).
+    let structure: EditingProject
     let timelineID: UUID
     let selection: TimelineSelection?
     let pixelsPerSecond: CGFloat
@@ -263,5 +266,26 @@ struct LayerClipRow: View {
         // VoiceOver goes through the layers, then into each one's clips.
         .accessibilityElement(children: .contain)
         .accessibilityLabel(name)
+    }
+}
+
+extension LayerClipRow: Equatable {
+    /// Whether the row would draw and act the same, so it needn't be redrawn
+    /// (the timeline marks it `.equatable()`): its own layer is the same, as
+    /// are its sizes, selection, tool and snapping, and the project's
+    /// structure, which its actions read when moving clips between layers.
+    /// Dragging a value of a clip on another layer changes none of these.
+    /// The closures aren't compared; they are made from the same inputs.
+    nonisolated static func == (lhs: LayerClipRow, rhs: LayerClipRow) -> Bool {
+        MainActor.assumeIsolated {
+            lhs.layer == rhs.layer && lhs.name == rhs.name && lhs.frameRate == rhs.frameRate
+                && lhs.timelineID == rhs.timelineID && lhs.selection == rhs.selection
+                && lhs.pixelsPerSecond == rhs.pixelsPerSecond && lhs.width == rhs.width && lhs.height == rhs.height
+                && lhs.showsChannels == rhs.showsChannels && lhs.visibleX == rhs.visibleX
+                && lhs.pushed == rhs.pushed && lhs.tool == rhs.tool
+                && lhs.snapTargets == rhs.snapTargets && lhs.snapTolerance == rhs.snapTolerance
+                && lhs.showsVolumeLines == rhs.showsVolumeLines
+                && lhs.structure == rhs.structure
+        }
     }
 }

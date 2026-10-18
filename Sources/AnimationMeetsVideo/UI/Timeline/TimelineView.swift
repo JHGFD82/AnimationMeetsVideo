@@ -290,18 +290,8 @@ struct TimelineView: View {
                 Text("Timeline")
                     .font(Design.Typeface.panelTitle)
                     .foregroundStyle(Design.textPrimary)
-                Picker("Tool", selection: $tool) {
-                    ForEach(TimelineTool.allCases) { tool in
-                        Image(systemName: tool.systemImage)
-                            .help(tool.help)
-                            .accessibilityLabel(tool.name)
-                            .tag(tool)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .help(tool.help)
+                TimelineToolPicker(current: tool, tool: $tool)
+                    .equatable()
                 Spacer()
                 PlayheadTimecode(playback: playback, parked: playheadTime, frameRate: timeline.frameRate)
                 TimelineZoomSliders(
@@ -426,6 +416,8 @@ struct TimelineView: View {
                 // Built once per layout, not once per area: it walks every
                 // clip and beat.
                 let snapTargets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: drawnBeats(viewport)) : nil
+                // Once for every area's rows, which compare it to skip redrawing.
+                let structure = project.structure
 
                 VStack(alignment: .leading, spacing: 0) {
                     // The time rail: the ruler and the sections under it
@@ -486,7 +478,7 @@ struct TimelineView: View {
                                 },
                                 onResizeEnded: { boundaryDragStart = nil }
                             )
-                            area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets)
+                            area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets, structure: structure)
                         }
                     }
                     .frame(maxHeight: .infinity, alignment: .top)
@@ -617,7 +609,9 @@ struct TimelineView: View {
 
     /// One area: its layers' names beside their tracks, scrolling up and
     /// down on its own.
-    private func area(_ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, frameTime: CMTime, snapTargets: SnapTargets?) -> some View {
+    private func area(
+        _ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, frameTime: CMTime, snapTargets: SnapTargets?, structure: EditingProject
+    ) -> some View {
         ScrollView(.vertical) {
             HStack(alignment: .top, spacing: 0) {
                 layerHeaders(kind, frameTime: frameTime)
@@ -636,7 +630,7 @@ struct TimelineView: View {
                         onHover: { hover in if hover != newLayerHover { newLayerHover = hover } },
                         onDrop: { payloads, kind in _ = onDropScenes(payloads, nil, playheadTime, kind) }
                     ))
-                layerTracks(kind, areaHeight: height, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets)
+                layerTracks(kind, areaHeight: height, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets, structure: structure)
                     .offset(x: -viewport.scrollX)
                     .frame(width: viewport.width, alignment: .topLeading)
                     .clipped()
@@ -683,6 +677,7 @@ struct TimelineView: View {
                         onDelete: { deleteLayer(layer.id) },
                         reach: reachMenu(for: layer)
                     )
+                    .equatable()
                     if shownJoint(in: layer) != nil {
                         HStack {
                             Label("Transition footage", systemImage: "square.on.square.dashed")
@@ -817,7 +812,10 @@ struct TimelineView: View {
         areaLayers(kind).reduce(0) { $0 + blockHeight(of: $1) }
     }
 
-    private func layerTracks(_ kind: LayerKind, areaHeight: CGFloat, viewport: TimelineViewport, frameTime: CMTime, snapTargets: SnapTargets?) -> some View {
+    /// `structure` is `project.structure`, which the rows compare.
+    private func layerTracks(
+        _ kind: LayerKind, areaHeight: CGFloat, viewport: TimelineViewport, frameTime: CMTime, snapTargets: SnapTargets?, structure: EditingProject
+    ) -> some View {
         let pixelsPerSecond = viewport.pixelsPerSecond
         let contentWidth = viewport.contentWidth
         let snapTolerance = snapTolerance(viewport)
@@ -829,6 +827,7 @@ struct TimelineView: View {
                         name: project.displayName(of: layer, in: timeline),
                         frameRate: timeline.frameRate,
                         project: project,
+                        structure: structure,
                         timelineID: timelineID,
                         selection: selection,
                         pixelsPerSecond: pixelsPerSecond,
@@ -895,6 +894,9 @@ struct TimelineView: View {
                             onEditProject { $0.editClip(clipID, in: timelineID, change) }
                         }
                     )
+                    // Rows that would draw the same aren't redrawn, so
+                    // dragging one clip's value redraws only its layer.
+                    .equatable()
                     // Recorded for drags that cross areas; see
                     // `TimelineGeometryStore`.
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in

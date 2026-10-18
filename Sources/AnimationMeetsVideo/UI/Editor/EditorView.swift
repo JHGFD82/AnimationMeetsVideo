@@ -25,6 +25,8 @@ struct EditorView: View {
     @State private var renderer = RenderScheduler()
     @State private var beatMatch = BeatMatchController()
     @State private var tapeScrubber = TapeScrubberWindow()
+    /// The project as the browser reads it (see `browserProject`).
+    @State private var browserCopy = UnobservedProject()
 
     init(
         project: Binding<EditingProject>,
@@ -39,6 +41,21 @@ struct EditorView: View {
         self.replacement = replacement
         self.packageURL = packageURL
         self._activeTimelineID = State(initialValue: project.wrappedValue.rootTimelineID)
+    }
+
+    /// The project for the browser, read from a copy SwiftUI doesn't watch.
+    /// Reading `project` itself would redraw the browser on every edit,
+    /// however its `==` compares; this way it redraws only when what it
+    /// shows changes. The copy is the project as of this redraw, and edits
+    /// go to the project.
+    private var browserProject: Binding<EditingProject> {
+        let copy = browserCopy
+        copy.value = project
+        let project = $project
+        return Binding(get: { copy.value }, set: { newValue in
+            copy.value = newValue
+            project.wrappedValue = newValue
+        })
     }
 
     var body: some View {
@@ -60,9 +77,11 @@ struct EditorView: View {
                 playback: playback, analysis: analysis, offlineMedia: replacement.missingMedia
             ) {
                 BrowserPanel(
-                    project: $project, activeTimelineID: activeTimeline, selection: $selection,
-                    analysis: analysis, replacement: replacement, packageURL: packageURL
+                    project: browserProject, activeTimelineID: activeTimeline, selection: $selection,
+                    analysis: analysis, replacement: replacement, packageURL: packageURL,
+                    shown: BrowserPanel.Shown(structure: project.structure, activeTimelineID: activeTimelineID, selection: selection)
                 )
+                .equatable()
                 .grooved(.trailing)
             }
             .environment(renderer)
@@ -151,4 +170,11 @@ struct EditorView: View {
             self.selection = nil
         }
     }
+}
+
+/// A project kept where SwiftUI doesn't watch it, for a view that redraws
+/// on comparing what it shows rather than on every edit (see
+/// `EditorView.browserProject`).
+final class UnobservedProject {
+    var value = EditingProject.empty
 }

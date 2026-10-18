@@ -26,6 +26,18 @@ struct BrowserPanel: View {
     let analysis: AssetAnalysis
     let replacement: MediaReplacementController
     let packageURL: URL?
+    /// What the browser shows, as the editor had it when it drew, which the
+    /// comparison uses (see `==`): the bindings always read the current
+    /// values.
+    let shown: Shown
+
+    struct Shown: Equatable {
+        /// The project without its values (`EditingProject.structure`):
+        /// the media, the timelines and what of the media they use.
+        var structure: EditingProject
+        var activeTimelineID: UUID
+        var selection: TimelineSelection?
+    }
     @State private var importError: String?
     @State private var presets = PresetsModel()
     @State private var showingSettings = false
@@ -257,5 +269,15 @@ private extension View {
         listStyle(.sidebar)
             .scrollContentBackground(.hidden)
             .sunken(.sunken)
+    }
+}
+
+extension BrowserPanel: Equatable {
+    /// Whether the browser would draw the same, so it needn't be redrawn
+    /// (the editor marks it `.equatable()`). It shows nothing an effect's
+    /// values decide, so dragging one doesn't redraw it. The analysis and
+    /// replacement it shows are observed on their own.
+    nonisolated static func == (lhs: BrowserPanel, rhs: BrowserPanel) -> Bool {
+        MainActor.assumeIsolated { lhs.shown == rhs.shown && lhs.packageURL == rhs.packageURL }
     }
 }

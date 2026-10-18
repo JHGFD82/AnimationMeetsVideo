@@ -223,3 +223,20 @@ struct LayerHeaderRow: View {
         isEditingName = false
     }
 }
+
+extension LayerHeaderRow: Equatable {
+    /// Whether the header would draw the same, so it needn't be redrawn
+    /// (the timeline marks it `.equatable()`). Its closures act on the
+    /// layer by ID, so they aren't compared.
+    nonisolated static func == (lhs: LayerHeaderRow, rhs: LayerHeaderRow) -> Bool {
+        MainActor.assumeIsolated {
+            lhs.number == rhs.number && lhs.layer == rhs.layer && lhs.displayName == rhs.displayName
+                && lhs.height == rhs.height && lhs.canMoveUp == rhs.canMoveUp && lhs.canMoveDown == rhs.canMoveDown
+                && lhs.isExpanded == rhs.isExpanded && lhs.isAudioExpanded == rhs.isAudioExpanded
+                && lhs.isChannelsExpanded == rhs.isChannelsExpanded && lhs.isSelected == rhs.isSelected
+                && lhs.reach?.current == rhs.reach?.current && lhs.reach?.summary == rhs.reach?.summary
+                && lhs.reach?.options.map(\.id) == rhs.reach?.options.map(\.id)
+                && lhs.reach?.options.map(\.name) == rhs.reach?.options.map(\.name)
+        }
+    }
+}
