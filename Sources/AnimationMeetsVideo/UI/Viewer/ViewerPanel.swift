@@ -1,5 +1,12 @@
 import SwiftUI
 
+/// The viewer: the picture, its notices, and the transport under it.
+///
+/// Nothing in this body reads the player's time, which changes 30 times a
+/// second while playing; reading it here would rebuild the whole panel,
+/// menus and overlays included, on every tick. The two things that show
+/// the time are views of their own (`ViewerPicture`, `ViewerTimecode`),
+/// so only they follow it.
 struct ViewerPanel: View {
     let playback: PlaybackModel
     let hasContent: Bool
@@ -28,11 +35,7 @@ struct ViewerPanel: View {
                 // frame edge stays visible even on a black frame.
                 Design.Surface.well.color
                 if hasContent {
-                    picture { PlayerLayerView(player: playback.player, still: playback.cover) }
-                        .accessibilityElement()
-                        .accessibilityLabel("Viewer")
-                        .accessibilityValue(playback.currentTime.timecode(frameRate: frameRate))
-                        .accessibilityAddTraits(.isImage)
+                    picture { ViewerPicture(playback: playback, frameRate: frameRate) }
                 } else {
                     picture { MetalPreviewView() }
                     ContentUnavailableView("No clips yet", systemImage: "film",
@@ -90,10 +93,7 @@ struct ViewerPanel: View {
                 .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
                 .disabled(!hasContent)
 
-                // The one number meant to be read from across the desk.
-                Text(playback.currentTime.timecode(frameRate: frameRate))
-                    .font(Design.Typeface.timecode)
-                    .foregroundStyle(Design.textPrimary)
+                ViewerTimecode(playback: playback, frameRate: frameRate)
                 Spacer()
                 Menu {
                     Toggle("Motion Blur in Preview", isOn: Binding(
@@ -154,5 +154,34 @@ struct ViewerPanel: View {
             }
         }
         .help("Viewer quality. Smaller sizes play complex timelines smoothly; Auto draws full size when paused and steps down only while playback can't keep up.")
+    }
+}
+
+/// The player's picture, with the time as its accessibility value. A view
+/// of its own so following the time rebuilds only this.
+private struct ViewerPicture: View {
+    let playback: PlaybackModel
+    let frameRate: Double
+
+    var body: some View {
+        PlayerLayerView(player: playback.player, still: playback.cover)
+            .accessibilityElement()
+            .accessibilityLabel("Viewer")
+            .accessibilityValue(playback.currentTime.timecode(frameRate: frameRate))
+            .accessibilityAddTraits(.isImage)
+    }
+}
+
+/// The playhead's timecode under the picture: the one number meant to be
+/// read from across the desk. A view of its own so following the time
+/// rebuilds only this.
+private struct ViewerTimecode: View {
+    let playback: PlaybackModel
+    let frameRate: Double
+
+    var body: some View {
+        Text(playback.currentTime.timecode(frameRate: frameRate))
+            .font(Design.Typeface.timecode)
+            .foregroundStyle(Design.textPrimary)
     }
 }
