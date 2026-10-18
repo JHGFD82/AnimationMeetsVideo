@@ -169,6 +169,11 @@ struct AnimationMeetsVideoApp: App {
             }
             TimelineCommands()
         }
+
+        // App > Settings… (⌘,): how the editor behaves for every project.
+        Settings {
+            SettingsView()
+        }
     }
 
     /// Asks where to save the new project and creates its package at once,

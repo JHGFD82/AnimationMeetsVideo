@@ -47,7 +47,9 @@ Follow Google's change-description conventions for every commit.
     `Effects/` (effects panel), `EffectsLibrary/` (effects and transitions
     to drag onto clips), `Keyframes/` (graph editors), `Browser/` (clips,
     timelines and presets), `Inspector/`, `Viewer/`, `BeatMatch/`,
-    `Replacement/`, `Design/` (design system and shared styling) and
+    `Replacement/`, `Settings/` (the app's Settings window; its keys are
+    in `App/Preferences.swift`), `Design/` (design system, shared styling,
+    icon buttons and command symbols) and
     `Components/` for shared controls.
   Put new UI code in the folder of the area that uses it, one main view per
   file; keep non-UI logic out of `UI/`.
