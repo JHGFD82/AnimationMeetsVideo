@@ -518,8 +518,8 @@ struct EffectsPanel: View {
                 ChoiceRow(
                     name: control.kind.name,
                     indent: EffectsPanelMetrics.controlIndent - 12,
-                    options: BlendMode.allCases.map { ($0.rawValue, $0.name) },
-                    selected: control.choice ?? BlendMode.normal.rawValue,
+                    options: control.kind.choiceOptions,
+                    selected: control.choice ?? control.kind.defaultChoice ?? "",
                     isSelected: isSelected,
                     dragHandle: handle,
                     isDimmed: effectDimmed || control.isNoOp,

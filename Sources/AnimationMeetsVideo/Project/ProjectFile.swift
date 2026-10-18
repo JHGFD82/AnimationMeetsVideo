@@ -363,7 +363,7 @@ struct ProjectFile: Codable {
             enabled = control.enabled ? nil : false
             linked = control.kind.isLinkable && control.linked != control.kind.linksByDefault ? control.linked : nil
             if control.kind.isChoice {
-                value = .text(control.choice ?? BlendMode.normal.rawValue)
+                value = .text(control.choice ?? control.kind.defaultChoice ?? "")
             } else if control.number.isAnimated {
                 keyframes = control.number.keyframes.map {
                     KeyframeEntry(
@@ -698,6 +698,7 @@ extension ProjectFile {
             let value: JSONShape = switch kind {
             case .mode: .choice(BlendMode.allCases.map(\.rawValue), noun: "blend mode")
             case .matteMode: .choice(MatteMode.allCases.map(\.rawValue), noun: "matte mode")
+            case _ where kind.isChoice: .choice(kind.choiceOptions.map(\.id), noun: kind.name.lowercased())
             default: count > 1 ? .numbers(count: count) : .number
             }
             var fields: [O.Field] = [
@@ -719,7 +720,7 @@ extension ProjectFile {
             switch kind {
             case .transform: fields.append(.optional("movesAnchor", .bool))
             case .blending: fields.append(.optional("against", .uuid))
-            case .color, .rectangle, .ellipse, .equalizer, .compressor, .limiter, .voiceIsolation: break
+            case .color, .rectangle, .ellipse, .polygon, .star, .stroke, .equalizer, .compressor, .limiter, .voiceIsolation: break
             case .matte:
                 fields.append(.optional("input", .object(object([
                     .optional("asset", .uuid), .optional("timeline", .uuid),

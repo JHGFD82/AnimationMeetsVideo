@@ -69,6 +69,9 @@ extension EditingProject {
                 return EffectNote(text: "The picture it takes is missing, so the clip is left as it is until it is found or replaced.", dims: true)
             }
         }
+        if effect.kind == .stroke, !Self.strokeHasShapes(clip.effects, at: index) {
+            return EffectNote(text: "A Stroke outlines the shapes above it in the stack, and none reach it: there are none, or a Matte or Blending step comes between.", dims: true)
+        }
         if effect.kind == .blending {
             if !clip.effects.againstIsReachable(at: index) {
                 return EffectNote(text: "The effect it blends against is gone or below this step, so it does nothing until pointed elsewhere.", dims: true)
@@ -83,6 +86,17 @@ extension EditingProject {
             return EffectNote(text: "With Pass Through, opacity applies to each layer inside, which differs from the whole where they overlap.", dims: false)
         }
         return nil
+    }
+
+    /// Whether a Stroke at `index` has shapes above it to outline: one that
+    /// is on, with no Matte or Blending step between, which change what the
+    /// shapes cover.
+    static func strokeHasShapes(_ effects: [Effect], at index: Int) -> Bool {
+        for effect in effects.prefix(index).reversed() where effect.enabled {
+            if effect.kind.drawsShape { return true }
+            if effect.kind == .matte || effect.kind == .blending { return false }
+        }
+        return false
     }
 
     /// A note on one of a clip's transitions, when Pass Through can't draw it.

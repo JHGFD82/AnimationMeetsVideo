@@ -217,8 +217,9 @@ footage gets replaced):
 
 ## Shapes
 
-**Shapes** (Rectangle, Ellipse) draw a shape over the picture handed down
-to them, and the steps below act on both. A shape clip has no picture of
+**Shapes** (Rectangle, Ellipse, Polygon, Star) draw a shape over the
+picture handed down to them, and the steps below act on both. **Stroke**
+strokes the outline of the shapes above it, strokes included. A shape clip has no picture of
 its own, so its picture is its shapes. See
 [graphic-layers.md](graphic-layers.md#shapes).
 

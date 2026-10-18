@@ -4,12 +4,22 @@ import Foundation
 
 extension Effect {
     /// Sizes a new shape to a frame `frame` big: a rectangle half its width
-    /// and height, an ellipse a circle half its height.
+    /// and height, an ellipse a circle half its height, and a polygon or
+    /// star as tall (its inner points halfway in).
     mutating func sizeShape(to frame: CGSize) {
-        guard kind.isShape, let size = controls.firstIndex(where: { $0.kind == .shapeSize }) else { return }
         let side = Double(frame.height / 2).rounded()
-        let values = kind == .ellipse ? [side, side] : [Double(frame.width / 2).rounded(), side]
-        controls[size].number = AnimatedValue(ComponentValue(values: values))
+        func set(_ kind: ControlKind, _ values: [Double]) {
+            guard let index = controls.firstIndex(where: { $0.kind == kind }) else { return }
+            controls[index].number = AnimatedValue(ComponentValue(values: values))
+        }
+        switch kind {
+        case .rectangle: set(.shapeSize, [Double(frame.width / 2).rounded(), side])
+        case .ellipse: set(.shapeSize, [side, side])
+        case .polygon, .star:
+            set(.radius, [side / 2])
+            set(.innerRadius, [(side / 4).rounded()])
+        default: break
+        }
     }
 }
 
@@ -25,7 +35,7 @@ extension EditingProject {
         from start: CMTime = .zero,
         duration: CMTime = MediaClip.stillLength
     ) -> (layerID: UUID, clipID: UUID)? {
-        guard kind.isShape, let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return nil }
+        guard kind.drawsShape, let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return nil }
         let timeline = timelines[tIndex]
         let length = CMTimeMaximum(timeline.frameDuration, timeline.frameAligned(duration, .down))
         var shape = Effect(kind: kind)

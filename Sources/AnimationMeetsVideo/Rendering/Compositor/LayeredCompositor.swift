@@ -540,6 +540,8 @@ struct Drawing {
     /// applied to their outlines as well as to the picture, and they are
     /// drawn, over the picture, when a step needs pixels or the stack ends.
     /// So a shape scaled up is drawn at the size it ends up, not enlarged.
+    /// Their edges are kept after they are drawn, for a Stroke step to
+    /// follow, until a Matte or Blending step changes what they cover.
     private func runStack(
         _ steps: [ResolvedStep],
         on initial: CIImage,
@@ -554,9 +556,11 @@ struct Drawing {
         var picture = initial
         var kept: [UUID: CIImage] = [:]
         // Shapes not yet drawn, over the picture, bottom first.
-        var shapes: [ShapeRendering.Placed] = []
+        var shapes: [ShapeRendering.Paint] = []
+        // The edges of the shapes drawn so far, strokes included.
+        var edges: [ShapeRendering.Edge] = []
         // From the frame's pixels to output pixels, where the clip's own
-        // frame is placed.
+        // frame is placed: where a shape added now is drawn from.
         let frameToOutput = start
             .concatenating(Self.flip(height: frameSize.height))
             .concatenating(CGAffineTransform(scaleX: scale.width, y: scale.height))
@@ -579,12 +583,24 @@ struct Drawing {
                 let move = inOutput(placed(matrix))
                 picture = picture.transformed(by: move)
                 for index in shapes.indices { shapes[index].transform = shapes[index].transform.concatenating(move) }
+                for index in edges.indices { edges[index].transform = edges[index].transform.concatenating(move) }
                 opacity *= factor
             case .shape(let shape):
                 // Over the picture as the steps above left it, opacity and
                 // all; the steps below act on both.
                 settleOpacity()
-                shapes.append(ShapeRendering.Placed(shape: shape, transform: frameToOutput))
+                for paint in shape.paints {
+                    shapes.append(ShapeRendering.Paint(area: paint.area, color: paint.color, transform: frameToOutput))
+                }
+                edges.append(ShapeRendering.Edge(area: shape.edge, transform: frameToOutput))
+            case .outlineStroke(let style):
+                // Around everything the shapes above drew, strokes and all,
+                // where those shapes now are.
+                settleOpacity()
+                guard let outline = ShapeRendering.union(of: edges, current: frameToOutput) else { continue }
+                let area = style.area(around: outline)
+                shapes.append(ShapeRendering.Paint(area: area, color: style.color, transform: frameToOutput))
+                edges.append(ShapeRendering.Edge(area: area, transform: frameToOutput))
             case .mark(let id):
                 settleOpacity()
                 drawShapes()
@@ -600,11 +616,13 @@ struct Drawing {
             case .matte(let effectID, let mode, let amount):
                 settleOpacity()
                 drawShapes()
+                edges = []
                 guard let input = clip.inputs[effectID], let matte = matteImage(input, frame: frameSize, start: start) else { continue }
                 picture = cut(picture, by: matte, mode: mode, amount: amount, frame: frameSize)
             case .blend(let mode, let amount, let against):
                 settleOpacity()
                 drawShapes()
+                edges = []
                 let other: CIImage
                 if let against {
                     guard let earlier = kept[against] else { continue }

@@ -38,7 +38,7 @@ final class AudioEffectUnit {
         case .compressor: subType = kAudioUnitSubType_DynamicsProcessor
         case .limiter: subType = kAudioUnitSubType_PeakLimiter
         case .voiceIsolation: subType = kAudioUnitSubType_AUSoundIsolation
-        case .transform, .blending, .color, .matte, .rectangle, .ellipse: return nil
+        case .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke: return nil
         }
         guard format.mFormatID == kAudioFormatLinearPCM, format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
               format.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0, format.mBitsPerChannel == 32,
@@ -189,7 +189,7 @@ final class AudioEffectUnit {
             set(kLimiterParam_DecayTime, value(.limiterRelease) / 1000)
         case .voiceIsolation:
             set(kAUSoundIsolationParam_WetDryMixPercent, value(.isolation))
-        case .transform, .blending, .color, .matte, .rectangle, .ellipse:
+        case .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke:
             break
         }
     }

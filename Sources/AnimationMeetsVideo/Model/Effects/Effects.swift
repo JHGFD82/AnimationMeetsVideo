@@ -116,6 +116,11 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     /// docs/graphic-layers.md, "Shapes").
     case rectangle
     case ellipse
+    case polygon
+    case star
+    /// Strokes the outline of the shapes above it in the stack, strokes and
+    /// all, so a stroke can have a stroke of its own.
+    case stroke
     case equalizer
     case compressor
     case limiter
@@ -131,6 +136,9 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .matte: "Matte"
         case .rectangle: "Rectangle"
         case .ellipse: "Ellipse"
+        case .polygon: "Polygon"
+        case .star: "Star"
+        case .stroke: "Stroke"
         case .equalizer: "EQ"
         case .compressor: "Compressor"
         case .limiter: "Limiter"
@@ -141,7 +149,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     var category: EffectCategory {
         switch self {
         case .transform, .blending, .color: .foundations
-        case .rectangle, .ellipse: .shapes
+        case .rectangle, .ellipse, .polygon, .star, .stroke: .shapes
         case .matte: .mattes
         case .equalizer, .compressor, .limiter, .voiceIsolation: .sound
         }
@@ -150,8 +158,11 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     /// Whether it works on the clip's sound rather than its picture.
     var isAudio: Bool { category == .sound }
 
-    /// Whether it draws a shape.
+    /// Whether it is one of the shapes, or strokes them.
     var isShape: Bool { category == .shapes }
+
+    /// Whether it draws a shape of its own, rather than stroking others.
+    var drawsShape: Bool { isShape && self != .stroke }
 
     var systemImage: String {
         switch self {
@@ -161,6 +172,9 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .matte: "circle.dashed.inset.filled"
         case .rectangle: "rectangle"
         case .ellipse: "circle"
+        case .polygon: "hexagon"
+        case .star: "star"
+        case .stroke: "circle.dashed"
         case .equalizer: "slider.vertical.3"
         case .compressor: "arrow.down.right.and.arrow.up.left"
         case .limiter: "line.horizontal.star.fill.line.horizontal"
@@ -178,9 +192,13 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     /// they end up.
     var dependsOnPixelSize: Bool {
         switch self {
-        case .transform, .blending, .color, .matte, .rectangle, .ellipse, .equalizer, .compressor, .limiter, .voiceIsolation: false
+        case .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke,
+             .equalizer, .compressor, .limiter, .voiceIsolation: false
         }
     }
+
+    /// How a shape is filled and stroked, after what shapes it.
+    static let paintControls: [ControlKind] = [.fill, .stroke, .strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash]
 
     /// The controls a new effect of this kind lists, in order.
     var controlKinds: [ControlKind] {
@@ -189,8 +207,11 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .blending: [.mode, .amount]
         case .color: [.exposure, .contrast, .saturation, .temperature, .tint, .lift, .gamma, .gain]
         case .matte: [.matteMode, .amount]
-        case .rectangle: [.shapeSize, .cornerRadius, .shapePosition, .fill, .stroke, .strokeWidth]
-        case .ellipse: [.shapeSize, .shapePosition, .fill, .stroke, .strokeWidth]
+        case .rectangle: [.shapeSize, .cornerRadius, .shapePosition] + Self.paintControls
+        case .ellipse: [.shapeSize, .shapePosition] + Self.paintControls
+        case .polygon: [.points, .radius, .cornerRadius, .shapeRotation, .shapePosition] + Self.paintControls
+        case .star: [.points, .radius, .innerRadius, .cornerRadius, .shapeRotation, .shapePosition] + Self.paintControls
+        case .stroke: [.stroke, .strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash]
         case .equalizer: [.lowCut, .bass, .mid, .midFrequency, .treble]
         case .compressor: [.threshold, .headroom, .attack, .release, .makeup]
         case .limiter: [.drive, .limiterRelease]
@@ -206,6 +227,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case exposure, contrast, saturation, temperature, tint, lift, gamma, gain
     case matteMode
     case shapeSize, cornerRadius, shapePosition, fill, stroke, strokeWidth
+    case strokeEdge, strokeJoin, strokeCap, dash
+    case points, radius, innerRadius, shapeRotation
     case lowCut, bass, mid, midFrequency, treble
     case threshold, headroom, attack, release, makeup
     case drive, limiterRelease
@@ -236,6 +259,14 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .fill: "Fill"
         case .stroke: "Stroke"
         case .strokeWidth: "Stroke Width"
+        case .strokeEdge: "Edge"
+        case .strokeJoin: "Join"
+        case .strokeCap: "Cap"
+        case .dash: "Dash"
+        case .points: "Points"
+        case .radius: "Radius"
+        case .innerRadius: "Inner Radius"
+        case .shapeRotation: "Rotation"
         case .lowCut: "Low Cut"
         case .bass: "Bass"
         case .mid: "Mid"
@@ -261,6 +292,9 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .matteMode: .matte
         case .exposure, .contrast, .saturation, .temperature, .tint, .lift, .gamma, .gain: .color
         case .shapeSize, .cornerRadius, .shapePosition, .fill, .stroke, .strokeWidth: .rectangle
+        case .strokeEdge, .strokeJoin, .strokeCap, .dash: .rectangle
+        case .points, .radius, .shapeRotation: .polygon
+        case .innerRadius: .star
         case .lowCut, .bass, .mid, .midFrequency, .treble: .equalizer
         case .threshold, .headroom, .attack, .release, .makeup: .compressor
         case .drive, .limiterRelease: .limiter
@@ -274,13 +308,37 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     /// shape's, which draw it.
     var hasNeutralDefault: Bool {
         switch effectKind {
-        case .compressor, .limiter, .voiceIsolation, .rectangle: false
-        default: true
+        case .compressor, .limiter, .voiceIsolation: false
+        default: !effectKind.isShape
         }
     }
 
     /// Whether the control is a choice from a list rather than numbers.
-    var isChoice: Bool { self == .mode || self == .matteMode }
+    var isChoice: Bool { !choiceOptions.isEmpty }
+
+    /// What a choice offers, as raw values and names; empty for numbers.
+    var choiceOptions: [(id: String, name: String)] {
+        switch self {
+        case .mode: BlendMode.allCases.map { ($0.rawValue, $0.name) }
+        case .matteMode: MatteMode.allCases.map { ($0.rawValue, $0.name) }
+        case .strokeEdge: StrokeEdge.allCases.map { ($0.rawValue, $0.name) }
+        case .strokeJoin: StrokeJoin.allCases.map { ($0.rawValue, $0.name) }
+        case .strokeCap: StrokeCap.allCases.map { ($0.rawValue, $0.name) }
+        default: []
+        }
+    }
+
+    /// What a new choice control picks.
+    var defaultChoice: String? {
+        switch self {
+        case .mode: BlendMode.normal.rawValue
+        case .matteMode: MatteMode.alpha.rawValue
+        case .strokeEdge: StrokeEdge.center.rawValue
+        case .strokeJoin: StrokeJoin.miter.rawValue
+        case .strokeCap: StrokeCap.butt.rawValue
+        default: nil
+        }
+    }
 
     /// Whether its two axes can be linked, so editing one changes the other
     /// in proportion.
@@ -304,6 +362,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .shapeSize: ["Width", "Height"]
         case .shapePosition: ["Δx", "Δy"]
         case .fill, .stroke: ["Red", "Green", "Blue", "Alpha"]
+        case .dash: ["Dash", "Gap"]
+        case .strokeEdge, .strokeJoin, .strokeCap: []
         default: [name]
         }
     }
@@ -323,6 +383,12 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .shapePosition: [0, 0]
         case .fill: [1, 1, 1, 1]
         case .stroke: [0, 0, 0, 1]
+        case .strokeEdge, .strokeJoin, .strokeCap: []
+        case .dash: [0, 0]
+        case .points: [5]
+        case .radius: [180]
+        case .innerRadius: [90]
+        case .shapeRotation: [0]
         case .lowCut: [20]
         case .bass, .mid, .treble, .makeup, .drive: [0]
         case .midFrequency: [1000]
@@ -337,8 +403,9 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
 
     var unit: String {
         switch self {
-        case .position, .shapeSize, .cornerRadius, .shapePosition, .strokeWidth: " px"
-        case .fill, .stroke: ""
+        case .position, .shapeSize, .cornerRadius, .shapePosition, .strokeWidth, .dash, .radius, .innerRadius: " px"
+        case .fill, .stroke, .strokeEdge, .strokeJoin, .strokeCap, .points: ""
+        case .shapeRotation: "°"
         case .scale, .opacity, .amount, .contrast, .saturation, .isolation: "%"
         case .rotation: "°"
         case .exposure: " stops"
@@ -371,7 +438,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .lift: -1...1
         case .gamma: 0.01...10
         case .gain: 0...10
-        case .position, .scale, .rotation, .mode, .matteMode, .shapePosition: nil
+        case .position, .scale, .rotation, .mode, .matteMode, .shapePosition, .shapeRotation: nil
+        case .strokeEdge, .strokeJoin, .strokeCap: nil
+        case .dash: 0...10_000
+        case .points: 3...100
+        case .radius, .innerRadius: 0...50_000
         case .shapeSize: 0...100_000
         case .cornerRadius: 0...50_000
         case .strokeWidth: 0...10_000
@@ -390,10 +461,12 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// A component limited to what the control allows.
+    /// A component limited to what the control allows; a count of points
+    /// is whole.
     func clamped(_ component: Double) -> Double {
-        guard let range else { return component }
-        return min(max(component, range.lowerBound), range.upperBound)
+        let whole = self == .points ? component.rounded() : component
+        guard let range else { return whole }
+        return min(max(whole, range.lowerBound), range.upperBound)
     }
 
     /// A shown value with its unit.
@@ -410,7 +483,8 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     var enabled = true
     /// The control's numbers, keyframed or not. Unused by choices.
     var number: AnimatedValue<ComponentValue>
-    /// The option picked, for a choice: a `BlendMode` raw value.
+    /// The option picked, for a choice: a raw value of one of its
+    /// `choiceOptions`.
     var choice: String?
     /// Whether editing one axis of a scale or a size changes the other in
     /// proportion.
@@ -422,11 +496,7 @@ struct EffectControl: Identifiable, Equatable, Sendable {
         self.enabled = enabled
         linked = kind.linksByDefault
         number = AnimatedValue(ComponentValue(values: kind.defaultValues))
-        switch kind {
-        case .mode: choice = BlendMode.normal.rawValue
-        case .matteMode: choice = MatteMode.alpha.rawValue
-        default: choice = nil
-        }
+        choice = kind.defaultChoice
     }
 
     var isAnimated: Bool { number.isAnimated }

@@ -1,8 +1,9 @@
 # Images, shapes and text
 
-Status: stills and the first shapes (rectangle and ellipse) are **built**
-(steps 1 and 2a, not yet tried in the running app); the other shapes and
-text are **planned** (see [Building it](#building-it)).
+Status: stills, shapes (rectangle, ellipse, polygon and star) and strokes
+are **built** (steps 1, 2a and 2b, not yet tried in the running app);
+gradients, free paths, path operations and text are **planned** (see
+[Building it](#building-it)).
 Pictures that don't come from footage:
 still images imported from files, and shapes and text made in the app,
 drawn as vectors.
@@ -99,7 +100,7 @@ a still, is refused.
 
 ## Shapes
 
-Shapes are **effects**: a Rectangle or an Ellipse in a clip's stack draws
+Shapes are **effects**: a Rectangle, Ellipse, Polygon or Star in a clip's stack draws
 its shape over the picture handed down to it, and the steps below act on
 both. That is the stack's own rule (see [effects.md](effects.md#the-idea-the-list-is-the-render-order)),
 and it means keyframes, eases, the graph editor, presets, copy and paste,
@@ -109,20 +110,25 @@ and saving all work on shapes as they are.
   own: it starts from transparency, so its picture is what its shapes
   draw. Like an adjustment clip it has no length to run out of. The
   timeline's toolbar makes one at the playhead on a new video layer
-  (New Shape Layer, Rectangle or Ellipse), five seconds long, holding one
-  shape sized to the frame. It is drawn in its own tone.
+  (New Shape Layer: Rectangle, Ellipse, Polygon or Star), five seconds
+  long, holding one shape sized to the frame; a shape added from the
+  library is sized the same way. It is drawn in its own tone.
 - **Shapes on anything.** A shape can go in any visual clip's stack: a
   box drawn over footage for a lower third, below a Transform that moves
   both, is one clip. The effects library lists them under Shapes.
-- **Controls.** Size (width and height, which can be linked, but aren't
-  at first), Corners (Rectangle only: the radius, at most half the shorter
-  side), Position (an offset of the shape's center from the frame's
-  center), Fill and Stroke (colors with opacity, picked with a color
-  well) and Stroke Width (centered on the outline). Turning Fill or Stroke
-  off leaves it out. Colors are the timeline's encoded values, as a
+- **Controls.** Rectangle and Ellipse have a Size (width and height,
+  which can be linked, but aren't at first); Polygon and Star have Points
+  (a whole number, 3 to 100), Radius, Rotation and, for a star, Inner
+  Radius, with the first point straight up. Rectangle, Polygon and Star
+  have Corners: the radius each corner is rounded to, as round as fits in
+  half of each edge beside it. All have Position (an offset of the
+  shape's center from the frame's center), Fill and Stroke (colors with
+  opacity, picked with a color well), Stroke Width, and the stroke's Edge,
+  Join, Cap and Dash (see [Strokes](#strokes)). Turning Fill or Stroke off
+  leaves it out. Colors are the timeline's encoded values, as a
   transition's dip color is.
-- **Drawing.** A shape is filled and stroked with Core Graphics
-  (`ShapeRendering`), in 32-bit floats, into a picture the size of its
+- **Drawing.** Fills and strokes alike are areas filled with a color
+  (`ShapeRendering`), in 32-bit floats, into a picture the size of their
   bounds in output pixels, kept within the canvas margin.
 - **Staying sharp.** While only moves (Transform's Position, Scale and
   Rotation) follow a shape in the stack, they are applied to its outline,
@@ -134,18 +140,40 @@ and saving all work on shapes as they are.
 - **Render key.** A shape's step is part of the key, so changing a shape
   re-renders it, and moving the clip doesn't.
 
+### Strokes
+
+In most tools a stroke is an attribute of a path, so it can't be stroked
+again, and putting it outside a letter's edge means turning the text into
+outlines first. Here a stroke is an area worked out from an outline, and
+anything with an outline can be stroked, however often:
+
+- **Edge.** Center straddles the outline. Inside and Outside are a
+  centered stroke twice as wide, cut to that side of the outline with
+  Core Graphics' path operations, so an inside stroke keeps the shape's
+  size, an outside one never covers it, and their corners follow the
+  outline's own.
+- **Join** (Miter, Round, Bevel), **Cap** (Flat, Round, Square, for the
+  ends of dashes) and **Dash** (dash and gap lengths in pixels; solid while
+  the dash is 0, and a gap of 0 is as long as the dash).
+- **The Stroke effect** strokes the outline of everything the shapes above
+  it in the stack drew, their strokes included, where they are by then.
+  So a rectangle with a fill and a stroke, followed by a Stroke, has a
+  stroke around its stroke; another Stroke goes around that one. Text
+  (step 3) has the same outlines, so an outside stroke on text is one
+  Stroke effect. A Matte or Blending step changes what the shapes cover,
+  so a Stroke after one has nothing to follow, and the effects panel says
+  so.
+
 Still to come:
 
-- **Polygon and star** (points, radii, roundness): parameters that make a
-  path, so they animate by their numbers.
 - **Free paths.** A closed flag and a list of vertices, each a point with
   an in and an out tangent, in pixels from the frame's center, keyframed
   whole: between two keyframes with the same number of vertices each point
   and tangent blends; with different counts it holds until the next.
   Converting a primitive to a free path keeps its current shape. Editing
   vertices needs the viewer's handles (step 4).
-- **Stroke joins, caps and dashes**, and gradient fills (linear and
-  radial, with stops).
+- **Gradient fills** (linear and radial, with stops), for fills and
+  strokes alike.
 - **Path operations.** Union, intersection, subtraction and exclusion of
   shapes (Core Graphics' `CGPath` boolean operations, macOS 13 and later),
   offset paths, and **trim paths** (start, end and offset in percent, for
@@ -194,8 +222,9 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
 
 - A still is an asset with `kind: "Image"`, written like any other.
 - A shape clip is `source: {"kind": "graphic"}`. Its shapes are effects
-  (`"rectangle"`, `"ellipse"`) written like any other, their controls as
-  numbers (colors as `[r, g, b, a]`). A size's link is written only when
+  (`"rectangle"`, `"ellipse"`, `"polygon"`, `"star"`, `"stroke"`) written
+  like any other, their controls as numbers (colors as `[r, g, b, a]`)
+  or, for Edge, Join and Cap, the option's name. A size's link is written only when
   it differs from a new control's. Free paths, when they come, will be
   arrays of vertices (`[x, y, inX, inY, outX, outY]`) so they can be read
   and edited by hand. Loading stays strict.
@@ -223,9 +252,14 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
    stack, checks an ellipse against its bounds, translucency, a stroke
    alone, sharpness at 800% (an edge that rasterizing first would blur
    across eight pixels), render keys, and saving; the `UISnapshots`
-   case `shapeEffectsPanel` shows the controls. (b) Polygon and star,
-   stroke joins, caps and dashes, gradients. (c) Free paths and their
-   keyframes. (d) Path operations and trim paths.
+   case `shapeEffectsPanel` shows the controls. (b, done) Polygon and
+   Star with rounded corners, stroke Edge, Join, Cap and Dash, and the
+   Stroke effect; `ShapeTests` checks inside and outside strokes, a
+   stroke around a stroke, a star's notches against a pentagon, dashes,
+   and saving the choices. Choice controls now list their own options,
+   which also fixes Matte's Take listing blend modes. (c) Gradients.
+   (d) Free paths and their keyframes. (e) Path operations and trim
+   paths.
 3. **Text.** Core Text layout and glyph paths, styling runs, the inspector
    editor, missing fonts, variable axes, then animators and text on a path.
 4. **Viewer handles.** Selecting a graphic clip in the viewer, handles for

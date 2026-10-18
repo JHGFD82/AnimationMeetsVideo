@@ -185,13 +185,9 @@ extension CompositionExporter {
                             "\(op.kind.rawValue):" + (0..<4).map { number(Double(op.value[$0])) }.joined(separator: ",")
                         }.joined(separator: " ")
                     case .shape(let shape):
-                        switch shape.outline {
-                        case .rectangle(let radius): text += "h r\(number(radius))"
-                        case .ellipse: text += "h e"
-                        }
-                        text += " " + [shape.rect.minX, shape.rect.minY, shape.rect.width, shape.rect.height].map(number).joined(separator: ",")
-                        text += " f" + (shape.fill ?? []).map(number).joined(separator: ",")
-                        text += " s" + (shape.stroke ?? []).map(number).joined(separator: ",") + "@\(number(shape.strokeWidth))"
+                        text += shape.keyText
+                    case .outlineStroke(let style):
+                        text += "o " + style.keyText
                     }
                     text += " "
                 }
