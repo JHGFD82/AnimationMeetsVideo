@@ -242,8 +242,10 @@ beats per measure, unless a pinned beat in the section says otherwise.
 
 The panel's transport has the song's own **volume**, apart from the
 timeline's mix and remembered across launches. Once a beat or anchor is
-placed, it also shows the tick's **pitch** and **volume**; before that
-there is nothing to tick on. The downbeat (position
+placed, it also shows the tick's on/off toggle (a metronome), and a
+popover beside it for the tick's **pitch** and **volume**; before that
+there is nothing to tick on. The transport stays one line either way, so
+the waveform under it never moves. The downbeat (position
 1) plays an octave above the other beats. The same two settings are in the
 timeline's view options; they are one pair of settings, remembered across
 launches. The pitch slider stops at 2000 Hz, so the downbeat goes no higher
@@ -285,8 +287,13 @@ the pinned one), and wraps positions into the measure.
    an onset curve, unit tested. **Built** (`BeatFitting`, `BeatMatchAudio`).
 5. The beat match panel: waveform, transport, anchors and nudging, beat
    editing, then sections. **Built** (`UI/BeatMatch/`): opened from a Music
-   clip's menu or the inspector. The step's instructions and controls sit
-   left of the waveform, and resizing the panel keeps the same stretch of
+   clip's menu or the inspector. Left of the waveform, the sidebar shows
+   the three steps (Tempo, Sections, Beats; Sections struck through for
+   one tempo) and how many sections are filled, then what to do as one
+   line with tips under it, then the controls in labelled groups. Each
+   command shows its key as a keycap rather than in its name. Start Over,
+   Cancel and Confirm sit in a footer that doesn't scroll. Resizing the
+   panel keeps the same stretch of
    song in view. The waveform is drawn to the song's loudest sample and
    clipped to its area, and the panel's size is the window's alone (the
    hosting view only sets its minimum). The green zoom button widens the

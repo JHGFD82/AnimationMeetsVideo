@@ -233,38 +233,65 @@ final class BeatMatchSession {
     }
 
     /// The next thing to do, for the panel's prompt.
-    var instructions: String {
+    /// What the panel asks for next: one line on the step, and the ways
+    /// to do it, shown as a list under it so the line stays readable.
+    struct Guidance: Equatable {
+        var lead: String
+        var tips: [String] = []
+    }
+
+    var guidance: Guidance {
         switch step {
         case .chooseMode:
-            return "Does the song keep one tempo all the way through? Pick Sections if it changes tempo, speeds up or slows down."
+            return Guidance(lead: "Does the song keep one tempo all the way through?", tips: [
+                "Pick Sections if it changes tempo, speeds up or slows down.",
+            ])
         case .drawSections:
-            return "Pick a kind, then drag across the waveform to mark a section; double-click a gap to fill it. A section stops at the ones beside it, and its edges snap to theirs, to beats and to the playhead. Click a section to select it: picking a kind then changes it. Drag an edge to move it. Get the edges between sections close; the song's start and end needn't be exact."
+            return Guidance(lead: "Mark the song's sections.", tips: [
+                "Pick a kind, then drag across the waveform. Double-click a gap to fill it.",
+                "Click a section to select it; picking a kind then changes it. Drag an edge to move it.",
+                "Edges snap to the next section, to beats and to the playhead. Get the edges between sections close; the song's start and end needn't be exact.",
+            ])
         case .mark:
             break
         }
-        guard let section = selectedSection else { return "Select a section to mark." }
+        guard let section = selectedSection else { return Guidance(lead: "Select a section to mark.") }
         switch section.kind {
         case .none:
-            return "This section isn't analyzed."
+            return Guidance(lead: "This section isn't analyzed.")
         case .ramp:
-            if section.isConfirmed { return reviewHint }
-            return "Fill the sections either side first, then Fill Ramp. At the start or end of the song, or beside an unmarked stretch, mark every beat of one measure at that end (M)."
+            if section.isConfirmed { return reviewGuidance }
+            return Guidance(lead: "Fill the sections either side first, then Fill Ramp.", tips: [
+                "At the start or end of the song, or beside an unmarked stretch, mark every beat of one measure at that end (M).",
+            ])
         case .consistent:
-            if section.isConfirmed { return reviewHint }
+            if section.isConfirmed { return reviewGuidance }
             switch section.pinnedBeats.count {
             case 0:
-                let paste = copiedDetails == nil ? "" : " Or, if it keeps the tempo you copied, paste it (⌘V): the section's start is taken as beat 1."
-                return "Play the song and find a downbeat, beat 1 of a measure, near the middle of this section. Press M to drop an anchor at the playhead, or double-click the waveform. While it plays, taps of M in a row count on through the measure." + paste
+                var tips = [
+                    "Play the song and press M on a downbeat, or double-click the waveform.",
+                    "While it plays, taps of M in a row count on through the measure.",
+                ]
+                if copiedDetails != nil {
+                    tips.append("If it keeps the tempo you copied, paste it (⌘V): the section's start is taken as beat 1.")
+                }
+                return Guidance(lead: "Find a downbeat, beat 1 of a measure, near the middle of this section.", tips: tips)
             case 1:
-                return "Line the tick up with the beat: ← → move the anchor 1 ms, with ⌥ one sample, with ⇧ 10 ms. Then place a second anchor well away from it, ideally near the far end of the section."
+                return Guidance(lead: "Line the tick up with the beat, then place a second anchor well away from it.", tips: [
+                    "← → move the anchor 1 ms, with ⌥ one sample, with ⇧ 10 ms.",
+                    "Put the second anchor near the far end of the section.",
+                ])
             default:
-                return "Check both anchors by ear, then Fill Beats (Return)."
+                return Guidance(lead: "Check both anchors by ear, then Fill Beats (Return).")
             }
         }
     }
 
-    private var reviewHint: String {
-        "Listen through. Drag a beat to move it, which pins it; double-click to add one; Delete removes the selected beat. Reanalyze keeps pinned beats and fits the rest to them."
+    private var reviewGuidance: Guidance {
+        Guidance(lead: "Listen through and correct any beat.", tips: [
+            "Drag a beat to move it, which pins it. Double-click to add one; Delete removes the selected beat.",
+            "Reanalyze keeps pinned beats and fits the rest to them.",
+        ])
     }
 
     // MARK: Filling
