@@ -448,6 +448,8 @@ dropped on load.
 ## Not implemented yet
 
 - Pan in the timeline's volume row and lines.
+- An 8-band parametric EQ edited on a graph over a live spectrum, planned in
+  [equalizer.md](equalizer.md).
 - Dragging the level line up and down in the lane; levels are set in the
   field or with the fader.
 - A way to keep a clip's sound from fading under a transition.
