@@ -17,7 +17,9 @@ struct TimelineHeaderBar: View {
                     Button(timeline.name) { timelineID = timeline.id }
                 }
             }
-            .frame(width: 160)
+            // Its own width, so the name starts at the rail's inset like
+            // every other rail's first item; a fixed frame centred it.
+            .fixedSize()
             Button {
                 showingSettings = true
             } label: {
