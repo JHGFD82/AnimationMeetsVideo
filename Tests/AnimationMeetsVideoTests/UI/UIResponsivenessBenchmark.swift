@@ -17,7 +17,10 @@ import Testing
 /// Runs only with `UI_BENCHMARK` set: `all`, or scenario names separated
 /// by commas (see `scenarios`). `UI_BENCHMARK_SECONDS` keeps each one
 /// going that long, which leaves time to attach `sample`; without it each
-/// takes 90 steps. `AMV_PROJECT` adds scenarios on a saved project, which
+/// takes 90 steps. A drag's steps are held to one side of the project, as
+/// a dragged field holds them (`ProjectState.hold`); `UI_BENCHMARK_UNHELD`
+/// writes each to the project instead, as drags did before, for
+/// comparison. `AMV_PROJECT` adds scenarios on a saved project, which
 /// is read and never written. With `SNAPSHOT_DIR` set, each scenario
 /// leaves a picture of the editor. Release timings are the ones that
 /// matter:
@@ -32,27 +35,23 @@ import Testing
 @MainActor
 @Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["UI_BENCHMARK"] != nil))
 struct UIResponsivenessBenchmark {
-    @Observable final class Model {
-        var project: EditingProject
-        init(_ project: EditingProject) { self.project = project }
-    }
-
     /// The editor as the app's scene holds it: the same history, analysis
     /// and replacement for the window's life, and `.equatable()`, since
     /// this runs again at every edit. Made anew here at each edit, they
     /// rebuilt the whole editor every step, and the ones let go of piled up.
     struct Host: View {
-        @Bindable var model: Model
+        @Bindable var state: ProjectState
         let history: ProjectHistory
         let analysis: AssetAnalysis
         let replacement: MediaReplacementController
         let selection: TimelineSelection?
         var body: some View {
             EditorView(
-                project: $model.project, history: history, analysis: analysis,
+                project: $state.value, history: history, analysis: analysis,
                 replacement: replacement, packageURL: nil, selection: selection
             )
             .equatable()
+            .environment(state)
         }
     }
 
@@ -142,7 +141,7 @@ struct UIResponsivenessBenchmark {
         for scenario in chosen {
             if bases[scenario.base] == nil { bases[scenario.base] = try await Self.make(scenario.base) }
             let (project, selection) = try #require(bases[scenario.base])
-            rows.append(try measure(scenario, project: project, selection: selection))
+            rows.append(try await measure(scenario, project: project, selection: selection))
         }
         print("UIResponsivenessBenchmark (ms per step, main thread)")
         print("scenario                     steps   mean  median    p90     max   first   last")
@@ -151,7 +150,7 @@ struct UIResponsivenessBenchmark {
 
     // MARK: Measuring
 
-    private func measure(_ scenario: Scenario, project start: EditingProject, selection: TimelineSelection) throws -> String {
+    private func measure(_ scenario: Scenario, project start: EditingProject, selection: TimelineSelection) async throws -> String {
         var project = start
         let t = selection.timelineID
         var edit: ((inout EditingProject, Int) -> Void)?
@@ -196,12 +195,13 @@ struct UIResponsivenessBenchmark {
         defer { for (key, value) in remembered { defaults.set(value, forKey: key) } }
         for (key, value) in preferences { defaults.set(value, forKey: key) }
 
-        let model = Model(project)
+        let state = ProjectState(project)
+        let holds = ProcessInfo.processInfo.environment["UI_BENCHMARK_UNHELD"] == nil
         let history = ProjectHistory(project: project)
         let bounds = CGRect(x: 0, y: 0, width: 1500, height: 900)
         let host = NSHostingView(
             rootView: Host(
-                model: model, history: history, analysis: AssetAnalysis(), replacement: MediaReplacementController(),
+                state: state, history: history, analysis: AssetAnalysis(), replacement: MediaReplacementController(),
                 selection: selection
             )
             .frame(width: bounds.width, height: bounds.height)
@@ -217,20 +217,34 @@ struct UIResponsivenessBenchmark {
         // after every event: run from a test, nothing drained until the
         // test returned, and what AppKit and SwiftUI leave to be released
         // piled up and made every step slower than the last.
-        func settle(_ seconds: Double) {
+        func pass() {
             autoreleasepool {
-                RunLoop.main.run(until: Date().addingTimeInterval(seconds))
+                RunLoop.main.run(until: Date())
                 host.layoutSubtreeIfNeeded()
                 host.displayIfNeeded()
             }
         }
+        // Yielding lets the main actor's other work run, as it does between
+        // the app's events: the player's builds and the viewer's frames.
+        // Without it the test held the main actor throughout, and the
+        // editor never built its player.
+        func settle(_ seconds: Double) async {
+            let end = Date().addingTimeInterval(seconds)
+            repeat {
+                try? await Task.sleep(for: .milliseconds(10))
+                pass()
+            } while Date() < end
+        }
         // Lets the panels' rows, analysis and the first build land.
-        settle(2)
+        await settle(3)
 
         var times: [Double] = []
         let seconds = Double(ProcessInfo.processInfo.environment["UI_BENCHMARK_SECONDS"] ?? "") ?? 0
         let deadline = Date().addingTimeInterval(max(seconds, 0))
-        if edit != nil { history.beginGesture() }
+        if edit != nil {
+            history.beginGesture()
+            if holds { state.beginHold() }
+        }
         var step = 0
         repeat {
             for _ in 0..<90 {
@@ -238,22 +252,26 @@ struct UIResponsivenessBenchmark {
                 let start = ContinuousClock.now
                 autoreleasepool {
                     if let edit {
-                        edit(&model.project, step)
+                        state.hold { edit(&state.value, step) }
                     } else if case let .key(key, back, sweep) = scenario.action {
                         let forward = sweep ? (step - 1) % 120 < 60 : !step.isMultiple(of: 2)
                         press(forward ? key : back, in: window)
                     }
-                    // What the run loop does between two events.
-                    RunLoop.main.run(until: Date())
-                    host.layoutSubtreeIfNeeded()
-                    host.displayIfNeeded()
                 }
+                // What the run loop does between two events.
+                await Task.yield()
+                pass()
                 let elapsed = ContinuousClock.now - start
                 times.append(Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15)
             }
         } while Date() < deadline
-        if edit != nil { history.endGesture() }
-        settle(0.3)
+        if edit != nil {
+            // As a field does when let go: the last step, to the project.
+            state.endHold()
+            edit?(&state.value, step)
+            history.endGesture()
+        }
+        await settle(0.3)
 
         if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"],
            let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
