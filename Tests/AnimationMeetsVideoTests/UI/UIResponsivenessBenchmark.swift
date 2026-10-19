@@ -67,6 +67,9 @@ struct UIResponsivenessBenchmark {
         /// as the project grows shows apart from what footage costs. The top
         /// layer's first clip is selected.
         case busy
+        /// Three shape layers, each cut into a hundred clips: as many clips
+        /// as `busy` on a tenth of the layers.
+        case long
         /// The project at `AMV_PROJECT`, its first video clip selected.
         case saved
     }
@@ -107,6 +110,8 @@ struct UIResponsivenessBenchmark {
         var panel: SidePanelTab = .effects
         var showsPanel = true
         var showsLibrary = false
+        /// Key presses before the timed steps, such as zooming in first.
+        var prelude: (key: Key, count: Int)?
         var action: Action
     }
 
@@ -127,6 +132,12 @@ struct UIResponsivenessBenchmark {
             Scenario(name: "step-frame-inspector", base: .media, panel: .inspector, action: .key(.right, back: .left, sweep: true)),
             Scenario(name: "nudge-clip", base: .media, action: .key(.nudgeLater, back: .nudgeEarlier)),
             Scenario(name: "busy-zoom", base: .busy, action: .key(.zoomIn, back: .zoomOut)),
+            Scenario(name: "busy-zoomed-in-zoom", base: .busy, prelude: (.zoomIn, 6), action: .key(.zoomIn, back: .zoomOut)),
+            Scenario(name: "busy-zoomed-in-step-frame", base: .busy, prelude: (.zoomIn, 6), action: .key(.right, back: .left, sweep: true)),
+            Scenario(name: "busy-zoomed-in-nudge-clip", base: .busy, prelude: (.zoomIn, 6), action: .key(.nudgeLater, back: .nudgeEarlier)),
+            Scenario(name: "long-zoom", base: .long, action: .key(.zoomIn, back: .zoomOut)),
+            Scenario(name: "long-zoomed-in-zoom", base: .long, prelude: (.zoomIn, 6), action: .key(.zoomIn, back: .zoomOut)),
+            Scenario(name: "long-nudge-clip", base: .long, action: .key(.nudgeLater, back: .nudgeEarlier)),
             Scenario(name: "busy-step-frame", base: .busy, action: .key(.right, back: .left, sweep: true)),
             Scenario(name: "busy-nudge-clip", base: .busy, action: .key(.nudgeLater, back: .nudgeEarlier)),
             Scenario(name: "zoom", base: .media, action: .key(.zoomIn, back: .zoomOut)),
@@ -249,6 +260,13 @@ struct UIResponsivenessBenchmark {
         }
         // Lets the panels' rows, analysis and the first build land.
         await settle(3)
+        if let prelude = scenario.prelude {
+            for _ in 0..<prelude.count {
+                press(prelude.key, in: window)
+                await settle(0.2)
+            }
+            await settle(1)
+        }
 
         var times: [Double] = []
         let seconds = Double(ProcessInfo.processInfo.environment["UI_BENCHMARK_SECONDS"] ?? "") ?? 0
@@ -388,6 +406,19 @@ struct UIResponsivenessBenchmark {
                 if let target {
                     for second in 1..<10 {
                         project.split(target.clipID, in: t, layer: target.layerID, atTimelineTime: CMTime(value: Int64(second), timescale: 1))
+                    }
+                }
+            }
+            let top = try #require(target)
+            let first = try #require(project.timeline(id: t)?.layer(id: top.layerID)?.clips.first)
+            return (project, TimelineSelection(timelineID: t, layerID: top.layerID, timelineClipID: first.id))
+        case .long:
+            var target: (layerID: UUID, clipID: UUID)?
+            for kind in [EffectKind.rectangle, .ellipse, .star] {
+                target = project.addShapeLayer(kind, to: t, duration: ten)
+                if let target {
+                    for tenth in 1..<100 {
+                        project.split(target.clipID, in: t, layer: target.layerID, atTimelineTime: CMTime(value: Int64(tenth), timescale: 10))
                     }
                 }
             }
