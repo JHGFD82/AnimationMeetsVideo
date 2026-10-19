@@ -275,6 +275,31 @@ struct UISnapshots {
         )
     }
 
+    /// A selected Wiggler writing to the second and third seconds of its
+    /// clip: its range as a band over the ruler, with a handle at each end.
+    @Test func keyframingRangeBar() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let wiggler = project.addEffect(.wiggler, toClip: shape.clipID, in: timelineID)
+        let id = try #require(wiggler)
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: timelineID)?.clip)
+        project.editEffect(id, ofClip: shape.clipID, in: timelineID) {
+            $0.keyframing?.setRange(start: CMTime(value: 1, timescale: 1), end: CMTime(value: 3, timescale: 1), in: clip)
+        }
+        let state = EffectsPanelState()
+        state.select(effect: id)
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID),
+                playheadTime: .zero, state: state, onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "keyframing-range-bar", size: CGSize(width: 640, height: 200)
+        )
+    }
+
     /// A Wiggler whose keyframes were edited by hand before its clip was
     /// trimmed: the Regenerate and Keep Edits row.
     @Test func keyframingEditsPanel() throws {

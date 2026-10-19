@@ -170,6 +170,7 @@ struct EffectsPanel: View {
                         .frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
                     if showsKeyframeLanes {
                         PanelRuler(geometry: geometry, onSeek: onSeek)
+                            .overlay(alignment: .topLeading) { rangeBar(clip, geometry: geometry) }
                             .padding(.horizontal, EffectsPanelMetrics.laneInset)
                     } else {
                         Spacer(minLength: 0)
@@ -192,6 +193,16 @@ struct EffectsPanel: View {
                         }
                 }
                 .sunken(.sunken)
+            }
+        }
+    }
+
+    /// The selected Keyframing effect's range, over the ruler.
+    @ViewBuilder
+    private func rangeBar(_ clip: TimelineClip, geometry: ClipLaneGeometry) -> some View {
+        if let id = state.selectedEffectID, let effect = clip.effect(id: id), let setup = effect.keyframing {
+            KeyframingRangeBar(geometry: geometry, range: setup.range) { start, end in
+                editEffect(effect.id, in: clip) { $0.keyframing?.setRange(start: start, end: end, in: clip) }
             }
         }
     }

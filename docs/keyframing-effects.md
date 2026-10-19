@@ -267,7 +267,10 @@ In order, each step usable on its own:
    under a **Bake Keyframes** button, which is too important to live only
    in the ⋯ menu. Its ⋯ menu has Bake Keyframes too, and a Range menu (Start at Playhead, End at
    Playhead, Whole Clip), with a note under the effect while a range is
-   set; dragging the range on the ruler is not done. It is dimmed only when
+   set. While a Keyframing effect is selected, its range is a band over
+   the panel's ruler (`KeyframingRangeBar`; the whole clip, fainter, with
+   none set) with a handle at each end, dragged on the timeline's frames
+   as one undo step, or adjusted a frame at a time by VoiceOver. It is dimmed only when
    off or with a note: no target, one it can't reach, Beat Keys with no
    layer, or a reshaper whose target has fewer than two keyframes. A curve
    stands in for its thumbnail (none is drawn), keyframes it wrote are
