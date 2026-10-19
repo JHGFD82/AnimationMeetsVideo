@@ -43,6 +43,8 @@ struct EffectsPanel: View {
     @State private var presetError: String?
     /// The clip after each of its effects, at the playhead.
     @State private var thumbnails: [UUID: CGImage] = [:]
+    /// The playhead the rows act at (see `RowContext.now`).
+    @State private var stackPlayhead = StackPlayhead()
     /// The EQ shown larger in a sheet.
     @State private var expandedEqualizer: ExpandedEqualizer?
 
@@ -165,9 +167,10 @@ struct EffectsPanel: View {
             let frameTime = timeline.snappedToFrame(playheadTime)
             let sourceNow = geometry.clampedSource(atTimeline: frameTime)
             let layer = project.clipAndLayer(clip.id, in: timelineID)?.layer
+            let _ = stackPlayhead.sourceNow = sourceNow
             let context = RowContext(
                 clip: clip, timeline: timeline, layer: layer ?? TimelineLayer(clips: []),
-                geometry: geometry, frameTime: frameTime, sourceNow: sourceNow
+                geometry: geometry, frameTime: frameTime, sourceNow: sourceNow, now: stackPlayhead
             )
 
             VStack(spacing: 0) {
@@ -231,6 +234,9 @@ struct EffectsPanel: View {
         let frameTime: CMTime
         /// The clip's source time at the playhead, held inside the clip.
         let sourceNow: CMTime
+        /// The same, read when a row acts rather than when it was drawn:
+        /// the rows in a `StackRow` aren't redrawn as the playhead moves.
+        let now: StackPlayhead
     }
 
     @ViewBuilder
@@ -532,8 +538,38 @@ struct EffectsPanel: View {
 
     // MARK: Controls
 
-    @ViewBuilder
+    /// What a control's row shows, so it is redrawn only when that changes
+    /// (see `StackRow`). The whole effect, since a row reads its siblings
+    /// (an EQ cut's slope is off with its band) and its default can depend
+    /// on them; the playhead only while the control has keyframes, which
+    /// its values and lane follow.
+    private struct ControlRowKey: Equatable {
+        var timelineID: UUID
+        var clipID: UUID
+        var effect: Effect
+        var effectDimmed: Bool
+        var isSelected: Bool
+        var showsLanes: Bool
+        var lane: LaneKey
+        var frameSize: CGSize
+        var playhead: CMTime?
+        var sourceNow: CMTime?
+    }
+
     private func controlRow(_ control: EffectControl, of effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
+        let animated = control.isAnimated
+        let key = ControlRowKey(
+            timelineID: timelineID, clipID: c.clip.id, effect: effect, effectDimmed: effectDimmed,
+            isSelected: state.selectedControlID == control.id, showsLanes: showsKeyframeLanes,
+            lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize,
+            playhead: animated ? c.frameTime : nil, sourceNow: animated ? c.sourceNow : nil
+        )
+        return StackRow(key: key) { controlRowContent(control, of: effect, c, effectDimmed: effectDimmed) }
+            .equatable()
+    }
+
+    @ViewBuilder
+    private func controlRowContent(_ control: EffectControl, of effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
         let clip = c.clip
         let handle = AnyView(
             Image(systemName: "line.3.horizontal")
@@ -597,13 +633,13 @@ struct EffectsPanel: View {
                     onReset: reset(control, of: effect, in: c),
                     onSelect: select,
                     onSetComponent: { index, value in
-                        editControl(control.id, of: effect, in: clip) { $0.setComponent(index, to: value, at: c.sourceNow) }
+                        editControl(control.id, of: effect, in: clip) { $0.setComponent(index, to: value, at: c.now.sourceNow) }
                     },
                     onToggleAnimated: {
-                        editControl(control.id, of: effect, in: clip) { $0.number.setAnimated(!$0.number.isAnimated, at: c.sourceNow) }
+                        editControl(control.id, of: effect, in: clip) { $0.number.setAnimated(!$0.number.isAnimated, at: c.now.sourceNow) }
                     },
                     onToggleKeyframe: {
-                        editControl(control.id, of: effect, in: clip) { $0.number.toggleKeyframe(at: c.sourceNow) }
+                        editControl(control.id, of: effect, in: clip) { $0.number.toggleKeyframe(at: c.now.sourceNow) }
                     },
                     onSeek: onSeek,
                     onShowGraph: graphs.map { graphs in { graphs.show(key) } },
@@ -713,7 +749,7 @@ struct EffectsPanel: View {
                       let parts = srgb.components, parts.count >= 4
                 else { return }
                 let values = parts.prefix(4).map { control.kind.clamped(Double($0)) }
-                editControl(control.id, of: effect, in: c.clip) { $0.number.set(ComponentValue(values: values), at: c.sourceNow) }
+                editControl(control.id, of: effect, in: c.clip) { $0.number.set(ComponentValue(values: values), at: c.now.sourceNow) }
             }
         )
     }
