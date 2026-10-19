@@ -1491,5 +1491,5 @@ final class Mutex: @unchecked Sendable {
     private var stored: Int
     init(_ value: Int) { stored = value }
     var value: Int { lock.withLock { stored } }
-    func increment() -> Int { lock.withLock { stored += 1; return stored } }
+    @discardableResult func increment() -> Int { lock.withLock { stored += 1; return stored } }
 }

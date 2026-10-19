@@ -176,7 +176,7 @@ import Testing
         )
     }
 
-    @Test(.serialized) func eachReplacementIsAlignedToTheOriginalNotToThePreviousReplacement() async throws {
+    @Test func eachReplacementIsAlignedToTheOriginalNotToThePreviousReplacement() async throws {
         let original = try await movie(0)
         let first = try await movie(24)     // 1 s later than the original
         let second = try await movie(12)    // 0.5 s later than the original

@@ -85,7 +85,7 @@ import Testing
         }
     }
 
-    @Test func durationsRead() {
+    @Test @MainActor func durationsRead() {
         #expect(RecordPopover.duration(7.9) == "0:07")
         #expect(RecordPopover.duration(3727) == "1:02:07")
     }

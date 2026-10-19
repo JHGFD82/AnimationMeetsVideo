@@ -190,7 +190,7 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         #expect(waveform.peak(from: 0, to: 0.01, channel: 2) == 0)
     }
 
-    @Test func itFadesInAsLayersGrowTaller() {
+    @Test @MainActor func itFadesInAsLayersGrowTaller() {
         #expect(ClipWaveform.strength(atHeight: 44) == 0)
         #expect(ClipWaveform.strength(atHeight: 80) == 0.5)
         #expect(ClipWaveform.strength(atHeight: 200) == 1)

@@ -174,7 +174,7 @@ struct TimelineEditorSurface<Library: View>: View {
             let resolvedTimelineHeight = min(max(CGFloat(timelineHeight), minTimelineHeight), maxTimelineHeight)
 
             VStack(spacing: 0) {
-                TimelineHeaderBar(project: $project, timelineID: Binding(get: { timelineID }, set: selectTimeline))
+                TimelineHeaderBar(project: $project, timelineID: Binding(get: { timelineID }, set: { selectTimeline($0) }))
 
                 HStack(spacing: 0) {
                     library()

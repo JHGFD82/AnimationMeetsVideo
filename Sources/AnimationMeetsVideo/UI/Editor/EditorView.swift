@@ -217,7 +217,7 @@ extension EditorView: Equatable {
 /// A project kept where SwiftUI doesn't watch it, with the way to edit it,
 /// for a view that redraws on comparing what it shows rather than on every
 /// edit (see `EditorView.browserProject`).
-final class ProjectAccess {
+final class ProjectAccess: @unchecked Sendable {
     /// The project as of the owner's last redraw, or the last edit made
     /// through this.
     var value = EditingProject.empty

@@ -203,7 +203,7 @@ final class BeatClickPlayer {
         // Handed to the queue whole; the main thread leaves them alone
         // while `isSwitching`.
         let parts = HandedOver(value: (engine, clickNode, previewNode))
-        engineQueue.async {
+        engineQueue.async { [weak self] in
             let (engine, click, preview) = parts.value
             engine.stop()
             if device != 0, let unit = engine.outputNode.audioUnit {

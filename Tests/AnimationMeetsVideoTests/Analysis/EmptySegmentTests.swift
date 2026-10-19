@@ -154,10 +154,7 @@ import Testing
         track.insertEmptyTimeRange(CMTimeRange(start: second, duration: second))
         try track.insertTimeRange(CMTimeRange(start: second, duration: second), of: sourceTrack, at: CMTime(value: 2, timescale: 1))
         let session = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
-        session.outputURL = output
-        session.outputFileType = .mov
-        await session.export()
-        try #require(session.status == .completed)
+        try await session.export(to: output, as: .mov)
         let scored = try await FrameScorer.score(url: output)
         return (scored, try await AVURLAsset(url: output).load(.duration))
     }

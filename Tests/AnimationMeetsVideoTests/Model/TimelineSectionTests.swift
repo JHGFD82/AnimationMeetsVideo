@@ -21,7 +21,7 @@ private func seconds(_ value: Double) -> CMTime {
         // Starts inside the intro: refused. Starts after it but runs into the next: cut short.
         #expect(project.addSection(in: t, from: seconds(5), to: seconds(12)) == nil)
         let added2 = project.addSection(named: "Epilogue", in: t, from: seconds(20), to: seconds(30))
-        try #require(added2)
+        _ = try #require(added2)
         let added3 = project.addSection(in: t, from: seconds(12), to: seconds(25))
         let middle = try #require(added3)
 

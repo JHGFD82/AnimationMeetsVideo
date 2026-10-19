@@ -6,7 +6,7 @@ import Testing
 extension DrawingFixture {
     /// Puts a shape layer of `kind` at the top of the root timeline, two
     /// seconds long.
-    mutating func addShape(_ kind: EffectKind = .rectangle) throws -> (layerID: UUID, clipID: UUID) {
+    @discardableResult mutating func addShape(_ kind: EffectKind = .rectangle) throws -> (layerID: UUID, clipID: UUID) {
         let added = project.addShapeLayer(kind, to: timelineID, duration: CMTime(seconds: 2, preferredTimescale: 600))
         return try #require(added)
     }
@@ -37,7 +37,7 @@ extension DrawingFixture {
 
     /// A gray rectangle, 64 by 36 in the middle of the frame (its left
     /// edge at x = 32), with a white stroke `width` wide on `edge`.
-    mutating func addStrokedBox(width: Double, edge: StrokeEdge) throws -> UUID {
+    @discardableResult mutating func addStrokedBox(width: Double, edge: StrokeEdge) throws -> UUID {
         let shape = try addShape()
         setControl(.fill, [0.4, 0.4, 0.4, 1], ofClip: shape.clipID)
         setControl(.stroke, [1, 1, 1, 1], ofClip: shape.clipID)

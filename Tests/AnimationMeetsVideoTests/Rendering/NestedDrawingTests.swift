@@ -27,9 +27,9 @@ import Testing
     }
 
     @Test func aNestedTimelineIsOnePictureThatFadesAsAWhole() async throws {
-        var (closed, _) = try await fixture(passThrough: false)
+        let (closed, _) = try await fixture(passThrough: false)
         defer { closed.cleanUp() }
-        var (through, _) = try await fixture(passThrough: true)
+        let (through, _) = try await fixture(passThrough: true)
         defer { through.cleanUp() }
         let whole = try await grayLevel(of: closed.build(), at: .zero)
         let layerByLayer = try await grayLevel(of: through.build(), at: .zero)
