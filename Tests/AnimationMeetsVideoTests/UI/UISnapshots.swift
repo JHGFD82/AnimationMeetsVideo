@@ -491,4 +491,16 @@ struct UISnapshots {
             ProjectSettingsView(project: .empty) { _, _ in }, "project-settings", size: CGSize(width: 460, height: 300)
         )
     }
+
+    /// A panel's tab bar at widths that fit its tabs at each size: they
+    /// step down to small, then mini, keeping the panel's buttons in view.
+    @Test func panelTabBarWidths() throws {
+        for width in [400, 310, 280] {
+            let bar = PanelTabBar(tabs: BrowserTab.allCases, selection: .constant(.clips), title: \.title, onClose: {}, closeHelp: "Close") {
+                Button {} label: { Image(systemName: "plus") }
+                    .buttonStyle(.icon)
+            }
+            try SnapshotSupport.render(bar.preferredColorScheme(.dark), "panel-tab-bar-\(width)", size: CGSize(width: width, height: 40))
+        }
+    }
 }
