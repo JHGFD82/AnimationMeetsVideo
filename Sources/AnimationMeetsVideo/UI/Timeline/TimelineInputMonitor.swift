@@ -23,8 +23,10 @@ struct TimelineInputMonitor: NSViewRepresentable {
     /// as SwiftUI's global space).
     let onMagnify: (CGFloat, PinchAxis, CGFloat, CGPoint) -> Void
     /// Called with a sideways distance in points (positive scrolls later in
-    /// time). Return true to keep the event from scrolling anything else.
-    let onScroll: (_ deltaX: CGFloat, _ deltaY: CGFloat, _ flags: NSEvent.ModifierFlags, _ x: CGFloat) -> Bool
+    /// time), and what kind of scroll it is, for an edge to know when to
+    /// spring back. Return true to keep the event from scrolling anything
+    /// else.
+    let onScroll: (_ deltaX: CGFloat, _ deltaY: CGFloat, _ flags: NSEvent.ModifierFlags, _ x: CGFloat, _ phase: ScrollInputPhase) -> Bool
     /// Called when the fingers of a pinch lift.
     var onMagnifyEnded: () -> Void = {}
 
@@ -48,7 +50,7 @@ struct TimelineInputMonitor: NSViewRepresentable {
 
     final class MonitorView: NSView {
         var onMagnify: ((CGFloat, PinchAxis, CGFloat, CGPoint) -> Void)?
-        var onScroll: ((CGFloat, CGFloat, NSEvent.ModifierFlags, CGFloat) -> Bool)?
+        var onScroll: ((CGFloat, CGFloat, NSEvent.ModifierFlags, CGFloat, ScrollInputPhase) -> Bool)?
         var onMagnifyEnded: (() -> Void)?
         private var monitor: Any?
         /// The axis of the pinch in progress, fixed once its fingers are seen.
@@ -97,7 +99,7 @@ struct TimelineInputMonitor: NSViewRepresentable {
                 // A mouse wheel reports lines, not points.
                 let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 12
                 let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-                return onScroll?(-event.scrollingDeltaX * scale, event.scrollingDeltaY * scale, flags, point.x) ?? false
+                return onScroll?(-event.scrollingDeltaX * scale, event.scrollingDeltaY * scale, flags, point.x, ScrollInputPhase(event)) ?? false
             default:
                 return false
             }

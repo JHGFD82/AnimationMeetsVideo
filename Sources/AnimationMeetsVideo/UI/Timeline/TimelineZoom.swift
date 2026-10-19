@@ -65,6 +65,17 @@ extension TimelineView {
         scrollX = zoom.pixelsPerSecond == nil ? 0 : zoom.scrollX
     }
 
+    /// Scrolls the tracks sideways by `deltaX` points, as a trackpad or a
+    /// wheel does. Past either end of the timeline they slide on and spring
+    /// back (`scrollBand`).
+    func scrollTracks(by deltaX: CGFloat, phase: ScrollInputPhase, width: CGFloat) {
+        scrollBand.scroll(by: deltaX, phase: phase) { delta in
+            let before = viewport(width: width).scrollX
+            scrollX = before + delta
+            return viewport(width: width).scrollX - before
+        }
+    }
+
     /// Scrolls so `time` sits just inside the left edge: a page turn, as
     /// when playback runs off the right of the view.
     func page(to time: CMTime) {

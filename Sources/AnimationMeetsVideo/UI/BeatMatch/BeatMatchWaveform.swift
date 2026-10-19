@@ -64,9 +64,13 @@ struct BeatMatchWaveform: View {
     static let snapDistance: CGFloat = 8
 
     /// Squeezed by a zoom out past the whole song, over a darker surround,
-    /// so the edge of the song shows; stretched by one in past the closest.
+    /// so the edge of the song shows; stretched by one in past the closest;
+    /// slid along by a scroll past either end.
     private func stretched(size: CGSize) -> some View {
-        content(size: size).rubberBand($session.zoomBand)
+        content(size: size)
+            .rubberBand($session.zoomBand)
+            .rubberBandScroll(session.scrollBand, length: size.width)
+            .rubberBandSettling($session.scrollBand)
     }
 
     var body: some View {
@@ -95,8 +99,8 @@ struct BeatMatchWaveform: View {
             .background(
                 TimelineInputMonitor(
                     onMagnify: { factor, _, x, _ in session.zoom(by: factor, aboutX: x, pinching: true) },
-                    onScroll: { deltaX, deltaY, _, _ in
-                        session.scroll(byPoints: abs(deltaX) >= abs(deltaY) ? deltaX : -deltaY)
+                    onScroll: { deltaX, deltaY, _, _, phase in
+                        session.scroll(byPoints: abs(deltaX) >= abs(deltaY) ? deltaX : -deltaY, phase: phase)
                         return true
                     },
                     onMagnifyEnded: { session.endPinch() }

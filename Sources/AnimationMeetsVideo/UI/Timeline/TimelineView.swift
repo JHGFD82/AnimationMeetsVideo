@@ -88,6 +88,10 @@ struct TimelineView: View {
     /// The time zoom's edge: a zoom past the fit or the closest stretches
     /// the tracks and springs back.
     @State var zoomBand = RubberBandZoom()
+    /// The sideways scroll's edge: past the start or end of the timeline
+    /// the tracks slide on and spring back. Time zooms, so it bounces;
+    /// the areas scroll up and down in system scroll views, which do too.
+    @State var scrollBand = RubberBandScroll()
     /// The same for a vertical pinch's layer height, in the area it pinched.
     @State var layerHeightBand = RubberBandZoom()
     @State var layerHeightBandKind: LayerKind?
@@ -463,6 +467,7 @@ struct TimelineView: View {
                                 .frame(width: viewport.width, height: rulerHeight)
                                 .overlay(alignment: .bottom) { RenderStatusStrip(viewport: viewport) }
                                 .rubberBandStretch(zoomBand)
+                                .rubberBandScroll(scrollBand, length: trackAreaWidth)
                                 .clipped()
                                 .contentShape(Rectangle())
                                 .gesture(scrubGesture(in: viewport))
@@ -488,6 +493,7 @@ struct TimelineView: View {
                                     .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
                                 sectionLane(viewport: viewport, targets: snapTargets)
                                     .rubberBandStretch(zoomBand)
+                                    .rubberBandScroll(scrollBand, length: trackAreaWidth)
                                     .clipped()
                             }
                         }
@@ -566,6 +572,7 @@ struct TimelineView: View {
                     }
                     .frame(width: viewport.width, height: trackHeight, alignment: .topLeading)
                     .rubberBandStretch(zoomBand)
+                    .rubberBandScroll(scrollBand, length: trackAreaWidth)
                     .clipped()
                     .offset(x: labelColumnWidth)
                     .allowsHitTesting(false)
@@ -581,13 +588,14 @@ struct TimelineView: View {
                                 zoomLayerHeight(by: factor, at: pointer)
                             }
                         },
-                        onScroll: { deltaX, deltaY, flags, x in
+                        onScroll: { deltaX, deltaY, flags, x, phase in
                             guard x >= labelColumnWidth else { return false }
                             if flags.contains(.option) {
                                 zoom(viewport, by: exp(deltaY * 0.01), aboutX: x - labelColumnWidth)
                                 return true
                             }
-                            if deltaX != 0 { scrollX = self.viewport(width: viewport.width).scrollX + deltaX }
+                            // Also without movement, so a lift lets go of the edge.
+                            scrollTracks(by: deltaX, phase: phase, width: viewport.width)
                             return false
                         },
                         onMagnifyEnded: {
@@ -600,6 +608,7 @@ struct TimelineView: View {
             }
         }
         .rubberBandSettling($zoomBand)
+        .rubberBandSettling($scrollBand)
         .rubberBandSettling($layerHeightBand)
         .padding(.top, topPadding)
         .background(KeyPressMonitor(handler: handleKey))
@@ -677,6 +686,7 @@ struct TimelineView: View {
                     .offset(x: -viewport.scrollX)
                     .frame(width: viewport.width, alignment: .topLeading)
                     .rubberBandStretch(zoomBand)
+                    .rubberBandScroll(scrollBand, length: trackAreaWidth)
                     .clipped()
             }
             .overlay(alignment: .topLeading) { layerDropIndicator(kind) }

@@ -65,6 +65,9 @@ final class BeatMatchSession {
     /// The zoom's edge: a zoom past the whole song, or closer than the
     /// closest, stretches the waveform and springs back (`RubberBandZoom`).
     var zoomBand = RubberBandZoom()
+    /// The scroll's edge: past the song's start or end the waveform slides
+    /// on and springs back. Only sideways, the one way it zooms.
+    var scrollBand = RubberBandScroll()
 
     // MARK: Editing
 
@@ -714,9 +717,17 @@ final class BeatMatchSession {
     /// The pinch's fingers lifted: the stretch springs back.
     func endPinch() { zoomBand.endPinch() }
 
-    func scroll(byPoints points: CGFloat) {
-        visibleStart += Double(points) * secondsPerPoint
-        clampView()
+    /// Scrolls the view sideways; past the song's ends the waveform slides
+    /// on and springs back (`scrollBand`).
+    func scroll(byPoints points: CGFloat, phase: ScrollInputPhase = .wheel) {
+        var band = scrollBand
+        band.scroll(by: points, phase: phase) { points in
+            let before = visibleStart
+            visibleStart += Double(points) * secondsPerPoint
+            clampView()
+            return CGFloat((visibleStart - before) / secondsPerPoint)
+        }
+        scrollBand = band
     }
 
     /// Zooms in on the selected beat, or the playhead, far enough to place

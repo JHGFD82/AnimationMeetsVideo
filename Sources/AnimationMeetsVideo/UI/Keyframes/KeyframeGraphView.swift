@@ -41,6 +41,9 @@ struct KeyframeGraphView: View {
     /// The zooms' edges: past them the plot stretches and springs back.
     @State private var timeBand = RubberBandZoom()
     @State private var valueBand = RubberBandZoom()
+    /// Time's scroll edge: past the clip's ends the plot slides on and
+    /// springs back. Values scroll without end, so they have none.
+    @State private var timeScrollBand = RubberBandScroll()
 
     private enum Target: Equatable {
         case keyframe(CMTime, component: Int)
@@ -99,6 +102,8 @@ struct KeyframeGraphView: View {
                                 graph(c, layout: layout)
                                     .rubberBand($timeBand, axis: .horizontal)
                                     .rubberBand($valueBand, axis: .vertical)
+                                    .rubberBandScroll(timeScrollBand, length: layout.plot.width)
+                                    .rubberBandSettling($timeScrollBand)
                                     .clipped()
                                 VStack(spacing: 0) {
                                     Spacer(minLength: 0)
@@ -246,9 +251,15 @@ struct KeyframeGraphView: View {
     /// Scrolling across moves time; up and down moves values.
     private func scrolled(_ scroll: GraphInput.Scroll, _ c: Context, layout: KeyframeGraphLayout) {
         let padded = KeyframeGraphLayout.padded(c.axis.span)
-        if scroll.dx != 0 {
+        // Also without movement across, so a lift lets go of the edge.
+        if scroll.dx != 0 || scroll.phase == .lifted {
             let fit = KeyframeGraphLayout.fitTimes(c.value, span: padded, frame: c.timeline.frameDuration.seconds)
-            viewport.panTimes(by: -Double(scroll.dx) * layout.secondsPerPoint, fit: fit, span: padded)
+            // Toward later times is against the scroll's dx.
+            timeScrollBand.scroll(by: -scroll.dx, phase: scroll.phase) { points in
+                let before = viewport.shownTimes(fit: fit, span: padded).lowerBound
+                viewport.panTimes(by: Double(points) * layout.secondsPerPoint, fit: fit, span: padded)
+                return CGFloat((viewport.shownTimes(fit: fit, span: padded).lowerBound - before) / layout.secondsPerPoint)
+            }
         }
         if scroll.dy != 0 {
             viewport.valuePan += Double(scroll.dy / layout.plot.height) / viewport.valueZoom

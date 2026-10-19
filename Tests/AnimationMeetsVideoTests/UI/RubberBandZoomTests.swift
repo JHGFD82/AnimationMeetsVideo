@@ -81,3 +81,80 @@ import Testing
         #expect(band.settle == .resting)
     }
 }
+
+@Suite struct RubberBandScrollTests {
+    /// A scroll limited to 0...100 points, as a view would keep it.
+    private struct Limited {
+        var position: CGFloat = 0
+        mutating func apply(_ delta: CGFloat) -> CGFloat {
+            let before = position
+            position = min(max(position + delta, 0), 100)
+            return position - before
+        }
+    }
+
+    @Test func scrollsWithinTheEdgesWithoutPushing() {
+        var band = RubberBandScroll()
+        var view = Limited()
+        band.scroll(by: 40) { view.apply($0) }
+        #expect(view.position == 40 && band.overscroll == 0 && band.settle == .resting)
+    }
+
+    @Test func pushesPastAnEdgeAgainstResistance() {
+        var band = RubberBandScroll()
+        var view = Limited(position: 90)
+        band.scroll(by: 30) { view.apply($0) }
+        #expect(view.position == 100 && band.overscroll == 20 && band.settle == .nudged)
+        // Past the end the content moves back, by less than was pushed.
+        let offset = band.offset(length: 300)
+        #expect(offset < 0 && -offset < 20)
+        var far = band
+        far.scroll(by: 10_000) { view.apply($0) }
+        // However hard it is pushed, it slides no more than its reach.
+        #expect(-far.offset(length: 300) <= 300 * RubberBandScroll.reach)
+        #expect(-far.offset(length: 5000) <= RubberBandScroll.largestReach)
+        // Before the start it moves the other way.
+        var start = RubberBandScroll()
+        var atStart = Limited()
+        start.scroll(by: -10) { atStart.apply($0) }
+        #expect(start.offset(length: 300) > 0)
+    }
+
+    @Test func scrollingBackTakesUpThePushFirst() {
+        var band = RubberBandScroll()
+        var view = Limited(position: 100)
+        band.scroll(by: 20) { view.apply($0) }
+        band.scroll(by: -15) { view.apply($0) }
+        #expect(view.position == 100 && band.overscroll == 5)
+        band.scroll(by: -25) { view.apply($0) }
+        #expect(band.overscroll == 0 && view.position == 80)
+        band.release()
+        #expect(band.settle == .resting)
+    }
+
+    @Test func touchingHoldsAndLiftingLetsGoAtOnce() {
+        var band = RubberBandScroll()
+        var view = Limited(position: 100)
+        band.scroll(by: 20, phase: .touching) { view.apply($0) }
+        #expect(band.settle == .held)
+        band.scroll(by: 0, phase: .lifted) { view.apply($0) }
+        #expect(band.settle == .lifted)
+        // The glide after the lift doesn't push it out again.
+        band.release()
+        band.scroll(by: 30, phase: .momentum) { view.apply($0) }
+        #expect(band.overscroll == 0)
+    }
+
+    @Test func aGlideReachingTheEdgeBouncesOnceAndAtOnce() {
+        var band = RubberBandScroll()
+        var view = Limited(position: 95)
+        band.scroll(by: 15, phase: .momentum) { view.apply($0) }
+        #expect(view.position == 100 && band.overscroll == 10 && band.settle == .lifted)
+        band.release()
+        band.scroll(by: 15, phase: .momentum) { view.apply($0) }
+        #expect(band.overscroll == 0)
+        // A new touch starts afresh.
+        band.scroll(by: 5, phase: .touching) { view.apply($0) }
+        #expect(band.overscroll == 5 && band.settle == .held)
+    }
+}

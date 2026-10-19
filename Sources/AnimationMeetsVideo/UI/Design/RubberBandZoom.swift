@@ -10,7 +10,7 @@ import SwiftUI
 /// pinching:_:)`, whose closure zooms the view as far as the view allows
 /// and says how far that was; what was held back becomes the stretch.
 /// Draw the stretch with `rubberBand(_:axis:)`.
-struct RubberBandZoom: Equatable {
+struct RubberBandZoom: RubberBand {
     /// What brings a stretch back.
     enum Settle: Equatable {
         /// Nothing is stretched.
@@ -103,16 +103,25 @@ extension View {
     }
 
     /// Springs `band` back when it is let go, without drawing it.
-    func rubberBandSettling(_ band: Binding<RubberBandZoom>) -> some View {
+    func rubberBandSettling<Band: RubberBand>(_ band: Binding<Band>) -> some View {
         modifier(RubberBandSettling(band: band))
     }
 }
 
+/// A view's edge, pushed past and springing back: a zoom's
+/// (`RubberBandZoom`) or a scroll's (`RubberBandScroll`).
+protocol RubberBand: Equatable {
+    var settle: RubberBandZoom.Settle { get }
+    /// Lets go of the stretch; `rubberBandSettling` calls this, animated.
+    mutating func release()
+}
+
 /// Springs a stretch back: at once when a pinch lifts, and a moment after
-/// the last push otherwise, so a run of wheel clicks or key presses holds
-/// it until the run ends.
-private struct RubberBandSettling: ViewModifier {
-    @Binding var band: RubberBandZoom
+/// the last push otherwise, so a run of wheel clicks, key presses or
+/// scroll events (a swipe's momentum among them) holds it until the run
+/// ends.
+private struct RubberBandSettling<Band: RubberBand>: ViewModifier {
+    @Binding var band: Band
 
     func body(content: Content) -> some View {
         content.task(id: band) {

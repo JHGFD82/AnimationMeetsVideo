@@ -132,6 +132,18 @@ song does not.
   the last push, so a hard stop still answers. Zooming back takes up the
   stretch before the view zooms again. With reduced motion it simply
   stops. The zoom sliders stop at their ends, as sliders do.
+- **Scroll edges.** Scrolling past the start or end does the same on
+  every axis that zooms (`RubberBandScroll`): the timeline's tracks, the
+  Beat Match waveform and the keyframe graph's time slide a little way on
+  against growing resistance, never more than 8% of the view (60 points at
+  most), so it reads as an edge as the zoom's does. They spring back
+  as the fingers lift; a swipe's glide that reaches an edge bounces once,
+  at once, and the rest of the glide is let go; a mouse wheel springs back
+  a moment after its last click (`ScrollInputPhase`). Axes
+  that don't zoom don't bounce: Beat Match has no vertical bounce, and the
+  graph's values scroll without an end. The timeline's areas scroll up and
+  down in system scroll views, which bounce on their own, as layer height
+  zooms.
 - **Pinch has two axes.** The line between the two fingers as they land
   decides: side by side zooms time, as above; one above the other zooms
   **layer height** in the area under the pointer, and only there. The axis

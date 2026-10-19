@@ -164,7 +164,7 @@ private final class GraphHostingView<Content: View>: NSHostingView<Content> {
     override func scrollWheel(with event: NSEvent) {
         guard let input else { return super.scrollWheel(with: event) }
         let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 10
-        input.scroll = GraphInput.Scroll(dx: event.scrollingDeltaX * scale, dy: event.scrollingDeltaY * scale)
+        input.scroll = GraphInput.Scroll(dx: event.scrollingDeltaX * scale, dy: event.scrollingDeltaY * scale, phase: ScrollInputPhase(event))
     }
 }
 
@@ -176,6 +176,8 @@ final class GraphInput {
         /// Points, positive rightward and downward as the content moves.
         var dx: CGFloat
         var dy: CGFloat
+        /// For time's edge to know when to spring back.
+        var phase = ScrollInputPhase.wheel
     }
 
     var scroll: Scroll?
