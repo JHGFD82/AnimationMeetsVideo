@@ -341,8 +341,14 @@ extension EditingProject {
                 }
             }
         }
-        if effect.kind == .beatKeys, setup.beatLayer == nil {
-            return EffectNote(text: "Choose a Sound or Music layer whose beat map it follows.", dims: true)
+        if effect.kind == .beatKeys {
+            guard let layerID = setup.beatLayer else {
+                return EffectNote(text: "Choose a Sound or Music layer whose beats it follows.", dims: true)
+            }
+            let timeline = timelines.first { $0.layers.contains { $0.clips.contains { $0.id == clip.id } } }
+            if let layer = timeline?.layer(id: layerID), !layerHasBeats(layer, tracks: DetectedBeats.shared.tracks) {
+                return EffectNote(text: "That layer has no beats yet: confirm a beat map in Beat Match, or wait for its beats to be found.", dims: true)
+            }
         }
         if effect.kind.reshapesTarget, setup.base.map({ $0.keyframes.count < 2 }) ?? false {
             return EffectNote(text: "It reshapes the keyframes of the control it writes to, which has fewer than two.", dims: true)
@@ -393,7 +399,7 @@ extension EditingProject {
             addHeard(source, in: timeline, to: &fingerprint)
         }
         if effect.kind == .beatKeys, let layer = effect.keyframing?.beatLayer.flatMap({ timeline.layer(id: $0) }) {
-            for beat in beatMarkers(in: layer, tracks: [:]) {
+            for beat in beatMarkers(in: layer, tracks: DetectedBeats.shared.tracks) {
                 fingerprint.add(beat.time)
                 fingerprint.add(UInt64(beat.position ?? 0))
             }
@@ -481,7 +487,7 @@ extension EditingProject {
         }
         let written = Self.generated(
             effect, setup: setup, base: base, target: target, clip: clip, timeline: timeline,
-            beats: setup.beatLayer.flatMap { layerID in timeline.layer(id: layerID).map { beatMarkers(in: $0, tracks: [:]) } } ?? [],
+            beats: setup.beatLayer.flatMap { layerID in timeline.layer(id: layerID).map { beatMarkers(in: $0, tracks: DetectedBeats.shared.tracks) } } ?? [],
             heard: heard
         )
         setup.writtenPrint = Self.fingerprint(of: written)

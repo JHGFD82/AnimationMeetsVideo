@@ -489,3 +489,32 @@ private struct KeyframingFixture {
         #expect(f.control(.rotation).number.keyframes.count > 10)
     }
 }
+
+@Suite struct DetectedBeatKeysTests {
+    @Test func beatKeysFollowDetectedBeatsWhereNoneAreConfirmed() throws {
+        var f = KeyframingFixture()
+        var song = MediaClip(
+            name: "Song.wav", kind: .audio, url: URL(fileURLWithPath: "/dev/null"), duration: seconds(20), frameRate: 24,
+            colorSpace: .rec709, codecName: "PCM"
+        )
+        song.hasAudio = true
+        f.project.clips.append(song)
+        f.project.putOnMusicLayer([song.id])
+        let layerID = try #require(f.project.timeline(id: f.timelineID)?.layers.last?.id)
+        let id = f.add(.beatKeys)
+        f.point(id, at: .rotation)
+        f.edit(id) { $0.keyframing?.beatLayer = layerID }
+        // No beats yet: a note, and nothing written.
+        #expect(f.project.keyframingNote(for: f.effect(id), in: f.clip)?.dims == true)
+
+        // Detected beats every half second, merged with any other test's.
+        let track = try BeatTrack(timescale: 600, times: (1...30).map { Int64($0) * 300 }, beatsPerMinute: 120)
+        DetectedBeats.shared.update(DetectedBeats.shared.tracks.merging([song.id: track]) { $1 })
+        #expect(f.project.keyframingNote(for: f.effect(id), in: f.clip) == nil)
+        let refreshed = f.project.refreshKeyframing()
+        #expect(refreshed)
+        // Detected beats have no measures, so no accent: each pulses to 10.
+        #expect(abs(f.value(.rotation, at: 0.5) - 10) < 0.1)
+        #expect(abs(f.value(.rotation, at: 1) - 10) < 0.1)
+    }
+}

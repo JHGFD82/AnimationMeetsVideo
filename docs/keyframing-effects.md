@@ -244,10 +244,14 @@ In order, each step usable on its own:
      asks first; see step 3). Deleting the effect
      puts the base back; Bake (`bakeKeyframing`) removes the effect and
      keeps its keyframes, unmarked.
-   - **Beat Keys** reads a layer's confirmed beat map (as the timeline's
-     beat markers do, without detected beats), counting Every and Offset
-     from the first beat at or after the range's start. Accent applies to
-     downbeats when every beat is chosen.
+   - **Beat Keys** reads a layer's beats as the timeline's beat markers
+     do: a song's confirmed beat map where it has one, otherwise the beats
+     analysis detected, which the editor mirrors into `DetectedBeats` for
+     the model and which make it out of date when they arrive (in the undo
+     baseline, as a spectrogram does). It counts Every and Offset from the
+     first beat at or after the range's start. Accent applies to downbeats
+     when every beat is chosen; detected beats have no measures, so they
+     have no downbeats. A layer with no beats yet gets a note.
    - **Overshoot** adds, after each of the base's keyframes in the range, a
      damped spring set going at the speed the curve arrived (ω = √(k/m),
      decay c/2m), summed over keyframes so a new one never jumps.

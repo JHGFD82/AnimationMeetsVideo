@@ -120,7 +120,10 @@ struct EditorView: View {
             beatMatch.discardAndClose()
         }
         .onChange(of: project) { _, newValue in projectDidChange(newValue) }
-        .onReceive(NotificationCenter.default.publisher(for: .spectrogramsChanged)) { _ in spectrogramsChanged() }
+        .onReceive(NotificationCenter.default.publisher(for: .spectrogramsChanged)) { _ in analysisArrived() }
+        .onChange(of: analysis.beats, initial: true) { _, beats in
+            if DetectedBeats.shared.update(beats) { analysisArrived() }
+        }
         .onChange(of: AssetAnalysis.inputs(of: project)) { _, _ in analysis.update(with: project) }
         .onChange(of: packageURL, initial: true) { _, url in renderer.packageURL = url }
         .onAppear {
@@ -150,10 +153,11 @@ struct EditorView: View {
         beatMatch.update(project: newValue)
     }
 
-    /// Audio Keys effects that were waiting for a file's sound make their
-    /// keyframes. That is the analysis arriving, not an edit, so it is
-    /// made in the undo baseline too rather than recorded.
-    private func spectrogramsChanged() {
+    /// Keyframing effects waiting on analysis make their keyframes: Audio
+    /// Keys when a file's spectrogram arrives, Beat Keys when its detected
+    /// beats do. That is the analysis arriving, not an edit, so it is made
+    /// in the undo baseline too rather than recorded.
+    private func analysisArrived() {
         var refreshed = project
         guard refreshed.refreshKeyframing() else { return }
         history.adopt { $0.refreshKeyframing() }
