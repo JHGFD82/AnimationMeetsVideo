@@ -30,6 +30,10 @@ struct TimelineView: View {
     /// Scenes dropped on a layer at a time, or with no layer, onto a new
     /// layer of the given kind (the asset's default kind when nil).
     let onDropScenes: ([MediaDragPayload], UUID?, CMTime, LayerKind?) -> Bool
+    /// Files dragged in from the Finder: imported, then placed as media
+    /// dropped there would be, onto the layer if given, else onto a new
+    /// layer of the kind.
+    let onDropFiles: ([URL], UUID?, CMTime, LayerKind?) -> Void
     let onApplyJointEdit: (UUID, UUID, JointEdit) -> Void
     let onTrimClipStart: (UUID, UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, UUID, CMTime) -> Void
@@ -923,6 +927,7 @@ struct TimelineView: View {
                             onEditProject { $0.paste(bundle, ontoClip: clipID, in: timelineID, replacingStack: true) }
                         },
                         onClipboard: { clipID, command in clipboard(command, layerID: layer.id, clipID: clipID) },
+                        onDropFiles: { urls, time in onDropFiles(urls, layer.id, time, layer.kind) },
                         onSetPassThrough: { clipID, value in
                             onEditProject { $0.editClip(clipID, in: timelineID) { $0.passThrough = value } }
                         },
@@ -1011,6 +1016,12 @@ struct TimelineView: View {
         // where it lands. Library drags travel as URLs, media as text, so
         // this doesn't catch media.
         .dropDestination(for: ClipDropPayload.self) { payloads, location in
+            let time = CMTime(seconds: max(0, Double(location.x / pixelsPerSecond)), preferredTimescale: 600)
+            let files = payloads.compactMap(\.file)
+            if !files.isEmpty {
+                onDropFiles(files, nil, time, kind)
+                return true
+            }
             guard kind == .video, let shape = payloads.first?.effect?.kind, shape.drawsShape else { return false }
             addShapeLayer(shape, at: CMTime(seconds: max(0, Double(location.x / pixelsPerSecond)), preferredTimescale: 600))
             return true

@@ -34,6 +34,8 @@ struct TimelineEditorSurface<Library: View>: View {
     @State private var rebuildQueued = false
     @State private var buildID = UUID()
     @State private var buildError: String?
+    /// Why a file dragged in from the Finder couldn't be imported.
+    @State private var dropError: String?
     /// A render finished while playing; its rebuild waits for a pause,
     /// since swapping the item mid-play freezes the picture.
     @State private var renderRebuildPending = false
@@ -396,6 +398,11 @@ struct TimelineEditorSurface<Library: View>: View {
                 rebuildPlayerItem()
             }
         }
+        .alert("Import Failed", isPresented: Binding(get: { dropError != nil }, set: { if !$0 { dropError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(dropError ?? "")
+        }
         .onChange(of: renderer?.packageURL) { _, _ in
             rebuildPlayerItem()
         }
@@ -445,6 +452,7 @@ struct TimelineEditorSurface<Library: View>: View {
                     }
                 },
                 onDropScenes: { payloads, layerID, time, kind in dropScenes(payloads, onLayer: layerID, at: time, kind: kind) },
+                onDropFiles: { urls, layerID, time, kind in dropFiles(urls, onLayer: layerID, at: time, kind: kind) },
                 onApplyJointEdit: { layerID, clipID, edit in
                     project.applyJointEdit(edit, at: clipID, in: timelineID, layer: layerID)
                 },
@@ -513,7 +521,28 @@ struct TimelineEditorSurface<Library: View>: View {
     /// or dropped elsewhere, onto new layers at the top, of `kind` or each
     /// asset's default kind.
     private func dropScenes(_ payloads: [MediaDragPayload], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind? = nil) -> Bool {
-        let pieces = payloads.flatMap(\.pieces)
+        place(payloads.flatMap(\.pieces), onLayer: layerID, at: time, kind: kind)
+    }
+
+    /// Files dragged in from the Finder are imported into the library, then
+    /// placed whole as media dropped there would be. A kind they don't all
+    /// suit gives way to each file's own.
+    private func dropFiles(_ urls: [URL], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind?) {
+        let timelineID = timelineID
+        Task {
+            guard let imported = await MediaImportFlow.importDropped(
+                urls, packageURL: renderer?.packageURL, project: $project, onError: { dropError = $0 }
+            ) else { return }
+            let pieces = imported.map { MediaPiece(assetID: $0.id, start: .zero, end: $0.duration) }
+            guard self.timelineID == timelineID else { return }
+            if !place(pieces, onLayer: layerID, at: time, kind: kind), kind != nil {
+                place(pieces, onLayer: nil, at: time, kind: nil)
+            }
+        }
+    }
+
+    @discardableResult
+    private func place(_ pieces: [MediaPiece], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind?) -> Bool {
         var firstClip: (layerID: UUID, clipID: UUID)?
         if let layerID, let added = project.addPieces(pieces, intoLayer: layerID, in: timelineID, at: time),
            let clipID = added.first {

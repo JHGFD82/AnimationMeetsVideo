@@ -171,6 +171,8 @@ struct ClipDropPayload: Transferable {
     var effect: EffectDragPayload? { EffectDragPayload(url: url) }
     var effectMove: EffectMovePayload? { EffectMovePayload(url: url) }
     var preset: PresetDragPayload? { PresetDragPayload(url: url) }
+    /// A file dragged in from the Finder.
+    var file: URL? { url.isFileURL ? url : nil }
 
     static var transferRepresentation: some TransferRepresentation {
         ProxyRepresentation(exporting: \.url, importing: { ClipDropPayload(url: $0) })

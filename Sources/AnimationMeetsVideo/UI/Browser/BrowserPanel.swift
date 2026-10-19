@@ -98,6 +98,9 @@ struct BrowserPanel: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .presetsChanged)) { _ in presets.reload() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in presets.reload() }
+        // Files from the Finder. The app's own drags are URLs too, but
+        // never file URLs.
+        .dropDestination(for: URL.self) { urls, _ in importDropped(urls) }
         .alert(
             "Import Failed",
             isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })
@@ -198,7 +201,7 @@ struct BrowserPanel: View {
     /// copy is what's imported.
     private func importMedia() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.movie, .audio, .image]
+        panel.allowedContentTypes = MediaImportFlow.contentTypes
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         // Starts as the project's setting, and can differ for one import.
@@ -213,61 +216,25 @@ struct BrowserPanel: View {
         }
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
-        guard let copying = filesToCopy(urls, copy: copyOption.state == .on) else { return }
-        let packageURL = packageURL
-
+        guard let copying = MediaImportFlow.filesToCopy(urls, copy: copyOption.state == .on, packageURL: packageURL) else { return }
         Task {
-            // A file imported before (and since removed, or never saved)
-            // comes back under its old ID, so its analysis is reused, and
-            // its earlier copy in Media/ is used instead of copying again.
-            var claimedIDs = Set(project.clips.map(\.id))
-            var usedPaths = Set(project.clips.compactMap { $0.url?.standardizedFileURL.resolvingSymlinksInPath().path })
-            for url in urls {
-                var madeCopy: URL?
-                do {
-                    var source = url
-                    if copying.contains(url), let packageURL {
-                        if let existing = ProjectStore.existingCopy(of: url, in: packageURL, excluding: usedPaths) {
-                            source = existing
-                        } else {
-                            madeCopy = try await PackageCoordinator.shared.run(on: [packageURL]) {
-                                try ProjectStore.copyIntoPackage(url, packageURL: packageURL)
-                            }
-                            source = madeCopy ?? url
-                        }
-                    }
-                    var clip = try await MediaImporter.importClip(at: source)
-                    // A copy may be numbered to avoid a name already in Media/.
-                    clip.name = url.deletingPathExtension().lastPathComponent
-                    if let packageURL, let earlier = ProjectStore.reusableAssetID(for: source, in: packageURL, excluding: claimedIDs) {
-                        clip.id = earlier
-                    }
-                    claimedIDs.insert(clip.id)
-                    usedPaths.insert(source.standardizedFileURL.resolvingSymlinksInPath().path)
-                    project.addMedia(clip)
-                    tab = .clips
-                } catch {
-                    if let madeCopy { try? FileManager.default.removeItem(at: madeCopy) }
-                    importError = "\(url.lastPathComponent): \(error.localizedDescription)"
-                }
-            }
+            let imported = await MediaImportFlow.importFiles(
+                urls, copying: copying, packageURL: packageURL, project: access.binding, onError: { importError = $0 }
+            )
+            if !imported.isEmpty { tab = .clips }
         }
     }
 
-    /// Which of `urls` to copy into the package: none when this import
-    /// references them in place, otherwise all, after asking about any
-    /// that would use real disk space. Nil to cancel the import.
-    private func filesToCopy(_ urls: [URL], copy: Bool) -> Set<URL>? {
-        guard copy, let packageURL else { return [] }
-        let clones = urls.filter { ProjectStore.copyIsClone(of: $0, into: packageURL) }
-        let heavy = urls.filter { !clones.contains($0) }
-        guard !heavy.isEmpty else { return Set(urls) }
-        let total = heavy.reduce(Int64(0)) { $0 + ProjectStore.fileSize(of: $1) }
-        switch MediaCopyPrompt.ask(fileCount: heavy.count, byteCount: total) {
-        case .copy: return Set(urls)
-        case .referenceInPlace: return Set(clones)
-        case nil: return nil
+    /// Files dragged in from the Finder go into the library, as Import…
+    /// would bring them, copied when the project copies imports.
+    private func importDropped(_ urls: [URL]) -> Bool {
+        guard !MediaImportFlow.importable(urls).isEmpty else { return false }
+        Task {
+            if await MediaImportFlow.importDropped(urls, packageURL: packageURL, project: access.binding, onError: { importError = $0 }) != nil {
+                tab = .clips
+            }
         }
+        return true
     }
 }
 

@@ -84,6 +84,8 @@ struct LayerClipRow: View {
     let onPasteEffects: (UUID) -> Void
     /// Cut, Copy, Paste or Duplicate from a clip's context menu.
     let onClipboard: (UUID, ClipboardCommand) -> Void
+    /// Files from the Finder dropped on a clip, and the time they land at.
+    let onDropFiles: ([URL], CMTime) -> Void
     /// Sets whether a nested clip passes through.
     let onSetPassThrough: (UUID, Bool) -> Void
     /// Draws each clip's volume as a line across it.
@@ -222,6 +224,7 @@ struct LayerClipRow: View {
                     onCopyEffects: { onCopyEffects(clip.id) },
                     onPasteEffects: { onPasteEffects(clip.id) },
                     onClipboard: { onClipboard(clip.id, $0) },
+                    onDropFiles: onDropFiles,
                     onSetPassThrough: { onSetPassThrough(clip.id, $0) },
                     playsSound: project.playsAudio(clip),
                     onEditTime: { change in onEditTime(clip.id, change) },

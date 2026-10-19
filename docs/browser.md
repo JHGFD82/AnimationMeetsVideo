@@ -135,6 +135,18 @@ the timeline changes. A thin line marks the skimmed frame on the strip.
 - **Add to Timeline** (context menu, or Return) does the same for the
   selection without dragging.
 
+### From the Finder
+
+Movies, sound and still images dragged in from the Finder are imported
+as **Import…** imports them (`MediaImportFlow`), copied into the project
+when it copies imports (File > Project Settings), with the same question
+before copying files that would use real disk space. Dropped on the
+browser they go into the library. Dropped on the timeline they go into
+the library and onto the timeline whole: on a clip, onto that clip's
+layer at the drop time, landing as media from the browser would; in an
+area, onto a new layer of the area's kind, or of each file's own kind
+when the area's doesn't suit them all. Files of other kinds are refused.
+
 ## Used media
 
 The part of each clip that **any timeline** in the project uses, nested

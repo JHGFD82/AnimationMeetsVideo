@@ -95,6 +95,8 @@ struct ClipBlockView: View {
     let onCopyEffects: () -> Void
     let onPasteEffects: () -> Void
     let onClipboard: (ClipboardCommand) -> Void
+    /// Files from the Finder dropped on the clip go onto its layer there.
+    let onDropFiles: ([URL], CMTime) -> Void
     let onSetPassThrough: (Bool) -> Void
     /// Whether the clip makes sound, which a retimed clip's sound choice is for.
     let playsSound: Bool
@@ -312,6 +314,11 @@ struct ClipBlockView: View {
             .editorAnimation(Design.Motion.select, value: isLifted)
             .dropDestination(for: ClipDropPayload.self) { payloads, location in
                 guard let payload = payloads.first else { return false }
+                let files = payloads.compactMap(\.file)
+                if !files.isEmpty {
+                    onDropFiles(files, CMTime(seconds: max(0, Double((drawnX + location.x) / pixelsPerSecond)), preferredTimescale: 600))
+                    return true
+                }
                 if let transition = payload.transition, acceptsTransitions {
                     // The nearer end of the clip gets the transition.
                     let x = drawnX + location.x
