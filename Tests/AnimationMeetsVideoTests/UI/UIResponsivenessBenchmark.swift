@@ -63,6 +63,10 @@ struct UIResponsivenessBenchmark {
         /// an adjustment layer of grain over them all, and a song on a
         /// Music layer. The top footage clip is selected.
         case media
+        /// Thirty shape layers, each cut into ten clips, so what a step costs
+        /// as the project grows shows apart from what footage costs. The top
+        /// layer's first clip is selected.
+        case busy
         /// The project at `AMV_PROJECT`, its first video clip selected.
         case saved
     }
@@ -122,6 +126,9 @@ struct UIResponsivenessBenchmark {
             Scenario(name: "step-frame-no-panel", base: .media, showsPanel: false, action: .key(.right, back: .left, sweep: true)),
             Scenario(name: "step-frame-inspector", base: .media, panel: .inspector, action: .key(.right, back: .left, sweep: true)),
             Scenario(name: "nudge-clip", base: .media, action: .key(.nudgeLater, back: .nudgeEarlier)),
+            Scenario(name: "busy-zoom", base: .busy, action: .key(.zoomIn, back: .zoomOut)),
+            Scenario(name: "busy-step-frame", base: .busy, action: .key(.right, back: .left, sweep: true)),
+            Scenario(name: "busy-nudge-clip", base: .busy, action: .key(.nudgeLater, back: .nudgeEarlier)),
             Scenario(name: "zoom", base: .media, action: .key(.zoomIn, back: .zoomOut)),
         ]
         if ProcessInfo.processInfo.environment["AMV_PROJECT"] != nil {
@@ -373,6 +380,20 @@ struct UIResponsivenessBenchmark {
                 _ = project.addEffect(.grain, toClip: adjustment.clipID, in: t)
             }
             return (project, TimelineSelection(timelineID: t, layerID: top.layerID, timelineClipID: top.clipID))
+        case .busy:
+            var target: (layerID: UUID, clipID: UUID)?
+            let kinds: [EffectKind] = [.rectangle, .ellipse, .star, .polygon]
+            for index in 0..<30 {
+                target = project.addShapeLayer(kinds[index % kinds.count], to: t, duration: ten)
+                if let target {
+                    for second in 1..<10 {
+                        project.split(target.clipID, in: t, layer: target.layerID, atTimelineTime: CMTime(value: Int64(second), timescale: 1))
+                    }
+                }
+            }
+            let top = try #require(target)
+            let first = try #require(project.timeline(id: t)?.layer(id: top.layerID)?.clips.first)
+            return (project, TimelineSelection(timelineID: t, layerID: top.layerID, timelineClipID: first.id))
         case .saved:
             let path = try #require(ProcessInfo.processInfo.environment["AMV_PROJECT"])
             project = try await ProjectStore.load(from: URL(fileURLWithPath: path)).project
