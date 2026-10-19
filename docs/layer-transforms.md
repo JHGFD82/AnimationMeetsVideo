@@ -111,11 +111,16 @@ the window, hide while the app is in the background,
 follow renames and close when their layer is deleted or the editor goes
 away.
 
-The panel is a value graph (`KeyframeGraphView`): time across the span of
-the keyframes, the value up as the editor shows it (position absolute in
-the frame, volume in dB), one line per component (position's X in red and
-Y in green, a single property in yellow), the playhead in red, and each
-keyframe a mark on each line, pinched where eased.
+The panel is a value graph (`KeyframeGraphView`): time across in the
+parameter's own time (a clip's source time, so its keyframes stay put
+when the clip moves, or the timeline's for a layer's volume and pan),
+labelled with the timeline's timecode, with the clip's ends marked; the
+value up as the editor shows it; one line per component (position's X in
+red and Y in green, a single property in yellow); and each keyframe a
+mark on each line, pinched where eased. The playhead is drawn in red at
+the moment of the parameter's time it plays, and follows the player while
+it plays. **Space** plays and pauses in a graph's panel, as in the main
+window.
 
 - **Click a keyframe** to select it. The handles of its eased sides
   appear, drawn against the component that changes most over that
@@ -134,6 +139,9 @@ keyframe a mark on each line, pinched where eased.
   back out before letting go, it returns.
 - **Option-drag a keyframe** to pull a handle out of a linear side: drag
   right for the outgoing side, left for the incoming one. It moves alone.
+- **Option-click a keyframe** to switch it between linear and bezier: a
+  linear one gets Easy Ease on both sides, and one with either side eased
+  goes linear (`AnimatedValue.toggleBezier`).
 - **Drag a keyframe** to move it in time (on frames, never past a
   neighbor) and in that component's value; Shift keeps the drag to
   whichever direction it moves most.
@@ -143,9 +151,29 @@ keyframe a mark on each line, pinched where eased.
   **Delete Keyframe**), act on the selected keyframe, or else the one at
   the playhead.
 
-The graph is scaled to the keyframes, their curves and their handles
-(`KeyframeGraphLayout`) and keeps that scale while a drag is in progress,
-so nothing moves under the pointer. A drag is drawn as it goes and saved
+The graph starts fitted to the keyframes, their curves and their handles
+(`KeyframeGraphLayout`), and keeps its scale while a drag is in progress,
+so nothing moves under the pointer. How it is zoomed and scrolled is the
+panel's `KeyframeGraphViewport`:
+
+- **Zoom dials** under the graph (time) and beside it (values), drawn as
+  the Tape Scrubber's ridged dial (`RidgedDial`, `ZoomDial`). Dragging
+  along one turns it; rightward or upward zooms in. Every point turned
+  changes the zoom by the same ratio (e every 150 points), so a turn
+  does as much zoomed far out as far in, and turning back returns
+  exactly. Time zooms about the playhead while it is in view, no further
+  out than the clip (padded 4% so points at its ends show) and no closer
+  than four frames; values zoom from a quarter of the fitted range to a
+  thousandth. Double-click a dial, or press the magnifier button, to fit.
+- **Pinch** zooms time about where the pinch started, or values with
+  Option. **Scrolling** moves the view: across in time, inside the clip,
+  and up and down in value.
+- **Components.** With more than one, each has a chip in the toolbar (its
+  color, name and value) that shows or hides its line and points; at
+  least one stays shown, and hidden ones leave the fit. **Separate
+  Scales** draws each on a scale of its own, fitted to it, so a small
+  move in one isn't flattened by a large one in another; the value axis
+  is then labelled for the first shown component, in its color. A drag is drawn as it goes and saved
 when it ends, as one undo step; in-between states don't rebuild the
 player. After release the graph keeps drawing the drag's result until the
 project has it, so the old curve never shows for a frame.
@@ -266,8 +294,7 @@ ignore it, and drop the transforms if it saved the project.
 
 - **Hold keyframes**, spatial (curved) motion paths for position, and
   separate easing per component.
-- In the graph editor: zooming and scrolling the graph, a speed graph,
-  selecting several keyframes, and keeping linked scale's aspect when
+- In the graph editor: a speed graph, selecting several keyframes, and keeping linked scale's aspect when
   dragging one component.
 - **Image layers.** Still images can't be imported yet. When they can, they
   are visual layers and get the same transform.

@@ -325,6 +325,38 @@ struct UISnapshots {
         )
     }
 
+    /// The graph editor on a Position keyframed in x and y, the second
+    /// keyframe eased and selected: the legend's chips, the zoom dials and
+    /// the playhead inside the clip, which starts later on the timeline
+    /// than its footage does.
+    @Test func keyframeGraph() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let transform = project.addEffect(.transform, toClip: shape.clipID, in: timelineID)
+        let transformID = try #require(transform)
+        var controlID = UUID()
+        project.editClip(shape.clipID, in: timelineID) { clip in
+            clip.startOffset = CMTime(value: 1, timescale: 1)
+            let e = clip.effects.index(of: transformID)!
+            controlID = clip.effects[e].controls[0].id
+            clip.effects[e].controls[0].number = AnimatedValue(ComponentValue(values: [0, 0]), keyframes: [
+                Keyframe(time: .zero, value: ComponentValue(values: [0, 0])),
+                Keyframe(time: CMTime(value: 2, timescale: 1), value: ComponentValue(values: [400, 60]), easeIn: .easy, easeOut: .easy),
+                Keyframe(time: CMTime(value: 4, timescale: 1), value: ComponentValue(values: [200, -40])),
+            ])
+        }
+        let hud = KeyframeGraphHUDs()
+        hud.update(project: project)
+        hud.playhead = CMTime(value: 2, timescale: 1)
+        let key = ParameterKey(timelineID: timelineID, parameter: .control(.position, clipID: shape.clipID, effectID: transformID, controlID: controlID))
+        try SnapshotSupport.render(
+            KeyframeGraphView(hud: hud, key: key, input: GraphInput()),
+            "keyframe-graph", size: CGSize(width: 620, height: 320)
+        )
+    }
+
     /// The shape button's popover: a row for each shape a new layer can
     /// start with.
     @Test func newShapePopover() throws {

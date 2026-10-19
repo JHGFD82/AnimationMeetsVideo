@@ -153,6 +153,13 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
         }
     }
 
+    /// Switches the keyframe at `time` between linear and bezier: one with
+    /// either side eased goes linear, a linear one gets Easy Ease.
+    mutating func toggleBezier(at time: CMTime) {
+        guard let keyframe = keyframe(at: time) else { return }
+        applyEase(keyframe.easeIn == nil && keyframe.easeOut == nil ? .easyEase : .linear, at: time)
+    }
+
     /// Turns animation on with one keyframe holding the current value at
     /// `time`, or off, keeping the value that was showing at `time`.
     mutating func setAnimated(_ animated: Bool, at time: CMTime) {

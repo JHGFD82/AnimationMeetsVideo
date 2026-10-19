@@ -234,6 +234,52 @@ struct ParameterKey: Hashable {
     var parameter: AnimatedParameter
 }
 
+/// The time a parameter's keyframes are in, and the timeline's: a clip's
+/// parameters are keyed in its source time, a layer's in the timeline's.
+struct ParameterTimeAxis {
+    /// The clip holding the parameter; nil for a layer's.
+    var clip: TimelineClip?
+    /// Where its keyframes can play, in seconds of its own time: the clip's
+    /// trimmed range, or the timeline.
+    var span: ClosedRange<Double>
+    let frameDuration: CMTime
+
+    func keyTime(atTimeline time: CMTime) -> CMTime {
+        clip?.sourceTime(atTimelineTime: time) ?? time
+    }
+
+    func timelineTime(atKey time: CMTime) -> CMTime {
+        clip?.timelineTime(forSourceTime: time) ?? time
+    }
+
+    /// The parameter's time nearest `seconds` that plays on a frame of the
+    /// timeline, so keyframes land where the playhead can stop.
+    func snapped(_ seconds: Double) -> CMTime {
+        let timeline = timelineTime(atKey: CMTime(seconds: seconds, preferredTimescale: 240_000))
+        let frame = CMTimeMaximum(.zero, CMTimeMultiply(frameDuration, multiplier: Int32((timeline.seconds / frameDuration.seconds).rounded())))
+        return keyTime(atTimeline: frame)
+    }
+}
+
+extension EditingProject {
+    /// The time axis of a parameter's graph, or nil when what holds it is
+    /// gone.
+    func timeAxis(of key: ParameterKey) -> ParameterTimeAxis? {
+        guard let timeline = timeline(id: key.timelineID) else { return nil }
+        let frame = timeline.frameDuration
+        switch key.parameter {
+        case .layerVolume, .layerPan:
+            let last = components(of: key)?.keyframes.last?.time.seconds ?? 0
+            return ParameterTimeAxis(clip: nil, span: 0...max(timeline.duration.seconds, last, 1), frameDuration: frame)
+        case .clipVolume(let clipID), .clipPan(let clipID), .anchorPoint(let clipID), .speed(let clipID),
+             .control(_, let clipID, _, _):
+            guard let clip = clipAndLayer(clipID, in: key.timelineID)?.clip else { return nil }
+            let start = clip.trimStart.seconds, end = clip.trimEnd.seconds
+            return ParameterTimeAxis(clip: clip, span: min(start, end)...max(start, end, min(start, end) + 1e-3), frameDuration: frame)
+        }
+    }
+}
+
 extension EditingProject {
     /// The parameter's keyframes as components, or nil when what holds it
     /// is gone (or it is a choice, which has none).

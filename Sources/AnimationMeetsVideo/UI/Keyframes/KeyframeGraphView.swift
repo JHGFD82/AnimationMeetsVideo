@@ -2,102 +2,30 @@ import AppKit
 import CoreMedia
 import SwiftUI
 
-/// Where a parameter's graph draws things: time across the span of its
-/// keyframes, the shown value up. Worked out from the keyframes when a
-/// drag starts and kept until it ends, so the graph doesn't rescale under
-/// the pointer.
-struct KeyframeGraphLayout: Equatable {
-    var times: ClosedRange<Double>
-    var values: ClosedRange<Double>
-    var plot: CGRect
-
-    static let insets = EdgeInsets(top: 12, leading: 52, bottom: 20, trailing: 14)
-
-    /// Fits `value`'s keyframes, curves and handles (shown with `offset`
-    /// added) into `size`.
-    init(_ value: AnimatedValue<ComponentValue>, offset: [Double], size: CGSize) {
-        let insets = Self.insets
-        plot = CGRect(
-            x: insets.leading, y: insets.top,
-            width: max(1, size.width - insets.leading - insets.trailing),
-            height: max(1, size.height - insets.top - insets.bottom)
-        )
-        let keyTimes = value.keyframes.map(\.time.seconds)
-        var start = keyTimes.first ?? 0, end = keyTimes.last ?? 1
-        if end - start < 1 {
-            let middle = (start + end) / 2
-            start = middle - 0.5
-            end = middle + 0.5
-        }
-        let pad = (end - start) * 0.08
-        times = (start - pad)...(end + pad)
-
-        var low = Double.infinity, high = -Double.infinity
-        func include(_ shown: Double) {
-            low = min(low, shown)
-            high = max(high, shown)
-        }
-        for index in 0...120 {
-            let time = CMTime(seconds: start + (end - start) * Double(index) / 120, preferredTimescale: 6000)
-            for (component, stored) in value.value(at: time).values.enumerated() {
-                include(stored + (component < offset.count ? offset[component] : 0))
-            }
-        }
-        for segment in Self.segments(of: value) {
-            for component in segment.from.value.values.indices {
-                let shift = component < offset.count ? offset[component] : 0
-                let a = segment.from.value.values[component] + shift
-                let b = segment.to.value.values[component] + shift
-                for handle in [KeyframeEase.outgoingHandle(segment.from.easeOut), KeyframeEase.incomingHandle(segment.to.easeIn)] {
-                    include(a + Double(handle.y) * (b - a))
-                }
-            }
-        }
-        if !low.isFinite { low = 0; high = 1 }
-        if high - low < 1e-6 {
-            low -= 1
-            high += 1
-        }
-        let valuePad = (high - low) * 0.1
-        values = (low - valuePad)...(high + valuePad)
-    }
-
-    static func segments(of value: AnimatedValue<ComponentValue>) -> [(from: Keyframe<ComponentValue>, to: Keyframe<ComponentValue>)] {
-        zip(value.keyframes, value.keyframes.dropFirst()).map { ($0, $1) }
-    }
-
-    func x(_ seconds: Double) -> CGFloat {
-        plot.minX + plot.width * CGFloat((seconds - times.lowerBound) / (times.upperBound - times.lowerBound))
-    }
-
-    func y(_ shown: Double) -> CGFloat {
-        plot.maxY - plot.height * CGFloat((shown - values.lowerBound) / (values.upperBound - values.lowerBound))
-    }
-
-    func seconds(atX x: CGFloat) -> Double {
-        times.lowerBound + Double((x - plot.minX) / plot.width) * (times.upperBound - times.lowerBound)
-    }
-
-    func value(atY y: CGFloat) -> Double {
-        values.lowerBound + Double((plot.maxY - y) / plot.height) * (values.upperBound - values.lowerBound)
-    }
-}
-
 /// One parameter's keyframes as a value graph, for its HUD panel: a line
-/// per component over time, each keyframe a point on it. Drag a point to
-/// move the keyframe in time (on frames) and value; Shift keeps it to one
+/// per component over the parameter's time (a clip's source time, or the
+/// timeline's), each keyframe a point on it. Drag a point to move the
+/// keyframe in time (on frames) and value; Shift keeps it to one
 /// direction. Click a point to select it and show the bezier handles of
 /// its eased sides. Dragging a handle shapes that side's ease and swings
 /// the other side's handle to stay in line with it, at its own length;
 /// with Option it moves alone. A handle dragged onto its keyframe goes,
-/// leaving that side linear, and Option-dragging a keyframe pulls a handle
-/// out of a linear side, the side the drag heads to. Click elsewhere to move
-/// the playhead there; double-click to add a keyframe. The buttons and the
+/// leaving that side linear. Option-click a point to switch it between
+/// linear and bezier (Easy Ease); Option-drag one pulls a handle out of a
+/// linear side, the side the drag heads to. Click elsewhere to move the
+/// playhead there; double-click to add a keyframe. The buttons and the
 /// right-click menu apply ease presets to the selected keyframe, or to the
 /// one at the playhead.
+///
+/// The dials under and beside the graph zoom time and values, each turn
+/// by the same ratio wherever the zoom is, time no further out than the
+/// clip; pinching zooms time about the pointer (values with Option), and
+/// scrolling moves the view. The legend's chips show or hide each
+/// component, and Separate Scales draws each on its own scale.
 struct KeyframeGraphView: View {
     let hud: KeyframeGraphHUDs
     let key: ParameterKey
+    let input: GraphInput
 
     /// The keyframes as a drag in progress leaves them, drawn instead of
     /// the project's and saved when the drag ends.
@@ -107,12 +35,15 @@ struct KeyframeGraphView: View {
     @State private var committed: AnimatedValue<ComponentValue>?
     @State private var drag: Drag?
     @State private var selected: CMTime?
+    @State private var viewport = KeyframeGraphViewport()
+    /// The pinch's magnification when it last changed the zoom.
+    @State private var lastMagnification: CGFloat?
 
     private enum Target: Equatable {
         case keyframe(CMTime, component: Int)
         case handle(segment: Int, outgoing: Bool)
-        /// Option-dragging a keyframe: pulls a handle out of the side the
-        /// drag heads to.
+        /// Option on a keyframe: a click switches it between linear and
+        /// bezier; a drag pulls a handle out of the side it heads to.
         case pull(CMTime)
         case scrub
     }
@@ -127,17 +58,28 @@ struct KeyframeGraphView: View {
         var original: AnimatedValue<ComponentValue>
     }
 
-    private static let palette: [Color] = [Design.statusDanger, Design.statusDone, Design.accent]
+    private static let palette: [Color] = [Design.statusDanger, Design.statusDone, Design.accent, Design.keyframe]
+
+    /// Everything the graph needs about the parameter right now.
+    private struct Context {
+        var value: AnimatedValue<ComponentValue>
+        var offset: [Double]
+        var timeline: Timeline
+        var axis: ParameterTimeAxis
+    }
 
     var body: some View {
-        if let timeline = hud.project.timeline(id: key.timelineID), let stored = hud.project.components(of: key) {
-            let value = draft ?? committed ?? stored
-            let offset = key.parameter.displayOffset(frameSize: timeline.frameSize)
+        if let timeline = hud.project.timeline(id: key.timelineID), let stored = hud.project.components(of: key),
+           let axis = hud.project.timeAxis(of: key) {
+            let c = Context(
+                value: draft ?? committed ?? stored, offset: key.parameter.displayOffset(frameSize: timeline.frameSize),
+                timeline: timeline, axis: axis
+            )
             VStack(spacing: 0) {
-                toolbar(value, offset: offset, timeline: timeline)
+                toolbar(c)
                 Divider()
-                if value.keyframes.count < 2 {
-                    Text(value.isAnimated
+                if c.value.keyframes.count < 2 {
+                    Text(c.value.isAnimated
                          ? "Add a second keyframe to shape the curve between them."
                          : "\(key.parameter.name) isn't animated. Turn on its stopwatch to add keyframes.")
                         .font(Design.Typeface.label)
@@ -145,26 +87,29 @@ struct KeyframeGraphView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     GeometryReader { geometry in
-                        let layout = drag?.layout ?? KeyframeGraphLayout(value, offset: offset, size: geometry.size)
-                        Canvas { context, _ in
-                            draw(value, offset: offset, layout: layout, timeline: timeline, in: &context)
-                        }
-                        .contentShape(Rectangle())
-                        .gesture(dragGesture(value: value, offset: offset, layout: layout, timeline: timeline))
-                        .simultaneousGesture(SpatialTapGesture(count: 2).onEnded { tap in
-                            let time = timeline.snappedToFrame(CMTime(seconds: max(0, layout.seconds(atX: tap.location.x)), preferredTimescale: 6000))
-                            edit { $0.toggleKeyframe(at: time) }
-                            selected = time
-                        })
-                        .contextMenu {
-                            if let target = presetTarget(value, timeline: timeline) {
-                                KeyframeEaseMenuItems { preset in edit { $0.applyEase(preset, at: target) } }
-                                Divider()
-                                Button("Delete Keyframe", role: .destructive) {
-                                    edit { $0.removeKeyframe(at: target) }
-                                    selected = nil
+                        let layout = drag?.layout ?? layout(c, size: CGSize(width: geometry.size.width - ZoomDial.thickness, height: geometry.size.height - ZoomDial.thickness))
+                        VStack(spacing: 0) {
+                            HStack(spacing: 0) {
+                                graph(c, layout: layout)
+                                ZoomDial(axis: .vertical, label: "Value zoom") { factor in
+                                    viewport.zoomValues(by: factor, around: 0.5)
+                                } onReset: {
+                                    viewport.valueZoom = 1
+                                    viewport.valuePan = 0
                                 }
                             }
+                            HStack(spacing: 0) {
+                                ZoomDial(axis: .horizontal, label: "Time zoom") { factor in
+                                    zoomTimes(by: factor, around: timeAnchor(c, layout: layout), c)
+                                } onReset: {
+                                    viewport.times = nil
+                                }
+                                Color.clear.frame(width: ZoomDial.thickness, height: ZoomDial.thickness)
+                            }
+                        }
+                        .onChange(of: input.scroll) { _, scroll in
+                            guard let scroll else { return }
+                            scrolled(scroll, c, layout: layout)
                         }
                     }
                 }
@@ -179,34 +124,122 @@ struct KeyframeGraphView: View {
         }
     }
 
+    private func layout(_ c: Context, size: CGSize) -> KeyframeGraphLayout {
+        KeyframeGraphLayout(
+            c.value, offset: c.offset, size: size, viewport: viewport, span: c.axis.span, frame: c.timeline.frameDuration.seconds
+        )
+    }
+
+    private func graph(_ c: Context, layout: KeyframeGraphLayout) -> some View {
+        Canvas { context, _ in
+            draw(c, layout: layout, in: &context)
+        }
+        .overlay { GraphPlayheadLine(playback: hud.playback, parked: hud.playhead, axis: c.axis, layout: layout) }
+        .contentShape(Rectangle())
+        .gesture(dragGesture(c, layout: layout))
+        .simultaneousGesture(SpatialTapGesture(count: 2).onEnded { tap in
+            let time = c.axis.snapped(layout.seconds(atX: tap.location.x))
+            edit { $0.toggleKeyframe(at: time) }
+            selected = time
+        })
+        .simultaneousGesture(MagnifyGesture()
+            .onChanged { pinch in
+                let factor = pinch.magnification / (lastMagnification ?? 1)
+                lastMagnification = pinch.magnification
+                if NSEvent.modifierFlags.contains(.option) {
+                    let fraction = Double((layout.plot.maxY - pinch.startLocation.y) / layout.plot.height)
+                    viewport.zoomValues(by: factor, around: min(max(fraction, 0), 1))
+                } else {
+                    zoomTimes(by: factor, around: layout.seconds(atX: pinch.startLocation.x), c)
+                }
+            }
+            .onEnded { _ in lastMagnification = nil })
+        .contextMenu {
+            if let target = presetTarget(c) {
+                KeyframeEaseMenuItems { preset in edit { $0.applyEase(preset, at: target) } }
+                Divider()
+                Button("Delete Keyframe", role: .destructive) {
+                    edit { $0.removeKeyframe(at: target) }
+                    selected = nil
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(key.parameter.name) graph")
+        .accessibilityValue("\(c.value.keyframes.count) keyframes")
+        .accessibilityHint("The dials zoom; the buttons above ease the selected keyframe or the one at the playhead")
+    }
+
+    // MARK: - Zooming and scrolling
+
+    /// The time the dial zooms about: the playhead while it's in view, else
+    /// the middle.
+    private func timeAnchor(_ c: Context, layout: KeyframeGraphLayout) -> Double {
+        let playhead = c.axis.keyTime(atTimeline: hud.playhead).seconds
+        return layout.times.contains(playhead) ? playhead : (layout.times.lowerBound + layout.times.upperBound) / 2
+    }
+
+    private func zoomTimes(by factor: Double, around anchor: Double, _ c: Context) {
+        let padded = KeyframeGraphLayout.padded(c.axis.span)
+        let frame = c.timeline.frameDuration.seconds
+        viewport.zoomTimes(by: factor, around: anchor, fit: KeyframeGraphLayout.fitTimes(c.value, span: padded, frame: frame), span: padded, frame: frame)
+    }
+
+    /// Scrolling across moves time; up and down moves values.
+    private func scrolled(_ scroll: GraphInput.Scroll, _ c: Context, layout: KeyframeGraphLayout) {
+        let padded = KeyframeGraphLayout.padded(c.axis.span)
+        if scroll.dx != 0 {
+            let fit = KeyframeGraphLayout.fitTimes(c.value, span: padded, frame: c.timeline.frameDuration.seconds)
+            viewport.panTimes(by: -Double(scroll.dx) * layout.secondsPerPoint, fit: fit, span: padded)
+        }
+        if scroll.dy != 0 {
+            viewport.valuePan += Double(scroll.dy / layout.plot.height) / viewport.valueZoom
+        }
+    }
+
     // MARK: - Toolbar
 
     /// The selected keyframe if it still exists, else the one at the playhead.
-    private func presetTarget(_ value: AnimatedValue<ComponentValue>, timeline: Timeline) -> CMTime? {
-        if let selected, value.keyframe(at: selected) != nil { return selected }
-        let playhead = timeline.snappedToFrame(hud.playhead)
-        return value.keyframe(at: playhead) != nil ? playhead : nil
+    private func presetTarget(_ c: Context) -> CMTime? {
+        if let selected, c.value.keyframe(at: selected) != nil { return selected }
+        let playhead = c.axis.keyTime(atTimeline: c.timeline.snappedToFrame(hud.playhead))
+        return c.value.keyframes.first { abs($0.time.seconds - playhead.seconds) < c.timeline.frameDuration.seconds / 2 }?.time
     }
 
-    private func toolbar(_ value: AnimatedValue<ComponentValue>, offset: [Double], timeline: Timeline) -> some View {
-        let target = presetTarget(value, timeline: timeline)
-        let shown = zip(value.value(at: timeline.snappedToFrame(hud.playhead)).values, offset).map { $0 + $1 }
+    private func toolbar(_ c: Context) -> some View {
+        let target = presetTarget(c)
+        let now = c.axis.keyTime(atTimeline: c.timeline.snappedToFrame(hud.playhead))
+        let shown = zip(c.value.value(at: now).values, c.offset).map { $0 + $1 }
         let names = key.parameter.componentNames
         return HStack(spacing: Design.Space.step) {
             ForEach(shown.indices, id: \.self) { index in
-                HStack(spacing: 3) {
-                    if names.count > 1 {
-                        Circle().fill(Self.palette[index % Self.palette.count]).frame(width: 6, height: 6)
-                        Text(names[index]).foregroundStyle(Design.textTertiary)
-                    }
+                if names.count > 1 {
+                    componentChip(index, name: names[index], shown: shown[index])
+                } else {
                     Text(key.parameter.label(shown[index], component: index))
                         .font(Design.Typeface.numericSmall)
                         .foregroundStyle(Design.textPrimary)
                 }
             }
+            if names.count > 1 {
+                Toggle(isOn: $viewport.separateScales) { Image(systemName: "arrow.up.and.down.text.horizontal") }
+                    .toggleStyle(.icon)
+                    .help(viewport.separateScales
+                          ? "Draw every component on one value scale"
+                          : "Draw each component on a scale of its own, so small moves show beside large ones")
+                    .accessibilityLabel("Separate scales")
+            }
             Spacer(minLength: Design.Space.step)
-            Text(target.map { "Keyframe \($0.timecode(frameRate: timeline.frameRate))" } ?? "No keyframe selected")
+            Button { viewport = KeyframeGraphViewport(hidden: viewport.hidden, separateScales: viewport.separateScales) } label: {
+                Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
+            }
+            .buttonStyle(.borderless)
+            .help("Fit the keyframes in view")
+            .accessibilityLabel("Fit")
+            Text(target.map { "Keyframe \(c.axis.timelineTime(atKey: $0).timecode(frameRate: c.timeline.frameRate))" } ?? "No keyframe selected")
                 .foregroundStyle(Design.textTertiary)
+                .lineLimit(1)
+                .truncationMode(.tail)
             ForEach(KeyframeEase.Preset.allCases) { preset in
                 Button(preset.name) {
                     if let target { edit { $0.applyEase(preset, at: target) } }
@@ -221,56 +254,96 @@ struct KeyframeGraphView: View {
         .padding(.vertical, Design.Space.close)
     }
 
+    /// A component's color, name and value, which shows or hides its curve.
+    /// The last one shown can't be hidden.
+    private func componentChip(_ index: Int, name: String, shown: Double) -> some View {
+        let isShown = !viewport.hidden.contains(index)
+        let count = key.parameter.componentNames.count
+        return Button {
+            if isShown {
+                guard viewport.hidden.count < count - 1 else { return }
+                viewport.hidden.insert(index)
+            } else {
+                viewport.hidden.remove(index)
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Circle()
+                    .strokeBorder(Self.palette[index % Self.palette.count], lineWidth: 1.5)
+                    .background(Circle().fill(isShown ? Self.palette[index % Self.palette.count] : .clear))
+                    .frame(width: 8, height: 8)
+                Text(name).foregroundStyle(Design.textTertiary)
+                Text(key.parameter.label(shown, component: index))
+                    .font(Design.Typeface.numericSmall)
+                    .foregroundStyle(isShown ? Design.textPrimary : Design.textTertiary)
+            }
+        }
+        .buttonStyle(.plain)
+        .help(isShown ? "Hide \(name)" : "Show \(name)")
+        .accessibilityLabel(name)
+        .accessibilityValue("\(key.parameter.label(shown, component: index)), \(isShown ? "shown" : "hidden")")
+    }
+
     // MARK: - Drawing
 
     private func color(_ component: Int, of count: Int) -> Color {
         count == 1 ? Design.keyframe : Self.palette[component % Self.palette.count]
     }
 
-    private func draw(_ value: AnimatedValue<ComponentValue>, offset: [Double], layout: KeyframeGraphLayout, timeline: Timeline, in context: inout GraphicsContext) {
+    private func visible(_ count: Int) -> [Int] {
+        (0..<count).filter { !viewport.hidden.contains($0) }
+    }
+
+    private func draw(_ c: Context, layout: KeyframeGraphLayout, in context: inout GraphicsContext) {
         let plot = layout.plot
-        let count = value.value.values.count
+        let count = c.value.value.values.count
+        let shownComponents = visible(count)
+        // The values the axis is labelled in: the one scale, or with
+        // separate scales the first shown component's, in its color.
+        let labelled = shownComponents.first ?? 0
+        let labelColor = viewport.separateScales && count > 1 ? color(labelled, of: count) : Design.textTertiary
 
-        // Value grid with labels, and the time span's ends.
-        for step in 0...4 {
-            let shown = layout.values.lowerBound + (layout.values.upperBound - layout.values.lowerBound) * Double(step) / 4
-            let y = layout.y(shown)
-            context.fill(Path(CGRect(x: plot.minX, y: y, width: plot.width, height: 0.5)), with: .color(.white.opacity(0.08)))
-            context.draw(
-                Text(key.parameter.label(shown)).font(Design.Typeface.numericScale).foregroundStyle(Design.textTertiary),
-                at: CGPoint(x: plot.minX - 6, y: y), anchor: .trailing
-            )
-        }
-        for (seconds, anchor) in [(layout.times.lowerBound, UnitPoint.topLeading), (layout.times.upperBound, .topTrailing)] {
-            let time = CMTime(seconds: max(0, seconds), preferredTimescale: 6000)
-            context.draw(
-                Text(time.timecode(frameRate: timeline.frameRate)).font(Design.Typeface.numericScale).foregroundStyle(Design.textTertiary),
-                at: CGPoint(x: layout.x(seconds), y: plot.maxY + 4), anchor: anchor
-            )
+        context.drawLayer { layer in
+            layer.clip(to: Path(CGRect(x: 0, y: plot.minY - 6, width: plot.maxX + 14, height: plot.height + 30)))
+            for step in 0...4 {
+                let range = layout.values[labelled]
+                let shown = range.lowerBound + (range.upperBound - range.lowerBound) * Double(step) / 4
+                let y = layout.y(shown, component: labelled)
+                layer.fill(Path(CGRect(x: plot.minX, y: y, width: plot.width, height: 0.5)), with: .color(.white.opacity(0.08)))
+                layer.draw(
+                    Text(key.parameter.label(shown, component: labelled)).font(Design.Typeface.numericScale).foregroundStyle(labelColor),
+                    at: CGPoint(x: plot.minX - 6, y: y), anchor: .trailing
+                )
+            }
+            for (seconds, anchor) in [(layout.times.lowerBound, UnitPoint.topLeading), (layout.times.upperBound, .topTrailing)] {
+                let time = c.axis.timelineTime(atKey: CMTime(seconds: seconds, preferredTimescale: 240_000))
+                layer.draw(
+                    Text(CMTimeMaximum(time, .zero).timecode(frameRate: c.timeline.frameRate))
+                        .font(Design.Typeface.numericScale).foregroundStyle(Design.textTertiary),
+                    at: CGPoint(x: layout.x(seconds), y: plot.maxY + 4), anchor: anchor
+                )
+            }
+            // The clip's ends, where its keyframes stop playing.
+            for edge in [c.axis.span.lowerBound, c.axis.span.upperBound] where layout.times.contains(edge) {
+                layer.fill(Path(CGRect(x: layout.x(edge) - 0.5, y: plot.minY, width: 1, height: plot.height)), with: .color(.white.opacity(0.18)))
+            }
         }
 
+        context.clip(to: Path(plot.insetBy(dx: -6, dy: -6)))
         // The curves, a point every two points across.
-        for component in 0..<count {
+        for component in shownComponents {
             var line = Path()
             var x = plot.minX
             while x <= plot.maxX {
-                let time = CMTime(seconds: layout.seconds(atX: x), preferredTimescale: 6000)
-                let point = CGPoint(x: x, y: layout.y(value.value(at: time).values[component] + offset[component]))
+                let shown = c.value.value(atSeconds: layout.seconds(atX: x)).values[component] + c.offset[component]
+                let point = CGPoint(x: x, y: layout.y(shown, component: component))
                 if line.isEmpty { line.move(to: point) } else { line.addLine(to: point) }
                 x += 2
             }
             context.stroke(line, with: .color(color(component, of: count)), lineWidth: 1.5)
         }
 
-        // The playhead.
-        let playheadX = layout.x(hud.playhead.seconds)
-        if (plot.minX...plot.maxX).contains(playheadX) {
-            context.fill(Path(CGRect(x: playheadX - 0.5, y: plot.minY, width: 1, height: plot.height)), with: .color(Design.playhead))
-        }
-
-        // The selected keyframe's handles, on the component that changes
-        // most over each of its segments.
-        for handle in handles(of: value, offset: offset, layout: layout) {
+        for handle in handles(c, layout: layout) {
             var stem = Path()
             stem.move(to: handle.anchor)
             stem.addLine(to: handle.point)
@@ -278,11 +351,13 @@ struct KeyframeGraphView: View {
             context.fill(Path(ellipseIn: CGRect(x: handle.point.x - 3.5, y: handle.point.y - 3.5, width: 7, height: 7)), with: .color(.white))
         }
 
-        // The keyframes.
-        for keyframe in value.keyframes {
+        for keyframe in c.value.keyframes {
             let isSelected = keyframe.time == selected
-            for component in 0..<count {
-                let center = CGPoint(x: layout.x(keyframe.time.seconds), y: layout.y(keyframe.value.values[component] + offset[component]))
+            for component in shownComponents {
+                let center = CGPoint(
+                    x: layout.x(keyframe.time.seconds),
+                    y: layout.y(keyframe.value.values[component] + c.offset[component], component: component)
+                )
                 let rect = CGRect(x: center.x - 5, y: center.y - 5, width: 10, height: 10)
                 let mark = KeyframeMarkShape(easedIn: keyframe.easeIn != nil, easedOut: keyframe.easeOut != nil).path(in: rect)
                 context.fill(mark, with: .color(isSelected ? Design.keyframe : Design.textSecondary))
@@ -296,46 +371,51 @@ struct KeyframeGraphView: View {
     private struct Handle {
         var segment: Int
         var outgoing: Bool
+        /// The component it is drawn against.
+        var component: Int
         /// The keyframe's point, and the handle's.
         var anchor: CGPoint
         var point: CGPoint
     }
 
-    /// The component whose change over a segment is largest on screen,
-    /// which its handles are drawn against.
+    /// The shown component whose change over a segment is largest on
+    /// screen, which its handles are drawn against.
     private func referenceComponent(from: Keyframe<ComponentValue>, to: Keyframe<ComponentValue>, layout: KeyframeGraphLayout) -> Int {
-        let deltas = zip(from.value.values, to.value.values).map { abs(layout.y($1) - layout.y($0)) }
-        return deltas.indices.max { deltas[$0] < deltas[$1] } ?? 0
+        let shown = visible(from.value.values.count)
+        let delta = { (c: Int) in abs(layout.y(to.value.values[c], component: c) - layout.y(from.value.values[c], component: c)) }
+        return shown.max { delta($0) < delta($1) } ?? 0
     }
 
     /// Where a side's handle and its keyframe are drawn, against the
     /// segment's reference component; a linear side's at its implied place.
-    private func handle(segment index: Int, outgoing: Bool, of value: AnimatedValue<ComponentValue>, offset: [Double], layout: KeyframeGraphLayout) -> Handle? {
+    private func handle(segment index: Int, outgoing: Bool, _ c: Context, value: AnimatedValue<ComponentValue>, layout: KeyframeGraphLayout) -> Handle? {
         let segments = KeyframeGraphLayout.segments(of: value)
         guard segments.indices.contains(index) else { return nil }
         let segment = segments[index]
         let component = referenceComponent(from: segment.from, to: segment.to, layout: layout)
-        let a = segment.from.value.values[component] + offset[component]
-        let b = segment.to.value.values[component] + offset[component]
+        let a = segment.from.value.values[component] + c.offset[component]
+        let b = segment.to.value.values[component] + c.offset[component]
         let unit = outgoing ? KeyframeEase.outgoingHandle(segment.from.easeOut) : KeyframeEase.incomingHandle(segment.to.easeIn)
         let t0 = segment.from.time.seconds, t1 = segment.to.time.seconds
-        let point = CGPoint(x: layout.x(t0 + Double(unit.x) * (t1 - t0)), y: layout.y(a + Double(unit.y) * (b - a)))
-        let anchor = outgoing ? CGPoint(x: layout.x(t0), y: layout.y(a)) : CGPoint(x: layout.x(t1), y: layout.y(b))
-        return Handle(segment: index, outgoing: outgoing, anchor: anchor, point: point)
+        let point = CGPoint(x: layout.x(t0 + Double(unit.x) * (t1 - t0)), y: layout.y(a + Double(unit.y) * (b - a), component: component))
+        let anchor = outgoing
+            ? CGPoint(x: layout.x(t0), y: layout.y(a, component: component))
+            : CGPoint(x: layout.x(t1), y: layout.y(b, component: component))
+        return Handle(segment: index, outgoing: outgoing, component: component, anchor: anchor, point: point)
     }
 
     /// The handles of the selected keyframe's eased sides. A linear side
     /// has none to show.
-    private func handles(of value: AnimatedValue<ComponentValue>, offset: [Double], layout: KeyframeGraphLayout) -> [Handle] {
+    private func handles(_ c: Context, layout: KeyframeGraphLayout) -> [Handle] {
         guard let selected else { return [] }
         var result: [Handle] = []
-        for (index, segment) in KeyframeGraphLayout.segments(of: value).enumerated() {
+        for (index, segment) in KeyframeGraphLayout.segments(of: c.value).enumerated() {
             if segment.from.time == selected, segment.from.easeOut != nil,
-               let handle = handle(segment: index, outgoing: true, of: value, offset: offset, layout: layout) {
+               let handle = handle(segment: index, outgoing: true, c, value: c.value, layout: layout) {
                 result.append(handle)
             }
             if segment.to.time == selected, segment.to.easeIn != nil,
-               let handle = handle(segment: index, outgoing: false, of: value, offset: offset, layout: layout) {
+               let handle = handle(segment: index, outgoing: false, c, value: c.value, layout: layout) {
                 result.append(handle)
             }
         }
@@ -345,18 +425,18 @@ struct KeyframeGraphView: View {
     /// The ease a side's handle drawn at `point` makes, measured against
     /// its segment. Over a flat segment there is no slope to read, so the
     /// speed it had is kept.
-    private func ease(handleAt point: CGPoint, segment index: Int, outgoing: Bool, of value: AnimatedValue<ComponentValue>, offset: [Double], layout: KeyframeGraphLayout) -> KeyframeEase? {
+    private func ease(handleAt point: CGPoint, segment index: Int, outgoing: Bool, _ c: Context, value: AnimatedValue<ComponentValue>, layout: KeyframeGraphLayout) -> KeyframeEase? {
         let segments = KeyframeGraphLayout.segments(of: value)
         guard segments.indices.contains(index) else { return nil }
         let (from, to) = segments[index]
         let component = referenceComponent(from: from, to: to, layout: layout)
-        let a = from.value.values[component] + offset[component]
-        let b = to.value.values[component] + offset[component]
+        let a = from.value.values[component] + c.offset[component]
+        let b = to.value.values[component] + c.offset[component]
         let t0 = from.time.seconds, t1 = to.time.seconds
         let flat = abs(b - a) < 1e-9
         let unit = CGPoint(
             x: (layout.seconds(atX: point.x) - t0) / (t1 - t0),
-            y: flat ? 0 : (layout.value(atY: point.y) - a) / (b - a)
+            y: flat ? 0 : (layout.value(atY: point.y, component: component) - a) / (b - a)
         )
         var ease = outgoing ? KeyframeEase.outgoing(handleAt: unit) : KeyframeEase.incoming(handleAt: unit)
         if flat {
@@ -372,14 +452,15 @@ struct KeyframeGraphView: View {
         hypot(a.x - b.x, a.y - b.y)
     }
 
-    private func target(at point: CGPoint, value: AnimatedValue<ComponentValue>, offset: [Double], layout: KeyframeGraphLayout) -> Target {
-        if let handle = handles(of: value, offset: offset, layout: layout).first(where: { distance($0.point, point) < 8 }) {
+    private func target(at point: CGPoint, _ c: Context, layout: KeyframeGraphLayout) -> Target {
+        if let handle = handles(c, layout: layout).first(where: { distance($0.point, point) < 8 }) {
             return .handle(segment: handle.segment, outgoing: handle.outgoing)
         }
         var nearest: (target: Target, distance: CGFloat)?
-        for keyframe in value.keyframes {
-            for (component, stored) in keyframe.value.values.enumerated() {
-                let d = distance(CGPoint(x: layout.x(keyframe.time.seconds), y: layout.y(stored + offset[component])), point)
+        for keyframe in c.value.keyframes {
+            for component in visible(keyframe.value.values.count) {
+                let stored = keyframe.value.values[component]
+                let d = distance(CGPoint(x: layout.x(keyframe.time.seconds), y: layout.y(stored + c.offset[component], component: component)), point)
                 if d < 8, d < nearest?.distance ?? .infinity {
                     nearest = (.keyframe(keyframe.time, component: component), d)
                 }
@@ -391,12 +472,12 @@ struct KeyframeGraphView: View {
         return nearest?.target ?? .scrub
     }
 
-    private func dragGesture(value: AnimatedValue<ComponentValue>, offset: [Double], layout: KeyframeGraphLayout, timeline: Timeline) -> some Gesture {
+    private func dragGesture(_ c: Context, layout: KeyframeGraphLayout) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { gesture in
                 if drag == nil {
-                    let target = target(at: gesture.startLocation, value: value, offset: offset, layout: layout)
-                    drag = Drag(target: target, layout: layout, original: value)
+                    let target = target(at: gesture.startLocation, c, layout: layout)
+                    drag = Drag(target: target, layout: layout, original: c.value)
                     if case .keyframe(let time, _) = target { selected = time }
                     if case .pull(let time) = target { selected = time }
                     if case .scrub = target { selected = nil }
@@ -404,26 +485,30 @@ struct KeyframeGraphView: View {
                 guard let drag else { return }
                 switch drag.target {
                 case .scrub:
-                    hud.onSeek(timeline.snappedToFrame(CMTime(seconds: max(0, drag.layout.seconds(atX: gesture.location.x)), preferredTimescale: 6000)))
+                    hud.onSeek(c.axis.timelineTime(atKey: c.axis.snapped(drag.layout.seconds(atX: gesture.location.x))))
                 case .keyframe(let time, let component):
                     guard abs(gesture.translation.width) >= 2 || abs(gesture.translation.height) >= 2 else { return }
-                    draft = movedKeyframe(time, component: component, by: gesture.translation, drag: drag, offset: offset, timeline: timeline)
+                    draft = movedKeyframe(time, component: component, by: gesture.translation, drag: drag, c)
                 case .handle(let segment, let outgoing):
                     let alone = NSEvent.modifierFlags.contains(.option)
-                    draft = movedHandle(segment, outgoing: outgoing, to: gesture.location, alone: alone, drag: drag, offset: offset)
+                    draft = movedHandle(segment, outgoing: outgoing, to: gesture.location, alone: alone, drag: drag, c)
                 case .pull(let time):
                     // The side the drag heads to; nothing until it heads somewhere.
-                    guard abs(gesture.translation.width) >= 1 else { return }
+                    guard abs(gesture.translation.width) >= 2 else { return }
                     let outgoing = gesture.translation.width > 0
                     let keyframes = drag.original.keyframes
                     guard let index = keyframes.firstIndex(where: { $0.time == time }) else { return }
                     let segment = outgoing ? index : index - 1
                     guard segment >= 0, segment < keyframes.count - 1 else { return }
-                    draft = movedHandle(segment, outgoing: outgoing, to: gesture.location, alone: true, drag: drag, offset: offset)
+                    draft = movedHandle(segment, outgoing: outgoing, to: gesture.location, alone: true, drag: drag, c)
                 }
             }
-            .onEnded { _ in
-                if let draft, draft != drag?.original {
+            .onEnded { gesture in
+                if case .pull(let time) = drag?.target,
+                   abs(gesture.translation.width) < 2, abs(gesture.translation.height) < 2 {
+                    // Option-click: linear becomes bezier, and bezier linear.
+                    edit { $0.toggleBezier(at: time) }
+                } else if let draft, draft != drag?.original {
                     committed = draft
                     edit { $0 = draft }
                     Task { @MainActor in
@@ -439,7 +524,7 @@ struct KeyframeGraphView: View {
 
     /// The keyframes with one moved by a drag: in time, on frames and
     /// between its neighbors, and in the dragged component's value.
-    private func movedKeyframe(_ time: CMTime, component: Int, by translation: CGSize, drag: Drag, offset: [Double], timeline: Timeline) -> AnimatedValue<ComponentValue> {
+    private func movedKeyframe(_ time: CMTime, component: Int, by translation: CGSize, drag: Drag, _ c: Context) -> AnimatedValue<ComponentValue> {
         var result = drag.original
         guard let index = result.keyframes.firstIndex(where: { $0.time == time }) else { return result }
         let layout = drag.layout
@@ -447,14 +532,14 @@ struct KeyframeGraphView: View {
         if NSEvent.modifierFlags.contains(.shift) {
             if abs(dx) > abs(dy) { dy = 0 } else { dx = 0 }
         }
-        let frame = timeline.frameDuration
-        var newTime = timeline.snappedToFrame(CMTime(seconds: time.seconds + Double(dx) * (layout.times.upperBound - layout.times.lowerBound) / Double(layout.plot.width), preferredTimescale: 6000))
+        let frame = c.axis.keyTime(atTimeline: c.axis.timelineTime(atKey: time) + c.timeline.frameDuration) - time
+        var newTime = dx == 0 ? time : c.axis.snapped(time.seconds + Double(dx) * layout.secondsPerPoint)
         if index > 0 { newTime = CMTimeMaximum(newTime, CMTimeAdd(result.keyframes[index - 1].time, frame)) }
         if index < result.keyframes.count - 1 { newTime = CMTimeMinimum(newTime, CMTimeSubtract(result.keyframes[index + 1].time, frame)) }
         var moved = result.keyframes[index].value
-        let shown = moved.values[component] + offset[component]
-        let newShown = layout.value(atY: layout.y(shown) + dy)
-        moved.values[component] = key.parameter.clamped(newShown - offset[component], index: component)
+        let shown = moved.values[component] + c.offset[component]
+        let newShown = layout.value(atY: layout.y(shown, component: component) + dy, component: component)
+        moved.values[component] = key.parameter.clamped(newShown - c.offset[component], index: component)
         result.moveKeyframe(at: time, to: newTime)
         result.set(moved, at: newTime)
         selected = newTime
@@ -466,30 +551,30 @@ struct KeyframeGraphView: View {
     /// side is eased, swings to stay on one line through the keyframe with
     /// the dragged one, keeping its own length on screen. Dragged onto the
     /// keyframe, the handle goes and its side turns linear.
-    private func movedHandle(_ segment: Int, outgoing: Bool, to location: CGPoint, alone: Bool, drag: Drag, offset: [Double]) -> AnimatedValue<ComponentValue> {
+    private func movedHandle(_ segment: Int, outgoing: Bool, to location: CGPoint, alone: Bool, drag: Drag, _ c: Context) -> AnimatedValue<ComponentValue> {
         var result = drag.original
         let layout = drag.layout
         let segments = KeyframeGraphLayout.segments(of: result)
         guard segments.indices.contains(segment),
-              let dragged = handle(segment: segment, outgoing: outgoing, of: result, offset: offset, layout: layout)
+              let dragged = handle(segment: segment, outgoing: outgoing, c, value: result, layout: layout)
         else { return result }
         let keyframe = outgoing ? segments[segment].from : segments[segment].to
         let collapsed = distance(location, dragged.anchor) < Self.collapseDistance
         var easeIn = keyframe.easeIn, easeOut = keyframe.easeOut
-        let newEase = collapsed ? nil : ease(handleAt: location, segment: segment, outgoing: outgoing, of: result, offset: offset, layout: layout)
+        let newEase = collapsed ? nil : ease(handleAt: location, segment: segment, outgoing: outgoing, c, value: result, layout: layout)
         if outgoing { easeOut = newEase } else { easeIn = newEase }
 
         // The other side's handle, on the segment across the keyframe.
         let otherSegment = outgoing ? segment - 1 : segment + 1
         let otherEase = outgoing ? keyframe.easeIn : keyframe.easeOut
         if !alone, !collapsed, otherEase != nil,
-           let other = handle(segment: otherSegment, outgoing: !outgoing, of: result, offset: offset, layout: layout) {
+           let other = handle(segment: otherSegment, outgoing: !outgoing, c, value: result, layout: layout) {
             let length = distance(other.point, other.anchor)
             let dx = location.x - dragged.anchor.x, dy = location.y - dragged.anchor.y
             let reach = hypot(dx, dy)
             if reach > 0 {
                 let point = CGPoint(x: other.anchor.x - dx / reach * length, y: other.anchor.y - dy / reach * length)
-                let swung = ease(handleAt: point, segment: otherSegment, outgoing: !outgoing, of: result, offset: offset, layout: layout)
+                let swung = ease(handleAt: point, segment: otherSegment, outgoing: !outgoing, c, value: result, layout: layout)
                 if outgoing { easeIn = swung } else { easeOut = swung }
             }
         }
@@ -500,5 +585,24 @@ struct KeyframeGraphView: View {
     private func edit(_ change: @escaping (inout AnimatedValue<ComponentValue>) -> Void) {
         let key = key
         hud.onEdit { $0.editComponents(of: key, change) }
+    }
+}
+
+/// The playhead's line on a graph: parked, or while the player plays,
+/// where it is, so following it redraws only the line.
+private struct GraphPlayheadLine: View {
+    let playback: PlaybackModel?
+    let parked: CMTime
+    let axis: ParameterTimeAxis
+    let layout: KeyframeGraphLayout
+
+    var body: some View {
+        let time = playback.map { $0.isPlaying ? $0.currentTime : parked } ?? parked
+        let x = layout.x(axis.keyTime(atTimeline: time).seconds)
+        Canvas { context, _ in
+            guard (layout.plot.minX...layout.plot.maxX).contains(x) else { return }
+            context.fill(Path(CGRect(x: x - 0.5, y: layout.plot.minY, width: 1, height: layout.plot.height)), with: .color(Design.playhead))
+        }
+        .allowsHitTesting(false)
     }
 }

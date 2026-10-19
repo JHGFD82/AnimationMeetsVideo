@@ -325,6 +325,8 @@ struct TimelineEditorSurface<Library: View>: View {
             let project = $project
             graphs.onEdit = { change in change(&project.wrappedValue) }
             graphs.onSeek = { time in scrub(to: time) }
+            graphs.onTogglePlayback = { playback.togglePlayback() }
+            graphs.playback = playback
         }
         .onDisappear { graphs.closeAll() }
         .onChange(of: timelineID) { _, newValue in

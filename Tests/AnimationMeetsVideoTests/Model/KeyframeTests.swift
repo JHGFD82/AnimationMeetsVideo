@@ -430,27 +430,126 @@ private func seconds(_ value: Double) -> CMTime {
 }
 
 @Suite struct KeyframeGraphLayoutTests {
+    private func layout(
+        _ value: AnimatedValue<ComponentValue>, offset: [Double], viewport: KeyframeGraphViewport = KeyframeGraphViewport(),
+        span: ClosedRange<Double> = 0...10
+    ) -> KeyframeGraphLayout {
+        KeyframeGraphLayout(value, offset: offset, size: CGSize(width: 400, height: 200), viewport: viewport, span: span, frame: 1.0 / 24)
+    }
+
     @Test func theGraphFitsTheKeyframesAndMapsBothWays() {
         var value = AnimatedValue(0.0)
         value.setAnimated(true, at: seconds(1))
         value.set(50, at: seconds(3))
-        let layout = KeyframeGraphLayout(value.asComponents, offset: [0], size: CGSize(width: 400, height: 200))
+        let layout = layout(value.asComponents, offset: [0])
         // Every keyframe is inside the plot, with room around it.
         for keyframe in value.keyframes {
-            #expect(layout.plot.insetBy(dx: 1, dy: 1).contains(CGPoint(x: layout.x(keyframe.time.seconds), y: layout.y(keyframe.value))))
+            let point = CGPoint(x: layout.x(keyframe.time.seconds), y: layout.y(keyframe.value, component: 0))
+            #expect(layout.plot.insetBy(dx: 1, dy: 1).contains(point))
         }
         #expect(abs(layout.seconds(atX: layout.x(2.25)) - 2.25) < 1e-9)
-        #expect(abs(layout.value(atY: layout.y(12.5)) - 12.5) < 1e-9)
+        #expect(abs(layout.value(atY: layout.y(12.5, component: 0), component: 0) - 12.5) < 1e-9)
         // Higher values draw higher up.
-        #expect(layout.y(50) < layout.y(0))
+        #expect(layout.y(50, component: 0) < layout.y(0, component: 0))
     }
 
     @Test func aFlatParameterStillGetsARange() {
         var value = AnimatedValue(Vector2(x: 5, y: 5))
         value.setAnimated(true, at: seconds(0))
         value.set(Vector2(x: 5, y: 5), at: seconds(2))
-        let layout = KeyframeGraphLayout(value.asComponents, offset: [960, 540], size: CGSize(width: 400, height: 200))
-        #expect(layout.values.contains(965) && layout.values.contains(545))
-        #expect(layout.values.upperBound > layout.values.lowerBound)
+        let layout = layout(value.asComponents, offset: [960, 540])
+        #expect(layout.values[0].contains(965) && layout.values[0].contains(545))
+        #expect(layout.values[0].upperBound > layout.values[0].lowerBound)
+    }
+
+    @Test func timeZoomsAboutItsAnchorAndNoFurtherOutThanTheClip() {
+        let span = 0.0...10.0, fit = 2.0...4.0
+        var viewport = KeyframeGraphViewport()
+        viewport.zoomTimes(by: 2, around: 3.5, fit: fit, span: span, frame: 1.0 / 24)
+        let zoomed = viewport.shownTimes(fit: fit, span: span)
+        #expect(abs(zoomed.upperBound - zoomed.lowerBound - 1) < 1e-9)
+        // 3.5 was three quarters across, and still is.
+        #expect(abs((3.5 - zoomed.lowerBound) / 1 - 0.75) < 1e-9)
+        // The same turn back undoes it.
+        viewport.zoomTimes(by: 0.5, around: 3.5, fit: fit, span: span, frame: 1.0 / 24)
+        let back = viewport.shownTimes(fit: fit, span: span)
+        #expect(abs(back.lowerBound - 2) < 1e-9 && abs(back.upperBound - 4) < 1e-9)
+        // All the way out is the clip, and all the way in four frames.
+        viewport.zoomTimes(by: 0.001, around: 3, fit: fit, span: span, frame: 1.0 / 24)
+        #expect(viewport.shownTimes(fit: fit, span: span) == span)
+        viewport.zoomTimes(by: 1e6, around: 3, fit: fit, span: span, frame: 1.0 / 24)
+        let closest = viewport.shownTimes(fit: fit, span: span)
+        #expect(abs(closest.upperBound - closest.lowerBound - 4.0 / 24) < 1e-9)
+    }
+
+    @Test func scrollingStaysInsideTheClip() {
+        let span = 0.0...10.0, fit = 2.0...4.0
+        var viewport = KeyframeGraphViewport()
+        viewport.panTimes(by: 100, fit: fit, span: span)
+        #expect(viewport.shownTimes(fit: fit, span: span) == 8...10)
+        viewport.panTimes(by: -100, fit: fit, span: span)
+        #expect(viewport.shownTimes(fit: fit, span: span) == 0...2)
+    }
+
+    @Test func valueZoomKeepsThePointItZoomsAbout() {
+        let fit = 0.0...100.0
+        var viewport = KeyframeGraphViewport()
+        // A quarter of the way up is 25.
+        viewport.zoomValues(by: 4, around: 0.25)
+        let shown = viewport.shownValues(fit: fit)
+        #expect(abs(shown.upperBound - shown.lowerBound - 25) < 1e-9)
+        #expect(abs(shown.lowerBound + 0.25 * 25 - 25) < 1e-9)
+    }
+
+    @Test func separateScalesFitEachComponentAndHiddenOnesLeaveTheFit() {
+        var value = AnimatedValue(Vector2(x: 0, y: 0))
+        value.setAnimated(true, at: seconds(0))
+        value.set(Vector2(x: 1000, y: 2), at: seconds(2))
+        let shared = layout(value.asComponents, offset: [0, 0])
+        #expect(shared.values[0] == shared.values[1])
+        var viewport = KeyframeGraphViewport()
+        viewport.separateScales = true
+        let separate = layout(value.asComponents, offset: [0, 0], viewport: viewport)
+        #expect(separate.values[1].upperBound < 10)
+        #expect(separate.values[0].upperBound > 1000)
+        viewport = KeyframeGraphViewport(hidden: [0])
+        let onlyY = layout(value.asComponents, offset: [0, 0], viewport: viewport)
+        #expect(onlyY.values[1].upperBound < 10)
+    }
+
+    @Test func optionClickSwitchesBetweenLinearAndBezier() {
+        var value = AnimatedValue(0.0)
+        value.setAnimated(true, at: seconds(0))
+        value.set(10, at: seconds(1))
+        value.toggleBezier(at: seconds(1))
+        #expect(value.keyframes[1].easeIn == .easy && value.keyframes[1].easeOut == .easy)
+        value.toggleBezier(at: seconds(1))
+        #expect(value.keyframes[1].easeIn == nil && value.keyframes[1].easeOut == nil)
+        // One eased side counts as bezier.
+        value.applyEase(.easeIn, at: seconds(1))
+        value.toggleBezier(at: seconds(1))
+        #expect(value.keyframes[1].easeIn == nil)
+    }
+
+    @Test func aClipsGraphIsInItsSourceTime() throws {
+        var project = EditingProject.empty
+        let media = MediaClip(
+            name: "A.mov", kind: .video, url: URL(fileURLWithPath: "/dev/null"), duration: seconds(20), frameRate: 24,
+            colorSpace: .rec709, codecName: "H.264"
+        )
+        let timelineID = project.rootTimelineID
+        let imported = project.importClip(media, intoTimeline: timelineID)
+        let ids = try #require(imported)
+        project.editClip(ids.clipID, in: timelineID) { $0.trimStart = seconds(5); $0.trimEnd = seconds(9); $0.startOffset = seconds(2) }
+        let key = ParameterKey(timelineID: timelineID, parameter: .clipVolume(clipID: ids.clipID))
+        let axis = try #require(project.timeAxis(of: key))
+        #expect(axis.span == 5...9)
+        // The playhead at 3 s of the timeline is 6 s into the footage.
+        #expect(axis.keyTime(atTimeline: seconds(3)).seconds == 6)
+        #expect(axis.timelineTime(atKey: seconds(6)).seconds == 3)
+        // Snapping lands on the timeline's frames.
+        let snapped = axis.snapped(6.01)
+        let frames = axis.timelineTime(atKey: snapped).seconds * 24
+        #expect(abs(frames - frames.rounded()) < 1e-6)
     }
 }
