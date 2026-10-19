@@ -759,6 +759,12 @@ struct TimelineEditorSurface<Library: View>: View {
                     // the same, so changing from one to the other after
                     // an edit shows as a blink. Playing or scrubbing
                     // takes it away.
+                    if resetPosition, playback.liveRedraws == redraws {
+                        // Also the first frame of a drag of values: with no
+                        // frame drawn from a build yet, its first step would
+                        // have to let go (`redrawLive`).
+                        playback.showLive(composed, structure: project.structure)
+                    }
                 } else {
                     let resumeTime = resetPosition ? playheadTime : player.currentTime()
                     player.replaceCurrentItem(with: item)

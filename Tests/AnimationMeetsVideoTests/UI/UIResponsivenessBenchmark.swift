@@ -267,6 +267,7 @@ struct UIResponsivenessBenchmark {
         } while Date() < deadline
         if edit != nil {
             // As a field does when let go: the last step, to the project.
+            if holds { print("UIResponsivenessBenchmark: \(scenario.name) still held: \(state.isHolding)") }
             state.endHold()
             edit?(&state.value, step)
             history.endGesture()
