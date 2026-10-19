@@ -14,6 +14,10 @@ struct EffectsPanel: View {
     let state: EffectsPanelState
     let onSeek: (CMTime) -> Void
     let onSelectTransition: (TransitionEdge) -> Void
+    /// The player, which the playhead line follows while it plays; the
+    /// rest of the panel stays at `playheadTime`, so playing redraws only
+    /// the line. Nil leaves the line parked.
+    var playback: PlaybackModel?
 
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) var graphs: KeyframeGraphHUDs?
@@ -299,15 +303,8 @@ struct EffectsPanel: View {
     }
 
     private func playheadLine(_ c: RowContext) -> some View {
-        Group {
-            if let x = c.geometry.x(ofTimeline: c.frameTime) {
-                Rectangle()
-                    .fill(Design.playhead)
-                    .frame(width: 1)
-                    .offset(x: EffectsPanelMetrics.labelWidth + EffectsPanelMetrics.laneInset + x)
-            }
-        }
-        .allowsHitTesting(false)
+        LanePlayheadLine(playback: playback, parked: c.frameTime, geometry: c.geometry)
+            .allowsHitTesting(false)
     }
 
     // MARK: Anchor point

@@ -232,7 +232,8 @@ struct TimelineEditorSurface<Library: View>: View {
                                                 timelineClipID: selection.timelineClipID, transitionEdge: edge
                                             )
                                         }
-                                    }
+                                    },
+                                    playback: playback
                                 )
                             }
                         }

@@ -151,3 +151,22 @@ struct PanelRuler: View {
         .help("Drag to move the playhead")
     }
 }
+
+/// The playhead's line down the effects panel's lanes: at `parked`, or
+/// while the player plays, where it is, so that following it redraws only
+/// this line (as the timeline's `LivePlayheadRail` does).
+struct LanePlayheadLine: View {
+    let playback: PlaybackModel?
+    let parked: CMTime
+    let geometry: ClipLaneGeometry
+
+    var body: some View {
+        let time = playback.map { $0.isPlaying ? $0.currentTime : parked } ?? parked
+        if let x = geometry.x(ofTimeline: time) {
+            Rectangle()
+                .fill(Design.playhead)
+                .frame(width: 1)
+                .offset(x: EffectsPanelMetrics.labelWidth + EffectsPanelMetrics.laneInset + x)
+        }
+    }
+}
