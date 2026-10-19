@@ -121,4 +121,49 @@ import Testing
         #expect(actions(project, snapping: false) != actions(project))
         #expect(actions(project, tool: .blade) != actions(project))
     }
+    /// The timeline's rows compare this, and read where its other layers'
+    /// clips are as they act, so it must not change as a clip moves in the
+    /// timeline but must change with everything else a row draws.
+    @Test func rowsDontSeeWhereTheTimelinesClipsAre() throws {
+        let (original, shape, footage) = try project()
+        let t = original.rootTimelineID
+        let before = original.structure(withoutClipsIn: t)
+
+        var moved = original
+        moved.editClip(footage, in: t) { $0.startOffset = CMTime(seconds: 2, preferredTimescale: 600) }
+        moved.editClip(shape, in: t) { $0.trimEnd = CMTime(seconds: 3, preferredTimescale: 600) }
+        #expect(moved.structure(withoutClipsIn: t) == before)
+    }
+
+    @Test func rowsStillSeeWhatElseTheyDraw() throws {
+        let (original, _, _) = try project()
+        let t = original.rootTimelineID
+        let before = original.structure(withoutClipsIn: t)
+
+        // The layers: how many, in what order, of what kind.
+        var layered = original
+        let index = try #require(layered.timelines.firstIndex { $0.id == t })
+        layered.timelines[index].layers.append(TimelineLayer(customName: nil, kind: .music, clips: []))
+        #expect(layered.structure(withoutClipsIn: t) != before)
+
+        var renamed = original
+        renamed.timelines[index].layers[0].customName = "Renamed"
+        #expect(renamed.structure(withoutClipsIn: t) != before)
+
+        // The media the clips play.
+        var media = original
+        media.addMedia(MediaClip(
+            name: "More", kind: .audio, url: nil, duration: CMTime(seconds: 1, preferredTimescale: 600),
+            frameRate: 0, colorSpace: .rec709, codecName: "AAC"
+        ))
+        #expect(media.structure(withoutClipsIn: t) != before)
+
+        // Another timeline's clips, which a clip nesting it takes its length from.
+        var other = original
+        let inner = other.addTimeline(name: "Inner", frameSize: CGSize(width: 64, height: 36), frameRate: 24, colorSpace: .rec709)
+        let withInner = other.structure(withoutClipsIn: t)
+        let shape = other.addShapeLayer(.rectangle, to: inner)
+        #expect(shape != nil)
+        #expect(other.structure(withoutClipsIn: t) != withInner)
+    }
 }

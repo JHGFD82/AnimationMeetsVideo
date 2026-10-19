@@ -77,6 +77,13 @@ final class LivePlayhead {
     }
 }
 
+/// What edges snap to, kept where SwiftUI doesn't watch it. A row that
+/// isn't redrawn when another layer's clips move reads it as a drag snaps,
+/// from its owner, who brings it up to date as it redraws.
+final class LiveSnapTargets {
+    var targets: SnapTargets?
+}
+
 extension EditingProject {
     /// What edges and the playhead snap to in a timeline: its start, every
     /// clip's start and end on every layer, every section's, `playhead`

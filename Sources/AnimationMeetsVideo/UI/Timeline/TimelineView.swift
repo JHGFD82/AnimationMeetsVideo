@@ -160,6 +160,9 @@ struct TimelineView: View {
     /// The playhead that drags snap to, brought up to date at each redraw
     /// (see `SnapTargets.playhead`).
     @State private var snapPlayhead = LivePlayhead()
+    /// What edges snap to, read as a drag snaps: a row isn't redrawn when
+    /// another layer's clips move, so it can't be handed them.
+    @State private var liveSnap = LiveSnapTargets()
 
     /// How close, on screen, an edge must come to a target to snap to it.
     private let snapDistance: CGFloat = 8
@@ -462,8 +465,11 @@ struct TimelineView: View {
                 let _ = snapPlayhead.source = { [playhead] in playhead.time }
                 let snapTargets = snapping
                     ? project.snapTargets(in: timelineID, playhead: nil, live: snapPlayhead, markers: drawnBeats(viewport)) : nil
-                // Once for every area's rows, which compare it to skip redrawing.
-                let structure = project.structure
+                let _ = liveSnap.targets = snapTargets
+                // Once for every area's rows, which compare it to skip
+                // redrawing; without where this timeline's clips are, which
+                // a row's actions read as they act (`liveSnap`, `resolveMove`).
+                let structure = project.structure(withoutClipsIn: timelineID)
 
                 VStack(alignment: .leading, spacing: 0) {
                     // The time rail: the ruler and the sections under it
@@ -526,7 +532,7 @@ struct TimelineView: View {
                                 },
                                 onResizeEnded: { boundaryDragStart = nil }
                             )
-                            area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, snapTargets: snapTargets, structure: structure)
+                            area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, structure: structure)
                         }
                     }
                     .frame(maxHeight: .infinity, alignment: .top)
@@ -671,7 +677,7 @@ struct TimelineView: View {
     /// One area: its layers' names beside their tracks, scrolling up and
     /// down on its own.
     private func area(
-        _ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, snapTargets: SnapTargets?, structure: EditingProject
+        _ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, structure: EditingProject
     ) -> some View {
         ScrollView(.vertical) {
             HStack(alignment: .top, spacing: 0) {
@@ -691,7 +697,7 @@ struct TimelineView: View {
                         onHover: { hover in if hover != newLayerHover { newLayerHover = hover } },
                         onDrop: { payloads, kind in _ = onDropScenes(payloads, nil, playheadTime, kind) }
                     ))
-                layerTracks(kind, areaHeight: height, viewport: viewport, snapTargets: snapTargets, structure: structure)
+                layerTracks(kind, areaHeight: height, viewport: viewport, structure: structure)
                     .offset(x: -viewport.scrollX)
                     .frame(width: viewport.width, alignment: .topLeading)
                     .rubberBandStretch(zoomBand)
@@ -883,7 +889,7 @@ struct TimelineView: View {
 
     /// `structure` is `project.structure`, which the rows compare.
     private func layerTracks(
-        _ kind: LayerKind, areaHeight: CGFloat, viewport: TimelineViewport, snapTargets: SnapTargets?, structure: EditingProject
+        _ kind: LayerKind, areaHeight: CGFloat, viewport: TimelineViewport, structure: EditingProject
     ) -> some View {
         let pixelsPerSecond = viewport.pixelsPerSecond
         let contentWidth = viewport.contentWidth
@@ -932,7 +938,7 @@ struct TimelineView: View {
                         snap: { timeline.snappedToFrame($0) },
                         onBlade: { clipID, time in onBladeClip(layer.id, clipID, time) },
                         onSlip: { clipID, delta in onSlipClip(layer.id, clipID, delta) },
-                        snapTargets: snapTargets,
+                        liveSnap: liveSnap,
                         snapTolerance: snapTolerance,
                         onSnapIndicator: { snapIndicator = $0 },
                         onTrimPreview: onTrimPreview,

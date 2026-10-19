@@ -25,8 +25,8 @@ struct LayerClipRow: View {
     let name: String
     let frameRate: Double
     let project: EditingProject
-    /// `project.structure`, worked out once for every row: what the row's
-    /// actions read beyond its own layer (see `==`).
+    /// `project.structure` without the timeline's clips, worked out once for
+    /// every row: what the row reads beyond its own layer (see `==`).
     let structure: EditingProject
     let timelineID: UUID
     let selection: TimelineSelection?
@@ -66,9 +66,10 @@ struct LayerClipRow: View {
     let onBlade: (UUID, CMTime) -> Void
     /// Slips a clip's footage by a time (positive plays later footage).
     let onSlip: (UUID, CMTime) -> Void
-    /// What edges snap to, or nil with snapping off, and how close they
-    /// must come.
-    let snapTargets: SnapTargets?
+    /// What edges snap to, or nil with snapping off, read as a drag snaps
+    /// (not compared in `==`, since it holds where every layer's clips are),
+    /// and how close they must come.
+    let liveSnap: LiveSnapTargets
     let snapTolerance: CMTime
     /// Where a drag snapped, to draw; nil when it didn't or ended.
     let onSnapIndicator: (CMTime?) -> Void
@@ -212,9 +213,9 @@ struct LayerClipRow: View {
                     resolveSlip: { project.resolvedSlip(of: clip.id, in: timelineID, layer: layer.id, by: $0) },
                     onSlip: { delta in onSlip(clip.id, delta) },
                     onSlipDraft: { draft, committing in slipDraft(of: clip, draft, committing: committing) },
-                    snapTime: { snapTargets?.nearest(to: $0, within: snapTolerance, excluding: clip.id) },
+                    snapTime: { liveSnap.targets?.nearest(to: $0, within: snapTolerance, excluding: clip.id) },
                     snapSpan: { start, duration in
-                        snapTargets?.snappedStart(start, duration: duration, within: snapTolerance, excluding: clip.id)
+                        liveSnap.targets?.snappedStart(start, duration: duration, within: snapTolerance, excluding: clip.id)
                     },
                     onSnapIndicator: onSnapIndicator,
                     onSetTransitionDuration: { edge, duration in onSetTransitionDuration(clip.id, edge, duration) },
@@ -301,9 +302,11 @@ struct LayerClipRow: View {
 extension LayerClipRow: Equatable {
     /// Whether the row would draw and act the same, so it needn't be redrawn
     /// (the timeline marks it `.equatable()`): its own layer is the same, as
-    /// are its sizes, selection, tool and snapping, and the project's
-    /// structure, which its actions read when moving clips between layers.
-    /// Dragging a value of a clip on another layer changes none of these.
+    /// are its sizes, selection, tool and snap tolerance, and the project's
+    /// structure without the clips (the media, other timelines, the layers'
+    /// order, kinds and names). Where other layers' clips are is read as an
+    /// action runs (`liveSnap`, `TimelineView.resolveMove`), so moving a
+    /// clip, or dragging a value, on another layer changes none of these.
     /// The closures aren't compared; they are made from the same inputs.
     nonisolated static func == (lhs: LayerClipRow, rhs: LayerClipRow) -> Bool {
         MainActor.assumeIsolated {
@@ -312,7 +315,7 @@ extension LayerClipRow: Equatable {
                 && lhs.pixelsPerSecond == rhs.pixelsPerSecond && lhs.width == rhs.width && lhs.height == rhs.height
                 && lhs.showsChannels == rhs.showsChannels && lhs.visibleX == rhs.visibleX
                 && lhs.pushed == rhs.pushed && lhs.tool == rhs.tool
-                && lhs.snapTargets == rhs.snapTargets && lhs.snapTolerance == rhs.snapTolerance
+                && lhs.snapTolerance == rhs.snapTolerance
                 && lhs.showsVolumeLines == rhs.showsVolumeLines
                 && lhs.structure == rhs.structure
         }
