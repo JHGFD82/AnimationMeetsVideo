@@ -14,8 +14,10 @@ struct TimelineView: View {
     let playback: PlaybackModel
     /// Where the playhead is parked. It doesn't follow playback, which
     /// would redraw every layer on every tick; it catches up when playback
-    /// stops.
-    @Binding var playheadTime: CMTime
+    /// stops. Not read as this body is built, or every step of the playhead
+    /// would build the whole timeline again: the views that show it read it
+    /// through `PlayheadReader`, and actions through `playheadTime`.
+    let playhead: PlayheadState
     let onScrub: (CMTime) -> Void
     let onSelectClip: (UUID, TimelineClip) -> Void
     let onRenameLayer: (UUID, String?) -> Void
@@ -316,6 +318,8 @@ struct TimelineView: View {
     /// layout pass (buttons, keys, the slider).
     var currentViewport: TimelineViewport { viewport(width: trackAreaWidth) }
 
+    var playheadTime: CMTime { playhead.time }
+
     /// Where the playhead is now: the player's time while it plays, which
     /// `playheadTime` doesn't follow, else the parked time.
     var livePlayheadTime: CMTime {
@@ -331,7 +335,9 @@ struct TimelineView: View {
                 TimelineToolPicker(current: tool, tool: $tool)
                     .equatable()
                 Spacer()
-                PlayheadTimecode(playback: playback, parked: playheadTime, frameRate: timeline.frameRate)
+                PlayheadReader(playhead: playhead) { parked in
+                    PlayheadTimecode(playback: playback, parked: parked, frameRate: timeline.frameRate)
+                }
                 TimelineZoomSliders(
                     horizontal: zoomFractionBinding,
                     vertical: Binding(
@@ -450,11 +456,10 @@ struct TimelineView: View {
                     - CGFloat(shownAreas.count) * AreaTitleBar.height)
                 let areaHeights = areaLayout.heights(splitting: areasAvailable)
                 let trackHeight = max(railHeight, geometry.size.height - scrollbarHeight)
-                let frameTime = timeline.snappedToFrame(playheadTime)
                 // Built once per layout, not once per area: it walks every
                 // clip and beat. The playhead is read as a drag snaps, so
                 // moving it doesn't change what the rows compare.
-                let _ = snapPlayhead.time = playheadTime
+                let _ = snapPlayhead.source = { [playhead] in playhead.time }
                 let snapTargets = snapping
                     ? project.snapTargets(in: timelineID, playhead: nil, live: snapPlayhead, markers: drawnBeats(viewport)) : nil
                 // Once for every area's rows, which compare it to skip redrawing.
@@ -479,14 +484,10 @@ struct TimelineView: View {
                                 .gesture(scrubGesture(in: viewport))
                                 // To VoiceOver the ruler is the playhead:
                                 // adjusting it steps a frame.
-                                .accessibilityElement(children: .ignore)
-                                .accessibilityLabel("Playhead")
-                                .accessibilityValue(playheadTime.timecode(frameRate: timeline.frameRate))
-                                .accessibilityAdjustableAction { direction in
-                                    switch direction {
-                                    case .increment: stepPlayhead(byFrames: 1)
-                                    case .decrement: stepPlayhead(byFrames: -1)
-                                    @unknown default: break
+                                .accessibilityHidden(true)
+                                .overlay {
+                                    PlayheadAccessibilityElement(playhead: playhead, frameRate: timeline.frameRate) {
+                                        stepPlayhead(byFrames: $0)
                                     }
                                 }
                         }
@@ -525,7 +526,7 @@ struct TimelineView: View {
                                 },
                                 onResizeEnded: { boundaryDragStart = nil }
                             )
-                            area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets, structure: structure)
+                            area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, snapTargets: snapTargets, structure: structure)
                         }
                     }
                     .frame(maxHeight: .infinity, alignment: .top)
@@ -567,14 +568,16 @@ struct TimelineView: View {
                         // The playhead and the snap line move far more
                         // often than anything else here, so they are Core
                         // Animation layers rather than SwiftUI shapes.
-                        LivePlayheadRail(
-                            playback: playback,
-                            parked: playheadTime,
-                            viewport: viewport,
-                            onLeaveView: followsPlayhead && !viewport.isFitted ? { time in page(to: time) } : nil,
-                            snapX: snapIndicator.map { viewport.x(atSeconds: $0.seconds) },
-                            height: trackHeight
-                        )
+                        PlayheadReader(playhead: playhead) { parked in
+                            LivePlayheadRail(
+                                playback: playback,
+                                parked: parked,
+                                viewport: viewport,
+                                onLeaveView: followsPlayhead && !viewport.isFitted ? { time in page(to: time) } : nil,
+                                snapX: snapIndicator.map { viewport.x(atSeconds: $0.seconds) },
+                                height: trackHeight
+                            )
+                        }
                     }
                     .frame(width: viewport.width, height: trackHeight, alignment: .topLeading)
                     .rubberBandStretch(zoomBand)
@@ -668,11 +671,11 @@ struct TimelineView: View {
     /// One area: its layers' names beside their tracks, scrolling up and
     /// down on its own.
     private func area(
-        _ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, frameTime: CMTime, snapTargets: SnapTargets?, structure: EditingProject
+        _ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, snapTargets: SnapTargets?, structure: EditingProject
     ) -> some View {
         ScrollView(.vertical) {
             HStack(alignment: .top, spacing: 0) {
-                layerHeaders(kind, frameTime: frameTime)
+                layerHeaders(kind)
                     .frame(width: labelColumnWidth, alignment: .topLeading)
                     .frame(minHeight: height, alignment: .top)
                     .grooved(.trailing)
@@ -688,7 +691,7 @@ struct TimelineView: View {
                         onHover: { hover in if hover != newLayerHover { newLayerHover = hover } },
                         onDrop: { payloads, kind in _ = onDropScenes(payloads, nil, playheadTime, kind) }
                     ))
-                layerTracks(kind, areaHeight: height, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets, structure: structure)
+                layerTracks(kind, areaHeight: height, viewport: viewport, snapTargets: snapTargets, structure: structure)
                     .offset(x: -viewport.scrollX)
                     .frame(width: viewport.width, alignment: .topLeading)
                     .rubberBandStretch(zoomBand)
@@ -708,7 +711,7 @@ struct TimelineView: View {
         }
     }
 
-    private func layerHeaders(_ kind: LayerKind, frameTime: CMTime) -> some View {
+    private func layerHeaders(_ kind: LayerKind) -> some View {
         let layers = areaLayers(kind)
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
@@ -765,15 +768,17 @@ struct TimelineView: View {
                             }
                     }
                     if showsVolume(of: layer) {
-                        AudioPropertyRow(
-                            value: layer.volume,
-                            time: frameTime,
-                            onEdit: { change in onEditVolume(layer.id, change) },
-                            onSeek: onScrub,
-                            onShowGraph: graphs.map { graphs in
-                                { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
-                            }
-                        )
+                        PlayheadReader(playhead: playhead) { parked in
+                            AudioPropertyRow(
+                                value: layer.volume,
+                                time: timeline.snappedToFrame(parked),
+                                onEdit: { change in onEditVolume(layer.id, change) },
+                                onSeek: onScrub,
+                                onShowGraph: graphs.map { graphs in
+                                    { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
+                                }
+                            )
+                        }
                         .padding(.leading, 30)
                         .padding(.trailing, 8)
                         .frame(height: VolumeLane.height)
@@ -880,7 +885,7 @@ struct TimelineView: View {
 
     /// `structure` is `project.structure`, which the rows compare.
     private func layerTracks(
-        _ kind: LayerKind, areaHeight: CGFloat, viewport: TimelineViewport, frameTime: CMTime, snapTargets: SnapTargets?, structure: EditingProject
+        _ kind: LayerKind, areaHeight: CGFloat, viewport: TimelineViewport, snapTargets: SnapTargets?, structure: EditingProject
     ) -> some View {
         let pixelsPerSecond = viewport.pixelsPerSecond
         let contentWidth = viewport.contentWidth
@@ -1007,18 +1012,20 @@ struct TimelineView: View {
                         )
                     }
                     if showsVolume(of: layer) {
-                        VolumeLane(
-                            volume: layer.volume,
-                            currentTime: frameTime,
-                            pixelsPerSecond: pixelsPerSecond,
-                            width: contentWidth,
-                            visibleX: viewport.visibleContentX,
-                            snap: { timeline.snappedToFrame($0) },
-                            onSeek: onScrub,
-                            onMove: { from, to, copy in onEditVolume(layer.id) { $0.moveKeyframe(at: from, to: to, copying: copy) } },
-                            onDelete: { time in onEditVolume(layer.id) { $0.removeKeyframe(at: time) } },
-                            onEase: { time, preset in onEditVolume(layer.id) { $0.applyEase(preset, at: time) } }
-                        )
+                        PlayheadReader(playhead: playhead) { parked in
+                            VolumeLane(
+                                volume: layer.volume,
+                                currentTime: timeline.snappedToFrame(parked),
+                                pixelsPerSecond: pixelsPerSecond,
+                                width: contentWidth,
+                                visibleX: viewport.visibleContentX,
+                                snap: { timeline.snappedToFrame($0) },
+                                onSeek: onScrub,
+                                onMove: { from, to, copy in onEditVolume(layer.id) { $0.moveKeyframe(at: from, to: to, copying: copy) } },
+                                onDelete: { time in onEditVolume(layer.id) { $0.removeKeyframe(at: time) } },
+                                onEase: { time, preset in onEditVolume(layer.id) { $0.applyEase(preset, at: time) } }
+                            )
+                        }
                     }
                     separator
                 }

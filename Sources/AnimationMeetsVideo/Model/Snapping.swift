@@ -66,7 +66,15 @@ struct SnapTargets: Equatable {
 /// it (see `SnapTargets.playhead`). Its owner brings it up to date as it
 /// redraws.
 final class LivePlayhead {
-    var time: CMTime?
+    /// Read as a drag snaps, when set: where the playhead is without its
+    /// owner having to bring `time` up to date.
+    var source: (() -> CMTime)?
+    private var stored: CMTime?
+
+    var time: CMTime? {
+        get { source?() ?? stored }
+        set { stored = newValue }
+    }
 }
 
 extension EditingProject {

@@ -49,3 +49,26 @@ struct PlayheadTimecode: View {
             .foregroundStyle(Design.textSecondary)
     }
 }
+
+/// The ruler as VoiceOver reaches it: the playhead, whose value is its
+/// timecode and which adjusting steps a frame. A view of its own so that
+/// the ruler's drawing isn't built again as the playhead moves.
+struct PlayheadAccessibilityElement: View {
+    let playhead: PlayheadState
+    let frameRate: Double
+    let step: (_ frames: Int) -> Void
+
+    var body: some View {
+        Color.clear
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Playhead")
+            .accessibilityValue(playhead.time.timecode(frameRate: frameRate))
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: step(1)
+                case .decrement: step(-1)
+                @unknown default: break
+                }
+            }
+    }
+}

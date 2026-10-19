@@ -28,7 +28,14 @@ struct TimelineEditorSurface<Library: View>: View {
     /// follow (see `HeldDragFollower`); absent in previews and tests.
     @Environment(ProjectState.self) private var projectState: ProjectState?
 
-    @State private var playheadTime: CMTime = .zero
+    /// Where the playhead is parked. Not read as the body is built (see
+    /// `PlayheadState`), so `playheadTime` is for actions and closures.
+    @State private var playhead = PlayheadState()
+
+    private var playheadTime: CMTime {
+        get { playhead.time }
+        nonmutating set { playhead.time = newValue }
+    }
     @State private var trimPreview = TrimPreviewModel()
     @State private var buildTask: Task<Void, Never>?
     /// Where the player item rebuild is. Edits that arrive while one is
@@ -219,34 +226,38 @@ struct TimelineEditorSurface<Library: View>: View {
                             )
                             switch sideTab {
                             case .inspector:
-                                InspectorPanel(
-                                    project: $project,
-                                    timelineID: timelineID,
-                                    selection: selection,
-                                    info: selectedInfo,
-                                    timelineClip: selectedTimelineClip,
-                                    playheadTime: playheadTime,
-                                    onSeek: { time in scrub(to: time) },
-                                    onDeleteSelection: { selection = nil }
-                                )
+                                PlayheadReader(playhead: playhead) { playheadTime in
+                                    InspectorPanel(
+                                        project: $project,
+                                        timelineID: timelineID,
+                                        selection: selection,
+                                        info: selectedInfo,
+                                        timelineClip: selectedTimelineClip,
+                                        playheadTime: playheadTime,
+                                        onSeek: { time in scrub(to: time) },
+                                        onDeleteSelection: { selection = nil }
+                                    )
+                                }
                             case .effects:
-                                EffectsPanel(
-                                    project: $project,
-                                    timelineID: timelineID,
-                                    selection: selection,
-                                    playheadTime: playheadTime,
-                                    state: effectsState,
-                                    onSeek: { time in scrub(to: time) },
-                                    onSelectTransition: { edge in
-                                        if let selection {
-                                            self.selection = TimelineSelection(
-                                                timelineID: selection.timelineID, layerID: selection.layerID,
-                                                timelineClipID: selection.timelineClipID, transitionEdge: edge
-                                            )
-                                        }
-                                    },
-                                    playback: playback
-                                )
+                                PlayheadReader(playhead: playhead) { playheadTime in
+                                    EffectsPanel(
+                                        project: $project,
+                                        timelineID: timelineID,
+                                        selection: selection,
+                                        playheadTime: playheadTime,
+                                        state: effectsState,
+                                        onSeek: { time in scrub(to: time) },
+                                        onSelectTransition: { edge in
+                                            if let selection {
+                                                self.selection = TimelineSelection(
+                                                    timelineID: selection.timelineID, layerID: selection.layerID,
+                                                    timelineClipID: selection.timelineClipID, transitionEdge: edge
+                                                )
+                                            }
+                                        },
+                                        playback: playback
+                                    )
+                                }
                             }
                         }
                         .frame(width: CGFloat(PanelResizeHandle.clamped(
@@ -282,11 +293,13 @@ struct TimelineEditorSurface<Library: View>: View {
                             .transition(.move(edge: .trailing))
                     }
                     if showsEffectsLibrary {
-                        EffectsLibrary(
-                            project: $project, timelineID: timelineID, selection: selection,
-                            playheadTime: playheadTime, onSelect: { selection = $0 },
-                            state: effectsState, tab: $effectsLibraryTab, onClose: { showsEffectsLibrary = false }
-                        )
+                        PlayheadReader(playhead: playhead) { playheadTime in
+                            EffectsLibrary(
+                                project: $project, timelineID: timelineID, selection: selection,
+                                playheadTime: playheadTime, onSelect: { selection = $0 },
+                                state: effectsState, tab: $effectsLibraryTab, onClose: { showsEffectsLibrary = false }
+                            )
+                        }
                         .frame(width: 280)
                         .editorPanel(.effectsLibrary, activePanel)
                         .grooved(.leading)
@@ -343,7 +356,6 @@ struct TimelineEditorSurface<Library: View>: View {
             // Show Up to Here lets go of an effect that is gone.
             if effectsState.showUpTo != nil, partialView == nil { effectsState.showUpTo = nil }
         }
-        .onChange(of: playheadTime, initial: true) { _, time in graphs.playhead = time }
         .onAppear {
             let project = $project
             graphs.onEdit = { change in change(&project.wrappedValue) }
@@ -387,15 +399,20 @@ struct TimelineEditorSurface<Library: View>: View {
             }
         }
         // Wherever it stops, playing or scrubbing, is where rendering starts.
-        .onChange(of: playheadTime) { _, time in
-            renderer?.playhead = time
-        }
         // The tape scrubber moves the player while paused; the parked
         // playhead goes with it.
-        .onChange(of: playback.currentTime) { _, time in
-            guard playback.isTapeScrubbing else { return }
-            renderer?.noteActivity()
-            playheadTime = time
+        .background {
+            PlayheadFollower(
+                playhead: playhead, playback: playback,
+                onMove: { time in
+                    graphs.playhead = time
+                    renderer?.playhead = time
+                },
+                onTapeScrub: { time in
+                    renderer?.noteActivity()
+                    playheadTime = time
+                }
+            )
         }
         .onChange(of: playback.isPlaying) { _, playing in
             // The parked playhead doesn't follow playback (see
@@ -451,7 +468,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 beatTracks: analysis.beats,
                 beatClicks: playback.beatClicks,
                 playback: playback,
-                playheadTime: $playheadTime,
+                playhead: playhead,
                 onScrub: { time in scrub(to: time) },
                 onSelectClip: { layerID, clip in
                     selection = TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clip.id)
