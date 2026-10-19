@@ -253,8 +253,9 @@ In order, each step usable on its own:
    target by effect and control name, and Unavailable for one that's gone
    or above), Component (All or each of the target's, when it has more
    than one), Combine (not for the kinds that reshape) and, for Beat Keys,
-   Beats From (the timeline's Sound and Music layers) above its settings.
-   Its ⋯ menu has Bake Keyframes and a Range menu (Start at Playhead, End at
+   Beats From (the timeline's Sound and Music layers) above its settings,
+   under a **Bake Keyframes** button, which is too important to live only
+   in the ⋯ menu. Its ⋯ menu has Bake Keyframes too, and a Range menu (Start at Playhead, End at
    Playhead, Whole Clip), with a note under the effect while a range is
    set; dragging the range on the ruler is not done. It is dimmed only when
    off or with a note: no target, one it can't reach, Beat Keys with no
@@ -283,11 +284,18 @@ In order, each step usable on its own:
    Attack and Release (0 and 200 ms, time constants of the envelope),
    Output (from and to), Curve and Tolerance, and its setup's
    `audioSource` (saved as `listensToMix`, `listensToLayer` or
-   `listensToClip`). The panel has a Listen To row and, under it,
-   `AudioKeysGraph`: the bands heard at the playhead (−96 to 0 dB) and the
-   box, whose edges or inside are dragged as one undo step, and which
-   VoiceOver adjusts by a third of an octave, with actions that raise or
-   lower its levels by 3 dB. Its read print includes each heard file's
+   `listensToClip`). The effects panel has a Listen To row and a
+   **Spectrum…** button; the spectrum isn't drawn in the panel, so a stack
+   of them costs nothing to show. The button opens the effect's editor
+   (`AudioKeysEditor`) in a floating panel beside the graph editors
+   (`KeyframeGraphHUDs.showAudioKeys`), with Listen To, what it drives and
+   Bake Keyframes along the top, `AudioKeysGraph` filling it, and every
+   setting as fields underneath, set at the playhead. The graph shows the
+   bands heard (−96 to 0 dB) at the playhead, or at the player's time while
+   it plays, so the spectrum moves with the sound (only it redraws), with
+   the box shaded up to how loud its range is now. The box's edges or
+   inside are dragged as one undo step, and VoiceOver adjusts it by a third
+   of an octave, with actions that raise or lower its levels by 3 dB. Its read print includes each heard file's
    spectrogram fingerprint and the clips', layers' and EQs' settings, so
    while a file is still being read the effect keeps its keyframes (with
    a "Reading the sound…" note), and when it arrives the editor makes them

@@ -5,13 +5,16 @@ import SwiftUI
 /// Keys in detail"): what the effect hears at the playhead, frequency on a
 /// log scale across and level up, with the box over it. The box's left and
 /// right edges are the frequency range, its bottom and top the levels that
-/// read 0 and 1. Drag an edge to move it, or inside to move the whole box.
-/// The four values are also fields in the rows below.
+/// read 0 and 1, and a line across it how loud its range is now. Drag an
+/// edge to move it, or inside to move the whole box. Shown in the effect's
+/// editor (`AudioKeysEditor`), where the four values are also fields.
 struct AudioKeysGraph: View {
     /// Each band's level at the playhead, or nil while the sound is read.
     let bands: [Double]?
     let frequencies: (low: Double, high: Double)
     let levels: (floor: Double, ceiling: Double)
+    /// How loud the box's range is now, in decibels, drawn across it.
+    var level: Double?
     var isDimmed = false
     let onSetFrequencies: (Double, Double) -> Void
     let onSetLevels: (Double, Double) -> Void
@@ -19,7 +22,6 @@ struct AudioKeysGraph: View {
     @Environment(\.projectHistory) private var history
     @State private var drag: DragState?
 
-    static let height: CGFloat = 96
     /// The level at the bottom of the graph; quieter is drawn as nothing.
     static let lowest = -96.0
 
@@ -40,13 +42,9 @@ struct AudioKeysGraph: View {
             .contentShape(Rectangle())
             .gesture(dragGesture(plot: plot))
         }
-        .frame(height: Self.height)
         .background(Color.black.opacity(0.25))
         .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
         .opacity(isDimmed ? 0.5 : 1)
-        .padding(.leading, EffectsPanelMetrics.controlIndent)
-        .padding(.trailing, 8)
-        .padding(.vertical, 4)
         .help("Drag the box's edges to choose the frequencies it listens to and the levels that read as nothing and as full; drag inside to move it")
         .accessibilityElement()
         .accessibilityLabel("Audio Keys box")
@@ -119,6 +117,14 @@ struct AudioKeysGraph: View {
         }
         let rect = box(plot)
         context.fill(Path(rect), with: .color(Design.generatedKeyframe.opacity(0.18)))
+        if let level, level > Self.lowest {
+            // Up to the top of the box, where it reads as full.
+            let levelY = max(y(min(level, 0), plot), rect.minY)
+            if levelY < rect.maxY {
+                context.fill(Path(CGRect(x: rect.minX, y: levelY, width: rect.width, height: rect.maxY - levelY)),
+                             with: .color(Design.generatedKeyframe.opacity(0.35)))
+            }
+        }
         context.stroke(Path(rect), with: .color(Design.generatedKeyframe), lineWidth: 1.5)
     }
 

@@ -357,6 +357,35 @@ struct UISnapshots {
         )
     }
 
+    /// The Audio Keys editor on the same song, the playhead in its low
+    /// burst: the spectrum filling the panel, the box with the level
+    /// across it, and every setting as fields.
+    @Test func audioKeysEditor() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let url = URL(fileURLWithPath: "/tmp/audio-keys-editor-\(UUID().uuidString).wav")
+        let samples = tone(60, amplitude: 0.5, seconds: 1) + tone(2500, amplitude: 0.05, seconds: 1)
+        SpectrogramStore.shared.set(Spectrogram.analyze(zip(samples, tone(400, amplitude: 0.1, seconds: 2)).map { $0 + $1 }), for: url)
+        var song = MediaClip(
+            name: "Song.wav", kind: .audio, url: url, duration: CMTime(value: 2, timescale: 1), frameRate: 24,
+            colorSpace: .rec709, codecName: "PCM"
+        )
+        song.hasAudio = true
+        project.clips.append(song)
+        project.putOnMusicLayer([song.id])
+        let effect = project.addEffect(.audioKeys, toClip: shape.clipID, in: timelineID)
+        let effectID = try #require(effect)
+        let hud = KeyframeGraphHUDs()
+        hud.update(project: project)
+        hud.playhead = CMTime(value: 1, timescale: 2)
+        try SnapshotSupport.render(
+            AudioKeysEditor(hud: hud, key: AudioKeysEditorKey(timelineID: timelineID, clipID: shape.clipID, effectID: effectID)),
+            "audio-keys-editor", size: CGSize(width: 640, height: 460)
+        )
+    }
+
     /// The shape button's popover: a row for each shape a new layer can
     /// start with.
     @Test func newShapePopover() throws {

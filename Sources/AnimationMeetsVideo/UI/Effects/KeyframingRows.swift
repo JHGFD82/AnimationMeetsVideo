@@ -8,6 +8,7 @@ extension EffectsPanel {
     @ViewBuilder
     func keyframingRows(_ effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
         if let setup = effect.keyframing {
+            besideLane(keyframingActions(effect, c))
             if project.keyframingFreshness(of: effect, in: c.clip, of: c.timeline) == .outOfDateWithEdits {
                 besideLane(KeyframingEditsRow(
                     onRegenerate: { project.regenerateKeyframes(ofEffect: effect.id, onClip: c.clip.id, in: timelineID) },
@@ -42,13 +43,13 @@ extension EffectsPanel {
             }
             if effect.kind == .audioKeys {
                 keyframingChoice(
-                    "Listen To", effect, c, dimmed: effectDimmed, options: sourceOptions(setup, c),
-                    selected: sourceID(setup.audioSource),
+                    "Listen To", effect, c, dimmed: effectDimmed,
+                    options: project.audioSourceOptions(current: setup.audioSource, in: c.timeline),
+                    selected: setup.audioSource.optionID,
                     help: "The sound it follows: the whole mix, one Sound or Music layer, or one clip, as heard"
                 ) { choice, setup in
-                    setup.audioSource = Self.source(from: choice)
+                    setup.audioSource = AudioKeysSource(optionID: choice)
                 }
-                audioKeysGraph(effect, setup, c, dimmed: effectDimmed)
             }
             if effect.kind == .beatKeys {
                 keyframingChoice(
@@ -92,6 +93,33 @@ extension EffectsPanel {
 
     // MARK: Rows
 
+    /// Bake, which is too important to sit only in the ⋯ menu, and for
+    /// Audio Keys the button that opens its spectrum and box. Drawing the
+    /// spectrum here for every effect would cost too much to keep up.
+    private func keyframingActions(_ effect: Effect, _ c: RowContext) -> some View {
+        HStack(spacing: 6) {
+            Button("Bake Keyframes") {
+                project.bakeKeyframing(effect.id, ofClip: c.clip.id, in: timelineID)
+                if state.selectedEffectID == effect.id { state.clear() }
+            }
+            .help("Remove the effect and keep its keyframes as plain keyframes")
+            if effect.kind == .audioKeys, let graphs {
+                Button {
+                    graphs.showAudioKeys(AudioKeysEditorKey(timelineID: timelineID, clipID: c.clip.id, effectID: effect.id))
+                } label: {
+                    Label("Spectrum…", systemImage: "waveform.badge.magnifyingglass")
+                }
+                .help("Open the spectrum to drag the box, adjust every setting and watch the sound as it plays")
+            }
+            Spacer(minLength: 0)
+        }
+        .font(Design.Typeface.label)
+        .controlSize(.small)
+        .padding(.leading, EffectsPanelMetrics.controlIndent)
+        .padding(.trailing, 8)
+        .padding(.vertical, 3)
+    }
+
     private func keyframingChoice(
         _ name: String, _ effect: Effect, _ c: RowContext, dimmed: Bool, options: [(id: String, name: String)], selected: String,
         help: String, choose: @escaping (String, inout KeyframingSetup) -> Void
@@ -121,55 +149,7 @@ extension EffectsPanel {
         }
     }
 
-    private func audioKeysGraph(_ effect: Effect, _ setup: KeyframingSetup, _ c: RowContext, dimmed: Bool) -> some View {
-        let frequencies = effect.control(.frequencyRange)?.values(at: c.sourceNow) ?? ControlKind.frequencyRange.defaultValues
-        let levels = effect.control(.levelRange)?.values(at: c.sourceNow) ?? ControlKind.levelRange.defaultValues
-        let bands = setup.audioSource.flatMap { project.heardBands($0, in: c.timeline, at: [c.frameTime])?.first }
-        func set(_ kind: ControlKind, _ a: Double, _ b: Double) {
-            project.editEffect(effect.id, ofClip: c.clip.id, in: timelineID) { effect in
-                guard let index = effect.controls.firstIndex(where: { $0.kind == kind }) else { return }
-                effect.controls[index].setComponent(0, to: a, at: c.sourceNow)
-                effect.controls[index].setComponent(1, to: b, at: c.sourceNow)
-            }
-        }
-        return besideLane(AudioKeysGraph(
-            bands: bands,
-            frequencies: (frequencies[0], frequencies[1]),
-            levels: (levels[0], levels[1]),
-            isDimmed: dimmed,
-            onSetFrequencies: { set(.frequencyRange, $0, $1) },
-            onSetLevels: { set(.levelRange, $0, $1) }
-        ))
-    }
-
     // MARK: Options
-
-    private func sourceOptions(_ setup: KeyframingSetup, _ c: RowContext) -> [(id: String, name: String)] {
-        var options: [(id: String, name: String)] = [("none", "Nothing"), ("mix", "Whole Mix")]
-        let layers = c.timeline.layers.filter(\.kind.isAudio)
-        options += layers.map { ("layer|\($0.id.uuidString)", project.displayName(of: $0, in: c.timeline)) }
-        let clips = c.timeline.layers.flatMap(\.clips).filter { project.playsAudio($0) }
-        options += clips.map { ("clip|\($0.id.uuidString)", project.clipName($0.id, in: timelineID)) }
-        let id = sourceID(setup.audioSource)
-        if !options.contains(where: { $0.id == id }) { options.append((id, "Unavailable")) }
-        return options
-    }
-
-    private func sourceID(_ source: AudioKeysSource?) -> String {
-        switch source {
-        case nil: "none"
-        case .mix?: "mix"
-        case .layer(let id)?: "layer|\(id.uuidString)"
-        case .clip(let id)?: "clip|\(id.uuidString)"
-        }
-    }
-
-    private static func source(from id: String) -> AudioKeysSource? {
-        if id == "mix" { return .mix }
-        let parts = id.split(separator: "|")
-        guard parts.count == 2, let uuid = UUID(uuidString: String(parts[1])) else { return nil }
-        return parts[0] == "layer" ? .layer(uuid) : .clip(uuid)
-    }
 
     private func targetOptions(_ effect: Effect, _ c: RowContext) -> [(id: String, name: String)] {
         let index = c.clip.effects.index(of: effect.id) ?? 0
