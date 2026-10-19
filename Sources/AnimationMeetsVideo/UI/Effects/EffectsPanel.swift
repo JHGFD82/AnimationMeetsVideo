@@ -44,7 +44,7 @@ struct EffectsPanel: View {
     /// The clip after each of its effects, at the playhead.
     @State private var thumbnails: [UUID: CGImage] = [:]
     /// The playhead the rows act at (see `RowContext.now`).
-    @State private var stackPlayhead = StackPlayhead()
+    @State var stackPlayhead = StackPlayhead()
     /// The EQ shown larger in a sheet.
     @State private var expandedEqualizer: ExpandedEqualizer?
 
@@ -168,6 +168,7 @@ struct EffectsPanel: View {
             let sourceNow = geometry.clampedSource(atTimeline: frameTime)
             let layer = project.clipAndLayer(clip.id, in: timelineID)?.layer
             let _ = stackPlayhead.sourceNow = sourceNow
+            let _ = stackPlayhead.frameTime = frameTime
             let context = RowContext(
                 clip: clip, timeline: timeline, layer: layer ?? TimelineLayer(clips: []),
                 geometry: geometry, frameTime: frameTime, sourceNow: sourceNow, now: stackPlayhead
@@ -398,31 +399,43 @@ struct EffectsPanel: View {
         // The whole effect, its controls included, is outlined while it is
         // selected: it is what Delete and Copy take. A selected control is
         // outlined on its own instead, as Delete takes only the control.
+        let summary = effect.kind.isKeyframing ? project.keyframingSummary(of: effect, in: clip) : nil
+        let headerKey = EffectHeaderKey(
+            timelineID: timelineID, clip: clip, effect: effect, note: note, collapsed: collapsed, dimmed: dimmed,
+            thumbnail: thumbnails[effect.id].map(ObjectIdentifier.init), summary: summary,
+            isRenaming: renamingEffectID == effect.id, showUpTo: state.showUpTo,
+            canPaste: EditorClipboard.shared.hasEffects,
+            playheadInClip: effect.kind.isKeyframing && playheadIsInClip(clip),
+            showsLanes: showsKeyframeLanes, lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize
+        )
         VStack(alignment: .leading, spacing: 0) {
-            labelled(
-                EffectHeaderRow(
-                    effect: effect,
-                    isCollapsed: collapsed,
-                    isSelected: false,
-                    clipID: clip.id,
-                    thumbnail: thumbnails[effect.id],
-                    showsCurve: effect.kind.isKeyframing,
-                    accessibilitySummary: effect.kind.isKeyframing ? project.keyframingSummary(of: effect, in: clip) : nil,
-                    isDimmed: dimmed,
-                    isFlagged: !effect.pasteChanges.isEmpty,
-                    onToggleCollapsed: { state.toggleCollapsed(effect.id) },
-                    onSetEnabled: { value in editEffect(effect.id, in: clip) { $0.enabled = value } },
-                    onSelect: { state.select(effect: effect.id) },
-                    onRename: { name in editEffect(effect.id, in: clip) { $0.name = name } },
-                    isRenaming: Binding(
-                        get: { renamingEffectID == effect.id },
-                        set: { renamingEffectID = $0 ? effect.id : nil }
-                    )
-                ) {
-                    effectMenu(effect, in: clip)
-                },
-                lane: emptyLane(c)
-            )
+            StackRow(key: headerKey) {
+                labelled(
+                    EffectHeaderRow(
+                        effect: effect,
+                        isCollapsed: collapsed,
+                        isSelected: false,
+                        clipID: clip.id,
+                        thumbnail: thumbnails[effect.id],
+                        showsCurve: effect.kind.isKeyframing,
+                        accessibilitySummary: summary,
+                        isDimmed: dimmed,
+                        isFlagged: !effect.pasteChanges.isEmpty,
+                        onToggleCollapsed: { state.toggleCollapsed(effect.id) },
+                        onSetEnabled: { value in editEffect(effect.id, in: clip) { $0.enabled = value } },
+                        onSelect: { state.select(effect: effect.id) },
+                        onRename: { name in editEffect(effect.id, in: clip) { $0.name = name } },
+                        isRenaming: Binding(
+                            get: { renamingEffectID == effect.id },
+                            set: { renamingEffectID = $0 ? effect.id : nil }
+                        )
+                    ) {
+                        effectMenu(effect, in: clip)
+                    },
+                    lane: emptyLane(c)
+                )
+            }
+            .equatable()
             if let note {
                 besideLane(EffectNoteRow(note: note))
             }
@@ -534,6 +547,36 @@ struct EffectsPanel: View {
         Button("Save Whole Stack as Preset…") { askPresetName(for: nil, in: clip, suggesting: "\(project.clipName(clip.id, in: timelineID)) look") }
         Divider()
         Button("Delete", role: .destructive) { delete(effect, from: clip) }
+    }
+
+    // MARK: Effect headers
+
+    /// What an effect's header row and its ⋯ menu show, so they are redrawn
+    /// only when that changes (see `StackRow`). The playhead is only whether
+    /// it is inside the clip, which a Keyframing effect's range items need;
+    /// the items act on the playhead as it is then (`StackPlayhead`).
+    private struct EffectHeaderKey: Equatable {
+        var timelineID: UUID
+        var clip: TimelineClip
+        var effect: Effect
+        var note: EffectNote?
+        var collapsed: Bool
+        var dimmed: Bool
+        var thumbnail: ObjectIdentifier?
+        var summary: String?
+        var isRenaming: Bool
+        var showUpTo: EffectsPanelState.ShowUpTo?
+        var canPaste: Bool
+        var playheadInClip: Bool
+        var showsLanes: Bool
+        var lane: LaneKey
+        var frameSize: CGSize
+    }
+
+    /// Whether the playhead, on a frame, is within the clip's trimmed source.
+    func playheadIsInClip(_ clip: TimelineClip) -> Bool {
+        let now = clip.sourceTime(atTimelineTime: stackPlayhead.frameTime)
+        return now >= clip.trimStart && now <= clip.trimEnd
     }
 
     // MARK: Clip rows

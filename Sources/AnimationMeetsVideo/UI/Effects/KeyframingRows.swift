@@ -74,18 +74,26 @@ extension EffectsPanel {
     /// The ⋯ menu's items for a Keyframing effect.
     @ViewBuilder
     func keyframingMenu(_ effect: Effect, _ clip: TimelineClip) -> some View {
-        let now = clip.sourceTime(atTimelineTime: timeline.map { $0.snappedToFrame(playheadTime) } ?? playheadTime)
-        let inClip = now >= clip.trimStart && now <= clip.trimEnd
+        // The playhead as the item acts, not as the menu was built: the header
+        // it is in is redrawn only when the menu's items change (`StackRow`).
+        let now = { clip.sourceTime(atTimelineTime: stackPlayhead.frameTime) }
+        let inClip = playheadIsInClip(clip)
         Button("Bake Keyframes") {
             project.bakeKeyframing(effect.id, ofClip: clip.id, in: timelineID)
             if state.selectedEffectID == effect.id { state.clear() }
         }
         .help("Remove the effect and keep its keyframes as plain keyframes")
         Menu("Range") {
-            Button("Start at Playhead") { editSetup(effect, clip) { $0.setRange(start: now, in: clip) } }
-                .disabled(!inClip)
-            Button("End at Playhead") { editSetup(effect, clip) { $0.setRange(end: now, in: clip) } }
-                .disabled(!inClip)
+            Button("Start at Playhead") {
+                let at = now()
+                editSetup(effect, clip) { $0.setRange(start: at, in: clip) }
+            }
+            .disabled(!inClip)
+            Button("End at Playhead") {
+                let at = now()
+                editSetup(effect, clip) { $0.setRange(end: at, in: clip) }
+            }
+            .disabled(!inClip)
             Button("Whole Clip") { editSetup(effect, clip) { $0.range = nil } }
                 .disabled(effect.keyframing?.range == nil)
         }

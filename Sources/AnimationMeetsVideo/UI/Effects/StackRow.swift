@@ -24,6 +24,8 @@ struct StackRow<Key: Equatable, Content: View>: View, Equatable {
 final class StackPlayhead {
     /// The clip's source time at the playhead, held inside the clip.
     var sourceNow: CMTime = .zero
+    /// The playhead on a frame, in the timeline's time.
+    var frameTime: CMTime = .zero
 }
 
 /// What a lane draws its keyframes against: where the clip sits, how it
