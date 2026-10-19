@@ -293,6 +293,12 @@ struct UIResponsivenessBenchmark {
             let chunks = stride(from: 0, to: times.count, by: 90).map { median(times[$0..<min($0 + 90, times.count)]) }
             print("UIResponsivenessBenchmark: \(scenario.name) by 90 steps: " + chunks.map { String(format: "%.1f", $0) }.joined(separator: " "))
         }
+        // A step far above the median is a stall; where it falls says what
+        // caused it.
+        let typical = sorted[sorted.count / 2]
+        for (index, time) in times.enumerated() where index >= 5 && time > max(30, typical * 2.5) {
+            print(String(format: "UIResponsivenessBenchmark: %@ stalled at step %d: %.0f ms (median %.1f)", scenario.name, index + 1, time, typical))
+        }
         let padded = scenario.name.padding(toLength: 27, withPad: " ", startingAt: 0)
         let row = String(
             format: "%@ %6d %6.1f  %6.1f %6.1f  %6.1f  %6.1f %6.1f", padded, sorted.count, mean, percentile(0.5), percentile(0.9),
