@@ -17,6 +17,8 @@ final class PresetsModel {
 
     init(folder: URL = PresetStore.defaultFolder) {
         self.folder = folder
+        // The starting recipes go into the person's own folder, once.
+        if folder == PresetStore.defaultFolder { PresetStore.installRecipes(in: folder) }
         reload()
     }
 

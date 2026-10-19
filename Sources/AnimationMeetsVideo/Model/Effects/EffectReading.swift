@@ -96,7 +96,30 @@ extension EditingProject {
         if passesThrough(clip), effect.kind == .transform, let opacity = effect.control(.opacity), !opacity.isNoOp {
             return EffectNote(text: "With Pass Through, opacity applies to each layer inside, which differs from the whole where they overlap.", dims: false)
         }
-        return nil
+        return Self.flashingNote(for: effect)
+    }
+
+    /// A warning on the looks that can flash more than three times a
+    /// second (see docs/psychedelic-effects.md, "Safety: flashing"): Static
+    /// and Feedback always, Block Glitch and Hue Cycle when set faster than
+    /// that. Their defaults stay below it.
+    static func flashingNote(for effect: Effect) -> EffectNote? {
+        func fastest(_ kind: ControlKind) -> Double {
+            guard let control = effect.control(kind), control.enabled else { return 0 }
+            let values = control.number.isAnimated ? control.number.keyframes.map(\.value) : [control.number.value]
+            return values.compactMap { $0.values.first.map(abs) }.max() ?? 0
+        }
+        let flashes = switch effect.kind {
+        case .staticNoise, .feedback: true
+        case .blockGlitch: fastest(.glitchRate) > 3
+        case .hueCycle: fastest(.hueSpeed) > 3
+        default: false
+        }
+        guard flashes else { return nil }
+        return EffectNote(
+            text: "This can flash more than three times a second, which can trigger seizures in people with photosensitive epilepsy.",
+            dims: false
+        )
     }
 
     /// Whether a Stroke at `index` has shapes above it to outline: one that

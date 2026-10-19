@@ -1,7 +1,7 @@
 # Noise, Color and Distortion effects
 
-Status: **steps 1 to 4 of 5 built**: every kind (see
-[Building it](#building-it)); the recipes and the flashing notes remain. 25 effect kinds in three new
+Status: **built** (see [Building it](#building-it) for what each step
+does and where it differs from the tables). 25 effect kinds in three new
 categories of the effects panel, chosen so that stacking them gives
 psychedelic pictures from footage or from nothing at all. Everything here
 fits the stack rules in [effects.md](effects.md) (gravity, the list is the
@@ -359,5 +359,17 @@ In order, each step usable on its own:
    - **While playing** the viewer draws Feedback's even copies only,
      Slit-Scan in four bands (each the moment of the band it stands for),
      and no Flow Smear; renders and export draw everything.
-5. **Recipes and safety**: the presets above, and the flashing notes.
+5. **Recipes and safety** (done). The recipes are `LookRecipes`, written
+   into the Presets folder as ordinary presets the first time the
+   browser's presets are shown (`PresetStore.installRecipes`), once per
+   `LookRecipes.version`, so one the person deletes or renames stays that
+   way, and one whose name a preset already has is left out. Their
+   Blending and Displace steps point at the effects they name by ID, which
+   pasting keeps. "Static at 15% via Blending: Add" in Broken Signal is
+   Static at Amount 15%, which mixes it in already; Moiré Breathing's
+   pinch is keyframed from 0 to 100% and back over four seconds. The
+   flashing note (`flashingNote(for:)`, which doesn't dim) is on Static
+   and Feedback always, and on Block Glitch and Hue Cycle when set faster
+   than three a second; Block Glitch's Rate starts at 2 a second so the
+   defaults stay under it.
 

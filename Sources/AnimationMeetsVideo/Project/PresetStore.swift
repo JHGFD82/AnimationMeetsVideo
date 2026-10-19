@@ -73,6 +73,22 @@ enum PresetStore {
         return EffectPreset(id: id, name: name, bundle: shifted, url: url)
     }
 
+    /// Writes the recipes (`LookRecipes`) into the folder as presets, once
+    /// for each version of them, so a recipe the person deleted doesn't come
+    /// back. One whose name a preset already has is left out, so nothing of
+    /// theirs is overwritten. Returns how many were written.
+    @discardableResult
+    static func installRecipes(in folder: URL = defaultFolder, defaults: UserDefaults = .standard) -> Int {
+        guard defaults.integer(forKey: Preferences.recipesInstalled) < LookRecipes.version else { return 0 }
+        let taken = Set(load(from: folder).presets.map(\.name))
+        var written = 0
+        for recipe in LookRecipes.all where !taken.contains(recipe.name) {
+            if (try? save(recipe.bundle, named: recipe.name, in: folder)) != nil { written += 1 }
+        }
+        defaults.set(LookRecipes.version, forKey: Preferences.recipesInstalled)
+        return written
+    }
+
     /// Every preset in the folder, and each file that couldn't be read.
     static func load(from folder: URL = defaultFolder) -> PresetLibrary {
         guard let urls = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else {

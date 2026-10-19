@@ -22,6 +22,9 @@ enum Preferences {
 
     // MARK: Library
 
+    /// The `LookRecipes.version` last written into the Presets folder.
+    static let recipesInstalled = "recipesInstalled"
+
     /// A `ThumbnailInterval` raw value.
     static let thumbnailInterval = "browserThumbnailInterval"
     /// A `ThumbnailSize` raw value.

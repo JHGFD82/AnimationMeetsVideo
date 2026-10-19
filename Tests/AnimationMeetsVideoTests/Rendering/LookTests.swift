@@ -325,3 +325,43 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
         #expect(ClipStack(effects: [look(.kaleidoscope)]).animatedRanges.isEmpty)
     }
 }
+
+@Suite struct LookRecipeTests {
+    @Test func everyRecipeSavesAndReadsBackAsAPreset() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-recipes-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let defaults = try #require(UserDefaults(suiteName: "amv-recipes-\(UUID().uuidString)"))
+        let written = PresetStore.installRecipes(in: folder, defaults: defaults)
+        #expect(written == LookRecipes.all.count)
+        let library = PresetStore.load(from: folder)
+        #expect(library.problems.isEmpty)
+        #expect(library.presets.count == LookRecipes.all.count)
+        // Installed once: deleting one doesn't bring it back.
+        let first = try #require(library.presets.first)
+        try PresetStore.delete(first)
+        let again = PresetStore.installRecipes(in: folder, defaults: defaults)
+        #expect(again == 0)
+    }
+
+    @Test func aRecipesAgainstLinksSurvivePastingOntoAClip() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let recipe = try #require(LookRecipes.all.first { $0.name == "Noise Melt" })
+        project.paste(recipe.bundle, ontoClip: shape.clipID, in: timelineID, replacingStack: true)
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: timelineID)?.clip)
+        let noise = try #require(clip.effects.first { $0.kind == .fractalNoise })
+        let displace = try #require(clip.effects.first { $0.kind == .displace })
+        #expect(displace.against == noise.id)
+        #expect(!displace.isNoOp)
+    }
+
+    @Test func fastLooksCarryAFlashingNoteAndTheirDefaultsDont() {
+        #expect(EditingProject.flashingNote(for: Effect(kind: .staticNoise)) != nil)
+        #expect(EditingProject.flashingNote(for: Effect(kind: .blockGlitch)) == nil)
+        #expect(EditingProject.flashingNote(for: Effect(kind: .hueCycle)) == nil)
+        #expect(EditingProject.flashingNote(for: look(.blockGlitch, [.glitchRate: [8]])) != nil)
+        #expect(EditingProject.flashingNote(for: look(.hueCycle, [.hueSpeed: [-4]])) != nil)
+    }
+}

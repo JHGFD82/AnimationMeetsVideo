@@ -861,7 +861,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .crossAngle: [3]
         case .driftSpeed: [0.5]
         case .intensity: [30]
-        case .glitchRate: [8]
+        // Under three flashes a second (docs/psychedelic-effects.md, "Safety").
+        case .glitchRate: [2]
         case .mapCenter, .twirlShape, .waveDirection, .tilePattern, .aberrationMode: []
         case .displacement: [2]
         case .warps: [2]
