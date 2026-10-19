@@ -574,7 +574,37 @@ none. See [effects.md](effects.md#adjustment-layers).
 A clip with effects shows a small badge with how many, and a nested clip
 that passes through shows a mark. Dragging an effect from the effects panel
 onto a clip adds it to the end of the clip's stack. The clip's menu has
-**Pass Through** for nested clips.
+**Cut**, **Copy**, **Paste** and **Duplicate** at its top, and **Pass
+Through** for nested clips.
+
+## Copy, paste and duplicate
+
+The Edit menu's **Cut** (⌘X), **Copy** (⌘C), **Paste** (⌘V),
+**Duplicate** (⌘D) and **Delete** work on whatever is selected, as
+everywhere on the Mac (`EditCommands`). Text being typed in has them
+first; then Beat Match while it is open, then the effects panel, then the
+timeline, each command going to the first that offers it. So with an
+effect selected, ⌘C copies the effect; with only a clip selected, the
+clip.
+
+- **A clip comes along whole**: its trim, effects, keyframes,
+  transitions, time and shutter (`ClipBundle`, `TimelineClip.duplicated`).
+  The copy gets new IDs for itself, its effects and their controls, and
+  what pointed between its effects (Against, a Keyframing effect's target
+  and the keyframes it wrote) points at the copies.
+- **Paste** puts the clip at the playhead, landing as a clip moved there
+  would: inside a clip it goes to the nearer edge, and later clips on the
+  layer move right to make room. It goes onto the selected clip's layer or
+  the selected layer when that takes it, else back onto the layer it came
+  from, else onto a new layer of its kind at the top. The pasted clip is
+  selected and the playhead moves to its end, so pasting again lays the
+  next copy after it. Clips paste into other timelines too, but a nested
+  timeline never into itself or a timeline it contains.
+- **Duplicate** puts a copy right after the clip on its layer.
+- **One clipboard.** Paste pastes what was copied last: copying effects
+  after a clip makes ⌘V paste the effects, and the other way round
+  (`EditorClipboard`). A copied clip also fills **Paste Effects**, which
+  puts its whole stack on another clip.
 
 ## Not implemented yet
 

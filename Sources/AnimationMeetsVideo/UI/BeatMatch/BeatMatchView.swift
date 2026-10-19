@@ -43,6 +43,7 @@ struct BeatMatchView: View {
         .preferredColorScheme(.dark)
         .tint(Design.accent)
         .background(KeyPressMonitor(handler: handleKey))
+        .focusedSceneValue(\.beatMatchEditActions, editActions)
         .onChange(of: frequency, initial: true) { _, hertz in session.clicks.frequency = hertz }
         .onChange(of: volume, initial: true) { _, level in session.clicks.volume = Float(level) }
         .onChange(of: session.selectedTempo, initial: true) { _, tempo in
@@ -624,6 +625,26 @@ struct BeatMatchView: View {
     }
 
     // MARK: Keys
+
+    /// What the Edit menu does while Beat Match is open (see
+    /// `EditCommands`): Copy and Paste carry a filled section's tempo,
+    /// measure and steadiness to another; Delete deletes the selected beat,
+    /// or the selected section while drawing them. Cut and Duplicate have
+    /// nothing to act on here (the timeline offers none while it is open).
+    private var editActions: EditMenuActions {
+        let canDelete = session.selectedBeat != nil || (session.step == .drawSections && session.selectedSection != nil)
+        return EditMenuActions(
+            cut: nil,
+            copy: session.selectedDetails != nil ? { session.copyDetails() } : nil,
+            paste: session.canPasteDetails ? { session.pasteDetails() } : nil,
+            duplicate: nil,
+            delete: canDelete ? {
+                if session.selectedBeat != nil { session.deleteSelectedBeat() } else { session.deleteSelectedSection() }
+            } : nil,
+            state: [session.selectedDetails != nil, session.canPasteDetails, canDelete,
+                    session.selectedBeat.map { AnyHashable($0.seconds) }, session.selectedSectionID] as [AnyHashable?]
+        )
+    }
 
     private func handleKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)

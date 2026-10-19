@@ -492,6 +492,7 @@ struct TimelineEditorSurface<Library: View>: View {
                     project.setTransitionDuration(duration, at: edge, of: clipID, in: timelineID, layer: layerID)
                 },
                 onEditProject: { change in change(&project) },
+                readProject: { project },
                 showsEffectsLibrary: $showsEffectsLibrary,
                 showsSidePanel: $showsSidePanel,
                 showsEffects: showsSidePanel && sideTab == .effects,

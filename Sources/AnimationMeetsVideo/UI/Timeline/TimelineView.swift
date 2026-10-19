@@ -55,6 +55,10 @@ struct TimelineView: View {
     let onSetTransitionDuration: (UUID, UUID, TransitionEdge, CMTime) -> Void
     /// Applies a change to the project, for the section lane.
     let onEditProject: ((inout EditingProject) -> Void) -> Void
+    /// The project as it is now, for what runs later than the redraw that
+    /// made it: the Edit menu keeps its commands while what they act on
+    /// is unchanged, and `project` in them would be as it was then.
+    let readProject: () -> EditingProject
     @Binding var showsEffectsLibrary: Bool
     @Binding var showsSidePanel: Bool
     /// Whether the effects panel is shown, and the way to show or hide it.
@@ -591,6 +595,7 @@ struct TimelineView: View {
         .background(KeyPressMonitor(handler: handleKey))
         // The Timeline menu rests while a song is beat matched.
         .focusedSceneValue(\.timelineActions, beatMatch?.isActive == true ? nil : actions)
+        .focusedSceneValue(\.timelineEditActions, beatMatch?.isActive == true ? nil : editActions)
         .environment(autoScroll)
         // Again whenever the timeline changes: the closures read its
         // length, through this view's copy of it.
@@ -911,12 +916,13 @@ struct TimelineView: View {
                             onEditProject { $0.paste(preset.bundle, ontoClip: clipID, in: timelineID) }
                         },
                         onCopyEffects: { clipID in
-                            EffectClipboard.shared.bundle = project.bundle(ofEffects: nil, fromClip: clipID, in: timelineID)
+                            EditorClipboard.shared.copy(effects: project.bundle(ofEffects: nil, fromClip: clipID, in: timelineID))
                         },
                         onPasteEffects: { clipID in
-                            guard let bundle = EffectClipboard.shared.bundle else { return }
+                            guard let bundle = EditorClipboard.shared.effects else { return }
                             onEditProject { $0.paste(bundle, ontoClip: clipID, in: timelineID, replacingStack: true) }
                         },
+                        onClipboard: { clipID, command in clipboard(command, layerID: layer.id, clipID: clipID) },
                         onSetPassThrough: { clipID, value in
                             onEditProject { $0.editClip(clipID, in: timelineID) { $0.passThrough = value } }
                         },

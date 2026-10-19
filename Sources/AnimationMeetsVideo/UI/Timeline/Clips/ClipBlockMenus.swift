@@ -16,6 +16,16 @@ struct ReachMenu {
 extension ClipBlockView {
     @ViewBuilder
     var clipMenu: some View {
+        Button("Cut") { onClipboard(.cut) }
+            .keyboardShortcut("x", modifiers: .command)
+        Button("Copy") { onClipboard(.copy) }
+            .keyboardShortcut("c", modifiers: .command)
+        Button("Paste") { onClipboard(.paste) }
+            .keyboardShortcut("v", modifiers: .command)
+            .disabled(EditorClipboard.shared.clip == nil)
+        Button("Duplicate") { onClipboard(.duplicate) }
+            .keyboardShortcut("d", modifiers: .command)
+        Divider()
         if let reach {
             reachMenu(reach)
             Divider()
@@ -41,7 +51,7 @@ extension ClipBlockView {
             Button("Copy Effects", action: onCopyEffects)
                 .disabled(clip.effects.isEmpty && clip.audioEffects.isEmpty)
             Button("Paste Effects", action: onPasteEffects)
-                .disabled(EffectClipboard.shared.isEmpty)
+                .disabled(!EditorClipboard.shared.hasEffects)
         }
         if case .media = clip.source {
             Divider()

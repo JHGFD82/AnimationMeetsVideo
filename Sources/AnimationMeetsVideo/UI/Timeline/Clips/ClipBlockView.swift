@@ -94,6 +94,7 @@ struct ClipBlockView: View {
     let onApplyPreset: (String) -> Void
     let onCopyEffects: () -> Void
     let onPasteEffects: () -> Void
+    let onClipboard: (ClipboardCommand) -> Void
     let onSetPassThrough: (Bool) -> Void
     /// Whether the clip makes sound, which a retimed clip's sound choice is for.
     let playsSound: Bool

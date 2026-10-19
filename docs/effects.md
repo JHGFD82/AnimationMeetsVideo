@@ -605,10 +605,13 @@ keys. A clip block with effects shows a small badge with the count.
 
 ### Copying and presets
 
-- **Copy and paste** work on the effects selected in the panel. Pasting
-  onto a clip adds them below the selected effect, or at the bottom of the
-  stack. **Paste Effects** with clips selected on the timeline replaces
-  their whole stacks.
+- **Copy and paste** work on the effects selected in the panel, from the
+  keys, the effect's menu or the Edit menu (see timeline.md, "Copy, paste
+  and duplicate"). Pasting onto a clip adds them below the selected
+  effect, or at the bottom of the stack. **Paste Effects** with clips
+  selected on the timeline replaces their whole stacks; after copying a
+  clip it pastes that clip's stack. A clip copied after the effects is
+  what ⌘V pastes, on the timeline.
 - **Presets**: selected effects can be saved as a preset, which is shared
   by every project. Presets are files in `~/Library/Application Support/
   AnimationMeetsVideo/Presets/`, one JSON file each, and appear in the

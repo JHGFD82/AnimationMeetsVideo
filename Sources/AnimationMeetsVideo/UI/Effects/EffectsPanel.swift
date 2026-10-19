@@ -97,6 +97,7 @@ struct EffectsPanel: View {
         }
         .panelSurface(.base)
         .background(KeyPressMonitor(handler: handleKey))
+        .focusedSceneValue(\.effectsEditActions, editActions)
         .alert("Save as Preset", isPresented: Binding(get: { presetSave != nil }, set: { if !$0 { presetSave = nil } })) {
             TextField("Name", text: $presetName)
             Button("Save", action: savePreset)
@@ -523,7 +524,7 @@ struct EffectsPanel: View {
             .keyboardShortcut("c", modifiers: .command)
         Button("Paste") { paste(in: clip, below: effect) }
             .keyboardShortcut("v", modifiers: .command)
-            .disabled(EffectClipboard.shared.isEmpty)
+            .disabled(!EditorClipboard.shared.hasEffects)
         Button("Save as Preset…") { askPresetName(for: [effect.id], in: clip, suggesting: effect.displayName) }
         Button("Save Whole Stack as Preset…") { askPresetName(for: nil, in: clip, suggesting: "\(project.clipName(clip.id, in: timelineID)) look") }
         Divider()
@@ -796,12 +797,12 @@ struct EffectsPanel: View {
     }
 
     private func copy(_ effect: Effect, from clip: TimelineClip) {
-        EffectClipboard.shared.bundle = project.bundle(ofEffects: [effect.id], fromClip: clip.id, in: timelineID)
+        EditorClipboard.shared.copy(effects: project.bundle(ofEffects: [effect.id], fromClip: clip.id, in: timelineID))
     }
 
     /// Pastes the copied effects below `effect`, or at the end of the stack.
     private func paste(in clip: TimelineClip, below effect: Effect?) {
-        guard let bundle = EffectClipboard.shared.bundle else { return }
+        guard let bundle = EditorClipboard.shared.effects else { return }
         // Below the effect when the first copied one goes in its stack.
         let index = effect.flatMap { effect -> Int? in
             guard bundle.effects.first?.effect.kind.isAudio == effect.kind.isAudio,
@@ -844,15 +845,51 @@ struct EffectsPanel: View {
         if state.selectedEffectID == effect.id { state.clear() }
     }
 
+    /// Removes the selected control, or else the selected effect.
+    private func deleteSelection(_ effect: Effect, in clip: TimelineClip) {
+        if let controlID = state.selectedControlID {
+            editEffect(effect.id, in: clip) { $0.removeControl(controlID) }
+            state.select(effect: effect.id)
+        } else {
+            delete(effect, from: clip)
+        }
+    }
+
+    /// What the Edit menu does here (see `EditCommands`): with an effect
+    /// selected, the commands are the effect's; Paste puts copied effects
+    /// in the selected clip's stack, below the selected effect. A clip
+    /// copied last is the timeline's to paste.
+    private var editActions: EditMenuActions? {
+        guard let clip = selectedClip else { return nil }
+        let effect = state.selectedEffectID.flatMap { clip.effect(id: $0) }
+        let clipboard = EditorClipboard.shared
+        let canPaste = clipboard.hasEffects && clipboard.clip == nil && (project.hasEffectStack(clip) || project.playsAudio(clip))
+        let onEffect = { (action: @escaping (Effect) -> Void) -> (() -> Void)? in
+            effect.map { effect in { action(effect) } }
+        }
+        return EditMenuActions(
+            cut: onEffect { effect in
+                copy(effect, from: clip)
+                delete(effect, from: clip)
+            },
+            copy: onEffect { copy($0, from: clip) },
+            paste: canPaste ? { paste(in: clip, below: effect) } : nil,
+            duplicate: onEffect { duplicate($0, in: clip) },
+            delete: onEffect { deleteSelection($0, in: clip) },
+            state: [clip.id, effect?.id, state.selectedControlID, canPaste] as [AnyHashable?]
+        )
+    }
+
     /// Delete removes the selected control, or else the selected effect;
     /// Command-D duplicates the selected effect.
     private func handleKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let key = event.charactersIgnoringModifiers?.lowercased()
         // Command-V pastes below the selected effect, or at the end of the
-        // selected clip's stack.
+        // selected clip's stack; a clip copied last is the timeline's to
+        // paste.
         if flags == .command, key == "v", let clip = selectedClip, project.hasEffectStack(clip) || project.playsAudio(clip),
-           !EffectClipboard.shared.isEmpty {
+           EditorClipboard.shared.hasEffects, EditorClipboard.shared.clip == nil {
             paste(in: clip, below: state.selectedEffectID.flatMap { clip.effect(id: $0) })
             return true
         }
@@ -866,12 +903,7 @@ struct EffectsPanel: View {
             return true
         }
         if [51, 117].contains(event.keyCode), flags.isEmpty {
-            if let controlID = state.selectedControlID {
-                editEffect(effect.id, in: clip) { $0.removeControl(controlID) }
-                state.select(effect: effect.id)
-            } else {
-                delete(effect, from: clip)
-            }
+            deleteSelection(effect, in: clip)
             return true
         }
         if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "d" {
