@@ -1,6 +1,6 @@
 # Noise, Color and Distortion effects
 
-Status: **step 1 of 5 built**, the Color category (see
+Status: **steps 1 and 2 of 5 built**, the Color and Noise categories (see
 [Building it](#building-it)). 25 effect kinds in three new
 categories of the effects panel, chosen so that stacking them gives
 psychedelic pictures from footage or from nothing at all. Everything here
@@ -240,19 +240,54 @@ In order, each step usable on its own:
      brightness (keeping hues) or on each channel.
    - **Channel Mixer**'s rows are Red From, Green From and Blue From, with
      Offset, on the tone scale; the swap and rotate presets aren't there.
-   - **Neon Edges** is a Sobel kernel over the tones, `Width` timeline
-     pixels apart, colored by direction or one color, with `CIBloom` for
-     Glow. It reads its neighbors, so it is the one look that
+   - **Neon Edges** is a Sobel kernel over each channel's tones, `Width`
+     timeline pixels apart, so a change of color alone lights an edge as a
+     change of brightness does; colored by the strongest channel's
+     direction or one color, with `CIBloom` for Glow. It reads its neighbors, so it is the one look that
      `dependsOnPixelSize`.
    - **Moving on its own**: a Hue Cycle with a Speed, or a Cosine Palette
      or Gradient Map with one, makes its clip's `animatedRanges` cover all
      of it, so it is drawn afresh each frame and never played as a plain
      file; only those carry the time into the render key.
    - **No fallback language.** Core Image's runtime Metal compiler needs
-     each function marked `[[stitchable]]`; if the source doesn't compile
-     the looks leave the picture as it is, and the error is logged.
-2. **Noise**: Grain, Static, Fractal Noise, Cells, Dither, Interference and
-   Block Glitch, seeded by the effect's seed and the frame.
+     each function marked `[[stitchable]]`; a kernel that doesn't compile
+     leaves the picture as it is, and the error is logged.
+   - **Each kernel is compiled from a source of its own**, the shared
+     functions before it (`LookKernels.split`). Compiled together from one
+     source, Core Image mistook them for each other within a `CIContext`
+     and drew one look's cached picture for another's, which only shows
+     when several are drawn in one context, as the app always does
+     (`LookKernelIdentityTests`).
+2. **Noise** (done), in `EffectCategory.noise`, drawn by the same
+   `.look` step and `LookKernels`. Everything random is hashed (PCG) from
+   the position in timeline pixels, the effect's Seed and the clip's time
+   in thousandths of a second, never a clock, so a frame always draws the
+   same at any size; Grain, Static and Block Glitch are new every frame
+   and mark their clip as changing throughout, as do Fractal Noise and
+   Cells with an Evolution and Interference with a Drift. Where it differs
+   from the table:
+   - **Generators** (Static, Fractal Noise, Cells, Interference) are
+     opaque gray over the picture's area, or the whole canvas when
+     nothing reached them, mixed in by Amount (100%) rather than always
+     replacing.
+   - **Grain** is Amount alone: 100% is the default strength, weighted to
+     the midtones; Size and Channels (mono or color) as in the table.
+   - **Fractal Noise** is three-dimensional gradient (Perlin) noise rather
+     than simplex, its third dimension the Evolution (0.25 a second),
+     summed over Octaves (4) with Roughness as each octave's weight.
+   - **Cells** draws Edges, Distance or Flat Cells; each cell's point
+     circles its place as it evolves.
+   - **Dither** is Bayer 4×4, 8×8 or noise, on each channel's tones, in
+     output pixels, so it `dependsOnPixelSize`.
+   - **Block Glitch** moves blocks twice as wide as Block Size and half as
+     high, up to 8% of the canvas, splitting red and blue three pixels
+     apart and dropping one channel at random, a new set Rate times a
+     second.
+   - Kernels of our own throughout, as in step 1, rather than
+     `CIRandomGenerator`, `CIStripesGenerator` and `CIDither`: the random
+     generator is one fixed pattern that can't take a seed, so a new
+     picture each frame would mean moving it by an offset, and the
+     generators work on encoded values.
 3. **Distortion**: Displace (an input, or against an earlier step),
    Liquid, Twirl, Wave, Kaleidoscope, Mirror Tile and Chromatic
    Aberration.

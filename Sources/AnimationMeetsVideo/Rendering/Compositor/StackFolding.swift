@@ -221,7 +221,8 @@ enum StackFolding {
                 // Keyframing effects draw nothing: the keyframes they wrote
                 // are on the controls below.
                 continue
-            case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges:
+            case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges,
+                 .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch:
                 guard let look = LookStep(effect, at: time) else { continue }
                 flush()
                 steps.append(.look(look))

@@ -663,7 +663,8 @@ struct Drawing {
                 drawShapes()
                 let canvas = canvasRect(of: frameSize)
                 picture = LookRenderer.apply(
-                    look, to: picture, over: picture.extent.intersection(canvas), scale: scale.width, space: clip.stack.colorSpace
+                    look, to: picture, over: picture.extent.intersection(canvas), canvas: canvas, scale: scale.width,
+                    space: clip.stack.colorSpace
                 )
             case .matte(let effectID, let mode, let amount):
                 settleOpacity()

@@ -1,6 +1,6 @@
 import Foundation
 
-// The choices of the Color looks (see docs/psychedelic-effects.md, "Color").
+// The choices of the Color and Noise looks (see docs/psychedelic-effects.md).
 
 /// Cosine Palette's starting palettes: each a set of the four vectors in
 /// `a + b·cos(2π(c·t + d))` (Inigo Quilez's palettes), or the person's own.
@@ -72,6 +72,65 @@ enum EdgeColoring: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .byAngle: "By Direction"
         case .oneColor: "One Color"
+        }
+    }
+}
+
+enum GrainChannels: String, CaseIterable, Identifiable, Sendable {
+    case mono, color
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .mono: "Mono"
+        case .color: "Color"
+        }
+    }
+}
+
+/// How Fractal Noise's octaves are summed: smooth clouds, turbulent
+/// (folded at zero, billowing) or ridged (sharp crests, as marble).
+enum NoiseType: String, CaseIterable, Identifiable, Sendable {
+    case smooth, turbulent, ridged
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .smooth: "Smooth"
+        case .turbulent: "Turbulent"
+        case .ridged: "Ridged"
+        }
+    }
+}
+
+/// What Cells draws: bright edges between cells, the distance to each
+/// cell's middle, or each cell one flat gray.
+enum CellOutput: String, CaseIterable, Identifiable, Sendable {
+    case edges, distance, flat
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .edges: "Edges"
+        case .distance: "Distance"
+        case .flat: "Flat Cells"
+        }
+    }
+}
+
+enum DitherPattern: String, CaseIterable, Identifiable, Sendable {
+    case bayer4, bayer8, noise
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .bayer4: "Bayer 4×4"
+        case .bayer8: "Bayer 8×8"
+        case .noise: "Noise"
         }
     }
 }

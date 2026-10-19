@@ -60,7 +60,8 @@ final class AudioEffectUnit: SoundEffectProcessor {
         case .voiceIsolation: subType = kAudioUnitSubType_AUSoundIsolation
         case .equalizer, .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke,
              .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot,
-             .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges: return nil
+             .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges,
+             .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch: return nil
         }
         guard format.mFormatID == kAudioFormatLinearPCM, format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
               format.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0, format.mBitsPerChannel == 32,
@@ -188,7 +189,8 @@ final class AudioEffectUnit: SoundEffectProcessor {
             set(kAUSoundIsolationParam_WetDryMixPercent, value(.isolation))
         case .equalizer, .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke,
              .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot,
-             .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges:
+             .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges,
+             .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch:
             break
         }
     }

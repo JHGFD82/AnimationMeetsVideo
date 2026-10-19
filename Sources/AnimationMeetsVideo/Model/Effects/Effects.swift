@@ -50,6 +50,8 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
     case mattes
     /// Remaps the picture's colors (see docs/psychedelic-effects.md).
     case recolor
+    /// Grain, snow and procedural fields.
+    case noise
     /// Effects that draw nothing and write keyframes onto other controls
     /// instead (see docs/keyframing-effects.md).
     case keyframing
@@ -63,6 +65,7 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
         case .shapes: "Shapes"
         case .mattes: "Mattes"
         case .recolor: "Color"
+        case .noise: "Noise"
         case .keyframing: "Keyframing"
         case .sound: "Sound"
         }
@@ -123,6 +126,9 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     /// Color looks (see docs/psychedelic-effects.md): each remaps every
     /// pixel's color on its own, and nothing moves.
     case hueCycle, cosinePalette, gradientMap, solarize, posterize, channelMixer, falseColor, neonEdges
+    /// Noise looks: grain and glitches over the picture, or generators
+    /// that replace it.
+    case grain, staticNoise, fractalNoise, cells, dither, interference, blockGlitch
     /// Shapes draw over the picture handed down to them (see
     /// docs/graphic-layers.md, "Shapes").
     case rectangle
@@ -163,6 +169,13 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .channelMixer: "Channel Mixer"
         case .falseColor: "False Color"
         case .neonEdges: "Neon Edges"
+        case .grain: "Grain"
+        case .staticNoise: "Static"
+        case .fractalNoise: "Fractal Noise"
+        case .cells: "Cells"
+        case .dither: "Dither"
+        case .interference: "Interference"
+        case .blockGlitch: "Block Glitch"
         case .rectangle: "Rectangle"
         case .ellipse: "Ellipse"
         case .polygon: "Polygon"
@@ -189,6 +202,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .rectangle, .ellipse, .polygon, .star, .stroke: .shapes
         case .matte: .mattes
         case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges: .recolor
+        case .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch: .noise
         case .equalizer, .compressor, .limiter, .voiceIsolation: .sound
         case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: .keyframing
         }
@@ -230,6 +244,13 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .channelMixer: "circle.grid.cross"
         case .falseColor: "thermometer.sun"
         case .neonEdges: "scribble"
+        case .grain: "circle.dotted"
+        case .staticNoise: "tv"
+        case .fractalNoise: "cloud"
+        case .cells: "circle.hexagongrid"
+        case .dither: "checkerboard.rectangle"
+        case .interference: "line.3.horizontal.decrease"
+        case .blockGlitch: "rectangle.split.3x3"
         case .rectangle: "rectangle"
         case .ellipse: "circle"
         case .polygon: "hexagon"
@@ -264,14 +285,25 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
              .equalizer, .compressor, .limiter, .voiceIsolation: false
         case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: false
         case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor: false
-        // Its edges are found between neighboring pixels.
-        case .neonEdges: true
+        case .grain, .staticNoise, .fractalNoise, .cells, .interference, .blockGlitch: false
+        // Its edges are found between neighboring pixels, and a dither's
+        // pattern is a pixel's.
+        case .neonEdges, .dither: true
         }
     }
 
     /// Whether it is one of the looks of docs/psychedelic-effects.md,
     /// which are drawn as a `.look` step.
-    var isLook: Bool { category == .recolor }
+    var isLook: Bool { category == .recolor || category == .noise }
+
+    /// Whether it replaces the picture with one it makes, rather than
+    /// changing the one that reaches it.
+    var generates: Bool {
+        switch self {
+        case .staticNoise, .fractalNoise, .cells, .interference: true
+        default: false
+        }
+    }
 
     /// How a shape is filled and stroked, after what shapes it.
     static let paintControls: [ControlKind] = [.fill, .stroke, .strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash]
@@ -308,6 +340,13 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .channelMixer: [.mixRed, .mixGreen, .mixBlue, .mixOffset, .amount]
         case .falseColor: [.falseColorLook, .shadowColor, .highlightColor, .amount]
         case .neonEdges: [.edgeWidth, .glow, .edgeColoring, .edgeColor, .amount]
+        case .grain: [.amount, .grainSize, .grainChannels, .seed]
+        case .staticNoise: [.grainSize, .bars, .rollSpeed, .seed, .amount]
+        case .fractalNoise: [.noiseScale, .noiseOctaves, .roughness, .noiseType, .evolution, .seed, .amount]
+        case .cells: [.cellSize, .jitter, .cellOutput, .evolution, .seed, .amount]
+        case .dither: [.ditherLevels, .ditherPattern, .amount]
+        case .interference: [.spacing, .crossAngle, .driftSpeed, .amount]
+        case .blockGlitch: [.intensity, .blockSize, .glitchRate, .seed, .amount]
         }
     }
 }
@@ -342,6 +381,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case solarizeLevel, folds, solarizeChannels, levels
     case mixRed, mixGreen, mixBlue, mixOffset
     case falseColorLook, edgeWidth, glow, edgeColoring, edgeColor
+    /// The Noise looks' settings.
+    case grainSize, grainChannels, bars, rollSpeed
+    case noiseScale, noiseOctaves, roughness, noiseType, evolution
+    case cellSize, jitter, cellOutput, ditherLevels, ditherPattern
+    case spacing, crossAngle, driftSpeed, intensity, blockSize, glitchRate
 
     var id: Self { self }
 
@@ -444,6 +488,26 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .glow: "Glow"
         case .edgeColoring: "Coloring"
         case .edgeColor: "Color"
+        case .grainSize: "Size"
+        case .grainChannels: "Channels"
+        case .bars: "Bars"
+        case .rollSpeed: "Roll"
+        case .noiseScale: "Scale"
+        case .noiseOctaves: "Octaves"
+        case .roughness: "Roughness"
+        case .noiseType: "Type"
+        case .evolution: "Evolution"
+        case .cellSize: "Cell Size"
+        case .jitter: "Jitter"
+        case .cellOutput: "Output"
+        case .ditherLevels: "Levels"
+        case .ditherPattern: "Pattern"
+        case .spacing: "Spacing"
+        case .crossAngle: "Angle"
+        case .driftSpeed: "Drift"
+        case .intensity: "Intensity"
+        case .blockSize: "Block Size"
+        case .glitchRate: "Rate"
         }
     }
 
@@ -481,6 +545,13 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .mixRed, .mixGreen, .mixBlue, .mixOffset: .channelMixer
         case .falseColorLook: .falseColor
         case .edgeWidth, .glow, .edgeColoring, .edgeColor: .neonEdges
+        case .grainSize, .grainChannels: .grain
+        case .bars, .rollSpeed: .staticNoise
+        case .noiseScale, .noiseOctaves, .roughness, .noiseType, .evolution: .fractalNoise
+        case .cellSize, .jitter, .cellOutput: .cells
+        case .ditherLevels, .ditherPattern: .dither
+        case .spacing, .crossAngle, .driftSpeed: .interference
+        case .intensity, .blockSize, .glitchRate: .blockGlitch
         }
     }
 
@@ -522,6 +593,10 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .solarizeChannels: SolarizeChannels.allCases.map { ($0.rawValue, $0.name) }
         case .falseColorLook: FalseColorLook.allCases.map { ($0.rawValue, $0.name) }
         case .edgeColoring: EdgeColoring.allCases.map { ($0.rawValue, $0.name) }
+        case .grainChannels: GrainChannels.allCases.map { ($0.rawValue, $0.name) }
+        case .noiseType: NoiseType.allCases.map { ($0.rawValue, $0.name) }
+        case .cellOutput: CellOutput.allCases.map { ($0.rawValue, $0.name) }
+        case .ditherPattern: DitherPattern.allCases.map { ($0.rawValue, $0.name) }
         default: []
         }
     }
@@ -547,6 +622,10 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .solarizeChannels: SolarizeChannels.luminance.rawValue
         case .falseColorLook: FalseColorLook.thermal.rawValue
         case .edgeColoring: EdgeColoring.byAngle.rawValue
+        case .grainChannels: GrainChannels.mono.rawValue
+        case .noiseType: NoiseType.smooth.rawValue
+        case .cellOutput: CellOutput.edges.rawValue
+        case .ditherPattern: DitherPattern.bayer4.rawValue
         default: nil
         }
     }
@@ -663,6 +742,21 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .edgeWidth: [2]
         case .glow: [50]
         case .edgeColor: [0.2, 1, 0.9, 1]
+        case .grainChannels, .noiseType, .cellOutput, .ditherPattern: []
+        case .grainSize: [1]
+        case .bars: [2]
+        case .rollSpeed: [0.5]
+        case .noiseScale: [200]
+        case .noiseOctaves, .ditherLevels: [4]
+        case .roughness: [50]
+        case .evolution: [0.25]
+        case .cellSize, .blockSize: [80]
+        case .jitter: [100]
+        case .spacing: [8]
+        case .crossAngle: [3]
+        case .driftSpeed: [0.5]
+        case .intensity: [30]
+        case .glitchRate: [8]
         }
     }
 
@@ -704,7 +798,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .shadowColor, .midtoneColor, .highlightColor, .edgeColor: ""
         case .repeats, .folds, .levels: ""
         case .mixRed, .mixGreen, .mixBlue, .mixOffset: ""
-        case .edgeWidth: " px"
+        case .edgeWidth, .grainSize, .noiseScale, .cellSize, .spacing, .blockSize: " px"
+        case .grainChannels, .noiseType, .cellOutput, .ditherPattern, .bars, .noiseOctaves, .ditherLevels: ""
+        case .rollSpeed, .evolution, .driftSpeed, .glitchRate: " /s"
+        case .roughness, .jitter, .intensity: "%"
+        case .crossAngle: "°"
         }
     }
 
@@ -715,7 +813,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .exposure: 0.1
         case .lift, .gamma, .gain, .fill, .stroke: 0.01
         case .headroom, .eqOutput: 0.1
-        case .wiggleFrequency, .oscillatorFrequency, .fade, .tolerance, .mass, .edgeWidth: 0.1
+        case .wiggleFrequency, .oscillatorFrequency, .fade, .tolerance, .mass, .edgeWidth, .grainSize, .crossAngle: 0.1
+        case .rollSpeed, .evolution, .driftSpeed: 0.01
         case .hueSpeed, .cycleSpeed, .scrollSpeed: 0.01
         case .paletteBias, .paletteAmplitude, .paletteFrequency, .palettePhase: 0.01
         case .shadowColor, .midtoneColor, .highlightColor, .edgeColor: 0.01
@@ -791,6 +890,18 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .mixOffset: -1...1
         case .edgeWidth: 0.5...50
         case .glow: 0...200
+        case .grainChannels, .noiseType, .cellOutput, .ditherPattern: nil
+        case .grainSize: 0.25...64
+        case .bars: 0...16
+        case .rollSpeed, .evolution, .driftSpeed: -20...20
+        case .noiseScale, .cellSize: 2...10_000
+        case .noiseOctaves: 1...8
+        case .roughness, .jitter, .intensity: 0...100
+        case .ditherLevels: 2...64
+        case .spacing: 1...1000
+        case .crossAngle: -90...90
+        case .blockSize: 2...2000
+        case .glitchRate: 0...60
         }
     }
 
@@ -798,6 +909,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     var isWhole: Bool {
         switch self {
         case .points, .everyBeats, .beatOffset, .octaves, .seed, .smoothing, .hold, .repeats, .folds, .levels: true
+        case .bars, .noiseOctaves, .ditherLevels: true
         default: false
         }
     }
@@ -1083,10 +1195,14 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// at every frame then.
     var changesOnItsOwn: Bool {
         guard enabled, !isNoOp else { return false }
+        // Grain, snow and glitches are new every frame.
+        if kind == .grain || kind == .staticNoise || kind == .blockGlitch { return true }
         let moving: ControlKind? = switch kind {
         case .hueCycle: .hueSpeed
         case .cosinePalette: .cycleSpeed
         case .gradientMap: .scrollSpeed
+        case .fractalNoise, .cells: .evolution
+        case .interference: .driftSpeed
         default: nil
         }
         guard let moving, let control = control(moving), control.enabled else { return false }

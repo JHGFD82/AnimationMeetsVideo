@@ -145,3 +145,100 @@ private func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:],
         #expect(step?.seconds == 0)
     }
 }
+
+@Suite struct NoiseLookTests {
+    private func draw(_ effect: Effect, at seconds: Double = 0, picture: SIMD4<Float> = Tones.pixel(0.5, 0.5, 0.5)) throws -> [SIMD4<Float>] {
+        var harness = CompositorHarness(size: CGSize(width: 16, height: 8))
+        try harness.addSolid(track: 1, picture)
+        let clip = CompositorHarness.clip(track: 1, effects: [effect], frame: harness.size)
+        return try harness.draw([clip], at: CMTime(seconds: seconds, preferredTimescale: 600))
+    }
+
+    private func spread(_ colors: [SIMD4<Float>]) -> Float {
+        let reds = colors.map(\.x)
+        return (reds.max() ?? 0) - (reds.min() ?? 0)
+    }
+
+    @Test func everyNoiseKernelCompiles() {
+        let names = ["amvGrain", "amvStatic", "amvFractalNoise", "amvCells", "amvDither", "amvInterference", "amvBlockGlitch"]
+        #expect(names.allSatisfy { LookKernels.compiled[$0] != nil })
+    }
+
+    @Test func grainIsTheSameEachTimeAFrameIsDrawnAndNewEachFrame() throws {
+        let effect = look(.grain)
+        let first = try draw(effect, at: 1)
+        let again = try draw(effect, at: 1)
+        let next = try draw(effect, at: 1 + 1.0 / 24)
+        #expect(first == again)
+        #expect(first != next)
+        #expect(spread(first) > 0.01)
+        let otherSeed = try draw(look(.grain, [.seed: [2]]), at: 1)
+        #expect(otherSeed != first)
+    }
+
+    @Test func generatorsFillWhereNothingWas() throws {
+        for kind in [EffectKind.staticNoise, .fractalNoise, .cells, .interference] {
+            let drawn = try draw(look(kind, [.noiseScale: [4], .cellSize: [4], .spacing: [3]]), at: 0.5, picture: .zero)
+            #expect(drawn.allSatisfy { abs($0.w - 1) < 0.001 }, "\(kind.name) is opaque")
+            #expect(drawn.allSatisfy { $0.x >= -0.001 && $0.x <= 1.001 }, "\(kind.name) stays in range")
+            #expect(spread(drawn) > 0.05, "\(kind.name) varies")
+        }
+    }
+
+    @Test func fractalNoiseEvolvesOnlyWithEvolution() throws {
+        let still = look(.fractalNoise, [.noiseScale: [4], .evolution: [0]])
+        let a = try draw(still, at: 0), b = try draw(still, at: 2)
+        #expect(a == b)
+        let moving = look(.fractalNoise, [.noiseScale: [4]])
+        let c = try draw(moving, at: 0), d = try draw(moving, at: 2)
+        #expect(c != d)
+    }
+
+    @Test func aBayerDitherKeepsTheAverageTone() throws {
+        let drawn = try draw(look(.dither, [.ditherLevels: [2]]), picture: Tones.pixel(0.5, 0.5, 0.5))
+        let tones = drawn.map { Tones.tone(Double($0.x)) }
+        // Only black and white, half of each.
+        #expect(tones.allSatisfy { abs($0) < 0.02 || abs($0 - 1) < 0.02 })
+        let mean = tones.reduce(0, +) / Double(tones.count)
+        #expect(abs(mean - 0.5) < 0.1)
+    }
+
+    @Test func blockGlitchMovesBlocksOnlyAtSomeIntensity() throws {
+        var harness = CompositorHarness(size: CGSize(width: 16, height: 8))
+        try harness.addPicture(track: 1) { x, _ in SIMD4(Float(x), Float(1 - x), 0.5, 1) }
+        func drawn(_ intensity: Double) throws -> [SIMD4<Float>] {
+            let effect = look(.blockGlitch, [.intensity: [intensity], .blockSize: [2]])
+            return try harness.draw([CompositorHarness.clip(track: 1, effects: [effect], frame: harness.size)], at: CMTime(value: 1, timescale: 1))
+        }
+        let original = try harness.draw([CompositorHarness.clip(track: 1, frame: harness.size)])
+        let none = try drawn(0), all = try drawn(100)
+        #expect(none == original)
+        #expect(all != original)
+    }
+
+    @Test func noiseThatChangesEveryFrameIsDrawnAfreshButDitherIsNot() {
+        #expect(!ClipStack(effects: [look(.grain)]).animatedRanges.isEmpty)
+        #expect(!ClipStack(effects: [look(.fractalNoise)]).animatedRanges.isEmpty)
+        #expect(ClipStack(effects: [look(.dither)]).animatedRanges.isEmpty)
+    }
+}
+
+@Suite struct LookKernelIdentityTests {
+    /// Core Image once took kernels compiled from one source for each
+    /// other within a context, drawing one look's cached picture for
+    /// another's; each is now compiled on its own.
+    @Test func looksDrawnOneAfterAnotherInOneContextEachDrawTheirOwn() throws {
+        let size = CGSize(width: 8, height: 4)
+        let kinds: [EffectKind] = [.fractalNoise, .cells, .staticNoise, .interference, .neonEdges, .falseColor, .solarize]
+        var shared = CompositorHarness(size: size)
+        try shared.addPicture(track: 1) { x, y in SIMD4(Float(x), Float(y), 0.5, 1) }
+        for kind in kinds {
+            var fresh = CompositorHarness(size: size)
+            try fresh.addPicture(track: 1) { x, y in SIMD4(Float(x), Float(y), 0.5, 1) }
+            let clip = CompositorHarness.clip(track: 1, effects: [Effect(kind: kind)], frame: size)
+            let inShared = try shared.draw([clip], at: CMTime(value: 1, timescale: 1))
+            let alone = try fresh.draw([clip], at: CMTime(value: 1, timescale: 1))
+            #expect(inShared == alone, "\(kind.name)")
+        }
+    }
+}
