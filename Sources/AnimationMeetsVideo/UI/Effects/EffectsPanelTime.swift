@@ -140,10 +140,10 @@ extension EffectsPanel {
                     let crosses = value == 0 || (value < 0) != clip.isReversed
                     speedBlockedClipID = crosses ? clip.id : nil
                     let allowed = crosses ? (clip.isReversed ? -1.0 : 1.0) : value
-                    editTime(c) { $0.speed.set(allowed, at: c.sourceNow) }
+                    editTime(c) { $0.speed.set(allowed, at: c.now.sourceNow) }
                 },
-                onToggleAnimated: { editTime(c) { $0.speed.setAnimated(!$0.speed.isAnimated, at: c.sourceNow) } },
-                onToggleKeyframe: { editTime(c) { $0.speed.toggleKeyframe(at: c.sourceNow) } },
+                onToggleAnimated: { editTime(c) { $0.speed.setAnimated(!$0.speed.isAnimated, at: c.now.sourceNow) } },
+                onToggleKeyframe: { editTime(c) { $0.speed.toggleKeyframe(at: c.now.sourceNow) } },
                 onSeek: onSeek,
                 onShowGraph: graphs.map { graphs in { graphs.show(key) } }
             ) {

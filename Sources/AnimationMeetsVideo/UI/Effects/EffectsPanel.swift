@@ -258,9 +258,9 @@ struct EffectsPanel: View {
                     lane: emptyLane(c)
                 )
             }
-            timeRows(c)
+            clipRows(c, animated: clip.time.speed.isAnimated) { timeRows(c) }
             if project.hasEffectStack(clip) {
-                anchorRow(c)
+                clipRows(c, animated: clip.anchorPoint.isAnimated) { anchorRow(c) }
                 ForEach(clip.effects) { effect in
                     effectRows(effect, c)
                 }
@@ -283,15 +283,15 @@ struct EffectsPanel: View {
                     }
                 }
             }
-            shutterRows(c)
+            clipRows(c, animated: false) { shutterRows(c) }
             if project.playsAudio(clip) {
                 // Sound comes after pictures: its effects, then its volume
                 // and pan, in the order it is played through them.
                 ForEach(clip.audioEffects) { effect in
                     effectRows(effect, c)
                 }
-                audioRow(.volume, c)
-                audioRow(.pan, c)
+                clipRows(c, animated: clip.volume.isAnimated) { audioRow(.volume, c) }
+                clipRows(c, animated: clip.pan.isAnimated) { audioRow(.pan, c) }
             }
             Spacer(minLength: 0)
         }
@@ -357,13 +357,13 @@ struct EffectsPanel: View {
                 onSelect: {},
                 onSetComponent: { index, newValue in
                     editClip(clip.id) { clip in
-                        var vector = clip.anchorPoint.value(at: c.sourceNow)
+                        var vector = clip.anchorPoint.value(at: c.now.sourceNow)
                         if index == 0 { vector.x = newValue } else { vector.y = newValue }
-                        clip.anchorPoint.set(vector, at: c.sourceNow)
+                        clip.anchorPoint.set(vector, at: c.now.sourceNow)
                     }
                 },
-                onToggleAnimated: { editClip(clip.id) { $0.anchorPoint.setAnimated(!$0.anchorPoint.isAnimated, at: c.sourceNow) } },
-                onToggleKeyframe: { editClip(clip.id) { $0.anchorPoint.toggleKeyframe(at: c.sourceNow) } },
+                onToggleAnimated: { editClip(clip.id) { $0.anchorPoint.setAnimated(!$0.anchorPoint.isAnimated, at: c.now.sourceNow) } },
+                onToggleKeyframe: { editClip(clip.id) { $0.anchorPoint.toggleKeyframe(at: c.now.sourceNow) } },
                 onSeek: onSeek,
                 onShowGraph: graphs.map { graphs in { graphs.show(key) } }
             ) {
@@ -534,6 +534,37 @@ struct EffectsPanel: View {
         Button("Save Whole Stack as Preset…") { askPresetName(for: nil, in: clip, suggesting: "\(project.clipName(clip.id, in: timelineID)) look") }
         Divider()
         Button("Delete", role: .destructive) { delete(effect, from: clip) }
+    }
+
+    // MARK: Clip rows
+
+    /// What the rows of the clip's own (time, anchor, shutter, sound) show,
+    /// so they are redrawn only when that changes (see `StackRow`): the
+    /// clip, where its lane is, and the playhead only while the value the
+    /// row shows is animated.
+    private struct ClipRowsKey: Equatable {
+        var timelineID: UUID
+        var clip: TimelineClip
+        var layerID: UUID
+        var showsLanes: Bool
+        var lane: LaneKey
+        var frameSize: CGSize
+        var playsVideo: Bool
+        var playsAudio: Bool
+        var speedBlocked: Bool
+        var playhead: CMTime?
+        var sourceNow: CMTime?
+    }
+
+    private func clipRows<Content: View>(_ c: RowContext, animated: Bool, @ViewBuilder content: @escaping () -> Content) -> some View {
+        let key = ClipRowsKey(
+            timelineID: timelineID, clip: c.clip, layerID: c.layer.id, showsLanes: showsKeyframeLanes,
+            lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize,
+            playsVideo: project.playsVideo(c.clip), playsAudio: project.playsAudio(c.clip),
+            speedBlocked: speedBlockedClipID == c.clip.id,
+            playhead: animated ? c.frameTime : nil, sourceNow: animated ? c.sourceNow : nil
+        )
+        return StackRow(key: key, content: content).equatable()
     }
 
     // MARK: Controls
