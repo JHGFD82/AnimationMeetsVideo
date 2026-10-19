@@ -296,7 +296,7 @@ struct TimelineEditorSurface<Library: View>: View {
         .environment(graphs)
         .environment(activePanel)
         .background(ActivePanelMonitor(active: activePanel))
-        .focusedSceneValue(\.activePanel, activePanel.current)
+        .modifier(ActivePanelPublisher(active: activePanel))
         .onReceive(NotificationCenter.default.publisher(for: .revealEffect)) { note in
             if let id = note.object as? UUID { effectsState.select(effect: id) }
         }

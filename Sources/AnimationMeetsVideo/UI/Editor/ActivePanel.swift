@@ -108,6 +108,17 @@ struct ActivePanelMonitor: NSViewRepresentable {
     }
 }
 
+/// Publishes the active panel to the Edit menu. A modifier of its own, so
+/// only it, and not the whole editor, reads the panel and redraws when it
+/// changes.
+struct ActivePanelPublisher: ViewModifier {
+    let active: ActivePanel
+
+    func body(content: Content) -> some View {
+        content.focusedSceneValue(\.activePanel, active.current)
+    }
+}
+
 private struct ActivePanelKey: FocusedValueKey {
     typealias Value = EditorPanel
 }

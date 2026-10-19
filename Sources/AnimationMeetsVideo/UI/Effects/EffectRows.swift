@@ -107,8 +107,6 @@ struct ParameterRow<MenuContent: View>: View {
                 .foregroundStyle(Design.textSecondary)
                 .lineLimit(1)
                 .frame(width: 74, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture(perform: onSelect)
 
             if let linked {
                 Button(action: onToggleLink) {
@@ -155,6 +153,7 @@ struct ParameterRow<MenuContent: View>: View {
         .padding(.leading, indent)
         .padding(.horizontal, 4)
         .frame(height: EffectsPanelMetrics.rowHeight)
+        .onMouseDown { _ in onSelect() }
         .selectedRow(isSelected)
         .contextMenu { menu() }
     }
@@ -218,8 +217,6 @@ struct ChoiceRow<MenuContent: View>: View {
                 .foregroundStyle(Design.textSecondary)
                 .lineLimit(1)
                 .frame(width: 74, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture(perform: onSelect)
             Picker(name, selection: Binding(get: { selected }, set: { onChoose($0) })) {
                 ForEach(options, id: \.id) { option in
                     Text(option.name).tag(option.id)
@@ -237,6 +234,7 @@ struct ChoiceRow<MenuContent: View>: View {
         .padding(.leading, indent)
         .padding(.horizontal, 4)
         .frame(height: EffectsPanelMetrics.rowHeight)
+        .onMouseDown { _ in onSelect() }
         .selectedRow(isSelected)
         .contextMenu { if showsMenu { menu() } }
     }
@@ -315,9 +313,7 @@ struct EffectHeaderRow<MenuContent: View>: View {
                     .font(Design.Typeface.bodyEmphasis)
                     .foregroundStyle(effect.enabled ? Design.textPrimary : Design.textTertiary)
                     .lineLimit(1)
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) { isRenaming = true }
-                    .onTapGesture(perform: onSelect)
+                    .onMouseDown { clicks in if clicks == 2 { isRenaming = true } }
                     .accessibilityLabel(accessibilitySummary ?? effect.displayName)
             }
             Spacer(minLength: 2)
@@ -344,6 +340,8 @@ struct EffectHeaderRow<MenuContent: View>: View {
         .opacity(isDimmed ? 0.5 : 1)
         .padding(.horizontal, 4)
         .frame(height: EffectsPanelMetrics.rowHeight)
+        // Anywhere on the row selects the effect, on the press.
+        .onMouseDown { _ in onSelect() }
         .background(Design.Surface.raised.color.opacity(0.6))
         .overlay(alignment: .leading) {
             if isFlagged { Rectangle().fill(Design.statusWarning).frame(width: 3) }

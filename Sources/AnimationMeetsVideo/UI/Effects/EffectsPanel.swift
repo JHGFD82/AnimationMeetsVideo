@@ -36,8 +36,9 @@ struct EffectsPanel: View {
     @State private var stackLayout = EffectStackLayout()
     @State private var stackScroller = EdgeAutoScroll()
     @State private var dropLine: CGFloat?
-    /// Whether this is the editor's active panel, which has the keys.
-    @Environment(\.isInActivePanel) private var isActivePanel
+    /// The editor's active panel, which has the keys. Read as a key comes
+    /// in, not while drawing, so becoming active doesn't redraw the stack.
+    @Environment(ActivePanel.self) private var activePanel: ActivePanel?
     @State private var presetName = ""
     @State private var presetError: String?
     /// The clip after each of its effects, at the playhead.
@@ -919,7 +920,7 @@ struct EffectsPanel: View {
     /// Command-D duplicates the selected effect.
     private func handleKey(_ event: NSEvent) -> Bool {
         // Another panel was clicked in last: the keys are its.
-        guard isActivePanel else { return false }
+        guard (activePanel?.current ?? .sidePanel) == .sidePanel else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let key = event.charactersIgnoringModifiers?.lowercased()
         // Command-V pastes below the selected effect, or at the end of the
