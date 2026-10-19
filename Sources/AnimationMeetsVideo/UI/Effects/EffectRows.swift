@@ -118,7 +118,7 @@ struct ParameterRow<MenuContent: View>: View {
             }
 
             if let color {
-                ColorPicker(name, selection: color, supportsOpacity: true)
+                HeldColorWell(name: name, selection: color)
                     .labelsHidden()
                     .controlSize(.small)
                     .accessibilityLabel(name)
@@ -437,5 +437,57 @@ struct KeyframingEditsRow: View {
         .padding(.leading, EffectsPanelMetrics.controlIndent)
         .padding(.trailing, 8)
         .padding(.vertical, 3)
+    }
+}
+
+/// A color well whose changes, as the color panel's sliders and wheel are
+/// dragged, are held to one side of the project (`ProjectState.hold`) and
+/// written to it when they have paused for a moment: one undo step, and
+/// the well shows the color picked meanwhile.
+private struct HeldColorWell: View {
+    let name: String
+    let selection: Binding<CGColor>
+
+    @Environment(\.projectHistory) private var history
+    @Environment(ProjectState.self) private var projectState: ProjectState?
+    @State private var picked: CGColor?
+    @State private var isHolding = false
+    @State private var settle: Task<Void, Never>?
+
+    /// How long the color must hold still for the project to take it.
+    private static let pause = Duration.milliseconds(400)
+
+    var body: some View {
+        ColorPicker(
+            name,
+            selection: Binding(get: { picked ?? selection.wrappedValue }, set: { change(to: $0) }),
+            supportsOpacity: true
+        )
+    }
+
+    private func change(to color: CGColor) {
+        guard let projectState else {
+            selection.wrappedValue = color
+            return
+        }
+        if !isHolding {
+            isHolding = true
+            history?.beginGesture()
+            projectState.beginHold()
+        }
+        picked = color
+        projectState.hold { selection.wrappedValue = color }
+        settle?.cancel()
+        settle = Task { @MainActor in
+            try? await Task.sleep(for: Self.pause)
+            guard !Task.isCancelled, let last = picked else { return }
+            projectState.endHold()
+            selection.wrappedValue = last
+            isHolding = false
+            history?.endGesture()
+            // Until the project's color has reached the well.
+            try? await Task.sleep(for: .milliseconds(100))
+            if !isHolding { picked = nil }
+        }
     }
 }

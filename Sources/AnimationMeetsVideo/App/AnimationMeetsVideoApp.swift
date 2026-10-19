@@ -45,7 +45,8 @@ private struct WindowReopenerRegistration: View {
 @main
 struct AnimationMeetsVideoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var project: EditingProject
+    /// The project, through which a value drag is held (see `ProjectState`).
+    @State private var projectState: ProjectState
     @State private var history: ProjectHistory
     @State private var projectURL: URL?
     @State private var projectLock: ProjectLock?
@@ -72,11 +73,16 @@ struct AnimationMeetsVideoApp: App {
     private static let lastProjectKey = "lastProjectPath"
     static let windowID = "editor"
 
+    private var project: EditingProject {
+        get { projectState.value }
+        nonmutating set { projectState.value = newValue }
+    }
+
     private var hasUnsavedChanges: Bool { project != savedProject }
 
     init() {
         let initial = EditingProject.empty
-        _project = State(initialValue: initial)
+        _projectState = State(initialValue: ProjectState(initial))
         _savedProject = State(initialValue: initial)
         _history = State(initialValue: ProjectHistory(project: initial))
     }
@@ -84,13 +90,14 @@ struct AnimationMeetsVideoApp: App {
     var body: some Scene {
         WindowGroup("Animation Meets Video", id: Self.windowID) {
             EditorView(
-                project: $project, history: history, analysis: analysis,
+                project: $projectState.value, history: history, analysis: analysis,
                 replacement: replacement, packageURL: projectURL
             )
                 // The scene runs again at every edit; the editor follows
                 // the project on its own (see `EditorView.==`).
                 .equatable()
-                .mediaReplacementDialogs(project: $project, controller: replacement)
+                .environment(projectState)
+                .mediaReplacementDialogs(project: $projectState.value, controller: replacement)
                 .onExternalProjectChange { checkForExternalProjectChange() }
                 .frame(minWidth: 1_100, minHeight: 700)
                 .sheet(isPresented: Binding(get: { launchChecked && projectURL == nil }, set: { _ in })) {
@@ -102,7 +109,7 @@ struct AnimationMeetsVideoApp: App {
                     Color.clear.sheet(isPresented: $showsProjectSettings) {
                         // Read in the sheet's own view, so the scene doesn't
                         // read the project.
-                        ProjectSettingsSheet(project: $project)
+                        ProjectSettingsSheet(project: $projectState.value)
                     }
                 )
                 // A project opened from Finder (double-click, or dropped on

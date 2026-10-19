@@ -11,12 +11,27 @@ struct SnapTargets: Equatable {
     }
 
     var targets: [Target]
+    /// The playhead, read as a drag snaps rather than kept in `targets`.
+    /// Timeline rows compare their targets to skip redrawing, and a
+    /// playhead among them made every row redraw each time it moved. Not
+    /// compared: the same object always reads where the playhead is now.
+    var playhead: LivePlayhead?
+
+    init(targets: [Target], playhead: LivePlayhead? = nil) {
+        self.targets = targets
+        self.playhead = playhead
+    }
+
+    static func == (lhs: SnapTargets, rhs: SnapTargets) -> Bool {
+        lhs.targets == rhs.targets && lhs.playhead === rhs.playhead
+    }
 
     /// The target nearest `time` no more than `tolerance` away, leaving out
     /// the edges of `excluding`.
     func nearest(to time: CMTime, within tolerance: CMTime, excluding ownerID: UUID? = nil) -> CMTime? {
         var best: (time: CMTime, distance: Double)?
-        for target in targets where ownerID == nil || target.ownerID != ownerID {
+        let live = playhead?.time.map { [Target(time: $0, ownerID: nil)] } ?? []
+        for target in targets + live where ownerID == nil || target.ownerID != ownerID {
             let distance = abs(CMTimeSubtract(target.time, time).seconds)
             guard distance <= tolerance.seconds, distance < (best?.distance ?? .infinity) else { continue }
             best = (target.time, distance)
@@ -47,11 +62,34 @@ struct SnapTargets: Equatable {
     }
 }
 
+/// Where the playhead is, for snapping, kept where SwiftUI doesn't watch
+/// it (see `SnapTargets.playhead`). Its owner brings it up to date as it
+/// redraws.
+final class LivePlayhead {
+    /// Read as a drag snaps, when set: where the playhead is without its
+    /// owner having to bring `time` up to date.
+    var source: (() -> CMTime)?
+    private var stored: CMTime?
+
+    var time: CMTime? {
+        get { source?() ?? stored }
+        set { stored = newValue }
+    }
+}
+
+/// What edges snap to, kept where SwiftUI doesn't watch it. A row that
+/// isn't redrawn when another layer's clips move reads it as a drag snaps,
+/// from its owner, who brings it up to date as it redraws.
+final class LiveSnapTargets {
+    var targets: SnapTargets?
+}
+
 extension EditingProject {
     /// What edges and the playhead snap to in a timeline: its start, every
     /// clip's start and end on every layer, every section's, `playhead`
-    /// when given, and `markers` (the beat markers shown).
-    func snapTargets(in timelineID: UUID, playhead: CMTime?, markers: [CMTime]) -> SnapTargets {
+    /// when given, and `markers` (the beat markers shown). `live` is a
+    /// playhead read as a drag snaps instead.
+    func snapTargets(in timelineID: UUID, playhead: CMTime?, live: LivePlayhead? = nil, markers: [CMTime]) -> SnapTargets {
         var targets = [SnapTargets.Target(time: .zero, ownerID: nil)]
         let timeline = timeline(id: timelineID)
         for layer in timeline?.layers ?? [] {
@@ -66,6 +104,6 @@ extension EditingProject {
         }
         if let playhead { targets.append(SnapTargets.Target(time: playhead, ownerID: nil)) }
         targets += markers.map { SnapTargets.Target(time: $0, ownerID: nil) }
-        return SnapTargets(targets: targets)
+        return SnapTargets(targets: targets, playhead: live)
     }
 }

@@ -71,6 +71,10 @@ extension TimelineView {
     /// layer. Layers are found by where they are on screen, since each
     /// area scrolls on its own.
     func resolveMove(_ clip: TimelineClip, from layerID: UUID, pointer: CGPoint, to start: CMTime) -> ClipMovePreview? {
+        // Where the clips are now, not as the row that asked was drawn: a
+        // row isn't drawn again when the clips of other layers move.
+        let live = readProject()
+        func liveLayer(_ layer: TimelineLayer) -> TimelineLayer { live.timeline(id: timelineID)?.layer(id: layer.id) ?? layer }
         let rows = geometryStore.layerRows
         guard let fromRow = rows[layerID], let fromLayer = timeline.layer(id: layerID) else { return nil }
         // Over the layer names: onto a new layer, keeping its time.
@@ -88,11 +92,11 @@ extension TimelineView {
             }
             return pointer.y >= row.minY && pointer.y < row.maxY
         }
-        if let target, let landed = project.resolvedMove(ofMoving: clip.id, in: timelineID, layer: layerID, onto: target.id, to: start),
+        if let target, let landed = live.resolvedMove(ofMoving: clip.id, in: timelineID, layer: layerID, onto: target.id, to: start),
            let targetRow = rows[target.id] {
             return ClipMovePreview(
                 start: landed.start, layerID: target.id, offsetY: targetRow.minY - fromRow.minY,
-                pushed: pushed(on: target, by: landed, excluding: clip.id)
+                pushed: pushed(on: liveLayer(target), by: landed, excluding: clip.id)
             )
         }
         // Over the empty part of another area that takes it, below its
@@ -102,8 +106,8 @@ extension TimelineView {
            project.layerKind(kind, accepts: clip) {
             return ClipMovePreview(start: CMTimeMaximum(.zero, start), layerID: nil, offsetY: 0, newLayer: kind)
         }
-        return project.resolvedMove(ofMoving: clip.id, in: timelineID, layer: layerID, to: start).map {
-            ClipMovePreview(start: $0.start, layerID: nil, offsetY: 0, pushed: pushed(on: fromLayer, by: $0, excluding: clip.id))
+        return live.resolvedMove(ofMoving: clip.id, in: timelineID, layer: layerID, to: start).map {
+            ClipMovePreview(start: $0.start, layerID: nil, offsetY: 0, pushed: pushed(on: liveLayer(fromLayer), by: $0, excluding: clip.id))
         }
     }
 

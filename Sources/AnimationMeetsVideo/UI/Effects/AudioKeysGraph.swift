@@ -8,11 +8,17 @@ import SwiftUI
 /// read 0 and 1, and a line across it how loud its range is now. Drag an
 /// edge to move it, or inside to move the whole box. Shown in the effect's
 /// editor (`AudioKeysEditor`), where the four values are also fields.
+///
+/// A drag is held to one side of the project (`ProjectState.hold`), with
+/// the box drawn from the drag's own values, and written to the project
+/// once, when the drag ends.
 struct AudioKeysGraph: View {
     /// Each band's level at the playhead, or nil while the sound is read.
     let bands: [Double]?
-    let frequencies: (low: Double, high: Double)
-    let levels: (floor: Double, ceiling: Double)
+    /// The box the project has; `frequencies` and `levels` are the drag's
+    /// while one is held.
+    let committedFrequencies: (low: Double, high: Double)
+    let committedLevels: (floor: Double, ceiling: Double)
     /// How loud the box's range is now, in decibels, drawn across it.
     var level: Double?
     var isDimmed = false
@@ -20,7 +26,28 @@ struct AudioKeysGraph: View {
     let onSetLevels: (Double, Double) -> Void
 
     @Environment(\.projectHistory) private var history
+    @Environment(ProjectState.self) private var projectState: ProjectState?
     @State private var drag: DragState?
+    /// The box a drag has reached, which the project lags behind while the
+    /// drag is held.
+    @State private var dragged: (frequencies: (low: Double, high: Double), levels: (floor: Double, ceiling: Double))?
+
+    init(
+        bands: [Double]?, frequencies: (low: Double, high: Double), levels: (floor: Double, ceiling: Double),
+        level: Double? = nil, isDimmed: Bool = false,
+        onSetFrequencies: @escaping (Double, Double) -> Void, onSetLevels: @escaping (Double, Double) -> Void
+    ) {
+        self.bands = bands
+        committedFrequencies = frequencies
+        committedLevels = levels
+        self.level = level
+        self.isDimmed = isDimmed
+        self.onSetFrequencies = onSetFrequencies
+        self.onSetLevels = onSetLevels
+    }
+
+    private var frequencies: (low: Double, high: Double) { dragged?.frequencies ?? committedFrequencies }
+    private var levels: (floor: Double, ceiling: Double) { dragged?.levels ?? committedLevels }
 
     /// The level at the bottom of the graph; quieter is drawn as nothing.
     static let lowest = -96.0
@@ -149,39 +176,64 @@ struct AudioKeysGraph: View {
                 if drag == nil {
                     guard let part = part(at: value.startLocation, plot) else { return }
                     history?.beginGesture()
+                    projectState?.beginHold()
                     drag = DragState(part: part, frequencies: frequencies, levels: levels)
+                    dragged = (frequencies, levels)
                 }
                 guard let drag else { return }
-                let point = value.location
-                switch drag.part {
-                case .low: setFrequencies(frequency(atX: point.x, plot), drag.frequencies.high)
-                case .high: setFrequencies(drag.frequencies.low, frequency(atX: point.x, plot))
-                case .floor: setLevels(decibels(atY: point.y, plot), drag.levels.ceiling)
-                case .ceiling: setLevels(drag.levels.floor, decibels(atY: point.y, plot))
-                case .box:
-                    // Moved by the same ratio of frequency and the same
-                    // number of decibels at both edges.
-                    let ratio = frequency(atX: x(drag.frequencies.low, plot) + value.translation.width, plot) / drag.frequencies.low
-                    let shift = decibels(atY: y(drag.levels.floor, plot) + value.translation.height, plot) - drag.levels.floor
-                    setFrequencies(drag.frequencies.low * ratio, drag.frequencies.high * ratio)
-                    setLevels(drag.levels.floor + shift, drag.levels.ceiling + shift)
+                if let projectState {
+                    projectState.hold { move(drag, to: value, plot: plot) }
+                } else {
+                    move(drag, to: value, plot: plot)
                 }
             }
             .onEnded { _ in
-                if drag != nil { history?.endGesture() }
+                guard let started = drag else { return }
+                let last = dragged
+                projectState?.endHold()
+                dragged = nil
                 drag = nil
+                // The drag's last box goes to the project once; a drag let
+                // go (see `ProjectState.letGo`) has written it already.
+                if let last {
+                    if last.frequencies != started.frequencies { onSetFrequencies(last.frequencies.low, last.frequencies.high) }
+                    if last.levels != started.levels { onSetLevels(last.levels.floor, last.levels.ceiling) }
+                }
+                // After the last edit has reached the project.
+                Task { @MainActor in history?.endGesture() }
             }
+    }
+
+    private func move(_ drag: DragState, to value: DragGesture.Value, plot: CGRect) {
+        let point = value.location
+        switch drag.part {
+        case .low: setFrequencies(frequency(atX: point.x, plot), drag.frequencies.high)
+        case .high: setFrequencies(drag.frequencies.low, frequency(atX: point.x, plot))
+        case .floor: setLevels(decibels(atY: point.y, plot), drag.levels.ceiling)
+        case .ceiling: setLevels(drag.levels.floor, decibels(atY: point.y, plot))
+        case .box:
+            // Moved by the same ratio of frequency and the same
+            // number of decibels at both edges.
+            let ratio = frequency(atX: x(drag.frequencies.low, plot) + value.translation.width, plot) / drag.frequencies.low
+            let shift = decibels(atY: y(drag.levels.floor, plot) + value.translation.height, plot) - drag.levels.floor
+            setFrequencies(drag.frequencies.low * ratio, drag.frequencies.high * ratio)
+            setLevels(drag.levels.floor + shift, drag.levels.ceiling + shift)
+        }
     }
 
     private func setFrequencies(_ low: Double, _ high: Double) {
         let kind = ControlKind.frequencyRange
         let a = kind.clamped(min(low, high)), b = kind.clamped(max(low, high))
-        onSetFrequencies(a, max(b, min(a * 1.01, Spectrogram.highestFrequency)))
+        let high = max(b, min(a * 1.01, Spectrogram.highestFrequency))
+        if dragged != nil { dragged?.frequencies = (a, high) }
+        onSetFrequencies(a, high)
     }
 
     private func setLevels(_ floor: Double, _ ceiling: Double) {
         let kind = ControlKind.levelRange
         let a = kind.clamped(min(floor, ceiling)), b = kind.clamped(max(floor, ceiling))
-        onSetLevels(a, max(b, min(a + 1, 0)))
+        let ceiling = max(b, min(a + 1, 0))
+        if dragged != nil { dragged?.levels = (a, ceiling) }
+        onSetLevels(a, ceiling)
     }
 }

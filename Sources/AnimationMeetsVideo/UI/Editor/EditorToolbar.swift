@@ -12,6 +12,7 @@ struct EditorToolbar: View {
     let analysis: AssetAnalysis
     /// Pauses for an export, whose ProRes 422 output reuses its renders.
     let renderer: RenderScheduler
+    @Environment(ProjectState.self) private var projectState: ProjectState?
     @State private var selectedFormat = ExportFormat.proRes422
     @AppStorage(Preferences.exportLoudness) private var loudness = LoudnessTarget.asMixed
     @AppStorage(Preferences.exportAudioTracks) private var audioTracks = ExportAudioTracks.mix
@@ -53,6 +54,7 @@ struct EditorToolbar: View {
                         externalDisplay.start(
                             on: screen,
                             project: $project,
+                            projectState: projectState,
                             primaryTimelineID: $activeTimelineID,
                             primarySelection: $selection,
                             sharedPlayback: playback,
@@ -101,20 +103,8 @@ struct EditorToolbar: View {
             // to export, and exporting it — so they sit together with no
             // gap, away from everything else on the rail.
             HStack(spacing: Design.Space.close) {
-                Picker("Export format", selection: $selectedFormat) {
-                    ForEach(ExportFormat.allCases.filter { $0.movie != nil }) { format in
-                        Text(format.name).tag(format)
-                    }
-                    Divider()
-                    ForEach(ExportFormat.allCases.filter { $0.movie == nil }) { format in
-                        Text(format.name).tag(format)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(width: 130)
-                .help("ProRes 422 exports reuse the stretches already rendered in the background; ProRes 4444 composites everything from the sources. WAV Mix is the sound alone; WAV Stems is a file for each layer with sound, unmastered.")
-                .disabled(isExporting)
+                ExportFormatPicker(current: selectedFormat, selection: $selectedFormat, isExporting: isExporting)
+                    .equatable()
 
                 // The sound of the export: its loudness, and for a movie
                 // whether the stems come along on tracks of their own.

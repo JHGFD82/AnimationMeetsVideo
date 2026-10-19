@@ -68,21 +68,70 @@ struct AudioPropertyRow: View {
     var property: AudioProperty = .volume
     let value: AnimatedValue<Double>
     /// The playhead, snapped to a frame.
-    let time: CMTime
+    let playhead: PlayheadTime
     let onEdit: ((inout AnimatedValue<Double>) -> Void) -> Void
     let onSeek: (CMTime) -> Void
     /// Opens the property's graph editor; offered while it is animated.
     var onShowGraph: (() -> Void)?
+    /// The value as a drag held to one side of the project has it, or nil
+    /// when none is: dragging the number moves the slider beside it. Read
+    /// as the row draws, so only these rows follow a step of a drag.
+    var held: (() -> AnimatedValue<Double>?)?
 
-    private var keyframeTimes: [CMTime] { value.keyframes.map(\.time) }
+    init(
+        property: AudioProperty = .volume, value: AnimatedValue<Double>, playhead: PlayheadTime,
+        onEdit: @escaping ((inout AnimatedValue<Double>) -> Void) -> Void, onSeek: @escaping (CMTime) -> Void,
+        onShowGraph: (() -> Void)? = nil, held: (() -> AnimatedValue<Double>?)? = nil
+    ) {
+        self.property = property
+        self.value = value
+        self.playhead = playhead
+        self.onEdit = onEdit
+        self.onSeek = onSeek
+        self.onShowGraph = onShowGraph
+        self.held = held
+    }
+
+    /// A row with the playhead at `time`.
+    init(
+        property: AudioProperty = .volume, value: AnimatedValue<Double>, time: CMTime,
+        onEdit: @escaping ((inout AnimatedValue<Double>) -> Void) -> Void, onSeek: @escaping (CMTime) -> Void,
+        onShowGraph: (() -> Void)? = nil
+    ) {
+        self.init(
+            property: property, value: value, playhead: PlayheadTime(fixed: time), onEdit: onEdit, onSeek: onSeek,
+            onShowGraph: onShowGraph
+        )
+    }
+
+
+    // The actions find the playhead when they run (see `PlayheadTime`).
+
+    /// Turns keyframing on, with a keyframe where the playhead is, or off.
+    func toggleAnimated() {
+        let at = playhead.now
+        onEdit { $0.setAnimated(!value.isAnimated, at: at) }
+    }
+
+    /// Sets the value at the playhead, or all of it while it is fixed.
+    func setValue(_ newValue: Double) {
+        let at = playhead.now
+        onEdit { $0.set(newValue, at: at) }
+    }
+
+    /// Adds a keyframe where the playhead is, or removes the one there.
+    func toggleKeyframe() {
+        let at = playhead.now
+        onEdit { $0.toggleKeyframe(at: at) }
+    }
     private var lowercaseName: String { property.name.lowercased() }
 
     var body: some View {
+        let value = held?() ?? self.value
+        let time = playhead.shown(animated: value.isAnimated)
         let current = value.value(at: time)
         HStack(spacing: 4) {
-            AnimateToggle(name: lowercaseName, isAnimated: value.isAnimated) {
-                onEdit { $0.setAnimated(!value.isAnimated, at: time) }
-            }
+            AnimateToggle(name: lowercaseName, isAnimated: value.isAnimated, onToggle: toggleAnimated)
 
             Text(property.name)
                 .foregroundStyle(Design.textSecondary)
@@ -92,14 +141,14 @@ struct AudioPropertyRow: View {
                 value: current, label: property.label, dragStep: 1, dragRange: property.range,
                 accessibilityName: "\(property.name) \(property == .volume ? "level" : "position")"
             ) { newValue in
-                onEdit { $0.set(property.clamped(newValue), at: time) }
+                setValue(property.clamped(newValue))
             }
             .frame(width: 54, alignment: .leading)
 
             Slider(
                 value: Binding(
                     get: { property.clamped(current) },
-                    set: { newValue in onEdit { $0.set(property.rounded(newValue), at: time) } }
+                    set: { newValue in setValue(property.rounded(newValue)) }
                 ),
                 in: property.range
             )
@@ -112,9 +161,7 @@ struct AudioPropertyRow: View {
             Spacer(minLength: 4)
 
             if value.isAnimated {
-                KeyframeNavigator(name: lowercaseName, keyframeTimes: keyframeTimes, time: time, onSeek: onSeek) {
-                    onEdit { $0.toggleKeyframe(at: time) }
-                }
+                KeyframeNavigator(name: lowercaseName, keyframeTimes: value.keyframes.map(\.time), time: time, onSeek: onSeek, onToggle: toggleKeyframe)
                 if let onShowGraph { GraphEditorButton(name: lowercaseName, action: onShowGraph) }
             }
         }

@@ -10,8 +10,8 @@ struct EffectsListPanel: View {
     @Binding var project: EditingProject
     let timelineID: UUID
     let selection: TimelineSelection?
-    /// Where a shape layer started by a double-click begins.
-    let playheadTime: CMTime
+    /// Where a shape layer started by a double-click begins, read then.
+    let playhead: PlayheadState
     /// Selects a shape layer's clip once it is made.
     let onSelect: (TimelineSelection) -> Void
     let state: EffectsPanelState
@@ -59,7 +59,7 @@ struct EffectsListPanel: View {
     /// goes by a drag).
     private func addToSelectedClip(_ kind: EffectKind) {
         let selected = selection?.timelineID == timelineID ? selection?.timelineClipID : nil
-        switch project.addFromLibrary(kind, in: timelineID, selectedClip: selected, playhead: playheadTime) {
+        switch project.addFromLibrary(kind, in: timelineID, selectedClip: selected, playhead: playhead.time) {
         case .effect(let id):
             state.select(effect: id)
         case .shapeLayer(let layerID, let clipID):

@@ -17,6 +17,7 @@ final class ExternalDisplayController {
     func start(
         on screen: NSScreen,
         project: Binding<EditingProject>,
+        projectState: ProjectState?,
         primaryTimelineID: Binding<UUID>,
         primarySelection: Binding<TimelineSelection?>,
         sharedPlayback: PlaybackModel,
@@ -48,7 +49,9 @@ final class ExternalDisplayController {
             analysis: analysis,
             onClose: { [weak self] in self?.stop() }
         )
-        window.contentView = NSHostingView(rootView: content)
+        // Its own window, so the editor's environment doesn't reach it: a
+        // drag held in either window is drawn in both.
+        window.contentView = NSHostingView(rootView: content.environment(projectState))
         window.makeKeyAndOrderFront(nil)
 
         windowController = NSWindowController(window: window)

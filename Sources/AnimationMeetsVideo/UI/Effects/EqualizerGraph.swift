@@ -63,8 +63,13 @@ enum EqualizerSpectrumMode: String, CaseIterable, Identifiable {
 /// With a band picked (clicked, or reached with Tab), the arrow keys move
 /// its frequency and gain and ⌥ with up and down changes its Q; VoiceOver
 /// reaches each band as an element of its own with the same actions.
+///
+/// A drag of a dot is held to one side of the project (`ProjectState.hold`),
+/// with the graph drawn from its own copy of the effect, and written to the
+/// project once, when the drag ends.
 struct EqualizerGraph: View {
-    let effect: Effect
+    /// The effect the project has; `effect` is the drag's while one is held.
+    let committed: Effect
     /// The clip's source time at the playhead, where edits land.
     let time: CMTime
     var isDimmed = false
@@ -79,6 +84,11 @@ struct EqualizerGraph: View {
     typealias PausedReader = (_ pre: Bool, _ effect: Effect, _ time: CMTime) async -> Reading?
 
     @Environment(\.projectHistory) private var history
+    @Environment(ProjectState.self) private var projectState: ProjectState?
+    /// The effect as a held drag has changed it.
+    @State private var heldEffect: Effect?
+    /// The edits of the drag's latest step, which the project gets when it ends.
+    @State private var stepEdits: [(kind: ControlKind, change: (inout EffectControl) -> Void)] = []
     @AppStorage(Preferences.equalizerSpectrum) private var spectrumMode = EqualizerSpectrumMode.post
     @State private var spectrum = SpectrumBallistics()
     @State private var picked: EqualizerBand?
@@ -102,6 +112,21 @@ struct EqualizerGraph: View {
         var mode: EqualizerSpectrumMode
         var effect: Effect
     }
+
+    init(
+        effect: Effect, time: CMTime, isDimmed: Bool = false,
+        onEdit: @escaping (ControlKind, (inout EffectControl) -> Void) -> Void,
+        onExpand: (() -> Void)? = nil, readPaused: PausedReader? = nil
+    ) {
+        committed = effect
+        self.time = time
+        self.isDimmed = isDimmed
+        self.onEdit = onEdit
+        self.onExpand = onExpand
+        self.readPaused = readPaused
+    }
+
+    private var effect: Effect { heldEffect ?? committed }
 
     /// The height it takes in the effects panel.
     static let panelHeight: CGFloat = 150
@@ -235,15 +260,43 @@ struct EqualizerGraph: View {
                     history?.beginGesture()
                     drag = DragState(band: band, start: values(of: band), startPoint: point(of: band, layout: layout))
                     picked = band
+                    // Switching a band on is a change of its own, made before the drag is held.
                     if !isOn(band) { onEdit(band.controlKind) { $0.enabled = true } }
+                    heldEffect = projectState == nil ? nil : effect.changing(band.controlKind) { $0.enabled = true }
+                    projectState?.beginHold()
                 }
                 guard let drag else { return }
-                move(drag, by: value.translation, layout: layout, modifiers: NSEvent.modifierFlags)
+                let modifiers = NSEvent.modifierFlags
+                if let projectState {
+                    stepEdits = []
+                    projectState.hold { move(drag, by: value.translation, layout: layout, modifiers: modifiers) }
+                } else {
+                    move(drag, by: value.translation, layout: layout, modifiers: modifiers)
+                }
             }
             .onEnded { _ in
-                if drag != nil { history?.endGesture() }
+                guard drag != nil else { return }
+                let edits = stepEdits
+                projectState?.endHold()
+                heldEffect = nil
+                stepEdits = []
                 drag = nil
+                // The drag's last step goes to the project once; a drag let
+                // go (see `ProjectState.letGo`) has written it already.
+                for edit in edits { onEdit(edit.kind, edit.change) }
+                // After the last edit has reached the project.
+                Task { @MainActor in history?.endGesture() }
             }
+    }
+
+    /// An edit a drag makes: to the project, and while the drag is held to
+    /// the copy of the effect the graph draws.
+    private func dragEdit(_ kind: ControlKind, _ change: @escaping (inout EffectControl) -> Void) {
+        if heldEffect != nil {
+            heldEffect = heldEffect?.changing(kind, change)
+            stepEdits.append((kind, change))
+        }
+        onEdit(kind, change)
     }
 
     /// Sets the dragged band from where the drag has taken it: frequency
@@ -254,7 +307,8 @@ struct EqualizerGraph: View {
         var dx = translation.width, dy = translation.height
         if modifiers.contains(.option) {
             let q = drag.start[band.qIndex] * pow(2, Double(-dy) / 40)
-            onEdit(band.controlKind) { $0.setComponent(band.qIndex, to: q, at: time) }
+            let time = time
+            dragEdit(band.controlKind) { $0.setComponent(band.qIndex, to: q, at: time) }
             return
         }
         if modifiers.contains(.shift) {
@@ -262,7 +316,8 @@ struct EqualizerGraph: View {
         }
         let frequency = layout.frequency(atX: drag.startPoint.x + dx)
         let gain = layout.gain(atY: drag.startPoint.y + dy)
-        onEdit(band.controlKind) { control in
+        let time = time
+        dragEdit(band.controlKind) { control in
             control.setComponent(EqualizerBand.frequencyIndex, to: frequency, at: time)
             if let index = band.gainIndex { control.setComponent(index, to: gain, at: time) }
         }
@@ -460,5 +515,14 @@ struct EqualizerGraph: View {
                                with: .color(isFocused ? Design.accent : Design.textSecondary), lineWidth: 1.5)
             }
         }
+    }
+}
+
+extension Effect {
+    /// The effect with `change` made to its control of `kind`, if it has one.
+    func changing(_ kind: ControlKind, _ change: (inout EffectControl) -> Void) -> Effect {
+        var copy = self
+        if let index = copy.controls.firstIndex(where: { $0.kind == kind }) { change(&copy.controls[index]) }
+        return copy
     }
 }

@@ -4,7 +4,8 @@ import SwiftUI
 /// The range of the selected Keyframing effect, over the effects panel's
 /// ruler: a band from where it starts writing to where it stops (the whole
 /// clip with no range set), with a handle at each end to drag on the
-/// timeline's frames. A drag is one undo step. Each handle is also an
+/// timeline's frames. A drag is one undo step, held to one side of the
+/// project (`ProjectState.hold`) and written to it when it ends. Each handle is also an
 /// adjustable element, a frame a step, for VoiceOver and the keyboard; the
 /// effect's Range menu does the same from its ⋯ menu.
 struct KeyframingRangeBar: View {
@@ -16,13 +17,17 @@ struct KeyframingRangeBar: View {
     let onSet: (_ start: CMTime?, _ end: CMTime?) -> Void
 
     @Environment(\.projectHistory) private var history
+    @Environment(ProjectState.self) private var projectState: ProjectState?
     @State private var dragging = false
+    /// The end a drag has moved, and where, which the project lags behind
+    /// while the drag is held.
+    @State private var dragged: (isStart: Bool, time: CMTime)?
 
     private static let handleWidth: CGFloat = 7
 
     private var clip: TimelineClip { geometry.clip }
-    private var start: CMTime { range?.start ?? clip.trimStart }
-    private var end: CMTime { range?.end ?? clip.trimEnd }
+    private var start: CMTime { dragged.flatMap { $0.isStart ? $0.time : nil } ?? range?.start ?? clip.trimStart }
+    private var end: CMTime { dragged.flatMap { $0.isStart ? nil : $0.time } ?? range?.end ?? clip.trimEnd }
 
     private func x(ofSource time: CMTime) -> CGFloat {
         CGFloat(geometry.lane(fromSource: time).seconds) * geometry.pixelsPerSecond
@@ -57,12 +62,27 @@ struct KeyframingRangeBar: View {
                         if !dragging {
                             dragging = true
                             history?.beginGesture()
+                            projectState?.beginHold()
                         }
-                        set(isStart, to: geometry.clampedSource(atTimeline: geometry.timelineTime(atX: value.location.x)))
+                        let moved = geometry.clampedSource(atTimeline: geometry.timelineTime(atX: value.location.x))
+                        dragged = (isStart, moved)
+                        if let projectState {
+                            projectState.hold { set(isStart, to: moved) }
+                        } else {
+                            set(isStart, to: moved)
+                        }
                     }
                     .onEnded { _ in
-                        if dragging { history?.endGesture() }
+                        guard dragging else { return }
+                        let last = dragged
+                        projectState?.endHold()
+                        dragged = nil
                         dragging = false
+                        // The last end goes to the project once; a drag let
+                        // go (see `ProjectState.letGo`) has written it already.
+                        if let last { set(last.isStart, to: last.time) }
+                        // After the last edit has reached the project.
+                        Task { @MainActor in history?.endGesture() }
                     }
             )
             .pointerStyle(.frameResize(position: isStart ? .leading : .trailing))
