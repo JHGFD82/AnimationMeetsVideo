@@ -88,23 +88,32 @@ struct KeyframeGraphView: View {
                 } else {
                     GeometryReader { geometry in
                         let layout = drag?.layout ?? layout(c, size: CGSize(width: geometry.size.width - ZoomDial.thickness, height: geometry.size.height - ZoomDial.thickness))
+                        // The dials meet in the bottom right corner, each along
+                        // the axis it zooms, with Fit where they meet.
+                        let reach = { (room: CGFloat) in min(ZoomDial.length, max(room - 8, 40)) }
                         VStack(spacing: 0) {
                             HStack(spacing: 0) {
                                 graph(c, layout: layout)
-                                ZoomDial(axis: .vertical, label: "Value zoom") { factor in
-                                    viewport.zoomValues(by: factor, around: 0.5)
-                                } onReset: {
-                                    viewport.valueZoom = 1
-                                    viewport.valuePan = 0
+                                VStack(spacing: 0) {
+                                    Spacer(minLength: 0)
+                                    ZoomDial(axis: .vertical, label: "Value zoom") { factor in
+                                        viewport.zoomValues(by: factor, around: 0.5)
+                                    } onReset: {
+                                        viewport.valueZoom = 1
+                                        viewport.valuePan = 0
+                                    }
+                                    .frame(height: reach(geometry.size.height - ZoomDial.thickness))
                                 }
                             }
                             HStack(spacing: 0) {
+                                Spacer(minLength: 0)
                                 ZoomDial(axis: .horizontal, label: "Time zoom") { factor in
                                     zoomTimes(by: factor, around: timeAnchor(c, layout: layout), c)
                                 } onReset: {
                                     viewport.times = nil
                                 }
-                                Color.clear.frame(width: ZoomDial.thickness, height: ZoomDial.thickness)
+                                .frame(width: reach(geometry.size.width - ZoomDial.thickness))
+                                fitButton
                             }
                         }
                         .onChange(of: input.scroll) { _, scroll in
@@ -172,6 +181,21 @@ struct KeyframeGraphView: View {
 
     // MARK: - Zooming and scrolling
 
+    /// Fits the keyframes in view, both ways, in the corner between the
+    /// dials.
+    private var fitButton: some View {
+        Button { viewport = KeyframeGraphViewport(hidden: viewport.hidden, separateScales: viewport.separateScales) } label: {
+            Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
+                .font(Design.Typeface.glyphSmall)
+                .foregroundStyle(Design.textSecondary)
+                .frame(width: ZoomDial.thickness, height: ZoomDial.thickness)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Fit the keyframes in view")
+        .accessibilityLabel("Fit")
+    }
+
     /// The time the dial zooms about: the playhead while it's in view, else
     /// the middle.
     private func timeAnchor(_ c: Context, layout: KeyframeGraphLayout) -> Double {
@@ -230,12 +254,6 @@ struct KeyframeGraphView: View {
                     .accessibilityLabel("Separate scales")
             }
             Spacer(minLength: Design.Space.step)
-            Button { viewport = KeyframeGraphViewport(hidden: viewport.hidden, separateScales: viewport.separateScales) } label: {
-                Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
-            }
-            .buttonStyle(.borderless)
-            .help("Fit the keyframes in view")
-            .accessibilityLabel("Fit")
             Text(target.map { "Keyframe \(c.axis.timelineTime(atKey: $0).timecode(frameRate: c.timeline.frameRate))" } ?? "No keyframe selected")
                 .foregroundStyle(Design.textTertiary)
                 .lineLimit(1)

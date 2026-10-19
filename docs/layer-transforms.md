@@ -156,15 +156,18 @@ The graph starts fitted to the keyframes, their curves and their handles
 so nothing moves under the pointer. How it is zoomed and scrolled is the
 panel's `KeyframeGraphViewport`:
 
-- **Zoom dials** under the graph (time) and beside it (values), drawn as
-  the Tape Scrubber's ridged dial (`RidgedDial`, `ZoomDial`). Dragging
+- **Zoom dials** meeting in the graph's bottom right corner, each along
+  the axis it zooms: time along the bottom, values up the right, with the
+  Fit button where they meet. They are drawn as the Tape Scrubber's ridged
+  dial (`RidgedDial`, `ZoomDial`), 200 points long at most, so they never
+  outgrow it and a turn feels the same in any size of panel. Dragging
   along one turns it; rightward or upward zooms in. Every point turned
   changes the zoom by the same ratio (e every 150 points), so a turn
   does as much zoomed far out as far in, and turning back returns
   exactly. Time zooms about the playhead while it is in view, no further
   out than the clip (padded 4% so points at its ends show) and no closer
   than four frames; values zoom from a quarter of the fitted range to a
-  thousandth. Double-click a dial, or press the magnifier button, to fit.
+  thousandth. Double-click a dial to fit its axis, or press Fit for both.
 - **Pinch** zooms time about where the pinch started, or values with
   Option. **Scrolling** moves the view: across in time, inside the clip,
   and up and down in value.

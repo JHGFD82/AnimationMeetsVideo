@@ -17,6 +17,9 @@ struct ZoomDial: View {
     @State private var lastTranslation: CGFloat?
 
     static let thickness: CGFloat = 22
+    /// How long it is at most, shorter than the Tape Scrubber's so it never
+    /// outgrows it, and the same in any window, so a turn feels the same.
+    static let length: CGFloat = 200
 
     /// The zoom ratio for `points` of turn: e (about 2.7 times) every 150.
     static func factor(forTurn points: CGFloat) -> Double {
