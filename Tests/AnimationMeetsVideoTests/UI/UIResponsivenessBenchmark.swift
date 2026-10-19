@@ -302,18 +302,17 @@ struct UIResponsivenessBenchmark {
         return row
     }
 
-    /// Sends a key down through the app's queue, as typing does, so the
-    /// editor's key monitors see it.
+    /// Sends a key down to the app, as typing does, so the editor's key
+    /// monitors see it.
     private func press(_ key: Key, in window: NSWindow) {
         guard let event = NSEvent.keyEvent(
             with: .keyDown, location: .zero, modifierFlags: key.flags, timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: window.windowNumber, context: nil, characters: key.characters,
             charactersIgnoringModifiers: key.characters, isARepeat: false, keyCode: key.code
         ) else { return }
-        NSApp.postEvent(event, atStart: false)
-        if let next = NSApp.nextEvent(matching: .any, until: Date(), inMode: .default, dequeue: true) {
-            NSApp.sendEvent(next)
-        }
+        // Sent, not posted: a posted event left in the queue ends the main
+        // run loop the test's async steps run on, and the process exits.
+        NSApp.sendEvent(event)
     }
 
     // MARK: Projects
