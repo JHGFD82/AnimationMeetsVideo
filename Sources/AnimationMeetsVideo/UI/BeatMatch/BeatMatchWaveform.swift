@@ -58,12 +58,15 @@ struct BeatMatchWaveform: View {
     /// the timeline's distance.
     static let snapDistance: CGFloat = 8
 
+    /// Squeezed by a zoom out past the whole song, over a darker surround,
+    /// so the edge of the song shows; stretched by one in past the closest.
+    private func stretched(size: CGSize) -> some View {
+        content(size: size).rubberBand($session.zoomBand)
+    }
+
     var body: some View {
         GeometryReader { geometry in
-            content(size: geometry.size)
-            // Squeezed by a zoom out past the whole song, over a darker
-            // surround, so the edge of the song shows.
-            .scaleEffect(x: session.zoomSquish, y: 1, anchor: UnitPoint(x: session.squishAnchor, y: 0.5))
+            stretched(size: geometry.size)
             .background(Design.Surface.well.color)
             .clipped()
             .contentShape(Rectangle())

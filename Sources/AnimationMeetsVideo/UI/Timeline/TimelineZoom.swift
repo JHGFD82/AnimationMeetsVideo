@@ -3,32 +3,61 @@ import SwiftUI
 
 // Zooming, scrolling and scrubbing a timeline.
 extension TimelineView {
-    /// Pinch and Option-scroll zoom about the pointer.
-    func zoom(_ laidOut: TimelineViewport, by factor: CGFloat, aboutX x: CGFloat) {
-        // Pinch events arrive faster than layout; build on the newest state.
-        let viewport = viewport(width: laidOut.width)
-        apply(viewport.zoomed(to: viewport.pixelsPerSecond * factor, keeping: viewport.seconds(atX: x), atX: x))
+    /// Pinch and Option-scroll zoom about the pointer. Past the fit or
+    /// the closest zoom the tracks stretch instead (`zoomBand`).
+    func zoom(_ laidOut: TimelineViewport, by factor: CGFloat, aboutX x: CGFloat, pinching: Bool = false) {
+        zoomBand.zoom(by: Double(factor), about: x / max(laidOut.width, 1), pinching: pinching) { factor in
+            // Pinch events arrive faster than layout; build on the newest state.
+            let viewport = viewport(width: laidOut.width)
+            return zoomViewport(viewport, to: viewport.pixelsPerSecond * CGFloat(factor), keeping: viewport.seconds(atX: x), atX: x)
+        }
     }
 
     /// A vertical pinch: the layers of the area under the pointer grow or
-    /// shrink, and no other area's do.
-    func zoomLayerHeight(by factor: CGFloat, at pointer: CGPoint) {
+    /// shrink, and no other area's do. Past the shortest or tallest layers
+    /// the area stretches instead (`layerHeightBand`).
+    func zoomLayerHeight(by factor: CGFloat, at pointer: CGPoint, pinching: Bool = true) {
         guard let kind = areaLayout.shown.first(where: { geometryStore.areas[$0]?.contains(pointer) == true }) else { return }
-        areaLayout.setLayerHeight(kind, areaLayout.layerHeight(kind) * factor)
+        if layerHeightBandKind != kind { layerHeightBand = RubberBandZoom() }
+        layerHeightBandKind = kind
+        let area = geometryStore.areas[kind] ?? .zero
+        let anchor = area.height > 0 ? (pointer.y - area.minY) / area.height : 0.5
+        layerHeightBand.zoom(by: Double(factor), about: anchor, pinching: pinching) { factor in
+            let before = areaLayout.layerHeight(kind)
+            areaLayout.setLayerHeight(kind, before * CGFloat(factor))
+            return Double(areaLayout.layerHeight(kind) / before)
+        }
     }
 
-    /// The zoom buttons, keys and slider zoom about the playhead: it stays
-    /// where it is on screen, or comes to the middle if it was out of view.
+    /// The zoom buttons and keys zoom about the playhead: it stays where
+    /// it is on screen, or comes to the middle if it was out of view. Past
+    /// a limit the tracks stretch and spring back.
+    func zoomAroundPlayhead(by factor: CGFloat) {
+        let viewport = currentViewport
+        let (seconds, anchorX) = playheadAnchor(viewport)
+        zoomBand.zoom(by: Double(factor), about: anchorX / max(viewport.width, 1), pinching: false) { factor in
+            zoomViewport(currentViewport, to: currentViewport.pixelsPerSecond * CGFloat(factor), keeping: seconds, atX: anchorX)
+        }
+    }
+
+    /// The slider zooms about the playhead too, but stops at its ends.
     func zoomAroundPlayhead(to pixelsPerSecond: CGFloat) {
         let viewport = currentViewport
-        let seconds = livePlayheadTime.seconds
-        let x = viewport.x(atSeconds: seconds)
-        let anchorX = (0...viewport.width).contains(x) ? x : viewport.width / 2
+        let (seconds, anchorX) = playheadAnchor(viewport)
         apply(viewport.zoomed(to: pixelsPerSecond, keeping: seconds, atX: anchorX))
     }
 
-    func zoomAroundPlayhead(by factor: CGFloat) {
-        zoomAroundPlayhead(to: currentViewport.pixelsPerSecond * factor)
+    private func playheadAnchor(_ viewport: TimelineViewport) -> (seconds: Double, x: CGFloat) {
+        let seconds = livePlayheadTime.seconds
+        let x = viewport.x(atSeconds: seconds)
+        return (seconds, (0...viewport.width).contains(x) ? x : viewport.width / 2)
+    }
+
+    /// Zooms `viewport` and returns the factor its limits allowed.
+    private func zoomViewport(_ viewport: TimelineViewport, to pixelsPerSecond: CGFloat, keeping seconds: Double, atX x: CGFloat) -> Double {
+        let zoom = viewport.zoomed(to: pixelsPerSecond, keeping: seconds, atX: x)
+        apply(zoom)
+        return Double((zoom.pixelsPerSecond ?? viewport.fitPixelsPerSecond) / viewport.pixelsPerSecond)
     }
 
     func apply(_ zoom: (pixelsPerSecond: CGFloat?, scrollX: CGFloat)) {

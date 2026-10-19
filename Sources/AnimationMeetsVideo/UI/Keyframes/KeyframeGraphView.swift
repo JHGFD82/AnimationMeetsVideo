@@ -38,6 +38,9 @@ struct KeyframeGraphView: View {
     @State private var viewport = KeyframeGraphViewport()
     /// The pinch's magnification when it last changed the zoom.
     @State private var lastMagnification: CGFloat?
+    /// The zooms' edges: past them the plot stretches and springs back.
+    @State private var timeBand = RubberBandZoom()
+    @State private var valueBand = RubberBandZoom()
 
     private enum Target: Equatable {
         case keyframe(CMTime, component: Int)
@@ -94,23 +97,30 @@ struct KeyframeGraphView: View {
                         VStack(spacing: 0) {
                             HStack(spacing: 0) {
                                 graph(c, layout: layout)
+                                    .rubberBand($timeBand, axis: .horizontal)
+                                    .rubberBand($valueBand, axis: .vertical)
+                                    .clipped()
                                 VStack(spacing: 0) {
                                     Spacer(minLength: 0)
-                                    ZoomDial(axis: .vertical, label: "Value zoom") { factor in
-                                        viewport.zoomValues(by: factor, around: 0.5)
+                                    ZoomDial(axis: .vertical, label: "Value zoom") { factor, held in
+                                        zoomValues(by: factor, around: 0.5, pinching: held)
                                     } onReset: {
                                         viewport.valueZoom = 1
                                         viewport.valuePan = 0
+                                    } onRelease: {
+                                        valueBand.endPinch()
                                     }
                                     .frame(height: reach(geometry.size.height - ZoomDial.thickness))
                                 }
                             }
                             HStack(spacing: 0) {
                                 Spacer(minLength: 0)
-                                ZoomDial(axis: .horizontal, label: "Time zoom") { factor in
-                                    zoomTimes(by: factor, around: timeAnchor(c, layout: layout), c)
+                                ZoomDial(axis: .horizontal, label: "Time zoom") { factor, held in
+                                    zoomTimes(by: factor, around: timeAnchor(c, layout: layout), c, layout: layout, pinching: held)
                                 } onReset: {
                                     viewport.times = nil
+                                } onRelease: {
+                                    timeBand.endPinch()
                                 }
                                 .frame(width: reach(geometry.size.width - ZoomDial.thickness))
                                 fitButton
@@ -157,12 +167,16 @@ struct KeyframeGraphView: View {
                 lastMagnification = pinch.magnification
                 if NSEvent.modifierFlags.contains(.option) {
                     let fraction = Double((layout.plot.maxY - pinch.startLocation.y) / layout.plot.height)
-                    viewport.zoomValues(by: factor, around: min(max(fraction, 0), 1))
+                    zoomValues(by: factor, around: min(max(fraction, 0), 1), pinching: true)
                 } else {
-                    zoomTimes(by: factor, around: layout.seconds(atX: pinch.startLocation.x), c)
+                    zoomTimes(by: factor, around: layout.seconds(atX: pinch.startLocation.x), c, layout: layout, pinching: true)
                 }
             }
-            .onEnded { _ in lastMagnification = nil })
+            .onEnded { _ in
+                lastMagnification = nil
+                timeBand.endPinch()
+                valueBand.endPinch()
+            })
         .contextMenu {
             if let target = presetTarget(c) {
                 KeyframeEaseMenuItems { preset in edit { $0.applyEase(preset, at: target) } }
@@ -203,10 +217,30 @@ struct KeyframeGraphView: View {
         return layout.times.contains(playhead) ? playhead : (layout.times.lowerBound + layout.times.upperBound) / 2
     }
 
-    private func zoomTimes(by factor: Double, around anchor: Double, _ c: Context) {
+    /// Zooms time about `anchor`; past the clip or the closest zoom the
+    /// plot stretches instead (`timeBand`).
+    private func zoomTimes(by factor: Double, around anchor: Double, _ c: Context, layout: KeyframeGraphLayout, pinching: Bool) {
         let padded = KeyframeGraphLayout.padded(c.axis.span)
         let frame = c.timeline.frameDuration.seconds
-        viewport.zoomTimes(by: factor, around: anchor, fit: KeyframeGraphLayout.fitTimes(c.value, span: padded, frame: frame), span: padded, frame: frame)
+        let fit = KeyframeGraphLayout.fitTimes(c.value, span: padded, frame: frame)
+        let share = layout.plot.width > 0 ? (layout.x(anchor) - layout.plot.minX) / layout.plot.width : 0.5
+        timeBand.zoom(by: factor, about: share, pinching: pinching) { factor in
+            let before = viewport.shownTimes(fit: fit, span: padded)
+            viewport.zoomTimes(by: factor, around: anchor, fit: fit, span: padded, frame: frame)
+            let after = viewport.shownTimes(fit: fit, span: padded)
+            let length = after.upperBound - after.lowerBound
+            return length > 0 ? (before.upperBound - before.lowerBound) / length : 1
+        }
+    }
+
+    /// Zooms values about the value `fraction` up the plot; past the
+    /// limits the plot stretches instead (`valueBand`).
+    private func zoomValues(by factor: Double, around fraction: Double, pinching: Bool) {
+        valueBand.zoom(by: factor, about: CGFloat(1 - fraction), pinching: pinching) { factor in
+            let before = viewport.valueZoom
+            viewport.zoomValues(by: factor, around: fraction)
+            return viewport.valueZoom / before
+        }
     }
 
     /// Scrolling across moves time; up and down moves values.

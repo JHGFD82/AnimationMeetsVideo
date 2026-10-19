@@ -167,7 +167,9 @@ panel's `KeyframeGraphViewport`:
   exactly. Time zooms about the playhead while it is in view, no further
   out than the clip (padded 4% so points at its ends show) and no closer
   than four frames; values zoom from a quarter of the fitted range to a
-  thousandth. Double-click a dial to fit its axis, or press Fit for both.
+  thousandth. Past either limit the plot stretches and springs back when
+  the dial or pinch lets go (the shared zoom edge, see timeline.md).
+  Double-click a dial to fit its axis, or press Fit for both.
 - **Pinch** zooms time about where the pinch started, or values with
   Option. **Scrolling** moves the view: across in time, inside the clip,
   and up and down in value.

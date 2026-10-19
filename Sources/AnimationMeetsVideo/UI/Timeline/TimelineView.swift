@@ -77,6 +77,12 @@ struct TimelineView: View {
     @State var recordError: String?
 
     @State var zoomedPixelsPerSecond: CGFloat?
+    /// The time zoom's edge: a zoom past the fit or the closest stretches
+    /// the tracks and springs back.
+    @State var zoomBand = RubberBandZoom()
+    /// The same for a vertical pinch's layer height, in the area it pinched.
+    @State var layerHeightBand = RubberBandZoom()
+    @State var layerHeightBandKind: LayerKind?
     @State var scrollX: CGFloat = 0
     @State var trackAreaWidth: CGFloat = 800
     /// Layers showing their volume under their clips.
@@ -442,6 +448,8 @@ struct TimelineView: View {
                             TimelineRuler(duration: timeline.duration, frameRate: timeline.frameRate, viewport: viewport)
                                 .frame(width: viewport.width, height: rulerHeight)
                                 .overlay(alignment: .bottom) { RenderStatusStrip(viewport: viewport) }
+                                .rubberBandStretch(zoomBand)
+                                .clipped()
                                 .contentShape(Rectangle())
                                 .gesture(scrubGesture(in: viewport))
                                 // To VoiceOver the ruler is the playhead:
@@ -465,6 +473,8 @@ struct TimelineView: View {
                                     .padding(.leading, Design.Space.step)
                                     .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
                                 sectionLane(viewport: viewport, targets: snapTargets)
+                                    .rubberBandStretch(zoomBand)
+                                    .clipped()
                             }
                         }
                     }
@@ -541,6 +551,7 @@ struct TimelineView: View {
                         )
                     }
                     .frame(width: viewport.width, height: trackHeight, alignment: .topLeading)
+                    .rubberBandStretch(zoomBand)
                     .clipped()
                     .offset(x: labelColumnWidth)
                     .allowsHitTesting(false)
@@ -551,7 +562,7 @@ struct TimelineView: View {
                             switch axis {
                             case .horizontal:
                                 guard x >= labelColumnWidth else { return }
-                                zoom(viewport, by: factor, aboutX: x - labelColumnWidth)
+                                zoom(viewport, by: factor, aboutX: x - labelColumnWidth, pinching: true)
                             case .vertical:
                                 zoomLayerHeight(by: factor, at: pointer)
                             }
@@ -564,12 +575,18 @@ struct TimelineView: View {
                             }
                             if deltaX != 0 { scrollX = self.viewport(width: viewport.width).scrollX + deltaX }
                             return false
+                        },
+                        onMagnifyEnded: {
+                            zoomBand.endPinch()
+                            layerHeightBand.endPinch()
                         }
                     )
                 )
                 .onChange(of: viewport.width, initial: true) { _, width in trackAreaWidth = width }
             }
         }
+        .rubberBandSettling($zoomBand)
+        .rubberBandSettling($layerHeightBand)
         .padding(.top, topPadding)
         .background(KeyPressMonitor(handler: handleKey))
         // The Timeline menu rests while a song is beat matched.
@@ -644,11 +661,15 @@ struct TimelineView: View {
                 layerTracks(kind, areaHeight: height, viewport: viewport, frameTime: frameTime, snapTargets: snapTargets, structure: structure)
                     .offset(x: -viewport.scrollX)
                     .frame(width: viewport.width, alignment: .topLeading)
+                    .rubberBandStretch(zoomBand)
                     .clipped()
             }
             .overlay(alignment: .topLeading) { layerDropIndicator(kind) }
         }
         .frame(height: height)
+        // A vertical pinch past the layer heights stretches this area.
+        .rubberBandStretch(layerHeightBandKind == kind ? layerHeightBand : RubberBandZoom(), axis: .vertical)
+        .clipped()
         .sunken(.sunken)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
             geometryStore.areas[kind] = frame

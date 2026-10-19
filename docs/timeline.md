@@ -117,6 +117,16 @@ song does not.
   frame is 80 points wide.
 - **Pinch** on a trackpad, or **Option-scroll**, zooms time about the
   pointer: the moment under the pointer stays under it.
+- **Zoom edges.** Every zoom in the editor (the timeline's time and
+  layer height, the keyframe graph's time and values, the Beat Match
+  waveform) has the same edge (`RubberBandZoom`): pushed past its
+  farthest or closest, the view squeezes or stretches toward the pointer
+  instead, against more resistance the further it goes, up to a fifth.
+  A pinch or a dial drag holds the stretch until it lets go; a zoom
+  button, key, menu command or Option-scroll springs back a moment after
+  the last push, so a hard stop still answers. Zooming back takes up the
+  stretch before the view zooms again. With reduced motion it simply
+  stops. The zoom sliders stop at their ends, as sliders do.
 - **Pinch has two axes.** The line between the two fingers as they land
   decides: side by side zooms time, as above; one above the other zooms
   **layer height** in the area under the pointer, and only there. The axis

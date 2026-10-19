@@ -8,9 +8,13 @@ struct ZoomDial: View {
     let axis: Axis
     /// What VoiceOver calls it: "Time zoom".
     let label: String
-    /// How much the shown span shrinks for a turn: above 1 zooms in.
-    let onZoom: (Double) -> Void
+    /// How much the shown span shrinks for a turn (above 1 zooms in), and
+    /// whether a drag is holding the dial, so a zoom past a limit can
+    /// stretch until it lets go.
+    let onZoom: (_ factor: Double, _ held: Bool) -> Void
     let onReset: () -> Void
+    /// A drag let go of the dial.
+    var onRelease: () -> Void = {}
 
     /// How far the rim has turned, for drawing.
     @State private var turn: CGFloat = 0
@@ -39,8 +43,8 @@ struct ZoomDial: View {
             .accessibilityHint("Adjust to zoom in or out")
             .accessibilityAdjustableAction { direction in
                 switch direction {
-                case .increment: onZoom(1.25)
-                case .decrement: onZoom(1 / 1.25)
+                case .increment: onZoom(1.25, false)
+                case .decrement: onZoom(1 / 1.25, false)
                 @unknown default: break
                 }
             }
@@ -56,8 +60,11 @@ struct ZoomDial: View {
                 lastTranslation = along
                 // The ridges follow the pointer.
                 turn += axis == .horizontal ? step : -step
-                if step != 0 { onZoom(Self.factor(forTurn: step)) }
+                if step != 0 { onZoom(Self.factor(forTurn: step), true) }
             }
-            .onEnded { _ in lastTranslation = nil }
+            .onEnded { _ in
+                lastTranslation = nil
+                onRelease()
+            }
     }
 }
