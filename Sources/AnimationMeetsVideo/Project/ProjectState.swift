@@ -12,7 +12,9 @@ import Observation
 ///
 /// Each step is worked out from the project as it was before the drag
 /// (a dragged field sets the value the drag has reached, not a change to
-/// it), so `held` is always the whole drag so far.
+/// it), so `held` is always the whole drag so far. The writes inside one
+/// step follow each other, though: a step that sets two things (a box's
+/// frequencies and its levels) keeps both.
 @MainActor
 @Observable
 final class ProjectState {
@@ -23,6 +25,8 @@ final class ProjectState {
     @ObservationIgnored private(set) var isHolding = false
     /// Inside `hold`: writes go to `held`.
     @ObservationIgnored private var isCapturing = false
+    /// What the step has written so far, which its next write starts from.
+    @ObservationIgnored private var stepResult: EditingProject?
 
     init(_ project: EditingProject) {
         committed = project
@@ -30,10 +34,11 @@ final class ProjectState {
 
     /// The project. Read during a drag, it is the project from before it.
     var value: EditingProject {
-        get { committed }
+        get { isCapturing ? stepResult ?? committed : committed }
         set {
             if isCapturing {
                 held = newValue
+                stepResult = newValue
             } else {
                 committed = newValue
             }
@@ -52,6 +57,7 @@ final class ProjectState {
     func hold(_ step: () -> Void) {
         guard isHolding else { return step() }
         isCapturing = true
+        stepResult = nil
         defer { isCapturing = false }
         step()
     }
