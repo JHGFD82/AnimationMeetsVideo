@@ -224,6 +224,14 @@ extension CompositionExporter {
                                     (copy(CMTimeMultiply(trails.delay, multiplier: Int32(k))), pow(trails.decay, Double(k)))
                                 }
                             }
+                            // Feedback and Slit-Scan draw from earlier
+                            // moments, shared where they ask for the same;
+                            // Flow Smear measures to frames ahead.
+                            let delays = Set(clip.effects.flatMap { $0.momentDelays(frame: timeline.frameDuration) }).sorted()
+                            extras.moments = delays.map { copy($0) }
+                            if let ahead = clip.effects.compactMap(\.framesAhead).max() {
+                                extras.ahead = copy(.zero, inFileBy: CMTimeMultiply(extras.frameDuration, multiplier: Int32(ahead)))
+                            }
                             ownNodes.append(BuildNode(
                                 content: .media(placement, base: base, extras: extras), stack: clipStack, range: .invalid,
                                 owner: owner, layerID: layer.id, inputs: inputs

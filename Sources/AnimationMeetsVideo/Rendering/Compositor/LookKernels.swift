@@ -1,5 +1,6 @@
 import CoreGraphics
 import CoreImage
+import CoreMedia
 import Foundation
 
 /// The Core Image kernels the looks of docs/psychedelic-effects.md draw
@@ -475,6 +476,14 @@ enum LookKernels {
         float4 b = src.sample(src.transform(d - offset));
         return float4(r.r, g.g, b.b, max(g.a, max(r.a, b.a)));
     }
+
+    // White from `inner` out to `outer` around the center: one of
+    // Slit-Scan's rings.
+    extern "C" [[stitchable]] float4 amvRingMask(float2 center, float inner, float outer, coreimage::destination dest) {
+        float r = distance(dest.coord(), center);
+        float v = r >= inner && r < outer ? 1.0 : 0.0;
+        return float4(v, v, v, 1.0);
+    }
     """
 }
 
@@ -637,6 +646,98 @@ enum LookRenderer {
         default:
             return picture
         }
+    }
+
+    /// The looks drawn from the picture at other moments: `earlier` gives
+    /// the picture just before the look from a moment `delay` back, and
+    /// `ahead` from frames ahead in the footage; either is nil where there
+    /// is none. While the viewer plays they draw less: Feedback every other
+    /// copy, Slit-Scan four bands, Flow Smear nothing.
+    static func moments(
+        _ step: LookStep, current: CIImage, earlier: (CMTime) -> CIImage?, ahead: () -> CIImage?,
+        canvas: CGRect, frame: CGRect, scale: CGFloat, space: ProjectColorSpace, frameDuration: CMTime, isPlaying: Bool
+    ) -> CIImage {
+        switch step.kind {
+        case .feedback:
+            let copies = Int(step.value(.copies)), delayFrames = Int(step.value(.feedbackDelay))
+            let grow = step.value(.copyScale) / 100, turn = step.value(.copyRotation) * .pi / 180
+            let hue = step.value(.hueStep) / 360, keep = 1 - step.value(.copyDecay) / 100
+            let center = Self.center(step, frame: frame, scale: scale)
+            var result = current
+            for k in stride(from: copies, through: 1, by: -1) {
+                if isPlaying, copies > 1, k % 2 == 1 { continue }
+                guard let image = earlier(MomentDelays.feedback(copy: k, delayFrames: delayFrames, frame: frameDuration)) else { continue }
+                // The move raised to the k-th power: scaled and turned k
+                // times about the center (clockwise on screen, as Rotation).
+                let move = CGAffineTransform(translationX: -center.x, y: -center.y)
+                    .concatenating(CGAffineTransform(scaleX: pow(grow, Double(k)), y: pow(grow, Double(k))))
+                    .concatenating(CGAffineTransform(rotationAngle: -turn * Double(k)))
+                    .concatenating(CGAffineTransform(translationX: center.x, y: center.y))
+                var copy = image.transformed(by: move).cropped(to: canvas)
+                if hue != 0 { copy = hueTurned(copy, by: hue * Double(k), space: space, over: canvas) }
+                copy = copy.applyingFilter("CIColorMatrix", parameters: [
+                    "inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(pow(keep, Double(k)))),
+                ])
+                result = copy.applyingFilter("CIScreenBlendMode", parameters: [kCIInputBackgroundImageKey: result])
+            }
+            return result.cropped(to: canvas)
+        case .slitScan:
+            let full = Int(step.value(.bands)), spread = step.value(.timeSpread)
+            let bands = isPlaying ? min(4, full) : full
+            let direction = step.choice(.slitDirection, as: SlitDirection.self) ?? .rows
+            let center = Self.center(step, frame: frame, scale: scale)
+            let reach = hypot(frame.width, frame.height) / 2
+            var result = CIImage(color: .clear).cropped(to: canvas)
+            for band in 0..<bands {
+                // With fewer bands, each takes the moment of the band of the
+                // full set it stands for, which the composition has.
+                let index = bands > 1 ? Int((Double(band) * Double(full - 1) / Double(bands - 1)).rounded()) : 0
+                let delay = MomentDelays.slit(band: index, of: full, spread: spread, frame: frameDuration)
+                let image = delay > .zero ? earlier(delay) ?? current : current
+                let lo = CGFloat(band) / CGFloat(bands), hi = CGFloat(band + 1) / CGFloat(bands)
+                let piece: CIImage
+                switch direction {
+                case .rows:
+                    // From the top down; the first and last reach the canvas.
+                    let top = band == 0 ? canvas.maxY : frame.maxY - lo * frame.height
+                    let bottom = band == bands - 1 ? canvas.minY : frame.maxY - hi * frame.height
+                    piece = image.cropped(to: CGRect(x: canvas.minX, y: bottom, width: canvas.width, height: top - bottom))
+                case .columns:
+                    let left = band == 0 ? canvas.minX : frame.minX + lo * frame.width
+                    let right = band == bands - 1 ? canvas.maxX : frame.minX + hi * frame.width
+                    piece = image.cropped(to: CGRect(x: left, y: canvas.minY, width: right - left, height: canvas.height))
+                case .rings:
+                    guard let kernel = LookKernels.compiled["amvRingMask"] as? CIColorKernel,
+                          let mask = kernel.apply(extent: canvas.integral, arguments: [
+                              CIVector(x: center.x, y: center.y), Float(lo * reach), Float(band == bands - 1 ? 1e9 : hi * reach),
+                          ])
+                    else { return current }
+                    piece = image.applyingFilter("CIBlendWithMask", parameters: [
+                        kCIInputBackgroundImageKey: CIImage.empty(), kCIInputMaskImageKey: mask,
+                    ])
+                }
+                result = piece.composited(over: result)
+            }
+            return result.cropped(to: canvas)
+        case .flowSmear:
+            guard !isPlaying, let later = ahead() else { return current }
+            let bounds = frame.integral
+            let amount = step.value(.smear) / 100
+            guard let field = BlockMatchFlow.field(from: current, to: later, progress: 0, in: bounds, reach: 1.0 / 6),
+                  let smeared = MorphFlow.warped(current, along: field, by: -amount, in: bounds)
+            else { return current }
+            return smeared.cropped(to: bounds).composited(over: current)
+        default:
+            return current
+        }
+    }
+
+    /// `image` with its hues turned by `turn` of a full turn.
+    private static func hueTurned(_ image: CIImage, by turn: Double, space: ProjectColorSpace, over region: CGRect) -> CIImage {
+        guard let kernel = LookKernels.compiled["amvHueCycle"] as? CIColorKernel else { return image }
+        return kernel.apply(extent: region.integral, arguments: [
+            image.cropped(to: region), Float(space.gradingSpaceIndex), Float(turn - floor(turn)), Float(0), Float(0), Float(1),
+        ]) ?? image
     }
 
     /// Displace: `moved` taken from along `map`'s red and green.

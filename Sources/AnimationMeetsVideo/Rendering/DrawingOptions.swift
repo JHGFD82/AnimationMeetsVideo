@@ -24,6 +24,9 @@ final class DrawingOptions: @unchecked Sendable {
 
     var motionBlurInPreview: Bool { state.withLock { $0.motionBlurInPreview } }
 
+    /// Whether the viewer is playing, so the costliest looks draw less.
+    var isPlaying: Bool { state.withLock { $0.isPlaying } }
+
     /// How many of the `wanted` moments across the shutter to draw: all of
     /// them for a paused frame, two while playing, none (one plain frame) at
     /// quarter size or when motion blur is off in the viewer.

@@ -1,7 +1,7 @@
 # Noise, Color and Distortion effects
 
-Status: **steps 1 to 3 of 5 built**, the Color, Noise and Distortion
-categories (see [Building it](#building-it)). 25 effect kinds in three new
+Status: **steps 1 to 4 of 5 built**: every kind (see
+[Building it](#building-it)); the recipes and the flashing notes remain. 25 effect kinds in three new
 categories of the effects panel, chosen so that stacking them gives
 psychedelic pictures from footage or from nothing at all. Everything here
 fits the stack rules in [effects.md](effects.md) (gravity, the list is the
@@ -327,7 +327,37 @@ In order, each step usable on its own:
    - **Chromatic Aberration** reads red and blue its Amount (a percent of
      the width) either side of green, radially from Center (the full
      amount half the frame's width out) or along Angle, in one pass.
-4. **Several moments**: Flow Smear, Slit-Scan and Feedback, drawing the
-   stack above them at other moments.
+4. **Several moments** (done): Flow Smear, Slit-Scan and Feedback, in the
+   Distortion category. They draw the steps above them again at other
+   moments, as Trails draws the finished clip: the composition gives the
+   clip's footage again on tracks of its own, `delay` later for each
+   earlier moment the effects ask for (`Effect.momentDelays`, on the
+   timeline's frames by `MomentDelays`, shared between effects asking for
+   the same, at the most any keyframe asks) and some frames ahead in the
+   file for Flow Smear (`MediaDraw.moments`, `.ahead`). The compositor
+   gives `runStack` a way to draw the steps above a look from one of those
+   copies, resolved at that moment (`stepsAbove`); a shape clip's are its
+   shapes then and a still's its picture, while a nested timeline has no
+   earlier moments, and a several-moment look drawn inside another's
+   copies draws only the present. A stretch holding one is always
+   rendered, and its picture changes every frame. Where it differs from
+   the table:
+   - **Feedback** screens each copy over the picture (`CIScreenBlendMode`)
+     rather than adding it, so the tunnel glows without burning out to
+     white: copy *k* is the picture *k*·Delay frames back, scaled by Scale
+     and turned by Rotation *k* times about Center (clockwise, as
+     Rotation), its hues turned by Hue Shift *k* times, and faded to
+     (1 − Decay)^*k*. Decay is 30% by default.
+   - **Slit-Scan**'s bands run from now (the top, the left or the middle)
+     to Time Spread ago, each on a frame; rings are masked by a small
+     kernel, out to half the frame's diagonal, and the last band reaches
+     the canvas's edges.
+   - **Flow Smear** measures the motion with `BlockMatchFlow` rather than
+     Vision, so it runs anywhere and is the same every time, and pulls the
+     picture back along it by Amount with the `MorphFlow` warp, within the
+     frame.
+   - **While playing** the viewer draws Feedback's even copies only,
+     Slit-Scan in four bands (each the moment of the band it stands for),
+     and no Flow Smear; renders and export draw everything.
 5. **Recipes and safety**: the presets above, and the flashing notes.
 

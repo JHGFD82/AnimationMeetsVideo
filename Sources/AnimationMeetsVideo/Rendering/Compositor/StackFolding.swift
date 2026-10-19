@@ -230,7 +230,8 @@ enum StackFolding {
                 continue
             case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges,
                  .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch,
-                 .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration:
+                 .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration,
+                 .flowSmear, .slitScan, .feedback:
                 guard let look = LookStep(effect, at: time) else { continue }
                 flush()
                 steps.append(.look(look))

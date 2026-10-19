@@ -411,11 +411,59 @@ struct Drawing {
             }
         }
 
+        // The steps above a look drawn from other moments (Feedback,
+        // Slit-Scan, Flow Smear), from a copy of the footage at `moment`:
+        // the stack resolved then, up to that look. A shape clip's are its
+        // shapes then; a still's, its picture. Nested timelines have none.
+        func stepsAbove(_ effectID: UUID, at moment: CMTime, copy: TrackCopy?) -> CIImage? {
+            var image: CIImage
+            switch clip.content {
+            case .graphic:
+                image = .empty()
+            case .media(let media):
+                guard media.still != nil || copy != nil, let raw = sourcePicture(of: media, clip: clip, at: moment, trail: copy) else { return nil }
+                image = raw.transformed(
+                    by: Self.flip(height: raw.extent.height).concatenating(media.base).concatenating(start).concatenating(toOutput)
+                )
+            case .group, .adjustment:
+                return nil
+            }
+            let above = clip.stack.resolve(atRoot: moment).steps.prefix { step in
+                if case .look(let look) = step, look.effectID == effectID { return false }
+                return true
+            }
+            var fade = 1.0
+            var drawn = runStack(
+                Array(above), on: image, opacity: &fade, backdrop: output, clip: clip, frame: frameSize,
+                start: start, inOutput: inOutput, placed: placed
+            )
+            if fade != 1 {
+                drawn = drawn.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(fade))])
+            }
+            return drawn
+        }
+        // The copy of the footage `delay` earlier, within half a frame.
+        func momentCopy(_ delay: CMTime) -> TrackCopy? {
+            guard case .media(let media) = clip.content, media.still == nil else { return nil }
+            let tolerance = max(clip.stack.frameDuration.seconds / 2, 0.001)
+            let nearest = media.moments.min { abs($0.delay.seconds - delay.seconds) < abs($1.delay.seconds - delay.seconds) }
+            return nearest.flatMap { abs($0.delay.seconds - delay.seconds) <= tolerance ? $0 : nil }
+        }
+
         // The stack. Opacity waits until something needs the picture's own
         // alpha, so consecutive moves stay one transform.
         picture = runStack(
             steps, on: picture, opacity: &opacity, backdrop: output, clip: clip, frame: frameSize,
-            start: start, inOutput: inOutput, placed: placed
+            start: start, inOutput: inOutput, placed: placed,
+            earlier: { delay, effectID in
+                let copy = momentCopy(delay)
+                if case .media(let media) = clip.content, media.still == nil, copy == nil { return nil }
+                return stepsAbove(effectID, at: CMTimeSubtract(time, delay), copy: copy)
+            },
+            ahead: { effectID in
+                guard case .media(let media) = clip.content, let copy = media.ahead else { return nil }
+                return stepsAbove(effectID, at: time, copy: copy)
+            }
         )
         func settleOpacity() {
             guard opacity != 1 else { return }
@@ -594,7 +642,9 @@ struct Drawing {
         frame frameSize: CGSize,
         start: CGAffineTransform,
         inOutput: (CGAffineTransform) -> CGAffineTransform,
-        placed: (CGAffineTransform) -> CGAffineTransform
+        placed: (CGAffineTransform) -> CGAffineTransform,
+        earlier: ((CMTime, UUID) -> CIImage?)? = nil,
+        ahead: ((UUID) -> CIImage?)? = nil
     ) -> CIImage {
         var picture = initial
         var kept: [UUID: CIImage] = [:]
@@ -669,6 +719,19 @@ struct Drawing {
                     edges = []
                 } else {
                     drawShapes()
+                }
+                if look.kind == .feedback || look.kind == .slitScan || look.kind == .flowSmear {
+                    // Drawn from the steps above at other moments; those
+                    // drawn again from a copy can't reach further back.
+                    picture = LookRenderer.moments(
+                        look, current: picture,
+                        earlier: { delay in earlier?(delay, look.effectID) },
+                        ahead: { ahead?(look.effectID) },
+                        canvas: canvas, frame: frame, scale: scale.width, space: clip.stack.colorSpace,
+                        frameDuration: clip.stack.frameDuration > .zero ? clip.stack.frameDuration : CMTime(value: 1, timescale: 24),
+                        isPlaying: options?.isPlaying ?? false
+                    )
+                    continue
                 }
                 if look.kind == .displace {
                     // Against an earlier step, that picture moves by this

@@ -162,6 +162,10 @@ struct PlacementExtras {
     var opticalFlow = false
     var echoes: [(placement: Placement, strength: Double)] = []
     var trails: [(placement: Placement, strength: Double)] = []
+    /// For Feedback and Slit-Scan: the footage at earlier moments.
+    var moments: [Placement] = []
+    /// For Flow Smear: the footage some frames ahead in the file.
+    var ahead: Placement?
     var frameDuration = CMTime.zero
     var alignmentOffset = CMTime.zero
 }
@@ -260,6 +264,8 @@ final class BuildNode {
                     opticalFlow: extras.opticalFlow,
                     echoes: extras.echoes.compactMap { copy($0.placement, $0.strength) },
                     trails: extras.trails.compactMap { copy($0.placement, $0.strength) },
+                    moments: extras.moments.compactMap { copy($0, 1) },
+                    ahead: extras.ahead.flatMap { copy($0, 1) },
                     opaqueSize: placement.info.opaqueSize
                 )),
                 stack: stack, range: range, owner: owner, layerID: layerID, inputs: frozenInputs()

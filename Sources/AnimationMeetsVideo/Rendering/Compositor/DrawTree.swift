@@ -104,6 +104,12 @@ struct MediaDraw: @unchecked Sendable {
     /// For Trails: the footage as it was at earlier moments, nearest first,
     /// for copies of the finished clip. A still's copies have no track.
     var trails: [TrackCopy] = []
+    /// For Feedback and Slit-Scan: the footage at earlier moments, each by
+    /// its delay, for the steps above them drawn then.
+    var moments: [TrackCopy] = []
+    /// For Flow Smear: the footage some frames ahead, to measure the
+    /// motion to.
+    var ahead: TrackCopy?
     /// The picture of a still, drawn in place of a track's frames at every
     /// moment (see docs/graphic-layers.md).
     var still: StillPicture?
@@ -113,7 +119,8 @@ struct MediaDraw: @unchecked Sendable {
 
     /// Every track the picture may be read from.
     var trackIDs: [CMPersistentTrackID] {
-        ([trackID] + [nextFrame].compactMap { $0 }.map(\.trackID) + echoes.map(\.trackID) + trails.map(\.trackID))
+        ([trackID] + [nextFrame, ahead].compactMap { $0 }.map(\.trackID) + echoes.map(\.trackID) + trails.map(\.trackID)
+            + moments.map(\.trackID))
             .filter { $0 != kCMPersistentTrackID_Invalid }
     }
 
@@ -124,6 +131,8 @@ struct MediaDraw: @unchecked Sendable {
         copy.nextFrame = nextFrame.flatMap { covers($0) ? $0 : nil }
         copy.echoes = echoes.filter(covers)
         copy.trails = trails.filter(covers)
+        copy.moments = moments.filter(covers)
+        copy.ahead = ahead.flatMap { covers($0) ? $0 : nil }
         return copy
     }
 }

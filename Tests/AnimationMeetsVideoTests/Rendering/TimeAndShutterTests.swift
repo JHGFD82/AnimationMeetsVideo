@@ -305,6 +305,22 @@ private let frame = CMTime(value: 1, timescale: 24)
         #expect(level > 20)
     }
 
+    @Test func feedbackAddsATrackForEachEarlierMoment() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let placed = try await movie(in: &fixture, segments: [(100, 48)])
+        var feedback = Effect(kind: .feedback)
+        if let index = feedback.controls.firstIndex(where: { $0.kind == .copies }) {
+            feedback.controls[index].number = AnimatedValue(ComponentValue(values: [3]))
+        }
+        fixture.project.editClip(placed.clipID, in: fixture.timelineID) { $0.effects = [feedback] }
+        let composed = try await fixture.build()
+        // The clip's own and three copies, a frame, two and three earlier.
+        let trackCount = composed.composition.tracks(withMediaType: .video).count
+        #expect(trackCount == 4)
+        #expect(composed.segments.contains { $0.needsRender })
+    }
+
     @Test func motionBlurMakesAStretchRenderAndChangesItsKey() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }

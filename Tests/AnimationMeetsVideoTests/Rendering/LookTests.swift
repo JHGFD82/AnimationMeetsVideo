@@ -24,7 +24,7 @@ private enum Tones {
 }
 
 /// A look with some of its controls set.
-private func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices: [ControlKind: String] = [:]) -> Effect {
+func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices: [ControlKind: String] = [:]) -> Effect {
     var effect = Effect(kind: kind)
     for index in effect.controls.indices {
         if let values = settings[effect.controls[index].kind] {

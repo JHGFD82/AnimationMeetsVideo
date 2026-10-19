@@ -829,6 +829,7 @@ extension ProjectFile {
             case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges: break
             case .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch: break
             case .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration: break
+            case .flowSmear, .slitScan, .feedback: break
             case .displace:
                 fields.append(.optional("against", .uuid))
                 fields.append(.optional("input", .object(object([

@@ -62,7 +62,8 @@ final class AudioEffectUnit: SoundEffectProcessor {
              .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot,
              .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges,
              .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch,
-             .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration: return nil
+             .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration,
+             .flowSmear, .slitScan, .feedback: return nil
         }
         guard format.mFormatID == kAudioFormatLinearPCM, format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
               format.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0, format.mBitsPerChannel == 32,
@@ -192,7 +193,8 @@ final class AudioEffectUnit: SoundEffectProcessor {
              .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot,
              .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges,
              .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch,
-             .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration:
+             .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration,
+             .flowSmear, .slitScan, .feedback:
             break
         }
     }

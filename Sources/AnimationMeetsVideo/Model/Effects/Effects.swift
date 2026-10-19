@@ -134,6 +134,8 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     case grain, staticNoise, fractalNoise, cells, dither, interference, blockGlitch
     /// Distortion looks: they move the picture's pixels.
     case displace, liquid, twirl, wave, kaleidoscope, mirrorTile, chromaticAberration
+    /// Distortions drawn from the picture at several moments.
+    case flowSmear, slitScan, feedback
     /// Shapes draw over the picture handed down to them (see
     /// docs/graphic-layers.md, "Shapes").
     case rectangle
@@ -188,6 +190,9 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .kaleidoscope: "Kaleidoscope"
         case .mirrorTile: "Mirror Tile"
         case .chromaticAberration: "Chromatic Aberration"
+        case .flowSmear: "Flow Smear"
+        case .slitScan: "Slit-Scan"
+        case .feedback: "Feedback"
         case .rectangle: "Rectangle"
         case .ellipse: "Ellipse"
         case .polygon: "Polygon"
@@ -216,6 +221,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges: .recolor
         case .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch: .noise
         case .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration: .distortion
+        case .flowSmear, .slitScan, .feedback: .distortion
         case .equalizer, .compressor, .limiter, .voiceIsolation: .sound
         case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: .keyframing
         }
@@ -271,6 +277,9 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .kaleidoscope: "seal"
         case .mirrorTile: "square.grid.2x2"
         case .chromaticAberration: "camera.filters"
+        case .flowSmear: "wind"
+        case .slitScan: "line.3.horizontal"
+        case .feedback: "circle.circle"
         case .rectangle: "rectangle"
         case .ellipse: "circle"
         case .polygon: "hexagon"
@@ -312,6 +321,9 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .grain, .staticNoise, .fractalNoise, .cells, .interference, .blockGlitch: false
         // Sizes and offsets are in the timeline's pixels.
         case .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration: false
+        case .slitScan, .feedback: false
+        // Its motion is measured between neighboring pixels.
+        case .flowSmear: true
         // Its edges are found between neighboring pixels, and a dither's
         // pattern is a pixel's.
         case .neonEdges, .dither: true
@@ -380,6 +392,9 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .kaleidoscope: [.segments, .distortCenter, .distortAngle, .spinSpeed]
         case .mirrorTile: [.tilePattern, .tileSize, .distortCenter, .distortAngle]
         case .chromaticAberration: [.aberration, .aberrationMode, .distortCenter, .distortAngle]
+        case .flowSmear: [.smear, .framesAhead]
+        case .slitScan: [.slitDirection, .bands, .timeSpread, .distortCenter]
+        case .feedback: [.copies, .feedbackDelay, .copyScale, .copyRotation, .hueStep, .copyDecay, .distortCenter]
         }
     }
 }
@@ -423,6 +438,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case displacement, mapCenter, warps, twirlShape, distortCenter, distortRadius, twirlAmount
     case waveDirection, wavelength, waveHeight, waveSpeed, segments, distortAngle, spinSpeed
     case tilePattern, tileSize, aberration, aberrationMode
+    case smear, framesAhead, slitDirection, bands, timeSpread
+    case copies, feedbackDelay, copyScale, copyRotation, hueStep, copyDecay
 
     var id: Self { self }
 
@@ -562,6 +579,17 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .tileSize: "Tile Size"
         case .aberration: "Amount"
         case .aberrationMode: "Mode"
+        case .smear: "Amount"
+        case .framesAhead: "Frames Ahead"
+        case .slitDirection: "Direction"
+        case .bands: "Bands"
+        case .timeSpread: "Time Spread"
+        case .copies: "Copies"
+        case .feedbackDelay: "Delay"
+        case .copyScale: "Scale"
+        case .copyRotation: "Rotation"
+        case .hueStep: "Hue Shift"
+        case .copyDecay: "Decay"
         }
     }
 
@@ -613,6 +641,9 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .segments, .distortAngle, .spinSpeed: .kaleidoscope
         case .tilePattern, .tileSize: .mirrorTile
         case .aberration, .aberrationMode: .chromaticAberration
+        case .smear, .framesAhead: .flowSmear
+        case .slitDirection, .bands, .timeSpread: .slitScan
+        case .copies, .feedbackDelay, .copyScale, .copyRotation, .hueStep, .copyDecay: .feedback
         }
     }
 
@@ -663,6 +694,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .waveDirection: WaveDirection.allCases.map { ($0.rawValue, $0.name) }
         case .tilePattern: TilePattern.allCases.map { ($0.rawValue, $0.name) }
         case .aberrationMode: AberrationMode.allCases.map { ($0.rawValue, $0.name) }
+        case .slitDirection: SlitDirection.allCases.map { ($0.rawValue, $0.name) }
         default: []
         }
     }
@@ -697,6 +729,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .waveDirection: WaveDirection.horizontal.rawValue
         case .tilePattern: TilePattern.fourfold.rawValue
         case .aberrationMode: AberrationMode.radial.rawValue
+        case .slitDirection: SlitDirection.rows.rawValue
         default: nil
         }
     }
@@ -842,6 +875,16 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .distortAngle, .spinSpeed: [0]
         case .tileSize: [480]
         case .aberration: [1]
+        case .slitDirection: []
+        case .smear: [100]
+        case .framesAhead, .feedbackDelay: [1]
+        case .bands: [16]
+        case .timeSpread: [0.5]
+        case .copies: [8]
+        case .copyScale: [103]
+        case .copyRotation: [4]
+        case .hueStep: [15]
+        case .copyDecay: [30]
         }
     }
 
@@ -892,6 +935,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .displacement, .aberration, .twirlAmount: "%"
         case .distortCenter, .distortRadius, .wavelength, .waveHeight, .tileSize: " px"
         case .waveSpeed, .spinSpeed: " /s"
+        case .slitDirection, .bands, .copies: ""
+        case .smear, .copyScale, .copyDecay: "%"
+        case .framesAhead, .feedbackDelay: " frames"
+        case .timeSpread: " s"
+        case .copyRotation, .hueStep: "°"
         }
     }
 
@@ -1003,6 +1051,16 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .segments: 2...64
         case .distortAngle: nil
         case .aberration: -20...20
+        case .slitDirection: nil
+        case .smear: 0...400
+        case .framesAhead: 1...8
+        case .bands: 2...64
+        case .timeSpread: 0...10
+        case .copies: 1...32
+        case .feedbackDelay: 1...30
+        case .copyScale: 10...1000
+        case .copyRotation, .hueStep: -360...360
+        case .copyDecay: 0...100
         }
     }
 
@@ -1011,6 +1069,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .points, .everyBeats, .beatOffset, .octaves, .seed, .smoothing, .hold, .repeats, .folds, .levels: true
         case .bars, .noiseOctaves, .ditherLevels, .warps, .segments: true
+        case .framesAhead, .bands, .copies, .feedbackDelay: true
         default: false
         }
     }
@@ -1299,8 +1358,12 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// at every frame then.
     var changesOnItsOwn: Bool {
         guard enabled, !isNoOp else { return false }
-        // Grain, snow and glitches are new every frame.
-        if kind == .grain || kind == .staticNoise || kind == .blockGlitch { return true }
+        // Grain, snow and glitches are new every frame, and so is a picture
+        // drawn from other moments.
+        switch kind {
+        case .grain, .staticNoise, .blockGlitch, .flowSmear, .slitScan, .feedback: return true
+        default: break
+        }
         let moving: ControlKind? = switch kind {
         case .hueCycle: .hueSpeed
         case .cosinePalette: .cycleSpeed
@@ -1313,6 +1376,36 @@ struct Effect: Identifiable, Equatable, Sendable {
         }
         guard let moving, let control = control(moving), control.enabled else { return false }
         return control.number.isAnimated ? control.number.keyframes.contains { $0.value.values.first != 0 } : control.number.value.values.first != 0
+    }
+
+    /// The earlier moments of the clip's footage the effect draws from, as
+    /// how long before the moment drawn, for the composition to have
+    /// frames there (`MomentDelays`). Taken at the most any keyframe asks.
+    func momentDelays(frame: CMTime) -> [CMTime] {
+        guard enabled else { return [] }
+        func most(_ kind: ControlKind) -> Double {
+            guard let control = control(kind), control.enabled else { return kind.defaultValues.first ?? 0 }
+            let values = control.number.isAnimated ? control.number.keyframes.map(\.value) : [control.number.value]
+            return values.compactMap { $0.values.first.map { kind.clamped($0) } }.max() ?? 0
+        }
+        switch kind {
+        case .feedback:
+            let delay = Int(most(.feedbackDelay))
+            return (1...max(Int(most(.copies)), 1)).map { MomentDelays.feedback(copy: $0, delayFrames: delay, frame: frame) }
+        case .slitScan:
+            let bands = max(Int(most(.bands)), 2), spread = most(.timeSpread)
+            return Array(Set((1..<bands).map { MomentDelays.slit(band: $0, of: bands, spread: spread, frame: frame) }))
+                .filter { $0 > .zero }.sorted()
+        default:
+            return []
+        }
+    }
+
+    /// For Flow Smear: how many frames ahead in the footage it measures the
+    /// motion to.
+    var framesAhead: Int? {
+        guard enabled, kind == .flowSmear else { return nil }
+        return Int(control(.framesAhead)?.values(at: .zero).first ?? 1)
     }
 
     /// The span of time in which any enabled control is between keyframes.

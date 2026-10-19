@@ -81,7 +81,10 @@ extension CompositionExporter {
             // draw a clip more than once.
             let drawsTwice = clips.contains { clip in
                 clip.everyClip.contains { clip in
-                    if case .media(let media) = clip.content, media.nextFrame != nil || !media.echoes.isEmpty || !media.trails.isEmpty { return true }
+                    if case .media(let media) = clip.content,
+                       media.nextFrame != nil || !media.echoes.isEmpty || !media.trails.isEmpty || !media.moments.isEmpty || media.ahead != nil {
+                        return true
+                    }
                     return clip.stack.shutter.motionBlur != nil
                 }
             }
