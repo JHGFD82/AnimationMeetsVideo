@@ -79,6 +79,11 @@ enum ResolvedStep: Equatable, Sendable {
 /// looks that move on their own.
 struct LookStep: Equatable, Sendable {
     var kind: EffectKind
+    /// The effect, whose input a Displace takes its map from.
+    var effectID: UUID
+    /// Displace: the effect whose input picture it moves, the picture
+    /// reaching it being the map; nil when its input is the map.
+    var against: UUID?
     var numbers: [ControlKind: [Double]] = [:]
     var choices: [ControlKind: String] = [:]
     /// The clip's source time in seconds, for a look that moves by itself;
@@ -91,6 +96,8 @@ struct LookStep: Equatable, Sendable {
     /// nothing (mixed in at 0%).
     init?(_ effect: Effect, at time: CMTime) {
         kind = effect.kind
+        effectID = effect.id
+        against = effect.kind.readsAgainst ? effect.against : nil
         seconds = effect.changesOnItsOwn ? time.seconds : 0
         amount = 1
         for control in effect.controls where control.enabled {
@@ -111,7 +118,7 @@ struct LookStep: Equatable, Sendable {
         let numbers = self.numbers.sorted { $0.key.rawValue < $1.key.rawValue }
             .map { "\($0.key.rawValue)=" + $0.value.map(format).joined(separator: ",") }
         let choices = self.choices.sorted { $0.key.rawValue < $1.key.rawValue }.map { "\($0.key.rawValue)=\($0.value)" }
-        return ([kind.rawValue, format(seconds), format(amount)] + numbers + choices).joined(separator: " ")
+        return ([kind.rawValue, format(seconds), format(amount), against?.uuidString ?? "-"] + numbers + choices).joined(separator: " ")
     }
 
     /// A control's numbers, or its kind's defaults when it is off or gone.
@@ -167,7 +174,7 @@ enum StackFolding {
                 colors = []
             }
         }
-        let targets = Set(effects.compactMap { $0.kind == .blending && $0.enabled ? $0.against : nil })
+        let targets = Set(effects.compactMap { $0.kind.readsAgainst && $0.enabled ? $0.against : nil })
 
         for effect in effects {
             if targets.contains(effect.id) {
@@ -222,7 +229,8 @@ enum StackFolding {
                 // are on the controls below.
                 continue
             case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges,
-                 .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch:
+                 .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch,
+                 .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration:
                 guard let look = LookStep(effect, at: time) else { continue }
                 flush()
                 steps.append(.look(look))

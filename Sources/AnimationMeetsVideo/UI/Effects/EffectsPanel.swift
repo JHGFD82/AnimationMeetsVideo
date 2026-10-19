@@ -432,7 +432,7 @@ struct EffectsPanel: View {
             ForEach(effect.controls) { control in
                 controlRow(control, of: effect, c, effectDimmed: dimmed)
             }
-            if effect.kind == .blending {
+            if effect.kind.readsAgainst {
                 againstRow(effect, c, effectDimmed: dimmed)
             }
             if effect.kind.takesInput {
@@ -447,7 +447,10 @@ struct EffectsPanel: View {
         let clip = c.clip
         let index = clip.effects.index(of: effect.id) ?? 0
         let above = clip.effects.effectsAbove(index)
-        var options: [(id: String, name: String)] = [("backdrop", "Backdrop")]
+        // Blending reads the backdrop by default; Displace its input, as
+        // the map.
+        let displaces = effect.kind == .displace
+        var options: [(id: String, name: String)] = [("backdrop", displaces ? "Its Input" : "Backdrop")]
         options += above.map { ($0.id.uuidString, "Before \($0.displayName)") }
         // An effect that is gone, or has been moved below the step, can't be
         // read; the step does nothing until it points somewhere else.
@@ -470,7 +473,9 @@ struct EffectsPanel: View {
             ),
             lane: emptyLane(c)
         )
-        .help("What the clip is blended with: the backdrop, or its own picture before an earlier effect")
+        .help(displaces
+              ? "What is moved: its input, by the picture reaching this step; or the clip's own picture before an earlier effect, by the picture reaching it"
+              : "What the clip is blended with: the backdrop, or its own picture before an earlier effect")
     }
 
     @ViewBuilder

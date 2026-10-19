@@ -62,7 +62,17 @@ extension EditingProject {
         if passesThrough(clip), effect.kind != .transform {
             return EffectNote(text: "Pass Through can't apply this: it needs one combined picture.", dims: true)
         }
-        if effect.kind.takesInput {
+        if effect.kind == .displace {
+            if effect.against != nil {
+                if !clip.effects.againstIsReachable(at: index) {
+                    return EffectNote(text: "The effect whose picture it moves is gone or below this step, so it does nothing until pointed elsewhere.", dims: true)
+                }
+            } else if effect.input == nil {
+                return EffectNote(text: "Drop a picture onto it for its map, or set Against to an earlier step to move that picture by the one reaching this step.", dims: true)
+            } else if let input = effect.input, isMissing(input) {
+                return EffectNote(text: "The picture it takes is missing, so the clip is left as it is until it is found or replaced.", dims: true)
+            }
+        } else if effect.kind.takesInput {
             guard let input = effect.input else {
                 return EffectNote(text: "Drop a picture from the browser onto this effect to cut the clip with.", dims: true)
             }
@@ -95,7 +105,7 @@ extension EditingProject {
     static func strokeHasShapes(_ effects: [Effect], at index: Int) -> Bool {
         for effect in effects.prefix(index).reversed() where effect.enabled {
             if effect.kind.drawsShape { return true }
-            if effect.kind == .matte || effect.kind == .blending { return false }
+            if effect.kind == .matte || effect.kind == .blending || effect.kind.category == .distortion { return false }
         }
         return false
     }

@@ -1,7 +1,7 @@
 # Noise, Color and Distortion effects
 
-Status: **steps 1 and 2 of 5 built**, the Color and Noise categories (see
-[Building it](#building-it)). 25 effect kinds in three new
+Status: **steps 1 to 3 of 5 built**, the Color, Noise and Distortion
+categories (see [Building it](#building-it)). 25 effect kinds in three new
 categories of the effects panel, chosen so that stacking them gives
 psychedelic pictures from footage or from nothing at all. Everything here
 fits the stack rules in [effects.md](effects.md) (gravity, the list is the
@@ -288,9 +288,45 @@ In order, each step usable on its own:
      generator is one fixed pattern that can't take a seed, so a new
      picture each frame would mean moving it by an offset, and the
      generators work on encoded values.
-3. **Distortion**: Displace (an input, or against an earlier step),
-   Liquid, Twirl, Wave, Kaleidoscope, Mirror Tile and Chromatic
-   Aberration.
+3. **Distortion** (done), in `EffectCategory.distortion`. Liquid, Twirl,
+   Wave, Kaleidoscope and Mirror Tile are warp kernels (`CIWarpKernel`:
+   only where to read from, so one read a pixel however they stack with
+   moves); Displace and Chromatic Aberration are general kernels. Centers
+   are offsets from the middle of the frame in timeline pixels, down
+   positive, as Position is; sizes are timeline pixels or a percent of
+   the frame's width. Each reads what reached it over transparency, so
+   pulling from past the clip's picture shows nothing there. They settle
+   the opacity and draw pending shapes first, and a Stroke after one has
+   nothing to follow. Where it differs from the table:
+   - **Amount** is each kind's strength (Displace and Liquid as a percent
+     of the width, Twirl's turn, Chromatic Aberration's spread), not a mix
+     with the original, which for a distortion would only double the
+     picture.
+   - **Displace** takes an input as its map (red across, green down, from
+     middle gray or from black: Still At), or reads **Against** like
+     Blending (`EffectKind.readsAgainst`): set against an earlier step, the
+     picture before that step is moved by the picture reaching this one.
+     The panel's Against row reads "Its Input" for the first. Without
+     either it does nothing, with a note. It's our own kernel rather than
+     `CIDisplacementDistortion`, so the map is read the same way as the
+     other kinds' values.
+   - **Twirl**'s shapes are one warp kernel rather than four built-ins:
+     Twirl turns most at the middle, Vortex more the nearer the middle,
+     Pinch reads from further out and Bulge from further in, all fading
+     to nothing at Radius.
+   - **Wave** moves along x or y by a sine of the other, or radially; Speed
+     travels it.
+   - **Kaleidoscope** folds every direction into one wedge of 360° /
+     Segments, mirrored at its edges, so seams never show; the triangle
+     style isn't there. Speed spins it.
+   - **Mirror Tile** is our own warp: Tile repeats, Fourfold mirrors at
+     each edge, Eightfold across the diagonals too, and Droste keeps the
+     picture outside Tile Size and fills inside it with the picture
+     shrunk (so the ring out to the frame's nearer edge fits), turned by
+     Angle, again and again toward the middle.
+   - **Chromatic Aberration** reads red and blue its Amount (a percent of
+     the width) either side of green, radially from Center (the full
+     amount half the frame's width out) or along Angle, in one pass.
 4. **Several moments**: Flow Smear, Slit-Scan and Feedback, drawing the
    stack above them at other moments.
 5. **Recipes and safety**: the presets above, and the flashing notes.

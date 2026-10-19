@@ -372,6 +372,109 @@ enum LookKernels {
         else if (drop == 3) glitched.b = 0.0;
         return mix(original, glitched, amount);
     }
+
+    // MARK: Distortion
+
+    inline float2 turned(float2 v, float angle) {
+        float c = cos(angle), s = sin(angle);
+        return float2(v.x * c - v.y * s, v.x * s + v.y * c);
+    }
+    // Back and forth between 0 and 1, so mirrored copies meet seamlessly.
+    inline float2 mirrored(float2 w) { return 1.0 - abs(fract(w * 0.5) * 2.0 - 1.0); }
+
+    // Each point taken from along a noise field evolving through time,
+    // warped `warps` times through itself.
+    extern "C" [[stitchable]] float2 amvLiquid(float scale, float size, float reach, float warps, float evolution, float seed,
+                                               coreimage::destination dest) {
+        float2 d = dest.coord();
+        float2 p = d / (scale * size);
+        float2 q = float2(0.0);
+        for (int i = 0; i < int(warps); i++) {
+            float2 at = p + 4.0 * q;
+            q = float2(noise3(float3(at, evolution), int(seed) + i * 2), noise3(float3(at + 5.2, evolution), int(seed) + i * 2 + 1));
+        }
+        return d + q * reach;
+    }
+
+    extern "C" [[stitchable]] float2 amvTwirl(float2 center, float radius, float amount, float shape, coreimage::destination dest) {
+        float2 d = dest.coord();
+        float2 v = d - center;
+        float r = length(v);
+        if (r >= radius || r <= 0.0) return d;
+        float t = 1.0 - r / radius;
+        if (shape < 0.5) return center + turned(v, amount * 3.14159265 * t * t);
+        if (shape < 1.5) return center + turned(v, amount * 0.5 * (radius / max(r, 1.0) - 1.0) * t * t);
+        // Pinch takes each point from further out, bulge from further in.
+        float f = shape < 2.5 ? pow(r / radius, -0.5 * amount * t) : pow(r / radius, amount * t);
+        return center + v * clamp(f, 0.05, 20.0);
+    }
+
+    extern "C" [[stitchable]] float2 amvWave(float2 center, float wavelength, float height, float phase, float direction,
+                                             coreimage::destination dest) {
+        float2 d = dest.coord();
+        if (direction < 0.5) return d + float2(0.0, height * sin(6.283185307 * (d.x / wavelength - phase)));
+        if (direction < 1.5) return d + float2(height * sin(6.283185307 * (d.y / wavelength - phase)), 0.0);
+        float2 v = d - center;
+        float r = length(v);
+        return r > 0.0 ? d + v / r * height * sin(6.283185307 * (r / wavelength - phase)) : d;
+    }
+
+    // Folds every direction round the center into one wedge, mirrored at
+    // its edges.
+    extern "C" [[stitchable]] float2 amvKaleidoscope(float2 center, float segments, float angle, coreimage::destination dest) {
+        float2 v = dest.coord() - center;
+        float wedge = 6.283185307 / segments;
+        float a = atan2(v.y, v.x) - angle;
+        a -= floor(a / wedge) * wedge;
+        if (a > wedge * 0.5) a = wedge - a;
+        return center + length(v) * float2(cos(a + angle), sin(a + angle));
+    }
+
+    extern "C" [[stitchable]] float2 amvMirrorTile(float2 center, float size, float angle, float pattern, float halfFrame,
+                                                   coreimage::destination dest) {
+        float2 v = turned(dest.coord() - center, -angle);
+        if (pattern > 2.5) {
+            // Droste: outside the size the picture is as it was; inside it
+            // is the picture again, shrunk so the ring from the size out to
+            // the frame's nearer edge fits inside the size, turned by the
+            // angle, and inside that again, toward the middle.
+            float r = length(v);
+            if (r >= size) return dest.coord();
+            if (r <= 0.0) return center;
+            float zoom = max(halfFrame / size, 1.25);
+            float steps = ceil(log(size / r) / log(zoom));
+            return center + turned(turned(v, -steps * angle) * pow(zoom, steps), angle);
+        }
+        float2 u = v / size + 0.5;
+        if (pattern < 0.5) u = fract(u);
+        else u = mirrored(u);
+        if (pattern > 1.5 && u.y > u.x) u = u.yx;
+        return center + turned((u - 0.5) * size, angle);
+    }
+
+    // Moves each point of `image` by `map`'s red (across) and green (down),
+    // from middle gray or from black.
+    extern "C" [[stitchable]] float4 amvDisplace(coreimage::sampler image, coreimage::sampler map, float reach, float fromGray,
+                                                 coreimage::destination dest) {
+        float2 d = dest.coord();
+        float4 m = map.sample(map.transform(d));
+        float2 v = m.a > 0.0 ? m.rg / m.a : float2(fromGray > 0.5 ? 0.5 : 0.0);
+        float2 offset = fromGray > 0.5 ? (v - 0.5) * 2.0 : v;
+        return image.sample(image.transform(d + float2(offset.x, -offset.y) * reach));
+    }
+
+    // Red and blue pulled apart from green: out from the center, or along
+    // a direction.
+    // Radially, the full amount half the frame's width from the center.
+    extern "C" [[stitchable]] float4 amvChromaticAberration(coreimage::sampler src, float2 center, float halfWidth, float reach,
+                                                            float radial, float angle, coreimage::destination dest) {
+        float2 d = dest.coord();
+        float2 offset = radial > 0.5 ? (d - center) / max(halfWidth, 1.0) * reach : float2(cos(angle), sin(angle)) * reach;
+        float4 r = src.sample(src.transform(d + offset));
+        float4 g = src.sample(src.transform(d));
+        float4 b = src.sample(src.transform(d - offset));
+        return float4(r.r, g.g, b.b, max(g.a, max(r.a, b.a)));
+    }
     """
 }
 
@@ -384,7 +487,8 @@ enum LookRenderer {
     /// A generator, which replaces the picture, fills `region`, or with
     /// nothing there `canvas`.
     static func apply(
-        _ step: LookStep, to picture: CIImage, over region: CGRect, canvas: CGRect, scale: CGFloat, space: ProjectColorSpace
+        _ step: LookStep, to picture: CIImage, over region: CGRect, canvas: CGRect, frame: CGRect, scale: CGFloat,
+        space: ProjectColorSpace
     ) -> CIImage {
         var region = region.integral
         if region.isEmpty, step.kind.generates { region = canvas.integral }
@@ -462,12 +566,12 @@ enum LookRenderer {
         case .grain:
             let mono = step.choice(.grainChannels, as: GrainChannels.self) != .color
             return color("amvGrain", [
-                Float(scale), Float(step.value(.grainSize)), Float(mono ? 0 : 1), Float(step.value(.seed)), frame(step),
+                Float(scale), Float(step.value(.grainSize)), Float(mono ? 0 : 1), Float(step.value(.seed)), frameNumber(step),
             ])
         case .staticNoise:
             return color("amvStatic", [
                 Float(scale), Float(step.value(.grainSize)), Float(step.value(.bars)), Float(step.value(.rollSpeed) * step.seconds),
-                Float(step.value(.seed)), frame(step), Float(canvas.height / scale),
+                Float(step.value(.seed)), frameNumber(step), Float(canvas.height / scale),
             ])
         case .fractalNoise:
             let type: Float = switch step.choice(.noiseType, as: NoiseType.self) ?? .smooth {
@@ -495,7 +599,7 @@ enum LookRenderer {
             case .bayer8: 1
             case .noise: 2
             }
-            return color("amvDither", [Float(step.value(.ditherLevels)), pattern, frame(step)])
+            return color("amvDither", [Float(step.value(.ditherLevels)), pattern, frameNumber(step)])
         case .interference:
             return color("amvInterference", [
                 Float(scale), Float(step.value(.spacing)), Float(step.value(.crossAngle) * .pi / 180),
@@ -514,14 +618,113 @@ enum LookRenderer {
                     Float(tick), Float(reach), amount,
                 ]
             )?.cropped(to: region) ?? picture
+        case .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile:
+            return warped(step, picture, canvas: canvas, frame: frame, scale: scale)
+        case .chromaticAberration:
+            guard let kernel = LookKernels.compiled["amvChromaticAberration"] else { return picture }
+            let reach = CGFloat(step.value(.aberration) / 100) * frame.width
+            let radial = step.choice(.aberrationMode, as: AberrationMode.self) != .linear
+            let center = Self.center(step, frame: frame, scale: scale)
+            let input = picture.composited(over: CIImage(color: .clear)).cropped(to: canvas)
+            return kernel.apply(
+                extent: canvas.integral,
+                roiCallback: { _, rect in rect.insetBy(dx: -2 * abs(reach) - 1, dy: -2 * abs(reach) - 1) },
+                arguments: [
+                    input, CIVector(x: center.x, y: center.y), Float(frame.width / 2), Float(reach),
+                    Float(radial ? 1 : 0), Float(-step.value(.distortAngle) * .pi / 180),
+                ]
+            ) ?? picture
         default:
             return picture
         }
     }
 
+    /// Displace: `moved` taken from along `map`'s red and green.
+    static func displace(_ step: LookStep, moved: CIImage, map: CIImage, canvas: CGRect, frame: CGRect) -> CIImage? {
+        guard let kernel = LookKernels.compiled["amvDisplace"] else { return nil }
+        let reach = CGFloat(step.value(.displacement) / 100) * frame.width
+        let fromGray = step.choice(.mapCenter, as: MapCenter.self) != .black
+        let clear = CIImage(color: .clear)
+        return kernel.apply(
+            extent: canvas.integral,
+            roiCallback: { index, rect in index == 0 ? rect.insetBy(dx: -abs(reach) - 1, dy: -abs(reach) - 1) : rect },
+            arguments: [
+                moved.composited(over: clear).cropped(to: canvas), map.composited(over: clear).cropped(to: canvas),
+                Float(reach), Float(fromGray ? 1 : 0),
+            ]
+        )
+    }
+
+    /// Where a look's Center is, in output pixels: an offset from the
+    /// middle of the frame in the timeline's pixels, down being positive.
+    private static func center(_ step: LookStep, frame: CGRect, scale: CGFloat) -> CGPoint {
+        let offset = step.values(.distortCenter)
+        return CGPoint(x: frame.midX + CGFloat(offset[0]) * scale, y: frame.midY - CGFloat(offset.count > 1 ? offset[1] : 0) * scale)
+    }
+
+    /// The looks that only move where each pixel is read from.
+    private static func warped(_ step: LookStep, _ picture: CIImage, canvas: CGRect, frame: CGRect, scale: CGFloat) -> CIImage {
+        let name: String
+        let arguments: [Any]
+        let center = Self.center(step, frame: frame, scale: scale)
+        let centerVector = CIVector(x: center.x, y: center.y)
+        let degrees = { (kind: ControlKind) in step.value(kind) * .pi / 180 }
+        switch step.kind {
+        case .liquid:
+            name = "amvLiquid"
+            arguments = [
+                Float(scale), Float(step.value(.noiseScale)), Float(step.value(.displacement) / 100 * frame.width),
+                Float(step.value(.warps)), Float(step.value(.evolution) * step.seconds), Float(step.value(.seed)),
+            ]
+        case .twirl:
+            name = "amvTwirl"
+            let shape: Float = switch step.choice(.twirlShape, as: TwirlShape.self) ?? .twirl {
+            case .twirl: 0
+            case .vortex: 1
+            case .pinch: 2
+            case .bulge: 3
+            }
+            arguments = [centerVector, Float(step.value(.distortRadius) * scale), Float(step.value(.twirlAmount) / 100), shape]
+        case .wave:
+            name = "amvWave"
+            let direction: Float = switch step.choice(.waveDirection, as: WaveDirection.self) ?? .horizontal {
+            case .horizontal: 0
+            case .vertical: 1
+            case .radial: 2
+            }
+            arguments = [
+                centerVector, Float(step.value(.wavelength) * scale), Float(step.value(.waveHeight) * scale),
+                Float(step.value(.waveSpeed) * step.seconds), direction,
+            ]
+        case .kaleidoscope:
+            name = "amvKaleidoscope"
+            let spin = step.value(.spinSpeed) * step.seconds * 2 * .pi
+            arguments = [centerVector, Float(step.value(.segments)), Float(-(degrees(.distortAngle) + spin))]
+        case .mirrorTile:
+            name = "amvMirrorTile"
+            let pattern: Float = switch step.choice(.tilePattern, as: TilePattern.self) ?? .fourfold {
+            case .tile: 0
+            case .fourfold: 1
+            case .eightfold: 2
+            case .droste: 3
+            }
+            arguments = [
+                centerVector, Float(step.value(.tileSize) * scale), Float(-degrees(.distortAngle)), pattern,
+                Float(min(frame.width, frame.height) / 2),
+            ]
+        default:
+            return picture
+        }
+        guard let kernel = LookKernels.compiled[name] as? CIWarpKernel else { return picture }
+        let input = picture.composited(over: CIImage(color: .clear)).cropped(to: canvas)
+        return kernel.apply(
+            extent: canvas.integral, roiCallback: { _, _ in canvas }, image: input, arguments: arguments
+        ) ?? picture
+    }
+
     /// Which frame a look that changes every frame is on: its time in
     /// thousandths of a second, so each frame of any rate differs.
-    private static func frame(_ step: LookStep) -> Float {
+    private static func frameNumber(_ step: LookStep) -> Float {
         Float((step.seconds * 1000).rounded())
     }
 }

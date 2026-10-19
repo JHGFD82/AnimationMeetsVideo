@@ -530,7 +530,7 @@ struct ProjectFile: Codable {
             name = effect.name
             enabled = effect.enabled ? nil : false
             movesAnchor = effect.kind == .transform && !effect.movesAnchor ? false : nil
-            against = effect.kind == .blending ? effect.against : nil
+            against = effect.kind.readsAgainst ? effect.against : nil
             input = effect.kind.takesInput ? effect.input.map(InputEntry.init) : nil
             keyframing = effect.keyframing.map(KeyframingEntry.init)
             pasteChanges = effect.pasteChanges.isEmpty ? nil : effect.pasteChanges.map(PasteChangeRecord.init)
@@ -828,6 +828,13 @@ extension ProjectFile {
             case .color, .rectangle, .ellipse, .polygon, .star, .stroke, .equalizer, .compressor, .limiter, .voiceIsolation: break
             case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges: break
             case .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch: break
+            case .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration: break
+            case .displace:
+                fields.append(.optional("against", .uuid))
+                fields.append(.optional("input", .object(object([
+                    .optional("asset", .uuid), .optional("timeline", .uuid),
+                    .optional("offset", .time), .optional("loops", .bool),
+                ], oneOf: [["asset", "timeline"]]))))
             case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot:
                 fields.append(.optional("keyframing", .object(keyframing)))
             case .matte:

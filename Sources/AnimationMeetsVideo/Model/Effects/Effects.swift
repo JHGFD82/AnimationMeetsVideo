@@ -52,6 +52,8 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
     case recolor
     /// Grain, snow and procedural fields.
     case noise
+    /// Moves pixels, keeping their colors.
+    case distortion
     /// Effects that draw nothing and write keyframes onto other controls
     /// instead (see docs/keyframing-effects.md).
     case keyframing
@@ -66,6 +68,7 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
         case .mattes: "Mattes"
         case .recolor: "Color"
         case .noise: "Noise"
+        case .distortion: "Distortion"
         case .keyframing: "Keyframing"
         case .sound: "Sound"
         }
@@ -129,6 +132,8 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     /// Noise looks: grain and glitches over the picture, or generators
     /// that replace it.
     case grain, staticNoise, fractalNoise, cells, dither, interference, blockGlitch
+    /// Distortion looks: they move the picture's pixels.
+    case displace, liquid, twirl, wave, kaleidoscope, mirrorTile, chromaticAberration
     /// Shapes draw over the picture handed down to them (see
     /// docs/graphic-layers.md, "Shapes").
     case rectangle
@@ -176,6 +181,13 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .dither: "Dither"
         case .interference: "Interference"
         case .blockGlitch: "Block Glitch"
+        case .displace: "Displace"
+        case .liquid: "Liquid"
+        case .twirl: "Twirl"
+        case .wave: "Wave"
+        case .kaleidoscope: "Kaleidoscope"
+        case .mirrorTile: "Mirror Tile"
+        case .chromaticAberration: "Chromatic Aberration"
         case .rectangle: "Rectangle"
         case .ellipse: "Ellipse"
         case .polygon: "Polygon"
@@ -203,6 +215,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .matte: .mattes
         case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges: .recolor
         case .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch: .noise
+        case .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration: .distortion
         case .equalizer, .compressor, .limiter, .voiceIsolation: .sound
         case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: .keyframing
         }
@@ -251,6 +264,13 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .dither: "checkerboard.rectangle"
         case .interference: "line.3.horizontal.decrease"
         case .blockGlitch: "rectangle.split.3x3"
+        case .displace: "arrow.up.and.down.and.arrow.left.and.right"
+        case .liquid: "drop"
+        case .twirl: "tornado"
+        case .wave: "water.waves"
+        case .kaleidoscope: "seal"
+        case .mirrorTile: "square.grid.2x2"
+        case .chromaticAberration: "camera.filters"
         case .rectangle: "rectangle"
         case .ellipse: "circle"
         case .polygon: "hexagon"
@@ -272,7 +292,11 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// Whether the effect takes a picture dragged from the browser.
-    var takesInput: Bool { self == .matte }
+    var takesInput: Bool { self == .matte || self == .displace }
+
+    /// Whether it can read the picture as it was before an earlier effect
+    /// in the stack ("Against"): Blending blends with it, Displace moves it.
+    var readsAgainst: Bool { self == .blending || self == .displace }
 
     /// Whether the picture it makes depends on the size it is drawn at, so a
     /// nested timeline holding it can't have its move pushed into its
@@ -286,6 +310,8 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: false
         case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor: false
         case .grain, .staticNoise, .fractalNoise, .cells, .interference, .blockGlitch: false
+        // Sizes and offsets are in the timeline's pixels.
+        case .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration: false
         // Its edges are found between neighboring pixels, and a dither's
         // pattern is a pixel's.
         case .neonEdges, .dither: true
@@ -294,7 +320,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
 
     /// Whether it is one of the looks of docs/psychedelic-effects.md,
     /// which are drawn as a `.look` step.
-    var isLook: Bool { category == .recolor || category == .noise }
+    var isLook: Bool { category == .recolor || category == .noise || category == .distortion }
 
     /// Whether it replaces the picture with one it makes, rather than
     /// changing the one that reaches it.
@@ -347,6 +373,13 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .dither: [.ditherLevels, .ditherPattern, .amount]
         case .interference: [.spacing, .crossAngle, .driftSpeed, .amount]
         case .blockGlitch: [.intensity, .blockSize, .glitchRate, .seed, .amount]
+        case .displace: [.displacement, .mapCenter]
+        case .liquid: [.displacement, .noiseScale, .warps, .evolution, .seed]
+        case .twirl: [.twirlShape, .distortCenter, .distortRadius, .twirlAmount]
+        case .wave: [.waveDirection, .wavelength, .waveHeight, .waveSpeed]
+        case .kaleidoscope: [.segments, .distortCenter, .distortAngle, .spinSpeed]
+        case .mirrorTile: [.tilePattern, .tileSize, .distortCenter, .distortAngle]
+        case .chromaticAberration: [.aberration, .aberrationMode, .distortCenter, .distortAngle]
         }
     }
 }
@@ -386,6 +419,10 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case noiseScale, noiseOctaves, roughness, noiseType, evolution
     case cellSize, jitter, cellOutput, ditherLevels, ditherPattern
     case spacing, crossAngle, driftSpeed, intensity, blockSize, glitchRate
+    /// The Distortion looks' settings.
+    case displacement, mapCenter, warps, twirlShape, distortCenter, distortRadius, twirlAmount
+    case waveDirection, wavelength, waveHeight, waveSpeed, segments, distortAngle, spinSpeed
+    case tilePattern, tileSize, aberration, aberrationMode
 
     var id: Self { self }
 
@@ -508,6 +545,23 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .intensity: "Intensity"
         case .blockSize: "Block Size"
         case .glitchRate: "Rate"
+        case .displacement: "Amount"
+        case .mapCenter: "Still At"
+        case .warps: "Warps"
+        case .twirlShape: "Shape"
+        case .distortCenter: "Center"
+        case .distortRadius: "Radius"
+        case .twirlAmount: "Amount"
+        case .waveDirection: "Direction"
+        case .wavelength: "Wavelength"
+        case .waveHeight: "Height"
+        case .waveSpeed, .spinSpeed: "Speed"
+        case .segments: "Segments"
+        case .distortAngle: "Angle"
+        case .tilePattern: "Pattern"
+        case .tileSize: "Tile Size"
+        case .aberration: "Amount"
+        case .aberrationMode: "Mode"
         }
     }
 
@@ -552,6 +606,13 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .ditherLevels, .ditherPattern: .dither
         case .spacing, .crossAngle, .driftSpeed: .interference
         case .intensity, .blockSize, .glitchRate: .blockGlitch
+        case .displacement, .mapCenter: .displace
+        case .warps: .liquid
+        case .twirlShape, .distortCenter, .distortRadius, .twirlAmount: .twirl
+        case .waveDirection, .wavelength, .waveHeight, .waveSpeed: .wave
+        case .segments, .distortAngle, .spinSpeed: .kaleidoscope
+        case .tilePattern, .tileSize: .mirrorTile
+        case .aberration, .aberrationMode: .chromaticAberration
         }
     }
 
@@ -597,6 +658,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .noiseType: NoiseType.allCases.map { ($0.rawValue, $0.name) }
         case .cellOutput: CellOutput.allCases.map { ($0.rawValue, $0.name) }
         case .ditherPattern: DitherPattern.allCases.map { ($0.rawValue, $0.name) }
+        case .mapCenter: MapCenter.allCases.map { ($0.rawValue, $0.name) }
+        case .twirlShape: TwirlShape.allCases.map { ($0.rawValue, $0.name) }
+        case .waveDirection: WaveDirection.allCases.map { ($0.rawValue, $0.name) }
+        case .tilePattern: TilePattern.allCases.map { ($0.rawValue, $0.name) }
+        case .aberrationMode: AberrationMode.allCases.map { ($0.rawValue, $0.name) }
         default: []
         }
     }
@@ -626,6 +692,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .noiseType: NoiseType.smooth.rawValue
         case .cellOutput: CellOutput.edges.rawValue
         case .ditherPattern: DitherPattern.bayer4.rawValue
+        case .mapCenter: MapCenter.gray.rawValue
+        case .twirlShape: TwirlShape.twirl.rawValue
+        case .waveDirection: WaveDirection.horizontal.rawValue
+        case .tilePattern: TilePattern.fourfold.rawValue
+        case .aberrationMode: AberrationMode.radial.rawValue
         default: nil
         }
     }
@@ -664,6 +735,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .outputRange: ["From", "To"]
         case .paletteBias, .paletteAmplitude, .paletteFrequency, .palettePhase, .mixRed, .mixGreen, .mixBlue, .mixOffset:
             ["Red", "Green", "Blue"]
+        case .distortCenter: ["Δx", "Δy"]
         case _ where isColor: ["Red", "Green", "Blue", "Alpha"]
         default: EqualizerBand(controlKind: self)?.componentNames ?? [name]
         }
@@ -757,6 +829,19 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .driftSpeed: [0.5]
         case .intensity: [30]
         case .glitchRate: [8]
+        case .mapCenter, .twirlShape, .waveDirection, .tilePattern, .aberrationMode: []
+        case .displacement: [2]
+        case .warps: [2]
+        case .distortCenter: [0, 0]
+        case .distortRadius: [300]
+        case .twirlAmount: [100]
+        case .wavelength: [120]
+        case .waveHeight: [12]
+        case .waveSpeed: [1]
+        case .segments: [6]
+        case .distortAngle, .spinSpeed: [0]
+        case .tileSize: [480]
+        case .aberration: [1]
         }
     }
 
@@ -802,7 +887,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .grainChannels, .noiseType, .cellOutput, .ditherPattern, .bars, .noiseOctaves, .ditherLevels: ""
         case .rollSpeed, .evolution, .driftSpeed, .glitchRate: " /s"
         case .roughness, .jitter, .intensity: "%"
-        case .crossAngle: "°"
+        case .crossAngle, .distortAngle: "°"
+        case .mapCenter, .twirlShape, .waveDirection, .tilePattern, .aberrationMode, .warps, .segments: ""
+        case .displacement, .aberration, .twirlAmount: "%"
+        case .distortCenter, .distortRadius, .wavelength, .waveHeight, .tileSize: " px"
+        case .waveSpeed, .spinSpeed: " /s"
         }
     }
 
@@ -814,7 +903,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .lift, .gamma, .gain, .fill, .stroke: 0.01
         case .headroom, .eqOutput: 0.1
         case .wiggleFrequency, .oscillatorFrequency, .fade, .tolerance, .mass, .edgeWidth, .grainSize, .crossAngle: 0.1
-        case .rollSpeed, .evolution, .driftSpeed: 0.01
+        case .rollSpeed, .evolution, .driftSpeed, .waveSpeed, .spinSpeed: 0.01
+        case .displacement, .aberration: 0.1
         case .hueSpeed, .cycleSpeed, .scrollSpeed: 0.01
         case .paletteBias, .paletteAmplitude, .paletteFrequency, .palettePhase: 0.01
         case .shadowColor, .midtoneColor, .highlightColor, .edgeColor: 0.01
@@ -902,6 +992,17 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .crossAngle: -90...90
         case .blockSize: 2...2000
         case .glitchRate: 0...60
+        case .mapCenter, .twirlShape, .waveDirection, .tilePattern, .aberrationMode, .distortCenter: nil
+        case .displacement: -100...100
+        case .warps: 1...4
+        case .distortRadius, .tileSize: 1...50_000
+        case .twirlAmount: -1000...1000
+        case .wavelength: 2...50_000
+        case .waveHeight: -10_000...10_000
+        case .waveSpeed, .spinSpeed: -20...20
+        case .segments: 2...64
+        case .distortAngle: nil
+        case .aberration: -20...20
         }
     }
 
@@ -909,7 +1010,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     var isWhole: Bool {
         switch self {
         case .points, .everyBeats, .beatOffset, .octaves, .seed, .smoothing, .hold, .repeats, .folds, .levels: true
-        case .bars, .noiseOctaves, .ditherLevels: true
+        case .bars, .noiseOctaves, .ditherLevels, .warps, .segments: true
         default: false
         }
     }
@@ -1112,6 +1213,9 @@ struct Effect: Identifiable, Equatable, Sendable {
         guard enabled else { return true }
         // It wrote its keyframes onto another control, which draws them.
         if kind.isKeyframing { return true }
+        // Displace needs a map: an input, or the picture read against an
+        // earlier step.
+        if kind == .displace, input == nil, against == nil { return true }
         // A look always changes the picture, unless it is mixed in at none.
         if kind.isLook {
             guard let amount = control(.amount), amount.enabled else { return false }
@@ -1201,8 +1305,10 @@ struct Effect: Identifiable, Equatable, Sendable {
         case .hueCycle: .hueSpeed
         case .cosinePalette: .cycleSpeed
         case .gradientMap: .scrollSpeed
-        case .fractalNoise, .cells: .evolution
+        case .fractalNoise, .cells, .liquid: .evolution
         case .interference: .driftSpeed
+        case .wave: .waveSpeed
+        case .kaleidoscope: .spinSpeed
         default: nil
         }
         guard let moving, let control = control(moving), control.enabled else { return false }

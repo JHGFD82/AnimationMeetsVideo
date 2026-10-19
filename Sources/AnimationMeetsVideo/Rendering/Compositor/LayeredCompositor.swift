@@ -657,13 +657,39 @@ struct Drawing {
                     picture = graded
                 }
             case .look(let look):
-                // Like grading, a look works pixel by pixel, so the opacity
-                // can wait; shapes above it are drawn first, to be part of
-                // the picture it changes.
-                drawShapes()
+                // A color look works pixel by pixel, so the opacity can wait;
+                // one that moves pixels needs it settled first, as Displace
+                // does to read an earlier picture. Shapes above it are drawn
+                // first, to be part of the picture it changes.
                 let canvas = canvasRect(of: frameSize)
+                let frame = CGRect(x: 0, y: 0, width: frameSize.width * scale.width, height: frameSize.height * scale.height)
+                if look.kind.category == .distortion {
+                    settleOpacity()
+                    drawShapes()
+                    edges = []
+                } else {
+                    drawShapes()
+                }
+                if look.kind == .displace {
+                    // Against an earlier step, that picture moves by this
+                    // one; otherwise this one moves by the input.
+                    let moved: CIImage, map: CIImage
+                    if let against = look.against {
+                        guard let earlier = kept[against] else { continue }
+                        moved = earlier
+                        map = picture
+                    } else {
+                        guard let input = clip.inputs[look.effectID], let image = matteImage(input, frame: frameSize, start: start) else { continue }
+                        moved = picture
+                        map = image
+                    }
+                    if let displaced = LookRenderer.displace(look, moved: moved, map: map, canvas: canvas, frame: frame) {
+                        picture = displaced
+                    }
+                    continue
+                }
                 picture = LookRenderer.apply(
-                    look, to: picture, over: picture.extent.intersection(canvas), canvas: canvas, scale: scale.width,
+                    look, to: picture, over: picture.extent.intersection(canvas), canvas: canvas, frame: frame, scale: scale.width,
                     space: clip.stack.colorSpace
                 )
             case .matte(let effectID, let mode, let amount):

@@ -1,3 +1,4 @@
+import CoreImage
 import CoreMedia
 import Foundation
 import Testing
@@ -240,5 +241,87 @@ private func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:],
             let alone = try fresh.draw([clip], at: CMTime(value: 1, timescale: 1))
             #expect(inShared == alone, "\(kind.name)")
         }
+    }
+}
+
+@Suite struct DistortionLookTests {
+    /// A 32 × 32 picture whose every pixel is a different color: red
+    /// across, green down.
+    private func harness() throws -> CompositorHarness {
+        var harness = CompositorHarness(size: CGSize(width: 32, height: 32))
+        try harness.addPicture(track: 1) { x, y in SIMD4(Float(x), Float(y), 0.5, 1) }
+        return harness
+    }
+
+    private func draw(_ effects: [Effect], _ harness: CompositorHarness) throws -> [SIMD4<Float>] {
+        try harness.draw([CompositorHarness.clip(track: 1, effects: effects, frame: harness.size)], at: CMTime(value: 1, timescale: 1))
+    }
+
+    @Test func everyDistortionKernelCompiles() {
+        let warps = ["amvLiquid", "amvTwirl", "amvWave", "amvKaleidoscope", "amvMirrorTile"]
+        #expect(warps.allSatisfy { LookKernels.compiled[$0] is CIWarpKernel })
+        #expect(LookKernels.compiled["amvDisplace"] != nil && LookKernels.compiled["amvChromaticAberration"] != nil)
+    }
+
+    @Test func aTwirlLeavesWhatIsOutsideItsRadiusAlone() throws {
+        let h = try harness()
+        let original = try draw([], h)
+        let twirled = try draw([look(.twirl, [.distortRadius: [8]])], h)
+        // A corner is well outside 8 pixels from the middle.
+        #expect(close(h.pixel(twirled, x: 1, y: 1), h.pixel(original, x: 1, y: 1)))
+        // Inside, it moved.
+        #expect(!close(h.pixel(twirled, x: 13, y: 16), h.pixel(original, x: 13, y: 16)))
+        let none = try draw([look(.twirl, [.twirlAmount: [0]])], h)
+        #expect(none == original)
+    }
+
+    @Test func aKaleidoscopeIsMirroredAcrossItsWedges() throws {
+        let h = try harness()
+        let drawn = try draw([look(.kaleidoscope, [.segments: [4]])], h)
+        // Four segments mirror left against right about the middle.
+        let left = h.pixel(drawn, x: 10, y: 12), right = h.pixel(drawn, x: 21, y: 12)
+        #expect(close(left, right, tolerance: 0.05))
+    }
+
+    @Test func fourfoldTilesMirrorAtTheirEdges() throws {
+        let h = try harness()
+        let drawn = try draw([look(.mirrorTile, [.tileSize: [8]])], h)
+        // The tile around the middle runs 12...20; the one to its right is
+        // it mirrored, so 18 and 21 read the same place.
+        let inside = h.pixel(drawn, x: 18, y: 16), mirrored = h.pixel(drawn, x: 21, y: 16)
+        #expect(close(inside, mirrored, tolerance: 0.04))
+    }
+
+    @Test func aGrayMapDisplacesNothing() throws {
+        var h = try harness()
+        try h.addSolid(track: 2, SIMD4(0.5, 0.5, 0.5, 1))
+        var effect = look(.displace, [.displacement: [20]])
+        effect.input = EffectInput(source: .asset(UUID()))
+        var clip = CompositorHarness.clip(track: 1, effects: [effect], frame: h.size)
+        let copy = TrackCopy(trackID: 2, range: CMTimeRange(start: .zero, duration: CMTime(value: 10, timescale: 1)), strength: 1)
+        clip.inputs[effect.id] = .track(copy, base: .identity)
+        let drawn = try h.draw([clip], at: CMTime(value: 1, timescale: 1))
+        let original = try draw([], h)
+        #expect(close(h.pixel(drawn, x: 16, y: 16), h.pixel(original, x: 16, y: 16), tolerance: 0.02))
+        // Without a map it does nothing at all.
+        #expect(look(.displace).isNoOp)
+    }
+
+    @Test func radialAberrationLeavesTheMiddleAlone() throws {
+        let h = try harness()
+        let original = try draw([], h)
+        let drawn = try draw([look(.chromaticAberration, [.aberration: [10]])], h)
+        #expect(close(h.pixel(drawn, x: 16, y: 16), h.pixel(original, x: 16, y: 16), tolerance: 0.03))
+        // Further out, red comes from further out still (and not past the
+        // picture's edge, where there is nothing).
+        let edge = h.pixel(drawn, x: 24, y: 16), plain = h.pixel(original, x: 24, y: 16)
+        #expect(edge.x > plain.x)
+    }
+
+    @Test func movingDistortionsAreDrawnAfresh() {
+        #expect(!ClipStack(effects: [look(.liquid)]).animatedRanges.isEmpty)
+        #expect(!ClipStack(effects: [look(.wave)]).animatedRanges.isEmpty)
+        #expect(ClipStack(effects: [look(.twirl)]).animatedRanges.isEmpty)
+        #expect(ClipStack(effects: [look(.kaleidoscope)]).animatedRanges.isEmpty)
     }
 }
