@@ -28,7 +28,7 @@ enum MorphFlow {
     private static let compiled: (kernel: CIKernel?, error: String?) = {
         let metal = """
         #include <CoreImage/CoreImage.h>
-        extern "C" float4 amvFlowWarp(coreimage::sampler image, coreimage::sampler flow, float amount, coreimage::destination dest) {
+        extern "C" [[stitchable]] float4 amvFlowWarp(coreimage::sampler image, coreimage::sampler flow, float amount, coreimage::destination dest) {
             float2 d = dest.coord();
             float4 f = flow.sample(flow.transform(d));
             return image.sample(image.transform(d + amount * f.xy));
