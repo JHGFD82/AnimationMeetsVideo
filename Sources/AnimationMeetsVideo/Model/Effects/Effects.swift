@@ -1183,9 +1183,12 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     /// Whether it holds what a new control of its kind does: not animated,
     /// at its default value or option, and not a squircle. Whether it is on
     /// doesn't count.
-    var isAtDefault: Bool {
-        let fresh = EffectControl(kind: kind)
-        return !number.isAnimated && number.value == fresh.number.value && choice == fresh.choice && !squircle
+    var isAtDefault: Bool { isAtDefault(like: EffectControl(kind: kind)) }
+
+    /// Whether it holds what `fresh`, a new control of its kind as its
+    /// effect would make it (a shape's size fitted to the frame), does.
+    func isAtDefault(like fresh: EffectControl) -> Bool {
+        !number.isAnimated && number.value == fresh.number.value && choice == fresh.choice && !squircle
     }
 
     /// The control's components at `source time`.
@@ -1194,7 +1197,11 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     }
 
     mutating func reset() {
-        let fresh = EffectControl(id: id, kind: kind, enabled: enabled)
+        reset(to: EffectControl(id: id, kind: kind, enabled: enabled))
+    }
+
+    /// Back to what `fresh` holds, keeping its ID and whether it is on.
+    mutating func reset(to fresh: EffectControl) {
         number = fresh.number
         choice = fresh.choice
         squircle = fresh.squircle
@@ -1317,10 +1324,20 @@ struct Effect: Identifiable, Equatable, Sendable {
 
     /// Back to a new effect's controls, all at their defaults, keeping its
     /// ID and name.
-    mutating func reset() {
+    mutating func reset(in frame: CGSize? = nil) {
         let setup = keyframing
         self = Effect(id: id, kind: kind, name: name)
+        if let frame { sizeShape(to: frame) }
         keyframing = setup
+    }
+
+    /// The control of `kind` a new effect of this one's kind starts with,
+    /// a shape's sized to `frame` as one added to a timeline is, which is
+    /// what Reset goes back to.
+    func freshControl(_ kind: ControlKind, in frame: CGSize?) -> EffectControl {
+        var fresh = Effect(kind: self.kind)
+        if let frame { fresh.sizeShape(to: frame) }
+        return fresh.control(kind) ?? EffectControl(kind: kind)
     }
 
     /// Deletes a control. Without it the effect does nothing for it.

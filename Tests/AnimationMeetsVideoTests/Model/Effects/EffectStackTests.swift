@@ -138,3 +138,24 @@ import Testing
         #expect(halves.allSatisfy { $0.effects[0].controls[2].number == before })
     }
 }
+
+@Suite struct ShapeDefaultTests {
+    @Test func aNewShapesSizeIsItsDefaultAndResetGoesBackToIt() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.ellipse, to: timelineID)
+        let shape = try #require(added)
+        let frame = try #require(project.timeline(id: timelineID)?.frameSize)
+        let effect = try #require(project.clipAndLayer(shape.clipID, in: timelineID)?.clip.effects.first)
+        let size = try #require(effect.control(.shapeSize))
+        let fresh = effect.freshControl(.shapeSize, in: frame)
+        #expect(size.isAtDefault(like: fresh))
+        // Not the kind's own default, which isn't fitted to any frame.
+        #expect(!size.isAtDefault)
+        var changed = size
+        changed.setComponent(0, to: 10, at: .zero)
+        #expect(!changed.isAtDefault(like: fresh))
+        changed.reset(to: fresh)
+        #expect(changed.number == size.number)
+    }
+}

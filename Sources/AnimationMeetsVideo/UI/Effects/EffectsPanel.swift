@@ -482,7 +482,7 @@ struct EffectsPanel: View {
     private func effectMenu(_ effect: Effect, in clip: TimelineClip) -> some View {
         Button("Duplicate") { duplicate(effect, in: clip) }
             .keyboardShortcut("d", modifiers: .command)
-        Button("Reset") { editEffect(effect.id, in: clip) { $0.reset() } }
+        Button("Reset") { editEffect(effect.id, in: clip) { $0.reset(in: timeline?.frameSize) } }
             .disabled(effect.controls.allSatisfy { $0.isNoOp && !$0.isAnimated } && effect.controls.count == effect.kind.controlKinds.count)
         Button("Rename") { renamingEffectID = effect.id }
         Button(effect.enabled ? "Disable" : "Enable") { editEffect(effect.id, in: clip) { $0.enabled.toggle() } }
@@ -556,7 +556,7 @@ struct EffectsPanel: View {
                     isSelected: isSelected,
                     dragHandle: handle,
                     isDimmed: effectDimmed || choiceIsOff(control, of: effect),
-                    onReset: control.isAtDefault ? nil : { editControl(control.id, of: effect, in: clip) { $0.reset() } },
+                    onReset: reset(control, of: effect, in: c),
                     onSelect: select,
                     onChoose: { choice in editControl(control.id, of: effect, in: clip) { $0.choice = choice } },
                     menu: menu
@@ -587,7 +587,7 @@ struct EffectsPanel: View {
                     onToggleLink: { editControl(control.id, of: effect, in: clip) { $0.linked.toggle() } },
                     dragHandle: handle,
                     isDimmed: effectDimmed || !control.enabled,
-                    onReset: control.isAtDefault ? nil : { editControl(control.id, of: effect, in: clip) { $0.reset() } },
+                    onReset: reset(control, of: effect, in: c),
                     onSelect: select,
                     onSetComponent: { index, value in
                         editControl(control.id, of: effect, in: clip) { $0.setComponent(index, to: value, at: c.sourceNow) }
@@ -675,6 +675,14 @@ struct EffectsPanel: View {
 
     /// Whether a choice changes nothing: an EQ cut's slope does nothing
     /// while its band is off.
+    /// What a row's reset button does, nil while the control holds what a
+    /// new one would: a shape's size fitted to the frame, as when added.
+    private func reset(_ control: EffectControl, of effect: Effect, in c: RowContext) -> (() -> Void)? {
+        let fresh = effect.freshControl(control.kind, in: c.timeline.frameSize)
+        guard !control.isAtDefault(like: fresh) else { return nil }
+        return { editControl(control.id, of: effect, in: c.clip) { $0.reset(to: fresh) } }
+    }
+
     /// Whether a choice is off: it is, or for a cut's slope, its band is.
     private func choiceIsOff(_ control: EffectControl, of effect: Effect) -> Bool {
         guard let band = EqualizerBand.allCases.first(where: { $0.slopeKind == control.kind }) else { return !control.enabled }
@@ -703,8 +711,9 @@ struct EffectsPanel: View {
 
     @ViewBuilder
     private func controlMenu(_ control: EffectControl, of effect: Effect, in clip: TimelineClip) -> some View {
-        Button("Reset") { editControl(control.id, of: effect, in: clip) { $0.reset() } }
-            .disabled(control.isNoOp && !control.isAnimated && !control.squircle)
+        let fresh = effect.freshControl(control.kind, in: timeline?.frameSize)
+        Button("Reset") { editControl(control.id, of: effect, in: clip) { $0.reset(to: fresh) } }
+            .disabled(control.isAtDefault(like: fresh))
         if control.kind == .cornerRadius, effect.kind == .rectangle {
             Toggle("Squircle", isOn: Binding(
                 get: { control.squircle },

@@ -585,8 +585,11 @@ keys. A clip block with effects shows a small badge with the count.
 - **Only what is off is dimmed**: a disabled control or effect. A control
   at its default is drawn as brightly as any, so it reads as ready to
   adjust; one that isn't at its default shows a reset button (↺) beside
-  its ⋯ (`EffectControl.isAtDefault`: not keyframed, at the kind's default
-  value or option, not a squircle; on or off doesn't count). A Blending
+  its ⋯ (`EffectControl.isAtDefault(like:)`: not keyframed, at what a new
+  effect of its kind starts with (`Effect.freshControl`, a shape's size and
+  radii fitted to the timeline's frame as when it is added), not a
+  squircle; on or off doesn't count). Reset, on the button or in the ⋯
+  menu, goes back to the same. A Blending
   step with nothing under it, or Against an effect that is gone or below
   it, is dimmed with a note, as are steps a pass-through nested clip can't
   apply.
