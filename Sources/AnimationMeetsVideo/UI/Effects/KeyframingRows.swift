@@ -40,6 +40,16 @@ extension EffectsPanel {
                     setup.combine = KeyframingCombine(rawValue: choice) ?? .add
                 }
             }
+            if effect.kind == .audioKeys {
+                keyframingChoice(
+                    "Listen To", effect, c, dimmed: effectDimmed, options: sourceOptions(setup, c),
+                    selected: sourceID(setup.audioSource),
+                    help: "The sound it follows: the whole mix, one Sound or Music layer, or one clip, as heard"
+                ) { choice, setup in
+                    setup.audioSource = Self.source(from: choice)
+                }
+                audioKeysGraph(effect, setup, c, dimmed: effectDimmed)
+            }
             if effect.kind == .beatKeys {
                 keyframingChoice(
                     "Beats From", effect, c, dimmed: effectDimmed, options: beatLayerOptions(setup, c),
@@ -111,7 +121,55 @@ extension EffectsPanel {
         }
     }
 
+    private func audioKeysGraph(_ effect: Effect, _ setup: KeyframingSetup, _ c: RowContext, dimmed: Bool) -> some View {
+        let frequencies = effect.control(.frequencyRange)?.values(at: c.sourceNow) ?? ControlKind.frequencyRange.defaultValues
+        let levels = effect.control(.levelRange)?.values(at: c.sourceNow) ?? ControlKind.levelRange.defaultValues
+        let bands = setup.audioSource.flatMap { project.heardBands($0, in: c.timeline, at: [c.frameTime])?.first }
+        func set(_ kind: ControlKind, _ a: Double, _ b: Double) {
+            project.editEffect(effect.id, ofClip: c.clip.id, in: timelineID) { effect in
+                guard let index = effect.controls.firstIndex(where: { $0.kind == kind }) else { return }
+                effect.controls[index].setComponent(0, to: a, at: c.sourceNow)
+                effect.controls[index].setComponent(1, to: b, at: c.sourceNow)
+            }
+        }
+        return besideLane(AudioKeysGraph(
+            bands: bands,
+            frequencies: (frequencies[0], frequencies[1]),
+            levels: (levels[0], levels[1]),
+            isDimmed: dimmed,
+            onSetFrequencies: { set(.frequencyRange, $0, $1) },
+            onSetLevels: { set(.levelRange, $0, $1) }
+        ))
+    }
+
     // MARK: Options
+
+    private func sourceOptions(_ setup: KeyframingSetup, _ c: RowContext) -> [(id: String, name: String)] {
+        var options: [(id: String, name: String)] = [("none", "Nothing"), ("mix", "Whole Mix")]
+        let layers = c.timeline.layers.filter(\.kind.isAudio)
+        options += layers.map { ("layer|\($0.id.uuidString)", project.displayName(of: $0, in: c.timeline)) }
+        let clips = c.timeline.layers.flatMap(\.clips).filter { project.playsAudio($0) }
+        options += clips.map { ("clip|\($0.id.uuidString)", project.clipName($0.id, in: timelineID)) }
+        let id = sourceID(setup.audioSource)
+        if !options.contains(where: { $0.id == id }) { options.append((id, "Unavailable")) }
+        return options
+    }
+
+    private func sourceID(_ source: AudioKeysSource?) -> String {
+        switch source {
+        case nil: "none"
+        case .mix?: "mix"
+        case .layer(let id)?: "layer|\(id.uuidString)"
+        case .clip(let id)?: "clip|\(id.uuidString)"
+        }
+    }
+
+    private static func source(from id: String) -> AudioKeysSource? {
+        if id == "mix" { return .mix }
+        let parts = id.split(separator: "|")
+        guard parts.count == 2, let uuid = UUID(uuidString: String(parts[1])) else { return nil }
+        return parts[0] == "layer" ? .layer(uuid) : .clip(uuid)
+    }
 
     private func targetOptions(_ effect: Effect, _ c: RowContext) -> [(id: String, name: String)] {
         let index = c.clip.effects.index(of: effect.id) ?? 0

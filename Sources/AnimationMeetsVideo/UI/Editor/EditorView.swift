@@ -120,6 +120,7 @@ struct EditorView: View {
             beatMatch.discardAndClose()
         }
         .onChange(of: project) { _, newValue in projectDidChange(newValue) }
+        .onReceive(NotificationCenter.default.publisher(for: .spectrogramsChanged)) { _ in spectrogramsChanged() }
         .onChange(of: AssetAnalysis.inputs(of: project)) { _, _ in analysis.update(with: project) }
         .onChange(of: packageURL, initial: true) { _, url in renderer.packageURL = url }
         .onAppear {
@@ -147,6 +148,16 @@ struct EditorView: View {
         history.projectDidChange(newValue)
         keepViewStateValid(for: newValue)
         beatMatch.update(project: newValue)
+    }
+
+    /// Audio Keys effects that were waiting for a file's sound make their
+    /// keyframes. That is the analysis arriving, not an edit, so it is
+    /// made in the undo baseline too rather than recorded.
+    private func spectrogramsChanged() {
+        var refreshed = project
+        guard refreshed.refreshKeyframing() else { return }
+        history.adopt { $0.refreshKeyframing() }
+        project = refreshed
     }
 
     /// The timeline being edited, read against the current project: the

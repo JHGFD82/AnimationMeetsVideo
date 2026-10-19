@@ -156,6 +156,10 @@ private struct Sandbox {
             $0.keyframing?.combine = .multiply
             $0.keyframing?.range = CMTimeRange(start: CMTime(value: 1, timescale: 2), end: CMTime(value: 3, timescale: 2))
         }
+        let addedListener = project.addEffect(.audioKeys, toClip: clipID, in: timelineID)
+        let listenerID = try #require(addedListener)
+        let layerID = UUID()
+        project.editEffect(listenerID, ofClip: clipID, in: timelineID) { $0.keyframing?.audioSource = .layer(layerID) }
         let before = try #require(project.clipAndLayer(clipID, in: timelineID)?.clip)
         #expect(before.effect(id: wigglerID)?.keyframing?.base != nil)
 
@@ -165,7 +169,8 @@ private struct Sandbox {
         let restored = try #require(loaded.project.clipAndLayer(clipID, in: timelineID)?.clip)
         #expect(restored.effects == before.effects)
         let marks = Set(restored.effect(id: transformID)?.controls.flatMap { $0.number.keyframes.compactMap(\.generatedBy) } ?? [])
-        #expect(marks == [wigglerID, oscillatorID])
+        #expect(marks.isSuperset(of: [wigglerID, oscillatorID]))
+        #expect(restored.effect(id: listenerID)?.keyframing?.audioSource == .layer(layerID))
     }
 
     @Test func roundTripKeepsUnresolvedPasteChanges() async throws {

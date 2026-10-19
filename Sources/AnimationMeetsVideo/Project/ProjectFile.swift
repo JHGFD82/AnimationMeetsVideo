@@ -446,6 +446,10 @@ struct ProjectFile: Codable {
         /// Absent until it has written.
         var base: PropertyEntry<ControlValueEntry>?
         var beatLayer: UUID?
+        /// Audio Keys: `mix`, or the layer or clip it listens to.
+        var listensToMix: Bool?
+        var listensToLayer: UUID?
+        var listensToClip: UUID?
         /// The fingerprints as hexadecimal, since JSON numbers lose 64-bit
         /// precision; absent until it has written.
         var readPrint: String?
@@ -465,6 +469,12 @@ struct ProjectFile: Codable {
             end = setup.range.map { TimeEntry($0.end) }
             base = setup.base.map { PropertyEntry($0, encode: ControlValueEntry.init) }
             beatLayer = setup.beatLayer
+            switch setup.audioSource {
+            case .mix?: listensToMix = true
+            case .layer(let id)?: listensToLayer = id
+            case .clip(let id)?: listensToClip = id
+            case nil: break
+            }
             readPrint = setup.readPrint.map { String($0, radix: 16) }
             writtenPrint = setup.writtenPrint.map { String($0, radix: 16) }
         }
@@ -481,6 +491,7 @@ struct ProjectFile: Codable {
             if let start, let end { setup.range = CMTimeRange(start: start.time, end: end.time) }
             setup.base = base?.property(default: ComponentValue(values: [])) { $0.components }
             setup.beatLayer = beatLayer
+            setup.audioSource = listensToLayer.map { .layer($0) } ?? listensToClip.map { .clip($0) } ?? (listensToMix == true ? .mix : nil)
             setup.readPrint = readPrint.flatMap { UInt64($0, radix: 16) }
             setup.writtenPrint = writtenPrint.flatMap { UInt64($0, radix: 16) }
             return setup
@@ -780,6 +791,7 @@ extension ProjectFile {
             .optional("start", .time), .optional("end", .time),
             .optional("base", property(.numberOrNumbers)), .optional("beatLayer", .uuid),
             .optional("readPrint", .string), .optional("writtenPrint", .string),
+            .optional("listensToMix", .bool), .optional("listensToLayer", .uuid), .optional("listensToClip", .uuid),
         ])
         static func property(_ value: JSONShape) -> JSONShape {
             .object(object([.optional("value", value), .optional("keyframes", .array(keyframe(value)))], oneOf: [["value", "keyframes"]]))
@@ -814,7 +826,7 @@ extension ProjectFile {
             case .transform: fields.append(.optional("movesAnchor", .bool))
             case .blending: fields.append(.optional("against", .uuid))
             case .color, .rectangle, .ellipse, .polygon, .star, .stroke, .equalizer, .compressor, .limiter, .voiceIsolation: break
-            case .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot:
+            case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot:
                 fields.append(.optional("keyframing", .object(keyframing)))
             case .matte:
                 fields.append(.optional("input", .object(object([

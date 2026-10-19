@@ -177,6 +177,8 @@ struct KeyframingSetup: Equatable, Sendable {
     var base: AnimatedValue<ComponentValue>?
     /// Beat Keys: the layer whose beat map it follows.
     var beatLayer: UUID?
+    /// Audio Keys: what it listens to.
+    var audioSource: AudioKeysSource?
     /// A fingerprint of what it read when it last wrote (the clip's place,
     /// trim and speed, the frame rate, the beats), so a change to any of
     /// them shows it is out of date. Nil until it has written.
@@ -209,6 +211,12 @@ struct KeyframingPrint {
     }
 
     mutating func add(_ number: Double) { add(number.bitPattern) }
+
+    mutating func add(_ text: String?) {
+        guard let text else { return add(UInt64(0)) }
+        add(UInt64(text.utf8.count + 1))
+        for byte in text.utf8 { add(UInt64(byte)) }
+    }
     mutating func add(_ time: CMTime) { add(time.seconds) }
 
     mutating func add(_ id: UUID?) {
@@ -319,6 +327,20 @@ extension EditingProject {
         if !keyframingTargetIsReachable(effect, in: clip) {
             return EffectNote(text: "The control it writes to is gone or above it, so its keyframes stay as they are until it is pointed elsewhere.", dims: true)
         }
+        if effect.kind == .audioKeys {
+            guard let source = setup.audioSource else {
+                return EffectNote(text: "Choose what it listens to.", dims: true)
+            }
+            if let timeline = timelines.first(where: { $0.layers.contains { $0.clips.contains { $0.id == clip.id } } }) {
+                let heard = heardClips(source, in: timeline)
+                if heard.isEmpty {
+                    return EffectNote(text: "Nothing it listens to plays sound from a file in this timeline.", dims: true)
+                }
+                if heard.contains(where: { SpectrogramStore.shared.spectrogram(for: $0.url) == nil }) {
+                    return EffectNote(text: "Reading the sound…", dims: false)
+                }
+            }
+        }
         if effect.kind == .beatKeys, setup.beatLayer == nil {
             return EffectNote(text: "Choose a Sound or Music layer whose beat map it follows.", dims: true)
         }
@@ -366,6 +388,9 @@ extension EditingProject {
         if let range = effect.keyframing?.range {
             fingerprint.add(range.start)
             fingerprint.add(range.end)
+        }
+        if effect.kind == .audioKeys, let source = effect.keyframing?.audioSource {
+            addHeard(source, in: timeline, to: &fingerprint)
         }
         if effect.kind == .beatKeys, let layer = effect.keyframing?.beatLayer.flatMap({ timeline.layer(id: $0) }) {
             for beat in beatMarkers(in: layer, tracks: [:]) {
@@ -438,9 +463,26 @@ extension EditingProject {
         let base = setup.base ?? Self.removingKeyframes(of: effectID, from: current)
         setup.base = base
         setup.readPrint = keyframingReadPrint(of: effect, in: clip, of: timeline)
+        var heard: [[Double]]?
+        if effect.kind == .audioKeys {
+            let range = Self.writtenRange(setup, of: clip)
+            let times = KeyframeSampling(clip: clip, range: range, frame: timeline.frameDuration).timelineTimes
+            heard = setup.audioSource.flatMap { heardBands($0, in: timeline, at: times) }
+            guard heard != nil else {
+                // Still reading the sound, or nothing to listen to: keep
+                // what is there, and take it as what was written, so the
+                // sound arriving makes the keyframes rather than asking.
+                setup.writtenPrint = Self.fingerprint(of: current)
+                editClip(clipID, in: timelineID) { clip in
+                    if let index = clip.effects.index(of: effectID) { clip.effects[index].keyframing = setup }
+                }
+                return
+            }
+        }
         let written = Self.generated(
             effect, setup: setup, base: base, target: target, clip: clip, timeline: timeline,
-            beats: setup.beatLayer.flatMap { layerID in timeline.layer(id: layerID).map { beatMarkers(in: $0, tracks: [:]) } } ?? []
+            beats: setup.beatLayer.flatMap { layerID in timeline.layer(id: layerID).map { beatMarkers(in: $0, tracks: [:]) } } ?? [],
+            heard: heard
         )
         setup.writtenPrint = Self.fingerprint(of: written)
         editClip(clipID, in: timelineID) { clip in
@@ -468,6 +510,13 @@ extension EditingProject {
         }
     }
 
+    /// The span a Keyframing effect writes to: its range within the clip,
+    /// or the whole clip.
+    static func writtenRange(_ setup: KeyframingSetup, of clip: TimelineClip) -> CMTimeRange {
+        let whole = CMTimeRange(start: clip.trimStart, end: clip.trimEnd)
+        return setup.range.map { $0.intersection(whole) } ?? whole
+    }
+
     /// `number` without the keyframes `effectID` wrote; the value it holds
     /// where there are none left is what was showing at the first of them.
     static func removingKeyframes(of effectID: UUID, from number: AnimatedValue<ComponentValue>) -> AnimatedValue<ComponentValue> {
@@ -480,16 +529,16 @@ extension EditingProject {
     /// what it makes inside, reduced to the keyframes the curve needs.
     private static func generated(
         _ effect: Effect, setup: KeyframingSetup, base: AnimatedValue<ComponentValue>, target: KeyframingTarget,
-        clip: TimelineClip, timeline: Timeline, beats: [BeatMarker]
+        clip: TimelineClip, timeline: Timeline, beats: [BeatMarker], heard: [[Double]]?
     ) -> AnimatedValue<ComponentValue> {
         let whole = CMTimeRange(start: clip.trimStart, end: clip.trimEnd)
-        let range = setup.range.map { $0.intersection(whole) } ?? whole
+        let range = writtenRange(setup, of: clip)
         guard range.duration > .zero else { return base }
         let sampling = KeyframeSampling(clip: clip, range: range, frame: timeline.frameDuration)
         let baseSamples = sampling.sources.map { base.value(at: $0).values }
         guard let width = baseSamples.first?.count, width > 0 else { return base }
         let components = setup.component.map { $0 < width ? [$0] : [] } ?? Array(0..<width)
-        let signal = KeyframeSignal(effect: effect, sampling: sampling, base: base, baseSamples: baseSamples, beats: beats)
+        let signal = KeyframeSignal(effect: effect, sampling: sampling, base: base, baseSamples: baseSamples, beats: beats, heard: heard)
 
         var samples = baseSamples
         if effect.kind.reshapesTarget {
@@ -550,6 +599,8 @@ extension TimelineClip {
 struct KeyframeSampling {
     /// The source time of each sample.
     var sources: [CMTime]
+    /// The timeline time of each sample.
+    var timelineTimes: [CMTime]
     /// Seconds since the first sample, in the timeline's time.
     var elapsed: [Double]
     /// The timeline time of the first sample.
@@ -566,21 +617,20 @@ struct KeyframeSampling {
         start = CMTimeMinimum(a, b)
         let end = CMTimeMaximum(a, b)
         frameSeconds = frame.seconds
-        var sources: [CMTime] = [], elapsed: [Double] = []
+        var times: [CMTime] = []
         var k: Int32 = 0
         while true {
             let time = CMTimeAdd(start, CMTimeMultiply(frame, multiplier: k))
             guard time <= end else { break }
-            sources.append(Self.clamp(clip.sourceTime(atTimelineTime: time), to: range))
-            elapsed.append(CMTimeSubtract(time, start).seconds)
+            times.append(time)
             k += 1
         }
         // The end itself, when the range doesn't end on a frame.
-        if let last = elapsed.last, CMTimeSubtract(end, start).seconds - last > 1e-6 {
-            sources.append(Self.clamp(clip.sourceTime(atTimelineTime: end), to: range))
-            elapsed.append(CMTimeSubtract(end, start).seconds)
-        }
-        self.sources = sources
+        if let last = times.last, CMTimeSubtract(end, last).seconds > 1e-6 { times.append(end) }
+        let start = start
+        timelineTimes = times
+        sources = times.map { Self.clamp(clip.sourceTime(atTimelineTime: $0), to: range) }
+        let elapsed = times.map { CMTimeSubtract($0, start).seconds }
         self.elapsed = elapsed
         let outside = [CMTimeSubtract(start, frame), CMTimeAdd(end, frame)].map { clip.sourceTime(atTimelineTime: $0) }
         let earlier = outside.min(by: <)!, later = outside.max(by: <)!
@@ -606,8 +656,13 @@ private struct KeyframeSignal {
     private var cycles: [Double] = []
     /// Beat Keys' chosen beats.
     private var pulses: [KeyframeGenerators.Pulse] = []
+    /// Audio Keys' output at each sample, before Combine.
+    private var listened: [Double] = []
 
-    init(effect: Effect, sampling: KeyframeSampling, base: AnimatedValue<ComponentValue>, baseSamples: [[Double]], beats: [BeatMarker]) {
+    init(
+        effect: Effect, sampling: KeyframeSampling, base: AnimatedValue<ComponentValue>, baseSamples: [[Double]],
+        beats: [BeatMarker], heard: [[Double]]?
+    ) {
         self.effect = effect
         self.sampling = sampling
         self.base = base
@@ -616,7 +671,35 @@ private struct KeyframeSignal {
         case .wiggler: cycles = integratedPhase(.wiggleFrequency, default: 2)
         case .oscillator: cycles = integratedPhase(.oscillatorFrequency, default: 1)
         case .beatKeys: pulses = chosenPulses(beats)
+        case .audioKeys: listened = heard.map(listen) ?? []
         default: break
+        }
+    }
+
+    /// A pair setting at sample `k`, or `fallback`.
+    func pair(_ kind: ControlKind, at k: Int) -> (Double, Double) {
+        let values = effect.control(kind).flatMap { $0.enabled ? $0.values(at: sampling.sources[k]) : nil } ?? kind.defaultValues
+        return values.count >= 2 ? (values[0], values[1]) : (kind.defaultValues[0], kind.defaultValues[1])
+    }
+
+    /// Audio Keys' steps: the range's level, between the box's bottom and
+    /// top, followed with attack and release, along the curve, onto the
+    /// output range.
+    private func listen(_ heard: [[Double]]) -> [Double] {
+        let positions = sampling.sources.indices.map { k -> Double in
+            guard k < heard.count else { return 0 }
+            let frequencies = pair(.frequencyRange, at: k), levels = pair(.levelRange, at: k)
+            let level = AudioKeysMath.level(of: heard[k], from: frequencies.0, to: frequencies.1)
+            return AudioKeysMath.normalized(level, floor: levels.0, ceiling: levels.1)
+        }
+        let followed = AudioKeysMath.envelope(
+            positions, elapsed: sampling.elapsed,
+            attack: { number(.keyAttack, at: $0, default: 0) / 1000 }, release: { number(.keyRelease, at: $0, default: 200) / 1000 }
+        )
+        let curve = effect.choice(.keyCurve, as: KeyCurve.self) ?? .linear
+        return followed.indices.map { k in
+            let output = pair(.outputRange, at: k)
+            return output.0 + (output.1 - output.0) * AudioKeysMath.shaped(followed[k], curve)
         }
     }
 
@@ -673,6 +756,8 @@ private struct KeyframeSignal {
                 elapsed: elapsed, total: sampling.duration, fade: number(.fade, at: k, default: 0)
             )
             return number(.amplitude, at: k, default: 10) * envelope * KeyframeGenerators.wave(wave, at: cycles[k] + phase)
+        case .audioKeys:
+            return k < listened.count ? listened[k] : 0
         case .beatKeys:
             return KeyframeGenerators.beatSignal(
                 at: elapsed, pulses: pulses, shape: effect.choice(.beatShape, as: BeatShape.self) ?? .pulse,

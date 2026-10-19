@@ -1,7 +1,7 @@
 # Keyframing effects
 
-Status: **steps 1 to 3 of 4 built** (see [Building it](#building-it) for what
-each step does and leaves out). A new **Keyframing** category in the
+Status: **built** (see [Building it](#building-it) for what each step
+does and leaves out). A new **Keyframing** category in the
 Effects Library: effects that draw nothing and instead write keyframes
 onto other controls, from a sound (Audio Keys, as Trapcode Sound Keys
 does in After Effects), from a song's beats, from noise (Wiggler, as
@@ -101,9 +101,9 @@ Smoother, Looper, Time Step and Overshoot read the target's own keyframes
 The panel shows the sound's **spectrum** at the playhead, frequency on a
 log scale across and level up, and a **box** on it: its left and right
 edges are the frequency range, its bottom and top the amplitude range.
-Drag the box or its edges, as in Sound Keys; three boxes can be on at
-once, each its own output, so one effect can drive kick, snare and hats
-onto three targets.
+Drag the box or its edges, as in Sound Keys. An effect has one box and
+one target; to drive kick, snare and hats onto three targets, use three
+Audio Keys effects.
 
 For each output, at every frame:
 
@@ -117,9 +117,10 @@ For each output, at every frame:
    (Scale 100% to 130%, say), along a curve (linear, ease, or a
    threshold that makes a trigger).
 
-**Source**: a Sound or Music layer, one audio clip, or the whole mix, of
-this timeline. Each source's sound is taken as heard, with its volume
-and EQ.
+**Listen To**: the whole mix (the default), a Sound or Music layer, or
+one clip with sound, of this timeline. Each clip's sound is taken as
+heard, with its volume and its layer's, and their EQs; other sound
+effects, pan, nested timelines' sound and missing files aren't heard.
 
 ### Analysis
 
@@ -131,10 +132,14 @@ song, so the expensive part is done once per audio file and kept:
   20 ms, more than a frame's resolution at 30 fps). Each band's level is
   one byte, in half-decibel steps from −128 dB to 0 dB, so a file costs
   2.4 KB per second of sound: about 430 KB for a three-minute song,
-  8.6 MB per hour. It is computed by `AssetAnalysis` in
-  the background with the waveform and beats, and stored with them as
-  disposable data, in the asset's time, so moving or trimming a clip
-  doesn't recompute it.
+  8.6 MB per hour. The level is the band's power (mean square), so a
+  full-scale sine reads −3 dB; the file is read mixed to mono at
+  44.1 kHz. `Spectrogram.read` makes it on the sample-reading queue the
+  first time an effect listens to the file, and `SpectrogramStore` keeps
+  it for the session by file, as `WaveformCache` keeps waveforms: it is
+  in the file's time, so moving or trimming a clip doesn't recompute it,
+  and making it again takes a fraction of a second a minute, so it isn't
+  saved in the package.
 - For a source of several clips, each clip's spectrogram is placed on
   the timeline in its time, scaled by its volume curve, and by its EQ's
   magnitude at each band's center frequency; layers are summed as
@@ -271,8 +276,21 @@ In order, each step usable on its own:
    reads now as its source, so it asks again at the next change). Off
    effects and ones that can't reach their target are never out of date.
    Making keyframes stays on the main thread: a clip is a few thousand
-   samples, and only Audio Keys' analysis needs the background, which
-   `AssetAnalysis` already gives it.
-4. **Audio Keys**: the spectrogram in `AssetAnalysis`, a source's sound as
-   heard, the boxes and their fields.
+   samples, and only Audio Keys' analysis needs the background (see step
+   4).
+4. **Audio Keys** (done), as described above. Its settings are
+   Frequencies and Levels (each low and high, the box as fields),
+   Attack and Release (0 and 200 ms, time constants of the envelope),
+   Output (from and to), Curve and Tolerance, and its setup's
+   `audioSource` (saved as `listensToMix`, `listensToLayer` or
+   `listensToClip`). The panel has a Listen To row and, under it,
+   `AudioKeysGraph`: the bands heard at the playhead (−96 to 0 dB) and the
+   box, whose edges or inside are dragged as one undo step, and which
+   VoiceOver adjusts by a third of an octave, with actions that raise or
+   lower its levels by 3 dB. Its read print includes each heard file's
+   spectrogram fingerprint and the clips', layers' and EQs' settings, so
+   while a file is still being read the effect keeps its keyframes (with
+   a "Reading the sound…" note), and when it arrives the editor makes them
+   in the undo baseline as well as the project, since the analysis
+   arriving isn't an edit.
 

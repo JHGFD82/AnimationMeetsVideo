@@ -59,7 +59,7 @@ final class AudioEffectUnit: SoundEffectProcessor {
         case .limiter: subType = kAudioUnitSubType_PeakLimiter
         case .voiceIsolation: subType = kAudioUnitSubType_AUSoundIsolation
         case .equalizer, .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke,
-             .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: return nil
+             .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: return nil
         }
         guard format.mFormatID == kAudioFormatLinearPCM, format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
               format.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0, format.mBitsPerChannel == 32,
@@ -186,7 +186,7 @@ final class AudioEffectUnit: SoundEffectProcessor {
         case .voiceIsolation:
             set(kAUSoundIsolationParam_WetDryMixPercent, value(.isolation))
         case .equalizer, .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke,
-             .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot:
+             .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot:
             break
         }
     }

@@ -132,6 +132,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     case voiceIsolation
     /// Keyframing effects (see docs/keyframing-effects.md): each writes
     /// keyframes onto a control below it, and draws nothing.
+    case audioKeys
     case beatKeys
     case wiggler
     case oscillator
@@ -157,6 +158,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .compressor: "Compressor"
         case .limiter: "Limiter"
         case .voiceIsolation: "Voice Isolation"
+        case .audioKeys: "Audio Keys"
         case .beatKeys: "Beat Keys"
         case .wiggler: "Wiggler"
         case .oscillator: "Oscillator"
@@ -173,7 +175,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .rectangle, .ellipse, .polygon, .star, .stroke: .shapes
         case .matte: .mattes
         case .equalizer, .compressor, .limiter, .voiceIsolation: .sound
-        case .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: .keyframing
+        case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: .keyframing
         }
     }
 
@@ -214,6 +216,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .compressor: "arrow.down.right.and.arrow.up.left"
         case .limiter: "line.horizontal.star.fill.line.horizontal"
         case .voiceIsolation: "person.wave.2"
+        case .audioKeys: "waveform.badge.magnifyingglass"
         case .beatKeys: "metronome"
         case .wiggler: "scribble.variable"
         case .oscillator: "waveform.path"
@@ -236,7 +239,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke,
              .equalizer, .compressor, .limiter, .voiceIsolation: false
-        case .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: false
+        case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: false
         }
     }
 
@@ -259,6 +262,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .compressor: [.threshold, .headroom, .attack, .release, .makeup]
         case .limiter: [.drive, .limiterRelease]
         case .voiceIsolation: [.isolation]
+        case .audioKeys: [.frequencyRange, .levelRange, .keyAttack, .keyRelease, .outputRange, .keyCurve, .tolerance]
         case .beatKeys: [.beatSelection, .everyBeats, .beatOffset, .accent, .beatShape, .peak, .decay, .tolerance]
         case .wiggler: [.wiggleFrequency, .magnitude, .wiggleType, .octaves, .wiggleDimensions, .seed, .tolerance]
         case .oscillator: [.wave, .oscillatorFrequency, .amplitude, .phase, .fade, .tolerance]
@@ -291,6 +295,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case wiggleFrequency, magnitude, wiggleType, octaves, wiggleDimensions, seed
     case wave, oscillatorFrequency, amplitude, phase, fade
     case smoothing, loopMode, loopSide, hold, stiffness, damping, mass
+    case frequencyRange, levelRange, keyAttack, keyRelease, outputRange, keyCurve
     case tolerance
 
     var id: Self { self }
@@ -362,6 +367,12 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .stiffness: "Stiffness"
         case .damping: "Damping"
         case .mass: "Mass"
+        case .frequencyRange: "Frequencies"
+        case .levelRange: "Levels"
+        case .keyAttack: "Attack"
+        case .keyRelease: "Release"
+        case .outputRange: "Output"
+        case .keyCurve: "Curve"
         case .tolerance: "Tolerance"
         }
     }
@@ -391,6 +402,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .loopMode, .loopSide: .looper
         case .hold: .timeStep
         case .stiffness, .damping, .mass: .overshoot
+        case .frequencyRange, .levelRange, .keyAttack, .keyRelease, .outputRange, .keyCurve: .audioKeys
         }
     }
 
@@ -426,6 +438,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .wave: OscillatorWave.allCases.map { ($0.rawValue, $0.name) }
         case .loopMode: LoopMode.allCases.map { ($0.rawValue, $0.name) }
         case .loopSide: LoopSide.allCases.map { ($0.rawValue, $0.name) }
+        case .keyCurve: KeyCurve.allCases.map { ($0.rawValue, $0.name) }
         default: []
         }
     }
@@ -446,6 +459,7 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .wave: OscillatorWave.sine.rawValue
         case .loopMode: LoopMode.cycle.rawValue
         case .loopSide: LoopSide.after.rawValue
+        case .keyCurve: KeyCurve.linear.rawValue
         default: nil
         }
     }
@@ -475,6 +489,8 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .dash: ["Dash", "Gap"]
         case .strokeEdge, .strokeJoin, .strokeCap, .eqLowCutSlope, .eqHighCutSlope: []
         case _ where isChoice: []
+        case .frequencyRange, .levelRange: ["Low", "High"]
+        case .outputRange: ["From", "To"]
         default: EqualizerBand(controlKind: self)?.componentNames ?? [name]
         }
     }
@@ -510,7 +526,13 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .release: [100]
         case .limiterRelease: [5]
         case .isolation: [100]
-        case .beatSelection, .beatShape, .wiggleType, .wiggleDimensions, .wave, .loopMode, .loopSide: []
+        case .beatSelection, .beatShape, .wiggleType, .wiggleDimensions, .wave, .loopMode, .loopSide, .keyCurve: []
+        // A kick drum's range, and a gate and ceiling for a typical mix.
+        case .frequencyRange: [40, 120]
+        case .levelRange: [-50, -10]
+        case .keyAttack: [0]
+        case .keyRelease: [200]
+        case .outputRange: [0, 10]
         case .everyBeats: [1]
         case .beatOffset: [0]
         case .accent: [50]
@@ -544,7 +566,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .eqOutput, .threshold, .headroom, .makeup, .drive: " dB"
         case .attack, .release, .limiterRelease, .decay: " ms"
         // A Keyframing effect's amounts are in its target's units.
-        case .beatSelection, .beatShape, .wiggleType, .wiggleDimensions, .wave, .loopMode, .loopSide: ""
+        case .beatSelection, .beatShape, .wiggleType, .wiggleDimensions, .wave, .loopMode, .loopSide, .keyCurve: ""
+        case .frequencyRange: " Hz"
+        case .levelRange: " dB"
+        case .keyAttack, .keyRelease: " ms"
+        case .outputRange: ""
         case .peak, .magnitude, .amplitude, .octaves, .seed, .stiffness, .damping, .mass: ""
         case .everyBeats, .beatOffset: " beats"
         case .accent, .tolerance: "%"
@@ -600,8 +626,12 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .drive: 0...24
         case .limiterRelease: 1...40
         case .isolation: 0...100
-        case .beatSelection, .beatShape, .wiggleType, .wiggleDimensions, .wave, .loopMode, .loopSide: nil
-        case .peak, .magnitude, .amplitude, .phase: nil
+        case .beatSelection, .beatShape, .wiggleType, .wiggleDimensions, .wave, .loopMode, .loopSide, .keyCurve: nil
+        case .peak, .magnitude, .amplitude, .phase, .outputRange: nil
+        case .frequencyRange: Spectrogram.lowestFrequency...Spectrogram.highestFrequency
+        case .levelRange: Spectrogram.floor...0
+        case .keyAttack: 0...2000
+        case .keyRelease: 0...5000
         case .everyBeats: 1...64
         case .beatOffset: 0...63
         case .accent: 0...1000
@@ -792,6 +822,7 @@ struct Effect: Identifiable, Equatable, Sendable {
         self.name = name
         self.controls = controls ?? kind.controlKinds.map { EffectControl(kind: $0, enabled: $0.startsEnabled) }
         keyframing = kind.isKeyframing ? KeyframingSetup() : nil
+        if kind == .audioKeys { keyframing?.audioSource = .mix }
     }
 
     var displayName: String { name ?? kind.name }

@@ -151,6 +151,7 @@ final class MediaReplacementController {
                 for url in urls { await CompositionExporter.forgetCachedMedia(at: url) }
                 FrameThumbnails.invalidate()
                 WaveformCache.shared.invalidateAll()
+                SpectrogramStore.shared.invalidateAll()
             }
         }
         guard !newlyChanged.isEmpty || !newlyMissing.isEmpty, notice == nil, pendingNotice == nil, session == nil else { return }
@@ -325,6 +326,7 @@ final class MediaReplacementController {
         if let newURL = analysis.replacement.url { await CompositionExporter.forgetCachedMedia(at: newURL) }
         FrameThumbnails.invalidate()
         WaveformCache.shared.invalidateAll()
+        SpectrogramStore.shared.invalidateAll()
         context.project.wrappedValue.replaceMedia(id: assetID, with: analysis.replacement, offset: offset)
         changedMedia.remove(assetID)
         replaced += 1

@@ -297,6 +297,34 @@ struct UISnapshots {
         )
     }
 
+    /// Audio Keys listening to a song's low burst, with the playhead in
+    /// it: Listen To, the spectrum and its box, and the settings.
+    @Test func audioKeysPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let url = URL(fileURLWithPath: "/tmp/audio-keys-snapshot-\(UUID().uuidString).wav")
+        let samples = tone(60, amplitude: 0.5, seconds: 1) + tone(2500, amplitude: 0.05, seconds: 1)
+        SpectrogramStore.shared.set(Spectrogram.analyze(zip(samples, tone(400, amplitude: 0.1, seconds: 2)).map { $0 + $1 }), for: url)
+        var song = MediaClip(
+            name: "Song.wav", kind: .audio, url: url, duration: CMTime(value: 2, timescale: 1), frameRate: 24,
+            colorSpace: .rec709, codecName: "PCM"
+        )
+        song.hasAudio = true
+        project.clips.append(song)
+        project.putOnMusicLayer([song.id])
+        _ = project.addEffect(.audioKeys, toClip: shape.clipID, in: timelineID)
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID),
+                playheadTime: CMTime(value: 1, timescale: 2), state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "audio-keys-panel", size: CGSize(width: 560, height: 560)
+        )
+    }
+
     /// The shape button's popover: a row for each shape a new layer can
     /// start with.
     @Test func newShapePopover() throws {
