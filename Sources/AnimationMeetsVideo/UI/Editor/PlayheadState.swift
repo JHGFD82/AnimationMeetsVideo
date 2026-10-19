@@ -10,7 +10,11 @@ import SwiftUI
 @MainActor
 @Observable
 final class PlayheadState {
-    var time: CMTime = .zero
+    var time: CMTime
+
+    init(time: CMTime = .zero) {
+        self.time = time
+    }
 }
 
 /// Builds `content` from the parked playhead, and again when it moves,

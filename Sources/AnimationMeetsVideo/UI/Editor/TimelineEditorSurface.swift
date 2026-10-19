@@ -239,25 +239,23 @@ struct TimelineEditorSurface<Library: View>: View {
                                     )
                                 }
                             case .effects:
-                                PlayheadReader(playhead: playhead) { playheadTime in
-                                    EffectsPanel(
-                                        project: $project,
-                                        timelineID: timelineID,
-                                        selection: selection,
-                                        playheadTime: playheadTime,
-                                        state: effectsState,
-                                        onSeek: { time in scrub(to: time) },
-                                        onSelectTransition: { edge in
-                                            if let selection {
-                                                self.selection = TimelineSelection(
-                                                    timelineID: selection.timelineID, layerID: selection.layerID,
-                                                    timelineClipID: selection.timelineClipID, transitionEdge: edge
-                                                )
-                                            }
-                                        },
-                                        playback: playback
-                                    )
-                                }
+                                EffectsPanel(
+                                    project: $project,
+                                    timelineID: timelineID,
+                                    selection: selection,
+                                    playhead: playhead,
+                                    state: effectsState,
+                                    onSeek: { time in scrub(to: time) },
+                                    onSelectTransition: { edge in
+                                        if let selection {
+                                            self.selection = TimelineSelection(
+                                                timelineID: selection.timelineID, layerID: selection.layerID,
+                                                timelineClipID: selection.timelineClipID, transitionEdge: edge
+                                            )
+                                        }
+                                    },
+                                    playback: playback
+                                )
                             }
                         }
                         .frame(width: CGFloat(PanelResizeHandle.clamped(

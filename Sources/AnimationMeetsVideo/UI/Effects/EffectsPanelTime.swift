@@ -124,7 +124,7 @@ extension EffectsPanel {
             ParameterRow(
                 name: "Speed",
                 indent: 14,
-                components: [clip.speed(atSource: c.sourceNow)],
+                components: [clip.speed(atSource: c.sourceNow(animated: speed.isAnimated))],
                 unit: "%",
                 dragRange: { _ in
                     clip.isReversed ? -ClipTime.speedRange.upperBound ... -ClipTime.speedRange.lowerBound : ClipTime.speedRange
@@ -132,7 +132,7 @@ extension EffectsPanel {
                 isAnimated: speed.isAnimated,
                 isSelected: false,
                 keyframeTimes: speed.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
-                playhead: c.frameTime,
+                playhead: c.frameTime(animated: speed.isAnimated),
                 onSelect: {},
                 onSetComponent: { _, value in
                     // Crossing zero would take forever to play: hold at the
@@ -151,7 +151,7 @@ extension EffectsPanel {
                     .disabled(!clip.isRetimed)
             },
             lane: ParameterLane(
-                marks: speed.marks, geometry: c.geometry, playhead: c.frameTime, height: EffectsPanelMetrics.rowHeight,
+                marks: speed.marks, geometry: c.geometry, playhead: c.frameTime(animated: speed.isAnimated), height: EffectsPanelMetrics.rowHeight,
                 onSeek: onSeek,
                 onMove: { from, to, copy in editTime(c) { $0.speed.moveKeyframe(at: from, to: to, copying: copy) } },
                 onDelete: { time in editTime(c) { $0.speed.removeKeyframe(at: time) } },
