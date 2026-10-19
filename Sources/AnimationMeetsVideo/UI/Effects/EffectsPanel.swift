@@ -52,6 +52,9 @@ struct EffectsPanel: View {
 
     var playheadTime: CMTime { playhead.time }
 
+    /// The project's state, read for a linked row's other axis during a
+    /// drag held to one side of it (see `heldControl`).
+    @Environment(ProjectState.self) private var projectState: ProjectState?
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) var graphs: KeyframeGraphHUDs?
     /// Whether each row shows its keyframe lane, with the ruler and
@@ -690,6 +693,15 @@ struct EffectsPanel: View {
             .equatable()
     }
 
+    /// A linked control as a held drag has it, for its other axis to show:
+    /// dragging the width of a linked size changes the height, which the
+    /// row reads from the project, still as it was. Only a linked row reads
+    /// the held project, so a step of a drag redraws those and not every row.
+    private func heldControl(_ control: EffectControl, of effect: Effect, in clip: TimelineClip) -> EffectControl? {
+        guard control.kind.isLinkable, control.linked, let held = projectState?.held else { return nil }
+        return held.clipAndLayer(clip.id, in: timelineID)?.clip.effect(id: effect.id)?.controls.first { $0.id == control.id }
+    }
+
     @ViewBuilder
     private func controlRowContent(_ control: EffectControl, of effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
         let clip = c.clip
@@ -738,7 +750,7 @@ struct EffectsPanel: View {
                 ParameterRow(
                     name: control.kind.name,
                     indent: EffectsPanelMetrics.controlIndent - 12,
-                    components: control.values(at: c.sourceNow(animated: control.isAnimated)),
+                    components: (heldControl(control, of: effect, in: clip) ?? control).values(at: c.sourceNow(animated: control.isAnimated)),
                     unit: control.kind.unit,
                     dragStep: control.kind.dragStep,
                     dragRange: { control.kind.range(ofComponent: $0) },
@@ -910,7 +922,8 @@ struct EffectsPanel: View {
                 playhead: PlayheadTime(c.playhead) { c.geometry.clampedSource(atTimeline: c.timeline.snappedToFrame($0)) },
                 onEdit: { change in editClip(clip.id) { change(&$0[keyPath: keyPath]) } },
                 onSeek: { onSeek(clip.timelineTime(forSourceTime: $0)) },
-                onShowGraph: graphs.map { graphs in { graphs.show(key) } }
+                onShowGraph: graphs.map { graphs in { graphs.show(key) } },
+                held: { projectState?.held?.clipAndLayer(clip.id, in: timelineID)?.clip[keyPath: keyPath] }
             )
             .padding(.horizontal, 8),
             lane: ParameterLane(

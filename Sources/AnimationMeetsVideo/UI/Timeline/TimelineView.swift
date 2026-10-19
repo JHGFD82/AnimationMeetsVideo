@@ -160,6 +160,8 @@ struct TimelineView: View {
     /// The playhead that drags snap to, brought up to date at each redraw
     /// (see `SnapTargets.playhead`).
     @State private var snapPlayhead = LivePlayhead()
+    /// Read for the layer volume row during a drag held to one side of the project.
+    @Environment(ProjectState.self) private var projectState: ProjectState?
     /// What edges snap to, read as a drag snaps: a row isn't redrawn when
     /// another layer's clips move, so it can't be handed them.
     @State private var liveSnap = LiveSnapTargets()
@@ -781,7 +783,8 @@ struct TimelineView: View {
                             onSeek: onScrub,
                             onShowGraph: graphs.map { graphs in
                                 { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
-                            }
+                            },
+                            held: { projectState?.held?.timeline(id: timelineID)?.layer(id: layer.id)?.volume }
                         )
                         .padding(.leading, 30)
                         .padding(.trailing, 8)

@@ -73,11 +73,15 @@ struct AudioPropertyRow: View {
     let onSeek: (CMTime) -> Void
     /// Opens the property's graph editor; offered while it is animated.
     var onShowGraph: (() -> Void)?
+    /// The value as a drag held to one side of the project has it, or nil
+    /// when none is: dragging the number moves the slider beside it. Read
+    /// as the row draws, so only these rows follow a step of a drag.
+    var held: (() -> AnimatedValue<Double>?)?
 
     init(
         property: AudioProperty = .volume, value: AnimatedValue<Double>, playhead: PlayheadTime,
         onEdit: @escaping ((inout AnimatedValue<Double>) -> Void) -> Void, onSeek: @escaping (CMTime) -> Void,
-        onShowGraph: (() -> Void)? = nil
+        onShowGraph: (() -> Void)? = nil, held: (() -> AnimatedValue<Double>?)? = nil
     ) {
         self.property = property
         self.value = value
@@ -85,6 +89,7 @@ struct AudioPropertyRow: View {
         self.onEdit = onEdit
         self.onSeek = onSeek
         self.onShowGraph = onShowGraph
+        self.held = held
     }
 
     /// A row with the playhead at `time`.
@@ -99,7 +104,6 @@ struct AudioPropertyRow: View {
         )
     }
 
-    private var keyframeTimes: [CMTime] { value.keyframes.map(\.time) }
 
     // The actions find the playhead when they run (see `PlayheadTime`).
 
@@ -123,6 +127,7 @@ struct AudioPropertyRow: View {
     private var lowercaseName: String { property.name.lowercased() }
 
     var body: some View {
+        let value = held?() ?? self.value
         let time = playhead.shown(animated: value.isAnimated)
         let current = value.value(at: time)
         HStack(spacing: 4) {
@@ -156,7 +161,7 @@ struct AudioPropertyRow: View {
             Spacer(minLength: 4)
 
             if value.isAnimated {
-                KeyframeNavigator(name: lowercaseName, keyframeTimes: keyframeTimes, time: time, onSeek: onSeek, onToggle: toggleKeyframe)
+                KeyframeNavigator(name: lowercaseName, keyframeTimes: value.keyframes.map(\.time), time: time, onSeek: onSeek, onToggle: toggleKeyframe)
                 if let onShowGraph { GraphEditorButton(name: lowercaseName, action: onShowGraph) }
             }
         }

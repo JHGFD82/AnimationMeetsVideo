@@ -15,6 +15,8 @@ struct InspectorPanel: View {
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
     @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
+    /// Read for the sound rows during a drag held to one side of the project.
+    @Environment(ProjectState.self) private var projectState: ProjectState?
 
     init(
         project: Binding<EditingProject>, timelineID: UUID, selection: TimelineSelection? = nil, info: ResolvedClipInfo?,
@@ -184,7 +186,8 @@ struct InspectorPanel: View {
                                                 ? .clipVolume(clipID: timelineClip.id) : .clipPan(clipID: timelineClip.id)
                                             graphs.show(ParameterKey(timelineID: timelineID, parameter: parameter))
                                         }
-                                    }
+                                    },
+                                    held: { projectState?.held?.clipAndLayer(timelineClip.id, in: timelineID)?.clip[keyPath: keyPath] }
                                 )
                             }
                         }
@@ -199,7 +202,8 @@ struct InspectorPanel: View {
                                 onSeek: onSeek,
                                 onShowGraph: graphs.map { graphs in
                                     { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
-                                }
+                                },
+                                held: { projectState?.held?.timeline(id: timelineID)?.layer(id: layer.id)?.volume }
                             )
                             AudioPropertyRow(
                                 property: .pan,
@@ -209,7 +213,8 @@ struct InspectorPanel: View {
                                 onSeek: onSeek,
                                 onShowGraph: graphs.map { graphs in
                                     { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerPan(layerID: layer.id))) }
-                                }
+                                },
+                                held: { projectState?.held?.timeline(id: timelineID)?.layer(id: layer.id)?.pan }
                             )
                             LayerSoundEffectsList(project: $project, timelineID: timelineID, layer: layer, playhead: frameTime)
                         }
