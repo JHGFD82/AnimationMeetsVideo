@@ -22,7 +22,9 @@ extension NumericExpression {
 /// With a `dragStep` the number can also be dragged: press on it and drag
 /// left or right to lower or raise it by that much per point (ten times
 /// with Shift, a tenth with Option). `onCommit` then gets every value along
-/// the way, so the picture follows the drag, and the whole drag is one undo
+/// the way, held to one side of the project (`ProjectState.hold`) so the
+/// viewer follows the drag without the rest of the editor redrawing, and
+/// once more with the last value when the drag ends, which is one undo
 /// step. Escape puts the value back.
 struct NumericField: View {
     let value: Double
@@ -42,10 +44,14 @@ struct NumericField: View {
     let onCommit: (Double) -> Void
 
     @Environment(\.projectHistory) private var history
+    @Environment(ProjectState.self) private var projectState: ProjectState?
     @State private var isEditing = false
     @State private var draft = ""
     @State private var drag: ValueDragSession?
     @State private var dragStart = 0.0
+    /// The value a drag has reached, shown in place of `value`, which
+    /// stays as it was while the drag is held.
+    @State private var dragged: Double?
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -70,6 +76,7 @@ struct NumericField: View {
                     if !focused { commit() }
                 }
         } else {
+            let value = dragged ?? value
             let shown = label?(value) ?? NumericExpression.format(value, maxFractionDigits: fractionDigits) + unit
             Text(shown)
                 .font(Design.Typeface.numericSmall)
@@ -105,12 +112,28 @@ struct NumericField: View {
         let start = value
         dragStart = start
         history?.beginGesture()
+        projectState?.beginHold()
         drag = ValueDragSession(
             onMove: { distance, flags in
-                onCommit(ValueDrag.value(from: start, distance: distance, step: step, flags: flags, range: dragRange))
+                let moved = ValueDrag.value(from: start, distance: distance, step: step, flags: flags, range: dragRange)
+                dragged = moved
+                if let projectState {
+                    projectState.hold { onCommit(moved) }
+                } else {
+                    onCommit(moved)
+                }
             },
             onFinish: { cancelled in
-                if cancelled { onCommit(start) }
+                let last = dragged
+                projectState?.endHold()
+                dragged = nil
+                // A drag let go (see `ProjectState.letGo`) has written to
+                // the project already, so a cancelled one is put back.
+                if cancelled {
+                    onCommit(start)
+                } else if let last {
+                    onCommit(last)
+                }
                 drag = nil
                 // After the last edit has reached the project.
                 Task { @MainActor in history?.endGesture() }

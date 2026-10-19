@@ -24,6 +24,9 @@ struct TimelineEditorSurface<Library: View>: View {
     @ViewBuilder let library: () -> Library
     /// Renders in the background; absent in windows that don't render.
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
+    /// Holds value drags to one side of the project, for the viewer to
+    /// follow (see `HeldDragFollower`); absent in previews and tests.
+    @Environment(ProjectState.self) private var projectState: ProjectState?
 
     @State private var playheadTime: CMTime = .zero
     @State private var trimPreview = TrimPreviewModel()
@@ -128,7 +131,9 @@ struct TimelineEditorSurface<Library: View>: View {
     /// The project as the viewer draws it: the real one, except while Show
     /// Up to Here is on, when one clip is cut short. Export and renders
     /// always use the real one.
-    private var viewedProject: EditingProject {
+    private var viewedProject: EditingProject { viewed(project) }
+
+    private func viewed(_ project: EditingProject) -> EditingProject {
         guard let showing = partialView else { return project }
         return project.showing(upTo: showing.effectID, ofClip: showing.clipID, in: timelineID)
     }
@@ -296,6 +301,11 @@ struct TimelineEditorSurface<Library: View>: View {
         .environment(graphs)
         .environment(activePanel)
         .background(ActivePanelMonitor(active: activePanel))
+        .background {
+            if let projectState {
+                HeldDragFollower(state: projectState, draw: drawHeld, end: heldDragEnded)
+            }
+        }
         .modifier(ActivePanelPublisher(active: activePanel))
         .onReceive(NotificationCenter.default.publisher(for: .revealEffect)) { note in
             if let id = note.object as? UUID { effectsState.select(effect: id) }
@@ -598,6 +608,41 @@ struct TimelineEditorSurface<Library: View>: View {
         playback.seek(to: time)
     }
 
+    /// Shows a step of a value drag held to one side of the project:
+    /// heard at once, and drawn over the viewer as `onChange(of:
+    /// compositionKey)` draws an edit. Returns whether the viewer drew it.
+    /// A step it can't draw from a live frame (it changes what the player
+    /// is built from, or the player is playing) lets the drag go to the
+    /// project, as edits other than drags do.
+    private func drawHeld(_ held: EditingProject, after previous: EditingProject?) -> Bool {
+        playback.mixCurves.replace(with: MixCurves.of(held))
+        graphs.update(project: held)
+        let viewed = viewed(held)
+        let key = CompositionKey(project: viewed)
+        let before = previous.map { CompositionKey(project: self.viewed($0)) } ?? compositionKey
+        // Retiming waits for the mouse to be released (see
+        // `onChange(of: compositionKey)`); volume and pan need no picture.
+        guard key != before, !key.differsOnlyInSpeed(from: before) else { return false }
+        renderer?.noteActivity()
+        if playback.redrawLive(viewed, structure: viewed.structure, interactive: true) { return true }
+        projectState?.letGo()
+        return false
+    }
+
+    /// A held drag ended, with its last value in the project or, cancelled,
+    /// none. The sound and graphs go back to the project, and a picture
+    /// drawn from the drag is replaced once the gesture is over.
+    private func heldDragEnded(drew: Bool) {
+        playback.mixCurves.replace(with: MixCurves.of(project))
+        graphs.update(project: project)
+        guard drew else { return }
+        if isGesturing {
+            rebuildDeferred = true
+        } else {
+            rebuildPlayerItem()
+        }
+    }
+
     /// Rebuilds the player item from the current project. Keeps the
     /// position and play state the player has when the build *finishes*,
     /// not when it started, so edits made during playback don't jump back.
@@ -814,5 +859,30 @@ struct TimelineResizeHandle: View {
                     dragStartHeight = nil
                 }
         )
+    }
+}
+
+/// Follows a value drag held to one side of the project (see
+/// `ProjectState`) for the surface. Only this reads `held`, so a step of
+/// the drag runs this body rather than the surface's.
+private struct HeldDragFollower: View {
+    let state: ProjectState
+    /// Shows a step; returns whether the viewer drew it.
+    let draw: (_ held: EditingProject, _ previous: EditingProject?) -> Bool
+    /// The drag is no longer held: it ended, or was let go.
+    let end: (_ drew: Bool) -> Void
+    /// Whether the viewer drew any step of this drag.
+    @State private var drew = false
+
+    var body: some View {
+        Color.clear
+            .onChange(of: state.held) { previous, held in
+                if let held {
+                    if draw(held, previous) { drew = true }
+                } else {
+                    end(drew)
+                    drew = false
+                }
+            }
     }
 }

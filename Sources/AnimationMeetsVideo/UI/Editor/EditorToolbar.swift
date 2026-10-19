@@ -12,6 +12,7 @@ struct EditorToolbar: View {
     let analysis: AssetAnalysis
     /// Pauses for an export, whose ProRes 422 output reuses its renders.
     let renderer: RenderScheduler
+    @Environment(ProjectState.self) private var projectState: ProjectState?
     @State private var selectedFormat = ExportFormat.proRes422
     @AppStorage(Preferences.exportLoudness) private var loudness = LoudnessTarget.asMixed
     @AppStorage(Preferences.exportAudioTracks) private var audioTracks = ExportAudioTracks.mix
@@ -53,6 +54,7 @@ struct EditorToolbar: View {
                         externalDisplay.start(
                             on: screen,
                             project: $project,
+                            projectState: projectState,
                             primaryTimelineID: $activeTimelineID,
                             primarySelection: $selection,
                             sharedPlayback: playback,
