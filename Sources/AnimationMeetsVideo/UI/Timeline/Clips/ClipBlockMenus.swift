@@ -12,8 +12,50 @@ struct ReachMenu {
     let onChoose: (UUID?) -> Void
 }
 
+/// A clip block's context menu, built again only when what it offers
+/// changes (`ClipBlockView.menuKey`): nothing in it depends on zoom, and
+/// the block is built again on every step of one. Its items act through
+/// the block's closures, which don't read what changed.
+struct ClipMenuHost: View, Equatable {
+    let block: ClipBlockView
+    let key: Key
+
+    struct Key: Equatable {
+        var clip: TimelineClip
+        var hasLinkedAudio: Bool
+        var hasBeatMatch: Bool
+        var passesThrough: Bool
+        var acceptsEffects: Bool
+        var acceptsSoundEffects: Bool
+        var playsSound: Bool
+        var reachCurrent: UUID?
+        var reachSummary: String?
+        var reachOptions: [UUID]
+        var reachNames: [String]
+        /// What the menu's Paste items are enabled by.
+        var canPasteClip: Bool
+        var canPasteEffects: Bool
+    }
+
+    var body: some View { block.clipMenu }
+
+    nonisolated static func == (lhs: ClipMenuHost, rhs: ClipMenuHost) -> Bool {
+        MainActor.assumeIsolated { lhs.key == rhs.key }
+    }
+}
+
 // The context menus of a clip block and of the transitions on it.
 extension ClipBlockView {
+    var menuKey: ClipMenuHost.Key {
+        ClipMenuHost.Key(
+            clip: clip, hasLinkedAudio: hasLinkedAudio, hasBeatMatch: onBeatMatch != nil, passesThrough: passesThrough,
+            acceptsEffects: acceptsEffects, acceptsSoundEffects: acceptsSoundEffects, playsSound: playsSound,
+            reachCurrent: reach?.current, reachSummary: reach?.summary,
+            reachOptions: reach?.options.map(\.id) ?? [], reachNames: reach?.options.map(\.name) ?? [],
+            canPasteClip: EditorClipboard.shared.clip != nil, canPasteEffects: EditorClipboard.shared.hasEffects
+        )
+    }
+
     @ViewBuilder
     var clipMenu: some View {
         Button("Cut") { onClipboard(.cut) }

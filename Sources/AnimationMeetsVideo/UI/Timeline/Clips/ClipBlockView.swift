@@ -232,58 +232,19 @@ struct ClipBlockView: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: Design.Space.tight) {
-                    if case .timeline = clip.source {
-                        Image(systemName: "rectangle.stack")
-                            .font(Design.Typeface.micro)
-                    } else if clip.streams == .audio {
-                        Image(systemName: "waveform")
-                            .font(Design.Typeface.micro)
-                    }
-                    Text(info?.name ?? "Unknown")
-                        .font(Design.Typeface.label)
-                        .lineLimit(1)
-                        .layoutPriority(-1)
-                    HStack(spacing: Design.Space.tight) {
-                        if hasLinkedAudio {
-                            Image(systemName: "speaker.wave.2.fill")
-                                .font(Design.Typeface.micro)
-                                .help("Plays its own sound; show it with the layer's waveform button")
-                        }
-                        if effectCount > 0 {
-                            HStack(spacing: 2) {
-                                Image(systemName: "wand.and.stars")
-                                Text("\(effectCount)").font(Design.Typeface.numericMicro)
-                            }
-                            .font(Design.Typeface.micro)
-                            .help("\(effectCount) effect\(effectCount == 1 ? "" : "s") in its stacks")
-                        }
-                        if hasPasteChanges {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(Design.Typeface.micro)
-                                .help("Effects pasted onto this clip have changes to resolve before it can be exported")
-                        }
-                        if passesThrough {
-                            Image(systemName: "square.stack.3d.down.right")
-                                .font(Design.Typeface.micro)
-                                .help("Passes through: its layers are drawn into the timeline it is placed in")
-                        }
-                        if !shown.time.isDefault {
-                            Image(systemName: "clock")
-                                .font(Design.Typeface.micro)
-                                .help(shown.isRetimed ? "Retimed: plays at \(NumericExpression.format(shown.speed(atSource: shown.trimStart), maxFractionDigits: 1))%" : "Time settings")
-                        }
-                        if !shown.shutter.isOff {
-                            Image(systemName: "camera.aperture")
-                                .font(Design.Typeface.micro)
-                                .help("Motion blur or trails")
-                        }
-                    }
-                    // Quieter than the name, but no lower than 90%:
-                    // dimmer fails 4.5:1 on the fill (see `clipFill`).
-                    .foregroundStyle(Design.textOnColor.opacity(0.9))
-                }
-                .foregroundStyle(Design.textOnColor)
+                ClipLabelRow(
+                    name: info?.name ?? "Unknown",
+                    isNestedTimeline: { if case .timeline = clip.source { true } else { false } }(),
+                    isAudioStream: clip.streams == .audio,
+                    hasLinkedAudio: hasLinkedAudio,
+                    effectCount: effectCount,
+                    hasPasteChanges: hasPasteChanges,
+                    passesThrough: passesThrough,
+                    timeHelp: shown.time.isDefault ? nil
+                        : shown.isRetimed ? "Retimed: plays at \(NumericExpression.format(shown.speed(atSource: shown.trimStart), maxFractionDigits: 1))%" : "Time settings",
+                    hasShutter: !shown.shutter.isOff
+                )
+                .equatable()
                 // Where a retimed clip's speed is set, along the bar.
                 RetimeStrip(
                     marks: RetimeMark.marks(of: shown), pixelsPerSecond: pixelsPerSecond,
@@ -364,7 +325,7 @@ struct ClipBlockView: View {
                 // the drop, so it lights for any drag it could take.
                 isDropTarget = targeted && (acceptsTransitions || acceptsEffects || acceptsSoundEffects)
             }
-            .contextMenu { clipMenu }
+            .contextMenu { ClipMenuHost(block: self, key: menuKey).equatable() }
             .onContinuousHover(coordinateSpace: .named(space)) { phase in
                 guard tool == .blade, case .active(let location) = phase else {
                     bladeX = nil
