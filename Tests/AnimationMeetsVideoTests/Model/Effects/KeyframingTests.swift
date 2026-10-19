@@ -451,3 +451,41 @@ private struct KeyframingFixture {
         #expect(!refreshed)
     }
 }
+
+/// Oscillator and Beat Keys over a target that holds still: a keyframe per
+/// peak, beat or jump, eased, rather than every frame.
+@Suite struct EventKeyframeTests {
+    @Test func aSineIsKeyedAtItsPeaksAndTroughsWithEasyEase() {
+        var f = KeyframingFixture()
+        let id = f.add(.oscillator)
+        f.point(id, at: .rotation)
+        let keyframes = f.control(.rotation).number.keyframes
+        // Four seconds at 1 Hz: eight peaks and troughs, and the two ends.
+        #expect(keyframes.count == 10)
+        let peak = keyframes.first { abs($0.time.seconds - 0.25) < 0.03 }
+        #expect(peak.map { abs($0.value.values[0] - 10) < 0.2 } == true)
+        #expect(peak?.easeIn == .easy && peak?.easeOut == .easy)
+        // Between them, the eases make the wave.
+        #expect(abs(f.value(.rotation, at: 0.5)) < 0.3)
+    }
+
+    @Test func aSquareHoldsToEachJump() {
+        var f = KeyframingFixture()
+        let id = f.add(.oscillator)
+        f.point(id, at: .rotation)
+        f.choose(id, .wave, OscillatorWave.square.rawValue)
+        // Up for the first half second, down for the next.
+        #expect(abs(f.value(.rotation, at: 0.3) - 10) < 0.01)
+        #expect(abs(f.value(.rotation, at: 0.7) + 10) < 0.01)
+        #expect(f.control(.rotation).number.keyframes.count < 20)
+    }
+
+    @Test func aTargetThatMovesIsStillFollowedFrameByFrame() {
+        var f = KeyframingFixture()
+        f.keyframe(.rotation, [(0, 0), (4, 100)])
+        let id = f.add(.oscillator)
+        f.point(id, at: .rotation)
+        // The hand-made move shows between peaks, so more keyframes.
+        #expect(f.control(.rotation).number.keyframes.count > 10)
+    }
+}

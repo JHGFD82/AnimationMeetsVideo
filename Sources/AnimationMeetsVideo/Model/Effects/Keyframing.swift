@@ -558,12 +558,25 @@ extension EditingProject {
         }
         for k in samples.indices { for c in components { samples[k][c] = clip.clamped(samples[k][c], index: c, of: target) } }
 
-        let tolerance: [Double] = effect.kind == .timeStep
-            ? Array(repeating: 1e-9, count: width)
-            : KeyframeGenerators.tolerances(samples, percent: signal.number(.tolerance, at: 0, default: 0.5))
-        let kept = KeyframeGenerators.reduced(times: sampling.sources.map(\.seconds), samples: samples, tolerance: tolerance)
-        var keyframes = kept.map {
-            Keyframe(time: sampling.sources[$0], value: ComponentValue(values: samples[$0]), generatedBy: effect.id)
+        // A wave or a train of pulses over a target that holds still gets a
+        // keyframe at each peak, beat or turn, eased as an animator would
+        // key it; anything else is every frame, thinned to the tolerance.
+        var keyframes: [Keyframe<ComponentValue>]
+        if !base.isAnimated, let events = signal.events() {
+            keyframes = events.map {
+                Keyframe(
+                    time: sampling.sources[$0.index], value: ComponentValue(values: samples[$0.index]),
+                    easeIn: $0.easeIn, easeOut: $0.easeOut, generatedBy: effect.id
+                )
+            }
+        } else {
+            let tolerance: [Double] = effect.kind == .timeStep
+                ? Array(repeating: 1e-9, count: width)
+                : KeyframeGenerators.tolerances(samples, percent: signal.number(.tolerance, at: 0, default: 0.5))
+            let kept = KeyframeGenerators.reduced(times: sampling.sources.map(\.seconds), samples: samples, tolerance: tolerance)
+            keyframes = kept.map {
+                Keyframe(time: sampling.sources[$0], value: ComponentValue(values: samples[$0]), generatedBy: effect.id)
+            }
         }
         // Outside the range the target keeps its own keyframes, or its value
         // from a frame past each end, so the generated ones don't hold on.
@@ -766,6 +779,81 @@ private struct KeyframeSignal {
         default:
             return 0
         }
+    }
+
+    /// A keyframe at one of a signal's events: which sample, and how the
+    /// curve arrives and leaves.
+    struct Event {
+        var index: Int
+        var easeIn: KeyframeEase?
+        var easeOut: KeyframeEase?
+    }
+
+    /// Where an animator would key this signal, for the kinds with a
+    /// natural rate: an Oscillator's peaks and troughs (eased, for a sine),
+    /// or its jumps; Beat Keys' beats, the frame before each and where its
+    /// decay ends. Always the first and last sample. Nil for the others.
+    func events() -> [Event]? {
+        let count = sampling.sources.count
+        guard count > 1 else { return nil }
+        var events: [Int: Event] = [:]
+        func add(_ index: Int, in easeIn: KeyframeEase? = nil, out easeOut: KeyframeEase? = nil) {
+            guard index >= 0, index < count else { return }
+            events[index] = Event(index: index, easeIn: easeIn, easeOut: easeOut)
+        }
+        switch effect.kind {
+        case .oscillator:
+            let wave = effect.choice(.wave, as: OscillatorWave.self) ?? .sine
+            // Where in its cycle each sample is; a peak or trough falls at
+            // a quarter or three quarters, a jump at a half or a whole.
+            let positions = cycles.indices.map { cycles[$0] + number(.phase, at: $0, default: 0) / 360 }
+            for k in 1..<count {
+                switch wave {
+                case .sine, .triangle:
+                    // The frame nearest each peak or trough.
+                    let before = floor((positions[k - 1] - 0.25) * 2), after = floor((positions[k] - 0.25) * 2)
+                    guard after != before else { continue }
+                    let crossing = (after / 2 + 0.25)
+                    let nearer = abs(positions[k] - crossing) < abs(positions[k - 1] - crossing) ? k : k - 1
+                    let ease: KeyframeEase? = wave == .sine ? .easy : nil
+                    add(nearer, in: ease, out: ease)
+                case .square, .sawtooth:
+                    // Held to the frame before a jump, then the new value: a
+                    // square jumps every half cycle, a sawtooth wraps once a
+                    // cycle, half way through.
+                    let jumps = wave == .square
+                        ? floor(positions[k - 1] * 2) != floor(positions[k] * 2)
+                        : floor(positions[k - 1] + 0.5) != floor(positions[k] + 0.5)
+                    if jumps {
+                        add(k - 1)
+                        add(k)
+                    }
+                }
+            }
+        case .beatKeys:
+            let shape = effect.choice(.beatShape, as: BeatShape.self) ?? .pulse
+            for (n, pulse) in pulses.enumerated() {
+                let at = sampling.elapsed.lowerBound(of: pulse.time) { $0 }
+                guard at < count else { continue }
+                let next = n + 1 < pulses.count ? sampling.elapsed.lowerBound(of: pulses[n + 1].time) { $0 } : count
+                add(at - 1)
+                switch shape {
+                case .ramp:
+                    add(at)
+                    add(next - 1)
+                case .pulse, .step, .alternate:
+                    add(at, out: .easy)
+                    let decay = number(.decay, at: at, default: 250) / 1000
+                    let settled = sampling.elapsed.lowerBound(of: pulse.time + decay) { $0 }
+                    if settled < next - 1 { add(settled, in: .easy) }
+                }
+            }
+        default:
+            return nil
+        }
+        add(0, out: events[0]?.easeOut)
+        add(count - 1, in: events[count - 1]?.easeIn)
+        return events.values.sorted { $0.index < $1.index }
     }
 
     /// For the kinds that reshape the target: its new value at every

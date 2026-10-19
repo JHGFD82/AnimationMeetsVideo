@@ -227,8 +227,14 @@ In order, each step usable on its own:
      (`EditingProject.editEffect`), on the main thread. Every kind samples
      each timeline frame of the range as heard (`KeyframeSampling`) and is
      reduced by Tolerance; Time Step is reduced only where it is exactly
-     straight, so its holds survive. Kept keyframes are linear. Writing one
-     keyframe per beat or cycle with eases is not done.
+     straight, so its holds survive. Kept keyframes are linear. Over a
+     target that holds still, Oscillator and Beat Keys instead write a
+     keyframe per event (`KeyframeSignal.events`), as an animator would:
+     a sine's peaks and troughs with Easy Ease, a triangle's linear, a
+     square's or sawtooth's jumps held to the frame before; each beat, the
+     frame before it and where its decay ends, eased out of the beat and
+     into the rest. A target with keyframes of its own is still followed
+     frame by frame, since its curve shows between the events.
    - **Combine** applies to Beat Keys, Wiggler and Oscillator. Multiply
      scales by the signal as a percent more (30 makes 130%). Smoother,
      Looper, Time Step and Overshoot reshape the base and ignore it.
