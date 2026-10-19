@@ -5,5 +5,11 @@ DerivedData/
 xcuserdata/
 .swiftpm/
 .vscode/
-.claude/
+# Claude Code: share the project's hooks, skills and agents; keep personal
+# settings and worktrees local.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+!.claude/skills/
+!.claude/agents/
 build/
