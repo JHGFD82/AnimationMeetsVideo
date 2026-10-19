@@ -36,6 +36,22 @@ import Testing
         #expect(edited.structure == before)
     }
 
+    @Test func draggingALayersVolumeOrSoundLeavesTheStructureAlone() throws {
+        var (edited, _, _) = try project()
+        let t = edited.rootTimelineID
+        let index = try #require(edited.timelines.firstIndex { $0.id == t })
+        let musicLayer = TimelineLayer(customName: nil, kind: .music, clips: [])
+        edited.timelines[index].layers.append(musicLayer)
+        let music = musicLayer.id
+        _ = edited.addEffect(.equalizer, toLayer: music, in: t)
+        let before = edited.structure
+        edited.editVolume(of: music, in: t) { $0 = AnimatedValue(-12) }
+        edited.editPan(of: music, in: t) { $0 = AnimatedValue(-40) }
+        let eq = try #require(edited.timeline(id: t)?.layer(id: music)?.audioEffects.first)
+        edited.editEffect(eq.id, ofLayer: music, in: t) { $0.controls[0].enabled.toggle() }
+        #expect(edited.structure == before)
+    }
+
     @Test func whatTheRowsActOnChangesTheStructure() throws {
         let (original, shape, footage) = try project()
         let t = original.rootTimelineID
