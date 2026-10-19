@@ -17,6 +17,33 @@ final class PlayheadState {
     }
 }
 
+/// How a row finds the playhead, in the time it works in (the timeline's, on
+/// a frame; a clip's source time for a clip's rows). A row reads it while it
+/// draws a value that is animated, which makes it follow the playhead, and
+/// when it acts, never as its parent is built: a row showing a fixed value
+/// isn't redrawn by the playhead, and still adds a keyframe where it is.
+@MainActor
+struct PlayheadTime {
+    private let read: () -> CMTime
+
+    init(_ playhead: PlayheadState, in convert: @escaping (CMTime) -> CMTime = { $0 }) {
+        read = { convert(playhead.time) }
+    }
+
+    /// A playhead that stays at `time`.
+    init(fixed time: CMTime) {
+        read = { time }
+    }
+
+    /// Where the playhead is now. Reading it as a body is built makes the
+    /// view follow the playhead.
+    var now: CMTime { read() }
+
+    /// The playhead for a value that may be `animated`: a fixed value
+    /// doesn't depend on it.
+    func shown(animated: Bool) -> CMTime { animated ? read() : .zero }
+}
+
 /// Builds `content` from the parked playhead, and again when it moves,
 /// without its parent doing either.
 struct PlayheadReader<Content: View>: View {
@@ -24,6 +51,15 @@ struct PlayheadReader<Content: View>: View {
     @ViewBuilder let content: (CMTime) -> Content
 
     var body: some View { content(playhead.time) }
+}
+
+/// Builds `content` from where the playhead is for a row (see `PlayheadTime`),
+/// and again when it moves, without its parent doing either.
+struct PlayheadTimeReader<Content: View>: View {
+    let playhead: PlayheadTime
+    @ViewBuilder let content: (CMTime) -> Content
+
+    var body: some View { content(playhead.now) }
 }
 
 /// Follows the playhead and the player's time for the editor's surface,

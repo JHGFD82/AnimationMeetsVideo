@@ -907,7 +907,7 @@ struct EffectsPanel: View {
             AudioPropertyRow(
                 property: property,
                 value: value,
-                time: c.sourceNow(animated: value.isAnimated),
+                playhead: PlayheadTime(c.playhead) { c.geometry.clampedSource(atTimeline: c.timeline.snappedToFrame($0)) },
                 onEdit: { change in editClip(clip.id) { change(&$0[keyPath: keyPath]) } },
                 onSeek: { onSeek(clip.timelineTime(forSourceTime: $0)) },
                 onShowGraph: graphs.map { graphs in { graphs.show(key) } }
