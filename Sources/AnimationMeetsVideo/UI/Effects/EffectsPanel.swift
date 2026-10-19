@@ -31,6 +31,8 @@ struct EffectsPanel: View {
     /// Effects being saved as a preset (nil for the whole stack), while the
     /// name is asked for.
     @State private var presetSave: PresetSave?
+    /// Whether this is the editor's active panel, which has the keys.
+    @Environment(\.isInActivePanel) private var isActivePanel
     @State private var presetName = ""
     @State private var presetError: String?
     /// The clip after each of its effects, at the playhead.
@@ -378,79 +380,85 @@ struct EffectsPanel: View {
         // Faded only when it is off or can't apply; one at its defaults is
         // as ready to adjust as any.
         let dimmed = !effect.enabled || note?.dims == true
-        labelled(
-            EffectHeaderRow(
-                effect: effect,
-                isCollapsed: collapsed,
-                isSelected: state.selectedEffectID == effect.id && state.selectedControlID == nil,
-                clipID: clip.id,
-                thumbnail: thumbnails[effect.id],
-                showsCurve: effect.kind.isKeyframing,
-                accessibilitySummary: effect.kind.isKeyframing ? project.keyframingSummary(of: effect, in: clip) : nil,
-                isDimmed: dimmed,
-                isFlagged: !effect.pasteChanges.isEmpty,
-                onToggleCollapsed: { state.toggleCollapsed(effect.id) },
-                onSetEnabled: { value in editEffect(effect.id, in: clip) { $0.enabled = value } },
-                onSelect: { state.select(effect: effect.id) },
-                onRename: { name in editEffect(effect.id, in: clip) { $0.name = name } },
-                isRenaming: Binding(
-                    get: { renamingEffectID == effect.id },
-                    set: { renamingEffectID = $0 ? effect.id : nil }
-                )
-            ) {
-                effectMenu(effect, in: clip)
-            },
-            lane: emptyLane(c)
-        )
-        .dropDestination(for: ClipDropPayload.self) { payloads, _ in
-            guard let payload = payloads.first, let index = clip[keyPath: stack].index(of: effect.id) else { return false }
-            if let move = payload.effectMove {
-                // An effect moves only within its own stack.
-                guard move.clipID == clip.id, clip.stack(holding: move.effectID) == stack else { return false }
-                project.moveEffect(move.effectID, ofClip: clip.id, in: timelineID, toIndex: index)
-                return true
-            }
-            if let added = payload.effect {
-                // Dropped on an effect: it goes in at that place and is
-                // selected, as one dropped below the stack is. One of the
-                // other stack goes at the end of its own.
-                let at = added.kind.isAudio == effect.kind.isAudio ? index : nil
-                if let id = project.addEffect(added.kind, toClip: clip.id, in: timelineID, at: at) {
-                    state.select(effect: id)
+        // The whole effect, its controls included, is outlined while it is
+        // selected: it is what Delete and Copy take. A selected control is
+        // outlined on its own instead, as Delete takes only the control.
+        VStack(alignment: .leading, spacing: 0) {
+            labelled(
+                EffectHeaderRow(
+                    effect: effect,
+                    isCollapsed: collapsed,
+                    isSelected: false,
+                    clipID: clip.id,
+                    thumbnail: thumbnails[effect.id],
+                    showsCurve: effect.kind.isKeyframing,
+                    accessibilitySummary: effect.kind.isKeyframing ? project.keyframingSummary(of: effect, in: clip) : nil,
+                    isDimmed: dimmed,
+                    isFlagged: !effect.pasteChanges.isEmpty,
+                    onToggleCollapsed: { state.toggleCollapsed(effect.id) },
+                    onSetEnabled: { value in editEffect(effect.id, in: clip) { $0.enabled = value } },
+                    onSelect: { state.select(effect: effect.id) },
+                    onRename: { name in editEffect(effect.id, in: clip) { $0.name = name } },
+                    isRenaming: Binding(
+                        get: { renamingEffectID == effect.id },
+                        set: { renamingEffectID = $0 ? effect.id : nil }
+                    )
+                ) {
+                    effectMenu(effect, in: clip)
+                },
+                lane: emptyLane(c)
+            )
+            .dropDestination(for: ClipDropPayload.self) { payloads, _ in
+                guard let payload = payloads.first, let index = clip[keyPath: stack].index(of: effect.id) else { return false }
+                if let move = payload.effectMove {
+                    // An effect moves only within its own stack.
+                    guard move.clipID == clip.id, clip.stack(holding: move.effectID) == stack else { return false }
+                    project.moveEffect(move.effectID, ofClip: clip.id, in: timelineID, toIndex: index)
+                    return true
                 }
-                return true
-            }
-            if let preset = payload.preset { return applyPreset(preset.presetID, to: clip, at: index) }
-            return false
-        }
-        if let note {
-            besideLane(EffectNoteRow(note: note))
-        }
-        ForEach(effect.pasteChanges) { change in
-            pasteChangeRow(change, of: effect, in: clip)
-        }
-        if !collapsed {
-            if effect.kind == .equalizer {
-                besideLane(
-                    equalizerGraph(effect, of: clip, at: c.sourceNow, dimmed: dimmed) {
-                        expandedEqualizer = ExpandedEqualizer(clipID: clip.id, effectID: effect.id)
+                if let added = payload.effect {
+                    // Dropped on an effect: it goes in at that place and is
+                    // selected, as one dropped below the stack is. One of the
+                    // other stack goes at the end of its own.
+                    let at = added.kind.isAudio == effect.kind.isAudio ? index : nil
+                    if let id = project.addEffect(added.kind, toClip: clip.id, in: timelineID, at: at) {
+                        state.select(effect: id)
                     }
-                    .frame(height: EqualizerGraph.panelHeight)
-                )
+                    return true
+                }
+                if let preset = payload.preset { return applyPreset(preset.presetID, to: clip, at: index) }
+                return false
             }
-            if effect.kind.isKeyframing {
-                keyframingRows(effect, c, effectDimmed: dimmed)
+            if let note {
+                besideLane(EffectNoteRow(note: note))
             }
-            ForEach(effect.controls) { control in
-                controlRow(control, of: effect, c, effectDimmed: dimmed)
+            ForEach(effect.pasteChanges) { change in
+                pasteChangeRow(change, of: effect, in: clip)
             }
-            if effect.kind.readsAgainst {
-                againstRow(effect, c, effectDimmed: dimmed)
-            }
-            if effect.kind.takesInput {
-                inputRow(effect, c, effectDimmed: dimmed)
+            if !collapsed {
+                if effect.kind == .equalizer {
+                    besideLane(
+                        equalizerGraph(effect, of: clip, at: c.sourceNow, dimmed: dimmed) {
+                            expandedEqualizer = ExpandedEqualizer(clipID: clip.id, effectID: effect.id)
+                        }
+                        .frame(height: EqualizerGraph.panelHeight)
+                    )
+                }
+                if effect.kind.isKeyframing {
+                    keyframingRows(effect, c, effectDimmed: dimmed)
+                }
+                ForEach(effect.controls) { control in
+                    controlRow(control, of: effect, c, effectDimmed: dimmed)
+                }
+                if effect.kind.readsAgainst {
+                    againstRow(effect, c, effectDimmed: dimmed)
+                }
+                if effect.kind.takesInput {
+                    inputRow(effect, c, effectDimmed: dimmed)
+                }
             }
         }
+        .selectedRow(state.selectedEffectID == effect.id && state.selectedControlID == nil)
     }
 
     /// What a Blending step blends with: the backdrop, or the clip's own
@@ -883,6 +891,8 @@ struct EffectsPanel: View {
     /// Delete removes the selected control, or else the selected effect;
     /// Command-D duplicates the selected effect.
     private func handleKey(_ event: NSEvent) -> Bool {
+        // Another panel was clicked in last: the keys are its.
+        guard isActivePanel else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let key = event.charactersIgnoringModifiers?.lowercased()
         // Command-V pastes below the selected effect, or at the end of the

@@ -106,6 +106,9 @@ struct TimelineView: View {
     /// Area heights when a drag of the boundary between two areas began.
     @State private var boundaryDragStart: [LayerKind: CGFloat]?
     @State var geometryStore = TimelineGeometryStore()
+    /// The editor's active panel; Delete goes to the effects panel only
+    /// while it is the active one.
+    @Environment(ActivePanel.self) var activePanel: ActivePanel?
     @State var autoScroll = TimelineAutoScroll()
     /// What the layer names column offers while a clip or media is dragged
     /// over it; nil otherwise.

@@ -176,13 +176,33 @@ extension View {
             }
     }
 
-    /// Marks a row as selected without washing it in tint: a solid accent
-    /// bar down its leading edge and a faint lift across the row.
+    /// Marks a row, or a group of rows, as selected: outlined all the way
+    /// round, as a selected clip is, over a faint lift, so what Delete or
+    /// Copy would take is plain. In a panel that isn't the active one the
+    /// outline is grey, as the Mac draws a selection that isn't where the
+    /// keys go (`EditorPanel`).
     func selectedRow(_ isSelected: Bool) -> some View {
-        background(isSelected ? Design.accent.opacity(0.16) : .clear)
-            .overlay(alignment: .leading) {
-                Design.accent
-                    .frame(width: 2)
+        modifier(SelectionOutline(isSelected: isSelected))
+    }
+}
+
+extension EnvironmentValues {
+    /// Whether the view is in the editor's active panel, the one the keys
+    /// and the Edit menu go to first. True outside the editor's panels.
+    @Entry var isInActivePanel = true
+}
+
+private struct SelectionOutline: ViewModifier {
+    let isSelected: Bool
+    @Environment(\.isInActivePanel) private var isActive
+
+    func body(content: Content) -> some View {
+        let tone = isActive ? Design.accent : Design.textTertiary
+        content
+            .background(isSelected ? tone.opacity(0.14) : .clear)
+            .overlay {
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .strokeBorder(tone, lineWidth: 1.5)
                     .opacity(isSelected ? 1 : 0)
                     .decorative()
             }

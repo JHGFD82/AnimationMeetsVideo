@@ -7,8 +7,9 @@ extension TimelineView {
     /// Delete removes the selected layer, else the selected transition,
     /// else the selected clip.
     func deleteSelection() -> Bool {
-        // The effects panel has the key while something in it is selected.
-        if showsEffects, effectsState.hasSelection { return false }
+        // The effects panel has the key while it is the active panel and
+        // something in it is selected.
+        if activePanel?.current == .sidePanel, showsEffects, effectsState.hasSelection { return false }
         if let selectedSectionID, timeline.sections.contains(where: { $0.id == selectedSectionID }) {
             onEditProject { $0.deleteSection(selectedSectionID, in: timelineID) }
             self.selectedSectionID = nil

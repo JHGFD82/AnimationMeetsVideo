@@ -57,9 +57,11 @@ extension FocusedValues {
 /// text and for the editor alike.
 ///
 /// Text being typed in has them first, as everywhere on the Mac. Then
-/// Beat Match while it is open, then the effects panel, then the timeline,
-/// each command going to the first that offers it: with an effect selected
-/// Copy copies the effect, and with only a clip selected the clip.
+/// Beat Match while it is open, then the active panel (`ActivePanel`, the
+/// one with the light border), then the effects panel and the timeline,
+/// each command going to the first that offers it: with the effects panel
+/// active and an effect selected Copy copies the effect, and with the
+/// timeline active the selected clip.
 ///
 /// The panels' own key handling (`KeyPressMonitor`) still sees the keys
 /// first and claims those it has always handled; what it leaves arrives
@@ -68,6 +70,7 @@ struct EditCommands: Commands {
     @FocusedValue(\.beatMatchEditActions) private var beatMatch
     @FocusedValue(\.effectsEditActions) private var effects
     @FocusedValue(\.timelineEditActions) private var timeline
+    @FocusedValue(\.activePanel) private var activePanel
 
     var body: some Commands {
         CommandGroup(replacing: .pasteboard) {
@@ -95,7 +98,8 @@ struct EditCommands: Commands {
 
     /// The first part of the editor's command, in order.
     private func editorAction(_ pick: KeyPath<EditMenuActions, (() -> Void)?>) -> (() -> Void)? {
-        for actions in [beatMatch, effects, timeline] {
+        let panels = activePanel == .timeline ? [timeline, effects] : [effects, timeline]
+        for actions in [beatMatch] + panels {
             if let action = actions?[keyPath: pick] { return action }
         }
         return nil

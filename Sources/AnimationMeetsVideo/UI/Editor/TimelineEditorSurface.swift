@@ -54,6 +54,9 @@ struct TimelineEditorSurface<Library: View>: View {
     @AppStorage(Preferences.inspectorPanelWidth) private var inspectorPanelWidth = 280.0
     @AppStorage(Preferences.browserWidth) private var browserWidth = 260.0
     @State private var effectsState = EffectsPanelState()
+    /// The panel last clicked in, which wears a light border and gets the
+    /// keys and the Edit menu first.
+    @State private var activePanel = ActivePanel()
     @AppStorage(Preferences.showsAudioMeter) private var showsMeter = false
     /// The graph editors this surface has open, one HUD per parameter.
     @State private var graphs = KeyframeGraphHUDs()
@@ -183,6 +186,7 @@ struct TimelineEditorSurface<Library: View>: View {
                         .frame(width: CGFloat(PanelResizeHandle.clamped(
                             browserWidth, min: Self.browserMinWidth, max: browserMaxWidth(in: geometry.size.width)
                         )))
+                        .editorPanel(.browser, activePanel)
                         .overlay(alignment: .trailing) {
                             PanelResizeHandle(
                                 width: $browserWidth, minWidth: Self.browserMinWidth,
@@ -201,6 +205,7 @@ struct TimelineEditorSurface<Library: View>: View {
                         banner: partialBanner,
                         onClearBanner: { effectsState.showUpTo = nil }
                     )
+                    .editorPanel(.viewer, activePanel)
                     if showsSidePanel {
                         VStack(spacing: 0) {
                             PanelTabBar(
@@ -242,6 +247,7 @@ struct TimelineEditorSurface<Library: View>: View {
                         .frame(width: CGFloat(PanelResizeHandle.clamped(
                             sideWidth.wrappedValue, min: sideMinWidth, max: sideMaxWidth(in: geometry.size.width)
                         )))
+                        .editorPanel(.sidePanel, activePanel)
                         .overlay(alignment: .leading) {
                             PanelResizeHandle(
                                 width: sideWidth, minWidth: sideMinWidth, maxWidth: sideMaxWidth(in: geometry.size.width),
@@ -263,6 +269,7 @@ struct TimelineEditorSurface<Library: View>: View {
 
                 HStack(spacing: 0) {
                     timelineView
+                        .editorPanel(.timeline, activePanel)
                     if showsMeter {
                         AudioMeterView(playback: playback)
                             .frame(width: 52)
@@ -276,6 +283,7 @@ struct TimelineEditorSurface<Library: View>: View {
                             state: effectsState, tab: $effectsLibraryTab, onClose: { showsEffectsLibrary = false }
                         )
                         .frame(width: 280)
+                        .editorPanel(.effectsLibrary, activePanel)
                         .grooved(.leading)
                         .transition(.move(edge: .trailing))
                     }
@@ -286,6 +294,9 @@ struct TimelineEditorSurface<Library: View>: View {
             }
         }
         .environment(graphs)
+        .environment(activePanel)
+        .background(ActivePanelMonitor(active: activePanel))
+        .focusedSceneValue(\.activePanel, activePanel.current)
         .onReceive(NotificationCenter.default.publisher(for: .revealEffect)) { note in
             if let id = note.object as? UUID { effectsState.select(effect: id) }
         }

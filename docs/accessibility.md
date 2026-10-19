@@ -10,6 +10,20 @@ made reachable, and the rules new UI should follow so it stays that way.
 
 ## Keyboard
 
+### Where the keys go
+
+The editor's panels (browser, viewer, inspector and effects, timeline,
+Effects Library) take turns being the **active panel**: the one last
+clicked in, whatever the click did (`ActivePanel`, watched by
+`ActivePanelMonitor` without taking the click). It wears a light border,
+and what is selected in it is outlined in the accent while selections in
+the other panels turn grey, as the Mac draws a list that doesn't have the
+keyboard (`selectedRow`, reading `isInActivePanel`). Delete and the Edit
+menu go to the active panel first: the effects panel takes them only
+while it is active, and the timeline otherwise. A selected effect is
+outlined whole, its controls with it, as that is what Delete and Copy
+take; a selected control is outlined alone.
+
 The timeline's keys are handled by `TimelineView.handleKey` and listed in
 the **Timeline** menu (`TimelineCommands`). Keys without a modifier are
 written after the item's name rather than set as menu shortcuts, since a
@@ -113,7 +127,7 @@ the snap line's arrival.
   `textOnColor` at 90% or more (`Design.clipFill` is shaded when
   selected so it holds); a filled button takes `.tint(Design.accentFill)`,
   since white on the accent itself is 3.2:1.
-- Decoration drawn over a control (a bevel, rim, groove or selection bar)
+- Decoration drawn over a control (a bevel, rim, groove or selection outline)
   is `.decorative()`: no hit testing, so an edge's clicks and drags reach
   the control, and hidden from VoiceOver. `Groove` already is.
 - In a sheet, a `SheetRow`'s label is only seen. Each control in the row

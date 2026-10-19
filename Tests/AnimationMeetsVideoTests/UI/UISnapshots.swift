@@ -251,6 +251,30 @@ struct UISnapshots {
         )
     }
 
+    /// A selected effect outlined whole, its controls included, in the
+    /// active panel (accent) and in one that isn't (grey).
+    @Test func selectedEffectOutline() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        project.addEffect(.color, toClip: shape.clipID, in: timelineID)
+        let selected = try #require(project.clipAndLayer(shape.clipID, in: timelineID)?.clip.effects.last?.id)
+        for active in [true, false] {
+            let state = EffectsPanelState()
+            state.select(effect: selected)
+            try SnapshotSupport.render(
+                EffectsPanel(
+                    project: .constant(project), timelineID: timelineID,
+                    selection: TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID),
+                    playheadTime: .zero, state: state, onSeek: { _ in }, onSelectTransition: { _ in }
+                )
+                .environment(\.isInActivePanel, active),
+                active ? "selected-effect-active" : "selected-effect-inactive", size: CGSize(width: 520, height: 520)
+            )
+        }
+    }
+
     /// A Wiggler writing to a rectangle's Position, above an Oscillator
     /// whose target is gone: their Target, Component and Combine rows, the
     /// curve in place of a thumbnail, the generated keyframes in the lane
