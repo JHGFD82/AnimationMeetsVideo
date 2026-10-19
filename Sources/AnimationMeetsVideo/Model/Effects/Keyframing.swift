@@ -177,6 +177,60 @@ struct KeyframingSetup: Equatable, Sendable {
     var base: AnimatedValue<ComponentValue>?
     /// Beat Keys: the layer whose beat map it follows.
     var beatLayer: UUID?
+    /// A fingerprint of what it read when it last wrote (the clip's place,
+    /// trim and speed, the frame rate, the beats), so a change to any of
+    /// them shows it is out of date. Nil until it has written.
+    var readPrint: UInt64?
+    /// A fingerprint of the target as it left it, so an edit by hand since
+    /// shows.
+    var writtenPrint: UInt64?
+}
+
+/// Whether a Keyframing effect's keyframes still match what it reads.
+enum KeyframingFreshness: Equatable {
+    case current
+    /// What it reads changed; making its keyframes again loses nothing.
+    case outOfDate
+    /// What it reads changed and its keyframes were edited by hand since,
+    /// so the person decides: Regenerate or Keep Edits.
+    case outOfDateWithEdits
+}
+
+/// A stable 64-bit fingerprint (FNV-1a), the same on every Mac and in
+/// every run, unlike `Hasher`, since it is saved.
+struct KeyframingPrint {
+    private(set) var value: UInt64 = 0xCBF2_9CE4_8422_2325
+
+    mutating func add(_ bits: UInt64) {
+        for shift in stride(from: 0, to: 64, by: 8) {
+            value ^= (bits >> UInt64(shift)) & 0xFF
+            value &*= 0x0000_0100_0000_01B3
+        }
+    }
+
+    mutating func add(_ number: Double) { add(number.bitPattern) }
+    mutating func add(_ time: CMTime) { add(time.seconds) }
+
+    mutating func add(_ id: UUID?) {
+        guard let id else { return add(UInt64(0)) }
+        withUnsafeBytes(of: id.uuid) { bytes in
+            for byte in bytes { add(UInt64(byte)) }
+        }
+    }
+
+    mutating func add<Value: Interpolatable>(_ animated: AnimatedValue<Value>, components: (Value) -> [Double]) {
+        components(animated.value).forEach { add($0) }
+        add(UInt64(animated.keyframes.count))
+        for keyframe in animated.keyframes {
+            add(keyframe.time)
+            components(keyframe.value).forEach { add($0) }
+            for ease in [keyframe.easeIn, keyframe.easeOut] {
+                add(ease?.influence ?? -1)
+                add(ease?.speed ?? -1)
+            }
+            add(keyframe.generatedBy)
+        }
+    }
 }
 
 // MARK: - Targets
@@ -304,6 +358,74 @@ extension KeyframingSetup {
 // MARK: - Making keyframes
 
 extension EditingProject {
+    /// The fingerprint of what a Keyframing effect reads, as things are.
+    func keyframingReadPrint(of effect: Effect, in clip: TimelineClip, of timeline: Timeline) -> UInt64 {
+        var fingerprint = KeyframingPrint()
+        for time in [clip.startOffset, clip.trimStart, clip.trimEnd, timeline.frameDuration] { fingerprint.add(time) }
+        fingerprint.add(clip.time.speed) { [$0] }
+        if let range = effect.keyframing?.range {
+            fingerprint.add(range.start)
+            fingerprint.add(range.end)
+        }
+        if effect.kind == .beatKeys, let layer = effect.keyframing?.beatLayer.flatMap({ timeline.layer(id: $0) }) {
+            for beat in beatMarkers(in: layer, tracks: [:]) {
+                fingerprint.add(beat.time)
+                fingerprint.add(UInt64(beat.position ?? 0))
+            }
+        }
+        return fingerprint.value
+    }
+
+    /// Whether a Keyframing effect's keyframes match what it reads now.
+    /// One that is off, can't reach its target or hasn't written is
+    /// current: there is nothing to make again.
+    func keyframingFreshness(of effect: Effect, in clip: TimelineClip, of timeline: Timeline) -> KeyframingFreshness {
+        guard effect.enabled, let setup = effect.keyframing, let read = setup.readPrint, let target = setup.target,
+              keyframingTargetIsReachable(effect, in: clip), let number = clip.number(of: target),
+              read != keyframingReadPrint(of: effect, in: clip, of: timeline)
+        else { return .current }
+        return Self.fingerprint(of: number) == setup.writtenPrint ? .outOfDate : .outOfDateWithEdits
+    }
+
+    static func fingerprint(of number: AnimatedValue<ComponentValue>) -> UInt64 {
+        var fingerprint = KeyframingPrint()
+        fingerprint.add(number) { $0.values }
+        return fingerprint.value
+    }
+
+    /// Makes the keyframes of every Keyframing effect that is out of date
+    /// again, leaving those with hand edits for the person to decide.
+    /// Returns whether anything changed. Run after each edit, so the new
+    /// keyframes are part of the same undo step.
+    @discardableResult
+    mutating func refreshKeyframing() -> Bool {
+        let before = self
+        for timeline in timelines {
+            for layer in timeline.layers {
+                for clip in layer.clips {
+                    for effect in clip.effects where effect.kind.isKeyframing
+                        && keyframingFreshness(of: effect, in: clip, of: timeline) == .outOfDate {
+                        regenerateKeyframes(ofEffect: effect.id, onClip: clip.id, in: timeline.id)
+                    }
+                }
+            }
+        }
+        return self != before
+    }
+
+    /// Keeps a Keyframing effect's hand-edited keyframes, taking what it
+    /// reads now as what they were made from. It asks again when what it
+    /// reads next changes.
+    mutating func keepKeyframingEdits(_ effectID: UUID, ofClip clipID: UUID, in timelineID: UUID) {
+        guard let clip = clipAndLayer(clipID, in: timelineID)?.clip, let timeline = timeline(id: timelineID),
+              let effect = clip.effect(id: effectID)
+        else { return }
+        let read = keyframingReadPrint(of: effect, in: clip, of: timeline)
+        editClip(clipID, in: timelineID) { clip in
+            if let index = clip.effects.index(of: effectID) { clip.effects[index].keyframing?.readPrint = read }
+        }
+    }
+
     /// Makes the keyframes of the Keyframing effect `effectID` again from
     /// its settings, replacing those it wrote before. Does nothing while it
     /// is off or its target can't be reached, leaving what it wrote.
@@ -315,10 +437,12 @@ extension EditingProject {
         else { return }
         let base = setup.base ?? Self.removingKeyframes(of: effectID, from: current)
         setup.base = base
+        setup.readPrint = keyframingReadPrint(of: effect, in: clip, of: timeline)
         let written = Self.generated(
             effect, setup: setup, base: base, target: target, clip: clip, timeline: timeline,
             beats: setup.beatLayer.flatMap { layerID in timeline.layer(id: layerID).map { beatMarkers(in: $0, tracks: [:]) } } ?? []
         )
+        setup.writtenPrint = Self.fingerprint(of: written)
         editClip(clipID, in: timelineID) { clip in
             clip.setNumber(written, of: target)
             if let index = clip.effects.index(of: effectID) { clip.effects[index].keyframing = setup }

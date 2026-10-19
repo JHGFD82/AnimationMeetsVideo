@@ -8,6 +8,12 @@ extension EffectsPanel {
     @ViewBuilder
     func keyframingRows(_ effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
         if let setup = effect.keyframing {
+            if project.keyframingFreshness(of: effect, in: c.clip, of: c.timeline) == .outOfDateWithEdits {
+                besideLane(KeyframingEditsRow(
+                    onRegenerate: { project.regenerateKeyframes(ofEffect: effect.id, onClip: c.clip.id, in: timelineID) },
+                    onKeepEdits: { project.keepKeyframingEdits(effect.id, ofClip: c.clip.id, in: timelineID) }
+                ))
+            }
             keyframingChoice(
                 "Target", effect, c, dimmed: effectDimmed, options: targetOptions(effect, c), selected: targetID(setup.target),
                 help: "The control it writes keyframes to"

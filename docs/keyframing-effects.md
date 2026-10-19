@@ -1,6 +1,6 @@
 # Keyframing effects
 
-Status: **steps 1 and 2 of 4 built** (see [Building it](#building-it) for what
+Status: **steps 1 to 3 of 4 built** (see [Building it](#building-it) for what
 each step does and leaves out). A new **Keyframing** category in the
 Effects Library: effects that draw nothing and instead write keyframes
 onto other controls, from a sound (Audio Keys, as Trapcode Sound Keys
@@ -229,7 +229,8 @@ In order, each step usable on its own:
      Looper, Time Step and Overshoot reshape the base and ignore it.
    - **The base** is taken the first time the effect writes, and every
      regeneration starts from it, so hand edits to the target are lost when
-     the effect is edited again (step 3 asks first). Deleting the effect
+     the effect's own settings are edited (only a change to what it reads
+     asks first; see step 3). Deleting the effect
      puts the base back; Bake (`bakeKeyframing`) removes the effect and
      keeps its keyframes, unmarked.
    - **Beat Keys** reads a layer's confirmed beat map (as the timeline's
@@ -256,9 +257,22 @@ In order, each step usable on its own:
    stands in for its thumbnail (none is drawn), keyframes it wrote are
    drawn in the accent color in every lane and read as "Generated keyframe"
    by VoiceOver, and its name reads as the summary above.
-3. **Out of date**: fingerprints of what each effect read, regenerating by
-   itself when they change, Regenerate or Keep Edits after hand edits, and
-   regenerating in a background task.
+3. **Out of date** (done). When it writes, the effect saves two
+   fingerprints (`KeyframingPrint`, FNV-1a, so they are the same in every
+   run, written as hexadecimal): `readPrint`, of what it read (the clip's
+   start, trim and speed curve, the frame rate, its range and, for Beat
+   Keys, the layer's beats), and `writtenPrint`, of the target as it left
+   it. After every edit the editor runs `refreshKeyframing()` before the
+   edit is recorded for undo, so the new keyframes are part of the same
+   step and undoing never sets it off again: an effect whose read print no
+   longer matches makes its keyframes again by itself, unless the target no
+   longer matches its written print. Then it was edited by hand, and the
+   panel shows Regenerate (losing the edits) and Keep Edits (taking what it
+   reads now as its source, so it asks again at the next change). Off
+   effects and ones that can't reach their target are never out of date.
+   Making keyframes stays on the main thread: a clip is a few thousand
+   samples, and only Audio Keys' analysis needs the background, which
+   `AssetAnalysis` already gives it.
 4. **Audio Keys**: the spectrogram in `AssetAnalysis`, a source's sound as
    heard, the boxes and their fields.
 

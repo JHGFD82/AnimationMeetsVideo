@@ -119,11 +119,7 @@ struct EditorView: View {
             selection = nil
             beatMatch.discardAndClose()
         }
-        .onChange(of: project) { _, newValue in
-            history.projectDidChange(newValue)
-            keepViewStateValid(for: newValue)
-            beatMatch.update(project: newValue)
-        }
+        .onChange(of: project) { _, newValue in projectDidChange(newValue) }
         .onChange(of: AssetAnalysis.inputs(of: project)) { _, _ in analysis.update(with: project) }
         .onChange(of: packageURL, initial: true) { _, url in renderer.packageURL = url }
         .onAppear {
@@ -136,6 +132,21 @@ struct EditorView: View {
         .onChange(of: undoManager) { _, _ in connectHistory() }
         // A file that comes back can be analyzed again.
         .onChange(of: replacement.missingMedia) { _, _ in analysis.retryUnavailable(in: project) }
+    }
+
+    /// Records an edit for undo and brings the view state along. Keyframing
+    /// effects whose clip or beats moved make their keyframes again first,
+    /// so they join this edit's undo step: this runs again with the result,
+    /// which records it.
+    private func projectDidChange(_ newValue: EditingProject) {
+        var refreshed = newValue
+        if refreshed.refreshKeyframing() {
+            project = refreshed
+            return
+        }
+        history.projectDidChange(newValue)
+        keepViewStateValid(for: newValue)
+        beatMatch.update(project: newValue)
     }
 
     /// The timeline being edited, read against the current project: the

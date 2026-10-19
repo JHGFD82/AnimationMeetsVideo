@@ -446,6 +446,10 @@ struct ProjectFile: Codable {
         /// Absent until it has written.
         var base: PropertyEntry<ControlValueEntry>?
         var beatLayer: UUID?
+        /// The fingerprints as hexadecimal, since JSON numbers lose 64-bit
+        /// precision; absent until it has written.
+        var readPrint: String?
+        var writtenPrint: String?
 
         init(_ setup: KeyframingSetup) {
             switch setup.target {
@@ -461,6 +465,8 @@ struct ProjectFile: Codable {
             end = setup.range.map { TimeEntry($0.end) }
             base = setup.base.map { PropertyEntry($0, encode: ControlValueEntry.init) }
             beatLayer = setup.beatLayer
+            readPrint = setup.readPrint.map { String($0, radix: 16) }
+            writtenPrint = setup.writtenPrint.map { String($0, radix: 16) }
         }
 
         var setup: KeyframingSetup {
@@ -475,6 +481,8 @@ struct ProjectFile: Codable {
             if let start, let end { setup.range = CMTimeRange(start: start.time, end: end.time) }
             setup.base = base?.property(default: ComponentValue(values: [])) { $0.components }
             setup.beatLayer = beatLayer
+            setup.readPrint = readPrint.flatMap { UInt64($0, radix: 16) }
+            setup.writtenPrint = writtenPrint.flatMap { UInt64($0, radix: 16) }
             return setup
         }
     }
@@ -771,6 +779,7 @@ extension ProjectFile {
             .optional("combine", .choice(KeyframingCombine.allCases.map(\.rawValue), noun: "combine mode")),
             .optional("start", .time), .optional("end", .time),
             .optional("base", property(.numberOrNumbers)), .optional("beatLayer", .uuid),
+            .optional("readPrint", .string), .optional("writtenPrint", .string),
         ])
         static func property(_ value: JSONShape) -> JSONShape {
             .object(object([.optional("value", value), .optional("keyframes", .array(keyframe(value)))], oneOf: [["value", "keyframes"]]))

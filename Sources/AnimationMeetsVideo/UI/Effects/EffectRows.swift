@@ -382,3 +382,34 @@ struct EffectNoteRow: View {
         .padding(.vertical, 3)
     }
 }
+
+/// Under a Keyframing effect whose keyframes were edited by hand when what
+/// it reads changed: making them again would lose the edits, so the person
+/// chooses.
+struct KeyframingEditsRow: View {
+    let onRegenerate: () -> Void
+    let onKeepEdits: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 4) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(Design.Typeface.glyphSmall)
+                Text("What it reads has changed, and its keyframes were edited by hand since.")
+                    .font(Design.Typeface.micro)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(Design.statusWarning)
+            HStack(spacing: 6) {
+                Button("Regenerate", action: onRegenerate)
+                    .help("Make its keyframes again, losing the edits")
+                Button("Keep Edits", action: onKeepEdits)
+                    .help("Keep the keyframes as they are, until what it reads changes again")
+            }
+            .controlSize(.small)
+        }
+        .padding(.leading, EffectsPanelMetrics.controlIndent)
+        .padding(.trailing, 8)
+        .padding(.vertical, 3)
+    }
+}

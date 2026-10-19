@@ -275,6 +275,28 @@ struct UISnapshots {
         )
     }
 
+    /// A Wiggler whose keyframes were edited by hand before its clip was
+    /// trimmed: the Regenerate and Keep Edits row.
+    @Test func keyframingEditsPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        _ = project.addEffect(.wiggler, toClip: shape.clipID, in: timelineID)
+        project.editClip(shape.clipID, in: timelineID) { clip in
+            clip.effects[1].controls[0].number.set(ComponentValue(values: [800, 400]), at: CMTime(value: 1, timescale: 1))
+            clip.trimEnd = CMTimeSubtract(clip.trimEnd, CMTime(value: 1, timescale: 1))
+        }
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID),
+                playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "keyframing-edits-panel", size: CGSize(width: 560, height: 360)
+        )
+    }
+
     /// The shape button's popover: a row for each shape a new layer can
     /// start with.
     @Test func newShapePopover() throws {

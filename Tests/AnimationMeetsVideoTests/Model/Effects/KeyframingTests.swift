@@ -365,3 +365,89 @@ private struct KeyframingFixture {
         #expect(abs(f.value(.rotation, at: 0.25) - 15) < 0.1)
     }
 }
+
+/// Keyframing effects noticing that what they read has changed.
+@Suite struct KeyframingFreshnessTests {
+    private func freshness(_ f: KeyframingFixture, _ id: UUID) -> KeyframingFreshness {
+        f.project.keyframingFreshness(of: f.effect(id), in: f.clip, of: f.project.timeline(id: f.timelineID)!)
+    }
+
+    @Test func trimmingTheClipMakesTheKeyframesAgain() {
+        var f = KeyframingFixture()
+        let id = f.add(.oscillator)
+        #expect(freshness(f, id) == .current)
+        let idle = f.project.refreshKeyframing()
+        #expect(!idle)
+        f.project.editClip(f.clipID, in: f.timelineID) { $0.trimEnd = seconds(3) }
+        #expect(freshness(f, id) == .outOfDate)
+        let refreshed = f.project.refreshKeyframing()
+        #expect(refreshed)
+        #expect(freshness(f, id) == .current)
+        #expect(f.control(.position).number.keyframes.last?.time.seconds == 3)
+        // Nothing more to do.
+        let again = f.project.refreshKeyframing()
+        #expect(!again)
+    }
+
+    @Test func handEditsAreKeptUntilThePersonDecides() {
+        var f = KeyframingFixture()
+        let id = f.add(.oscillator)
+        let made = f.control(.position).number
+        let transformID = f.transformID
+        f.project.editClip(f.clipID, in: f.timelineID) { clip in
+            clip.effects[clip.effects.index(of: transformID)!].controls[0].number.set(ComponentValue(values: [500, 0]), at: seconds(1))
+        }
+        let edited = f.control(.position).number
+        // Edited, but nothing it reads changed: still current.
+        #expect(freshness(f, id) == .current)
+        f.project.editClip(f.clipID, in: f.timelineID) { $0.trimEnd = seconds(3.5) }
+        #expect(freshness(f, id) == .outOfDateWithEdits)
+        f.project.refreshKeyframing()
+        #expect(f.control(.position).number == edited)
+
+        f.project.keepKeyframingEdits(id, ofClip: f.clipID, in: f.timelineID)
+        #expect(freshness(f, id) == .current)
+        #expect(f.control(.position).number == edited)
+
+        f.project.editClip(f.clipID, in: f.timelineID) { $0.trimEnd = seconds(4) }
+        #expect(freshness(f, id) == .outOfDateWithEdits)
+        f.project.regenerateKeyframes(ofEffect: id, onClip: f.clipID, in: f.timelineID)
+        #expect(freshness(f, id) == .current)
+        #expect(f.control(.position).number == made)
+    }
+
+    @Test func editingTheBeatMapMakesBeatKeysAgain() throws {
+        var f = KeyframingFixture()
+        var song = MediaClip(
+            name: "Song.wav", kind: .audio, url: URL(fileURLWithPath: "/dev/null"), duration: seconds(20), frameRate: 24,
+            colorSpace: .rec709, codecName: "PCM"
+        )
+        song.hasAudio = true
+        song.beatMap = BeatMap(sections: [BeatSection(
+            kind: .consistent, start: .zero, end: seconds(20), isConfirmed: true, beats: [MappedBeat(time: seconds(1), position: 1)]
+        )])
+        f.project.clips.append(song)
+        f.project.putOnMusicLayer([song.id])
+        let layerID = try #require(f.project.timeline(id: f.timelineID)?.layers.last?.id)
+        let id = f.add(.beatKeys)
+        f.edit(id) { $0.keyframing?.beatLayer = layerID }
+        #expect(abs(f.value(.position, at: 1) - 15) < 0.1)
+
+        let index = try #require(f.project.clips.firstIndex { $0.id == song.id })
+        f.project.clips[index].beatMap.sections[0].beats = [MappedBeat(time: seconds(2), position: 1)]
+        #expect(freshness(f, id) == .outOfDate)
+        f.project.refreshKeyframing()
+        #expect(abs(f.value(.position, at: 2) - 15) < 0.1)
+        #expect(abs(f.value(.position, at: 1)) < 0.1)
+    }
+
+    @Test func anEffectThatIsOffIsNeverOutOfDate() {
+        var f = KeyframingFixture()
+        let id = f.add(.wiggler)
+        f.edit(id) { $0.enabled = false }
+        f.project.editClip(f.clipID, in: f.timelineID) { $0.trimEnd = seconds(3) }
+        #expect(freshness(f, id) == .current)
+        let refreshed = f.project.refreshKeyframing()
+        #expect(!refreshed)
+    }
+}
