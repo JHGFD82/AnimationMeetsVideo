@@ -278,11 +278,13 @@ struct EffectHeaderRow<MenuContent: View>: View {
                 .foregroundStyle(Design.textTertiary)
                 .frame(width: 12)
                 .contentShape(Rectangle())
-                .draggable(EffectMovePayload(clipID: clipID, effectID: effect.id)) {
+                .onDrag {
+                    EffectMovePayload(clipID: clipID, effectID: effect.id).itemProvider()
+                } preview: {
                     Label(effect.displayName, systemImage: effect.kind.systemImage)
                         .padding(4)
                 }
-                .help("Drag to move the effect in the stack")
+                .help("Drag to move the effect in the stack; Option-drag to copy it")
             Button(action: onToggleCollapsed) {
                 Image(systemName: "chevron.right")
                     .rotationEffect(.degrees(isCollapsed ? 0 : 90))

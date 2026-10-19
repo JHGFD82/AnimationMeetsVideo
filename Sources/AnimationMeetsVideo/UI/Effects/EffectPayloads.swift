@@ -59,8 +59,10 @@ struct EffectMovePayload: Transferable {
         effectID = effect
     }
 
+    var url: URL { payloadURL(Self.scheme, [clipID.uuidString, effectID.uuidString]) }
+
     static var transferRepresentation: some TransferRepresentation {
-        ProxyRepresentation(exporting: { payloadURL(scheme, [$0.clipID.uuidString, $0.effectID.uuidString]) }, importing: { url in
+        ProxyRepresentation(exporting: \.url, importing: { url in
             guard let payload = EffectMovePayload(url: url) else { throw CocoaError(.coderInvalidValue) }
             return payload
         })
@@ -90,9 +92,11 @@ struct ControlMovePayload: Transferable {
         controlID = control
     }
 
+    var url: URL { payloadURL(Self.scheme, [clipID.uuidString, effectID.uuidString, controlID.uuidString]) }
+
     static var transferRepresentation: some TransferRepresentation {
         ProxyRepresentation(
-            exporting: { payloadURL(scheme, [$0.clipID.uuidString, $0.effectID.uuidString, $0.controlID.uuidString]) },
+            exporting: \.url,
             importing: { url in
                 guard let payload = ControlMovePayload(url: url) else { throw CocoaError(.coderInvalidValue) }
                 return payload
@@ -170,6 +174,7 @@ struct ClipDropPayload: Transferable {
     var transition: TransitionDragPayload? { TransitionDragPayload(url: url) }
     var effect: EffectDragPayload? { EffectDragPayload(url: url) }
     var effectMove: EffectMovePayload? { EffectMovePayload(url: url) }
+    var controlMove: ControlMovePayload? { ControlMovePayload(url: url) }
     var preset: PresetDragPayload? { PresetDragPayload(url: url) }
     /// A file dragged in from the Finder.
     var file: URL? { url.isFileURL ? url : nil }

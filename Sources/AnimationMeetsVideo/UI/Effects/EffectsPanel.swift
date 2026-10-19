@@ -31,6 +31,11 @@ struct EffectsPanel: View {
     /// Effects being saved as a preset (nil for the whole stack), while the
     /// name is asked for.
     @State private var presetSave: PresetSave?
+    /// Where the stack's rows are, for drops on it, and the line showing
+    /// where a drag over it would go.
+    @State private var stackLayout = EffectStackLayout()
+    @State private var stackScroller = EdgeAutoScroll()
+    @State private var dropLine: CGFloat?
     /// Whether this is the editor's active panel, which has the keys.
     @Environment(\.isInActivePanel) private var isActivePanel
     @State private var presetName = ""
@@ -185,15 +190,18 @@ struct EffectsPanel: View {
                 ScrollView {
                     rows(context)
                         .overlay(alignment: .topLeading) { if showsKeyframeLanes { playheadLine(context) } }
-                        .dropDestination(for: ClipDropPayload.self) { payloads, _ in
-                            guard let payload = payloads.first else { return false }
-                            if let effect = payload.effect {
-                                addEffect(effect.kind, to: clip)
-                                return true
+                        .overlay(alignment: .topLeading) {
+                            if let dropLine {
+                                InsertionLine().offset(y: dropLine - 3.5)
                             }
-                            if let preset = payload.preset { return applyPreset(preset.presetID, to: clip, at: nil) }
-                            return false
                         }
+                        .coordinateSpace(.named(EffectStackLayout.space))
+                        .edgeAutoScroll(stackScroller)
+                        .onDrop(of: [.url], delegate: EffectStackDropDelegate(
+                            clip: clip, layout: stackLayout, scroller: stackScroller,
+                            onMark: { line in if line != dropLine { dropLine = line } },
+                            onDrop: { target, payload, copy in dropOnStack(target, payload, copy: copy) }
+                        ))
                 }
                 .sunken(.sunken)
             }
@@ -408,27 +416,6 @@ struct EffectsPanel: View {
                 },
                 lane: emptyLane(c)
             )
-            .dropDestination(for: ClipDropPayload.self) { payloads, _ in
-                guard let payload = payloads.first, let index = clip[keyPath: stack].index(of: effect.id) else { return false }
-                if let move = payload.effectMove {
-                    // An effect moves only within its own stack.
-                    guard move.clipID == clip.id, clip.stack(holding: move.effectID) == stack else { return false }
-                    project.moveEffect(move.effectID, ofClip: clip.id, in: timelineID, toIndex: index)
-                    return true
-                }
-                if let added = payload.effect {
-                    // Dropped on an effect: it goes in at that place and is
-                    // selected, as one dropped below the stack is. One of the
-                    // other stack goes at the end of its own.
-                    let at = added.kind.isAudio == effect.kind.isAudio ? index : nil
-                    if let id = project.addEffect(added.kind, toClip: clip.id, in: timelineID, at: at) {
-                        state.select(effect: id)
-                    }
-                    return true
-                }
-                if let preset = payload.preset { return applyPreset(preset.presetID, to: clip, at: index) }
-                return false
-            }
             if let note {
                 besideLane(EffectNoteRow(note: note))
             }
@@ -459,6 +446,9 @@ struct EffectsPanel: View {
             }
         }
         .selectedRow(state.selectedEffectID == effect.id && state.selectedControlID == nil)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(EffectStackLayout.space)) } action: { frame in
+            stackLayout.effects[effect.id] = frame
+        }
     }
 
     /// What a Blending step blends with: the backdrop, or the clip's own
@@ -550,7 +540,9 @@ struct EffectsPanel: View {
                 .foregroundStyle(Design.textTertiary)
                 .frame(width: 12)
                 .contentShape(Rectangle())
-                .draggable(ControlMovePayload(clipID: clip.id, effectID: effect.id, controlID: control.id)) {
+                .onDrag {
+                    ControlMovePayload(clipID: clip.id, effectID: effect.id, controlID: control.id).itemProvider()
+                } preview: {
                     Text(control.kind.name).padding(4)
                 }
                 .help("Drag to move the control within the effect")
@@ -558,13 +550,7 @@ struct EffectsPanel: View {
         let isSelected = state.selectedControlID == control.id
         let select = { state.select(effect: effect.id, control: control.id) }
         let menu = { controlMenu(control, of: effect, in: clip) }
-        let dropControl: ([ControlMovePayload], CGPoint) -> Bool = { payloads, _ in
-            guard let payload = payloads.first, payload.clipID == clip.id, payload.effectID == effect.id,
-                  let index = effect.controlIndex(control.id)
-            else { return false }
-            editEffect(effect.id, in: clip) { $0.moveControl(payload.controlID, toIndex: index) }
-            return true
-        }
+        let placed = { (frame: CGRect) in stackLayout.controls[control.id] = frame }
 
         if control.kind.isChoice {
             labelled(
@@ -583,7 +569,7 @@ struct EffectsPanel: View {
                 ),
                 lane: emptyLane(c)
             )
-            .dropDestination(for: ControlMovePayload.self, action: dropControl)
+            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(EffectStackLayout.space)) }, action: placed)
         } else {
             let key = ParameterKey(
                 timelineID: timelineID,
@@ -631,7 +617,7 @@ struct EffectsPanel: View {
                     onEase: { time, preset in editControl(control.id, of: effect, in: clip) { $0.number.applyEase(preset, at: time) } }
                 )
             )
-            .dropDestination(for: ControlMovePayload.self, action: dropControl)
+            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(EffectStackLayout.space)) }, action: placed)
         }
     }
 
@@ -820,6 +806,45 @@ struct EffectsPanel: View {
         }
         if let last = project.paste(bundle, ontoClip: clip.id, in: timelineID, at: index).last {
             state.select(effect: last)
+        }
+    }
+
+    /// A drop on the stack (`EffectStackDropDelegate`): an effect of this
+    /// clip moved to the place, or with Option copied there; a control
+    /// moved within its effect; an effect or preset from the library put
+    /// in at the place. What lands is selected.
+    private func dropOnStack(_ target: EffectStackTarget, _ payload: ClipDropPayload, copy: Bool) {
+        guard let clip = selectedClip else { return }
+        switch target {
+        case .effects(let isAudio, let index):
+            if let move = payload.effectMove {
+                guard move.clipID == clip.id, let index, let stack = clip.stack(holding: move.effectID),
+                      (stack == \TimelineClip.audioEffects) == isAudio, let from = clip[keyPath: stack].index(of: move.effectID)
+                else { return }
+                if copy {
+                    guard let copyID = project.duplicateEffect(move.effectID, ofClip: clip.id, in: timelineID) else { return }
+                    project.moveEffect(copyID, ofClip: clip.id, in: timelineID, toIndex: index)
+                    state.select(effect: copyID)
+                } else {
+                    // Taking it out first shifts the places after it up one.
+                    project.moveEffect(move.effectID, ofClip: clip.id, in: timelineID, toIndex: index > from ? index - 1 : index)
+                    state.select(effect: move.effectID)
+                }
+            } else if let added = payload.effect {
+                // One of the other stack goes at the end of its own.
+                let at = added.kind.isAudio == isAudio ? index : nil
+                if let id = project.addEffect(added.kind, toClip: clip.id, in: timelineID, at: at) {
+                    state.select(effect: id)
+                }
+            } else if let preset = payload.preset {
+                _ = applyPreset(preset.presetID, to: clip, at: index)
+            }
+        case .controls(let effectID, let index):
+            guard let move = payload.controlMove, move.clipID == clip.id, move.effectID == effectID,
+                  let effect = clip.effect(id: effectID), let from = effect.controlIndex(move.controlID)
+            else { return }
+            editEffect(effectID, in: clip) { $0.moveControl(move.controlID, toIndex: index > from ? index - 1 : index) }
+            state.select(effect: effectID, control: move.controlID)
         }
     }
 

@@ -539,8 +539,18 @@ row selects it, as clicking it on the timeline does.
   take arithmetic) and the keyframe buttons ◀ ◆ ▶. It also has the graph
   button, which opens the existing graph editor HUD ("Clip 3 · Transform 2 ·
   Position"), and a **⋯** menu: Reset, Enable/Disable, Delete.
-- Effects are dragged to reorder within the stack. Controls are dragged to
-  reorder within their effect.
+- Effects are dragged to reorder within the stack, and **Option-dragged
+  to copy** to the place (the pointer shows a plus). Controls are dragged
+  to reorder within their effect. While a drag is over the stack an
+  accent **line with a ring at its start** shows where it would go, between
+  effects or, for a control, between its effect's controls; effects and
+  presets from the library show it too. Held near the stack's top or
+  bottom edge, the drag **scrolls the stack**, faster the deeper into the
+  edge (`EdgeAutoScroll`). The whole stack is one drop target
+  (`EffectStackDropDelegate`), which finds the place from where each row
+  is, since every drag here travels as a URL and a target per row would
+  take drags meant for its neighbours; the panel notes what is being
+  dragged as it starts (`EffectsDragSession`).
 - The Delete key deletes the selected effect or control.
 - The panel opens with **Shift-E** or its button in the timeline's header.
 
