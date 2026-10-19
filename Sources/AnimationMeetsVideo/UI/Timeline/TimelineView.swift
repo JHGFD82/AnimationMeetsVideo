@@ -110,6 +110,9 @@ struct TimelineView: View {
     /// while it is the active one.
     @Environment(ActivePanel.self) var activePanel: ActivePanel?
     @State var autoScroll = TimelineAutoScroll()
+    /// Each area's up-and-down scrolling while a drag holds the pointer at
+    /// its top or bottom (`EdgeAutoScroll`).
+    @State var areaScrollers = Dictionary(uniqueKeysWithValues: LayerKind.allCases.map { ($0, EdgeAutoScroll()) })
     /// What the layer names column offers while a clip or media is dragged
     /// over it; nil otherwise.
     @State var newLayerHover: NewLayerHover?
@@ -677,6 +680,7 @@ struct TimelineView: View {
                     .clipped()
             }
             .overlay(alignment: .topLeading) { layerDropIndicator(kind) }
+            .edgeAutoScroll(areaScroller(kind))
         }
         .frame(height: height)
         // A vertical pinch past the layer heights stretches this area.
@@ -710,8 +714,8 @@ struct TimelineView: View {
                         onToggleChannels: { toggleChannels(layer) },
                         onRename: { name in onRenameLayer(layer.id, name) },
                         onMove: { offset in onMoveLayer(layer.id, offset) },
-                        onDragChanged: { dy in layerDrag = (layer.id, dy) },
-                        onDragEnded: { dy in endLayerDrag(layer.id, dy: dy) },
+                        onDragChanged: { dy in dragLayer(layer, by: dy) },
+                        onDragEnded: { dy in endLayerDrag(layer.id, dy: dy + areaScroller(layer.kind).scrolled) },
                         isSelected: selectedLayerID == layer.id,
                         onSelect: {
                             selectedLayerID = layer.id
@@ -930,6 +934,7 @@ struct TimelineView: View {
                             onEditProject { $0.paste(bundle, ontoClip: clipID, in: timelineID, replacingStack: true) }
                         },
                         onClipboard: { clipID, command in clipboard(command, layerID: layer.id, clipID: clipID) },
+                        onCopyClip: { clipID, start, target, kind in copyClip(clipID, from: layer.id, to: start, onto: target, newLayer: kind) },
                         onDropFiles: { urls, time in onDropFiles(urls, layer.id, time, layer.kind) },
                         onSetPassThrough: { clipID, value in
                             onEditProject { $0.editClip(clipID, in: timelineID) { $0.passThrough = value } }

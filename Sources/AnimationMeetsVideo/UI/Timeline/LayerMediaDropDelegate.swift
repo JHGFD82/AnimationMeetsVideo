@@ -11,6 +11,8 @@ struct LayerMediaDropDelegate: DropDelegate {
     /// Whether the media being dragged would fit on the layer from a time.
     let fits: (CMTime) -> Bool
     let onDrop: ([MediaDragPayload], CMTime) -> Bool
+    /// The drag moved over the layer, for the area to scroll at its edge.
+    var onHover: () -> Void = {}
 
     private var session: MediaDragSession { .shared }
 
@@ -28,6 +30,7 @@ struct LayerMediaDropDelegate: DropDelegate {
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         mark(info)
+        onHover()
         return DropProposal(operation: .copy)
     }
 

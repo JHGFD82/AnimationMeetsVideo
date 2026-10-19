@@ -27,20 +27,40 @@ extension TimelineView {
             let y = position < others.count
                 ? tops[others[position]]
                 : tops.last.map { $0 + blockHeight(of: layers[layers.count - 1]) } ?? 0
-            Rectangle()
-                .fill(Design.accent)
-                .frame(height: 2)
-                .shadow(color: Design.accent.opacity(0.7), radius: 4)
-                .offset(y: y - 1)
-                .allowsHitTesting(false)
+            InsertionLine()
+                .offset(y: y - 3.5)
         }
     }
 
+    /// The scrolling of the area of `kind`.
+    func areaScroller(_ kind: LayerKind) -> EdgeAutoScroll {
+        areaScrollers[kind] ?? EdgeAutoScroll()
+    }
+
+    /// A layer's header dragged `dy` from where it started. Near the top
+    /// or bottom of its area the area scrolls, and what it has scrolled
+    /// counts toward the drag. Option shows the copy pointer.
+    func dragLayer(_ layer: TimelineLayer, by dy: CGFloat) {
+        let scroller = areaScroller(layer.kind)
+        if layerDrag?.id != layer.id { scroller.begin() }
+        layerDrag = (layer.id, dy + scroller.scrolled)
+        CopyDragCursor.update()
+        autoScroll.trackVertically(in: layer.kind) { layerDrag = (layer.id, dy + scroller.scrolled) }
+    }
+
+    /// Drops a dragged layer where the line shows, or with Option a copy
+    /// of it there, the layer itself staying put.
     func endLayerDrag(_ id: UUID, dy: CGFloat) {
-        if let kind = timeline.layer(id: id)?.kind,
-           let position = dropPosition(forLayer: id, dy: dy),
-           position != areaLayers(kind).firstIndex(where: { $0.id == id }) {
-            onMoveLayerTo(id, position)
+        let copying = CopyDragCursor.update()
+        CopyDragCursor.end()
+        if let kind = timeline.layer(id: id)?.kind, let position = dropPosition(forLayer: id, dy: dy) {
+            if copying {
+                // The place counts the layers left in, the original among
+                // them, which is above the line when dragged down.
+                onEditProject { $0.duplicateLayer(id, in: timelineID, toPositionInKind: position + (dy > 0 ? 1 : 0)) }
+            } else if position != areaLayers(kind).firstIndex(where: { $0.id == id }) {
+                onMoveLayerTo(id, position)
+            }
         }
         layerDrag = nil
     }

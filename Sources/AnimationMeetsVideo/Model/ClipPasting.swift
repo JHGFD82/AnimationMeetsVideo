@@ -118,12 +118,48 @@ extension EditingProject {
             return (timeline.layers[target].id, clip.id)
         }
 
-        clip.startOffset = timeline.placementTime(CMTimeMaximum(.zero, start), .nearest, frameLocked: isFrameLocked(clip))
-        let kind = layerKind(bundle.layerKind, accepts: clip) ? bundle.layerKind : (isAudioOnly(clip) ? .sound : .video)
+        return insertOnNewLayer(clip, kind: bundle.layerKind, in: tIndex, at: start)
+    }
+
+    /// Pastes a copy of `bundle`'s clip onto a new layer of `kind` (or of
+    /// its own kind, if `kind` can't take it) at the top, from `start`: an
+    /// Option-drag of a clip over the layer names.
+    @discardableResult
+    mutating func paste(_ bundle: ClipBundle, in timelineID: UUID, newLayer kind: LayerKind, at start: CMTime) -> (layerID: UUID, clipID: UUID)? {
+        guard canPaste(bundle, into: timelineID), let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return nil }
+        var clip = coveringWholeFrames(bundle.clip.duplicated(), in: timelines[tIndex])
+        if let reach = clip.reach, timelines[tIndex].layer(id: reach) == nil { clip.reach = nil }
+        return insertOnNewLayer(clip, kind: kind, in: tIndex, at: start)
+    }
+
+    private mutating func insertOnNewLayer(_ clip: TimelineClip, kind wanted: LayerKind, in tIndex: Int, at start: CMTime) -> (layerID: UUID, clipID: UUID) {
+        var clip = clip
+        clip.startOffset = timelines[tIndex].placementTime(CMTimeMaximum(.zero, start), .nearest, frameLocked: isFrameLocked(clip))
+        let kind = layerKind(wanted, accepts: clip) ? wanted : (isAudioOnly(clip) ? .sound : .video)
         var layer = TimelineLayer(customName: nil, kind: kind, clips: [clip])
         layer.isAdjustment = clip.source == .adjustment
         timelines[tIndex].layers.insert(layer, at: 0)
         return (layer.id, clip.id)
+    }
+
+    /// Puts a copy of a layer, its clips and sound effects with new IDs, at
+    /// `position` among the layers of its kind (as `moveLayer(_:in:
+    /// toPositionInKind:)` counts, the copy left out), or just below the
+    /// layer for nil. A name given to the layer gets "copy" after it, as
+    /// the Finder names a copy. Returns the copy's ID.
+    @discardableResult
+    mutating func duplicateLayer(_ layerID: UUID, in timelineID: UUID, toPositionInKind position: Int? = nil) -> UUID? {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
+              let from = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        else { return nil }
+        var copy = timelines[tIndex].layers[from]
+        copy.id = UUID()
+        copy.customName = copy.customName.map { "\($0) copy" }
+        copy.clips = copy.clips.map { $0.duplicated() }
+        copy.audioEffects = copy.audioEffects.map { $0.duplicated() }
+        timelines[tIndex].layers.insert(copy, at: from + 1)
+        if let position { moveLayer(copy.id, in: timelineID, toPositionInKind: position) }
+        return copy.id
     }
 
     /// Puts a copy of a clip right after it on its layer, moving what

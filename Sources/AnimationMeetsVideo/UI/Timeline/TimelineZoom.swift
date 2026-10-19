@@ -84,6 +84,10 @@ extension TimelineView {
             let start = geometryStore.namesColumn.maxX
             return start...(start + trackAreaWidth)
         }
+        autoScroll.areaScrollers = areaScrollers
+        autoScroll.areaAt = { pointer in
+            areaLayout.shown.first { geometryStore.areas[$0]?.contains(pointer) == true }
+        }
     }
 
     /// Scrolls `time` to the middle of the view if it is out of view.

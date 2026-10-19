@@ -69,6 +69,30 @@ import Testing
         #expect(project.paste(bundle, in: project.rootTimelineID, onto: nil, at: .zero) != nil)
     }
 
+    @Test func pastingOntoANewLayerPutsItAtTheTop() throws {
+        var (project, layerID, clipID) = try fixture()
+        let bundle = try #require(project.clipBundle(clipID, in: project.rootTimelineID))
+        let pastedResult = project.paste(bundle, in: project.rootTimelineID, newLayer: .video, at: t(12))
+        let pasted = try #require(pastedResult)
+        #expect(project.timelines[0].layers.map(\.id) == [pasted.layerID, layerID])
+        #expect(clips(project, pasted.layerID).map(\.startOffset) == [t(12)])
+    }
+
+    @Test func duplicatingALayerCopiesItsClipsBelowItOrWhereAsked() throws {
+        var (project, layerID, clipID) = try fixture()
+        project.timelines[0].layers[0].customName = "Hero"
+        let copyResult = project.duplicateLayer(layerID, in: project.rootTimelineID)
+        let copyID = try #require(copyResult)
+        #expect(project.timelines[0].layers.map(\.id) == [layerID, copyID])
+        let copy = try #require(project.timelines[0].layer(id: copyID))
+        #expect(copy.customName == "Hero copy")
+        #expect(copy.clips.count == 1 && copy.clips[0].id != clipID)
+        // Asked for the top: above the original.
+        let topResult = project.duplicateLayer(layerID, in: project.rootTimelineID, toPositionInKind: 0)
+        let top = try #require(topResult)
+        #expect(project.timelines[0].layers.first?.id == top)
+    }
+
     @Test func aCopysEffectsPointAtEachOther() throws {
         var (project, _, clipID) = try fixture()
         let transform = Effect(kind: .transform)

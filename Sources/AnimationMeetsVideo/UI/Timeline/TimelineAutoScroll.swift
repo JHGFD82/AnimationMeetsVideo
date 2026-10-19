@@ -31,6 +31,11 @@ final class TimelineAutoScroll {
     /// by the timeline.
     @ObservationIgnored var trackSpan: () -> ClosedRange<CGFloat> = { 0...0 }
 
+    /// Each area's up-and-down scrolling, and the area under a point in
+    /// window coordinates. Set by the timeline.
+    @ObservationIgnored var areaScrollers: [LayerKind: EdgeAutoScroll] = [:]
+    @ObservationIgnored var areaAt: (CGPoint) -> LayerKind? = { _ in nil }
+
     @ObservationIgnored private var pointerX: CGFloat?
     @ObservationIgnored private var onScroll: (() -> Void)?
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -61,6 +66,21 @@ final class TimelineAutoScroll {
             }
             self?.task = nil
         }
+    }
+
+    /// A drag moved with the pointer at `pointer` (window coordinates):
+    /// near the top or bottom of the area under it, that area scrolls up or
+    /// down (`EdgeAutoScroll`), calling `onScroll` after each step.
+    func trackVertically(pointer: CGPoint, onScroll: (() -> Void)? = nil) {
+        guard let kind = areaAt(pointer) else { return }
+        trackVertically(in: kind, onScroll: onScroll)
+    }
+
+    /// The same, for a drag known to be over the area of `kind`.
+    func trackVertically(in kind: LayerKind, onScroll: (() -> Void)? = nil) {
+        guard let scroller = areaScrollers[kind] else { return }
+        scroller.onScroll = onScroll
+        scroller.dragMoved()
     }
 
     /// Ends the drag and stops scrolling.

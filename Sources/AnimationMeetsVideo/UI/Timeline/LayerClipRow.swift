@@ -18,6 +18,8 @@ struct ClipMovePreview: Equatable {
 
 struct LayerClipRow: View {
     @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
+    /// Scrolls the area while media from the browser is held at its edge.
+    @Environment(TimelineAutoScroll.self) private var autoScroll: TimelineAutoScroll?
     let layer: TimelineLayer
     /// The layer's name as the timeline shows it, for VoiceOver.
     let name: String
@@ -84,6 +86,9 @@ struct LayerClipRow: View {
     let onPasteEffects: (UUID) -> Void
     /// Cut, Copy, Paste or Duplicate from a clip's context menu.
     let onClipboard: (UUID, ClipboardCommand) -> Void
+    /// A clip Option-dragged: its copy's start, and the layer it goes onto
+    /// if another, or the kind of new layer.
+    let onCopyClip: (UUID, CMTime, UUID?, LayerKind?) -> Void
     /// Files from the Finder dropped on a clip, and the time they land at.
     let onDropFiles: ([URL], CMTime) -> Void
     /// Sets whether a nested clip passes through.
@@ -224,6 +229,7 @@ struct LayerClipRow: View {
                     onCopyEffects: { onCopyEffects(clip.id) },
                     onPasteEffects: { onPasteEffects(clip.id) },
                     onClipboard: { onClipboard(clip.id, $0) },
+                    onCopy: { start, target, kind in onCopyClip(clip.id, start, target, kind) },
                     onDropFiles: onDropFiles,
                     onSetPassThrough: { onSetPassThrough(clip.id, $0) },
                     playsSound: project.playsAudio(clip),
@@ -283,7 +289,8 @@ struct LayerClipRow: View {
             fits: { [project, timelineID, layerID = layer.id] time in
                 project.landing(of: MediaDragSession.shared.pieces, onLayer: layerID, in: timelineID, at: time) != nil
             },
-            onDrop: onDropScenes
+            onDrop: onDropScenes,
+            onHover: { [autoScroll, kind = layer.kind] in autoScroll?.trackVertically(in: kind) }
         ))
         // VoiceOver goes through the layers, then into each one's clips.
         .accessibilityElement(children: .contain)

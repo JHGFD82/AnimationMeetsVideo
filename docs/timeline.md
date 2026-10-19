@@ -93,8 +93,13 @@ reordered. Double-click the name to give it a custom one, which is saved as
 the layer's `customName`; clearing it brings the default back.
 
 Dragging a layer's header (its number and name) up or down reorders the
-layers of its area; a line shows where it will land, and it goes there on
-release (`moveLayer(_:in:toPositionInKind:)`). **Move Layer Up/Down** in
+layers of its area; a line (`InsertionLine`) shows where it will land, and
+it goes there on release (`moveLayer(_:in:toPositionInKind:)`). With
+**Option** held the pointer shows a plus and a copy of the layer, its
+clips and sound effects with new IDs and its name followed by "copy",
+goes there instead, the layer staying put (`duplicateLayer`). Held near
+the top or bottom of its area, the drag scrolls the area, and what it
+scrolls counts toward where the layer lands. **Move Layer Up/Down** in
 the header's menu step it one place among its kind. Layers of other kinds
 keep their places in the stack, which still sets the order video layers
 are composited in.
@@ -323,7 +328,10 @@ Dragging the middle of a clip moves it; dragging within a few points of
 either edge trims that edge without destroying anything. Holding the
 pointer near the left or right edge of the tracks during either drag
 scrolls the timeline that way, faster the closer to the edge
-(`TimelineAutoScroll`), so a clip can be taken past what is in view. The
+(`TimelineAutoScroll`), so a clip can be taken past what is in view. Near
+the top or bottom of an area, a clip moved across layers, or media dragged
+in from the browser, scrolls that area up or down the same way
+(`EdgeAutoScroll`, one per area, reached through `TimelineAutoScroll`). The
 rules for where a clip may go are in `ClipPlacement.swift`:
 
 - **Video and nested timelines lock to frames.** Their start and end land
@@ -372,8 +380,14 @@ pictures come from the same in-memory store as the browser's.
 A clip being moved is drawn picked up: raised and shadowed, at its own
 size, and **where it will land** under these rules (snapped, on a frame,
 at a clip's nearer edge), on whatever layer it is over, so the clip itself
-shows where it will go; no outline stands in for it. Clips it pushes slide
-aside as the drag makes room. Over the layer names or an area's empty
+shows where it will go, with an accent line (`InsertionLine`) down the
+edge it will start at. Clips it pushes slide aside as the drag makes room.
+**Option-dragging** copies the clip instead: the pointer shows a plus, a
+dashed outline stays where the clip is, and on release a copy lands where
+the clip would have gone (`paste(_:in:onto:at:)`, or `paste(_:in:newLayer:
+at:)` over the layer names), the clip itself not moving. The place is the
+one a move would take, worked out as if the clip had left its own; a copy
+dropped over the clip pushes it right to make room. Over the layer names or an area's empty
 space, where it would make a new layer, there is no place for it yet, so
 it follows the pointer, and on release settles from there; with Reduce
 Motion it goes there at once. A trim is still drawn where it will land. The functions that work this out

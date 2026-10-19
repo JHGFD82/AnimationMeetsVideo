@@ -95,6 +95,9 @@ struct ClipBlockView: View {
     let onCopyEffects: () -> Void
     let onPasteEffects: () -> Void
     let onClipboard: (ClipboardCommand) -> Void
+    /// An Option-drag: a copy goes where the drag would have moved the
+    /// clip (its start, and the layer if another, or a new layer's kind).
+    let onCopy: (CMTime, UUID?, LayerKind?) -> Void
     /// Files from the Finder dropped on the clip go onto its layer there.
     let onDropFiles: ([URL], CMTime) -> Void
     let onSetPassThrough: (Bool) -> Void
@@ -125,6 +128,8 @@ struct ClipBlockView: View {
     /// Picked up by a move drag: drawn raised off the track, with an
     /// outline left where it came from.
     @State private var isLifted = false
+    /// Whether Option is held during the move, which copies the clip.
+    @State private var isCopying = false
     /// While moving, how far the block is drawn from where it will land, so
     /// it stays under the pointer; an outline marks the landing place. On
     /// release it goes to zero, and the block settles into its place.
@@ -202,6 +207,28 @@ struct ClipBlockView: View {
                     .frame(width: max(2, unionMaxX - unionMinX), height: height)
                     .offset(x: unionMinX)
                     .allowsHitTesting(false)
+            }
+            if isLifted, isCopying {
+                // Option-dragged: the clip stays where it was, and a copy
+                // goes where the drag ends. Held at its own row while the
+                // block is drawn over another.
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .fill(typeColor.opacity(0.35))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                            .strokeBorder(typeColor.opacity(0.9), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                    }
+                    .frame(width: baseWidth, height: height)
+                    .offset(x: baseX, y: -(previewTarget?.offsetY ?? 0))
+                    .allowsHitTesting(false)
+            }
+            if isLifted, previewTarget?.newLayer == nil {
+                // Where the clip will start: the drop line, a little taller
+                // than the row so it reads past the clips around it.
+                InsertionLine(axis: .vertical)
+                    .frame(height: height + 6)
+                    .offset(x: liveX - 3.5, y: -3)
+                    .zIndex(1)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -362,7 +389,11 @@ struct ClipBlockView: View {
                             autoScroll?.begin()
                         }
                         previewMove(translation: value.translation, pointer: value.location)
+                        isCopying = CopyDragCursor.update()
                         autoScroll?.track(pointerX: value.location.x) {
+                            previewMove(translation: value.translation, pointer: value.location)
+                        }
+                        autoScroll?.trackVertically(pointer: value.location) {
                             previewMove(translation: value.translation, pointer: value.location)
                         }
                     }
@@ -374,7 +405,19 @@ struct ClipBlockView: View {
                         onDragging(false)
                         onSnapIndicator(nil)
                         let targetLayer = previewTarget?.layerID
-                        if let kind = previewTarget?.newLayer, let start = previewTarget?.start {
+                        let copying = isCopying
+                        isCopying = false
+                        CopyDragCursor.end()
+                        if copying {
+                            // The clip itself doesn't change, so there is
+                            // no edit of it to wait for.
+                            if let kind = previewTarget?.newLayer, let start = previewTarget?.start {
+                                onCopy(start, nil, kind)
+                            } else if let preview, preview.startOffset != clip.startOffset || targetLayer != nil {
+                                onCopy(preview.startOffset, targetLayer, nil)
+                            }
+                            endDrop()
+                        } else if let kind = previewTarget?.newLayer, let start = previewTarget?.start {
                             commitDrop { onMoveToNewLayer(kind, start) }
                         } else if let preview, preview.startOffset != clip.startOffset || targetLayer != nil {
                             commitDrop { onMove(preview.startOffset, targetLayer) }

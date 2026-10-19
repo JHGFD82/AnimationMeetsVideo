@@ -34,6 +34,24 @@ extension TimelineView {
         )
     }
 
+    /// An Option-drag of a clip: a copy lands where the drag would have
+    /// moved it, onto `target` or its own layer, or onto a new layer of
+    /// `kind`, and is selected. The clip itself stays.
+    func copyClip(_ clipID: UUID, from layerID: UUID, to start: CMTime, onto target: UUID?, newLayer kind: LayerKind?) {
+        var placed: (layerID: UUID, clip: TimelineClip)?
+        onEditProject { project in
+            guard let bundle = project.clipBundle(clipID, in: timelineID) else { return }
+            let pasted = if let kind {
+                project.paste(bundle, in: timelineID, newLayer: kind, at: start)
+            } else {
+                project.paste(bundle, in: timelineID, onto: target ?? layerID, at: start)
+            }
+            guard let pasted, let clip = project.clipAndLayer(pasted.clipID, in: timelineID)?.clip else { return }
+            placed = (pasted.layerID, clip)
+        }
+        if let placed { onSelectClip(placed.layerID, placed.clip) }
+    }
+
     /// Cuts, copies or duplicates a clip, or pastes the copied clip at the
     /// playhead, onto `layerID` when that layer takes it. A pasted or
     /// duplicated clip is selected, and a paste leaves the playhead at its
