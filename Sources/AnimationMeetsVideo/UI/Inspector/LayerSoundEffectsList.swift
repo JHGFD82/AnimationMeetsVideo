@@ -11,9 +11,21 @@ struct LayerSoundEffectsList: View {
     let timelineID: UUID
     let layer: TimelineLayer
     /// The playhead on a frame, in the timeline's time.
-    let time: CMTime
+    let playhead: PlayheadTime
 
     @State private var open: Set<UUID> = []
+
+    init(project: Binding<EditingProject>, timelineID: UUID, layer: TimelineLayer, playhead: PlayheadTime) {
+        _project = project
+        self.timelineID = timelineID
+        self.layer = layer
+        self.playhead = playhead
+    }
+
+    /// A list with the playhead at `time`.
+    init(project: Binding<EditingProject>, timelineID: UUID, layer: TimelineLayer, time: CMTime) {
+        self.init(project: project, timelineID: timelineID, layer: layer, playhead: PlayheadTime(fixed: time))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.close) {
@@ -86,10 +98,14 @@ struct LayerSoundEffectsList: View {
             }
         }
         if effect.kind == .equalizer {
-            EqualizerGraph(effect: effect, time: time, isDimmed: effect.isNoOp, onEdit: onEdit)
-                .frame(height: EqualizerGraph.panelHeight)
-            ScrollView(.horizontal) {
-                EqualizerBandStrip(effect: effect, time: time, onEdit: onEdit)
+            // An EQ shows its bands at the playhead, so it is read here, in a
+            // view of its own, and not as the list is built.
+            PlayheadTimeReader(playhead: playhead) { time in
+                EqualizerGraph(effect: effect, time: time, isDimmed: effect.isNoOp, onEdit: onEdit)
+                    .frame(height: EqualizerGraph.panelHeight)
+                ScrollView(.horizontal) {
+                    EqualizerBandStrip(effect: effect, time: time, onEdit: onEdit)
+                }
             }
         } else {
             ForEach(effect.controls) { control in
@@ -116,7 +132,7 @@ struct LayerSoundEffectsList: View {
                 .controlSize(.small)
                 .fixedSize()
             } else {
-                let values = control.values(at: time)
+                let values = control.values(at: playhead.shown(animated: control.isAnimated))
                 ForEach(values.indices, id: \.self) { index in
                     NumericField(
                         value: values[index],
@@ -126,7 +142,8 @@ struct LayerSoundEffectsList: View {
                         dragRange: kind.range(ofComponent: index),
                         accessibilityName: kind.name
                     ) { value in
-                        onEdit(kind) { $0.setComponent(index, to: value, at: time) }
+                        let at = playhead.now
+                        onEdit(kind) { $0.setComponent(index, to: value, at: at) }
                     }
                 }
             }

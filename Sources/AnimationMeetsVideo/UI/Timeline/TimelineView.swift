@@ -768,17 +768,15 @@ struct TimelineView: View {
                             }
                     }
                     if showsVolume(of: layer) {
-                        PlayheadReader(playhead: playhead) { parked in
-                            AudioPropertyRow(
-                                value: layer.volume,
-                                time: timeline.snappedToFrame(parked),
-                                onEdit: { change in onEditVolume(layer.id, change) },
-                                onSeek: onScrub,
-                                onShowGraph: graphs.map { graphs in
-                                    { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
-                                }
-                            )
-                        }
+                        AudioPropertyRow(
+                            value: layer.volume,
+                            playhead: PlayheadTime(playhead) { timeline.snappedToFrame($0) },
+                            onEdit: { change in onEditVolume(layer.id, change) },
+                            onSeek: onScrub,
+                            onShowGraph: graphs.map { graphs in
+                                { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
+                            }
+                        )
                         .padding(.leading, 30)
                         .padding(.trailing, 8)
                         .frame(height: VolumeLane.height)

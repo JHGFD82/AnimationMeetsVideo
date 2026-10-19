@@ -164,56 +164,54 @@ struct InspectorPanel: View {
 
                 if let timeline = project.timeline(id: timelineID) {
                     if project.playsAudio(timelineClip) {
+                        let sourceNow = PlayheadTime(playhead) {
+                            timeline.snappedToFrame(timelineClip.sourceTime(atTimelineTime: $0))
+                        }
                         InspectorGroup("Sound") {
-                            PlayheadReader(playhead: playhead) { parked in
-                                let sourceNow = timeline.snappedToFrame(timelineClip.sourceTime(atTimelineTime: parked))
-                                ForEach([AudioProperty.volume, .pan], id: \.self) { property in
-                                    let keyPath: WritableKeyPath<TimelineClip, AnimatedValue<Double>> = property == .volume ? \.volume : \.pan
-                                    AudioPropertyRow(
-                                        property: property,
-                                        value: timelineClip[keyPath: keyPath],
-                                        time: sourceNow,
-                                        onEdit: { change in
-                                            project.editClip(timelineClip.id, in: timelineID) { change(&$0[keyPath: keyPath]) }
-                                        },
-                                        onSeek: { onSeek(timelineClip.timelineTime(forSourceTime: $0)) },
-                                        onShowGraph: graphs.map { graphs in
-                                            {
-                                                let parameter: AnimatedParameter = property == .volume
-                                                    ? .clipVolume(clipID: timelineClip.id) : .clipPan(clipID: timelineClip.id)
-                                                graphs.show(ParameterKey(timelineID: timelineID, parameter: parameter))
-                                            }
+                            ForEach([AudioProperty.volume, .pan], id: \.self) { property in
+                                let keyPath: WritableKeyPath<TimelineClip, AnimatedValue<Double>> = property == .volume ? \.volume : \.pan
+                                AudioPropertyRow(
+                                    property: property,
+                                    value: timelineClip[keyPath: keyPath],
+                                    playhead: sourceNow,
+                                    onEdit: { change in
+                                        project.editClip(timelineClip.id, in: timelineID) { change(&$0[keyPath: keyPath]) }
+                                    },
+                                    onSeek: { onSeek(timelineClip.timelineTime(forSourceTime: $0)) },
+                                    onShowGraph: graphs.map { graphs in
+                                        {
+                                            let parameter: AnimatedParameter = property == .volume
+                                                ? .clipVolume(clipID: timelineClip.id) : .clipPan(clipID: timelineClip.id)
+                                            graphs.show(ParameterKey(timelineID: timelineID, parameter: parameter))
                                         }
-                                    )
-                                }
+                                    }
+                                )
                             }
                         }
                     }
                     if let layer = timeline.layer(id: selection.layerID), layer.kind.isAudio {
+                        let frameTime = PlayheadTime(playhead) { timeline.snappedToFrame($0) }
                         InspectorGroup("Layer sound") {
-                            PlayheadReader(playhead: playhead) { parked in
-                                let time = timeline.snappedToFrame(parked)
-                                AudioPropertyRow(
-                                    value: layer.volume,
-                                    time: time,
-                                    onEdit: { change in project.editVolume(of: layer.id, in: timelineID, change) },
-                                    onSeek: onSeek,
-                                    onShowGraph: graphs.map { graphs in
-                                        { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
-                                    }
-                                )
-                                AudioPropertyRow(
-                                    property: .pan,
-                                    value: layer.pan,
-                                    time: time,
-                                    onEdit: { change in project.editPan(of: layer.id, in: timelineID, change) },
-                                    onSeek: onSeek,
-                                    onShowGraph: graphs.map { graphs in
-                                        { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerPan(layerID: layer.id))) }
-                                    }
-                                )
-                                LayerSoundEffectsList(project: $project, timelineID: timelineID, layer: layer, time: time)
-                            }
+                            AudioPropertyRow(
+                                value: layer.volume,
+                                playhead: frameTime,
+                                onEdit: { change in project.editVolume(of: layer.id, in: timelineID, change) },
+                                onSeek: onSeek,
+                                onShowGraph: graphs.map { graphs in
+                                    { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
+                                }
+                            )
+                            AudioPropertyRow(
+                                property: .pan,
+                                value: layer.pan,
+                                playhead: frameTime,
+                                onEdit: { change in project.editPan(of: layer.id, in: timelineID, change) },
+                                onSeek: onSeek,
+                                onShowGraph: graphs.map { graphs in
+                                    { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerPan(layerID: layer.id))) }
+                                }
+                            )
+                            LayerSoundEffectsList(project: $project, timelineID: timelineID, layer: layer, playhead: frameTime)
                         }
                     }
                 }
