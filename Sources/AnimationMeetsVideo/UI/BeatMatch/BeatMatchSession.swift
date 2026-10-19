@@ -417,6 +417,42 @@ final class BeatMatchSession {
         return (preview, id)
     }
 
+    /// The map as Option-dragging section `id` to start at `seconds` would
+    /// leave it, for the drag's preview, and the copy's ID; nil without
+    /// room.
+    func copyPreview(of id: UUID, toStart seconds: Double) -> (map: BeatMap, id: UUID)? {
+        var preview = map
+        guard let copied = preview.copySection(id, to: Self.time(seconds), duration: duration) else { return nil }
+        return (preview, copied)
+    }
+
+    /// Option-dragging a section: a copy of it starting at `seconds`
+    /// (`BeatMap.copySection`), selected. A filled consistent section's
+    /// copy is filled at its tempo, as Paste fills one: from the beats
+    /// pinned in it, or else from its start as beat 1.
+    func copySection(_ id: UUID, toStart seconds: Double) {
+        guard let source = map.section(id: id) else { return }
+        var copied = map
+        guard let copyID = copied.copySection(id, to: Self.time(seconds), duration: duration) else { return }
+        let tempo = source.kind == .consistent && source.isConfirmed
+            ? BeatFitting.medianGap(of: source.beats.map(\.time.seconds)).map { 60 / $0 }
+            : nil
+        selectedBeat = nil
+        if let tempo, audio != nil, !isFilling {
+            if copied.section(id: copyID)?.beats.isEmpty == true {
+                copied.paste(BeatSectionDetails(
+                    tempo: tempo, beatsPerMeasure: source.beatsPerMeasure,
+                    isMeasureSet: source.isMeasureSet, steadiness: source.steadiness
+                ), into: copyID)
+            }
+            selectSection(copyID)
+            fill(copied, section: copyID, tempo: tempo)
+        } else {
+            edit { map in map = copied }
+            selectSection(copyID)
+        }
+    }
+
     /// The map as moving an edge would leave it, for the drag's preview.
     func edgePreview(_ edge: BeatMap.Edge, of id: UUID, to seconds: Double) -> BeatMap {
         var preview = map
@@ -527,6 +563,15 @@ final class BeatMatchSession {
     func moveBeat(at time: CMTime, to seconds: Double) {
         let target = sampleTime(seconds)
         if let moved = edit({ map in map.moveBeat(at: time, to: target) }) { selectedBeat = moved }
+    }
+
+    /// Option-dragging a beat: a pinned copy at `seconds`, in the beat's
+    /// place in the measure; the beat stays. The copy is selected.
+    func copyBeat(at time: CMTime, to seconds: Double) {
+        let target = sampleTime(seconds)
+        if let copied = edit({ map in map.copyBeat(at: time, to: target) }) {
+            selectedBeat = copied
+        }
     }
 
     /// Moves the selected beat by `seconds`, landing on a sample.

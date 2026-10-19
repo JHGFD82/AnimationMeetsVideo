@@ -182,6 +182,19 @@ start, and draws them before marking any:
   8 points, to the other sections' edges, beats, the playhead and the
   song's ends. The timeline's snap line shows where an edge caught, and
   also where it stopped against a neighbour.
+- **Option-drag a section** in the strip to copy it (`BeatMap.copySection`):
+  the copy is drawn where it will land, as a drawn section is, with the
+  snap line at its start, which snaps like a drawn end. It takes the
+  section's kind, length, beats per measure and steadiness, in the
+  unmarked stretch under its start, or, dropped inside a section, the one
+  on the nearer side of it, cut short to fit; the beats pinned in it come
+  along. A filled consistent section's copy is filled at its tempo, as
+  **Paste Tempo** fills one (from its start as beat 1 when no pinned beat
+  came along); any other copy waits to be filled.
+- **Option-drag a beat** to copy it: the beat stays, and a dashed line
+  with a ring shows where the copy goes. The copy is pinned and takes the
+  beat's place in the measure (`BeatMap.copyBeat`); it can't land on
+  another beat or outside every section.
 - **Double-click** empty waveform to fill it, like a paint bucket, with
   the chosen kind, from the nearest section edge (or the start or end of
   the song) on the left to the nearest one on the right. Double-clicking

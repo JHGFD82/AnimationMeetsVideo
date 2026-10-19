@@ -5,8 +5,8 @@ import SwiftUI
 /// A slim lane under the ruler showing a timeline's named sections.
 /// Double-click empty space to make one five seconds long, double-click a
 /// section to rename it (a click elsewhere saves the name, Escape cancels),
-/// drag it to move it and its edges to resize it. Click selects it for
-/// Delete. Drawn, like the ruler, only across the visible part of the
+/// drag it to move it (Option-drag to copy it) and its edges to resize it.
+/// Click selects it for Delete. Drawn, like the ruler, only across the visible part of the
 /// timeline.
 struct SectionLane: View {
     let sections: [TimelineSection]
@@ -21,6 +21,10 @@ struct SectionLane: View {
     /// Makes a section over a range and returns its ID, or nil without room.
     let onCreate: (CMTime, CMTime) -> UUID?
     let onMove: (UUID, CMTime) -> Void
+    /// Where an Option-drag would put a copy of a section with its start at
+    /// a time, and making it.
+    let resolveCopy: (UUID, CMTime) -> TimelineSection?
+    let onCopy: (UUID, CMTime) -> Void
     let onSetEdge: (UUID, SectionEdge, CMTime) -> Void
     let onRename: (UUID, String) -> Void
     let onDelete: (UUID) -> Void
@@ -37,6 +41,10 @@ struct SectionLane: View {
     @State private var pendingDrop: Int?
     @State private var dropCount = 0
     @State private var clickMonitor: Any?
+    /// Where an Option-drag's copy would land, the section staying put.
+    @State private var copyDraft: TimelineSection?
+    /// Whether a section is being moved (not resized), for the drop line.
+    @State private var isMoving = false
     @State private var editingID: UUID?
     @State private var draftName = ""
     @FocusState private var isNameFocused: Bool
@@ -54,6 +62,15 @@ struct SectionLane: View {
                 })
             ForEach(sections) { section in
                 sectionView(section, shown: draft?.id == section.id ? draft ?? section : section)
+            }
+            if let copyDraft {
+                copyPreview(copyDraft)
+            }
+            // Where the moved section, or its copy, will start.
+            if isMoving, let landing = copyDraft ?? draft {
+                InsertionLine(axis: .vertical)
+                    .frame(height: Self.height)
+                    .offset(x: viewport.x(atSeconds: landing.start.seconds) - 3.5)
             }
         }
         .frame(width: viewport.width, height: Self.height, alignment: .topLeading)
@@ -180,6 +197,29 @@ struct SectionLane: View {
             .pointerStyle(.columnResize)
     }
 
+    /// An Option-drag's copy where it would land: the section's colour,
+    /// lighter and outlined in dashes, as a clip's is.
+    private func copyPreview(_ copy: TimelineSection) -> some View {
+        let minX = viewport.x(atSeconds: copy.start.seconds)
+        let maxX = viewport.x(atSeconds: copy.end.seconds)
+        return RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+            .fill(Design.section.opacity(0.45))
+            .overlay {
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .strokeBorder(Design.textOnColor.opacity(0.9), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+            }
+            .overlay(alignment: .leading) {
+                Text(copy.name)
+                    .font(Design.Typeface.label.weight(.medium))
+                    .foregroundStyle(Design.textOnColor)
+                    .lineLimit(1)
+                    .padding(.horizontal, Design.Space.tight)
+            }
+            .frame(width: max(2, maxX - minX), height: Self.height - 4)
+            .offset(x: minX, y: 2)
+            .decorative()
+    }
+
     private func moveGesture(_ section: TimelineSection) -> some Gesture {
         DragGesture(minimumDistance: 3, coordinateSpace: .named(space))
             .onChanged { value in
@@ -199,11 +239,24 @@ struct SectionLane: View {
                 } else {
                     onSnapIndicator(nil)
                 }
-                showDraft(resolveMove(section.id, start))
+                isMoving = true
+                // Option leaves the section where it is and shows its copy.
+                if CopyDragCursor.update() {
+                    showDraft(nil)
+                    copyDraft = resolveCopy(section.id, start)
+                } else {
+                    copyDraft = nil
+                    showDraft(resolveMove(section.id, start))
+                }
             }
             .onEnded { _ in
                 onSnapIndicator(nil)
-                if let draft, draft.start != section.start {
+                isMoving = false
+                CopyDragCursor.end()
+                if let copy = copyDraft {
+                    copyDraft = nil
+                    onCopy(section.id, copy.start)
+                } else if let draft, draft.start != section.start {
                     commitDrop { onMove(section.id, draft.start) }
                 } else {
                     endDrop()

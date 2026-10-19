@@ -204,6 +204,60 @@ extension BeatMap {
         return moved
     }
 
+    /// Puts a pinned beat at `target` taking the place in the measure of
+    /// the beat at `time`, which stays: an Option-drag. Gives the copy's
+    /// time, or nil onto another beat or outside every section.
+    @discardableResult
+    mutating func copyBeat(at time: CMTime, to target: CMTime) -> CMTime? {
+        guard let beat = beat(at: time), CMTimeCompare(time, target) != 0 else { return nil }
+        return addBeat(at: target, reach: .zero, position: beat.position)
+    }
+
+    /// Draws a copy of section `id` with its start at `start`, the section
+    /// itself staying: the same kind, length and measure, in the unmarked
+    /// stretch there (or, for a start inside a section, the one on the
+    /// nearer side of it, else the other), cut short to fit. The beats
+    /// pinned in it come along, as far apart from its start; it waits to be
+    /// filled. Gives the copy's ID, or nil without room.
+    @discardableResult
+    mutating func copySection(_ id: UUID, to start: CMTime, duration: CMTime) -> UUID? {
+        guard let source = section(id: id) else { return nil }
+        let length = CMTimeSubtract(source.end, source.start)
+        let tick = CMTime(value: 1, timescale: 48_000)
+        let proposed = CMTimeMaximum(.zero, start)
+        // Where to look for room, and where the copy would start there.
+        var places: [(gapAt: CMTime, start: CMTime)] = [(proposed, proposed)]
+        if let index = sectionIndex(containing: proposed) {
+            let under = sections[index]
+            let before = (CMTimeSubtract(under.start, tick), CMTimeSubtract(under.start, length))
+            let after = (under.end, under.end)
+            let nearStart = CMTimeCompare(CMTimeSubtract(proposed, under.start), CMTimeSubtract(under.end, proposed)) < 0
+            places = nearStart ? [before, after] : [after, before]
+        }
+        for place in places {
+            guard let gap = gap(around: place.gapAt, duration: duration) else { continue }
+            let from = CMTimeMaximum(gap.start, CMTimeMinimum(place.start, CMTimeSubtract(gap.end, length)))
+            let to = CMTimeMinimum(CMTimeAdd(from, length), gap.end)
+            guard let copyID = drawSection(source.kind, from: from, to: to, in: place.gapAt, duration: duration, snap: .zero) else { continue }
+            let shift = CMTimeSubtract(from, source.start)
+            updateSection(copyID) { copy in
+                copy.beatsPerMeasure = source.beatsPerMeasure
+                copy.isMeasureSet = source.isMeasureSet
+                copy.steadiness = source.steadiness
+                copy.beats = source.pinnedBeats
+                    .map { beat in
+                        var moved = beat
+                        moved.time = CMTimeAdd(beat.time, shift)
+                        return moved
+                    }
+                    .filter { copy.contains($0.time) }
+            }
+            recountPositions()
+            return copyID
+        }
+        return nil
+    }
+
     mutating func removeBeat(at time: CMTime) {
         guard let (sectionIndex, beatIndex) = beatIndex(at: time) else { return }
         sections[sectionIndex].beats.remove(at: beatIndex)

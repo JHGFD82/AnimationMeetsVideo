@@ -67,7 +67,8 @@ struct ParameterLane: View {
     let playhead: CMTime
     let height: CGFloat
     let onSeek: (CMTime) -> Void
-    let onMove: (CMTime, CMTime) -> Void
+    /// From, to, and whether Option copies it instead.
+    let onMove: (CMTime, CMTime, Bool) -> Void
     let onDelete: (CMTime) -> Void
     let onEase: (CMTime, KeyframeEase.Preset) -> Void
 
@@ -88,7 +89,7 @@ struct ParameterLane: View {
                 geometry.lane(fromTimeline: geometry.timeline.snappedToFrame(geometry.timeline(fromLane: lane)))
             },
             onSeek: { lane in onSeek(geometry.timeline(fromLane: lane)) },
-            onMove: { from, to in onMove(geometry.source(fromLane: from), geometry.source(fromLane: to)) },
+            onMove: { from, to, copy in onMove(geometry.source(fromLane: from), geometry.source(fromLane: to), copy) },
             onDelete: { onDelete(geometry.source(fromLane: $0)) },
             onEase: { time, preset in onEase(geometry.source(fromLane: time), preset) }
         )

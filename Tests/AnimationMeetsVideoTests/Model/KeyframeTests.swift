@@ -80,6 +80,21 @@ private func seconds(_ value: Double) -> CMTime {
         #expect(value.value(at: seconds(1)) == 100)
     }
 
+    @Test func copyingAKeyframeKeepsItAndSetsTheCopyByHand() {
+        var value = AnimatedValue(0.0)
+        value.setAnimated(true, at: seconds(0))
+        value.set(100, at: seconds(2))
+        value.applyEase(.easyEase, at: seconds(2))
+        var generated = value.keyframes[1]
+        generated.generatedBy = UUID()
+        value = AnimatedValue(value.value, keyframes: [value.keyframes[0], generated])
+        value.moveKeyframe(at: seconds(2), to: seconds(4), copying: true)
+        #expect(value.keyframes.map(\.time) == [seconds(0), seconds(2), seconds(4)])
+        let copy = value.keyframes[2]
+        #expect(copy.value == 100 && copy.easeIn == generated.easeIn && copy.generatedBy == nil)
+        #expect(value.keyframes[1].generatedBy == generated.generatedBy)
+    }
+
     @Test func keyframesStaySortedWhenAddedOutOfOrder() {
         var value = AnimatedValue(0.0)
         value.setAnimated(true, at: seconds(3))

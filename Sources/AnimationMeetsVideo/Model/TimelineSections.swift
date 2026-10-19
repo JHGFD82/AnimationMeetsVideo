@@ -95,6 +95,59 @@ extension EditingProject {
         updateSection(id, in: timelineID) { $0 = resized }
     }
 
+    /// Where a copy of a section dropped with its start at `proposedStart`
+    /// goes, the section itself staying: on a frame, in the stretch between
+    /// sections there, or for a start inside a section the stretch on the
+    /// nearer side of it (the other side if the nearer has no room). It
+    /// keeps the section's length and name, cut short to fit the stretch;
+    /// nil where no stretch holds a frame.
+    func resolvedSectionCopy(_ id: UUID, in timelineID: UUID, to proposedStart: CMTime) -> TimelineSection? {
+        guard let timeline = timeline(id: timelineID),
+              let section = timeline.sections.first(where: { $0.id == id })
+        else { return nil }
+        let frame = timeline.frameDuration
+        let length = section.duration
+        let sorted = timeline.sections.sorted { $0.start < $1.start }
+        // The stretches between sections, the last running on forever.
+        var gaps: [(start: CMTime, end: CMTime)] = []
+        var cursor = CMTime.zero
+        for other in sorted {
+            if other.start > cursor { gaps.append((cursor, other.start)) }
+            cursor = CMTimeMaximum(cursor, other.end)
+        }
+        gaps.append((cursor, .positiveInfinity))
+
+        let proposed = timeline.frameAligned(CMTimeMaximum(.zero, proposedStart), .nearest)
+        var choices: [(gap: (start: CMTime, end: CMTime), start: CMTime)] = []
+        if let gap = gaps.first(where: { proposed >= $0.start && proposed < $0.end }) {
+            choices = [(gap, proposed)]
+        } else if let under = sorted.first(where: { proposed >= $0.start && proposed < $0.end }) {
+            let before = gaps.last { $0.end == under.start }.map { ($0, CMTimeSubtract(under.start, length)) }
+            let after = gaps.first { $0.start == under.end }.map { ($0, under.end) }
+            let nearStart = CMTimeSubtract(proposed, under.start) < CMTimeSubtract(under.end, proposed)
+            choices = (nearStart ? [before, after] : [after, before]).compactMap { $0 }
+        }
+        for (gap, wanted) in choices where CMTimeSubtract(gap.end, gap.start) >= frame {
+            let start = CMTimeMaximum(gap.start, CMTimeMinimum(wanted, CMTimeSubtract(gap.end, length)))
+            let end = CMTimeMinimum(CMTimeAdd(start, length), gap.end)
+            guard CMTimeSubtract(end, start) >= frame else { continue }
+            return TimelineSection(name: section.name, start: start, end: end)
+        }
+        return nil
+    }
+
+    /// Puts a copy of a section where `resolvedSectionCopy` says, and
+    /// gives its ID: an Option-drag in the section lane.
+    @discardableResult
+    mutating func copySection(_ id: UUID, in timelineID: UUID, to start: CMTime) -> UUID? {
+        guard let copy = resolvedSectionCopy(id, in: timelineID, to: start),
+              let tIndex = timelines.firstIndex(where: { $0.id == timelineID })
+        else { return nil }
+        timelines[tIndex].sections.append(copy)
+        timelines[tIndex].sections.sort { $0.start < $1.start }
+        return copy.id
+    }
+
     private func sectionContext(_ id: UUID, in timelineID: UUID)
         -> (timeline: Timeline, section: TimelineSection, previousEnd: CMTime, nextStart: CMTime)?
     {

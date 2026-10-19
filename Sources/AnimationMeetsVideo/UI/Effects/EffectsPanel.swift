@@ -366,7 +366,7 @@ struct EffectsPanel: View {
             lane: ParameterLane(
                 marks: clip.anchorPoint.marks, geometry: c.geometry, playhead: c.frameTime, height: EffectsPanelMetrics.rowHeight,
                 onSeek: onSeek,
-                onMove: { from, to in editClip(clip.id) { $0.anchorPoint.moveKeyframe(at: from, to: to) } },
+                onMove: { from, to, copy in editClip(clip.id) { $0.anchorPoint.moveKeyframe(at: from, to: to, copying: copy) } },
                 onDelete: { time in editClip(clip.id) { $0.anchorPoint.removeKeyframe(at: time) } },
                 onEase: { time, preset in editClip(clip.id) { $0.anchorPoint.applyEase(preset, at: time) } }
             )
@@ -612,7 +612,9 @@ struct EffectsPanel: View {
                 lane: ParameterLane(
                     marks: control.number.marks, geometry: c.geometry, playhead: c.frameTime, height: EffectsPanelMetrics.rowHeight,
                     onSeek: onSeek,
-                    onMove: { from, to in editControl(control.id, of: effect, in: clip) { $0.number.moveKeyframe(at: from, to: to) } },
+                    onMove: { from, to, copy in
+                        editControl(control.id, of: effect, in: clip) { $0.number.moveKeyframe(at: from, to: to, copying: copy) }
+                    },
                     onDelete: { time in editControl(control.id, of: effect, in: clip) { $0.number.removeKeyframe(at: time) } },
                     onEase: { time, preset in editControl(control.id, of: effect, in: clip) { $0.number.applyEase(preset, at: time) } }
                 )
@@ -755,7 +757,7 @@ struct EffectsPanel: View {
             lane: ParameterLane(
                 marks: value.marks, geometry: c.geometry, playhead: c.frameTime, height: EffectsPanelMetrics.rowHeight,
                 onSeek: onSeek,
-                onMove: { from, to in editClip(clip.id) { $0[keyPath: keyPath].moveKeyframe(at: from, to: to) } },
+                onMove: { from, to, copy in editClip(clip.id) { $0[keyPath: keyPath].moveKeyframe(at: from, to: to, copying: copy) } },
                 onDelete: { time in editClip(clip.id) { $0[keyPath: keyPath].removeKeyframe(at: time) } },
                 onEase: { time, preset in editClip(clip.id) { $0[keyPath: keyPath].applyEase(preset, at: time) } }
             )

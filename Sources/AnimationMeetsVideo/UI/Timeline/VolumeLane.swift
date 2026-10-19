@@ -16,7 +16,7 @@ struct VolumeLane: View {
     let visibleX: ClosedRange<CGFloat>
     let snap: (CMTime) -> CMTime
     let onSeek: (CMTime) -> Void
-    let onMove: (CMTime, CMTime) -> Void
+    let onMove: (CMTime, CMTime, Bool) -> Void
     let onDelete: (CMTime) -> Void
     let onEase: (CMTime, KeyframeEase.Preset) -> Void
 

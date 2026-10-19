@@ -259,7 +259,13 @@ composition otherwise ends with its last media).
   it, Escape cancels, and leaving it empty keeps the old name.
 - The sections button in the timeline toolbar (or the view options) shows
   or hides the whole row.
-- Drag a section to move it and its edges to resize it.
+- Drag a section to move it and its edges to resize it. A line
+  (`InsertionLine`) marks where a moved section will start. **Option-drag**
+  a section to copy it: the pointer shows a plus, the section stays, and a
+  dashed copy with its name and length shows where it will land
+  (`resolvedSectionCopy`): in the stretch between sections under its start,
+  or, dropped inside a section, in the stretch on the nearer side of it
+  (else the other), cut short to fit. The copy is selected.
 - Click a section to select it, then Delete removes it (also in its menu).
   Selecting a section clears any clip or layer selection.
 

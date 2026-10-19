@@ -20,8 +20,8 @@ extension AnimatedValue {
 
 /// A property's keyframes as diamonds under the layer's clips, each side
 /// pinched like an hourglass where it is eased. Clicking a diamond moves
-/// the playhead to it; dragging retimes it, snapping to frames; its menu
-/// sets its ease.
+/// the playhead to it; dragging retimes it, snapping to frames, and
+/// Option-dragging copies it there; its menu sets its ease.
 struct KeyframeLane: View {
     let marks: [KeyframeMark]
     let currentTime: CMTime
@@ -30,7 +30,8 @@ struct KeyframeLane: View {
     let height: CGFloat
     let snap: (CMTime) -> CMTime
     let onSeek: (CMTime) -> Void
-    let onMove: (CMTime, CMTime) -> Void
+    /// From, to, and whether Option copies it instead.
+    let onMove: (CMTime, CMTime, Bool) -> Void
     let onDelete: (CMTime) -> Void
     let onEase: (CMTime, KeyframeEase.Preset) -> Void
 
@@ -105,7 +106,8 @@ private struct KeyframeDiamond: View {
     let height: CGFloat
     let snap: (CMTime) -> CMTime
     let onSeek: (CMTime) -> Void
-    let onMove: (CMTime, CMTime) -> Void
+    /// From, to, and whether Option copies it instead.
+    let onMove: (CMTime, CMTime, Bool) -> Void
     let onDelete: (CMTime) -> Void
     let onEase: (CMTime, KeyframeEase.Preset) -> Void
 
@@ -115,6 +117,8 @@ private struct KeyframeDiamond: View {
     /// it stays there until the moved keyframe comes back from the project
     /// and replaces this diamond, so the old place never shows for a frame.
     @State private var dragX: CGFloat = 0
+    /// Whether Option is held during the drag, which copies the keyframe.
+    @State private var isCopying = false
 
     private let size: CGFloat = 12
 
@@ -126,21 +130,37 @@ private struct KeyframeDiamond: View {
             .overlay { shape.stroke(Color.black.opacity(0.45), lineWidth: 0.5) }
             .frame(width: size, height: size)
             .frame(width: size + 6, height: height)
+            // Option-dragged, the keyframe stays: a faint one where it is.
+            .background {
+                if isCopying, dragX != 0 {
+                    shape.fill(Design.textTertiary.opacity(0.6))
+                        .frame(width: size, height: size)
+                        .offset(x: -dragX)
+                }
+            }
             .contentShape(Rectangle())
             .offset(x: x - (size + 6) / 2)
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
                         guard abs(value.translation.width) >= 3 else { return }
+                        isCopying = CopyDragCursor.update()
                         dragX = CGFloat(CMTimeSubtract(target(value.translation.width), time).seconds) * pixelsPerSecond
                     }
                     .onEnded { value in
                         let target = target(value.translation.width)
+                        let copying = isCopying
+                        isCopying = false
+                        CopyDragCursor.end()
                         if abs(value.translation.width) < 3 || target == time {
                             dragX = 0
                             if abs(value.translation.width) < 3 { onSeek(time) }
+                        } else if copying {
+                            // The copy arrives as a diamond of its own.
+                            onMove(time, target, true)
+                            dragX = 0
                         } else {
-                            onMove(time, target)
+                            onMove(time, target, false)
                             Task { @MainActor in
                                 // In case the move was refused and this
                                 // diamond stays.

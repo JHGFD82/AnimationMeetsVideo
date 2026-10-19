@@ -115,4 +115,40 @@ private func seconds(_ value: Double) -> CMTime {
         // Past the footage, the section plays black.
         #expect(pixel[1] < 10)
     }
+
+    @Test func aCopiedSectionLandsInTheGapUnderItsStartAndTheSectionStays() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let addedVerse = project.addSection(named: "Verse", in: t, from: seconds(0), to: seconds(10))
+        let verse = try #require(addedVerse)
+        project.addSection(named: "Chorus", in: t, from: seconds(30), to: seconds(36))
+
+        // Into the open: same name and length, where it was dropped.
+        let copiedResult = project.copySection(verse, in: t, to: seconds(12))
+        let copied = try #require(copiedResult)
+        let copy = try #require(sections(project).first { $0.id == copied })
+        #expect(copy.name == "Verse" && copy.start == seconds(12) && copy.end == seconds(22))
+        #expect(sections(project).first { $0.id == verse }?.start == seconds(0))
+
+        // Too long for the gap before the chorus: cut short against it.
+        let shortResult = project.copySection(verse, in: t, to: seconds(25))
+        let short = try #require(shortResult)
+        #expect(sections(project).first { $0.id == short }?.end == seconds(30))
+    }
+
+    @Test func aCopyDroppedInsideASectionGoesToItsNearerSide() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let addedA = project.addSection(named: "A", in: t, from: seconds(0), to: seconds(4))
+        let a = try #require(addedA)
+        project.addSection(named: "B", in: t, from: seconds(20), to: seconds(30))
+        // Late in B: after it.
+        let afterResult = project.copySection(a, in: t, to: seconds(28))
+        let after = try #require(afterResult)
+        #expect(sections(project).first { $0.id == after }?.start == seconds(30))
+        // Early in B: ending where B starts.
+        let beforeResult = project.copySection(a, in: t, to: seconds(21))
+        let before = try #require(beforeResult)
+        #expect(sections(project).first { $0.id == before }?.end == seconds(20))
+    }
 }

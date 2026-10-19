@@ -999,7 +999,7 @@ struct TimelineView: View {
                             visibleX: viewport.visibleContentX,
                             snap: { timeline.snappedToFrame($0) },
                             onSeek: onScrub,
-                            onMove: { from, to in onEditVolume(layer.id) { $0.moveKeyframe(at: from, to: to) } },
+                            onMove: { from, to, copy in onEditVolume(layer.id) { $0.moveKeyframe(at: from, to: to, copying: copy) } },
                             onDelete: { time in onEditVolume(layer.id) { $0.removeKeyframe(at: time) } },
                             onEase: { time, preset in onEditVolume(layer.id) { $0.applyEase(preset, at: time) } }
                         )
@@ -1058,6 +1058,15 @@ struct TimelineView: View {
                 return created
             },
             onMove: { id, start in onEditProject { $0.moveSection(id, in: timelineID, to: start) } },
+            resolveCopy: { id, start in project.resolvedSectionCopy(id, in: timelineID, to: start) },
+            onCopy: { id, start in
+                var copied: UUID?
+                onEditProject { copied = $0.copySection(id, in: timelineID, to: start) }
+                if let copied {
+                    selectedSectionID = copied
+                    selectedLayerID = nil
+                }
+            },
             onSetEdge: { id, edge, time in onEditProject { $0.setSectionEdge(id, edge: edge, in: timelineID, to: time) } },
             onRename: { id, name in onEditProject { $0.renameSection(id, in: timelineID, to: name) } },
             onDelete: { id in

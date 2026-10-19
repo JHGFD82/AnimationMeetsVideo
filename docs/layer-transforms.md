@@ -207,7 +207,11 @@ both sides reads as an hourglass, as in After Effects:
 
 - Click a diamond to move the playhead to it.
 - Drag a diamond to retime it; it snaps to frames and replaces any keyframe
-  where it lands.
+  where it lands. **Option-drag** copies it there instead, with its value
+  and eases, leaving a faint diamond where it is while dragged
+  (`moveKeyframe(at:to:copying:)`). A copy is set by hand, so a Keyframing
+  effect making its keyframes again leaves it alone. The graph editor keeps
+  Option for pulling out a handle (above).
 - Right-click for the ease presets and **Delete Keyframe**.
 
 Which properties are shown is view state, not saved in the project.

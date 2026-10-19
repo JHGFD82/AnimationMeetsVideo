@@ -153,7 +153,7 @@ extension EffectsPanel {
             lane: ParameterLane(
                 marks: speed.marks, geometry: c.geometry, playhead: c.frameTime, height: EffectsPanelMetrics.rowHeight,
                 onSeek: onSeek,
-                onMove: { from, to in editTime(c) { $0.speed.moveKeyframe(at: from, to: to) } },
+                onMove: { from, to, copy in editTime(c) { $0.speed.moveKeyframe(at: from, to: to, copying: copy) } },
                 onDelete: { time in editTime(c) { $0.speed.removeKeyframe(at: time) } },
                 onEase: { time, preset in editTime(c) { $0.speed.applyEase(preset, at: time) } }
             )

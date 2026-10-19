@@ -32,6 +32,8 @@ struct BeatMatchWaveform: View {
     @State private var previewID: UUID?
     /// Where the drag in progress snapped or stopped, for the snap line.
     @State private var snapX: CGFloat?
+    /// Whether Option is held while a beat is dragged, which copies it.
+    @State private var isCopying = false
 
     private enum Drag {
         case scrub
@@ -39,6 +41,9 @@ struct BeatMatchWaveform: View {
         case draw(from: Double, gapAt: Double)
         case edge(UUID, BeatMap.Edge)
         case beat(CMTime, grab: CGFloat)
+        /// An Option-drag of a section in the strip, which copies it;
+        /// `grab` is how far into it the drag began, in seconds.
+        case copySection(UUID, grab: Double)
         /// A press on a section in the strip, which selects it.
         case pressSection(UUID)
         /// A press on unmarked song, which draws if it moves; a click
@@ -289,7 +294,8 @@ struct BeatMatchWaveform: View {
             let tagsDownbeats = spacing * CGFloat(section.beatsPerMeasure) >= room
             for beat in section.beats {
                 var seconds = beat.time.seconds
-                if case .beat(let time, let grab) = drag, time == beat.time { seconds = session.seconds(atX: dragX - grab) }
+                // Moved, unless Option copies it: then it stays.
+                if case .beat(let time, let grab) = drag, time == beat.time, !isCopying { seconds = session.seconds(atX: dragX - grab) }
                 guard visible.contains(seconds) else { continue }
                 let x = session.x(of: seconds)
                 var line = Path()
@@ -331,6 +337,17 @@ struct BeatMatchWaveform: View {
             line.addLine(to: CGPoint(x: selected, y: rect.maxY))
             context.stroke(line, with: .color(Design.accent), lineWidth: 2)
         }
+        // An Option-dragged beat's copy, where it will land: dashed, with
+        // the drop line's ring at its top.
+        if isCopying, case .beat(_, let grab) = drag {
+            let x = dragX - grab
+            var line = Path()
+            line.move(to: CGPoint(x: x, y: lineTop))
+            line.addLine(to: CGPoint(x: x, y: rect.maxY))
+            context.stroke(line, with: .color(Design.accent), style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
+            let ring = CGRect(x: x - 3.5, y: lineTop - 7, width: 7, height: 7)
+            context.stroke(Path(ellipseIn: ring.insetBy(dx: 1, dy: 1)), with: .color(Design.accent), lineWidth: 2)
+        }
         // Each number is laid out once a draw, in the tag's ink.
         var numbers: [String: GraphicsContext.ResolvedText] = [:]
         for tag in tags {
@@ -369,6 +386,13 @@ struct BeatMatchWaveform: View {
                 dragX = value.location.x
                 if drag == nil { drag = begin(at: value.startLocation) }
                 let moved = abs(value.translation.width) > 3
+                // Option copies a beat or a section instead of moving it.
+                if case .pressSection(let id) = drag, moved, NSEvent.modifierFlags.contains(.option),
+                   let section = session.map.section(id: id) {
+                    drag = .copySection(id, grab: session.seconds(atX: value.startLocation.x) - section.start.seconds)
+                }
+                if case .beat = drag, moved { isCopying = CopyDragCursor.update() }
+                if case .copySection = drag { CopyDragCursor.update() }
                 switch drag {
                 case .scrub:
                     session.seek(to: session.seconds(atX: value.location.x))
@@ -388,6 +412,8 @@ struct BeatMatchWaveform: View {
                     preview = moved
                     let landed = moved.section(id: id).map { (edge == .start ? $0.start : $0.end).seconds }
                     showSnap(target: target, landed: landed, proposed: proposed)
+                case .copySection(let id, let grab):
+                    showCopy(of: id, grab: grab)
                 default:
                     break
                 }
@@ -398,6 +424,8 @@ struct BeatMatchWaveform: View {
                     preview = nil
                     previewID = nil
                     snapX = nil
+                    isCopying = false
+                    CopyDragCursor.end()
                 }
                 let seconds = session.seconds(atX: value.location.x)
                 switch drag {
@@ -407,8 +435,15 @@ struct BeatMatchWaveform: View {
                     session.moveEdge(edge, of: id, to: snapped(seconds, excluding: id) ?? seconds, snap: 0)
                 case .beat(let time, let grab):
                     if abs(value.translation.width) > 1 {
-                        session.moveBeat(at: time, to: session.seconds(atX: value.location.x - grab))
+                        let target = session.seconds(atX: value.location.x - grab)
+                        if isCopying {
+                            session.copyBeat(at: time, to: target)
+                        } else {
+                            session.moveBeat(at: time, to: target)
+                        }
                     }
+                case .copySection(let id, let grab):
+                    if let start = copyStart(grab: grab) { session.copySection(id, toStart: start) }
                 case .pressSection(let id):
                     session.selectedSectionID = id
                 case .pressGap(let seeks):
@@ -425,6 +460,27 @@ struct BeatMatchWaveform: View {
                     break
                 }
             }
+    }
+
+    /// Where an Option-dragged section's copy would start: under the
+    /// pointer as far into it as the drag began, its start snapped.
+    private func copyStart(grab: Double) -> Double? {
+        let proposed = session.seconds(atX: dragX) - grab
+        return snapped(proposed, excluding: nil) ?? proposed
+    }
+
+    /// Shows an Option-dragged section's copy where it will land, as a
+    /// section being drawn is shown, and the line where it starts.
+    private func showCopy(of id: UUID, grab: Double) {
+        guard let start = copyStart(grab: grab), let (map, copyID) = session.copyPreview(of: id, toStart: start) else {
+            preview = nil
+            previewID = nil
+            snapX = nil
+            return
+        }
+        preview = map
+        previewID = copyID
+        snapX = map.section(id: copyID).map { session.x(of: $0.start.seconds) }
     }
 
     /// Shows the section being drawn where it will land, and the snap line

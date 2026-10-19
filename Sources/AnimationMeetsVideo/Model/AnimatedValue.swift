@@ -193,10 +193,15 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
 
     /// Moves a keyframe in time, with its eases, replacing any keyframe
     /// already at `newTime`.
-    mutating func moveKeyframe(at time: CMTime, to newTime: CMTime) {
+    /// Moves a keyframe, with its eases, replacing any at `newTime`; with
+    /// `copying` a copy goes there and the keyframe stays (an Option-drag).
+    /// A copy is set by hand, so a Keyframing effect making its keyframes
+    /// again leaves it alone.
+    mutating func moveKeyframe(at time: CMTime, to newTime: CMTime, copying: Bool = false) {
         guard time != newTime, var moving = keyframe(at: time) else { return }
-        keyframes.removeAll { $0.time == time || $0.time == newTime }
+        keyframes.removeAll { (!copying && $0.time == time) || $0.time == newTime }
         moving.time = newTime
+        if copying { moving.generatedBy = nil }
         keyframes.append(moving)
         keyframes = Self.normalized(keyframes)
     }

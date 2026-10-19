@@ -147,4 +147,38 @@ private let snap = s(0.5)
         let positions: [Int] = map.sections[0].beats.map(\.position)
         #expect(positions == [1, 2, 3, 1, 2, 3])
     }
+
+    @Test func copiedBeatsKeepTheirPlaceInTheMeasureAndTheBeatStays() throws {
+        var map = BeatMap()
+        map.drawSection(.consistent, from: s(0), to: s(20), duration: song, snap: .zero)
+        map.addBeat(at: s(2), reach: s(1), position: 3)
+        let copiedResult = map.copyBeat(at: s(2), to: s(9))
+        let copied = try #require(copiedResult)
+        #expect(map.beat(at: s(2)) != nil)
+        #expect(map.beat(at: copied)?.position == 3 && map.beat(at: copied)?.isPinned == true)
+        // Not onto another beat, nor outside every section.
+        #expect(map.copyBeat(at: s(2), to: s(9)) == nil)
+        #expect(map.copyBeat(at: s(2), to: s(50)) == nil)
+    }
+
+    @Test func copiedSectionsKeepKindLengthMeasureAndPinnedBeats() throws {
+        var map = BeatMap()
+        let drawn = map.drawSection(.consistent, from: s(10), to: s(20), duration: song, snap: .zero)
+        let source = try #require(drawn)
+        map.setBeatsPerMeasure(of: source, to: 3)
+        map.addBeat(at: s(12), reach: s(1), position: 1)
+
+        let copiedResult = map.copySection(source, to: s(40), duration: song)
+        let copied = try #require(copiedResult)
+        let copy = try #require(map.section(id: copied))
+        #expect(copy.kind == .consistent && copy.start == s(40) && copy.end == s(50))
+        #expect(copy.beatsPerMeasure == 3 && !copy.isConfirmed)
+        #expect(copy.beats.map(\.time) == [s(42)])
+        #expect(map.section(id: source)?.start == s(10))
+
+        // Dropped late inside the source: just after it, cut short against the copy.
+        let besideResult = map.copySection(source, to: s(18), duration: song)
+        let beside = try #require(besideResult)
+        #expect(map.section(id: beside)?.start == s(20) && map.section(id: beside)?.end == s(30))
+    }
 }
