@@ -28,12 +28,15 @@ struct EditorView: View {
     /// The project as the browser reads and edits it (see `browserProject`).
     @State private var browserAccess = ProjectAccess()
 
+    /// `selection` is the clip selected to begin with: none in the app,
+    /// one for a benchmark hosting the editor with its effects showing.
     init(
         project: Binding<EditingProject>,
         history: ProjectHistory,
         analysis: AssetAnalysis,
         replacement: MediaReplacementController,
-        packageURL: URL?
+        packageURL: URL?,
+        selection: TimelineSelection? = nil
     ) {
         self._project = project
         self.history = history
@@ -41,6 +44,7 @@ struct EditorView: View {
         self.replacement = replacement
         self.packageURL = packageURL
         self._activeTimelineID = State(initialValue: project.wrappedValue.rootTimelineID)
+        self._selection = State(initialValue: selection)
     }
 
     /// The project for the browser, through an object SwiftUI doesn't
