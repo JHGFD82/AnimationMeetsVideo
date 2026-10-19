@@ -1,0 +1,373 @@
+import AppKit
+import AVFoundation
+import CoreMedia
+import SwiftUI
+import Testing
+@testable import AnimationMeetsVideo
+
+/// Times what the editor does on the main thread for each step of an
+/// interaction, hosting the whole editor in a window: dragging effect
+/// values of several kinds (each step the edit a drag on the field makes),
+/// a layer's volume, and the timeline's keys for stepping the playhead,
+/// nudging a clip and zooming (real key events, through the timeline's own
+/// handling). Each step is timed through the run loop pass, layout and
+/// drawing that follow it. Prints a table; nothing is asserted, since
+/// timings vary too much from machine to machine for CI.
+///
+/// Runs only with `UI_BENCHMARK` set: `all`, or scenario names separated
+/// by commas (see `scenarios`). `UI_BENCHMARK_SECONDS` keeps each one
+/// going that long, which leaves time to attach `sample`; without it each
+/// takes 90 steps. `AMV_PROJECT` adds scenarios on a saved project, which
+/// is read and never written. With `SNAPSHOT_DIR` set, each scenario
+/// leaves a picture of the editor. Release timings are the ones that
+/// matter:
+///
+///     swift build -c release -Xswiftc -enable-testing --build-tests
+///     UI_BENCHMARK=all swift test -c release -Xswiftc -enable-testing \
+///         --skip-build --filter UIResponsivenessBenchmark
+///
+/// Pointer drags can't be driven here: SwiftUI's gestures don't see mouse
+/// events made up in a test. A clip being dragged or trimmed only moves
+/// its preview until it is let go, so `nudge` times the move it commits.
+@MainActor
+@Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["UI_BENCHMARK"] != nil))
+struct UIResponsivenessBenchmark {
+    @Observable final class Model {
+        var project: EditingProject
+        init(_ project: EditingProject) { self.project = project }
+    }
+
+    struct Host: View {
+        @Bindable var model: Model
+        let history: ProjectHistory
+        let selection: TimelineSelection?
+        var body: some View {
+            EditorView(
+                project: $model.project, history: history, analysis: AssetAnalysis(),
+                replacement: MediaReplacementController(), packageURL: nil, selection: selection
+            )
+        }
+    }
+
+    /// The project a scenario starts from.
+    enum Base: String {
+        /// Six shape layers, the top one selected.
+        case shapes
+        /// Footage on two video layers (one cut in pieces), a shape layer,
+        /// an adjustment layer of grain over them all, and a song on a
+        /// Music layer. The top footage clip is selected.
+        case media
+        /// The project at `AMV_PROJECT`, its first video clip selected.
+        case saved
+    }
+
+    /// What each step does.
+    enum Action {
+        /// Nudges every component of a control of the selected clip's
+        /// first effect of this kind, which is added when the clip has
+        /// none, up and down by `delta`, as dragging its field does.
+        /// `keyframed` animates the control first, so each step moves the
+        /// keyframe under the playhead.
+        case drag(EffectKind, ControlKind, delta: Double, keyframed: Bool = false)
+        /// Nudges the selected clip's layer's volume, in decibels.
+        case volume
+        /// Presses a key, alternating with `back` when given, or with
+        /// `sweep` pressing it 60 times and `back` 60 times, so stepping
+        /// the playhead never runs into the end.
+        case key(Key, back: Key, sweep: Bool = false)
+    }
+
+    struct Key {
+        var code: UInt16
+        var characters: String
+        var flags: NSEvent.ModifierFlags = []
+        static let right = Key(code: 124, characters: "\u{F703}")
+        static let left = Key(code: 123, characters: "\u{F702}")
+        static let shiftRight = Key(code: 124, characters: "\u{F703}", flags: .shift)
+        static let shiftLeft = Key(code: 123, characters: "\u{F702}", flags: .shift)
+        static let nudgeLater = Key(code: 47, characters: ".")
+        static let nudgeEarlier = Key(code: 43, characters: ",")
+        static let zoomIn = Key(code: 24, characters: "=")
+        static let zoomOut = Key(code: 27, characters: "-")
+    }
+
+    struct Scenario {
+        var name: String
+        var base: Base
+        var panel: SidePanelTab = .effects
+        var action: Action
+    }
+
+    static let scenarios: [Scenario] = {
+        var list: [Scenario] = [
+            Scenario(name: "shape-size", base: .shapes, action: .drag(.ellipse, .shapeSize, delta: 1)),
+            Scenario(name: "color-exposure", base: .media, action: .drag(.color, .exposure, delta: 0.01)),
+            Scenario(name: "transform-position", base: .media, action: .drag(.transform, .position, delta: 1)),
+            Scenario(name: "keyframed-scale", base: .media, action: .drag(.transform, .scale, delta: 0.5, keyframed: true)),
+            Scenario(name: "wave-height", base: .media, action: .drag(.wave, .waveHeight, delta: 0.5)),
+            Scenario(name: "kaleidoscope-angle", base: .media, action: .drag(.kaleidoscope, .distortAngle, delta: 1)),
+            Scenario(name: "feedback-scale", base: .media, action: .drag(.feedback, .copyScale, delta: 0.5)),
+            Scenario(name: "volume", base: .media, panel: .inspector, action: .volume),
+            Scenario(name: "step-frame", base: .media, action: .key(.right, back: .left, sweep: true)),
+            Scenario(name: "step-ten-frames", base: .media, action: .key(.shiftRight, back: .shiftLeft)),
+            Scenario(name: "step-frame-inspector", base: .media, panel: .inspector, action: .key(.right, back: .left, sweep: true)),
+            Scenario(name: "nudge-clip", base: .media, action: .key(.nudgeLater, back: .nudgeEarlier)),
+            Scenario(name: "zoom", base: .media, action: .key(.zoomIn, back: .zoomOut)),
+        ]
+        if ProcessInfo.processInfo.environment["AMV_PROJECT"] != nil {
+            list += [
+                Scenario(name: "saved-color-exposure", base: .saved, action: .drag(.color, .exposure, delta: 0.01)),
+                Scenario(name: "saved-transform-position", base: .saved, action: .drag(.transform, .position, delta: 1)),
+                Scenario(name: "saved-step-frame", base: .saved, action: .key(.right, back: .left, sweep: true)),
+                Scenario(name: "saved-nudge-clip", base: .saved, action: .key(.nudgeLater, back: .nudgeEarlier)),
+            ]
+        }
+        return list
+    }()
+
+    @Test func run() async throws {
+        let wanted = ProcessInfo.processInfo.environment["UI_BENCHMARK"] ?? "all"
+        let names = Set(wanted.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) })
+        let chosen = Self.scenarios.filter { names.contains("all") || names.contains($0.name) }
+        try #require(!chosen.isEmpty, "No scenario named \(wanted)")
+        var bases: [Base: (EditingProject, TimelineSelection)] = [:]
+        var rows: [String] = []
+        for scenario in chosen {
+            if bases[scenario.base] == nil { bases[scenario.base] = try await Self.make(scenario.base) }
+            let (project, selection) = try #require(bases[scenario.base])
+            rows.append(try measure(scenario, project: project, selection: selection))
+        }
+        print("UIResponsivenessBenchmark (ms per step, main thread)")
+        print("scenario                     steps   mean  median    p90     max")
+        for row in rows { print(row) }
+    }
+
+    // MARK: Measuring
+
+    private func measure(_ scenario: Scenario, project start: EditingProject, selection: TimelineSelection) throws -> String {
+        var project = start
+        let t = selection.timelineID
+        var edit: ((inout EditingProject, Int) -> Void)?
+        switch scenario.action {
+        case let .drag(kind, control, delta, keyframed):
+            let effectID = try Self.effect(kind, on: selection, in: &project)
+            if keyframed {
+                project.editEffect(effectID, ofClip: selection.timelineClipID, in: t) { effect in
+                    guard let index = effect.controls.firstIndex(where: { $0.kind == control }) else { return }
+                    let value = effect.controls[index].number.value
+                    effect.controls[index].number = AnimatedValue(value, keyframes: [
+                        Keyframe(time: .zero, value: value),
+                        Keyframe(time: CMTime(value: 2, timescale: 1), value: ComponentValue(values: value.values.map { $0 * 1.5 + 10 })),
+                    ])
+                }
+            }
+            let source = project.clipAndLayer(selection.timelineClipID, in: t)?.clip.trimStart ?? .zero
+            edit = { project, step in
+                project.editEffect(effectID, ofClip: selection.timelineClipID, in: t) { effect in
+                    guard let index = effect.controls.firstIndex(where: { $0.kind == control }) else { return }
+                    var value = effect.controls[index].number.value(at: source)
+                    value.values = value.values.map { $0 + (step.isMultiple(of: 2) ? delta : -delta) }
+                    effect.controls[index].number.set(value, at: source)
+                }
+            }
+        case .volume:
+            edit = { project, step in
+                project.editVolume(of: selection.layerID, in: t) { volume in
+                    volume.set(volume.value + (step.isMultiple(of: 2) ? 0.5 : -0.5), at: .zero)
+                }
+            }
+        case .key:
+            break
+        }
+
+        let defaults = UserDefaults.standard
+        let preferences: [String: Any] = [
+            Preferences.showsSidePanel: true, Preferences.sidePanelTab: scenario.panel.rawValue,
+            Preferences.timelineHeight: 420.0,
+        ]
+        let remembered = preferences.keys.map { ($0, defaults.object(forKey: $0)) }
+        defer { for (key, value) in remembered { defaults.set(value, forKey: key) } }
+        for (key, value) in preferences { defaults.set(value, forKey: key) }
+
+        let model = Model(project)
+        let history = ProjectHistory(project: project)
+        let bounds = CGRect(x: 0, y: 0, width: 1500, height: 900)
+        let host = NSHostingView(
+            rootView: Host(model: model, history: history, selection: selection).frame(width: bounds.width, height: bounds.height)
+        )
+        host.frame = bounds
+        let window = NSWindow(contentRect: bounds, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = host
+        NSApplication.shared.setActivationPolicy(.accessory)
+        window.makeKeyAndOrderFront(nil)
+        defer { window.orderOut(nil) }
+        func settle(_ seconds: Double) {
+            RunLoop.main.run(until: Date().addingTimeInterval(seconds))
+            host.layoutSubtreeIfNeeded()
+            host.displayIfNeeded()
+        }
+        // Lets the panels' rows, analysis and the first build land.
+        settle(2)
+
+        var times: [Double] = []
+        let seconds = Double(ProcessInfo.processInfo.environment["UI_BENCHMARK_SECONDS"] ?? "") ?? 0
+        let deadline = Date().addingTimeInterval(max(seconds, 0))
+        if edit != nil { history.beginGesture() }
+        var step = 0
+        repeat {
+            for _ in 0..<90 {
+                step += 1
+                let start = ContinuousClock.now
+                if let edit {
+                    edit(&model.project, step)
+                } else if case let .key(key, back, sweep) = scenario.action {
+                    let forward = sweep ? (step - 1) % 120 < 60 : !step.isMultiple(of: 2)
+                    press(forward ? key : back, in: window)
+                }
+                // What the run loop does between two events.
+                RunLoop.main.run(until: Date())
+                host.layoutSubtreeIfNeeded()
+                host.displayIfNeeded()
+                let elapsed = ContinuousClock.now - start
+                times.append(Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15)
+            }
+        } while Date() < deadline
+        if edit != nil { history.endGesture() }
+        settle(0.3)
+
+        if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"],
+           let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+            host.cacheDisplay(in: host.bounds, to: rep)
+            try rep.representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: dir).appendingPathComponent("benchmark-\(scenario.name).png"))
+        }
+        // The first steps warm up caches.
+        let sorted = times.dropFirst(5).sorted()
+        func percentile(_ p: Double) -> Double { sorted[min(sorted.count - 1, Int(Double(sorted.count) * p))] }
+        let mean = sorted.reduce(0, +) / Double(sorted.count)
+        let padded = scenario.name.padding(toLength: 27, withPad: " ", startingAt: 0)
+        let row = String(format: "%@ %6d %6.1f  %6.1f %6.1f  %6.1f", padded, sorted.count, mean, percentile(0.5), percentile(0.9), sorted.last ?? 0)
+        print("UIResponsivenessBenchmark: \(row)")
+        return row
+    }
+
+    /// Sends a key down through the app's queue, as typing does, so the
+    /// editor's key monitors see it.
+    private func press(_ key: Key, in window: NSWindow) {
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: key.flags, timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, characters: key.characters,
+            charactersIgnoringModifiers: key.characters, isARepeat: false, keyCode: key.code
+        ) else { return }
+        NSApp.postEvent(event, atStart: false)
+        if let next = NSApp.nextEvent(matching: .any, until: Date(), inMode: .default, dequeue: true) {
+            NSApp.sendEvent(next)
+        }
+    }
+
+    // MARK: Projects
+
+    /// The selected clip's first effect of `kind`, added at the end of its
+    /// stack when it has none.
+    private static func effect(_ kind: EffectKind, on selection: TimelineSelection, in project: inout EditingProject) throws -> UUID {
+        let clip = try #require(project.clipAndLayer(selection.timelineClipID, in: selection.timelineID)?.clip)
+        if let existing = clip.effects.first(where: { $0.kind == kind }) { return existing.id }
+        let added = project.addEffect(kind, toClip: clip.id, in: selection.timelineID)
+        return try #require(added, "Couldn't add \(kind)")
+    }
+
+    private static func make(_ base: Base) async throws -> (EditingProject, TimelineSelection) {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let ten = CMTime(value: 10, timescale: 1)
+        switch base {
+        case .shapes:
+            var target: (layerID: UUID, clipID: UUID)?
+            for kind in [EffectKind.rectangle, .ellipse, .star, .polygon, .rectangle, .ellipse] {
+                target = project.addShapeLayer(kind, to: t, duration: ten)
+            }
+            let top = try #require(target)
+            for kind in [EffectKind.color, .wave, .grain] {
+                _ = project.addEffect(kind, toClip: top.clipID, in: t)
+            }
+            return (project, TimelineSelection(timelineID: t, layerID: top.layerID, timelineClipID: top.clipID))
+        case .media:
+            let song = try SnapshotSupport.clickSong(named: "benchmark-song", seconds: 20)
+            project.addMedia(song)
+            project.putOnMusicLayer([song.id])
+            let footage = try await MediaImporter.importClip(at: try await Self.footage())
+            project.addMedia(footage)
+            let placedLower = project.placeAsset(footage.id, intoTimeline: t)
+            let lower = try #require(placedLower)
+            for second in [2, 4, 6] {
+                project.split(lower.clipID, in: t, layer: lower.layerID, atTimelineTime: CMTime(value: Int64(second), timescale: 1))
+            }
+            let placedTop = project.placeAsset(footage.id, intoTimeline: t)
+            let top = try #require(placedTop)
+            for kind in [EffectKind.transform, .color] where project.clipAndLayer(top.clipID, in: t)?.clip.effects.contains(where: { $0.kind == kind }) != true {
+                _ = project.addEffect(kind, toClip: top.clipID, in: t)
+            }
+            project.addShapeLayer(.star, to: t, duration: ten)
+            if let adjustment = project.addAdjustmentLayer(to: t, duration: ten) {
+                _ = project.addEffect(.grain, toClip: adjustment.clipID, in: t)
+            }
+            return (project, TimelineSelection(timelineID: t, layerID: top.layerID, timelineClipID: top.clipID))
+        case .saved:
+            let path = try #require(ProcessInfo.processInfo.environment["AMV_PROJECT"])
+            project = try await ProjectStore.load(from: URL(fileURLWithPath: path)).project
+            let root = project.rootTimelineID
+            let timeline = try #require(project.timeline(id: root))
+            let layer = try #require(timeline.layers.first { $0.kind == .video && !$0.clips.isEmpty })
+            return (project, TimelineSelection(timelineID: root, layerID: layer.id, timelineClipID: layer.clips[0].id))
+        }
+    }
+
+    /// Ten seconds of 1280×720 H.264 footage at 24 fps: diagonal stripes
+    /// that move every frame, so each frame decodes as a new picture.
+    private static func footage() async throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appending(path: "amv-benchmark-footage.mov")
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+        let width = 1280, height = 720, period = 64
+        let partial = url.deletingLastPathComponent().appending(path: "amv-benchmark-footage-\(UUID().uuidString).mov")
+        let writer = try AVAssetWriter(outputURL: partial, fileType: .mov)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height,
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height,
+        ])
+        writer.add(input)
+        try #require(writer.startWriting())
+        writer.startSession(atSourceTime: .zero)
+        // One row of stripes, long enough to copy from at any shift.
+        let stripes: [UInt32] = (0..<(width + period)).map { x in
+            let t = Double(x % period) / Double(period)
+            let r = UInt32(127 + 120 * sin(t * 2 * .pi)), g = UInt32(127 + 120 * sin(t * 2 * .pi + 2)), b = UInt32(127 + 120 * sin(t * 2 * .pi + 4))
+            return 0xFF00_0000 | r << 16 | g << 8 | b
+        }
+        for frame in 0..<240 {
+            while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(2)) }
+            var buffer: CVPixelBuffer?
+            CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_32BGRA, nil, &buffer)
+            let pixels = try #require(buffer)
+            CVPixelBufferLockBaseAddress(pixels, [])
+            let base = try #require(CVPixelBufferGetBaseAddress(pixels))
+            let stride = CVPixelBufferGetBytesPerRow(pixels)
+            stripes.withUnsafeBufferPointer { row in
+                for y in 0..<height {
+                    let shift = (frame * 4 + y) % period
+                    base.advanced(by: y * stride).copyMemory(from: row.baseAddress! + shift, byteCount: width * 4)
+                }
+            }
+            CVPixelBufferUnlockBaseAddress(pixels, [])
+            adaptor.append(pixels, withPresentationTime: CMTime(value: Int64(frame), timescale: 24))
+        }
+        input.markAsFinished()
+        await writer.finishWriting()
+        try #require(writer.status == .completed, "Couldn't write the footage: \(String(describing: writer.error))")
+        try? FileManager.default.moveItem(at: partial, to: url)
+        return url
+    }
+}
