@@ -322,6 +322,9 @@ struct EffectsPanel: View {
                 isSelected: false,
                 keyframeTimes: clip.anchorPoint.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
                 playhead: c.frameTime,
+                onReset: clip.anchorPoint == AnimatedValue(Vector2.zero) ? nil : {
+                    editClip(clip.id) { $0.anchorPoint = AnimatedValue(Vector2.zero) }
+                },
                 onSelect: {},
                 onSetComponent: { index, newValue in
                     editClip(clip.id) { clip in
@@ -360,8 +363,9 @@ struct EffectsPanel: View {
         let stack = clip.stack(holding: effect.id) ?? \.effects
         let index = clip[keyPath: stack].index(of: effect.id) ?? 0
         let note = effect.kind.isAudio ? nil : project.note(forEffectAt: index, in: clip, on: c.layer, of: c.timeline)
-        // A Keyframing effect draws nothing, but does its work while on.
-        let dimmed = (effect.kind.isKeyframing ? !effect.enabled : effect.isNoOp) || note?.dims == true
+        // Faded only when it is off or can't apply; one at its defaults is
+        // as ready to adjust as any.
+        let dimmed = !effect.enabled || note?.dims == true
         labelled(
             EffectHeaderRow(
                 effect: effect,
@@ -546,7 +550,8 @@ struct EffectsPanel: View {
                     selected: control.choice ?? control.kind.defaultChoice ?? "",
                     isSelected: isSelected,
                     dragHandle: handle,
-                    isDimmed: effectDimmed || choiceIsNoOp(control, of: effect),
+                    isDimmed: effectDimmed || choiceIsOff(control, of: effect),
+                    onReset: control.isAtDefault ? nil : { editControl(control.id, of: effect, in: clip) { $0.reset() } },
                     onSelect: select,
                     onChoose: { choice in editControl(control.id, of: effect, in: clip) { $0.choice = choice } },
                     menu: menu
@@ -576,7 +581,8 @@ struct EffectsPanel: View {
                     linked: control.kind.isLinkable ? control.linked : nil,
                     onToggleLink: { editControl(control.id, of: effect, in: clip) { $0.linked.toggle() } },
                     dragHandle: handle,
-                    isDimmed: effectDimmed || control.isNoOp,
+                    isDimmed: effectDimmed || !control.enabled,
+                    onReset: control.isAtDefault ? nil : { editControl(control.id, of: effect, in: clip) { $0.reset() } },
                     onSelect: select,
                     onSetComponent: { index, value in
                         editControl(control.id, of: effect, in: clip) { $0.setComponent(index, to: value, at: c.sourceNow) }
@@ -640,7 +646,7 @@ struct EffectsPanel: View {
                     .foregroundStyle(Design.textPrimary)
                 let source = ClipLaneGeometry(clip: clip, timeline: timeline, width: 100)
                     .clampedSource(atTimeline: timeline.snappedToFrame(playheadTime))
-                equalizerGraph(effect, of: clip, at: source, dimmed: effect.isNoOp, onExpand: nil)
+                equalizerGraph(effect, of: clip, at: source, dimmed: !effect.enabled, onExpand: nil)
                     .frame(minWidth: 640, minHeight: 320)
                 EqualizerBandStrip(effect: effect, time: source) { kind, change in
                     editEffect(effect.id, in: clip) { effect in
@@ -664,9 +670,10 @@ struct EffectsPanel: View {
 
     /// Whether a choice changes nothing: an EQ cut's slope does nothing
     /// while its band is off.
-    private func choiceIsNoOp(_ control: EffectControl, of effect: Effect) -> Bool {
-        guard let band = EqualizerBand.allCases.first(where: { $0.slopeKind == control.kind }) else { return control.isNoOp }
-        return !control.enabled || effect.control(band.controlKind)?.isNoOp ?? true
+    /// Whether a choice is off: it is, or for a cut's slope, its band is.
+    private func choiceIsOff(_ control: EffectControl, of effect: Effect) -> Bool {
+        guard let band = EqualizerBand.allCases.first(where: { $0.slopeKind == control.kind }) else { return !control.enabled }
+        return !control.enabled || !(effect.control(band.controlKind)?.enabled ?? false)
     }
 
     /// A color control's value at the playhead as a color (its components

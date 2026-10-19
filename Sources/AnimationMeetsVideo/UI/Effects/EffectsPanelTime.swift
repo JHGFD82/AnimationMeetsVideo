@@ -188,7 +188,6 @@ extension EffectsPanel {
                 isSelected: false,
                 dragHandle: nil,
                 showsMenu: false,
-                isDimmed: clip.time.frameBlending == .off,
                 onSelect: {},
                 onChoose: { choice in
                     editTime(c) { $0.frameBlending = FrameBlending(rawValue: choice) ?? .off }

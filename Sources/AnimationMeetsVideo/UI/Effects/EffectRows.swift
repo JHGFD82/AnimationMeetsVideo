@@ -12,6 +12,26 @@ enum EffectsPanelMetrics {
     static let laneInset: CGFloat = 8
 }
 
+/// The button beside a row's ⋯ that puts it back to its default, shown
+/// only while it isn't there, which is how a changed value is told apart.
+struct RowResetButton: View {
+    let name: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.counterclockwise")
+                .font(Design.Typeface.glyphSmall)
+                .foregroundStyle(Design.textSecondary)
+                .frame(width: 16, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Reset \(name.lowercased()) to its default")
+        .accessibilityLabel("Reset \(name)")
+    }
+}
+
 /// The ⋯ button that opens a row's menu.
 private struct RowMenu<Content: View>: View {
     @ViewBuilder let content: () -> Content
@@ -54,9 +74,11 @@ struct ParameterRow<MenuContent: View>: View {
     var linked: Bool?
     var onToggleLink: () -> Void = {}
     var dragHandle: AnyView?
-    /// Draws the row faded: it does nothing, because it is at its default,
-    /// off, or can't be applied.
+    /// Draws the row faded: it is off, or its effect is off or can't be
+    /// applied.
     var isDimmed = false
+    /// Puts it back to its default; nil while it is there.
+    var onReset: (() -> Void)?
     let onSelect: () -> Void
     let onSetComponent: (Int, Double) -> Void
     let onToggleAnimated: () -> Void
@@ -125,6 +147,7 @@ struct ParameterRow<MenuContent: View>: View {
                 .font(Design.Typeface.glyphSmall)
                 .help("Open \(name.lowercased())'s graph editor to shape its eases")
             }
+            if let onReset { RowResetButton(name: name, action: onReset) }
             RowMenu(content: menu)
         }
         .font(Design.Typeface.label)
@@ -177,6 +200,8 @@ struct ChoiceRow<MenuContent: View>: View {
     /// Whether the row has a ⋯ menu.
     var showsMenu = true
     var isDimmed = false
+    /// Puts it back to its default; nil while it is there.
+    var onReset: (() -> Void)?
     let onSelect: () -> Void
     let onChoose: @MainActor (String) -> Void
     @ViewBuilder let menu: () -> MenuContent
@@ -204,6 +229,7 @@ struct ChoiceRow<MenuContent: View>: View {
             .controlSize(.small)
             .frame(width: 130)
             Spacer(minLength: 2)
+            if let onReset { RowResetButton(name: name, action: onReset) }
             if showsMenu { RowMenu(content: menu) }
         }
         .font(Design.Typeface.label)

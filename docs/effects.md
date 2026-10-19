@@ -582,10 +582,14 @@ keys. A clip block with effects shows a small badge with the count.
 
 ### Reading the stack
 
-- **No-ops are dimmed**: a control at its default, a disabled control or
-  effect, and an effect whose controls are all no-ops. A Blending step with
-  nothing under it, or Against an effect that is gone or below it, is
-  dimmed with a note, as are steps a pass-through nested clip can't apply.
+- **Only what is off is dimmed**: a disabled control or effect. A control
+  at its default is drawn as brightly as any, so it reads as ready to
+  adjust; one that isn't at its default shows a reset button (↺) beside
+  its ⋯ (`EffectControl.isAtDefault`: not keyframed, at the kind's default
+  value or option, not a squircle; on or off doesn't count). A Blending
+  step with nothing under it, or Against an effect that is gone or below
+  it, is dimmed with a note, as are steps a pass-through nested clip can't
+  apply.
 - **Each effect shows a thumbnail** of the clip's picture after it, at the
   playhead, drawn small and refreshed when the playhead stops.
 - **Moved from the timeline.** The graph editor HUDs, the F9 ease keys
@@ -783,9 +787,11 @@ In order, each step usable on its own:
    one grade, since neither depends on the other. Checked against a
    double-precision restatement of the math in each space, and for the same
    light giving the same result in every space.
-6. **Reading aids** (done): dimming, thumbnails, Show Up to Here. A control
-   at its default, a disabled control or effect, and an effect whose
-   controls are all no-ops are drawn faded. A Blending step is faded with a
+6. **Reading aids** (done): dimming, thumbnails, Show Up to Here. A
+   disabled control or effect is drawn faded; a control away from its
+   default has a reset button (at first a control at its default was
+   faded too, which made the controls of a new effect look as if they
+   couldn't be adjusted). A Blending step is faded with a
    note when its Against effect is gone or below it, when it is on the
    bottom clip of a nested timeline (nothing under it), or when the clip
    passes through, as are Color and anything else that needs one picture

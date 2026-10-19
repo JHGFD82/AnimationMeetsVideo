@@ -762,6 +762,14 @@ struct EffectControl: Identifiable, Equatable, Sendable {
         return number.value == defaults
     }
 
+    /// Whether it holds what a new control of its kind does: not animated,
+    /// at its default value or option, and not a squircle. Whether it is on
+    /// doesn't count.
+    var isAtDefault: Bool {
+        let fresh = EffectControl(kind: kind)
+        return !number.isAnimated && number.value == fresh.number.value && choice == fresh.choice && !squircle
+    }
+
     /// The control's components at `source time`.
     func values(at time: CMTime) -> [Double] {
         number.value(at: time).values
