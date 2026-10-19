@@ -102,6 +102,7 @@ struct UIResponsivenessBenchmark {
         var base: Base
         var panel: SidePanelTab = .effects
         var showsPanel = true
+        var showsLibrary = false
         var action: Action
     }
 
@@ -117,6 +118,7 @@ struct UIResponsivenessBenchmark {
             Scenario(name: "volume", base: .media, panel: .inspector, action: .volume),
             Scenario(name: "step-frame", base: .media, action: .key(.right, back: .left, sweep: true)),
             Scenario(name: "step-ten-frames", base: .media, action: .key(.shiftRight, back: .shiftLeft)),
+            Scenario(name: "step-frame-library", base: .media, showsLibrary: true, action: .key(.right, back: .left, sweep: true)),
             Scenario(name: "step-frame-no-panel", base: .media, showsPanel: false, action: .key(.right, back: .left, sweep: true)),
             Scenario(name: "step-frame-inspector", base: .media, panel: .inspector, action: .key(.right, back: .left, sweep: true)),
             Scenario(name: "nudge-clip", base: .media, action: .key(.nudgeLater, back: .nudgeEarlier)),
@@ -191,6 +193,7 @@ struct UIResponsivenessBenchmark {
         let defaults = UserDefaults.standard
         let preferences: [String: Any] = [
             Preferences.showsSidePanel: scenario.showsPanel, Preferences.sidePanelTab: scenario.panel.rawValue,
+            Preferences.showsEffectsLibrary: scenario.showsLibrary,
             Preferences.timelineHeight: 420.0,
         ]
         let remembered = preferences.keys.map { ($0, defaults.object(forKey: $0)) }

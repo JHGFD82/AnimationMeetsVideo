@@ -289,13 +289,11 @@ struct TimelineEditorSurface<Library: View>: View {
                             .transition(.move(edge: .trailing))
                     }
                     if showsEffectsLibrary {
-                        PlayheadReader(playhead: playhead) { playheadTime in
-                            EffectsLibrary(
-                                project: $project, timelineID: timelineID, selection: selection,
-                                playheadTime: playheadTime, onSelect: { selection = $0 },
-                                state: effectsState, tab: $effectsLibraryTab, onClose: { showsEffectsLibrary = false }
-                            )
-                        }
+                        EffectsLibrary(
+                            project: $project, timelineID: timelineID, selection: selection,
+                            playhead: playhead, onSelect: { selection = $0 },
+                            state: effectsState, tab: $effectsLibraryTab, onClose: { showsEffectsLibrary = false }
+                        )
                         .frame(width: 280)
                         .editorPanel(.effectsLibrary, activePanel)
                         .grooved(.leading)
