@@ -37,15 +37,22 @@ struct UIResponsivenessBenchmark {
         init(_ project: EditingProject) { self.project = project }
     }
 
+    /// The editor as the app's scene holds it: the same history, analysis
+    /// and replacement for the window's life, and `.equatable()`, since
+    /// this runs again at every edit. Made anew here at each edit, they
+    /// rebuilt the whole editor every step, and the ones let go of piled up.
     struct Host: View {
         @Bindable var model: Model
         let history: ProjectHistory
+        let analysis: AssetAnalysis
+        let replacement: MediaReplacementController
         let selection: TimelineSelection?
         var body: some View {
             EditorView(
-                project: $model.project, history: history, analysis: AssetAnalysis(),
-                replacement: MediaReplacementController(), packageURL: nil, selection: selection
+                project: $model.project, history: history, analysis: analysis,
+                replacement: replacement, packageURL: nil, selection: selection
             )
+            .equatable()
         }
     }
 
@@ -138,7 +145,7 @@ struct UIResponsivenessBenchmark {
             rows.append(try measure(scenario, project: project, selection: selection))
         }
         print("UIResponsivenessBenchmark (ms per step, main thread)")
-        print("scenario                     steps   mean  median    p90     max")
+        print("scenario                     steps   mean  median    p90     max   first   last")
         for row in rows { print(row) }
     }
 
@@ -193,7 +200,11 @@ struct UIResponsivenessBenchmark {
         let history = ProjectHistory(project: project)
         let bounds = CGRect(x: 0, y: 0, width: 1500, height: 900)
         let host = NSHostingView(
-            rootView: Host(model: model, history: history, selection: selection).frame(width: bounds.width, height: bounds.height)
+            rootView: Host(
+                model: model, history: history, analysis: AssetAnalysis(), replacement: MediaReplacementController(),
+                selection: selection
+            )
+            .frame(width: bounds.width, height: bounds.height)
         )
         host.frame = bounds
         let window = NSWindow(contentRect: bounds, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
@@ -202,10 +213,16 @@ struct UIResponsivenessBenchmark {
         NSApplication.shared.setActivationPolicy(.accessory)
         window.makeKeyAndOrderFront(nil)
         defer { window.orderOut(nil) }
+        // Each pass in a pool of its own, as the app's event loop drains one
+        // after every event: run from a test, nothing drained until the
+        // test returned, and what AppKit and SwiftUI leave to be released
+        // piled up and made every step slower than the last.
         func settle(_ seconds: Double) {
-            RunLoop.main.run(until: Date().addingTimeInterval(seconds))
-            host.layoutSubtreeIfNeeded()
-            host.displayIfNeeded()
+            autoreleasepool {
+                RunLoop.main.run(until: Date().addingTimeInterval(seconds))
+                host.layoutSubtreeIfNeeded()
+                host.displayIfNeeded()
+            }
         }
         // Lets the panels' rows, analysis and the first build land.
         settle(2)
@@ -219,16 +236,18 @@ struct UIResponsivenessBenchmark {
             for _ in 0..<90 {
                 step += 1
                 let start = ContinuousClock.now
-                if let edit {
-                    edit(&model.project, step)
-                } else if case let .key(key, back, sweep) = scenario.action {
-                    let forward = sweep ? (step - 1) % 120 < 60 : !step.isMultiple(of: 2)
-                    press(forward ? key : back, in: window)
+                autoreleasepool {
+                    if let edit {
+                        edit(&model.project, step)
+                    } else if case let .key(key, back, sweep) = scenario.action {
+                        let forward = sweep ? (step - 1) % 120 < 60 : !step.isMultiple(of: 2)
+                        press(forward ? key : back, in: window)
+                    }
+                    // What the run loop does between two events.
+                    RunLoop.main.run(until: Date())
+                    host.layoutSubtreeIfNeeded()
+                    host.displayIfNeeded()
                 }
-                // What the run loop does between two events.
-                RunLoop.main.run(until: Date())
-                host.layoutSubtreeIfNeeded()
-                host.displayIfNeeded()
                 let elapsed = ContinuousClock.now - start
                 times.append(Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15)
             }
@@ -246,8 +265,20 @@ struct UIResponsivenessBenchmark {
         let sorted = times.dropFirst(5).sorted()
         func percentile(_ p: Double) -> Double { sorted[min(sorted.count - 1, Int(Double(sorted.count) * p))] }
         let mean = sorted.reduce(0, +) / Double(sorted.count)
+        // The median of the first and of the last 90 steps: a step that
+        // gets slower the longer an interaction goes on is something
+        // building up with each edit.
+        func median(_ steps: ArraySlice<Double>) -> Double { steps.sorted()[steps.count / 2] }
+        let first = median(times.dropFirst(5).prefix(90)), last = median(times.suffix(90))
+        if ProcessInfo.processInfo.environment["UI_BENCHMARK_SERIES"] != nil {
+            let chunks = stride(from: 0, to: times.count, by: 90).map { median(times[$0..<min($0 + 90, times.count)]) }
+            print("UIResponsivenessBenchmark: \(scenario.name) by 90 steps: " + chunks.map { String(format: "%.1f", $0) }.joined(separator: " "))
+        }
         let padded = scenario.name.padding(toLength: 27, withPad: " ", startingAt: 0)
-        let row = String(format: "%@ %6d %6.1f  %6.1f %6.1f  %6.1f", padded, sorted.count, mean, percentile(0.5), percentile(0.9), sorted.last ?? 0)
+        let row = String(
+            format: "%@ %6d %6.1f  %6.1f %6.1f  %6.1f  %6.1f %6.1f", padded, sorted.count, mean, percentile(0.5), percentile(0.9),
+            sorted.last ?? 0, first, last
+        )
         print("UIResponsivenessBenchmark: \(row)")
         return row
     }
