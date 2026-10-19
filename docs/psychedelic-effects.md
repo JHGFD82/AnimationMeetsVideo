@@ -1,6 +1,7 @@
 # Noise, Color and Distortion effects
 
-Status: **planned, not implemented**. 25 effect kinds in three new
+Status: **step 1 of 5 built**, the Color category (see
+[Building it](#building-it)). 25 effect kinds in three new
 categories of the effects panel, chosen so that stacking them gives
 psychedelic pictures from footage or from nothing at all. Everything here
 fits the stack rules in [effects.md](effects.md) (gravity, the list is the
@@ -207,3 +208,55 @@ dangerous flashing is listed under [Not yet](#not-yet).
 - A flash check of a timeline or export against the three-flashes rule.
 - A pixel sort kind: sorting runs of pixels needs a GPU sort per row,
   which doesn't fit Core Image's per-pixel model.
+
+## Building it
+
+In order, each step usable on its own:
+
+1. **Color** (done), with what every look shares. The eight Color kinds
+   are in `EffectCategory.recolor` ("Color" in the library) and draw as a
+   `.look` step (`LookStep`: each control's numbers and choices at the
+   moment, Amount, and the clip's time for one that moves), which
+   `LookRenderer` draws with the kernels in `LookKernels`: one Metal
+   source of Core Image kernels, compiled once at first use. Where it
+   differs from the tables above:
+   - **Every look has Amount** (100%), mixing it with the picture it
+     changes; at 0% it is a no-op, like other effects.
+   - **All eight are kernels of our own**, color kernels except Neon
+     Edges, rather than `CIHueAdjust`, `CIColorPosterize`, `CIColorMatrix`,
+     `CIColorMap` or `CIThermal`: the compositor's pictures are the
+     timeline's encoded values, which the built-ins would act on directly.
+     Each decodes to the tone scale (ACEScct's log curve, black 0 and
+     reference white 1, as Contrast uses) and back, so a look is the same
+     in Rec. 709, PQ and HLG. Colors the person picks (Gradient Map's
+     stops, the duotone, Neon Edges' one color) are the timeline's own
+     values, as a shape's fill is; Thermal and X-Ray's palettes are Rec.
+     709 colors converted to the timeline's.
+   - **Gradient Map** has three stops (Shadows, Midtones, Highlights)
+     rather than up to eight, and Repeat folds back and forth so repeats
+     don't jump; Speed scrolls it.
+   - **Solarize** folds above Threshold: Folds sets how many times the
+     tones above it fold back down per threshold's height, on the
+     brightness (keeping hues) or on each channel.
+   - **Channel Mixer**'s rows are Red From, Green From and Blue From, with
+     Offset, on the tone scale; the swap and rotate presets aren't there.
+   - **Neon Edges** is a Sobel kernel over the tones, `Width` timeline
+     pixels apart, colored by direction or one color, with `CIBloom` for
+     Glow. It reads its neighbors, so it is the one look that
+     `dependsOnPixelSize`.
+   - **Moving on its own**: a Hue Cycle with a Speed, or a Cosine Palette
+     or Gradient Map with one, makes its clip's `animatedRanges` cover all
+     of it, so it is drawn afresh each frame and never played as a plain
+     file; only those carry the time into the render key.
+   - **No fallback language.** Core Image's runtime Metal compiler needs
+     each function marked `[[stitchable]]`; if the source doesn't compile
+     the looks leave the picture as it is, and the error is logged.
+2. **Noise**: Grain, Static, Fractal Noise, Cells, Dither, Interference and
+   Block Glitch, seeded by the effect's seed and the frame.
+3. **Distortion**: Displace (an input, or against an earlier step),
+   Liquid, Twirl, Wave, Kaleidoscope, Mirror Tile and Chromatic
+   Aberration.
+4. **Several moments**: Flow Smear, Slit-Scan and Feedback, drawing the
+   stack above them at other moments.
+5. **Recipes and safety**: the presets above, and the flashing notes.
+

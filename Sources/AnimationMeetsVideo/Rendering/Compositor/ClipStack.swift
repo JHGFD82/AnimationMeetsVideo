@@ -121,7 +121,11 @@ struct ClipStack: @unchecked Sendable {
         let transitions = (edges?.animatedRanges ?? []).map {
             CMTimeRange(start: CMTimeAdd($0.start, shift), duration: $0.duration)
         }
-        return (keyframed + transitions).merged()
+        // A look that moves by itself changes at every moment. (Callers
+        // only ever ask within where the clip plays.)
+        let moving = effects.contains(where: \.changesOnItsOwn)
+            ? [CMTimeRange(start: .zero, duration: CMTime(value: 24 * 3600, timescale: 1))] : []
+        return (keyframed + transitions + moving).merged()
     }
 
     /// Whether the stack changes the picture at any moment of `range`.
@@ -172,7 +176,7 @@ struct ResolvedClip: Equatable {
     var changesPixels: Bool {
         steps.contains {
             switch $0 {
-            case .blend, .color, .matte, .shape, .outlineStroke: true
+            case .blend, .color, .matte, .shape, .outlineStroke, .look: true
             case .place, .mark: false
             }
         }

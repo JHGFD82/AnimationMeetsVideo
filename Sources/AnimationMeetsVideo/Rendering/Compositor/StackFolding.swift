@@ -70,6 +70,63 @@ enum ResolvedStep: Equatable, Sendable {
     case shape(ShapeStep)
     /// Strokes the outline of the shapes above, their strokes included.
     case outlineStroke(ShapeStroke)
+    /// One of the looks of docs/psychedelic-effects.md (`LookRenderer`).
+    case look(LookStep)
+}
+
+/// A look's settings at one moment, ready to draw: each control's numbers
+/// and choices, how much of it is mixed in, and the clip's time for the
+/// looks that move on their own.
+struct LookStep: Equatable, Sendable {
+    var kind: EffectKind
+    var numbers: [ControlKind: [Double]] = [:]
+    var choices: [ControlKind: String] = [:]
+    /// The clip's source time in seconds, for a look that moves by itself;
+    /// 0 for one that doesn't, so its render key doesn't change with it.
+    var seconds: Double
+    /// 0...1.
+    var amount: Double
+
+    /// The step `effect` draws at source time `time`; nil when it draws
+    /// nothing (mixed in at 0%).
+    init?(_ effect: Effect, at time: CMTime) {
+        kind = effect.kind
+        seconds = effect.changesOnItsOwn ? time.seconds : 0
+        amount = 1
+        for control in effect.controls where control.enabled {
+            if control.kind.isChoice {
+                choices[control.kind] = control.choice
+            } else {
+                numbers[control.kind] = control.values(at: time).enumerated().map { control.kind.clamped($1, index: $0) }
+            }
+        }
+        if let percent = numbers[.amount]?.first { amount = min(max(percent / 100, 0), 1) }
+        guard amount > 0 else { return nil }
+    }
+
+    /// The step as text for the render key: every setting, in a fixed
+    /// order, and the time, which a look that moves draws differently.
+    var keyText: String {
+        func format(_ value: Double) -> String { String(format: "%.6g", value) }
+        let numbers = self.numbers.sorted { $0.key.rawValue < $1.key.rawValue }
+            .map { "\($0.key.rawValue)=" + $0.value.map(format).joined(separator: ",") }
+        let choices = self.choices.sorted { $0.key.rawValue < $1.key.rawValue }.map { "\($0.key.rawValue)=\($0.value)" }
+        return ([kind.rawValue, format(seconds), format(amount)] + numbers + choices).joined(separator: " ")
+    }
+
+    /// A control's numbers, or its kind's defaults when it is off or gone.
+    func values(_ kind: ControlKind) -> [Double] {
+        numbers[kind] ?? kind.defaultValues
+    }
+
+    func value(_ kind: ControlKind) -> Double {
+        values(kind).first ?? 0
+    }
+
+    func choice<Option: RawRepresentable>(_ kind: ControlKind, as type: Option.Type = Option.self) -> Option?
+    where Option.RawValue == String {
+        (choices[kind] ?? kind.defaultChoice).flatMap(Option.init(rawValue:))
+    }
 }
 
 enum StackFolding {
@@ -164,6 +221,10 @@ enum StackFolding {
                 // Keyframing effects draw nothing: the keyframes they wrote
                 // are on the controls below.
                 continue
+            case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges:
+                guard let look = LookStep(effect, at: time) else { continue }
+                flush()
+                steps.append(.look(look))
             }
         }
         flush()

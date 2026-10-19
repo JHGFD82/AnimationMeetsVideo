@@ -48,6 +48,8 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
     case foundations
     case shapes
     case mattes
+    /// Remaps the picture's colors (see docs/psychedelic-effects.md).
+    case recolor
     /// Effects that draw nothing and write keyframes onto other controls
     /// instead (see docs/keyframing-effects.md).
     case keyframing
@@ -60,6 +62,7 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
         case .foundations: "Foundations"
         case .shapes: "Shapes"
         case .mattes: "Mattes"
+        case .recolor: "Color"
         case .keyframing: "Keyframing"
         case .sound: "Sound"
         }
@@ -117,6 +120,9 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
     case blending
     case color
     case matte
+    /// Color looks (see docs/psychedelic-effects.md): each remaps every
+    /// pixel's color on its own, and nothing moves.
+    case hueCycle, cosinePalette, gradientMap, solarize, posterize, channelMixer, falseColor, neonEdges
     /// Shapes draw over the picture handed down to them (see
     /// docs/graphic-layers.md, "Shapes").
     case rectangle
@@ -149,6 +155,14 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .blending: "Blending"
         case .color: "Color"
         case .matte: "Matte"
+        case .hueCycle: "Hue Cycle"
+        case .cosinePalette: "Cosine Palette"
+        case .gradientMap: "Gradient Map"
+        case .solarize: "Solarize"
+        case .posterize: "Posterize"
+        case .channelMixer: "Channel Mixer"
+        case .falseColor: "False Color"
+        case .neonEdges: "Neon Edges"
         case .rectangle: "Rectangle"
         case .ellipse: "Ellipse"
         case .polygon: "Polygon"
@@ -174,6 +188,7 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .transform, .blending, .color: .foundations
         case .rectangle, .ellipse, .polygon, .star, .stroke: .shapes
         case .matte: .mattes
+        case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges: .recolor
         case .equalizer, .compressor, .limiter, .voiceIsolation: .sound
         case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: .keyframing
         }
@@ -207,6 +222,14 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .blending: "circle.lefthalf.filled.righthalf.striped.horizontal"
         case .color: "slider.horizontal.3"
         case .matte: "circle.dashed.inset.filled"
+        case .hueCycle: "paintpalette"
+        case .cosinePalette: "rainbow"
+        case .gradientMap: "slider.horizontal.below.rectangle"
+        case .solarize: "sun.max.trianglebadge.exclamationmark"
+        case .posterize: "square.stack.3d.down.forward"
+        case .channelMixer: "circle.grid.cross"
+        case .falseColor: "thermometer.sun"
+        case .neonEdges: "scribble"
         case .rectangle: "rectangle"
         case .ellipse: "circle"
         case .polygon: "hexagon"
@@ -240,8 +263,15 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke,
              .equalizer, .compressor, .limiter, .voiceIsolation: false
         case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot: false
+        case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor: false
+        // Its edges are found between neighboring pixels.
+        case .neonEdges: true
         }
     }
+
+    /// Whether it is one of the looks of docs/psychedelic-effects.md,
+    /// which are drawn as a `.look` step.
+    var isLook: Bool { category == .recolor }
 
     /// How a shape is filled and stroked, after what shapes it.
     static let paintControls: [ControlKind] = [.fill, .stroke, .strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash]
@@ -270,6 +300,14 @@ enum EffectKind: String, CaseIterable, Identifiable, Sendable {
         case .looper: [.loopMode, .loopSide, .tolerance]
         case .timeStep: [.hold]
         case .overshoot: [.stiffness, .damping, .mass, .tolerance]
+        case .hueCycle: [.hueSpeed, .hueSpread, .saturationBoost, .amount]
+        case .cosinePalette: [.palette, .cycleSpeed, .paletteBias, .paletteAmplitude, .paletteFrequency, .palettePhase, .amount]
+        case .gradientMap: [.shadowColor, .midtoneColor, .highlightColor, .repeats, .scrollSpeed, .amount]
+        case .solarize: [.solarizeLevel, .folds, .solarizeChannels, .amount]
+        case .posterize: [.levels, .amount]
+        case .channelMixer: [.mixRed, .mixGreen, .mixBlue, .mixOffset, .amount]
+        case .falseColor: [.falseColorLook, .shadowColor, .highlightColor, .amount]
+        case .neonEdges: [.edgeWidth, .glow, .edgeColoring, .edgeColor, .amount]
         }
     }
 }
@@ -297,6 +335,13 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     case smoothing, loopMode, loopSide, hold, stiffness, damping, mass
     case frequencyRange, levelRange, keyAttack, keyRelease, outputRange, keyCurve
     case tolerance
+    /// The Color looks' settings (see `EffectKind.isLook`).
+    case hueSpeed, hueSpread, saturationBoost
+    case palette, cycleSpeed, paletteBias, paletteAmplitude, paletteFrequency, palettePhase
+    case shadowColor, midtoneColor, highlightColor, repeats, scrollSpeed
+    case solarizeLevel, folds, solarizeChannels, levels
+    case mixRed, mixGreen, mixBlue, mixOffset
+    case falseColorLook, edgeWidth, glow, edgeColoring, edgeColor
 
     var id: Self { self }
 
@@ -374,6 +419,31 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .outputRange: "Output"
         case .keyCurve: "Curve"
         case .tolerance: "Tolerance"
+        case .hueSpeed, .cycleSpeed, .scrollSpeed: "Speed"
+        case .hueSpread: "Spread"
+        case .saturationBoost: "Saturation"
+        case .palette: "Palette"
+        case .paletteBias: "Bias"
+        case .paletteAmplitude: "Amplitude"
+        case .paletteFrequency: "Frequency"
+        case .palettePhase: "Phase"
+        case .shadowColor: "Shadows"
+        case .midtoneColor: "Midtones"
+        case .highlightColor: "Highlights"
+        case .repeats: "Repeat"
+        case .solarizeLevel: "Threshold"
+        case .folds: "Folds"
+        case .solarizeChannels: "Channels"
+        case .levels: "Levels"
+        case .mixRed: "Red From"
+        case .mixGreen: "Green From"
+        case .mixBlue: "Blue From"
+        case .mixOffset: "Offset"
+        case .falseColorLook: "Look"
+        case .edgeWidth: "Width"
+        case .glow: "Glow"
+        case .edgeColoring: "Coloring"
+        case .edgeColor: "Color"
         }
     }
 
@@ -403,6 +473,14 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .hold: .timeStep
         case .stiffness, .damping, .mass: .overshoot
         case .frequencyRange, .levelRange, .keyAttack, .keyRelease, .outputRange, .keyCurve: .audioKeys
+        case .hueSpeed, .hueSpread, .saturationBoost: .hueCycle
+        case .palette, .cycleSpeed, .paletteBias, .paletteAmplitude, .paletteFrequency, .palettePhase: .cosinePalette
+        case .shadowColor, .midtoneColor, .highlightColor, .repeats, .scrollSpeed: .gradientMap
+        case .solarizeLevel, .folds, .solarizeChannels: .solarize
+        case .levels: .posterize
+        case .mixRed, .mixGreen, .mixBlue, .mixOffset: .channelMixer
+        case .falseColorLook: .falseColor
+        case .edgeWidth, .glow, .edgeColoring, .edgeColor: .neonEdges
         }
     }
 
@@ -413,8 +491,9 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
     var hasNeutralDefault: Bool {
         switch effectKind {
         case .compressor, .limiter, .voiceIsolation: false
-        // A Keyframing effect's settings are what it makes keyframes from.
-        case _ where effectKind.isKeyframing: false
+        // A Keyframing effect's settings are what it makes keyframes from,
+        // and a look's what it looks like.
+        case _ where effectKind.isKeyframing || effectKind.isLook: false
         default: !effectKind.isShape
         }
     }
@@ -439,6 +518,10 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .loopMode: LoopMode.allCases.map { ($0.rawValue, $0.name) }
         case .loopSide: LoopSide.allCases.map { ($0.rawValue, $0.name) }
         case .keyCurve: KeyCurve.allCases.map { ($0.rawValue, $0.name) }
+        case .palette: PaletteLook.allCases.map { ($0.rawValue, $0.name) }
+        case .solarizeChannels: SolarizeChannels.allCases.map { ($0.rawValue, $0.name) }
+        case .falseColorLook: FalseColorLook.allCases.map { ($0.rawValue, $0.name) }
+        case .edgeColoring: EdgeColoring.allCases.map { ($0.rawValue, $0.name) }
         default: []
         }
     }
@@ -460,6 +543,10 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .loopMode: LoopMode.cycle.rawValue
         case .loopSide: LoopSide.after.rawValue
         case .keyCurve: KeyCurve.linear.rawValue
+        case .palette: PaletteLook.rainbow.rawValue
+        case .solarizeChannels: SolarizeChannels.luminance.rawValue
+        case .falseColorLook: FalseColorLook.thermal.rawValue
+        case .edgeColoring: EdgeColoring.byAngle.rawValue
         default: nil
         }
     }
@@ -474,7 +561,12 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
 
     /// Whether the control is a color: red, green, blue and alpha, 0...1,
     /// as the timeline's encoded values (as a transition's dip color is).
-    var isColor: Bool { self == .fill || self == .stroke }
+    var isColor: Bool {
+        switch self {
+        case .fill, .stroke, .shadowColor, .midtoneColor, .highlightColor, .edgeColor: true
+        default: false
+        }
+    }
 
     /// The names of its components, for a graph's legend.
     var componentNames: [String] {
@@ -491,6 +583,9 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case _ where isChoice: []
         case .frequencyRange, .levelRange: ["Low", "High"]
         case .outputRange: ["From", "To"]
+        case .paletteBias, .paletteAmplitude, .paletteFrequency, .palettePhase, .mixRed, .mixGreen, .mixBlue, .mixOffset:
+            ["Red", "Green", "Blue"]
+        case _ where isColor: ["Red", "Green", "Blue", "Alpha"]
         default: EqualizerBand(controlKind: self)?.componentNames ?? [name]
         }
     }
@@ -547,6 +642,27 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .damping: [8]
         case .mass: [1]
         case .tolerance: [0.5]
+        case .palette, .solarizeChannels, .falseColorLook, .edgeColoring: []
+        case .hueSpeed: [0.25]
+        case .hueSpread, .saturationBoost, .cycleSpeed, .scrollSpeed: [0]
+        case .paletteBias: PaletteLook.rainbow.vectors.bias
+        case .paletteAmplitude: PaletteLook.rainbow.vectors.amplitude
+        case .paletteFrequency: PaletteLook.rainbow.vectors.frequency
+        case .palettePhase: PaletteLook.rainbow.vectors.phase
+        // A lava gradient, and a navy-to-amber duotone.
+        case .shadowColor: [0.08, 0.02, 0.18, 1]
+        case .midtoneColor: [0.9, 0.25, 0.05, 1]
+        case .highlightColor: [1, 0.92, 0.55, 1]
+        case .repeats, .folds: [1]
+        case .solarizeLevel: [50]
+        case .levels: [6]
+        case .mixRed: [1, 0, 0]
+        case .mixGreen: [0, 1, 0]
+        case .mixBlue: [0, 0, 1]
+        case .mixOffset: [0, 0, 0]
+        case .edgeWidth: [2]
+        case .glow: [50]
+        case .edgeColor: [0.2, 1, 0.9, 1]
         }
     }
 
@@ -579,6 +695,16 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .phase: "°"
         case .fade: " s"
         case .smoothing, .hold: " frames"
+        case .palette, .solarizeChannels, .falseColorLook, .edgeColoring: ""
+        case .hueSpeed: " turns/s"
+        case .cycleSpeed, .scrollSpeed: " /s"
+        case .hueSpread: "°"
+        case .saturationBoost, .solarizeLevel, .glow: "%"
+        case .paletteBias, .paletteAmplitude, .paletteFrequency, .palettePhase: ""
+        case .shadowColor, .midtoneColor, .highlightColor, .edgeColor: ""
+        case .repeats, .folds, .levels: ""
+        case .mixRed, .mixGreen, .mixBlue, .mixOffset: ""
+        case .edgeWidth: " px"
         }
     }
 
@@ -589,7 +715,11 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .exposure: 0.1
         case .lift, .gamma, .gain, .fill, .stroke: 0.01
         case .headroom, .eqOutput: 0.1
-        case .wiggleFrequency, .oscillatorFrequency, .fade, .tolerance, .mass: 0.1
+        case .wiggleFrequency, .oscillatorFrequency, .fade, .tolerance, .mass, .edgeWidth: 0.1
+        case .hueSpeed, .cycleSpeed, .scrollSpeed: 0.01
+        case .paletteBias, .paletteAmplitude, .paletteFrequency, .palettePhase: 0.01
+        case .shadowColor, .midtoneColor, .highlightColor, .edgeColor: 0.01
+        case .mixRed, .mixGreen, .mixBlue, .mixOffset: 0.01
         default: 1
         }
     }
@@ -646,13 +776,28 @@ enum ControlKind: String, CaseIterable, Identifiable, Sendable {
         case .damping: 0...1000
         case .mass: 0.01...100
         case .tolerance: 0...50
+        case .palette, .solarizeChannels, .falseColorLook, .edgeColoring: nil
+        case .hueSpeed, .cycleSpeed, .scrollSpeed: -20...20
+        case .hueSpread: -1080...1080
+        case .saturationBoost: -100...400
+        case .paletteBias, .paletteAmplitude, .palettePhase: -2...2
+        case .paletteFrequency: 0...8
+        case .shadowColor, .midtoneColor, .highlightColor, .edgeColor: 0...1
+        case .repeats: 1...32
+        case .folds: 1...16
+        case .solarizeLevel: 1...99
+        case .levels: 2...64
+        case .mixRed, .mixGreen, .mixBlue: -4...4
+        case .mixOffset: -1...1
+        case .edgeWidth: 0.5...50
+        case .glow: 0...200
         }
     }
 
     /// Whether the control counts something, so it holds whole numbers.
     var isWhole: Bool {
         switch self {
-        case .points, .everyBeats, .beatOffset, .octaves, .seed, .smoothing, .hold: true
+        case .points, .everyBeats, .beatOffset, .octaves, .seed, .smoothing, .hold, .repeats, .folds, .levels: true
         default: false
         }
     }
@@ -855,6 +1000,11 @@ struct Effect: Identifiable, Equatable, Sendable {
         guard enabled else { return true }
         // It wrote its keyframes onto another control, which draws them.
         if kind.isKeyframing { return true }
+        // A look always changes the picture, unless it is mixed in at none.
+        if kind.isLook {
+            guard let amount = control(.amount), amount.enabled else { return false }
+            return !amount.number.isAnimated && amount.number.value.values.first == 0
+        }
         if kind == .matte {
             // Without a picture to cut with, or at 0%, nothing changes.
             guard input != nil else { return true }
@@ -926,6 +1076,21 @@ struct Effect: Identifiable, Equatable, Sendable {
         }
         if let name { copy.name = name }
         return copy
+    }
+
+    /// Whether it changes over time by itself, without keyframes: a Hue
+    /// Cycle that turns, a palette that cycles. Its clip is drawn afresh
+    /// at every frame then.
+    var changesOnItsOwn: Bool {
+        guard enabled, !isNoOp else { return false }
+        let moving: ControlKind? = switch kind {
+        case .hueCycle: .hueSpeed
+        case .cosinePalette: .cycleSpeed
+        case .gradientMap: .scrollSpeed
+        default: nil
+        }
+        guard let moving, let control = control(moving), control.enabled else { return false }
+        return control.number.isAnimated ? control.number.keyframes.contains { $0.value.values.first != 0 } : control.number.value.values.first != 0
     }
 
     /// The span of time in which any enabled control is between keyframes.

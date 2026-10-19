@@ -656,6 +656,15 @@ struct Drawing {
                 if let graded = ColorProcessor.grade(picture, ops, in: clip.stack.colorSpace, over: picture.extent.intersection(canvas)) {
                     picture = graded
                 }
+            case .look(let look):
+                // Like grading, a look works pixel by pixel, so the opacity
+                // can wait; shapes above it are drawn first, to be part of
+                // the picture it changes.
+                drawShapes()
+                let canvas = canvasRect(of: frameSize)
+                picture = LookRenderer.apply(
+                    look, to: picture, over: picture.extent.intersection(canvas), scale: scale.width, space: clip.stack.colorSpace
+                )
             case .matte(let effectID, let mode, let amount):
                 settleOpacity()
                 drawShapes()

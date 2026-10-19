@@ -826,6 +826,7 @@ extension ProjectFile {
             case .transform: fields.append(.optional("movesAnchor", .bool))
             case .blending: fields.append(.optional("against", .uuid))
             case .color, .rectangle, .ellipse, .polygon, .star, .stroke, .equalizer, .compressor, .limiter, .voiceIsolation: break
+            case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges: break
             case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot:
                 fields.append(.optional("keyframing", .object(keyframing)))
             case .matte:

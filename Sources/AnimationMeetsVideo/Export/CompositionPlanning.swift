@@ -188,6 +188,8 @@ extension CompositionExporter {
                         text += shape.keyText
                     case .outlineStroke(let style):
                         text += "o " + style.keyText
+                    case .look(let look):
+                        text += "l \(clip.stack.colorSpace.rawValue) " + look.keyText
                     }
                     text += " "
                 }
