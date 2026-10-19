@@ -56,4 +56,21 @@ private func seconds(_ value: Double) -> CMTime {
 
         #expect(times == [0, 4, 10, 14, 7, 1.5])
     }
+
+    /// A live playhead is snapped to where it is when asked, and moving it
+    /// doesn't make the targets compare as changed, so timeline rows aren't
+    /// redrawn as the playhead moves.
+    @Test func aLivePlayheadSnapsWhereItIsNowWithoutChangingTheTargets() {
+        let playhead = LivePlayhead()
+        playhead.time = seconds(3)
+        let before = SnapTargets(targets: targets.targets, playhead: playhead)
+        #expect(before.nearest(to: seconds(3.1), within: seconds(0.3)) == seconds(3))
+
+        playhead.time = seconds(4)
+        let after = SnapTargets(targets: targets.targets, playhead: playhead)
+        #expect(before == after)
+        #expect(before.nearest(to: seconds(3.1), within: seconds(0.3)) == nil)
+        #expect(before.nearest(to: seconds(4.2), within: seconds(0.3)) == seconds(4))
+        #expect(before != SnapTargets(targets: targets.targets, playhead: LivePlayhead()))
+    }
 }

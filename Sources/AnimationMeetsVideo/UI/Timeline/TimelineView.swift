@@ -155,6 +155,9 @@ struct TimelineView: View {
     @Environment(RenderScheduler.self) var renderer: RenderScheduler?
     /// Where a drag in progress snapped, drawn as a line across the layers.
     @State private var snapIndicator: CMTime?
+    /// The playhead that drags snap to, brought up to date at each redraw
+    /// (see `SnapTargets.playhead`).
+    @State private var snapPlayhead = LivePlayhead()
 
     /// How close, on screen, an edge must come to a target to snap to it.
     private let snapDistance: CGFloat = 8
@@ -449,8 +452,11 @@ struct TimelineView: View {
                 let trackHeight = max(railHeight, geometry.size.height - scrollbarHeight)
                 let frameTime = timeline.snappedToFrame(playheadTime)
                 // Built once per layout, not once per area: it walks every
-                // clip and beat.
-                let snapTargets = snapping ? project.snapTargets(in: timelineID, playhead: playheadTime, markers: drawnBeats(viewport)) : nil
+                // clip and beat. The playhead is read as a drag snaps, so
+                // moving it doesn't change what the rows compare.
+                let _ = snapPlayhead.time = playheadTime
+                let snapTargets = snapping
+                    ? project.snapTargets(in: timelineID, playhead: nil, live: snapPlayhead, markers: drawnBeats(viewport)) : nil
                 // Once for every area's rows, which compare it to skip redrawing.
                 let structure = project.structure
 
