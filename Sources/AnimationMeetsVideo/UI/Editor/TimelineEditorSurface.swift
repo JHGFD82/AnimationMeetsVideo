@@ -226,18 +226,16 @@ struct TimelineEditorSurface<Library: View>: View {
                             )
                             switch sideTab {
                             case .inspector:
-                                PlayheadReader(playhead: playhead) { playheadTime in
-                                    InspectorPanel(
-                                        project: $project,
-                                        timelineID: timelineID,
-                                        selection: selection,
-                                        info: selectedInfo,
-                                        timelineClip: selectedTimelineClip,
-                                        playheadTime: playheadTime,
-                                        onSeek: { time in scrub(to: time) },
-                                        onDeleteSelection: { selection = nil }
-                                    )
-                                }
+                                InspectorPanel(
+                                    project: $project,
+                                    timelineID: timelineID,
+                                    selection: selection,
+                                    info: selectedInfo,
+                                    timelineClip: selectedTimelineClip,
+                                    playhead: playhead,
+                                    onSeek: { time in scrub(to: time) },
+                                    onDeleteSelection: { selection = nil }
+                                )
                             case .effects:
                                 EffectsPanel(
                                     project: $project,
