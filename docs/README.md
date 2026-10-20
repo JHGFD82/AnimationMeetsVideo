@@ -34,9 +34,28 @@ Matroska import and accessibility are implemented (each document lists what rema
 - **Media files are never modified.** Everything the app learns about a
   file (scene cuts, thumbnails, signatures) is stored as metadata next to
   the project, never in or beside the original footage.
-- **Storage is a first-class concern.** The app does not generate proxy or
-  transcoded copies of footage. Anything it stores per asset is small, and
-  disposable data is kept separate from data that cannot be regenerated.
+- **Footage is played from its own file, in its own codec.** H.264, HEVC
+  and ProRes video (QuickTime or MPEG-4 files), and sound files (WAV,
+  AIFF, AAC, FLAC and the rest Core Audio reads), are decoded straight from
+  the file in the viewer, the browser, analysis and export alike. The app
+  never makes proxies, optimized copies or transcodes of footage, ProRes or
+  otherwise, and never re-encodes a file to make it editable.
+- **Matroska is read in place.** AVFoundation can't open MKV files, so for
+  each one the app makes a reference movie: a QuickTime movie of a few
+  megabytes holding only the index of the MKV's frames, whose samples point
+  at those frames inside the MKV, in `Cache/References/` in the package
+  (see [matroska.md](matroska.md)). Its H.264 or HEVC video and its AAC,
+  FLAC or PCM sound are then decoded from the MKV itself.
+- **What the app does write is small or disposable.** Per asset it keeps
+  reference data (`Reference/`: audio envelopes, change scores, beats,
+  thumbnails), which can't be regenerated once a file is replaced. Its
+  caches can always be made again: rendered segments of the timeline where
+  effects are too costly to draw live (`Cache/Renders/`, ProRes, of the
+  timeline and not of the footage; see [rendering.md](rendering.md)),
+  Matroska reference movies (`Cache/References/`), and a stereo copy of a
+  mono sound file so it can be panned (in the user's Caches folder; see
+  [audio.md](audio.md)), the one copy of a file's media the app makes on
+  its own (copying files into `Media/` is the person's choice).
 - **The person is responsible for the footage.** The app detects and reports
   mismatches, auto-adjusts what is safe to adjust, and only blocks on
   things that would silently break sync.
