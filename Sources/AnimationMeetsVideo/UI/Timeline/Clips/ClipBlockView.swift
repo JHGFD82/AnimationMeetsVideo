@@ -142,8 +142,9 @@ struct ClipBlockView: View {
     /// it stays under the pointer; an outline marks the landing place. On
     /// release it goes to zero, and the block settles into its place.
     @State private var carry: CGSize = .zero
-    /// Where the block is in window coordinates, kept for it to leave
-    /// from, or arrive at, when a move changes its layer (`ClipFlights`).
+    /// The block's laid-out frame in window coordinates (the row's, without
+    /// the offsets it is drawn at), kept for it to leave from, or arrive
+    /// at, when a move changes its layer (`ClipFlights`).
     @State private var frameBox = FrameBox()
     /// How far the block is drawn from its place while it arrives from where
     /// the same clip was let go on another layer.
@@ -381,7 +382,7 @@ struct ClipBlockView: View {
                         // another layer it is a new block that arrives, from
                         // where this one was let go (`ClipFlights`).
                         if previewTarget?.layerID != nil || previewTarget?.newLayer != nil {
-                            ClipFlights.shared.depart(clip.id, from: frameBox.frame)
+                            ClipFlights.shared.depart(clip.id, from: drawnStart(liveX: liveX))
                         }
                         withAnimation(Design.Motion.respecting(Design.Motion.glide)) { carry = .zero }
                         isLifted = false
@@ -482,7 +483,8 @@ struct ClipBlockView: View {
             guard !arrivalChecked else { return }
             arrivalChecked = true
             if let from = ClipFlights.shared.arrive(clip.id) {
-                arrival = CGSize(width: from.minX - frame.minX, height: from.minY - frame.minY)
+                let start = clip.startOffset.seconds * pixelsPerSecond
+                arrival = CGSize(width: from.x - (frame.minX + start), height: from.y - frame.minY)
                 DispatchQueue.main.async {
                     withAnimation(Design.Motion.respecting(Design.Motion.glide)) { arrival = .zero }
                 }
@@ -657,6 +659,17 @@ struct ClipBlockView: View {
         carry = CGSize(
             width: CMTimeSubtract(clip.startOffset, moved.startOffset).seconds * pixelsPerSecond + across,
             height: translation.height - (previewTarget?.offsetY ?? 0)
+        )
+    }
+
+    /// Where the clip's start is drawn, in window coordinates: the block's
+    /// frame is the row's, at the row it was laid out in, and the place in
+    /// time, the carry and the drop on another layer only move where it is
+    /// drawn, so they are added to it.
+    private func drawnStart(liveX: CGFloat) -> CGPoint {
+        CGPoint(
+            x: frameBox.frame.minX + liveX + carry.width,
+            y: frameBox.frame.minY + (previewTarget?.offsetY ?? 0) + carry.height
         )
     }
 

@@ -11,14 +11,14 @@ struct ClipFlightsTests {
         let flights = ClipFlights()
         let clip = UUID()
         #expect(flights.arrive(clip) == nil)
-        flights.depart(clip, from: CGRect(x: 10, y: 20, width: 100, height: 40))
-        #expect(flights.arrive(clip) == CGRect(x: 10, y: 20, width: 100, height: 40))
+        flights.depart(clip, from: CGPoint(x: 10, y: 20))
+        #expect(flights.arrive(clip) == CGPoint(x: 10, y: 20))
         #expect(flights.arrive(clip) == nil)
     }
 
     @Test func aFlightIsForItsOwnClip() {
         let flights = ClipFlights()
-        flights.depart(UUID(), from: CGRect(x: 1, y: 2, width: 3, height: 4))
+        flights.depart(UUID(), from: CGPoint(x: 1, y: 2))
         #expect(flights.arrive(UUID()) == nil)
     }
 }
