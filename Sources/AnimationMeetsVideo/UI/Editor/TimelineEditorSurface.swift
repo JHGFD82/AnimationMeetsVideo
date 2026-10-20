@@ -793,6 +793,20 @@ struct TimelineEditorSurface<Library: View>: View {
                     guard buildID == id else { return }
                     buildPhase = .building
                 }
+                if !wasPaused, !resetPosition {
+                    // Playing: every swap stalls the player while the new
+                    // item seeks, so a run of edits (a slider dragged across
+                    // a clip's own-mix threshold) swaps once, when it has
+                    // paused, and not after every step.
+                    buildPhase = .settling
+                    if rebuildQueued {
+                        finish()
+                        return
+                    }
+                    try await Task.sleep(for: settleDelay)
+                    guard buildID == id else { return }
+                    buildPhase = .building
+                }
                 let item = AVPlayerItem(asset: composed.composition)
                 playback.prepare(item, with: composed, frameRate: frameRate)
                 if player.timeControlStatus == .paused {
@@ -815,9 +829,21 @@ struct TimelineEditorSurface<Library: View>: View {
                         playback.showLive(composed, structure: project.structure)
                     }
                 } else {
-                    let resumeTime = resetPosition ? playheadTime : player.currentTime()
+                    // Seeked before it replaces the old one, which plays on
+                    // meanwhile, so the swap doesn't jump back to the start
+                    // and wait for a seek. What the seek took is added on.
+                    var resumeTime = resetPosition ? playheadTime : player.currentTime()
+                    _ = await item.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                    guard buildID == id else { return }
+                    if !resetPosition, player.timeControlStatus != .paused {
+                        let took = CMTimeSubtract(player.currentTime(), resumeTime)
+                        if took.seconds > 0.03 {
+                            resumeTime = CMTimeAdd(player.currentTime(), took)
+                            _ = await item.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                            guard buildID == id else { return }
+                        }
+                    }
                     player.replaceCurrentItem(with: item)
-                    _ = await player.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
                     player.play()
                     playback.noteItemSwappedWhilePlaying()
                 }
