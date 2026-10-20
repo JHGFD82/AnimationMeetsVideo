@@ -95,10 +95,6 @@ struct TimelineEditorSurface<Library: View>: View {
     /// How long edits must pause before the player item is swapped. Until
     /// then the viewer shows frames drawn from each edit (`showLive`).
     private let settleDelay = Duration.milliseconds(300)
-    /// Set while a value drag held to one side of the project plays over a
-    /// stretch that played from a render: the timeline is built without the
-    /// renders until the drag ends.
-    @State private var skipsRenders = false
 
     private let minTimelineHeight: CGFloat = 140
     private let minTopAreaHeight: CGFloat = 220
@@ -667,13 +663,10 @@ struct TimelineEditorSurface<Library: View>: View {
                 playback.player.pause()
                 return false
             }
-            if playback.playedUsesRenders {
-                // Built again without the renders, which plays the drag from
-                // the swap on; the steps until then draw nothing.
-                if !skipsRenders {
-                    skipsRenders = true
-                    rebuildPlayerItem()
-                }
+            // A stretch that plays from a render draws from its clips
+            // instead, as the item's video composition is changed in place.
+            if playback.playedUsesRenders, !playback.playWithoutRenders() {
+                playback.player.pause()
                 return false
             }
             LiveValues.shared.clips = viewed.clipsByID
@@ -726,7 +719,6 @@ struct TimelineEditorSurface<Library: View>: View {
     }
 
     private func heldDragEnded(drew: Bool) {
-        skipsRenders = false
         playback.mixCurves.replace(with: MixCurves.of(project))
         graphs.update(project: project)
         if playingCanFollow {
@@ -820,7 +812,7 @@ struct TimelineEditorSurface<Library: View>: View {
             do {
                 let composed = try await CompositionExporter.buildComposedTimeline(
                     for: project, timelineID: tID, forPreview: true, meter: playback.meter, options: playback.drawingOptions,
-                    cache: isPartial || skipsRenders ? nil : renderer?.cache
+                    cache: isPartial ? nil : renderer?.cache
                 )
                 guard buildID == id else { return }
                 // A clip cut short isn't what renders are for.

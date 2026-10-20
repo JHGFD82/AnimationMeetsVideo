@@ -221,6 +221,7 @@ enum CompositionExporter {
         )
         let canvasMargin = project.canvasMargin
         var cachedKeys: Set<String> = []
+        let unrenderedPlan = plan
         if let cache {
             cachedKeys = try await substituteCachedRanges(
                 &plan, from: cache, into: composition, frame: frameDuration(for: timeline.frameRate)
@@ -238,9 +239,24 @@ enum CompositionExporter {
             meter: meter,
             options: options
         )
+        // The same timeline drawing every stretch from its clips, which the
+        // composition still holds the tracks of, for a drag to follow
+        // without swapping the item (see `PlaybackModel.playWithoutRenders`).
+        let unrendered = cachedKeys.isEmpty ? nil : Self.buildVideoComposition(
+            plan: unrenderedPlan,
+            hasPictures: !tree.isEmpty,
+            renderSize: timeline.frameSize,
+            frameRate: timeline.frameRate,
+            colorSpace: timeline.colorSpace,
+            forPreview: forPreview,
+            canvasMargin: canvasMargin,
+            meter: meter,
+            options: options
+        )
         return ComposedTimeline(
             composition: composition, videoComposition: videoComposition,
-            segments: plan.map(\.segment), cachedKeys: cachedKeys, audioTracks: audioTracks
+            segments: plan.map(\.segment), cachedKeys: cachedKeys, audioTracks: audioTracks,
+            unrenderedVideoComposition: unrendered
         )
     }
 

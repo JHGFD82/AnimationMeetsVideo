@@ -572,10 +572,10 @@ lower or raise it. A press without a drag still opens the field for typing.
   the value as it changes, as choppily as the effect draws. The frames the
   player draws are patched with the drag's values (`LiveValues`), so
   nothing is built until playing stops, and the item isn't swapped, which
-  would show black. A stretch that plays from a render
-  is built again without the renders when the drag starts, so a drag
-  during playback may hitch once; a drag that changes more than values
-  pauses playback instead.
+  would show black and cut the sound. A stretch that plays from a render
+  has the item's video composition changed in place to draw it from its
+  clips when the drag starts; a drag that changes more than values pauses
+  playback instead.
 - Linked Scale changes both axes; a value with two parts (Position x and
   y) drags the part pressed.
 - The project settings sheet's width, height and frame rate don't drag:

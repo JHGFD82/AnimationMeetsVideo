@@ -181,6 +181,21 @@ final class PlaybackModel {
 
     /// Gives `item` the composition at the current level, and keeps
     /// `composed` to draw the other levels from.
+    /// Has the playing item draw every stretch from its clips, not from
+    /// its renders, which hold the values they were made with and can't
+    /// follow a drag (`LiveValues`). Only the item's video composition
+    /// changes, so the sound plays on and the picture doesn't blink. False
+    /// when there is nothing to change.
+    @discardableResult
+    func playWithoutRenders() -> Bool {
+        guard playedUsesRenders, let composed, let item = player.currentItem,
+              composed.unrenderedVideoComposition != nil
+        else { return false }
+        playedUsesRenders = false
+        item.videoComposition = composed.videoComposition(scaledBy: level.scale, withoutRenders: true)
+        return true
+    }
+
     func prepare(_ item: AVPlayerItem, with composed: ComposedTimeline, structure: EditingProject, frameRate: Double) {
         self.composed = composed
         playedStructure = structure
@@ -359,7 +374,7 @@ final class PlaybackModel {
         level = wanted
         drawingOptions.update(isQuarterSize: wanted == .quarter)
         if let item = player.currentItem, let composed {
-            item.videoComposition = composed.videoComposition(scaledBy: wanted.scale)
+            item.videoComposition = composed.videoComposition(scaledBy: wanted.scale, withoutRenders: !playedUsesRenders)
         }
         refreshStill()
         prerollIfPaused()

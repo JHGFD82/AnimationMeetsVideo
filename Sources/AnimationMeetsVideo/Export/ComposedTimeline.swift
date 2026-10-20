@@ -14,6 +14,9 @@ struct ComposedTimeline: @unchecked Sendable {
     var cachedKeys: Set<String> = []
     /// Each audio track, with the layers whose volumes it plays through.
     var audioTracks: [ComposedAudioTrack] = []
+    /// When `cachedKeys` isn't empty, the video composition drawing every
+    /// stretch from its clips instead of its render.
+    var unrenderedVideoComposition: AVMutableVideoComposition?
 
     /// A mix that plays each audio track at its layers' volumes, read from
     /// `curves` as it plays, and measures the result into `meter`.
@@ -31,8 +34,9 @@ struct ComposedTimeline: @unchecked Sendable {
     /// for the viewer. Only one built for preview can be drawn smaller: its
     /// instructions keep the frame size and scale into whatever size the
     /// player asks for.
-    func videoComposition(scaledBy scale: Double) -> AVVideoComposition? {
+    func videoComposition(scaledBy scale: Double, withoutRenders: Bool = false) -> AVVideoComposition? {
         guard hasPictures else { return nil }
+        let videoComposition = withoutRenders ? unrenderedVideoComposition ?? videoComposition : videoComposition
         guard let videoComposition, scale != 1,
               let scaled = videoComposition.mutableCopy() as? AVMutableVideoComposition
         else {

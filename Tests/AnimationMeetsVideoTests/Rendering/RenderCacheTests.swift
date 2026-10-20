@@ -146,6 +146,14 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         let drawn = try await centerGray(of: cached, at: time)
         #expect(expected > 100 && expected < 160)
         #expect(abs(drawn - expected) < 8)
+
+        // The item can instead draw the stretch from its clips, without
+        // being built again, as a drag during playback needs.
+        #expect(live.unrenderedVideoComposition == nil)
+        var unrendered = cached
+        unrendered.videoComposition = try #require(cached.unrenderedVideoComposition)
+        let fromClips = try await centerGray(of: unrendered, at: time)
+        #expect(abs(fromClips - expected) < 8)
     }
 
     @Test func aRenderOfAStretchEndingBetweenFramesIsStillUsed() async throws {
