@@ -551,6 +551,28 @@ struct UISnapshots {
         try SnapshotSupport.render(list.preferredColorScheme(.dark), "presets-list", size: CGSize(width: 280, height: 360))
     }
 
+    /// What a preset holds, as shown while the pointer rests on it: a
+    /// recipe, and a stack with a renamed effect that is off.
+    @Test func presetContents() throws {
+        let recipe = try #require(LookRecipes.all.first { $0.name == "Infinite Tunnel" })
+        var grade = Effect(kind: .color, name: "Warm")
+        grade.enabled = false
+        grade.controls[3].number = AnimatedValue(ComponentValue(values: [25]))
+        var move = Effect(kind: .transform)
+        move.controls[2].number.setAnimated(true, at: .zero)
+        let url = URL(fileURLWithPath: "/dev/null")
+        for (name, bundle) in [
+            (recipe.name, recipe.bundle),
+            ("Graded", EffectBundle(effects: [grade, move].map { EffectBundle.Effect(effect: $0) }, origin: .zero)),
+        ] {
+            let preset = EffectPreset(id: name, name: name, bundle: bundle, url: url)
+            try SnapshotSupport.render(
+                PresetContents(preset: preset).padding(20).preferredColorScheme(.dark),
+                "preset-contents-\(name.lowercased().replacingOccurrences(of: " ", with: "-"))", size: CGSize(width: 300, height: 260)
+            )
+        }
+    }
+
     /// Two shape layers, the upper clip turned off (V): faded and without
     /// colour, where it was.
     @Test func disabledClip() throws {

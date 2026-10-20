@@ -45,7 +45,11 @@ remembered.
   nests it, as today. One that can't be embedded (it would contain itself)
   is shown dimmed and can't be dragged.
 - **Presets**: saved effect presets (see [effects.md](effects.md),
-  "Presets"). They have no duration; see "Previewing presets".
+  "Presets"). They have no duration; see "Previewing presets". Resting
+  the pointer on one shows a card of what it holds, top of the stack
+  first: each effect's name (and its kind when renamed), whether it is
+  off, and the settings that differ from a new effect of its kind, with
+  animated ones marked. VoiceOver reads the same as the row's hint.
 
 ## Filmstrips
 
