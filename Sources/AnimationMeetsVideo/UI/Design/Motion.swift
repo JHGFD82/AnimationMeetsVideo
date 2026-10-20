@@ -4,12 +4,15 @@ import SwiftUI
 
 /// How the editor moves.
 ///
-/// Motion here has one job: to confirm that something you did took effect.
-/// Nothing animates on its own, nothing fades in because it appeared, and
-/// nothing moves that you didn't move. The two places it earns its keep are
-/// state changes you can't otherwise see land (an edit committed, an edge
-/// caught a snap) and panels changing size, where an instant jump reads as
-/// a glitch.
+/// Motion here has two jobs: to confirm that something you did took effect,
+/// and to keep what you move, or what moves because you did, travelling
+/// instead of jumping. A clip stays under the pointer and glides into place
+/// when put down; the clips around it slide aside rather than snapping; a
+/// lasso fades when let go. Nothing animates on its own and nothing moves
+/// that you didn't cause. The other places it earns its keep are state
+/// changes you can't otherwise see land (an edit committed, an edge caught
+/// a snap) and panels changing size, where an instant jump reads as a
+/// glitch.
 ///
 /// Per-frame work — the playhead, the snap line — is driven through Core
 /// Animation rather than SwiftUI state, so dragging and playback don't
@@ -23,6 +26,13 @@ extension Design {
         static let select = Animation.spring(response: 0.18, dampingFraction: 0.9)
         /// Value changes that should read as continuous, not stepped.
         static let value = Animation.easeOut(duration: 0.12)
+        /// Something put down, or moved by an edit, going to its place: a
+        /// clip dropped, clips making room, a landing mark following the
+        /// pointer. Slower than `panel`, and settling without bounce, so
+        /// it reads as travelling there, not as jumping.
+        static let glide = Animation.spring(response: 0.34, dampingFraction: 0.92)
+        /// A selection rectangle or other mark that has done its job.
+        static let fade = Animation.easeOut(duration: 0.22)
 
         /// How long a confirmation flash lasts, in seconds.
         static let flashDuration: Double = 0.4

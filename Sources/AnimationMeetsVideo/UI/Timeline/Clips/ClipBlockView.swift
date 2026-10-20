@@ -142,6 +142,13 @@ struct ClipBlockView: View {
     /// it stays under the pointer; an outline marks the landing place. On
     /// release it goes to zero, and the block settles into its place.
     @State private var carry: CGSize = .zero
+    /// Where the block is in window coordinates, kept for it to leave
+    /// from, or arrive at, when a move changes its layer (`ClipFlights`).
+    @State private var frameBox = FrameBox()
+    /// How far the block is drawn from its place while it arrives from where
+    /// the same clip was let go on another layer.
+    @State private var arrival: CGSize = .zero
+    @State private var arrivalChecked = false
     @State private var isDropTarget = false
     /// Where the blade would cut, in the row's coordinates, while hovering.
     @State private var bladeX: CGFloat?
@@ -236,6 +243,7 @@ struct ClipBlockView: View {
                 InsertionLine(axis: .vertical)
                     .frame(height: height + 6)
                     .offset(x: liveX - 3.5, y: -3)
+                    .editorAnimation(Design.Motion.glide, value: liveX)
                     .zIndex(1)
             }
 
@@ -344,6 +352,7 @@ struct ClipBlockView: View {
             }
             .offset(x: drawnX)
             .offset(carry)
+            .offset(arrival)
             // Measured in window coordinates: the block moves (and resizes)
             // as the preview changes, so in its own coordinates every
             // one-frame step would shrink the translation by a frame and
@@ -368,8 +377,13 @@ struct ClipBlockView: View {
                     }
                     .onEnded { _ in
                         autoScroll?.end()
-                        // From under the pointer into the place it lands.
-                        withAnimation(Design.Motion.respecting(Design.Motion.panel)) { carry = .zero }
+                        // From under the pointer into the place it lands. Into
+                        // another layer it is a new block that arrives, from
+                        // where this one was let go (`ClipFlights`).
+                        if previewTarget?.layerID != nil || previewTarget?.newLayer != nil {
+                            ClipFlights.shared.depart(clip.id, from: frameBox.frame)
+                        }
+                        withAnimation(Design.Motion.respecting(Design.Motion.glide)) { carry = .zero }
                         isLifted = false
                         onDragging(false)
                         onSnapIndicator(nil)
@@ -461,6 +475,19 @@ struct ClipBlockView: View {
         }
         .frame(height: height, alignment: .topLeading)
         .offset(y: previewTarget?.offsetY ?? 0)
+        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { frame in
+            frameBox.frame = frame
+            // A clip moved here from another layer arrives from where it
+            // was let go, as the block that was dragged is gone by now.
+            guard !arrivalChecked else { return }
+            arrivalChecked = true
+            if let from = ClipFlights.shared.arrive(clip.id) {
+                arrival = CGSize(width: from.minX - frame.minX, height: from.minY - frame.minY)
+                DispatchQueue.main.async {
+                    withAnimation(Design.Motion.respecting(Design.Motion.glide)) { arrival = .zero }
+                }
+            }
+        }
         .coordinateSpace(.named(space))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityName)
@@ -624,10 +651,10 @@ struct ClipBlockView: View {
         showPreview(moved)
         previewTarget = target?.layerID == nil && target?.newLayer == nil ? nil : target
         onMovePreview(target)
-        // The block is drawn at its landing place, and stays there, so it
-        // shows where it will go. Bound for a new layer there is no place
-        // on the timeline yet, so it follows the pointer.
-        carry = target?.newLayer == nil ? .zero : CGSize(
+        // The block stays under the pointer, however the landing place
+        // snaps or the clips around it make room, and goes there when it
+        // is put down; the landing mark shows where that will be.
+        carry = CGSize(
             width: CMTimeSubtract(clip.startOffset, moved.startOffset).seconds * pixelsPerSecond + across,
             height: translation.height - (previewTarget?.offsetY ?? 0)
         )

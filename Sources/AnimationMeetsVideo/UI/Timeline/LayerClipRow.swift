@@ -129,6 +129,13 @@ struct LayerClipRow: View {
         return project.pushedByPieces(session.pieces, onLayer: layer.id, in: timelineID, at: session.targetTime)
     }
 
+    /// Where a clip is in time as drawn, start plus any shift, rounded so
+    /// that the arithmetic of zooming doesn't read as a move.
+    private func placeInTime(of clip: TimelineClip) -> Double {
+        let shifted = clip.startOffset.seconds + Double(shiftX(of: clip) / max(pixelsPerSecond, 0.0001))
+        return (shifted * 100_000).rounded() / 100_000
+    }
+
     private func shiftX(of clip: TimelineClip) -> CGFloat {
         // A push applies only while the clip is still where it was: once
         // the move lands it is already there, and shifting it again would
@@ -254,9 +261,13 @@ struct LayerClipRow: View {
                     reach: reachMenu(for: clip)
                 )
                 .offset(x: shiftX(of: clip))
-                // Clips slide aside as a drag makes room, but not when the
-                // move lands: then the shift and the new start cancel out.
-                .animation(liftedClipID == nil ? nil : Design.Motion.respecting(Design.Motion.panel), value: shiftX(of: clip))
+                // Clips glide to where they are put, in whichever layer
+                // they are: aside as a drag makes room, and along as an
+                // edit moves them. What is animated is the place in time,
+                // start plus the shift, so zooming doesn't move it, and
+                // when a move lands the shift and the new start cancel out
+                // and nothing glides twice.
+                .animation(Design.Motion.respecting(Design.Motion.glide), value: placeInTime(of: clip))
                 .zIndex(liftedClipID == clip.id ? 1 : 0)
             }
             // Transitions joining two clips sit over the cut, on top of both.

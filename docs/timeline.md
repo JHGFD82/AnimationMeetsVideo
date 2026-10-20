@@ -349,8 +349,17 @@ scrolls the timeline that way, faster the closer to the edge
 (`TimelineAutoScroll`), so a clip can be taken past what is in view. Near
 the top or bottom of an area, a clip moved across layers, or media dragged
 in from the browser, scrolls that area up or down the same way
-(`EdgeAutoScroll`, one per area, reached through `TimelineAutoScroll`). The
-rules for where a clip may go are in `ClipPlacement.swift`:
+(`EdgeAutoScroll`, one per area, reached through `TimelineAutoScroll`).
+
+**Motion.** A moved clip stays under the pointer the whole way, in both
+directions, however its landing place snaps or the clips around it make
+room; the landing place is shown by the line at its start, which glides
+rather than jumping, and by the clips that slide aside. Let go, it glides
+from under the pointer into its place; into another layer, the clip's new
+block takes up the motion from where it was let go (`ClipFlights`). Clips
+glide wherever an edit moves them, in whichever layer (`Motion.glide`),
+but not when the view is zoomed. Reduced motion makes all of it instant.
+The rules for where a clip may go are in `ClipPlacement.swift`:
 
 - **Video and nested timelines lock to frames.** Their start and end land
   on whole frames of the timeline's rate, never between two. This uses
@@ -646,6 +655,8 @@ last layer) to draw a **lasso**: every clip it touches is picked, and they
 draw as selected. Hold Shift to add to what is picked. A lasso that touches
 one clip selects it as a click does; one that touches none selects nothing.
 Only the Arrow tool lassos.
+
+The lasso's rectangle fades out when the button comes up.
 
 - **Click empty space or press Escape** to select nothing: no clip, layer,
   section or lasso. (A click in empty space used to do nothing, so a
