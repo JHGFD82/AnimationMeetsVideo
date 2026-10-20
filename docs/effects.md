@@ -583,6 +583,14 @@ and interactions as the timeline's lanes today: click to go to it, drag to
 retime, right-click for ease presets and Delete Keyframe. The panel's
 playhead is the timeline's: scrubbing either moves both.
 
+The control column is as wide as its widest row needs, and no narrower than
+it starts, so a large value never runs into the lanes; the lanes take the
+rest. They zoom (pinch, or Option-scroll) and scroll sideways like the
+timeline's, from the whole clip in to one frame 80 points wide, and
+stretch or slide and spring back past either limit. The controls
+themselves don't scroll sideways. VoiceOver has actions on the ruler to
+zoom and scroll the lanes.
+
 Keyframes are in the clip's [source time](#source-time). Moving a clip
 carries its animation along. Trimming its start doesn't shift the animation against
 the picture. Keyframes outside the trimmed range are kept but don't play.

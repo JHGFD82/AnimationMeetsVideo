@@ -71,6 +71,8 @@ struct EffectsPanel: View {
     /// where a drag over it would go.
     @State private var stackLayout = EffectStackLayout()
     @State private var stackScroller = EdgeAutoScroll()
+    /// The control column's width and the lanes' zoom and scroll.
+    @State private var lanes = LaneViewport()
     @State private var dropLine: CGFloat?
     /// The editor's active panel, which has the keys. Read as a key comes
     /// in, not while drawing, so becoming active doesn't redraw the stack.
@@ -214,8 +216,11 @@ struct EffectsPanel: View {
 
     private func stack(of clip: TimelineClip, in timeline: Timeline) -> some View {
         GeometryReader { proxy in
-            let laneWidth = max(80, proxy.size.width - EffectsPanelMetrics.labelWidth - 2 * EffectsPanelMetrics.laneInset)
-            let geometry = ClipLaneGeometry(clip: clip, timeline: timeline, width: laneWidth)
+            let laneWidth = max(80, proxy.size.width - lanes.labelWidth - 2 * EffectsPanelMetrics.laneInset)
+            let geometry = ClipLaneGeometry(clip: clip, timeline: timeline, width: laneWidth * lanes.zoom)
+            // One frame at its widest is as close as the lanes zoom.
+            let fitPixelsPerSecond = laneWidth / CGFloat(geometry.duration)
+            let maxZoom = CGFloat(max(timeline.frameRate, 1)) * TimelineViewport.maximumFrameWidth / fitPixelsPerSecond
             let layer = project.clipAndLayer(clip.id, in: timelineID)?.layer
             let context = RowContext(
                 clip: clip, timeline: timeline, layer: layer ?? TimelineLayer(clips: []),
@@ -228,11 +233,25 @@ struct EffectsPanel: View {
                         .font(Design.Typeface.micro)
                         .foregroundStyle(Design.textTertiary)
                         .padding(.leading, 8)
-                        .frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
+                        .frame(width: lanes.labelWidth, alignment: .leading)
                     if showsKeyframeLanes {
-                        PanelRuler(geometry: geometry, onSeek: onSeek)
-                            .overlay(alignment: .topLeading) { rangeBar(clip, geometry: geometry) }
-                            .padding(.horizontal, EffectsPanelMetrics.laneInset)
+                        LaneWindow {
+                            PanelRuler(geometry: geometry, onSeek: onSeek)
+                                .overlay(alignment: .topLeading) { rangeBar(clip, geometry: geometry) }
+                        }
+                        .padding(.horizontal, EffectsPanelMetrics.laneInset)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Effect lanes ruler")
+                        .accessibilityValue("Playhead \(timeline.snappedToFrame(playhead.time).compactTimecode(frameRate: timeline.frameRate)), zoom \(Int((lanes.zoom * 100).rounded())) percent")
+                        .accessibilityAdjustableAction { direction in
+                            let step = Timeline.frameDuration(for: timeline.frameRate)
+                            let now = timeline.snappedToFrame(playhead.time)
+                            onSeek(direction == .increment ? CMTimeAdd(now, step) : CMTimeSubtract(now, step))
+                        }
+                        .accessibilityAction(named: "Zoom the lanes in") { lanes.zoomStep(in: true) }
+                        .accessibilityAction(named: "Zoom the lanes out") { lanes.zoomStep(in: false) }
+                        .accessibilityAction(named: "Scroll the lanes later") { lanes.scrollStep(later: true) }
+                        .accessibilityAction(named: "Scroll the lanes earlier") { lanes.scrollStep(later: false) }
                     } else {
                         Spacer(minLength: 0)
                     }
@@ -258,6 +277,39 @@ struct EffectsPanel: View {
                 }
                 .sunken(.sunken)
             }
+            .environment(lanes)
+            .onPreferenceChange(ControlColumnWidthKey.self) { width in
+                lanes.labelWidth = max(EffectsPanelMetrics.labelWidth, width.rounded(.up))
+            }
+            .onChange(of: laneWidth, initial: true) { _, width in lanes.fit(width: width, maxZoom: maxZoom) }
+            .onChange(of: maxZoom) { _, zoom in lanes.fit(width: laneWidth, maxZoom: zoom) }
+            .onChange(of: clip.id) { _, _ in lanes.reset() }
+            .background(alignment: .topLeading) { laneInput(width: laneWidth) }
+            .rubberBandSettling(Bindable(lanes).zoomBand)
+            .rubberBandSettling(Bindable(lanes).scrollBand)
+        }
+    }
+
+    /// Pinch, Option-scroll and sideways scroll over the lanes zoom and
+    /// scroll them; vertical scrolling still goes to the stack.
+    @ViewBuilder
+    private func laneInput(width: CGFloat) -> some View {
+        if showsKeyframeLanes {
+            TimelineInputMonitor(
+                onMagnify: { factor, _, x, _ in lanes.zoom(by: factor, aboutX: x, pinching: true) },
+                onScroll: { deltaX, deltaY, flags, x, phase in
+                    if flags.contains(.option) {
+                        lanes.zoom(by: exp(deltaY * 0.01), aboutX: x, pinching: false)
+                        return true
+                    }
+                    // Also without movement, so a lift lets go of the edge.
+                    lanes.scroll(by: deltaX, phase: phase)
+                    return false
+                },
+                onMagnifyEnded: { lanes.endPinch() }
+            )
+            .frame(width: width)
+            .padding(.leading, lanes.labelWidth + EffectsPanelMetrics.laneInset)
         }
     }
 
@@ -364,8 +416,8 @@ struct EffectsPanel: View {
     func labelled<Label: View, Lane: View>(_ label: Label, lane: Lane) -> some View {
         HStack(spacing: 0) {
             if showsKeyframeLanes {
-                label.frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
-                lane
+                ControlColumn { label }
+                LaneWindow { lane }
                     .padding(.horizontal, EffectsPanelMetrics.laneInset)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.black.opacity(0.12))
@@ -382,7 +434,7 @@ struct EffectsPanel: View {
     func besideLane<Content: View>(_ content: Content) -> some View {
         HStack(spacing: 0) {
             if showsKeyframeLanes {
-                content.frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
+                ControlColumn { content }
                 Color.black.opacity(0.12)
             } else {
                 content.frame(maxWidth: .infinity, alignment: .leading)
@@ -396,8 +448,15 @@ struct EffectsPanel: View {
 
     private func playheadLine(_ c: RowContext) -> some View {
         PlayheadReader(playhead: playhead) { _ in
-            LanePlayheadLine(playback: playback, parked: c.frameTime(animated: true), geometry: c.geometry)
-                .allowsHitTesting(false)
+            HStack(spacing: 0) {
+                ControlColumn { Color.clear.frame(height: 0) }
+                LaneWindow {
+                    LanePlayheadLine(playback: playback, parked: c.frameTime(animated: true), geometry: c.geometry)
+                        .frame(width: c.geometry.width, alignment: .topLeading)
+                }
+                .padding(.horizontal, EffectsPanelMetrics.laneInset)
+            }
+            .allowsHitTesting(false)
         }
     }
 

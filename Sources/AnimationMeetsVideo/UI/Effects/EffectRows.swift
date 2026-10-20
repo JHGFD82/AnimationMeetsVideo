@@ -4,7 +4,8 @@ import SwiftUI
 /// Sizes the effects panel lays its rows out to.
 enum EffectsPanelMetrics {
     static let rowHeight: CGFloat = 24
-    /// The labels, values and buttons of a row, before its lane.
+    /// The least the labels, values and buttons of a row, before its lane,
+    /// are given: more when a row's values need it (`LaneViewport.labelWidth`).
     static let labelWidth: CGFloat = 316
     static let controlIndent: CGFloat = 26
     /// Space either side of a lane's keyframes, so one at the clip's start
@@ -90,6 +91,30 @@ struct ParameterRow<MenuContent: View>: View {
     @ViewBuilder let menu: () -> MenuContent
 
     var body: some View {
+        row
+            // The width the controls need if nothing limited them, for the
+            // control column to grow to, so a large value never runs into
+            // the lanes beside it.
+            .background(alignment: .leading) {
+                content
+                    .fixedSize(horizontal: true, vertical: false)
+                    .hidden()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: ControlColumnWidthKey.self, value: proxy.size.width)
+                    })
+            }
+    }
+
+    private var row: some View {
+        content
+            .onMouseDown { _ in onSelect() }
+            .selectedRow(isSelected)
+            .contextMenu { menu() }
+    }
+
+    private var content: some View {
         HStack(spacing: 4) {
             if let dragHandle {
                 dragHandle
@@ -153,9 +178,6 @@ struct ParameterRow<MenuContent: View>: View {
         .padding(.leading, indent)
         .padding(.horizontal, 4)
         .frame(height: EffectsPanelMetrics.rowHeight)
-        .onMouseDown { _ in onSelect() }
-        .selectedRow(isSelected)
-        .contextMenu { menu() }
     }
 
     private var keyframeNavigation: some View {
@@ -206,6 +228,30 @@ struct ChoiceRow<MenuContent: View>: View {
     @ViewBuilder let menu: () -> MenuContent
 
     var body: some View {
+        row
+            // The width the controls need if nothing limited them, for the
+            // control column to grow to, so a large value never runs into
+            // the lanes beside it.
+            .background(alignment: .leading) {
+                content
+                    .fixedSize(horizontal: true, vertical: false)
+                    .hidden()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: ControlColumnWidthKey.self, value: proxy.size.width)
+                    })
+            }
+    }
+
+    private var row: some View {
+        content
+            .onMouseDown { _ in onSelect() }
+            .selectedRow(isSelected)
+            .contextMenu { menu() }
+    }
+
+    private var content: some View {
         HStack(spacing: 4) {
             if let dragHandle {
                 dragHandle

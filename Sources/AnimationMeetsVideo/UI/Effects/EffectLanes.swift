@@ -155,7 +155,8 @@ struct PanelRuler: View {
 
 /// The playhead's line down the effects panel's lanes: at `parked`, or
 /// while the player plays, where it is, so that following it redraws only
-/// this line (as the timeline's `LivePlayheadRail` does).
+/// this line (as the timeline's `LivePlayheadRail` does). It draws in the
+/// lanes' own coordinates, inside a `LaneWindow`.
 struct LanePlayheadLine: View {
     let playback: PlaybackModel?
     let parked: CMTime
@@ -167,7 +168,7 @@ struct LanePlayheadLine: View {
             Rectangle()
                 .fill(Design.playhead)
                 .frame(width: 1)
-                .offset(x: EffectsPanelMetrics.labelWidth + EffectsPanelMetrics.laneInset + x)
+                .offset(x: x)
         }
     }
 }
