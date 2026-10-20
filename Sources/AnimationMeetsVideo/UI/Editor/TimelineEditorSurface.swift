@@ -642,6 +642,16 @@ struct TimelineEditorSurface<Library: View>: View {
         // `onChange(of: compositionKey)`); volume and pan need no picture.
         guard key != before, !key.differsOnlyInSpeed(from: before) else { return false }
         renderer?.noteActivity()
+        if playback.isPlaying {
+            // What the player plays was built before the drag, and can't
+            // show a change to the picture. Letting the drag go instead
+            // writes every step to the project, and each of those builds
+            // the timeline again (hundreds of builds, and the main thread
+            // stalled for seconds). Pausing hands the drag to the live
+            // frame, which follows it, from the next step.
+            playback.player.pause()
+            return false
+        }
         if playback.redrawLive(viewed, structure: viewed.structure, interactive: true) { return true }
         if playback.liveRedrawNeedsScene {
             // The renderer bakes the stretch under the playhead two seconds
