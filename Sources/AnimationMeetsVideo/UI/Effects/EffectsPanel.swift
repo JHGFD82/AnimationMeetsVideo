@@ -477,8 +477,12 @@ struct EffectsPanel: View {
                 isSelected: false,
                 keyframeTimes: clip.anchorPoint.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
                 playhead: c.frameTime(animated: animated),
-                onReset: clip.anchorPoint == AnimatedValue(Vector2.zero) ? nil : {
+                onReset: {
                     editClip(clip.id) { $0.anchorPoint = AnimatedValue(Vector2.zero) }
+                },
+                showsReset: { [state = projectState, timelineID] in
+                    let current = state?.held?.clipAndLayer(clip.id, in: timelineID)?.clip.anchorPoint ?? clip.anchorPoint
+                    return current != AnimatedValue(Vector2.zero)
                 },
                 onSelect: {},
                 onSetComponent: { index, newValue in
@@ -827,7 +831,8 @@ struct EffectsPanel: View {
                     onToggleLink: { editControl(control.id, of: effect, in: clip) { $0.linked.toggle() } },
                     dragHandle: handle,
                     isDimmed: effectDimmed || !control.enabled,
-                    onReset: reset(control, of: effect, in: c),
+                    onReset: resetAction(control, of: effect, in: c),
+                    showsReset: resetIsOffered(control, of: effect, in: c),
                     onSelect: select,
                     onSetComponent: { index, value in
                         editControl(control.id, of: effect, in: clip) { $0.setComponent(index, to: value, at: c.now.sourceNow) }
@@ -923,6 +928,27 @@ struct EffectsPanel: View {
         let fresh = effect.freshControl(control.kind, in: c.timeline.frameSize)
         guard !control.isAtDefault(like: fresh) else { return nil }
         return { editControl(control.id, of: effect, in: c.clip) { $0.reset(to: fresh) } }
+    }
+
+    /// What a row's reset button does, which is always there to do; whether
+    /// to show it is `resetIsOffered`.
+    private func resetAction(_ control: EffectControl, of effect: Effect, in c: RowContext) -> () -> Void {
+        let fresh = effect.freshControl(control.kind, in: c.timeline.frameSize)
+        return { editControl(control.id, of: effect, in: c.clip) { $0.reset(to: fresh) } }
+    }
+
+    /// Whether a row's reset button shows: the control isn't at what a new
+    /// one holds. Read as the button draws, from the control as a drag held
+    /// to one side of the project has it, so the button appears with the
+    /// first step of a drag.
+    private func resetIsOffered(_ control: EffectControl, of effect: Effect, in c: RowContext) -> () -> Bool {
+        let fresh = effect.freshControl(control.kind, in: c.timeline.frameSize)
+        let clipID = c.clip.id
+        let (controlID, effectID, timelineID) = (control.id, effect.id, timelineID)
+        return { [state = projectState] in
+            let held = state?.held?.clipAndLayer(clipID, in: timelineID)?.clip.effect(id: effectID)?.controls.first { $0.id == controlID }
+            return !(held ?? control).isAtDefault(like: fresh)
+        }
     }
 
     /// Whether a choice is off: it is, or for a cut's slope, its band is.

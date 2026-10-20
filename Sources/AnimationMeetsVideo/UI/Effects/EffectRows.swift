@@ -13,6 +13,19 @@ enum EffectsPanelMetrics {
     static let laneInset: CGFloat = 8
 }
 
+/// A reset button that decides whether to show as it draws, so a drag held
+/// to one side of the project shows it from its first step while the rows
+/// around it, kept between redraws, are left alone.
+struct ResetWhenChanged: View {
+    let name: String
+    let isChanged: (() -> Bool)?
+    let action: () -> Void
+
+    var body: some View {
+        if isChanged?() ?? true { RowResetButton(name: name, action: action) }
+    }
+}
+
 /// The button beside a row's ⋯ that puts it back to its default, shown
 /// only while it isn't there, which is how a changed value is told apart.
 struct RowResetButton: View {
@@ -80,6 +93,11 @@ struct ParameterRow<MenuContent: View>: View {
     var isDimmed = false
     /// Puts it back to its default; nil while it is there.
     var onReset: (() -> Void)?
+    /// Whether the reset button shows, asked as the button draws, so it
+    /// follows a value dragged to one side of the project (`ProjectState`)
+    /// as the drag goes, not once it ends. Nil shows it whenever `onReset`
+    /// is given.
+    var showsReset: (() -> Bool)?
     let onSelect: () -> Void
     let onSetComponent: (Int, Double) -> Void
     let onToggleAnimated: () -> Void
@@ -170,7 +188,7 @@ struct ParameterRow<MenuContent: View>: View {
                 .font(Design.Typeface.glyphSmall)
                 .help("Open \(name.lowercased())'s graph editor to shape its eases")
             }
-            if let onReset { RowResetButton(name: name, action: onReset) }
+            if let onReset { ResetWhenChanged(name: name, isChanged: showsReset, action: onReset) }
             RowMenu(content: menu)
         }
         .font(Design.Typeface.label)

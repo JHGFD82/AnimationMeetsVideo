@@ -29,6 +29,52 @@ struct HeldDragFollowTests {
         return try #require(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
     }
 
+    /// A rectangle's corner radius, whose reset arrow (beside the row's menu)
+    /// appears with the first step of a held drag, not once it ends.
+    @Test func aResetArrowAppearsAsADragIsHeld() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let created = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(created)
+        let selection = TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID)
+        let state = ProjectState(project)
+        let size = CGSize(width: 520, height: 420)
+        let host = NSHostingView(rootView: EffectsPanel(
+            project: Binding(get: { state.value }, set: { state.value = $0 }), timelineID: timelineID, selection: selection,
+            playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+        ).environment(state).frame(width: size.width, height: size.height))
+        host.frame = CGRect(origin: .zero, size: size)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = host
+
+        /// The strip beside the rows' menus, where the arrow is.
+        func arrows() throws -> Data {
+            for _ in 0..<5 {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+                host.layoutSubtreeIfNeeded()
+            }
+            let rep = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: rep)
+            let scale = CGFloat(rep.pixelsWide) / host.bounds.width
+            let strip = CGRect(x: 268 * scale, y: 0, width: 28 * scale, height: CGFloat(rep.pixelsHigh))
+            let image = try #require(rep.cgImage?.cropping(to: strip))
+            return try #require(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
+        }
+        let before = try arrows()
+
+        state.beginHold()
+        state.hold {
+            state.value.editClip(shape.clipID, in: timelineID) { clip in
+                for index in clip.effects[0].controls.indices where clip.effects[0].controls[index].kind == .cornerRadius {
+                    clip.effects[0].controls[index].setComponent(0, to: 40, at: .zero)
+                }
+            }
+        }
+        #expect(try arrows() != before, "The reset arrow should show while the drag is held")
+        state.endHold()
+    }
+
     /// A rectangle's corner radius with the stopwatch on and a keyframe at the
     /// start, the playhead a second in with none there.
     @Test func aKeyframeDraggedIntoBeingIsDrawnAtOnce() throws {
