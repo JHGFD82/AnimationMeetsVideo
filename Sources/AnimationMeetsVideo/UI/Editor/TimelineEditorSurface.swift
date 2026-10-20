@@ -819,6 +819,7 @@ struct TimelineEditorSurface<Library: View>: View {
                     player.replaceCurrentItem(with: item)
                     _ = await player.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
                     player.play()
+                    playback.noteItemSwappedWhilePlaying()
                 }
                 buildError = nil
                 finish()

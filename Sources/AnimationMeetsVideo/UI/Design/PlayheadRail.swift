@@ -50,13 +50,16 @@ struct PlayheadRail: NSViewRepresentable {
         let originX: CGFloat
         /// How many seconds the animation spans: at least the item's length.
         let seconds: Double
+        /// Changes when the player's item was swapped and has since seeked,
+        /// which binds the playhead to it again.
+        var generation = 0
         /// Called with the player's time when the playhead leaves the rail's
         /// width (or is already outside it when following starts), so the
         /// view can page after it. Nil not to follow.
         var onLeaveView: ((CMTime) -> Void)?
 
         /// What the animation depends on; a change means a new animation.
-        fileprivate var mapping: [Double] { [Double(pixelsPerSecond), Double(originX), seconds] }
+        fileprivate var mapping: [Double] { [Double(pixelsPerSecond), Double(originX), seconds, Double(generation)] }
     }
 
     func makeNSView(context: Context) -> RailView {
@@ -220,6 +223,12 @@ struct PlayheadRail: NSViewRepresentable {
                 itemObservation = player.observe(\.currentItem) { [weak self] _, _ in
                     Task { @MainActor in self?.refollow() }
                 }
+            }
+            // The item was swapped and has seeked since it was bound: bind
+            // to it again, so the animation follows its timeline as it is.
+            if boundMapping.last != following.mapping.last {
+                boundItem = nil
+                synchronized.playerItem = nil
             }
             let item = player.currentItem
             if item !== boundItem {

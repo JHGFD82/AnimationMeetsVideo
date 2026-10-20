@@ -14,6 +14,11 @@ final class PlaybackModel {
     let beatClicks: BeatClickPlayer
     private(set) var currentTime: CMTime = .zero
     private(set) var isPlaying = false
+    /// How many times the player's item was swapped for a new build while
+    /// playing, after its seek and play. The playhead that follows the
+    /// player binds as the item is replaced, before the seek, and binds
+    /// again when this changes.
+    private(set) var itemSwaps = 0
     /// The size the viewer is asked to draw at.
     var quality: PreviewQuality {
         didSet {
@@ -390,6 +395,9 @@ final class PlaybackModel {
         refreshStill()
         prerollIfPaused()
     }
+
+    /// The item was swapped while playing and has seeked and resumed.
+    func noteItemSwappedWhilePlaying() { itemSwaps += 1 }
 
     func togglePlayback() {
         if isPlaying {
