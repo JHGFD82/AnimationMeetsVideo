@@ -259,7 +259,43 @@ final class PlaybackModel {
     /// scrubbing, and when there is nothing to show.
     func clearLive() {
         liveRenderer.cancel()
+        guard !coversSwap else { return }
         if liveFrame != nil { liveFrame = nil }
+    }
+
+    /// Whether a picture of the frame being played covers the viewer while
+    /// the item is swapped (`coverSwap`), which `clearLive` leaves alone.
+    @ObservationIgnored private var coversSwap = false
+
+    /// Covers the viewer with the frame playing now, drawn from the item
+    /// about to be replaced, so the swap doesn't show black while the new
+    /// item's first frame is made. The layer only hands out its own frame
+    /// while paused. Call `uncoverSwap` once the new item plays.
+    func coverSwap() async {
+        guard let composed, composed.hasPictures, isPlaying else { return }
+        let generator = AVAssetImageGenerator(asset: composed.composition)
+        generator.videoComposition = composed.videoComposition(scaledBy: level.scale)
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.05, preferredTimescale: 600)
+        guard let image = try? await generator.image(at: player.currentTime()).image else { return }
+        coversSwap = true
+        liveFrame = .image(image)
+    }
+
+    /// Lets go of the cover once the new item is playing and has had a
+    /// moment to draw (or after at most a second).
+    func uncoverSwap() {
+        guard coversSwap else { return }
+        Task { @MainActor [weak self] in
+            for _ in 0..<30 {
+                try? await Task.sleep(for: .milliseconds(30))
+                guard let self else { return }
+                if self.player.timeControlStatus == .playing, self.player.currentItem?.status == .readyToPlay { break }
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+            self?.coversSwap = false
+            self?.clearLive()
+        }
     }
 
     private func playStateChanged(_ playing: Bool) {

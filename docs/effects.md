@@ -571,7 +571,8 @@ lower or raise it. A press without a drag still opens the field for typing.
 - Dragging while the project plays keeps it playing, and the viewer shows
   the value as it changes, as choppily as the effect draws. The frames the
   player draws are patched with the drag's values (`LiveValues`), so
-  nothing is built until the drag ends. A stretch that plays from a render
+  nothing is built until playing stops, and the item isn't swapped, which
+  would show black. A stretch that plays from a render
   is built again without the renders when the drag starts, so a drag
   during playback may hitch once; a drag that changes more than values
   pauses playback instead.
