@@ -142,7 +142,7 @@ struct LayerSoundEffectsList: View {
                         dragRange: kind.range(ofComponent: index),
                         accessibilityName: kind.name
                     ) { value in
-                        let at = playhead.now
+                        let at = playhead.current
                         onEdit(kind) { $0.setComponent(index, to: value, at: at) }
                     }
                 }

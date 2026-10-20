@@ -11,10 +11,19 @@ import SwiftUI
 @Observable
 final class PlayheadState {
     var time: CMTime
+    /// The player's time while it plays, nil otherwise; set by the surface
+    /// that owns the player. Not observed: it is read as an action runs.
+    @ObservationIgnored var liveTime: (() -> CMTime?)?
 
     init(time: CMTime = .zero) {
         self.time = time
     }
+
+    /// Where the playhead is as an action runs: the player's time while it
+    /// plays, which `time` doesn't follow, else where it is parked. A
+    /// keyframe made from the stopwatch while playing goes where playing
+    /// is, not where it started.
+    var actionTime: CMTime { liveTime?() ?? time }
 }
 
 /// How a row finds the playhead, in the time it works in (the timeline's, on
@@ -25,15 +34,23 @@ final class PlayheadState {
 @MainActor
 struct PlayheadTime {
     private let read: () -> CMTime
+    private let readCurrent: () -> CMTime
 
     init(_ playhead: PlayheadState, in convert: @escaping (CMTime) -> CMTime = { $0 }) {
         read = { convert(playhead.time) }
+        readCurrent = { convert(playhead.actionTime) }
     }
 
     /// A playhead that stays at `time`.
     init(fixed time: CMTime) {
         read = { time }
+        readCurrent = { time }
     }
+
+    /// Where the playhead is as an action runs, which follows the player
+    /// while it plays (see `PlayheadState.actionTime`); `now` is where it
+    /// is parked.
+    var current: CMTime { readCurrent() }
 
     /// Where the playhead is now. Reading it as a body is built makes the
     /// view follow the playhead.

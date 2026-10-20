@@ -357,6 +357,7 @@ struct TimelineEditorSurface<Library: View>: View {
             if effectsState.showUpTo != nil, partialView == nil { effectsState.showUpTo = nil }
         }
         .onAppear {
+            playhead.liveTime = { [playback] in playback.isPlaying ? playback.player.currentTime() : nil }
             let project = $project
             graphs.onEdit = { change in change(&project.wrappedValue) }
             graphs.onSeek = { time in scrub(to: time) }
@@ -374,7 +375,8 @@ struct TimelineEditorSurface<Library: View>: View {
         }
         .onChange(of: compositionKey) { old, new in
             renderer?.noteActivity()
-            if playingCanFollow {
+            if playback.isPlaying, playback.playedStructure == viewedProject.structure,
+               !playback.playedUsesRenders || playback.playWithoutRenders() {
                 // Only values changed (a drag's last value, typed, undone):
                 // the frames the player draws take them without swapping
                 // its item, which blinks the viewer. The timeline is built

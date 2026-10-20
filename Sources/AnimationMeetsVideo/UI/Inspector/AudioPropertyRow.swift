@@ -109,19 +109,19 @@ struct AudioPropertyRow: View {
 
     /// Turns keyframing on, with a keyframe where the playhead is, or off.
     func toggleAnimated() {
-        let at = playhead.now
+        let at = playhead.current
         onEdit { $0.setAnimated(!value.isAnimated, at: at) }
     }
 
     /// Sets the value at the playhead, or all of it while it is fixed.
     func setValue(_ newValue: Double) {
-        let at = playhead.now
+        let at = playhead.current
         onEdit { $0.set(newValue, at: at) }
     }
 
     /// Adds a keyframe where the playhead is, or removes the one there.
     func toggleKeyframe() {
-        let at = playhead.now
+        let at = playhead.current
         onEdit { $0.toggleKeyframe(at: at) }
     }
     private var lowercaseName: String { property.name.lowercased() }

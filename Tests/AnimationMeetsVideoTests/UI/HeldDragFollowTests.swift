@@ -145,3 +145,24 @@ struct HeldDragFollowTests {
         #expect(try row(0, held: nil) != asProject)
     }
 }
+
+/// Where an action finds the playhead while the project plays.
+@MainActor
+struct PlayheadActionTimeTests {
+    @Test func anActionReadsThePlayersTimeWhilePlayingAndTheParkedTimeOtherwise() {
+        let playhead = PlayheadState(time: .zero)
+        var playing: CMTime?
+        playhead.liveTime = { playing }
+        let time = PlayheadTime(playhead)
+        #expect(time.current == .zero)
+
+        playing = CMTime(seconds: 3, preferredTimescale: 600)
+        #expect(time.current == playing)
+        // What is drawn stays with the parked playhead.
+        #expect(time.now == .zero)
+
+        playing = nil
+        playhead.time = CMTime(seconds: 1, preferredTimescale: 600)
+        #expect(time.current == playhead.time)
+    }
+}

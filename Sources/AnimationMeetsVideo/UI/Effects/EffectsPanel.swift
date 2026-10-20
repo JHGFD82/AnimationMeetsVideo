@@ -350,7 +350,8 @@ struct EffectsPanel: View {
         /// The playhead as a row acts, read then rather than when it was
         /// drawn: the rows in a `StackRow` aren't redrawn as it moves.
         var now: (frameTime: CMTime, sourceNow: CMTime) {
-            (frameTime(animated: true), sourceNow(animated: true))
+            let frame = timeline.snappedToFrame(playhead.actionTime)
+            return (frame, geometry.clampedSource(atTimeline: frame))
         }
     }
 
