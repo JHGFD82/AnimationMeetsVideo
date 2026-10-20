@@ -40,7 +40,7 @@ enum FrameScorer {
     }
 
     private static func scoreFrames(url: URL, progress: @escaping @Sendable (Double) -> Void) async throws -> ChangeScoreTrack {
-        let asset = AVURLAsset(url: url)
+        let asset = MediaFile.asset(at: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             throw ScoringError.noVideoTrack
         }

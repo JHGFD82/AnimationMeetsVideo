@@ -171,7 +171,7 @@ struct Spectrogram: Sendable, Equatable {
     /// Reads the first audio track of a file, mixed to mono. Cancelling
     /// stops the read.
     static func read(url: URL) async throws -> Spectrogram {
-        let asset = AVURLAsset(url: url)
+        let asset = MediaFile.asset(at: url)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else { return Spectrogram(levels: []) }
         let handedOver = HandedOver(value: track)
         return try await SampleReading.run { isCancelled in

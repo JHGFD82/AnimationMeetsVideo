@@ -53,7 +53,7 @@ final class MatteMaps: @unchecked Sendable {
             guard let url = project.clips.first(where: { $0.id == id })?.url else { continue }
             let stamp = FileStamp(url: url).map { "\(url.path) \($0.byteCount) \($0.modified ?? 0)" } ?? url.path
             if entries.withLockUnchecked({ $0[id]?.stamp == stamp }) { continue }
-            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+            let generator = AVAssetImageGenerator(asset: MediaFile.asset(at: url))
             generator.appliesPreferredTrackTransform = true
             generator.maximumSize = CGSize(width: 1920, height: 1920)
             generator.requestedTimeToleranceAfter = .positiveInfinity

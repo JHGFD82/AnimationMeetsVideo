@@ -30,7 +30,7 @@ extension TimelineView {
         Task {
             do {
                 let url = try await AudioRecorder.keep(take.url, packageURL: packageURL)
-                var clip = try await MediaImporter.importClip(at: url)
+                var clip = try await MediaImporter.importClip(at: url, packageURL: packageURL)
                 clip.name = url.deletingPathExtension().lastPathComponent
                 onEditProject { $0.addRecording(clip, at: take.start, in: timelineID) }
                 showingRecord = false

@@ -88,7 +88,7 @@ enum EffectThumbnails {
         switch clip.source {
         case .media(let id):
             guard let media = project.mediaClip(id: id), media.kind == .video, let url = media.url else { return nil }
-            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+            let generator = AVAssetImageGenerator(asset: MediaFile.asset(at: url))
             generator.appliesPreferredTrackTransform = true
             generator.maximumSize = CGSize(width: 384, height: 384)
             generator.requestedTimeToleranceBefore = .zero

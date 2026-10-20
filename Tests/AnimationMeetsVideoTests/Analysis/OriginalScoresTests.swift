@@ -172,7 +172,7 @@ import Testing
     private func analyze(_ candidate: URL, original: URL, asset: MediaClip, scores: Result<ChangeScoreTrack, OriginalScoresUnavailable>) async throws -> ReplacementAnalysis {
         let reference = try await ReferenceCapture.capture(url: original)
         return try await MediaReplacer.analyze(
-            candidate: candidate, replacing: asset, reference: reference, originalScores: scores, usedRanges: []
+            candidate: candidate, replacing: asset, reference: reference, originalScores: scores, usedRanges: [], packageURL: nil
         )
     }
 

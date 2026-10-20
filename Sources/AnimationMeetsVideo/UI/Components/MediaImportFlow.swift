@@ -61,7 +61,7 @@ enum MediaImportFlow {
                         source = madeCopy ?? url
                     }
                 }
-                var clip = try await MediaImporter.importClip(at: source)
+                var clip = try await MediaImporter.importClip(at: source, packageURL: packageURL)
                 // A copy may be numbered to avoid a name already in Media/.
                 clip.name = url.deletingPathExtension().lastPathComponent
                 if let packageURL, let earlier = ProjectStore.reusableAssetID(for: source, in: packageURL, excluding: claimedIDs) {

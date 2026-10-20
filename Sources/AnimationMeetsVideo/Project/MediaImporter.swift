@@ -17,9 +17,15 @@ enum MediaImportError: LocalizedError {
 }
 
 enum MediaImporter {
-    static func importClip(at url: URL) async throws -> MediaClip {
+    /// Reads the file at `url`. A Matroska file is read through its
+    /// reference movie, made first in `packageURL`'s cache, or for a project
+    /// not yet saved (nil), in a temporary folder (see docs/matroska.md).
+    static func importClip(at url: URL, packageURL: URL?) async throws -> MediaClip {
         if isImage(url) { return try importStill(at: url) }
-        let asset = AVURLAsset(url: url)
+        let readable = MatroskaMedia.isMatroska(url)
+            ? try MatroskaMedia.prepare(url, in: MatroskaMedia.folder(in: packageURL))
+            : url
+        let asset = AVURLAsset(url: readable)
         let duration = try await asset.load(.duration)
         let tracks = try await asset.load(.tracks)
 

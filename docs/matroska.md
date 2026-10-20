@@ -1,9 +1,8 @@
 # Matroska (MKV) media
 
-Status: **spike, on the `mkv-media` branch.** Reading a Matroska file and
-making a reference movie of it are built and tested
-(`Project/Matroska/`); importing MKV files into a project is **planned**.
-FLAC files need nothing: AVFoundation reads them already.
+Status: **implemented**: MKV files (and other Matroska files, such as
+`.mka` sound and `.webm`, when their codecs are usable) import like any
+other media. FLAC files need nothing: AVFoundation reads them already.
 
 AVFoundation can't open Matroska files, and everything in the app that
 reads media (the browser, the viewer, waveforms, analysis, compositions,
@@ -76,21 +75,34 @@ from Apple's own encoders:
   scans in under half a second and writes a 2 MB movie in about as long;
   exact-frame seeks anywhere take under 0.1 s.
 
-## Planned
+## In the project
 
-- **Import.** `MediaImporter` accepts `.mkv`; the MKV stays the clip's
-  file (its identity, `FileStamp`, replacement and reference data), and one
-  resolver hands everything that opens media the reference movie instead,
-  making it first when missing or when the MKV's stamp has changed.
-  `MediaTrackCache` and the `AVURLAsset` call sites go through it.
-- **Where movies live.** In the user's Caches folder, named by the file's
-  path, size and date as `StereoProxies` does, or in the package's
-  `Cache/`; to decide.
+- **Import.** `MediaImporter.importClip` tells Matroska files by their
+  first bytes, not their name, and reads them through their reference
+  movie, made first. Import…, dragging from the Finder, replacing a file and
+  opening a project all go through it. A file with nothing usable (VP9,
+  Vorbis) is refused with the reason.
+- **The clip keeps the MKV.** Its URL, `FileStamp`, reference data,
+  replacement and copying into `Media/` are all of the MKV; only opening it
+  goes elsewhere. `MediaFile` gives everything that reads footage (the
+  track cache compositions are built from, the players, waveforms,
+  spectra, beats, scene scores, reference capture and thumbnails) the
+  reference movie in its place.
+- **Where movies live.** In the package's `Cache/References/`, named by a
+  hash of the MKV's path, size and modification date, so a moved or changed
+  file gets a new one. A file that changes while the project is open gets
+  its new movie the next time it is opened, since the old one points at
+  bytes that have moved. A project not yet saved keeps them in a temporary
+  folder; saving makes them in the package, as it does for files copied
+  into `Media/` on save. Opening a project remakes missing movies and
+  deletes those no asset uses.
+
+## Not yet done
+
 - **More codecs.** Opus (`dOps`, with its pre-skip as CodecDelay) and AC-3
   are decodable by Core Audio; Vorbis and VP9/AV1 aren't, and are refused.
 - **Color.** Carrying the track's Colour element (primaries, transfer,
-  matrix, range, HDR metadata) into the format description.
-- **ProRes renders of the parts used.** An earlier idea: rendering the used
-  ranges to ProRes for smoother scrubbing. It would go against "the app
-  does not generate proxy or transcoded copies", so it waits on measuring
-  reverse play, the Tape Scrubber and stacked layers on reference movies.
+  matrix, range, HDR metadata) into the format description; until then an
+  MKV's color comes from its H.264 or HEVC stream's own signaling.
+- **More than one track of a kind.** Only the first usable video track and
+  the first usable sound track are used.

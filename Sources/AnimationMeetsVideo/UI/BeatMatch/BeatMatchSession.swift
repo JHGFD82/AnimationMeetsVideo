@@ -94,7 +94,7 @@ final class BeatMatchSession {
         map = asset.beatMap
         original = asset.beatMap
         isDrawing = asset.beatMap.usesSections && !asset.beatMap.sections.contains { !$0.pinnedBeats.isEmpty || $0.isConfirmed }
-        player = AVPlayer(playerItem: AVPlayerItem(url: url))
+        player = AVPlayer(playerItem: AVPlayerItem(asset: MediaFile.asset(at: url)))
         player.actionAtItemEnd = .pause
         clicks = BeatClickPlayer(player: player)
         // Out of the devices chosen in Settings, like the editor's sound.

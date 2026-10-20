@@ -181,7 +181,7 @@ extension EqualizerSpectrum {
         let span = 0.25
         let start = max(0, fileTime.seconds - span)
         guard fileTime.seconds - start >= Double(windowSize) / sampleRate else { return nil }
-        let asset = AVURLAsset(url: url)
+        let asset = MediaFile.asset(at: url)
         guard let track = try? await asset.loadTracks(withMediaType: .audio).first else { return nil }
         let handed = HandedOver(value: (asset, track))
         let samples: [Float]? = try? await SampleReading.run { isCancelled in

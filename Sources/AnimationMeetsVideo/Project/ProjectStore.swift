@@ -486,6 +486,14 @@ enum ProjectStore {
 
         try encode(project, packageURL: packageURL)
             .write(to: packageURL.appending(path: projectFileName), options: .atomic)
+        // Matroska files imported before the project had a package, or
+        // copied into it just now, get their reference movies here. A
+        // movie is only an index, so one that can't be made fails no save:
+        // it's tried again on opening.
+        for clip in project.clips {
+            guard let url = clip.url, MatroskaMedia.isMatroska(url) else { continue }
+            try? MatroskaMedia.prepare(url, in: MatroskaMedia.folder(in: packageURL))
+        }
         return project
     }
 
@@ -708,16 +716,18 @@ enum ProjectStore {
 
     // MARK: Load
 
-    /// Loads a package. `importMedia` reads a media file's metadata; it is a
-    /// parameter so tests can run without real footage. `projectFile` reads
+    /// Loads a package. `importMedia` reads a media file's metadata, by
+    /// default with `MediaImporter` into this package; it is a parameter so
+    /// tests can run without real footage. `projectFile` reads
     /// the edit from another file, such as a backup, instead of
     /// `project.json`; paths in it are still relative to the package.
     static func load(
         from packageURL: URL,
         projectFile: URL? = nil,
-        importMedia: @Sendable (URL) async throws -> MediaClip = { try await MediaImporter.importClip(at: $0) }
+        importMedia: (@Sendable (URL) async throws -> MediaClip)? = nil
     ) async throws -> ProjectLoadResult {
         try validatePackage(at: packageURL)
+        let importMedia = importMedia ?? { try await MediaImporter.importClip(at: $0, packageURL: packageURL) }
         let fileURL = projectFile ?? packageURL.appending(path: projectFileName)
         let data = try Data(contentsOf: fileURL)
 
@@ -886,6 +896,10 @@ enum ProjectStore {
             case .absent: break
             }
         }
+        // Reference movies of files since moved, changed or removed.
+        MatroskaMedia.removeUnused(in: packageURL, keeping: Set(project.clips.compactMap { clip in
+            clip.url.flatMap { MatroskaMedia.isMatroska($0) ? MatroskaMedia.movieName(for: $0) : nil }
+        }))
         return ProjectLoadResult(project: project, missingMedia: missingMedia, offlineMedia: offlineMedia, changedMedia: changedMedia, changeScores: scores, beats: beats, references: references, assetsWithThumbnails: thumbnailed, analysisSources: sources, originalScores: original, rejectedAnalysis: rejected)
     }
 }

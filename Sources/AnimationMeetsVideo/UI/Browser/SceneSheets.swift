@@ -23,7 +23,7 @@ final class ScenePreviewModel {
         self.end = end
         self.offset = offset
         position = start.seconds
-        let item = AVPlayerItem(url: url)
+        let item = AVPlayerItem(asset: MediaFile.asset(at: url))
         item.forwardPlaybackEndTime = CMTimeAdd(end, offset)
         player.replaceCurrentItem(with: item)
         player.seek(to: CMTimeAdd(start, offset), toleranceBefore: .zero, toleranceAfter: .zero)

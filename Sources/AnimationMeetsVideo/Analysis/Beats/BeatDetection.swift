@@ -84,7 +84,7 @@ enum BeatDetector {
 
     private static func detectBeats(url: URL, progress: @escaping @Sendable (Double) -> Void) async throws -> BeatTrack {
         try Task.checkCancellation()
-        let asset = AVURLAsset(url: url)
+        let asset = MediaFile.asset(at: url)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
             throw DetectionError.noAudioTrack
         }

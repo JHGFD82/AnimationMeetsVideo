@@ -64,7 +64,7 @@ enum ReferenceThumbnailCapture {
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> ReferenceThumbnails {
         let work = Task.detached(priority: .utility) { () -> ReferenceThumbnails in
-            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+            let generator = AVAssetImageGenerator(asset: MediaFile.asset(at: url))
             generator.appliesPreferredTrackTransform = true
             generator.maximumSize = CGSize(width: width, height: height)
             generator.requestedTimeToleranceBefore = .zero

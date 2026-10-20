@@ -45,7 +45,7 @@ final class TrimPreviewModel {
     }
 
     private nonisolated static func frames(of url: URL, at first: CMTime, and last: CMTime) async -> (first: CGImage?, last: CGImage?) {
-        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        let generator = AVAssetImageGenerator(asset: MediaFile.asset(at: url))
         generator.appliesPreferredTrackTransform = true
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero

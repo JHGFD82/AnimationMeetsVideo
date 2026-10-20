@@ -1,4 +1,5 @@
 import CoreMedia
+import CryptoKit
 import Foundation
 
 /// What a media file looked like when it was imported. Saved in the project
@@ -54,6 +55,21 @@ struct FileStamp: Codable, Equatable, Sendable {
         }
         byteCount = Int64(size)
         modified = values.contentModificationDate?.timeIntervalSince1970
+    }
+
+    /// A name for something made from the file at `url`: a hash of its
+    /// path, size and modification date, so a file moved or changed gets a
+    /// new one. Nil when the file can't be looked at.
+    static func cacheDigest(for url: URL) -> String? {
+        // A URL keeps what it last read of its file; a file replaced since
+        // must be looked at afresh.
+        var url = url
+        url.removeAllCachedResourceValues()
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+              let size = values.fileSize, let date = values.contentModificationDate
+        else { return nil }
+        let key = "\(url.standardizedFileURL.path)|\(size)|\(date.timeIntervalSinceReferenceDate)"
+        return SHA256.hash(data: Data(key.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
     }
 }
 

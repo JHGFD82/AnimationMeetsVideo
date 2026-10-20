@@ -381,7 +381,7 @@ struct UIResponsivenessBenchmark {
             let song = try SnapshotSupport.clickSong(named: "benchmark-song", seconds: 20)
             project.addMedia(song)
             project.putOnMusicLayer([song.id])
-            let footage = try await MediaImporter.importClip(at: try await Self.footage())
+            let footage = try await MediaImporter.importClip(at: try await Self.footage(), packageURL: nil)
             project.addMedia(footage)
             let placedLower = project.placeAsset(footage.id, intoTimeline: t)
             let lower = try #require(placedLower)

@@ -80,16 +80,18 @@ enum MediaReplacer {
     /// (never those of a replacement file), used to match cuts when audio
     /// can't decide; the offset found is from the original's time to the
     /// candidate's file, so it holds however many files came between. When
-    /// they are `.failure`, the reason is reported in the result.
+    /// they are `.failure`, the reason is reported in the result. A Matroska
+    /// candidate's reference movie goes in `packageURL`'s cache.
     static func analyze(
         candidate url: URL,
         replacing asset: MediaClip,
         reference: AssetReference?,
         originalScores: Result<ChangeScoreTrack, OriginalScoresUnavailable>,
         usedRanges: [CMTimeRange],
+        packageURL: URL?,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> ReplacementAnalysis {
-        let replacement = try await MediaImporter.importClip(at: url)
+        let replacement = try await MediaImporter.importClip(at: url, packageURL: packageURL)
         if asset.kind == .image || replacement.kind == .image {
             guard asset.kind == replacement.kind else {
                 throw ReplacementKindError.stillAndFootage(originalIsStill: asset.kind == .image)

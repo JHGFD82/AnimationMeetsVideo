@@ -23,7 +23,7 @@ enum ReferenceCapture {
     }
 
     static func metadata(for url: URL) async throws -> AssetMetadataSnapshot {
-        let asset = AVURLAsset(url: url)
+        let asset = MediaFile.asset(at: url)
         let duration = try await asset.load(.duration)
         let videoTrack = try await asset.loadTracks(withMediaType: .video).first
         let audioTrack = try await asset.loadTracks(withMediaType: .audio).first
@@ -85,7 +85,7 @@ enum ReferenceCapture {
     /// Loudness over time of all the file's audio mixed together; nil if the
     /// file has no audio.
     static func audioEnvelope(url: URL, progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> AudioEnvelope? {
-        let asset = AVURLAsset(url: url)
+        let asset = MediaFile.asset(at: url)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard !tracks.isEmpty else { return nil }
         let duration = try await asset.load(.duration).seconds
