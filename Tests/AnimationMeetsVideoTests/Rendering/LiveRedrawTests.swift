@@ -101,4 +101,68 @@ import Testing
         fixture.project.editClip(shape, in: fixture.timelineID) { $0.startOffset = CMTime(seconds: 0.25, preferredTimescale: 600) }
         #expect(!renderer.redraw(with: fixture.project, structure: fixture.project.structure, time: time, interactive: false))
     }
+
+    /// The background renderer bakes the stretch under the playhead into a
+    /// file two seconds after an edit; a scene drawn from a build that uses it
+    /// can't take the next drag's values, and says it needs a scene, which a
+    /// build without the renders gives it.
+    @Test func aRenderedStretchNeedsASceneBuiltWithoutTheRenders() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        _ = try await fixture.addClip(luma: 40)
+        let top = try await fixture.addClip(luma: 220)
+        fixture.setTransform([(.opacity, [50])], ofClip: top.clipID)
+        let time = CMTime(seconds: 1, preferredTimescale: 600)
+        // What a drag does: a value of the effect that is there, not a new effect.
+        func setOpacity(_ percent: Double, in fixture: inout DrawingFixture) {
+            fixture.project.editClip(top.clipID, in: fixture.timelineID) { clip in
+                for index in clip.effects[0].controls.indices where clip.effects[0].controls[index].kind == .opacity {
+                    clip.effects[0].controls[index].number = AnimatedValue(ComponentValue(values: [percent]))
+                }
+            }
+        }
+
+        let root = FileManager.default.temporaryDirectory.appending(path: "amv-redraw-\(UUID().uuidString).amv", directoryHint: .isDirectory)
+        try ProjectStore.preparePackage(at: root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = RenderCache(packageURL: root)
+        let plain = try await fixture.build(forPreview: true)
+        let needing = plain.segments.filter(\.needsRender)
+        try #require(!needing.isEmpty, "The stack should need a render")
+        for segment in needing { try await SegmentRenderer.render(segment, from: plain, into: cache) }
+        let withRenders = try await CompositionExporter.buildComposedTimeline(
+            for: fixture.project, timelineID: fixture.timelineID, forPreview: true, cache: cache
+        )
+
+        let renderer = LiveFrameRenderer()
+        _ = try await nextFrame(renderer) {
+            renderer.submit(.init(composed: withRenders, scale: 1, time: time, structure: fixture.project.structure))
+        }
+        setOpacity(20, in: &fixture)
+        #expect(!renderer.redraw(with: fixture.project, structure: fixture.project.structure, time: time, interactive: true))
+        #expect(renderer.refusal == .needsScene)
+
+        // Built without the renders, the same drag is drawn.
+        let live = try await fixture.build(forPreview: true)
+        _ = try await nextFrame(renderer) {
+            renderer.submit(.init(composed: live, scale: 1, time: time, structure: fixture.project.structure))
+        }
+        setOpacity(80, in: &fixture)
+        #expect(renderer.redraw(with: fixture.project, structure: fixture.project.structure, time: time, interactive: true))
+        #expect(renderer.refusal == nil)
+    }
+
+    @Test func aStructuralEditIsNotASceneToBuild() async throws {
+        var (fixture, shape) = try await fixture()
+        defer { fixture.cleanUp() }
+        let time = CMTime(seconds: 1, preferredTimescale: 600)
+        let renderer = LiveFrameRenderer()
+        let built = try await fixture.build(forPreview: true)
+        _ = try await nextFrame(renderer) {
+            renderer.submit(.init(composed: built, scale: 1, time: time, structure: fixture.project.structure))
+        }
+        fixture.project.editClip(shape, in: fixture.timelineID) { $0.startOffset = CMTime(seconds: 0.25, preferredTimescale: 600) }
+        #expect(!renderer.redraw(with: fixture.project, structure: fixture.project.structure, time: time, interactive: true))
+        #expect(renderer.refusal == .structureChanged)
+    }
 }
