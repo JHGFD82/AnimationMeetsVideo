@@ -112,6 +112,7 @@ extension TimelineView {
                     .fill(Design.accent.opacity(0.12))
                     .overlay { RoundedRectangle(cornerRadius: 2, style: .continuous).strokeBorder(Design.accent.opacity(0.9), lineWidth: 1) }
                     .frame(width: rect.width, height: rect.height)
+                    .opacity(lassoFading ? 0 : 1)
                     .offset(x: rect.minX - origin.x, y: rect.minY - origin.y)
             }
         }
@@ -167,6 +168,7 @@ extension TimelineView {
         LassoMonitor(
             onDown: { point, flags in
                 guard isEmptyTrackSpace(point, pixelsPerSecond: pixelsPerSecond) else { return false }
+                lassoFading = false
                 lasso = LassoDrag(start: point, current: point, kept: flags.contains(.shift) ? groupSelectionIncludingClip : [])
                 return true
             },
@@ -181,15 +183,31 @@ extension TimelineView {
             onUp: { point in
                 guard var drag = lasso else { return }
                 drag.current = point
-                lasso = nil
                 if drag.isClick {
+                    lasso = nil
                     clearSelection()
                     return
                 }
+                // The rectangle fades rather than vanishing.
+                lasso = drag
+                fadeLasso()
                 let hits = lassoHits(drag.rect, pixelsPerSecond: pixelsPerSecond)
                 finishLasso(Set(hits.map(\.clip.id)).union(drag.kept), single: hits.count == 1 && drag.kept.isEmpty ? hits[0] : nil)
             }
         )
+    }
+
+    /// Lets the lasso go: its rectangle fades, then it is gone.
+    private func fadeLasso() {
+        guard let released = lasso else { return }
+        withAnimation(Design.Motion.respecting(Design.Motion.fade)) { lassoFading = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            if lasso == released {
+                lasso = nil
+                lassoFading = false
+            }
+        }
     }
 
     /// The clips picked with a lasso, and the clip selected on its own if

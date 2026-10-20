@@ -152,6 +152,8 @@ struct TimelineView: View {
     @State var groupSelection: Set<UUID> = []
     /// The lasso being dragged across the tracks.
     @State var lasso: LassoDrag?
+    /// Whether the lasso, let go, is fading out.
+    @State var lassoFading = false
     @State var tool: TimelineTool = .arrow
     /// The section selected in the lane under the ruler, for Delete.
     @State var selectedSectionID: UUID?
