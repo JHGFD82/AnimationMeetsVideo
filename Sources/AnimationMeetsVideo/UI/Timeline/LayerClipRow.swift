@@ -30,6 +30,10 @@ struct LayerClipRow: View {
     let structure: EditingProject
     let timelineID: UUID
     let selection: TimelineSelection?
+    /// This layer's clips picked together with a lasso.
+    let groupSelected: Set<UUID>
+    /// Adds a clip to the clips picked together, or takes it out.
+    let onToggleGroup: (UUID) -> Void
     let pixelsPerSecond: CGFloat
     let width: CGFloat
     let height: CGFloat
@@ -172,6 +176,7 @@ struct LayerClipRow: View {
         ZStack(alignment: .topLeading) {
             ForEach(layer.clips) { clip in
                 let isSelected = selection?.layerID == layer.id && selection?.timelineClipID == clip.id
+                let isInGroup = groupSelected.contains(clip.id)
                 let info = project.resolvedInfo(for: clip.source)
                 let joinedLead = project.joinedLead(of: clip, among: layer.clips)
                 ClipBlockView(
@@ -184,7 +189,9 @@ struct LayerClipRow: View {
                     splitsChannels: showsChannels,
                     acceptsTransitions: project.playsVideo(clip),
                     joinedLead: joinedLead,
-                    isSelected: isSelected,
+                    isSelected: isSelected || isInGroup,
+                    isInGroup: isInGroup,
+                    onToggleInGroup: { onToggleGroup(clip.id) },
                     selectedTransition: isSelected ? selection?.transitionEdge : nil,
                     pixelsPerSecond: pixelsPerSecond,
                     height: height,
@@ -312,6 +319,7 @@ extension LayerClipRow: Equatable {
         MainActor.assumeIsolated {
             lhs.layer == rhs.layer && lhs.name == rhs.name && lhs.frameRate == rhs.frameRate
                 && lhs.timelineID == rhs.timelineID && lhs.selection == rhs.selection
+                && lhs.groupSelected == rhs.groupSelected
                 && lhs.pixelsPerSecond == rhs.pixelsPerSecond && lhs.width == rhs.width && lhs.height == rhs.height
                 && lhs.showsChannels == rhs.showsChannels && lhs.visibleX == rhs.visibleX
                 && lhs.pushed == rhs.pushed && lhs.tool == rhs.tool

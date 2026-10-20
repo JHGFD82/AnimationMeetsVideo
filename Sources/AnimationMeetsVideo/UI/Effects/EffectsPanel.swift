@@ -71,6 +71,8 @@ struct EffectsPanel: View {
     /// where a drag over it would go.
     @State private var stackLayout = EffectStackLayout()
     @State private var stackScroller = EdgeAutoScroll()
+    /// The control column's width and the lanes' zoom and scroll.
+    @State private var lanes = LaneViewport()
     @State private var dropLine: CGFloat?
     /// The editor's active panel, which has the keys. Read as a key comes
     /// in, not while drawing, so becoming active doesn't redraw the stack.
@@ -214,8 +216,11 @@ struct EffectsPanel: View {
 
     private func stack(of clip: TimelineClip, in timeline: Timeline) -> some View {
         GeometryReader { proxy in
-            let laneWidth = max(80, proxy.size.width - EffectsPanelMetrics.labelWidth - 2 * EffectsPanelMetrics.laneInset)
-            let geometry = ClipLaneGeometry(clip: clip, timeline: timeline, width: laneWidth)
+            let laneWidth = max(80, proxy.size.width - lanes.labelWidth - 2 * EffectsPanelMetrics.laneInset)
+            let geometry = ClipLaneGeometry(clip: clip, timeline: timeline, width: laneWidth * lanes.zoom)
+            // One frame at its widest is as close as the lanes zoom.
+            let fitPixelsPerSecond = laneWidth / CGFloat(geometry.duration)
+            let maxZoom = CGFloat(max(timeline.frameRate, 1)) * TimelineViewport.maximumFrameWidth / fitPixelsPerSecond
             let layer = project.clipAndLayer(clip.id, in: timelineID)?.layer
             let context = RowContext(
                 clip: clip, timeline: timeline, layer: layer ?? TimelineLayer(clips: []),
@@ -228,11 +233,25 @@ struct EffectsPanel: View {
                         .font(Design.Typeface.micro)
                         .foregroundStyle(Design.textTertiary)
                         .padding(.leading, 8)
-                        .frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
+                        .frame(width: lanes.labelWidth, alignment: .leading)
                     if showsKeyframeLanes {
-                        PanelRuler(geometry: geometry, onSeek: onSeek)
-                            .overlay(alignment: .topLeading) { rangeBar(clip, geometry: geometry) }
-                            .padding(.horizontal, EffectsPanelMetrics.laneInset)
+                        LaneWindow {
+                            PanelRuler(geometry: geometry, onSeek: onSeek)
+                                .overlay(alignment: .topLeading) { rangeBar(clip, geometry: geometry) }
+                        }
+                        .padding(.horizontal, EffectsPanelMetrics.laneInset)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Effect lanes ruler")
+                        .accessibilityValue("Playhead \(timeline.snappedToFrame(playhead.time).compactTimecode(frameRate: timeline.frameRate)), zoom \(Int((lanes.zoom * 100).rounded())) percent")
+                        .accessibilityAdjustableAction { direction in
+                            let step = Timeline.frameDuration(for: timeline.frameRate)
+                            let now = timeline.snappedToFrame(playhead.time)
+                            onSeek(direction == .increment ? CMTimeAdd(now, step) : CMTimeSubtract(now, step))
+                        }
+                        .accessibilityAction(named: "Zoom the lanes in") { lanes.zoomStep(in: true) }
+                        .accessibilityAction(named: "Zoom the lanes out") { lanes.zoomStep(in: false) }
+                        .accessibilityAction(named: "Scroll the lanes later") { lanes.scrollStep(later: true) }
+                        .accessibilityAction(named: "Scroll the lanes earlier") { lanes.scrollStep(later: false) }
                     } else {
                         Spacer(minLength: 0)
                     }
@@ -258,6 +277,39 @@ struct EffectsPanel: View {
                 }
                 .sunken(.sunken)
             }
+            .environment(lanes)
+            .onPreferenceChange(ControlColumnWidthKey.self) { width in
+                lanes.labelWidth = max(lanes.labelWidth, width.rounded(.up))
+            }
+            .onChange(of: laneWidth, initial: true) { _, width in lanes.fit(width: width, maxZoom: maxZoom) }
+            .onChange(of: maxZoom) { _, zoom in lanes.fit(width: laneWidth, maxZoom: zoom) }
+            .onChange(of: clip.id) { _, _ in lanes.reset() }
+            .background(alignment: .topLeading) { laneInput(width: laneWidth) }
+            .rubberBandSettling(Bindable(lanes).zoomBand)
+            .rubberBandSettling(Bindable(lanes).scrollBand)
+        }
+    }
+
+    /// Pinch, Option-scroll and sideways scroll over the lanes zoom and
+    /// scroll them; vertical scrolling still goes to the stack.
+    @ViewBuilder
+    private func laneInput(width: CGFloat) -> some View {
+        if showsKeyframeLanes {
+            TimelineInputMonitor(
+                onMagnify: { factor, _, x, _ in lanes.zoom(by: factor, aboutX: x, pinching: true) },
+                onScroll: { deltaX, deltaY, flags, x, phase in
+                    if flags.contains(.option) {
+                        lanes.zoom(by: exp(deltaY * 0.01), aboutX: x, pinching: false)
+                        return true
+                    }
+                    // Also without movement, so a lift lets go of the edge.
+                    lanes.scroll(by: deltaX, phase: phase)
+                    return false
+                },
+                onMagnifyEnded: { lanes.endPinch() }
+            )
+            .frame(width: width)
+            .padding(.leading, lanes.labelWidth + EffectsPanelMetrics.laneInset)
         }
     }
 
@@ -298,7 +350,8 @@ struct EffectsPanel: View {
         /// The playhead as a row acts, read then rather than when it was
         /// drawn: the rows in a `StackRow` aren't redrawn as it moves.
         var now: (frameTime: CMTime, sourceNow: CMTime) {
-            (frameTime(animated: true), sourceNow(animated: true))
+            let frame = timeline.snappedToFrame(playhead.actionTime)
+            return (frame, geometry.clampedSource(atTimeline: frame))
         }
     }
 
@@ -364,8 +417,8 @@ struct EffectsPanel: View {
     func labelled<Label: View, Lane: View>(_ label: Label, lane: Lane) -> some View {
         HStack(spacing: 0) {
             if showsKeyframeLanes {
-                label.frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
-                lane
+                ControlColumn { label }
+                LaneWindow { lane }
                     .padding(.horizontal, EffectsPanelMetrics.laneInset)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.black.opacity(0.12))
@@ -382,7 +435,7 @@ struct EffectsPanel: View {
     func besideLane<Content: View>(_ content: Content) -> some View {
         HStack(spacing: 0) {
             if showsKeyframeLanes {
-                content.frame(width: EffectsPanelMetrics.labelWidth, alignment: .leading)
+                ControlColumn { content }
                 Color.black.opacity(0.12)
             } else {
                 content.frame(maxWidth: .infinity, alignment: .leading)
@@ -396,8 +449,15 @@ struct EffectsPanel: View {
 
     private func playheadLine(_ c: RowContext) -> some View {
         PlayheadReader(playhead: playhead) { _ in
-            LanePlayheadLine(playback: playback, parked: c.frameTime(animated: true), geometry: c.geometry)
-                .allowsHitTesting(false)
+            HStack(spacing: 0) {
+                ControlColumn { Color.clear.frame(height: 0) }
+                LaneWindow {
+                    LanePlayheadLine(playback: playback, parked: c.frameTime(animated: true), geometry: c.geometry)
+                        .frame(width: c.geometry.width, alignment: .topLeading)
+                }
+                .padding(.horizontal, EffectsPanelMetrics.laneInset)
+            }
+            .allowsHitTesting(false)
         }
     }
 
@@ -693,12 +753,14 @@ struct EffectsPanel: View {
             .equatable()
     }
 
-    /// A linked control as a held drag has it, for its other axis to show:
-    /// dragging the width of a linked size changes the height, which the
-    /// row reads from the project, still as it was. Only a linked row reads
-    /// the held project, so a step of a drag redraws those and not every row.
+    /// A control as a held drag has it, for the row to show. A linked size
+    /// dragged by its width changes the height too, and an animated value
+    /// dragged where it has no keyframe gets one, which its diamond and its
+    /// lane show at once; the row reads the project, still as it was. Only
+    /// those rows read the held project, so a step of a drag redraws them
+    /// and not every row.
     private func heldControl(_ control: EffectControl, of effect: Effect, in clip: TimelineClip) -> EffectControl? {
-        guard control.kind.isLinkable, control.linked, let held = projectState?.held else { return nil }
+        guard (control.kind.isLinkable && control.linked) || control.isAnimated, let held = projectState?.held else { return nil }
         return held.clipAndLayer(clip.id, in: timelineID)?.clip.effect(id: effect.id)?.controls.first { $0.id == control.id }
     }
 
@@ -746,11 +808,12 @@ struct EffectsPanel: View {
                 timelineID: timelineID,
                 parameter: .control(control.kind, clipID: clip.id, effectID: effect.id, controlID: control.id)
             )
+            let shown = heldControl(control, of: effect, in: clip) ?? control
             labelled(
                 ParameterRow(
                     name: control.kind.name,
                     indent: EffectsPanelMetrics.controlIndent - 12,
-                    components: (heldControl(control, of: effect, in: clip) ?? control).values(at: c.sourceNow(animated: control.isAnimated)),
+                    components: shown.values(at: c.sourceNow(animated: control.isAnimated)),
                     unit: control.kind.unit,
                     dragStep: control.kind.dragStep,
                     dragRange: { control.kind.range(ofComponent: $0) },
@@ -758,7 +821,7 @@ struct EffectsPanel: View {
                     componentDragStep: EqualizerBand(controlKind: control.kind) == nil ? nil : { control.kind.dragStep(ofComponent: $0) },
                     isAnimated: control.isAnimated,
                     isSelected: isSelected,
-                    keyframeTimes: control.number.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
+                    keyframeTimes: shown.number.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
                     playhead: c.frameTime(animated: control.isAnimated),
                     linked: control.kind.isLinkable ? control.linked : nil,
                     onToggleLink: { editControl(control.id, of: effect, in: clip) { $0.linked.toggle() } },
@@ -781,7 +844,7 @@ struct EffectsPanel: View {
                     menu: menu
                 ),
                 lane: ParameterLane(
-                    marks: control.number.marks, geometry: c.geometry, playhead: c.frameTime(animated: control.isAnimated), height: EffectsPanelMetrics.rowHeight,
+                    marks: shown.number.marks, geometry: c.geometry, playhead: c.frameTime(animated: control.isAnimated), height: EffectsPanelMetrics.rowHeight,
                     onSeek: onSeek,
                     onMove: { from, to, copy in
                         editControl(control.id, of: effect, in: clip) { $0.number.moveKeyframe(at: from, to: to, copying: copy) }
@@ -927,7 +990,8 @@ struct EffectsPanel: View {
             )
             .padding(.horizontal, 8),
             lane: ParameterLane(
-                marks: value.marks, geometry: c.geometry, playhead: c.frameTime(animated: value.isAnimated), height: EffectsPanelMetrics.rowHeight,
+                marks: (projectState?.held?.clipAndLayer(clip.id, in: timelineID)?.clip[keyPath: keyPath] ?? value).marks,
+                geometry: c.geometry, playhead: c.frameTime(animated: value.isAnimated), height: EffectsPanelMetrics.rowHeight,
                 onSeek: onSeek,
                 onMove: { from, to, copy in editClip(clip.id) { $0[keyPath: keyPath].moveKeyframe(at: from, to: to, copying: copy) } },
                 onDelete: { time in editClip(clip.id) { $0[keyPath: keyPath].removeKeyframe(at: time) } },

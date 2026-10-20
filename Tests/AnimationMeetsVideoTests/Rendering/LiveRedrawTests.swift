@@ -165,4 +165,23 @@ import Testing
         #expect(!renderer.redraw(with: fixture.project, structure: fixture.project.structure, time: time, interactive: true))
         #expect(renderer.refusal == .structureChanged)
     }
+
+    /// The frames the player plays are drawn with a held drag's values
+    /// (`LiveValues`), then as built once the drag's values are in the build.
+    @Test func aPlayingFrameFollowsAHeldDrag() async throws {
+        var (fixture, shape) = try await fixture()
+        defer { fixture.cleanUp(); LiveValues.shared.clips = nil }
+        let time = CMTime(seconds: 1, preferredTimescale: 600)
+        let built = try await CompositionExporter.buildComposedTimeline(
+            for: fixture.project, timelineID: fixture.timelineID, forPreview: true, options: DrawingOptions()
+        )
+        #expect(try await grayLevel(of: built, at: time) > 180)
+
+        fixture.setControl(.fill, [0.2, 0.2, 0.2, 1], ofClip: shape)
+        LiveValues.shared.clips = fixture.project.clipsByID
+        #expect(try await grayLevel(of: built, at: time) < 80)
+
+        LiveValues.shared.clips = nil
+        #expect(try await grayLevel(of: built, at: time) > 180)
+    }
 }

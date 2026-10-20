@@ -28,6 +28,7 @@ struct LivePlayheadRail: View {
                     pixelsPerSecond: viewport.pixelsPerSecond,
                     originX: viewport.x(atSeconds: 0),
                     seconds: viewport.contentSeconds,
+                    generation: playback.itemSwaps,
                     onLeaveView: onLeaveView
                 )
                 : nil

@@ -145,6 +145,11 @@ struct TimelineView: View {
     @State private var headerBarHeight: CGFloat = 32
     /// The layer selected by its header, for Delete. Selecting a clip clears it.
     @State var selectedLayerID: UUID?
+    /// Clips picked together with a lasso, two or more (one is selected as
+    /// a clip). Selecting anything else lets go of them.
+    @State var groupSelection: Set<UUID> = []
+    /// The lasso being dragged across the tracks.
+    @State var lasso: LassoDrag?
     @State var tool: TimelineTool = .arrow
     /// The section selected in the lane under the ruler, for Delete.
     @State var selectedSectionID: UUID?
@@ -621,6 +626,8 @@ struct TimelineView: View {
                         }
                     )
                 )
+                .background(lassoMonitor(pixelsPerSecond: viewport.pixelsPerSecond))
+                .overlay { lassoOverlay }
                 .onChange(of: viewport.width, initial: true) { _, width in trackAreaWidth = width }
             }
         }
@@ -643,7 +650,15 @@ struct TimelineView: View {
             if newValue != nil {
                 selectedLayerID = nil
                 selectedSectionID = nil
+                groupSelection = []
             }
+        }
+        // Clips gone from the timeline (deleted, moved to another timeline)
+        // are no longer picked.
+        .onChange(of: timeline) { _, new in
+            guard !groupSelection.isEmpty else { return }
+            let present = Set(new.layers.flatMap(\.clips).map(\.id))
+            if !groupSelection.isSubset(of: present) { groupSelection.formIntersection(present) }
         }
         // A song dragged in as the only thing on the timeline: show all of
         // it. Not when deleting the rest leaves a song alone.
@@ -671,6 +686,7 @@ struct TimelineView: View {
             zoomedPixelsPerSecond = nil
             scrollX = 0
             expandedJoint = nil
+            groupSelection = []
         }
     }
 
@@ -747,6 +763,7 @@ struct TimelineView: View {
                         onSelect: {
                             selectedLayerID = layer.id
                             selectedSectionID = nil
+                            groupSelection = []
                             onSelectLayer()
                         },
                         onDelete: { deleteLayer(layer.id) }
@@ -908,6 +925,8 @@ struct TimelineView: View {
                         structure: structure,
                         timelineID: timelineID,
                         selection: selection,
+                        groupSelected: groupSelection.isEmpty ? [] : groupSelection.intersection(layer.clips.map(\.id)),
+                        onToggleGroup: { toggleInGroup($0) },
                         pixelsPerSecond: pixelsPerSecond,
                         width: contentWidth,
                         height: clipRowHeight(of: layer),
@@ -1080,6 +1099,7 @@ struct TimelineView: View {
             onSelect: { id in
                 selectedSectionID = id
                 selectedLayerID = nil
+                groupSelection = []
                 onSelectLayer()
             },
             onCreate: { start, end in

@@ -568,6 +568,14 @@ lower or raise it. A press without a drag still opens the field for typing.
 - The viewer follows the drag live. Letting go saves it as one undo step.
   On an animated control it sets the keyframe at the playhead, as typing
   does. Escape during a drag puts the value back.
+- Dragging while the project plays keeps it playing, and the viewer shows
+  the value as it changes, as choppily as the effect draws. The frames the
+  player draws are patched with the drag's values (`LiveValues`), so
+  nothing is built until playing stops, and the item isn't swapped, which
+  would show black and cut the sound. A stretch that plays from a render
+  has the item's video composition changed in place to draw it from its
+  clips when the drag starts; a drag that changes more than values pauses
+  playback instead.
 - Linked Scale changes both axes; a value with two parts (Position x and
   y) drags the part pressed.
 - The project settings sheet's width, height and frame rate don't drag:
@@ -582,6 +590,14 @@ kept between launches. To the right of each control row is its keyframe lane, wi
 and interactions as the timeline's lanes today: click to go to it, drag to
 retime, right-click for ease presets and Delete Keyframe. The panel's
 playhead is the timeline's: scrubbing either moves both.
+
+The control column is as wide as its widest row needs, and no narrower than
+it starts, so a large value never runs into the lanes; the lanes take the
+rest. They zoom (pinch, or Option-scroll) and scroll sideways like the
+timeline's, from the whole clip in to one frame 80 points wide, and
+stretch or slide and spring back past either limit. The controls
+themselves don't scroll sideways. VoiceOver has actions on the ruler to
+zoom and scroll the lanes.
 
 Keyframes are in the clip's [source time](#source-time). Moving a clip
 carries its animation along. Trimming its start doesn't shift the animation against

@@ -251,6 +251,29 @@ struct UISnapshots {
         )
     }
 
+    /// The same panel with a rectangle size too wide for the control column:
+    /// the column widens to fit it, and the lanes keep what is left.
+    @Test func wideValuesEffectsPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        project.editClip(shape.clipID, in: timelineID) { clip in
+            for index in clip.effects[0].controls.indices where clip.effects[0].controls[index].kind == .shapeSize {
+                clip.effects[0].controls[index].setComponent(0, to: 1_234_567, at: .zero)
+                clip.effects[0].controls[index].setComponent(1, to: 7_654_321, at: .zero)
+            }
+        }
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID),
+                playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "wide-values-effects-panel", size: CGSize(width: 620, height: 420)
+        )
+    }
+
     /// A selected effect outlined whole, its controls included, in the
     /// active panel (accent) and in one that isn't (grey).
     @Test func selectedEffectOutline() throws {

@@ -34,6 +34,8 @@ struct ClipMenuHost: View, Equatable {
         var reachNames: [String]
         /// What the menu's Paste items are enabled by.
         var canPasteClip: Bool
+        /// Whether the clip is one of several selected together.
+        var inGroup: Bool
         var canPasteEffects: Bool
     }
 
@@ -52,7 +54,7 @@ extension ClipBlockView {
             acceptsEffects: acceptsEffects, acceptsSoundEffects: acceptsSoundEffects, playsSound: playsSound,
             reachCurrent: reach?.current, reachSummary: reach?.summary,
             reachOptions: reach?.options.map(\.id) ?? [], reachNames: reach?.options.map(\.name) ?? [],
-            canPasteClip: EditorClipboard.shared.clip != nil, canPasteEffects: EditorClipboard.shared.hasEffects
+            canPasteClip: EditorClipboard.shared.hasClips, inGroup: isInGroup, canPasteEffects: EditorClipboard.shared.hasEffects
         )
     }
 
@@ -64,9 +66,10 @@ extension ClipBlockView {
             .keyboardShortcut("c", modifiers: .command)
         Button("Paste") { onClipboard(.paste) }
             .keyboardShortcut("v", modifiers: .command)
-            .disabled(EditorClipboard.shared.clip == nil)
+            .disabled(!EditorClipboard.shared.hasClips)
         Button("Duplicate") { onClipboard(.duplicate) }
             .keyboardShortcut("d", modifiers: .command)
+        Button(isInGroup ? "Put Selection in New Timeline" : "Put in New Timeline") { onClipboard(.nest) }
         Divider()
         if let reach {
             reachMenu(reach)

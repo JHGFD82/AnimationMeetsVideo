@@ -14,6 +14,16 @@ extension NumericExpression {
     }
 }
 
+/// The width of the number as it is shown, for `NumericField` to keep the
+/// widest.
+private struct NumberWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// A number shown as text that turns into a field when clicked, After
 /// Effects-style. Return or clicking away enters what was typed, which may
 /// be arithmetic ("100+25"); Escape cancels. Text that isn't a number beeps
@@ -52,6 +62,16 @@ struct NumericField: View {
     /// The value a drag has reached, shown in place of `value`, which
     /// stays as it was while the drag is held.
     @State private var dragged: Double?
+    /// Whether Escape cancelled this press's drag (see `ValueDragPress`).
+    @State private var press = ValueDragPress()
+    /// Set from a drag's start until just after its button is released, so
+    /// the click that ends a drag (the cursor is back where it started)
+    /// doesn't also open the field for typing.
+    @State private var endsDrag = false
+    /// The widest the number has been shown, which it keeps being given:
+    /// a drag adding a decimal point to a whole number would otherwise
+    /// resize the row around it, and again taking it away.
+    @State private var widest: CGFloat = 0
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -83,12 +103,28 @@ struct NumericField: View {
                 .foregroundStyle(Design.accent)
                 .lineLimit(1)
                 .fixedSize()
+                .background(GeometryReader { proxy in
+                    Color.clear.preference(key: NumberWidthKey.self, value: proxy.size.width)
+                })
+                .onPreferenceChange(NumberWidthKey.self) { width in
+                    if width > widest { widest = width }
+                }
+                .frame(minWidth: widest, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture(perform: beginEditing)
                 .simultaneousGesture(dragStep.map { step in
                     DragGesture(minimumDistance: 3, coordinateSpace: .global)
-                        .onChanged { _ in beginDrag(step: step) }
-                        .onEnded { _ in drag?.finish(cancelled: false) }
+                        .onChanged { _ in
+                            if press.mayBegin { beginDrag(step: step) }
+                        }
+                        .onEnded { _ in
+                            press.release()
+                            drag?.finish(cancelled: false)
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(250))
+                                endsDrag = false
+                            }
+                        }
                 })
                 .help(dragStep == nil
                     ? "Click to type a value. Arithmetic such as 100+25 works."
@@ -103,12 +139,14 @@ struct NumericField: View {
     }
 
     private func beginEditing() {
+        guard !endsDrag else { return }
         draft = NumericExpression.format(value, maxFractionDigits: 3)
         isEditing = true
     }
 
     private func beginDrag(step: Double) {
         guard drag == nil else { return }
+        endsDrag = true
         let start = value
         dragStart = start
         history?.beginGesture()
@@ -130,6 +168,7 @@ struct NumericField: View {
                 // A drag let go (see `ProjectState.letGo`) has written to
                 // the project already, so a cancelled one is put back.
                 if cancelled {
+                    press.cancel()
                     onCommit(start)
                 } else if let last {
                     onCommit(last)

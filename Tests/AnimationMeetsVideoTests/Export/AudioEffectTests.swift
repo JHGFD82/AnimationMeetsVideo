@@ -101,7 +101,6 @@ import Testing
         let clip = try #require(project.clipAndLayer(clipID, in: timelineID)?.clip)
         #expect(clip.effects.isEmpty)
         #expect(clip.audioEffects.map(\.id) == [limiter, eq])
-        #expect(clip.hasOwnMix)
 
         project.moveEffect(limiter, ofClip: clipID, in: timelineID, toIndex: 1)
         let copyID = project.duplicateEffect(eq, ofClip: clipID, in: timelineID)

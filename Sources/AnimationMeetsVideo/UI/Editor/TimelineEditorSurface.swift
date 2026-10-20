@@ -357,6 +357,7 @@ struct TimelineEditorSurface<Library: View>: View {
             if effectsState.showUpTo != nil, partialView == nil { effectsState.showUpTo = nil }
         }
         .onAppear {
+            playhead.liveTime = { [playback] in playback.isPlaying ? playback.player.currentTime() : nil }
             let project = $project
             graphs.onEdit = { change in change(&project.wrappedValue) }
             graphs.onSeek = { time in scrub(to: time) }
@@ -374,6 +375,16 @@ struct TimelineEditorSurface<Library: View>: View {
         }
         .onChange(of: compositionKey) { old, new in
             renderer?.noteActivity()
+            if playback.isPlaying, playback.playedStructure == viewedProject.structure,
+               !playback.playedUsesRenders || playback.playWithoutRenders() {
+                // Only values changed (a drag's last value, typed, undone):
+                // the frames the player draws take them without swapping
+                // its item, which blinks the viewer. The timeline is built
+                // when playing stops.
+                LiveValues.shared.clips = viewedProject.clipsByID
+                if buildPhase != .idle { rebuildPlayerItem() }
+                return
+            }
             if isGesturing, new.differsOnlyInSpeed(from: old) {
                 // Retiming is judged by playing, not by the frame at the
                 // playhead: wait for the mouse to be released.
@@ -421,6 +432,7 @@ struct TimelineEditorSurface<Library: View>: View {
             // frame pauses, then seeks) is there at once.
             if !playing { playheadTime = playback.currentTime }
             renderer?.setPlaying(playing)
+            if !playing, LiveValues.shared.clips != nil, projectState?.isHolding != true { rebuildPlayerItem() }
             if !playing, renderRebuildPending {
                 renderRebuildPending = false
                 rebuildPlayerItem()
@@ -642,6 +654,26 @@ struct TimelineEditorSurface<Library: View>: View {
         // `onChange(of: compositionKey)`); volume and pan need no picture.
         guard key != before, !key.differsOnlyInSpeed(from: before) else { return false }
         renderer?.noteActivity()
+        if playback.isPlaying {
+            // What plays was built before the drag, with its values in it.
+            // The compositor draws each frame with the drag's values
+            // instead (`LiveValues`), when only values changed and none of
+            // what plays is a render, which can't take them. Letting the
+            // drag go would write every step to the project, and each of
+            // those builds the timeline again.
+            guard playback.playedStructure == viewed.structure else {
+                playback.player.pause()
+                return false
+            }
+            // A stretch that plays from a render draws from its clips
+            // instead, as the item's video composition is changed in place.
+            if playback.playedUsesRenders, !playback.playWithoutRenders() {
+                playback.player.pause()
+                return false
+            }
+            LiveValues.shared.clips = viewed.clipsByID
+            return true
+        }
         if playback.redrawLive(viewed, structure: viewed.structure, interactive: true) { return true }
         if playback.liveRedrawNeedsScene {
             // The renderer bakes the stretch under the playhead two seconds
@@ -681,9 +713,24 @@ struct TimelineEditorSurface<Library: View>: View {
     /// A held drag ended, with its last value in the project or, cancelled,
     /// none. The sound and graphs go back to the project, and a picture
     /// drawn from the drag is replaced once the gesture is over.
+    /// Whether what plays can show the project as it is by drawing its
+    /// frames with the project's values (`LiveValues`): only values differ
+    /// from what it was built from, and none of it plays from a render.
+    private var playingCanFollow: Bool {
+        playback.isPlaying && !playback.playedUsesRenders && playback.playedStructure == viewedProject.structure
+    }
+
     private func heldDragEnded(drew: Bool) {
         playback.mixCurves.replace(with: MixCurves.of(project))
         graphs.update(project: project)
+        if playingCanFollow {
+            // What plays keeps drawing the project's values over it (the
+            // drag's last, or the original if it was cancelled) until it is
+            // built again, when playing stops.
+            LiveValues.shared.clips = viewedProject.clipsByID
+            return
+        }
+        LiveValues.shared.clips = nil
         guard drew else { return }
         if isGesturing {
             rebuildDeferred = true
@@ -793,8 +840,22 @@ struct TimelineEditorSurface<Library: View>: View {
                     guard buildID == id else { return }
                     buildPhase = .building
                 }
+                if !wasPaused, !resetPosition {
+                    // Playing: every swap stalls the player while the new
+                    // item seeks, so a run of edits (a slider dragged across
+                    // a clip's own-mix threshold) swaps once, when it has
+                    // paused, and not after every step.
+                    buildPhase = .settling
+                    if rebuildQueued {
+                        finish()
+                        return
+                    }
+                    try await Task.sleep(for: settleDelay)
+                    guard buildID == id else { return }
+                    buildPhase = .building
+                }
                 let item = AVPlayerItem(asset: composed.composition)
-                playback.prepare(item, with: composed, frameRate: frameRate)
+                playback.prepare(item, with: composed, structure: project.structure, frameRate: frameRate)
                 if player.timeControlStatus == .paused {
                     // Seeked before it's shown, so the swap doesn't flash
                     // the item's first frame, as when a render finishes.
@@ -815,12 +876,31 @@ struct TimelineEditorSurface<Library: View>: View {
                         playback.showLive(composed, structure: project.structure)
                     }
                 } else {
-                    let resumeTime = resetPosition ? playheadTime : player.currentTime()
+                    // Seeked before it replaces the old one, which plays on
+                    // meanwhile, so the swap doesn't jump back to the start
+                    // and wait for a seek. What the seek took is added on.
+                    var resumeTime = resetPosition ? playheadTime : player.currentTime()
+                    _ = await item.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                    guard buildID == id else { return }
+                    if !resetPosition, player.timeControlStatus != .paused {
+                        let took = CMTimeSubtract(player.currentTime(), resumeTime)
+                        if took.seconds > 0.03 {
+                            resumeTime = CMTimeAdd(player.currentTime(), took)
+                            _ = await item.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                            guard buildID == id else { return }
+                        }
+                    }
+                    await playback.coverSwap()
+                    guard buildID == id else { playback.uncoverSwap(); return }
                     player.replaceCurrentItem(with: item)
-                    _ = await player.seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)
                     player.play()
+                    playback.noteItemSwappedWhilePlaying()
+                    playback.uncoverSwap()
                 }
                 buildError = nil
+                // What was drawn over the item with a drag's values is in
+                // the item now.
+                if projectState?.isHolding != true { LiveValues.shared.clips = nil }
                 finish()
             } catch is CancellationError {
                 finish()

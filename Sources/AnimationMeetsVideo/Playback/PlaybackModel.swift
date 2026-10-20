@@ -14,6 +14,17 @@ final class PlaybackModel {
     let beatClicks: BeatClickPlayer
     private(set) var currentTime: CMTime = .zero
     private(set) var isPlaying = false
+    /// How many times the player's item was swapped for a new build while
+    /// playing, after its seek and play. The playhead that follows the
+    /// player binds as the item is replaced, before the seek, and binds
+    /// again when this changes.
+    private(set) var itemSwaps = 0
+    /// The project's structure (`EditingProject.structure`) the player's
+    /// item was built from, and whether any of it plays from a render. A
+    /// drag of values alone can be drawn over what plays when the structure
+    /// is the same and none of it is a render (`LiveValues`).
+    @ObservationIgnored private(set) var playedStructure: EditingProject?
+    @ObservationIgnored private(set) var playedUsesRenders = false
     /// The size the viewer is asked to draw at.
     var quality: PreviewQuality {
         didSet {
@@ -170,8 +181,25 @@ final class PlaybackModel {
 
     /// Gives `item` the composition at the current level, and keeps
     /// `composed` to draw the other levels from.
-    func prepare(_ item: AVPlayerItem, with composed: ComposedTimeline, frameRate: Double) {
+    /// Has the playing item draw every stretch from its clips, not from
+    /// its renders, which hold the values they were made with and can't
+    /// follow a drag (`LiveValues`). Only the item's video composition
+    /// changes, so the sound plays on and the picture doesn't blink. False
+    /// when there is nothing to change.
+    @discardableResult
+    func playWithoutRenders() -> Bool {
+        guard playedUsesRenders, let composed, let item = player.currentItem,
+              composed.unrenderedVideoComposition != nil
+        else { return false }
+        playedUsesRenders = false
+        item.videoComposition = composed.videoComposition(scaledBy: level.scale, withoutRenders: true)
+        return true
+    }
+
+    func prepare(_ item: AVPlayerItem, with composed: ComposedTimeline, structure: EditingProject, frameRate: Double) {
         self.composed = composed
+        playedStructure = structure
+        playedUsesRenders = !composed.cachedKeys.isEmpty
         self.frameRate = frameRate
         item.videoComposition = composed.videoComposition(scaledBy: level.scale)
         item.audioMix = composed.audioMix(curves: mixCurves, meter: mixMeter)
@@ -246,7 +274,43 @@ final class PlaybackModel {
     /// scrubbing, and when there is nothing to show.
     func clearLive() {
         liveRenderer.cancel()
+        guard !coversSwap else { return }
         if liveFrame != nil { liveFrame = nil }
+    }
+
+    /// Whether a picture of the frame being played covers the viewer while
+    /// the item is swapped (`coverSwap`), which `clearLive` leaves alone.
+    @ObservationIgnored private var coversSwap = false
+
+    /// Covers the viewer with the frame playing now, drawn from the item
+    /// about to be replaced, so the swap doesn't show black while the new
+    /// item's first frame is made. The layer only hands out its own frame
+    /// while paused. Call `uncoverSwap` once the new item plays.
+    func coverSwap() async {
+        guard let composed, composed.hasPictures, isPlaying else { return }
+        let generator = AVAssetImageGenerator(asset: composed.composition)
+        generator.videoComposition = composed.videoComposition(scaledBy: level.scale)
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.05, preferredTimescale: 600)
+        guard let image = try? await generator.image(at: player.currentTime()).image else { return }
+        coversSwap = true
+        liveFrame = .image(image)
+    }
+
+    /// Lets go of the cover once the new item is playing and has had a
+    /// moment to draw (or after at most a second).
+    func uncoverSwap() {
+        guard coversSwap else { return }
+        Task { @MainActor [weak self] in
+            for _ in 0..<30 {
+                try? await Task.sleep(for: .milliseconds(30))
+                guard let self else { return }
+                if self.player.timeControlStatus == .playing, self.player.currentItem?.status == .readyToPlay { break }
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+            self?.coversSwap = false
+            self?.clearLive()
+        }
     }
 
     private func playStateChanged(_ playing: Bool) {
@@ -310,7 +374,7 @@ final class PlaybackModel {
         level = wanted
         drawingOptions.update(isQuarterSize: wanted == .quarter)
         if let item = player.currentItem, let composed {
-            item.videoComposition = composed.videoComposition(scaledBy: wanted.scale)
+            item.videoComposition = composed.videoComposition(scaledBy: wanted.scale, withoutRenders: !playedUsesRenders)
         }
         refreshStill()
         prerollIfPaused()
@@ -353,8 +417,12 @@ final class PlaybackModel {
     /// Scrub-friendly seek: only one seek is ever in flight, and a newer
     /// target replaces any that was queued behind it, so dragging the
     /// playhead doesn't pile up zero-tolerance seeks.
+    ///
+    /// The playhead is the master: moving it pauses playback, and what
+    /// was playing doesn't start again from where it lands.
     func seek(to time: CMTime) {
         if isTapeScrubbing { stopTape() }
+        if isPlaying || player.rate != 0 { player.pause() }
         tapeScrub.cue(time.seconds)
         move(to: time)
     }
@@ -386,6 +454,9 @@ final class PlaybackModel {
         refreshStill()
         prerollIfPaused()
     }
+
+    /// The item was swapped while playing and has seeked and resumed.
+    func noteItemSwappedWhilePlaying() { itemSwaps += 1 }
 
     func togglePlayback() {
         if isPlaying {

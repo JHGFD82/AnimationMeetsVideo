@@ -45,8 +45,12 @@ extension CompositionExporter {
             // Frames shown under a transition at a cut, on a track of their
             // own below the layer's so the two can overlap.
             let underlay = TrackHost()
-            // The sound of clips with a volume or pan of their own, each on
-            // a track of its own to be played through them.
+            // The sound of every clip, each on a track of its own to be played
+            // through its own volume, pan and effects. Giving a clip one of
+            // those later then isn't a change to what the player is built
+            // from, which would swap its item (and blink the viewer) as a
+            // volume is dragged across 0 dB. A track costs about 0.1 ms of
+            // decoding per second of sound.
             var clipSound: [TrackHost] = []
             // The footage again, for frame blending, echo and trails.
             var copyHosts: [TrackHost] = []
@@ -165,7 +169,7 @@ extension CompositionExporter {
                         // A retimed clip's sound is silent, or played at its
                         // new speed with or without its pitch changing.
                         if clip.isRetimed, clip.time.sound == .mute || clip.isReversed { placement.includesAudio = false }
-                        if placement.includesAudio, clip.hasOwnMix || clip.isRetimed || !fadeStages.isEmpty {
+                        if placement.includesAudio {
                             let sound = placement.copy()
                             sound.includesVideo = false
                             var sounds = [sound]

@@ -14,11 +14,13 @@ import Observation
 /// - The viewer, the sound and the graph windows follow (the editor's
 ///   surface reads `held` for them), since they are the point of dragging.
 /// - The row being dragged follows: its field shows the number, the other
-///   axis of a linked control and a sound row's slider read `held`, so the
-///   control is consistent with itself.
+///   axis of a linked control, a sound row's slider and an animated
+///   control's keyframes (a value dragged where it has none gets one, in its
+///   diamond and its lane, at once) read `held`, so the control is
+///   consistent with itself.
 /// - Everything else shows the project as it was until the drag ends: the
 ///   Inspector's numbers and other copies of the value, the timeline's
-///   volume lines and lanes, keyframe marks, the EQ's band rows beside its
+///   volume lines and lanes, the EQ's band rows beside its
 ///   graph, reset buttons, thumbnails. Each would run again on every step,
 ///   which is what holding the drag avoids, and each is a second place
 ///   for what the dragged control already shows. Autosave and undo see the

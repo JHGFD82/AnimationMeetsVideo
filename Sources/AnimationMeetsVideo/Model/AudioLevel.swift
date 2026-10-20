@@ -60,15 +60,6 @@ enum AudioPan {
     }
 }
 
-extension TimelineClip {
-    /// Whether the clip has a volume, pan or enabled sound effect of its
-    /// own, which puts its sound on a composition track of its own to be
-    /// played through them.
-    var hasOwnMix: Bool {
-        volume != AnimatedValue(0.0) || pan != AnimatedValue(0.0) || audioEffects.contains(where: \.enabled)
-    }
-}
-
 extension TimelineLayer {
     /// The layer's volume at `time` in its timeline, as a gain factor.
     func gain(at time: CMTime) -> Float {

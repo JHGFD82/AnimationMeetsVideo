@@ -40,8 +40,10 @@ keyboard (the library's list uses the arrows).
 | Home / End | Go to the start or the end |
 | ⌘B | Split at the playhead: the selected clip if the playhead is in it, otherwise every clip the playhead is in |
 | , / . | Nudge the selected clip a frame earlier or later; ten with Shift |
-| Delete | Delete the selected section, layer, transition or clip |
-| ⌘X / ⌘C / ⌘V / ⌘D | Cut, copy, paste at the playhead, or duplicate the selected clip (or the selected effect in the effects panel); also in the Edit menu |
+| Delete | Delete the selected section, layer, transition, clip, or the clips picked together |
+| Escape | Select nothing (no clip, layer, section or lasso); not during a value drag, which it cancels |
+| ⌘A | Pick every clip of the timeline together, for Cut, Copy, Duplicate, Delete and Put Selection in New Timeline (a lasso picks some with the pointer; a clip's VoiceOver actions Add to selection and Remove from selection do it one clip at a time) |
+| ⌘X / ⌘C / ⌘V / ⌘D | Cut, copy, paste at the playhead, or duplicate the selected clip, or all the clips picked together (or the selected effect in the effects panel); also in the Edit menu |
 | A / B / Y | Arrow, blade and slip tools |
 | N | Snapping on or off |
 | = / − / \\ | Zoom in, zoom out, fit the timeline to the window |

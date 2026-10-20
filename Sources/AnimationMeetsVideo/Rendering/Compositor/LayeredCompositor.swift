@@ -146,7 +146,10 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                     }
                     capture.record(instruction, frames: frames, size: size)
                 }
-                let image = Self.compose(instruction, at: request.compositionTime, outputSize: size) {
+                // A value drag held to one side of the project is seen as the
+                // viewer plays (see `LiveValues`).
+                let drawn = instruction.followingHeldValues(LiveValues.shared.clips)
+                let image = Self.compose(drawn, at: request.compositionTime, outputSize: size) {
                     request.sourceFrame(byTrackID: $0)
                 }
                 context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
