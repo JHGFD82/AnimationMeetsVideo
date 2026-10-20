@@ -75,9 +75,9 @@ import Testing
         #expect(sound.effects.isEmpty)
     }
 
-    /// A clip's first volume moves its sound onto a track of its own, so
-    /// the player has to be rebuilt; later level changes don't.
-    @Test func aClipsOwnVolumeRebuildsOnlyWhenItAppears() throws {
+    /// Every clip's sound is on a track of its own, so a clip's volume
+    /// appearing, or crossing 0 dB, doesn't rebuild the player.
+    @Test func aClipsVolumeNeverRebuildsThePlayer() throws {
         var project = EditingProject.empty
         let media = MediaClip(
             name: "Tone", kind: .audio, url: nil, duration: CMTime(value: 2, timescale: 1),
@@ -90,7 +90,7 @@ import Testing
         let lowered = CompositionKey(project: project)
         project.editClip(ids.clipID, in: project.rootTimelineID) { $0.volume.set(-12, at: .zero) }
         let lowerStill = CompositionKey(project: project)
-        #expect(lowered != flat)
+        #expect(lowered == flat)
         #expect(lowerStill == lowered)
     }
 
