@@ -74,6 +74,8 @@ struct TimelineEditorSurface<Library: View>: View {
     /// A value is being dragged, so the viewer waits (`rebuildDeferred`).
     @State private var isGesturing = false
     @State private var rebuildDeferred = false
+    /// The scene a held drag draws from, being built (`buildHeldScene`).
+    @State private var heldSceneBuild: Task<Void, Never>?
     /// The build that follows edits drawn without one (`redrawLive`), once
     /// they have paused for `settleDelay`.
     @State private var settledRebuild: Task<Void, Never>?
@@ -628,7 +630,8 @@ struct TimelineEditorSurface<Library: View>: View {
     /// compositionKey)` draws an edit. Returns whether the viewer drew it.
     /// A step it can't draw from a live frame (it changes what the player
     /// is built from, or the player is playing) lets the drag go to the
-    /// project, as edits other than drags do.
+    /// project, as edits other than drags do. One that has no scene to be
+    /// drawn from, or whose stretch is a render, waits for one to be built.
     private func drawHeld(_ held: EditingProject, after previous: EditingProject?) -> Bool {
         playback.mixCurves.replace(with: MixCurves.of(held))
         graphs.update(project: held)
@@ -640,8 +643,39 @@ struct TimelineEditorSurface<Library: View>: View {
         guard key != before, !key.differsOnlyInSpeed(from: before) else { return false }
         renderer?.noteActivity()
         if playback.redrawLive(viewed, structure: viewed.structure, interactive: true) { return true }
+        if playback.liveRedrawNeedsScene {
+            // The renderer bakes the stretch under the playhead two seconds
+            // after an edit, so the next drag finds it a render, which holds
+            // the values it was made with and can't be drawn again. A scene
+            // built without the renders gives the drag its fast path back,
+            // held, instead of every step building the timeline.
+            buildHeldScene()
+            return true
+        }
         projectState?.letGo()
         return false
+    }
+
+    /// Builds the viewer's scene from the drag as it is now, without the
+    /// renders, and draws the frame from it; steps made meanwhile are drawn
+    /// from it once it is there. One build at a time.
+    private func buildHeldScene() {
+        guard heldSceneBuild == nil, let held = projectState?.held else { return }
+        let source = viewed(held)
+        let id = timelineID
+        heldSceneBuild = Task {
+            defer { heldSceneBuild = nil }
+            let composed = try? await CompositionExporter.buildComposedTimeline(
+                for: source, timelineID: id, forPreview: true, meter: playback.meter, options: playback.drawingOptions, cache: nil
+            )
+            guard let composed, projectState?.isHolding == true else { return }
+            playback.showLive(composed, interactive: true, structure: source.structure)
+            // The drag has moved on while the scene was built.
+            if let latest = projectState?.held {
+                let now = viewed(latest)
+                _ = playback.redrawLive(now, structure: now.structure, interactive: true)
+            }
+        }
     }
 
     /// A held drag ended, with its last value in the project or, cancelled,

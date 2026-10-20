@@ -214,12 +214,21 @@ final class PlaybackModel {
     /// moved, the structure changed, a render shows there): the timeline
     /// is to be built as usual.
     func redrawLive(_ project: EditingProject, structure: EditingProject, interactive: Bool) -> Bool {
+        liveRedrawNeedsScene = false
         guard !isPlaying, !isSeeking, player.currentItem != nil,
               liveRenderer.redraw(with: project, structure: structure, time: player.currentTime(), interactive: interactive)
-        else { return false }
+        else {
+            liveRedrawNeedsScene = !isPlaying && !isSeeking && player.currentItem != nil && liveRenderer.refusal == .needsScene
+            return false
+        }
         liveRedraws += 1
         return true
     }
+
+    /// Whether the last refused `redrawLive` could be drawn given a scene to
+    /// draw from (`showLive` with a composition built without the renders)
+    /// rather than needing the timeline built again.
+    @ObservationIgnored private(set) var liveRedrawNeedsScene = false
 
     /// How many frames `redrawLive` has drawn, so a build begun before one
     /// doesn't put its older picture over it.

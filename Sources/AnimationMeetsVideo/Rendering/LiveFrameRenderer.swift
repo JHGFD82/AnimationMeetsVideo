@@ -65,6 +65,14 @@ final class LiveFrameRenderer {
     private var generation = 0
     private var scene: Scene?
 
+    /// Why the last `redraw` was refused, nil if it wasn't. A frame that needs
+    /// a scene has none to draw again from: none was built, the playhead has
+    /// moved, or the stretch it stands in is a render, which holds the values
+    /// it was made with. A build without the renders gives it one. A change
+    /// of structure needs the timeline built again.
+    enum Refusal { case needsScene, structureChanged }
+    private(set) var refusal: Refusal?
+
     func submit(_ request: Request) {
         enqueue(.build(request))
     }
@@ -72,17 +80,30 @@ final class LiveFrameRenderer {
     /// Draws the frame again with `project`'s values, from the last frame
     /// drawn from a build, if that can show it: `structure` (the project's)
     /// is the same as that build's, so only values changed, and the frame is
-    /// at `time`, as that one was. False when it can't, and the timeline has
-    /// to be built.
+    /// at `time`, as that one was. False when it can't (see `refusal`), and
+    /// the timeline has to be built.
     func redraw(with project: EditingProject, structure: EditingProject, time: CMTime, interactive: Bool) -> Bool {
-        guard let scene, scene.time == time, scene.structure == structure, let recorded = scene.capture.recorded else {
+        refusal = nil
+        guard let scene, scene.time == time else {
+            refusal = .needsScene
+            return false
+        }
+        guard scene.structure == structure else {
+            refusal = .structureChanged
+            return false
+        }
+        guard let recorded = scene.capture.recorded else {
+            refusal = .needsScene
             return false
         }
         let clips = project.clipsByID
         var drawn: [DrawClip] = []
         for clip in recorded.instruction.clips {
             // A rendered stretch can't take new values.
-            guard let patched = clip.withValues(from: clips) else { return false }
+            guard let patched = clip.withValues(from: clips) else {
+                refusal = .needsScene
+                return false
+            }
             drawn.append(patched)
         }
         enqueue(.redraw(Redraw(
