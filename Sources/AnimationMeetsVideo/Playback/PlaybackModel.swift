@@ -353,8 +353,12 @@ final class PlaybackModel {
     /// Scrub-friendly seek: only one seek is ever in flight, and a newer
     /// target replaces any that was queued behind it, so dragging the
     /// playhead doesn't pile up zero-tolerance seeks.
+    ///
+    /// The playhead is the master: moving it pauses playback, and what
+    /// was playing doesn't start again from where it lands.
     func seek(to time: CMTime) {
         if isTapeScrubbing { stopTape() }
+        if isPlaying || player.rate != 0 { player.pause() }
         tapeScrub.cue(time.seconds)
         move(to: time)
     }

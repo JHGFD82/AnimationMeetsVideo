@@ -308,6 +308,11 @@ leaves the result a little under the target.
 
 ## Scrubbing
 
+The playhead is the master of the timeline: grabbing it, by dragging it,
+clicking the ruler or stepping it, pauses playback at once, and what was
+playing doesn't start again where the playhead lands. While it is held the
+picture and the sound follow it alone.
+
 While paused, moving the playhead (dragging it, clicking the ruler,
 stepping with the arrow keys, jumping to a keyframe) plays a moment of the
 mix where it lands: an 80 ms grain whose ends fade over 10 ms with a
