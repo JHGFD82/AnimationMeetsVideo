@@ -39,6 +39,9 @@ struct ClipBlockView: View {
     /// Adds the clip to the clips picked together, or takes it out: the way to
     /// pick several without a lasso.
     let onToggleInGroup: () -> Void
+    /// For a nested timeline's clip: goes into the timeline it plays (a
+    /// double-click, the menu's Open Timeline).
+    var onOpenNested: (() -> Void)?
     /// The transition selected on this clip, which shows its curve's points
     /// when there is room.
     let selectedTransition: TransitionEdge?
@@ -420,6 +423,10 @@ struct ClipBlockView: View {
                     },
                 including: tool == .slip ? .all : .subviews
             )
+            // A double-click on a nested timeline goes into it.
+            .simultaneousGesture(TapGesture(count: 2).onEnded {
+                if tool == .arrow { onOpenNested?() }
+            })
             // A click selects the clip, or the transition under it.
             .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(space)).onEnded { value in
                 if tool == .blade {
@@ -509,6 +516,7 @@ struct ClipBlockView: View {
             onMove(CMTimeMaximum(.zero, CMTimeSubtract(clip.startOffset, frame)), nil)
         }
         Button("Move one frame later") { onMove(CMTimeAdd(clip.startOffset, frame), nil) }
+        if let onOpenNested { Button("Open timeline", action: onOpenNested) }
         Button(isInGroup ? "Remove from selection" : "Add to selection", action: onToggleInGroup)
         Button(isInGroup ? "Cut selection" : "Cut") { onClipboard(.cut) }
         Button(isInGroup ? "Copy selection" : "Copy") { onClipboard(.copy) }

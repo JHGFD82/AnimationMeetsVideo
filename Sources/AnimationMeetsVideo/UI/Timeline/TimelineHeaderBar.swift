@@ -3,6 +3,11 @@ import SwiftUI
 struct TimelineHeaderBar: View {
     @Binding var project: EditingProject
     @Binding var timelineID: UUID
+    /// The timelines gone into to reach this one, outermost first, shown as
+    /// a breadcrumb to go back along.
+    var trail: [UUID] = []
+    /// Goes back out to the timeline at this place on the trail.
+    var onLeaveTo: (Int) -> Void = { _ in }
     @State private var showingSettings = false
     @State private var showingNew = false
 
@@ -12,6 +17,18 @@ struct TimelineHeaderBar: View {
 
     var body: some View {
         HStack(spacing: Design.Space.close) {
+            // Where this timeline was reached from; each is a button back.
+            ForEach(Array(trail.enumerated()), id: \.offset) { index, ancestorID in
+                Button(project.timeline(id: ancestorID)?.name ?? "Timeline") { onLeaveTo(index) }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Design.textSecondary)
+                    .help("Back to \(project.timeline(id: ancestorID)?.name ?? "this timeline")")
+                    .accessibilityLabel("Back to \(project.timeline(id: ancestorID)?.name ?? "the outer timeline")")
+                Image(systemName: "chevron.right")
+                    .font(Design.Typeface.glyphTiny)
+                    .foregroundStyle(Design.textTertiary)
+                    .accessibilityHidden(true)
+            }
             Menu(currentTimeline?.name ?? "Timeline") {
                 ForEach(project.timelines) { timeline in
                     Button(timeline.name) { timelineID = timeline.id }

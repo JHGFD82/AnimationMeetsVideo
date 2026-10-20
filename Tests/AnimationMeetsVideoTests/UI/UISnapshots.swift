@@ -274,6 +274,19 @@ struct UISnapshots {
         )
     }
 
+    /// The timeline's header inside a nested timeline: the timelines gone
+    /// through to reach it before its own name, each a way back.
+    @Test func timelineBreadcrumb() throws {
+        var project = EditingProject.empty
+        let outer = project.rootTimelineID
+        let nested = project.addTimeline(name: "Nested 1", frameSize: CGSize(width: 1920, height: 1080), frameRate: 24, colorSpace: .rec709)
+        let deeper = project.addTimeline(name: "Nested 2", frameSize: CGSize(width: 1920, height: 1080), frameRate: 24, colorSpace: .rec709)
+        try SnapshotSupport.render(
+            TimelineHeaderBar(project: .constant(project), timelineID: .constant(deeper), trail: [outer, nested]),
+            "timeline-breadcrumb", size: CGSize(width: 640, height: 44)
+        )
+    }
+
     /// A selected effect outlined whole, its controls included, in the
     /// active panel (accent) and in one that isn't (grey).
     @Test func selectedEffectOutline() throws {

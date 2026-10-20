@@ -31,6 +31,12 @@ struct TimelineEditorSurface<Library: View>: View {
     /// Where the playhead is parked. Not read as the body is built (see
     /// `PlayheadState`), so `playheadTime` is for actions and closures.
     @State private var playhead = PlayheadState()
+    /// The timelines gone into to reach this one, outermost first: what the
+    /// header's breadcrumb offers to go back to.
+    @State private var trail: [UUID] = []
+    /// The timeline the last step into or out of a nested one chose, to
+    /// tell it from one chosen another way (the menu), which starts over.
+    @State private var trailTarget: UUID?
 
     private var playheadTime: CMTime {
         get { playhead.time }
@@ -193,7 +199,10 @@ struct TimelineEditorSurface<Library: View>: View {
             let resolvedTimelineHeight = min(max(CGFloat(timelineHeight), minTimelineHeight), maxTimelineHeight)
 
             VStack(spacing: 0) {
-                TimelineHeaderBar(project: $project, timelineID: Binding(get: { timelineID }, set: { selectTimeline($0) }))
+                TimelineHeaderBar(
+                    project: $project, timelineID: Binding(get: { timelineID }, set: { selectTimeline($0) }),
+                    trail: trail, onLeaveTo: { leaveTimeline(to: $0) }
+                )
 
                 HStack(spacing: 0) {
                     library()
@@ -366,6 +375,8 @@ struct TimelineEditorSurface<Library: View>: View {
         }
         .onDisappear { graphs.closeAll() }
         .onChange(of: timelineID) { _, newValue in
+            if newValue != trailTarget { trail = [] }
+            trailTarget = nil
             if selection?.timelineID != newValue {
                 selection = nil
             }
@@ -531,6 +542,7 @@ struct TimelineEditorSurface<Library: View>: View {
                     project.detachAudio(of: clipIDs, in: timelineID, layer: layerID)
                 },
                 onSelectLayer: { selection = nil },
+                onOpenTimeline: { enterTimeline($0) },
                 onDeleteClip: { layerID, clipID in
                     project.deleteClip(clipID, in: timelineID, layer: layerID)
                     selection = nil
@@ -635,6 +647,25 @@ struct TimelineEditorSurface<Library: View>: View {
         renderer?.noteActivity()
         playheadTime = time
         playback.seek(to: time)
+    }
+
+    /// Goes into a nested timeline, from its clip, keeping where it came
+    /// from for the breadcrumb.
+    private func enterTimeline(_ nestedID: UUID) {
+        guard nestedID != timelineID, project.timeline(id: nestedID) != nil else { return }
+        trail.append(timelineID)
+        trailTarget = nestedID
+        selectTimeline(nestedID)
+    }
+
+    /// Goes back out to a timeline on the trail, and drops it and what is
+    /// after it.
+    private func leaveTimeline(to index: Int) {
+        guard trail.indices.contains(index) else { return }
+        let target = trail[index]
+        trail = Array(trail[..<index])
+        trailTarget = target
+        selectTimeline(target)
     }
 
     /// Shows a step of a value drag held to one side of the project:

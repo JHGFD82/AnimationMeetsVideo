@@ -34,6 +34,8 @@ struct LayerClipRow: View {
     let groupSelected: Set<UUID>
     /// Adds a clip to the clips picked together, or takes it out.
     let onToggleGroup: (UUID) -> Void
+    /// Goes into a nested timeline.
+    let onOpenTimeline: (UUID) -> Void
     let pixelsPerSecond: CGFloat
     let width: CGFloat
     let height: CGFloat
@@ -151,6 +153,12 @@ struct LayerClipRow: View {
         }
     }
 
+    /// What opening a nested timeline's clip does; nil for any other clip.
+    private func nestedOpener(for clip: TimelineClip) -> (() -> Void)? {
+        guard case .timeline(let nestedID) = clip.source else { return nil }
+        return { onOpenTimeline(nestedID) }
+    }
+
     /// Music is beat matched; the panel works on the clip's song.
     private func beatMatchAction(for clip: TimelineClip) -> (() -> Void)? {
         guard layer.kind == .music, case .media(let assetID) = clip.source,
@@ -191,6 +199,7 @@ struct LayerClipRow: View {
                     isSelected: isSelected || isInGroup,
                     isInGroup: isInGroup,
                     onToggleInGroup: { onToggleGroup(clip.id) },
+                    onOpenNested: nestedOpener(for: clip),
                     selectedTransition: isSelected ? selection?.transitionEdge : nil,
                     pixelsPerSecond: pixelsPerSecond,
                     height: height,

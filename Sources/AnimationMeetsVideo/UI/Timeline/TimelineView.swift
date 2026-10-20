@@ -49,6 +49,8 @@ struct TimelineView: View {
     let onDetachAudio: (UUID, Set<UUID>?) -> Void
     /// A layer was selected, which clears any clip selection.
     let onSelectLayer: () -> Void
+    /// Goes into a nested timeline, from its clip.
+    let onOpenTimeline: (UUID) -> Void
     let onDeleteClip: (UUID, UUID) -> Void
     let onDeleteLayer: (UUID) -> Void
     /// Layer, clip and the timeline time to split it at, from the blade.
@@ -927,6 +929,7 @@ struct TimelineView: View {
                         selection: selection,
                         groupSelected: groupSelection.isEmpty ? [] : groupSelection.intersection(layer.clips.map(\.id)),
                         onToggleGroup: { toggleInGroup($0) },
+                        onOpenTimeline: onOpenTimeline,
                         pixelsPerSecond: pixelsPerSecond,
                         width: contentWidth,
                         height: clipRowHeight(of: layer),

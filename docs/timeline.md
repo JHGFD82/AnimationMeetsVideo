@@ -674,6 +674,17 @@ Only the Arrow tool lassos.
 - Moving, trimming and the keyboard nudge still act on the one clip
   clicked or selected, not on a group.
 
+## Going into a nested timeline
+
+**Double-click a nested timeline's clip** (Arrow tool) to go into the
+timeline it plays; **Open Timeline** in its right-click menu and its
+VoiceOver action do the same. The header bar then shows a **breadcrumb**
+before the timeline's name: the timelines gone through to get here,
+outermost first, each a button that goes back out to it (`trail` in
+`TimelineEditorSurface`). Picking a timeline another way, from the name
+menu or the browser, starts the trail over. A second display's own
+timeline, when it is independent, keeps its own trail.
+
 ## Not implemented yet
 
 - Audio crossfades under transitions, and transitions on detached sound.

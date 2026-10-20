@@ -89,6 +89,7 @@ extension ClipBlockView {
             Button("Beat Match…", action: onBeatMatch)
         }
         if case .timeline = clip.source {
+            if let onOpenNested { Button("Open Timeline", action: onOpenNested) }
             Toggle("Pass Through", isOn: Binding(get: { passesThrough }, set: { onSetPassThrough($0) }))
         }
         if acceptsEffects || acceptsSoundEffects {
