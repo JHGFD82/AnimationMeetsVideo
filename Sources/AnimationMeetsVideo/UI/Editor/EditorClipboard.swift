@@ -3,8 +3,9 @@ import Observation
 
 /// What was copied last, shared by every project and window of the app:
 /// effects, or a clip. As with the system's clipboard, Paste pastes what
-/// was copied last. A copied clip brings its effects too, so Paste Effects
-/// can put its whole stack on another clip.
+/// was copied last. A copied clip brings its effects, time and shutter too,
+/// so Paste Effects can add its stack to another clip and take over its time
+/// and shutter.
 @MainActor @Observable
 final class EditorClipboard {
     static let shared = EditorClipboard()
@@ -18,6 +19,10 @@ final class EditorClipboard {
     private(set) var group: ClipGroupBundle?
 
     var hasEffects: Bool { effects != nil }
+
+    /// Whether Paste Effects has something to put on a clip: effects, or a
+    /// copied clip whose time and shutter come along with its effects.
+    var canPasteEffects: Bool { effects != nil || clip != nil }
 
     func copy(effects: EffectBundle?) {
         self.effects = effects

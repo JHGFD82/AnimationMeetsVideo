@@ -634,10 +634,14 @@ keys. A clip block with effects shows a small badge with the count.
 - **Copy and paste** work on the effects selected in the panel, from the
   keys, the effect's menu or the Edit menu (see timeline.md, "Copy, paste
   and duplicate"). Pasting onto a clip adds them below the selected
-  effect, or at the bottom of the stack. **Paste Effects** with clips
-  selected on the timeline replaces their whole stacks; after copying a
-  clip it pastes that clip's stack. A clip copied after the effects is
-  what ⌘V pastes, on the timeline.
+  effect, or at the bottom of the stack. **Paste Effects** in a clip's
+  menu on the timeline works from the clip copied last (there is no Copy
+  Effects: copying the clip brings its effects): its effects are **added**
+  to the clip's own, below them, while its **time** (speed, frame
+  blending, echo, sound) and **shutter** (motion blur, trails), which
+  aren't stacked effects, replace the clip's own when they differ (time
+  only between media clips). A clip copied after the effects is what ⌘V
+  pastes, on the timeline.
 - **Presets**: selected effects can be saved as a preset, which is shared
   by every project. Presets are files in `~/Library/Application Support/
   AnimationMeetsVideo/Presets/`, one JSON file each, and appear in the
@@ -957,8 +961,9 @@ In order, each step usable on its own:
     `keyframesOutside` with its count, on the start or end side). Copy and
     paste work on the one effect selected in the panel (⋯ menu or
     Command-C and Command-V, which paste below it, or at the end of the
-    stack with none selected); a clip's menu on the timeline has Copy
-    Effects (the whole stack) and Paste Effects (replacing the stack).
+    stack with none selected); a clip's menu on the timeline has Paste
+    Effects, which adds the copied clip's effects and replaces time and
+    shutter with its (`pasteTimeAndShutter`).
     Presets are `PresetStore`'s files, one JSON each, with a `formatVersion`
     of their own and the effects as a project writes them (plus, for what
     was left behind, `inputName` and `againstName`), with times from the

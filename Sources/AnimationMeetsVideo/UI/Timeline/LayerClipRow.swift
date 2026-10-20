@@ -85,9 +85,8 @@ struct LayerClipRow: View {
     let onAddEffect: (UUID, EffectKind) -> Void
     /// Puts the preset with this ID on the clip, below its stack.
     let onApplyPreset: (UUID, String) -> Void
-    /// Copies the clip's whole stack, or pastes the copied effects in place
-    /// of it.
-    let onCopyEffects: (UUID) -> Void
+    /// Adds the copied clip's (or effect's) effects to the clip, and takes
+    /// over the copied clip's time and shutter.
     let onPasteEffects: (UUID) -> Void
     /// Cut, Copy, Paste or Duplicate from a clip's context menu.
     let onClipboard: (UUID, ClipboardCommand) -> Void
@@ -234,7 +233,6 @@ struct LayerClipRow: View {
                     onAddEffect: { kind in onAddEffect(clip.id, kind) },
                     hasPasteChanges: project.hasUnresolvedPasteChanges(clip),
                     onApplyPreset: { onApplyPreset(clip.id, $0) },
-                    onCopyEffects: { onCopyEffects(clip.id) },
                     onPasteEffects: { onPasteEffects(clip.id) },
                     onClipboard: { onClipboard(clip.id, $0) },
                     onCopy: { start, target, kind in onCopyClip(clip.id, start, target, kind) },

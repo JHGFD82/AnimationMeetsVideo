@@ -973,12 +973,14 @@ struct TimelineView: View {
                             guard let preset = try? PresetStore.read(PresetStore.fileURL(presetID)) else { return }
                             onEditProject { $0.paste(preset.bundle, ontoClip: clipID, in: timelineID) }
                         },
-                        onCopyEffects: { clipID in
-                            EditorClipboard.shared.copy(effects: project.bundle(ofEffects: nil, fromClip: clipID, in: timelineID))
-                        },
                         onPasteEffects: { clipID in
-                            guard let bundle = EditorClipboard.shared.effects else { return }
-                            onEditProject { $0.paste(bundle, ontoClip: clipID, in: timelineID, replacingStack: true) }
+                            let clipboard = EditorClipboard.shared
+                            onEditProject { project in
+                                // Effects are added to what the clip has; its
+                                // time and shutter are replaced if different.
+                                if let bundle = clipboard.effects { project.paste(bundle, ontoClip: clipID, in: timelineID) }
+                                if let source = clipboard.clip?.clip { project.pasteTimeAndShutter(of: source, ontoClip: clipID, in: timelineID) }
+                            }
                         },
                         onClipboard: { clipID, command in clipboard(command, layerID: layer.id, clipID: clipID) },
                         onCopyClip: { clipID, start, target, kind in copyClip(clipID, from: layer.id, to: start, onto: target, newLayer: kind) },

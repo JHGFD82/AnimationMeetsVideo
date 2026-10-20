@@ -115,6 +115,21 @@ extension EditingProject {
         return pastedIDs
     }
 
+    /// Brings over how `source` is retimed and how its finished picture is
+    /// shuttered, in place of the clip's own: those aren't effects in the
+    /// stack, which a paste adds to, but settings, which a different one
+    /// replaces. Speed and the rest of a media clip's time only come from
+    /// and go to media clips; the shutter, to any clip with a picture.
+    mutating func pasteTimeAndShutter(of source: TimelineClip, ontoClip clipID: UUID, in timelineID: UUID) {
+        guard let (clip, layer) = clipAndLayer(clipID, in: timelineID) else { return }
+        if case .media = source.source, case .media = clip.source, clip.time != source.time {
+            editTime(ofClip: clipID, in: timelineID, layer: layer.id) { $0 = source.time }
+        }
+        if hasEffectStack(clip), clip.shutter != source.shutter {
+            editClip(clipID, in: timelineID) { $0.shutter = source.shutter }
+        }
+    }
+
     /// `kept` with `items` pasted in at `index`, their keyframes moved to
     /// the clip and what couldn't come along noted.
     private func paste(

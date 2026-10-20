@@ -74,6 +74,27 @@ private enum Pasting {
         #expect(f.stack(f.target).map(\.kind) == [.blending])
     }
 
+    @Test func pasteEffectsAddsToTheStackAndReplacesTimeAndShutterWhenDifferent() throws {
+        var f = PasteFixture()
+        f.project.editClip(f.target, in: f.timelineID) { $0.effects = [Effect(kind: .color)] }
+        f.project.editClip(f.source, in: f.timelineID) {
+            $0.effects = [Effect(kind: .blending)]
+            $0.time.frameBlending = .blend
+            $0.shutter.motionBlur = MotionBlur()
+        }
+        let bundle = try #require(f.project.bundle(ofEffects: nil, fromClip: f.source, in: f.timelineID))
+        let source = try #require(f.project.clipAndLayer(f.source, in: f.timelineID)?.clip)
+        f.project.paste(bundle, ontoClip: f.target, in: f.timelineID)
+        f.project.pasteTimeAndShutter(of: source, ontoClip: f.target, in: f.timelineID)
+
+        let target = try #require(f.project.clipAndLayer(f.target, in: f.timelineID)?.clip)
+        // Added, not replaced.
+        #expect(target.effects.map(\.kind) == [.color, .blending])
+        // Time and shutter taken from the copied clip.
+        #expect(target.time.frameBlending == .blend)
+        #expect(target.shutter.motionBlur != nil)
+    }
+
     @Test func aNameThePersonChoseSurvives() throws {
         var f = PasteFixture()
         f.project.editClip(f.source, in: f.timelineID) { $0.effects = [Effect(kind: .color, name: "Warm look")] }

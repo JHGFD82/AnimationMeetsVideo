@@ -98,7 +98,6 @@ struct ClipBlockView: View {
     /// Whether an effect of the clip has paste changes left to resolve.
     let hasPasteChanges: Bool
     let onApplyPreset: (String) -> Void
-    let onCopyEffects: () -> Void
     let onPasteEffects: () -> Void
     let onClipboard: (ClipboardCommand) -> Void
     /// An Option-drag: a copy goes where the drag would have moved the

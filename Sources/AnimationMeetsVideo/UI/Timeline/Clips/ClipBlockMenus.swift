@@ -54,7 +54,7 @@ extension ClipBlockView {
             acceptsEffects: acceptsEffects, acceptsSoundEffects: acceptsSoundEffects, playsSound: playsSound,
             reachCurrent: reach?.current, reachSummary: reach?.summary,
             reachOptions: reach?.options.map(\.id) ?? [], reachNames: reach?.options.map(\.name) ?? [],
-            canPasteClip: EditorClipboard.shared.hasClips, inGroup: isInGroup, canPasteEffects: EditorClipboard.shared.hasEffects
+            canPasteClip: EditorClipboard.shared.hasClips, inGroup: isInGroup, canPasteEffects: EditorClipboard.shared.canPasteEffects
         )
     }
 
@@ -93,10 +93,8 @@ extension ClipBlockView {
         }
         if acceptsEffects || acceptsSoundEffects {
             Divider()
-            Button("Copy Effects", action: onCopyEffects)
-                .disabled(clip.effects.isEmpty && clip.audioEffects.isEmpty)
             Button("Paste Effects", action: onPasteEffects)
-                .disabled(!EditorClipboard.shared.hasEffects)
+                .disabled(!EditorClipboard.shared.canPasteEffects)
         }
         if case .media = clip.source {
             Divider()

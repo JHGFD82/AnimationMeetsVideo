@@ -636,7 +636,8 @@ clip.
 - **One clipboard.** Paste pastes what was copied last: copying effects
   after a clip makes ⌘V paste the effects, and the other way round
   (`EditorClipboard`). A copied clip also fills **Paste Effects**, which
-  puts its whole stack on another clip.
+  adds its effects to another clip's, and gives it the copied clip's time
+  and shutter if they differ.
 
 ## Selecting several clips
 
