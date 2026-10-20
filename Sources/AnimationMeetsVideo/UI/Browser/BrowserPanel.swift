@@ -183,10 +183,16 @@ struct BrowserPanel: View {
     }
 
     private var presetsList: some View {
-        List {
-            PresetsList(model: presets)
+        PresetsList(model: presets, onApply: applyToSelectedClip)
+    }
+
+    /// Puts a preset's effects on the selected clip, below its stacks; a
+    /// beep when no clip is selected or it has nowhere to put them.
+    private func applyToSelectedClip(_ preset: EffectPreset) {
+        guard let selection, !project.paste(preset.bundle, ontoClip: selection.timelineClipID, in: selection.timelineID).isEmpty else {
+            NSSound.beep()
+            return
         }
-        .browserListStyle()
     }
 
     private func embed(_ timeline: Timeline) {

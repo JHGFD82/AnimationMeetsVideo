@@ -646,7 +646,9 @@ keys. A clip block with effects shows a small badge with the count.
   by every project. Presets are files in `~/Library/Application Support/
   AnimationMeetsVideo/Presets/`, one JSON file each, and appear in the
   browser's **Presets** section, where they can be renamed, deleted or
-  shown in the Finder. Drag one onto a clip, or into a stack at a spot.
+  shown in the Finder. Drag one onto a clip, or into a stack at a spot,
+  or double-click it (or choose Apply to Selected Clip from its menu) to
+  put it on the selected clip.
 - **What travels.** Keyframe times are stored from the start of the
   source clip's trimmed range and land at the same distance from the start
   of the clip they're pasted onto. Effects get new IDs, and Against follows
@@ -971,7 +973,7 @@ In order, each step usable on its own:
     one is listed in the browser's Presets section with the path of the
     problem and skipped. Save as Preset and Save Whole Stack as Preset are in
     the effect's ⋯ menu; presets are dragged onto a clip's block or into the
-    stack, renamed, shown in the Finder, or moved to the Trash from the
+    stack, double-clicked onto the selected clip, renamed, shown in the Finder, or moved to the Trash from the
     browser. Unresolved changes are saved on the effect as `pasteChanges`;
     flagged effects get a marked edge and the changes listed under their
     name with Mark Resolved, and a flagged clip a warning mark on its

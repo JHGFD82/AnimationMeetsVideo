@@ -539,4 +539,15 @@ struct UISnapshots {
             try SnapshotSupport.render(bar.preferredColorScheme(.dark), "panel-tab-bar-\(width)", size: CGSize(width: width, height: 40))
         }
     }
+
+    /// The browser's Presets tab with the look recipes and one preset whose
+    /// file can't be read.
+    @Test func presetsList() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-presets-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        for recipe in LookRecipes.all.prefix(5) { try PresetStore.save(recipe.bundle, named: recipe.name, in: folder) }
+        try Data("{}".utf8).write(to: folder.appending(path: "Broken.json"))
+        let list = PresetsList(model: PresetsModel(folder: folder), onApply: { _ in })
+        try SnapshotSupport.render(list.preferredColorScheme(.dark), "presets-list", size: CGSize(width: 280, height: 360))
+    }
 }
