@@ -13,16 +13,31 @@ final class EditorClipboard {
     private(set) var effects: EffectBundle?
     /// The clip copied last, unless effects were copied after it.
     private(set) var clip: ClipBundle?
+    /// The clips copied together last (`ClipGroupBundle`), unless something
+    /// was copied after them.
+    private(set) var group: ClipGroupBundle?
 
     var hasEffects: Bool { effects != nil }
 
     func copy(effects: EffectBundle?) {
         self.effects = effects
         clip = nil
+        group = nil
     }
 
     func copy(clip: ClipBundle, effects: EffectBundle?) {
         self.clip = clip
         self.effects = effects
+        group = nil
     }
+
+    /// Several clips at once. They have no one stack of effects to paste.
+    func copy(group: ClipGroupBundle) {
+        self.group = group
+        clip = nil
+        effects = nil
+    }
+
+    /// Whether something that pastes as clips is on the clipboard.
+    var hasClips: Bool { clip != nil || group != nil }
 }

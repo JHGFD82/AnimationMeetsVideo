@@ -78,6 +78,8 @@ final class ValueDragSession {
     private var distance = 0.0
     private var pace = DragPace()
     private var finished = false
+    /// Whether a value drag is in progress, which Escape belongs to.
+    private(set) static var isActive = false
 
     init(onMove: @escaping (Double, NSEvent.ModifierFlags) -> Void, onFinish: @escaping (Bool) -> Void) {
         self.onMove = onMove
@@ -87,6 +89,7 @@ final class ValueDragSession {
 
     private func begin() {
         start = CGEvent(source: nil)?.location
+        Self.isActive = true
         NSCursor.hide()
         CGAssociateMouseAndMouseCursorPosition(0)
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp, .keyDown]) { [weak self] event in
@@ -121,6 +124,7 @@ final class ValueDragSession {
     func finish(cancelled: Bool) {
         guard !finished else { return }
         finished = true
+        Self.isActive = false
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
         CGAssociateMouseAndMouseCursorPosition(1)

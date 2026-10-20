@@ -638,6 +638,41 @@ clip.
   (`EditorClipboard`). A copied clip also fills **Paste Effects**, which
   puts its whole stack on another clip.
 
+## Selecting several clips
+
+Drag in empty space in the tracks (between a layer's clips, or under the
+last layer) to draw a **lasso**: every clip it touches is picked, and they
+draw as selected. Hold Shift to add to what is picked. A lasso that touches
+one clip selects it as a click does; one that touches none selects nothing.
+Only the Arrow tool lassos.
+
+- **Click empty space or press Escape** to select nothing: no clip, layer,
+  section or lasso. (A click in empty space used to do nothing, so a
+  selected clip stayed selected.) **⌘A** picks every clip of the timeline
+  together, which is also how to do it without a pointer.
+- Clips picked together have no one clip for the Inspector and the effects
+  panel to show; they are for **Cut, Copy, Duplicate, Delete** and
+  **Put Selection in New Timeline**, in the Edit menu, the right-click menu
+  of any of them, and Delete.
+- **Copy** keeps where they sit relative to each other, in time and across
+  layers (`ClipGroupBundle`); the clipboard holds that group until
+  something else is copied. **Paste** puts the earliest at the playhead
+  with the rest keeping their offsets, each as a single clip would land:
+  clips from one layer go back onto it in the timeline they came from, else
+  onto one new layer made for them, and the clips after move right to make
+  room. The pasted clips are picked together and the playhead moves to
+  their end. **Duplicate** pastes right after the group.
+- **Put Selection in New Timeline** (also on one clip's menu, as **Put in
+  New Timeline**) takes the clips out into a new timeline named Nested 1,
+  Nested 2 and so on, with the same frame size, rate and colors, their
+  layers and places kept and the start at zero, and puts that timeline
+  where they were as one clip on a new layer at the top, starting where the
+  earliest did. It is a nested timeline like any other (see
+  [effects.md](effects.md)), so it can be opened from the browser, given
+  effects, or retimed as one.
+- Moving, trimming and the keyboard nudge still act on the one clip
+  clicked or selected, not on a group.
+
 ## Not implemented yet
 
 - Audio crossfades under transitions, and transitions on detached sound.

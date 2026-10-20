@@ -10,6 +10,10 @@ extension TimelineView {
         // The effects panel has the key while it is the active panel and
         // something in it is selected.
         if activePanel?.current == .sidePanel, showsEffects, effectsState.hasSelection { return false }
+        if !groupSelection.isEmpty {
+            deleteGroup()
+            return true
+        }
         if let selectedSectionID, timeline.sections.contains(where: { $0.id == selectedSectionID }) {
             onEditProject { $0.deleteSection(selectedSectionID, in: timelineID) }
             self.selectedSectionID = nil
@@ -35,6 +39,13 @@ extension TimelineView {
     func handleKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if let handled = handleNavigationKey(event, flags: flags) { return handled }
+        // Escape lets go of whatever is selected.
+        if event.keyCode == 53, flags.isEmpty, !ValueDragSession.isActive, hasAnythingSelected {
+            clearSelection()
+            return true
+        }
+        // Command-A picks every clip together.
+        if event.keyCode == 0, flags == .command { return selectAllClips() }
         // Delete and Forward Delete, without modifiers.
         if [51, 117].contains(event.keyCode), flags.isDisjoint(with: [.command, .control, .option, .shift]) {
             return deleteSelection()

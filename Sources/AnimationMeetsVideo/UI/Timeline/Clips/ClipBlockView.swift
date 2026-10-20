@@ -33,6 +33,12 @@ struct ClipBlockView: View {
     /// transition is drawn over the cut by the row instead.
     let joinedLead: CMTime?
     let isSelected: Bool
+    /// Whether the clip is one of several picked together with a lasso, which
+    /// draw as selected and are copied, deleted and nested as one.
+    var isInGroup = false
+    /// Adds the clip to the clips picked together, or takes it out: the way to
+    /// pick several without a lasso.
+    let onToggleInGroup: () -> Void
     /// The transition selected on this clip, which shows its curve's points
     /// when there is room.
     let selectedTransition: TransitionEdge?
@@ -504,6 +510,11 @@ struct ClipBlockView: View {
             onMove(CMTimeMaximum(.zero, CMTimeSubtract(clip.startOffset, frame)), nil)
         }
         Button("Move one frame later") { onMove(CMTimeAdd(clip.startOffset, frame), nil) }
+        Button(isInGroup ? "Remove from selection" : "Add to selection", action: onToggleInGroup)
+        Button(isInGroup ? "Cut selection" : "Cut") { onClipboard(.cut) }
+        Button(isInGroup ? "Copy selection" : "Copy") { onClipboard(.copy) }
+        Button(isInGroup ? "Duplicate selection" : "Duplicate") { onClipboard(.duplicate) }
+        Button(isInGroup ? "Put selection in new timeline" : "Put in new timeline") { onClipboard(.nest) }
         Button("Trim start one frame earlier") { onTrimStart(CMTimeSubtract(clip.trimStart, frame)) }
         Button("Trim start one frame later") { onTrimStart(CMTimeAdd(clip.trimStart, frame)) }
         Button("Trim end one frame earlier") { onTrimEnd(CMTimeSubtract(clip.trimEnd, frame)) }

@@ -4,6 +4,9 @@ import SwiftUI
 /// What the Edit menu and a clip's context menu do with a clip.
 enum ClipboardCommand {
     case cut, copy, paste, duplicate
+    /// Takes the clip, or the clips picked with it, into a timeline of
+    /// their own, which stands in their place.
+    case nest
 }
 
 // Cutting, copying, pasting and duplicating clips (see docs/timeline.md,
@@ -19,10 +22,13 @@ extension TimelineView {
     /// What the Edit menu does in this timeline. See `EditCommands`.
     var editActions: EditMenuActions {
         let clip = selectedClip
-        let canPaste = EditorClipboard.shared.clip.map { project.canPaste($0, into: timelineID) } ?? false
-        let hasSelection = selection?.timelineID == timelineID || selectedLayerID != nil || selectedSectionID != nil
+        let picked = !groupSelection.isEmpty
+        let canPaste = EditorClipboard.shared.clip.map { project.canPaste($0, into: timelineID) }
+            ?? EditorClipboard.shared.group.map { project.canPaste($0, into: timelineID) } ?? false
+        let hasSelection = selection?.timelineID == timelineID || selectedLayerID != nil || selectedSectionID != nil || picked
         let onClip = { (command: ClipboardCommand) -> (() -> Void)? in
-            clip.map { clip in { clipboard(command, layerID: clip.layerID, clipID: clip.clipID) } }
+            if picked { return { groupClipboard(command) } }
+            return clip.map { clip in { clipboard(command, layerID: clip.layerID, clipID: clip.clipID) } }
         }
         return EditMenuActions(
             cut: onClip(.cut),
@@ -30,7 +36,7 @@ extension TimelineView {
             paste: canPaste ? { clipboard(.paste, layerID: clip?.layerID ?? selectedLayerID, clipID: nil) } : nil,
             duplicate: onClip(.duplicate),
             delete: hasSelection ? { _ = deleteSelection() } : nil,
-            state: [timelineID, clip?.clipID, selectedLayerID, selectedSectionID, hasSelection, canPaste] as [AnyHashable?]
+            state: [timelineID, clip?.clipID, selectedLayerID, selectedSectionID, hasSelection, canPaste, groupSelection] as [AnyHashable?]
         )
     }
 
@@ -57,6 +63,10 @@ extension TimelineView {
     /// duplicated clip is selected, and a paste leaves the playhead at its
     /// end, so pasting again puts the next copy after it.
     func clipboard(_ command: ClipboardCommand, layerID: UUID?, clipID: UUID?) {
+        // Several clips copied together paste together; a command on one of
+        // several picked together is on all of them.
+        if command == .paste, EditorClipboard.shared.group != nil { return pasteGroup() }
+        if command != .paste, let clipID, groupSelection.contains(clipID) { return groupClipboard(command) }
         switch command {
         case .copy, .cut:
             let project = readProject()
@@ -75,6 +85,8 @@ extension TimelineView {
             guard let placed else { return NSSound.beep() }
             onSelectClip(placed.layerID, placed.clip)
             parkPlayhead(at: placed.clip.endOffset)
+        case .nest:
+            if let clipID { nest([clipID]) }
         case .duplicate:
             guard let layerID, let clipID else { return }
             var copy: TimelineClip?
