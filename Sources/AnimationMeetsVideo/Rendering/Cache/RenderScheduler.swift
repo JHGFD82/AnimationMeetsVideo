@@ -56,6 +56,9 @@ final class RenderScheduler {
     @ObservationIgnored private var lastActivity = CACurrentMediaTime()
     @ObservationIgnored private var isPlaying = false
     @ObservationIgnored private var isExporting = false
+    /// A value is being dragged with the mouse held: however long the pointer
+    /// rests, nothing renders until it is let go.
+    @ObservationIgnored private var isInteracting = false
     @ObservationIgnored private var worker: Task<Void, Never>?
     @ObservationIgnored private var job: Task<Void, Error>?
     /// Keys that couldn't be rendered, with why, so they aren't tried again
@@ -106,6 +109,15 @@ final class RenderScheduler {
         noteActivity()
     }
 
+    /// A drag holding the mouse starts or ends. Starting stops the render in
+    /// progress at once, not at the first step that changes the picture, so
+    /// it doesn't compete with the first frames; the two seconds of quiet
+    /// count from the drag's end.
+    func setInteracting(_ interacting: Bool) {
+        isInteracting = interacting
+        noteActivity()
+    }
+
     /// An export needs the machine, so rendering waits until it's done.
     func setExporting(_ exporting: Bool) {
         isExporting = exporting
@@ -153,7 +165,7 @@ final class RenderScheduler {
     }
 
     private var isIdle: Bool {
-        guard !isPlaying, !isExporting else { return false }
+        guard !isPlaying, !isExporting, !isInteracting else { return false }
         if isForced { return true }
         let thermal = ProcessInfo.processInfo.thermalState
         return CACurrentMediaTime() - lastActivity >= idleSeconds

@@ -326,12 +326,16 @@ struct TimelineEditorSurface<Library: View>: View {
         }
         // While a value is dragged the viewer follows it at a size that
         // keeps up, and the player item is swapped when the mouse is
-        // released. A change to speed alone waits for that.
+        // released. A change to speed alone waits for that. Nothing renders
+        // in the background meanwhile, though the pointer may rest: a render
+        // under the drag would compete with the frames it draws.
         .onReceive(NotificationCenter.default.publisher(for: .valueGestureDidBegin)) { _ in
             isGesturing = true
+            renderer?.setInteracting(true)
         }
         .onReceive(NotificationCenter.default.publisher(for: .valueGestureDidEnd)) { _ in
             isGesturing = false
+            renderer?.setInteracting(false)
             if rebuildDeferred {
                 rebuildDeferred = false
                 renderer?.noteActivity()

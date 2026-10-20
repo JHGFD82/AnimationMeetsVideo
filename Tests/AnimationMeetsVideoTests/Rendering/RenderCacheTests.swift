@@ -256,6 +256,57 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         #expect(scheduler.cache?.file(for: key) != nil)
     }
 
+    @Test func doesNotRenderWhileADragHoldsTheMouseHoweverLongItRests() async throws {
+        let sandbox = try await RenderSandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = try sandbox.stackedProject()
+        let t = project.rootTimelineID
+        let scheduler = RenderScheduler()
+        scheduler.idleSeconds = 0.2
+        scheduler.packageURL = sandbox.packageURL
+        let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t, forPreview: true)
+
+        scheduler.setInteracting(true)
+        scheduler.update(project: project, timelineID: t, segments: composed.segments)
+        // Three times the quiet it takes to start, with the pointer still.
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(scheduler.finishedCount == 0)
+        #expect(!scheduler.pending.isEmpty)
+
+        // The quiet counts from the release.
+        scheduler.setInteracting(false)
+        for _ in 0..<400 where scheduler.finishedCount == 0 {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(scheduler.finishedCount == 1)
+    }
+
+    @Test func aRenderInProgressStopsWhenADragBegins() async throws {
+        let sandbox = try await RenderSandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = try sandbox.stackedProject()
+        let t = project.rootTimelineID
+        let scheduler = RenderScheduler()
+        scheduler.idleSeconds = 0.05
+        scheduler.packageURL = sandbox.packageURL
+        let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t, forPreview: true)
+
+        scheduler.update(project: project, timelineID: t, segments: composed.segments)
+        for _ in 0..<400 where scheduler.active == nil {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try #require(scheduler.active != nil, "A render should have started")
+
+        scheduler.setInteracting(true)
+        // Cancelled, not finished: the segment is still to do.
+        for _ in 0..<200 where scheduler.active != nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(scheduler.active == nil)
+        #expect(scheduler.finishedCount == 0)
+        #expect(!scheduler.pending.isEmpty)
+    }
+
     @Test func pendingRendersStartAtThePlayhead() {
         let scheduler = RenderScheduler()
         func segment(_ start: Int64, _ key: String) -> RenderSegment {
