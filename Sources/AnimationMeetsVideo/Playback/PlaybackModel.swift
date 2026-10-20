@@ -19,6 +19,12 @@ final class PlaybackModel {
     /// player binds as the item is replaced, before the seek, and binds
     /// again when this changes.
     private(set) var itemSwaps = 0
+    /// The project's structure (`EditingProject.structure`) the player's
+    /// item was built from, and whether any of it plays from a render. A
+    /// drag of values alone can be drawn over what plays when the structure
+    /// is the same and none of it is a render (`LiveValues`).
+    @ObservationIgnored private(set) var playedStructure: EditingProject?
+    @ObservationIgnored private(set) var playedUsesRenders = false
     /// The size the viewer is asked to draw at.
     var quality: PreviewQuality {
         didSet {
@@ -175,8 +181,10 @@ final class PlaybackModel {
 
     /// Gives `item` the composition at the current level, and keeps
     /// `composed` to draw the other levels from.
-    func prepare(_ item: AVPlayerItem, with composed: ComposedTimeline, frameRate: Double) {
+    func prepare(_ item: AVPlayerItem, with composed: ComposedTimeline, structure: EditingProject, frameRate: Double) {
         self.composed = composed
+        playedStructure = structure
+        playedUsesRenders = !composed.cachedKeys.isEmpty
         self.frameRate = frameRate
         item.videoComposition = composed.videoComposition(scaledBy: level.scale)
         item.audioMix = composed.audioMix(curves: mixCurves, meter: mixMeter)
