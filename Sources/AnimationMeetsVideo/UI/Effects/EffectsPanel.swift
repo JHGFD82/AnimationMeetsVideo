@@ -693,12 +693,14 @@ struct EffectsPanel: View {
             .equatable()
     }
 
-    /// A linked control as a held drag has it, for its other axis to show:
-    /// dragging the width of a linked size changes the height, which the
-    /// row reads from the project, still as it was. Only a linked row reads
-    /// the held project, so a step of a drag redraws those and not every row.
+    /// A control as a held drag has it, for the row to show. A linked size
+    /// dragged by its width changes the height too, and an animated value
+    /// dragged where it has no keyframe gets one, which its diamond and its
+    /// lane show at once; the row reads the project, still as it was. Only
+    /// those rows read the held project, so a step of a drag redraws them
+    /// and not every row.
     private func heldControl(_ control: EffectControl, of effect: Effect, in clip: TimelineClip) -> EffectControl? {
-        guard control.kind.isLinkable, control.linked, let held = projectState?.held else { return nil }
+        guard (control.kind.isLinkable && control.linked) || control.isAnimated, let held = projectState?.held else { return nil }
         return held.clipAndLayer(clip.id, in: timelineID)?.clip.effect(id: effect.id)?.controls.first { $0.id == control.id }
     }
 
@@ -746,11 +748,12 @@ struct EffectsPanel: View {
                 timelineID: timelineID,
                 parameter: .control(control.kind, clipID: clip.id, effectID: effect.id, controlID: control.id)
             )
+            let shown = heldControl(control, of: effect, in: clip) ?? control
             labelled(
                 ParameterRow(
                     name: control.kind.name,
                     indent: EffectsPanelMetrics.controlIndent - 12,
-                    components: (heldControl(control, of: effect, in: clip) ?? control).values(at: c.sourceNow(animated: control.isAnimated)),
+                    components: shown.values(at: c.sourceNow(animated: control.isAnimated)),
                     unit: control.kind.unit,
                     dragStep: control.kind.dragStep,
                     dragRange: { control.kind.range(ofComponent: $0) },
@@ -758,7 +761,7 @@ struct EffectsPanel: View {
                     componentDragStep: EqualizerBand(controlKind: control.kind) == nil ? nil : { control.kind.dragStep(ofComponent: $0) },
                     isAnimated: control.isAnimated,
                     isSelected: isSelected,
-                    keyframeTimes: control.number.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
+                    keyframeTimes: shown.number.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
                     playhead: c.frameTime(animated: control.isAnimated),
                     linked: control.kind.isLinkable ? control.linked : nil,
                     onToggleLink: { editControl(control.id, of: effect, in: clip) { $0.linked.toggle() } },
@@ -781,7 +784,7 @@ struct EffectsPanel: View {
                     menu: menu
                 ),
                 lane: ParameterLane(
-                    marks: control.number.marks, geometry: c.geometry, playhead: c.frameTime(animated: control.isAnimated), height: EffectsPanelMetrics.rowHeight,
+                    marks: shown.number.marks, geometry: c.geometry, playhead: c.frameTime(animated: control.isAnimated), height: EffectsPanelMetrics.rowHeight,
                     onSeek: onSeek,
                     onMove: { from, to, copy in
                         editControl(control.id, of: effect, in: clip) { $0.number.moveKeyframe(at: from, to: to, copying: copy) }
@@ -927,7 +930,8 @@ struct EffectsPanel: View {
             )
             .padding(.horizontal, 8),
             lane: ParameterLane(
-                marks: value.marks, geometry: c.geometry, playhead: c.frameTime(animated: value.isAnimated), height: EffectsPanelMetrics.rowHeight,
+                marks: (projectState?.held?.clipAndLayer(clip.id, in: timelineID)?.clip[keyPath: keyPath] ?? value).marks,
+                geometry: c.geometry, playhead: c.frameTime(animated: value.isAnimated), height: EffectsPanelMetrics.rowHeight,
                 onSeek: onSeek,
                 onMove: { from, to, copy in editClip(clip.id) { $0[keyPath: keyPath].moveKeyframe(at: from, to: to, copying: copy) } },
                 onDelete: { time in editClip(clip.id) { $0[keyPath: keyPath].removeKeyframe(at: time) } },
