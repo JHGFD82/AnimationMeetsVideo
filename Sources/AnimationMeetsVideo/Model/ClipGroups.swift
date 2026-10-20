@@ -123,3 +123,21 @@ extension EditingProject {
         return (nestedID, layer.id, clip.id)
     }
 }
+
+extension EditingProject {
+    /// Turns the clips with these IDs in a timeline off, or on again when
+    /// all of them are off already, as V does. False when none is there.
+    @discardableResult
+    mutating func toggleEnabled(ofClips ids: Set<UUID>, in timelineID: UUID) -> Bool {
+        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return false }
+        let clips = timelines[tIndex].layers.flatMap(\.clips).filter { ids.contains($0.id) }
+        guard !clips.isEmpty else { return false }
+        let enabled = clips.allSatisfy { !$0.enabled }
+        for layer in timelines[tIndex].layers.indices {
+            for clip in timelines[tIndex].layers[layer].clips.indices where ids.contains(timelines[tIndex].layers[layer].clips[clip].id) {
+                timelines[tIndex].layers[layer].clips[clip].enabled = enabled
+            }
+        }
+        return true
+    }
+}

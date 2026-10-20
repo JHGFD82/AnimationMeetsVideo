@@ -87,7 +87,20 @@ extension TimelineView {
             return true
         }
         if key == "l" { return toggleVolumeRows() }
+        if key == "v", !flags.contains(.shift) { return toggleSelectedClipsEnabled() }
         return false
+    }
+
+    /// Turns the selected clips off, or on again when all of them are off:
+    /// the clips picked together, else the selected clip. False with none.
+    @discardableResult
+    func toggleSelectedClipsEnabled() -> Bool {
+        var ids = groupSelection
+        if ids.isEmpty, let selection, selection.timelineID == timelineID { ids = [selection.timelineClipID] }
+        guard !ids.isEmpty else { return false }
+        var changed = false
+        onEditProject { changed = $0.toggleEnabled(ofClips: ids, in: timelineID) }
+        return changed
     }
 
     // MARK: - Playhead keys and the Timeline menu
@@ -104,6 +117,7 @@ extension TimelineView {
             splitAtPlayhead: { _ = splitAtPlayhead() },
             nudge: { _ = nudgeSelection(byFrames: $0) },
             deleteSelection: { _ = deleteSelection() },
+            toggleEnabled: { toggleSelectedClipsEnabled() },
             isSnapping: snapping,
             toggleSnapping: { snapping.toggle() },
             tool: tool,

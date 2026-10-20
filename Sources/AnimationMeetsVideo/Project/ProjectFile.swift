@@ -85,6 +85,8 @@ struct ProjectFile: Codable {
         /// The lowest layer an adjustment clip reaches; absent for every
         /// layer below it.
         var reach: UUID?
+        /// `false` for a clip turned off; absent while it plays.
+        var enabled: Bool?
     }
 
     /// Echo or trails: `count` copies, `delay` apart, each `decay` as strong
@@ -912,6 +914,7 @@ extension ProjectFile {
             .optional("pan", property(.number)),
             .optional("passThrough", .bool),
             .optional("reach", .uuid),
+            .optional("enabled", .bool),
             .optional("time", .object(object([
                 .optional("speed", property(.number)),
                 .optional("frameBlending", .choice(["blend", "opticalFlow"], noun: "frame blending")),

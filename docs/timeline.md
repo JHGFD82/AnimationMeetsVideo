@@ -618,6 +618,18 @@ onto a clip adds it to the end of the clip's stack. The clip's menu has
 **Cut**, **Copy**, **Paste** and **Duplicate** at its top, and **Pass
 Through** for nested clips.
 
+## Turning clips off
+
+**V** turns the selected clip off, or every clip picked together; if all
+of them are off already it turns them on again. The clip's menu has
+**Turn Off** / **Turn On** for that clip, and the Timeline menu the same
+as V. A clip that is off stays where it is and can still be moved,
+trimmed and edited, but it is drawn faded and without colour and plays
+as a gap: it is left out of the picture, the sound, renders and exports.
+The timeline keeps its length when the clip that is off is the last one.
+VoiceOver reads it as turned off and has Turn on / Turn off among its
+actions.
+
 ## Copy, paste and duplicate
 
 The Edit menu's **Cut** (⌘X), **Copy** (⌘C), **Paste** (⌘V),

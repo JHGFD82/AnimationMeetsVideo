@@ -433,6 +433,15 @@ extension Timeline {
     }
 }
 
+extension Timeline {
+    /// The same timeline without its disabled clips, which play as gaps.
+    func withoutDisabledClips() -> Timeline {
+        var copy = self
+        for layer in copy.layers.indices { copy.layers[layer].clips.removeAll { !$0.enabled } }
+        return copy
+    }
+}
+
 /// A named sequence of numbered layers, After Effects-style. Timelines can
 /// embed one another (nested/compound-clip style) via `ClipSource.timeline`.
 struct Timeline: Identifiable, Equatable {
@@ -560,6 +569,9 @@ struct TimelineClip: Identifiable, Equatable {
     /// added and moved. Nil, or a layer not in its timeline, reaches every
     /// layer below.
     var reach: UUID?
+    /// Off, the clip stays where it is on its layer but plays nothing: it
+    /// is left out of the picture, the sound and exports, as a gap (V).
+    var enabled = true
 
     /// The length of the part of the source the clip plays. How long it lasts
     /// on the timeline is `placedDuration`, which differs when it is retimed.

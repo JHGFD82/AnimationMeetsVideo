@@ -724,7 +724,8 @@ written only when it isn't the backdrop. An effect with an input has
 some are unresolved, each with its `kind` (`"inputLeftBehind"`,
 `"againstReset"` or `"keyframesOutside"`) and what it was (the input's
 name, the effect read, the keyframe count). A clip has `time` and
-`shutter` only when they aren't off, and a nested clip `"passThrough": true` only when set. The
+`shutter` only when they aren't off, a nested clip `"passThrough": true`
+only when set, and a clip turned off `"enabled": false`. The
 project has `canvasMargin` only when it isn't 0.5 (of a frame, on each
 side). Keyframes are written as layer transforms' are today
 (`easeIn` and `easeOut` only when eased), with times in rational seconds

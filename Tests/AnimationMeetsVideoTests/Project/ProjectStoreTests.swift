@@ -101,6 +101,7 @@ private struct Sandbox {
             $0.pan.setAnimated(true, at: .zero)
             $0.pan.set(-40, at: CMTime(value: 1, timescale: 1))
             $0.passThrough = true
+            $0.enabled = false
             $0.time.speed.setAnimated(true, at: .zero)
             $0.time.speed.set(300, at: CMTime(value: 3, timescale: 1))
             $0.time.frameBlending = .blend
@@ -116,6 +117,7 @@ private struct Sandbox {
         let saved = try #require(project.clipAndLayer(clipID, in: timelineID)?.clip)
         let restored = try #require(loaded.project.clipAndLayer(clipID, in: timelineID)?.clip)
         #expect(restored.passThrough)
+        #expect(!restored.enabled)
         #expect(restored.time == saved.time && restored.shutter == saved.shutter)
         #expect(restored.effects == saved.effects)
         #expect(restored.anchorPoint == saved.anchorPoint)

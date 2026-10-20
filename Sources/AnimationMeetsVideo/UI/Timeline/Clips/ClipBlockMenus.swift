@@ -71,6 +71,9 @@ extension ClipBlockView {
             .keyboardShortcut("d", modifiers: .command)
         Button(isInGroup ? "Put Selection in New Timeline" : "Put in New Timeline") { onClipboard(.nest) }
         Divider()
+        Button(clip.enabled ? "Turn Off" : "Turn On") { onEditClip { $0.enabled.toggle() } }
+            .keyboardShortcut("v", modifiers: [])
+        Divider()
         if let reach {
             reachMenu(reach)
             Divider()

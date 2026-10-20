@@ -106,7 +106,7 @@ import Testing
         func actions(_ project: EditingProject, snapping: Bool = true, tool: TimelineTool = .arrow) -> TimelineActions {
             TimelineActions(
                 togglePlayback: {}, step: { _ in }, goToStart: {}, goToEnd: {}, previousEdit: {}, nextEdit: {},
-                splitAtPlayhead: {}, nudge: { _ in }, deleteSelection: {}, isSnapping: snapping, toggleSnapping: {},
+                splitAtPlayhead: {}, nudge: { _ in }, deleteSelection: {}, toggleEnabled: {}, isSnapping: snapping, toggleSnapping: {},
                 tool: tool, setTool: { _ in }, zoomIn: {}, zoomOut: {}, zoomToFit: {}, renderNow: nil,
                 timelineID: t, structure: project.structure
             )

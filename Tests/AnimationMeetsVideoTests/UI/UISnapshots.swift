@@ -550,4 +550,24 @@ struct UISnapshots {
         let list = PresetsList(model: PresetsModel(folder: folder), onApply: { _ in })
         try SnapshotSupport.render(list.preferredColorScheme(.dark), "presets-list", size: CGSize(width: 280, height: 360))
     }
+
+    /// Two shape layers, the upper clip turned off (V): faded and without
+    /// colour, where it was.
+    @Test func disabledClip() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let ten = CMTime(value: 10, timescale: 1)
+        let below = project.addShapeLayer(.ellipse, to: t, duration: ten)
+        let above = project.addShapeLayer(.rectangle, to: t, duration: ten)
+        _ = try #require(below)
+        let off = try #require(above)
+        project.editClip(off.clipID, in: t) { $0.enabled = false }
+        UserDefaults.standard.set(420.0, forKey: Preferences.timelineHeight)
+        defer { UserDefaults.standard.removeObject(forKey: Preferences.timelineHeight) }
+        let editor = EditorView(
+            project: .constant(project), history: ProjectHistory(project: project), analysis: AssetAnalysis(),
+            replacement: MediaReplacementController(), packageURL: nil
+        )
+        try SnapshotSupport.render(editor, "disabled-clip", size: CGSize(width: 1500, height: 900))
+    }
 }

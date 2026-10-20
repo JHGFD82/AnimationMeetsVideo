@@ -74,15 +74,20 @@ enum CompositionExporter {
     ) async throws -> ComposedTimeline {
         // Slivers of gap between clips (a retimed clip's end can't be found
         // closer than a few microseconds) would draw black frames.
+        // Disabled clips play as gaps, so the timeline keeps its length
+        // when one is at the end.
+        let length = project.timeline(id: timelineID)?.duration ?? .zero
         var project = project
-        for index in project.timelines.indices { project.timelines[index] = project.timelines[index].closingSlivers() }
+        for index in project.timelines.indices {
+            project.timelines[index] = project.timelines[index].withoutDisabledClips().closingSlivers()
+        }
         guard let timeline = project.timeline(id: timelineID), !timeline.layers.isEmpty else {
             throw CompositionError.emptyTimeline
         }
 
         // Matte wipes' maps are read before drawing starts.
         await MatteMaps.shared.load(for: project)
-        let window = CMTimeRange(start: .zero, duration: timeline.duration)
+        let window = CMTimeRange(start: .zero, duration: length)
         var hosts: [TrackHost] = []
         let nodes = try await $skipsMissingMedia.withValue(forPreview) {
             try await flatten(
@@ -193,17 +198,18 @@ enum CompositionExporter {
         if composition.duration < soundEnd {
             try await padSound(of: composition, to: soundEnd)
         }
-        // Sections can run past the last clip. A composition ends with its
-        // last media (an empty edit at the end doesn't count), so a frame of
-        // some source is stretched over the rest on a track of its own. No
+        // Sections and disabled clips can run past the last clip. A
+        // composition ends with its last media (an empty edit at the end
+        // doesn't count), so a frame of some source is stretched over the
+        // rest on a track of its own. No
         // instruction shows that track, so the stretch plays as black. The
         // black frame for stills covers everything, so there is always a
         // video track to draw, however long the sound runs.
-        if composition.duration < timeline.duration || blank != nil, let filler,
+        if composition.duration < length || blank != nil, let filler,
            let track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
             let gap = blank != nil
-                ? CMTimeRange(start: .zero, end: CMTimeMaximum(composition.duration, timeline.duration))
-                : CMTimeRange(start: composition.duration, end: timeline.duration)
+                ? CMTimeRange(start: .zero, end: CMTimeMaximum(composition.duration, length))
+                : CMTimeRange(start: composition.duration, end: length)
             let piece = CMTimeRange(start: filler.range.start, duration: CMTimeMinimum(filler.range.duration, frameDuration(for: timeline.frameRate)))
             try withExtendedLifetime(blank) {
                 try track.insertTimeRange(piece, of: filler.track, at: gap.start)

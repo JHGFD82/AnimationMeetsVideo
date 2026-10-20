@@ -15,6 +15,8 @@ struct TimelineActions {
     /// Moves the selected clip a number of frames, earlier when negative.
     var nudge: (Int) -> Void
     var deleteSelection: () -> Void
+    /// Turns the selected clips off, or on again when all are off.
+    var toggleEnabled: () -> Void
     var isSnapping: Bool
     var toggleSnapping: () -> Void
     var tool: TimelineTool
@@ -101,6 +103,8 @@ struct TimelineCommands: Commands {
             Button("Nudge Clip Later  .") { actions?.nudge(1) }
                 .disabled(actions == nil)
             Button("Delete Selection  ⌫") { actions?.deleteSelection() }
+                .disabled(actions == nil)
+            Button("Turn Clip Off or On  V") { actions?.toggleEnabled() }
                 .disabled(actions == nil)
 
             Divider()

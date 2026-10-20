@@ -305,6 +305,10 @@ struct ClipBlockView: View {
             // clip reads as a block sitting in the track rather than as a
             // coloured rectangle painted on it.
             .overlay { shape.strokeBorder(Design.bevelEdgeStrong, lineWidth: 1) }
+            // Turned off: still where it is, drawn faded and without colour,
+            // since it plays as a gap.
+            .saturation(clip.enabled ? 1 : 0)
+            .opacity(clip.enabled ? 1 : 0.45)
             // Only the selected clip gets a shadow. A shadow under every
             // block would be both a rasterization pass per clip on a
             // timeline that redraws as you scrub, and the look of a stack
@@ -531,6 +535,7 @@ struct ClipBlockView: View {
         ]
         if let transition = clip.transitionIn { parts.append("\(transition.kind.name) at the start") }
         if let transition = clip.transitionOut { parts.append("\(transition.kind.name) at the end") }
+        if !clip.enabled { parts.append("turned off") }
         if hasLinkedAudio { parts.append("with its own sound") }
         if let reach { parts.append("reaches \(reach.summary)") }
         return parts.joined(separator: ", ")
@@ -547,6 +552,7 @@ struct ClipBlockView: View {
         Button("Move one frame later") { onMove(CMTimeAdd(clip.startOffset, frame), nil) }
         if let onOpenNested { Button("Open timeline", action: onOpenNested) }
         Button(isInGroup ? "Remove from selection" : "Add to selection", action: onToggleInGroup)
+        Button(clip.enabled ? "Turn off" : "Turn on") { onEditClip { $0.enabled.toggle() } }
         Button(isInGroup ? "Cut selection" : "Cut") { onClipboard(.cut) }
         Button(isInGroup ? "Copy selection" : "Copy") { onClipboard(.copy) }
         Button(isInGroup ? "Duplicate selection" : "Duplicate") { onClipboard(.duplicate) }
