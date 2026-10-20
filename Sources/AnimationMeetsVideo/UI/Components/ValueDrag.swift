@@ -32,6 +32,22 @@ enum ValueDrag {
     }
 }
 
+/// Which of Shift and Option sets a drag's pace: the one held first, until it
+/// is let go. Pressing the other meanwhile changes nothing, so Option held
+/// down for fine work isn't knocked into ten times as fast by a Shift
+/// pressed on the way (both pressed at once: Shift).
+struct DragPace {
+    private var held: NSEvent.ModifierFlags = []
+
+    /// The modifiers that set the pace for a move made with `flags` down.
+    mutating func resolve(_ flags: NSEvent.ModifierFlags) -> NSEvent.ModifierFlags {
+        let pressed = flags.intersection([.shift, .option])
+        if !held.isEmpty, pressed.contains(held) { return held }
+        held = pressed.contains(.shift) ? .shift : pressed.contains(.option) ? .option : []
+        return held
+    }
+}
+
 /// Whether the mouse press a field's drag gesture follows may start a value
 /// drag. Escape ends a drag at once, but the button is still down and the
 /// gesture goes on reporting moves: without this, the next move began a new
@@ -60,6 +76,7 @@ final class ValueDragSession {
     private var monitor: Any?
     private var start: CGPoint?
     private var distance = 0.0
+    private var pace = DragPace()
     private var finished = false
 
     init(onMove: @escaping (Double, NSEvent.ModifierFlags) -> Void, onFinish: @escaping (Bool) -> Void) {
@@ -83,7 +100,7 @@ final class ValueDragSession {
         switch event.type {
         case .leftMouseDragged:
             distance += Double(event.deltaX)
-            onMove(distance, event.modifierFlags.intersection(.deviceIndependentFlagsMask))
+            onMove(distance, pace.resolve(event.modifierFlags.intersection(.deviceIndependentFlagsMask)))
             // Taken here: passed on, every move would be hit-tested through
             // the whole window and run its gestures, for nothing, since the
             // pointer is held still. The mouse-up still goes on, ending the
