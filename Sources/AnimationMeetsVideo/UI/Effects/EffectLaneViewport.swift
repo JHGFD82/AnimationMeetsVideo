@@ -13,7 +13,9 @@ import SwiftUI
 /// redraws (`StackRow`).
 @MainActor @Observable
 final class LaneViewport {
-    /// The control column's width: at least `EffectsPanelMetrics.labelWidth`.
+    /// The control column's width: at least `EffectsPanelMetrics.labelWidth`,
+    /// and the widest it has needed since the clip was selected, so it
+    /// doesn't resize back as a value shortens.
     var labelWidth = EffectsPanelMetrics.labelWidth
     /// The width of the lanes' window, and of the lanes themselves when
     /// not zoomed in.
@@ -43,6 +45,7 @@ final class LaneViewport {
 
     /// Shows the whole clip again.
     func reset() {
+        labelWidth = EffectsPanelMetrics.labelWidth
         zoom = 1
         scrollX = 0
         zoomBand = RubberBandZoom()

@@ -14,6 +14,16 @@ extension NumericExpression {
     }
 }
 
+/// The width of the number as it is shown, for `NumericField` to keep the
+/// widest.
+private struct NumberWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// A number shown as text that turns into a field when clicked, After
 /// Effects-style. Return or clicking away enters what was typed, which may
 /// be arithmetic ("100+25"); Escape cancels. Text that isn't a number beeps
@@ -58,6 +68,10 @@ struct NumericField: View {
     /// the click that ends a drag (the cursor is back where it started)
     /// doesn't also open the field for typing.
     @State private var endsDrag = false
+    /// The widest the number has been shown, which it keeps being given:
+    /// a drag adding a decimal point to a whole number would otherwise
+    /// resize the row around it, and again taking it away.
+    @State private var widest: CGFloat = 0
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -89,6 +103,13 @@ struct NumericField: View {
                 .foregroundStyle(Design.accent)
                 .lineLimit(1)
                 .fixedSize()
+                .background(GeometryReader { proxy in
+                    Color.clear.preference(key: NumberWidthKey.self, value: proxy.size.width)
+                })
+                .onPreferenceChange(NumberWidthKey.self) { width in
+                    if width > widest { widest = width }
+                }
+                .frame(minWidth: widest, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture(perform: beginEditing)
                 .simultaneousGesture(dragStep.map { step in

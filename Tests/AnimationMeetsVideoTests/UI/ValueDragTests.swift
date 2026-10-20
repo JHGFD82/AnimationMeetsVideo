@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Testing
 @testable import AnimationMeetsVideo
 
@@ -54,5 +55,32 @@ import Testing
 
         press.release()
         #expect(press.mayBegin)
+    }
+}
+
+/// A number keeps the widest it has been shown, so a decimal point added by
+/// a drag doesn't resize its row, and taking it away doesn't again.
+@MainActor
+struct NumberWidthTests {
+    @Test func aNumberDoesNotNarrowAfterWidening() {
+        func field(_ value: Double) -> some View {
+            NumericField(value: value, fractionDigits: 1) { _ in }
+        }
+        let host = NSHostingView(rootView: field(100))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 200, height: 40), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        func width() -> CGFloat {
+            for _ in 0..<4 {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+                host.layoutSubtreeIfNeeded()
+            }
+            return host.fittingSize.width
+        }
+        let whole = width()
+        host.rootView = field(100.5)
+        let wider = width()
+        #expect(wider > whole)
+        host.rootView = field(100)
+        #expect(width() == wider)
     }
 }

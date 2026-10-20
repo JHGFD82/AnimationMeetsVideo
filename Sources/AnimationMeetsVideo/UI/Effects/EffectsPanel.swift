@@ -279,7 +279,7 @@ struct EffectsPanel: View {
             }
             .environment(lanes)
             .onPreferenceChange(ControlColumnWidthKey.self) { width in
-                lanes.labelWidth = max(EffectsPanelMetrics.labelWidth, width.rounded(.up))
+                lanes.labelWidth = max(lanes.labelWidth, width.rounded(.up))
             }
             .onChange(of: laneWidth, initial: true) { _, width in lanes.fit(width: width, maxZoom: maxZoom) }
             .onChange(of: maxZoom) { _, zoom in lanes.fit(width: laneWidth, maxZoom: zoom) }
