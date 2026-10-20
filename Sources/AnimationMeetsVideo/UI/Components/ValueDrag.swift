@@ -32,6 +32,23 @@ enum ValueDrag {
     }
 }
 
+/// Whether the mouse press a field's drag gesture follows may start a value
+/// drag. Escape ends a drag at once, but the button is still down and the
+/// gesture goes on reporting moves: without this, the next move began a new
+/// drag from the restored value, which went on working and left something to
+/// undo. After Escape the press is ignored until the button is released.
+struct ValueDragPress {
+    private(set) var isCancelled = false
+
+    var mayBegin: Bool { !isCancelled }
+
+    /// Escape cancelled the drag.
+    mutating func cancel() { isCancelled = true }
+
+    /// The button was released.
+    mutating func release() { isCancelled = false }
+}
+
 /// Drags a number: the pointer is hidden and held where the drag began, so
 /// a drag can go on past the edge of the screen, and reappears there when
 /// it ends. Moves are read from the mouse events' deltas. Escape ends the

@@ -52,6 +52,8 @@ struct NumericField: View {
     /// The value a drag has reached, shown in place of `value`, which
     /// stays as it was while the drag is held.
     @State private var dragged: Double?
+    /// Whether Escape cancelled this press's drag (see `ValueDragPress`).
+    @State private var press = ValueDragPress()
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -87,8 +89,13 @@ struct NumericField: View {
                 .onTapGesture(perform: beginEditing)
                 .simultaneousGesture(dragStep.map { step in
                     DragGesture(minimumDistance: 3, coordinateSpace: .global)
-                        .onChanged { _ in beginDrag(step: step) }
-                        .onEnded { _ in drag?.finish(cancelled: false) }
+                        .onChanged { _ in
+                            if press.mayBegin { beginDrag(step: step) }
+                        }
+                        .onEnded { _ in
+                            press.release()
+                            drag?.finish(cancelled: false)
+                        }
                 })
                 .help(dragStep == nil
                     ? "Click to type a value. Arithmetic such as 100+25 works."
@@ -130,6 +137,7 @@ struct NumericField: View {
                 // A drag let go (see `ProjectState.letGo`) has written to
                 // the project already, so a cancelled one is put back.
                 if cancelled {
+                    press.cancel()
                     onCommit(start)
                 } else if let last {
                     onCommit(last)
