@@ -128,11 +128,15 @@ struct FilmstripRow: View {
 ///
 /// The picture is kept with what it is of, and shown only while that is
 /// still what the cell asks for: a cell reused for another clip or time
-/// shows black until its own picture arrives, never the last one's.
+/// shows black until its own picture arrives, never the last one's. A cell
+/// that is the same place in the same strip (a tile on the timeline, whose
+/// time moves as the clip is retimed or trimmed) can instead
+/// `keepsPictureWhileLoading`, so it never flashes black between pictures.
 struct FilmstripThumbnail: View {
     let url: URL?
     let time: CMTime
     let height: CGFloat
+    var keepsPictureWhileLoading = false
     @State private var loaded: (key: String, image: NSImage)?
 
     private var key: String { "\(url?.path ?? "")|\(time.value)/\(time.timescale)|\(height)" }
@@ -140,7 +144,7 @@ struct FilmstripThumbnail: View {
     var body: some View {
         ZStack {
             Rectangle().fill(.black)
-            if let loaded, loaded.key == key {
+            if let loaded, keepsPictureWhileLoading || loaded.key == key {
                 Image(nsImage: loaded.image)
                     .resizable()
                     .scaledToFit()

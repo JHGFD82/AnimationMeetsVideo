@@ -34,7 +34,7 @@ struct ClipThumbnails: View {
         ZStack(alignment: .topLeading) {
             if let url = media.url, last > first {
                 ForEach(first..<last, id: \.self) { index in
-                    FilmstripThumbnail(url: url, time: time(atTile: index, width: tile), height: height)
+                    FilmstripThumbnail(url: url, time: time(atTile: index, width: tile), height: height, keepsPictureWhileLoading: true)
                         .frame(width: tile, height: height)
                         .clipped()
                         .offset(x: CGFloat(index) * tile - into)
