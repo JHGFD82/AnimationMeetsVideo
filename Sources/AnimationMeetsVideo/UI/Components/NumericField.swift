@@ -54,6 +54,10 @@ struct NumericField: View {
     @State private var dragged: Double?
     /// Whether Escape cancelled this press's drag (see `ValueDragPress`).
     @State private var press = ValueDragPress()
+    /// Set from a drag's start until just after its button is released, so
+    /// the click that ends a drag (the cursor is back where it started)
+    /// doesn't also open the field for typing.
+    @State private var endsDrag = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -95,6 +99,10 @@ struct NumericField: View {
                         .onEnded { _ in
                             press.release()
                             drag?.finish(cancelled: false)
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(250))
+                                endsDrag = false
+                            }
                         }
                 })
                 .help(dragStep == nil
@@ -110,12 +118,14 @@ struct NumericField: View {
     }
 
     private func beginEditing() {
+        guard !endsDrag else { return }
         draft = NumericExpression.format(value, maxFractionDigits: 3)
         isEditing = true
     }
 
     private func beginDrag(step: Double) {
         guard drag == nil else { return }
+        endsDrag = true
         let start = value
         dragStart = start
         history?.beginGesture()
