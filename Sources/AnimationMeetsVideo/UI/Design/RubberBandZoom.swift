@@ -34,6 +34,10 @@ struct RubberBandZoom: RubberBand {
     /// The most a stretch scales the view, either way: a fifth.
     static let reach = 0.2
 
+    /// How much of what a limit holds back a zoom that isn't a pinch (a key,
+    /// a button, a wheel) stretches the view by.
+    static let nudgeShare = 0.3
+
     /// Zooms by `factor` (above 1 zooms in) through `apply`, which zooms
     /// the view by the factor it's given, as far as the view's limits
     /// allow, and returns the factor it managed. What a limit holds back
@@ -50,7 +54,11 @@ struct RubberBandZoom: RubberBand {
         if asked != 0 {
             let got = apply(exp(asked))
             // A view that zoomed all the way leaves rounding, not a stretch.
-            if got > 0, got.isFinite, abs(asked - log(got)) > 1e-6 { stretch += asked - log(got) }
+            // A key or a button pushes less than a pinch does: one press
+            // past the limit is a nudge, not a jump.
+            if got > 0, got.isFinite, abs(asked - log(got)) > 1e-6 {
+                stretch += (asked - log(got)) * (pinching ? 1 : Self.nudgeShare)
+            }
         }
         if abs(stretch) < 1e-6 { stretch = 0 }
         if stretch != 0 { self.anchor = min(max(anchor, 0), 1) }
