@@ -57,8 +57,7 @@ struct CompositionKey: Equatable {
 
 extension CompositionKey {
     /// Whether the only difference from `old` is clips' speed (and the
-    /// clips after them moving to follow it, and their ends refitted to
-    /// whole frames, which moves the trim). What speed changes is which
+    /// clips after them moving to follow it). What speed changes is which
     /// frames play when, which only playing shows, so a drag of it doesn't
     /// need the picture updated as it goes.
     func differsOnlyInSpeed(from old: CompositionKey) -> Bool {
@@ -70,8 +69,6 @@ extension CompositionKey {
                     for clip in copy.layers[layer].clips.indices {
                         copy.layers[layer].clips[clip].time.speed = AnimatedValue(100.0)
                         copy.layers[layer].clips[clip].startOffset = .zero
-                        copy.layers[layer].clips[clip].trimStart = .zero
-                        copy.layers[layer].clips[clip].trimEnd = .zero
                     }
                 }
                 return copy

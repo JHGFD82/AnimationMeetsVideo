@@ -84,8 +84,6 @@ struct UIResponsivenessBenchmark {
         case drag(EffectKind, ControlKind, delta: Double, keyframed: Bool = false)
         /// Nudges the selected clip's layer's volume, in decibels.
         case volume
-        /// Drags the selected clip's speed.
-        case speed
         /// Presses a key, alternating with `back` when given, or with
         /// `sweep` pressing it 60 times and `back` 60 times, so stepping
         /// the playhead never runs into the end.
@@ -127,7 +125,6 @@ struct UIResponsivenessBenchmark {
             Scenario(name: "kaleidoscope-angle", base: .media, action: .drag(.kaleidoscope, .distortAngle, delta: 1)),
             Scenario(name: "feedback-scale", base: .media, action: .drag(.feedback, .copyScale, delta: 0.5)),
             Scenario(name: "volume", base: .media, panel: .inspector, action: .volume),
-            Scenario(name: "speed-drag", base: .media, action: .speed),
             Scenario(name: "step-frame", base: .media, action: .key(.right, back: .left, sweep: true)),
             Scenario(name: "step-ten-frames", base: .media, action: .key(.shiftRight, back: .shiftLeft)),
             Scenario(name: "step-frame-library", base: .media, showsLibrary: true, action: .key(.right, back: .left, sweep: true)),
@@ -205,12 +202,6 @@ struct UIResponsivenessBenchmark {
             edit = { project, step in
                 project.editVolume(of: selection.layerID, in: t) { volume in
                     volume.set(volume.value + (step.isMultiple(of: 2) ? 0.5 : -0.5), at: .zero)
-                }
-            }
-        case .speed:
-            edit = { project, step in
-                project.editTime(ofClip: selection.timelineClipID, in: t, layer: selection.layerID) { time in
-                    time.speed.set(100 + Double(step % 60), at: .zero)
                 }
             }
         case .key:

@@ -66,16 +66,6 @@ import Testing
         #expect(CompositionKey(project: after).differsOnlyInSpeed(from: CompositionKey(project: before)))
     }
 
-    @Test func aSpeedChangeThatRefitsTheTrimIsStillOnlyASpeedChange() {
-        let (before, tl, clip) = project()
-        var after = before
-        after.editClip(clip, in: tl) {
-            $0.time.speed = AnimatedValue(50)
-            $0.trimEnd = CMTimeSubtract($0.trimEnd, CMTime(value: 1, timescale: 24))
-        }
-        #expect(CompositionKey(project: after).differsOnlyInSpeed(from: CompositionKey(project: before)))
-    }
-
     @Test func aSpeedChangeWithAnEffectChangeIsNot() {
         let (before, tl, clip) = project()
         var after = before
