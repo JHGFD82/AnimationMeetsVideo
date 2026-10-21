@@ -299,17 +299,24 @@ enum MatroskaReferenceMovie {
 
     private static func append(_ plan: TrackPlan, to movie: AVMutableMovie, source: URL, start: CMTime) throws {
         let trackStart = CMTimeSubtract(plan.start, start)
-        let (track, skipped) = try addTrack(plan, to: movie, source: source, at: trackStart)
         // Core Media drops what it takes for a codec's priming from the start
         // of the media, AAC's 2112 samples, whatever the file says, and
-        // shows the next sample where the media was placed. When that isn't
-        // the file's own priming, the track is made again moved by the
+        // shows the next sample where the media was placed. A trial track of
+        // the first few samples shows how much, since making the whole track
+        // only to make it again takes seconds for hours of sound. When that
+        // isn't the file's own priming, the track is moved by the
         // difference, so each sample is heard when the file has it.
+        var trial = plan
+        trial.samples = Array(plan.samples.prefix(trialSampleCount))
+        let (trialTrack, skipped) = try addTrack(trial, to: movie, source: source, at: trackStart)
+        movie.removeTrack(trialTrack)
         let correction = CMTimeSubtract(skipped, CMTime(value: plan.priming, timescale: plan.timescale))
-        guard correction != .zero else { return }
-        movie.removeTrack(track)
         _ = try addTrack(plan, to: movie, source: source, at: CMTimeAdd(trackStart, correction))
     }
+
+    /// Enough samples to cover any priming Core Media skips (AAC's 2112
+    /// samples are three packets) and a video's reordered first frames.
+    private static let trialSampleCount = 64
 
     /// Adds the plan's track with its media placed from `trackStart`, and
     /// returns it with how much of the media's start Core Media skipped.
