@@ -53,11 +53,15 @@ extension EditingProject {
             let clip = timelines[tIndex].layers[lIndex].clips[cIndex]
             guard clipIDs?.contains(clip.id) ?? true, hasLinkedAudio(clip) else { continue }
             timelines[tIndex].layers[lIndex].clips[cIndex].streams = .video
+            timelines[tIndex].layers[lIndex].clips[cIndex].soundMuted = false
             // The picture keeps its effects and the sound takes its own.
             timelines[tIndex].layers[lIndex].clips[cIndex].audioEffects = []
             var audio = clip
             audio.id = UUID()
             audio.streams = .audio
+            // Sound muted as it was placed plays once it is on a layer of
+            // its own: taking it out is what the mute was waiting for.
+            audio.soundMuted = false
             audio.transitionIn = nil
             audio.transitionOut = nil
             audio.autoMatteEnabled = false

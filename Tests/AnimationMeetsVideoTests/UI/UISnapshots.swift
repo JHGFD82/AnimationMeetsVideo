@@ -645,4 +645,29 @@ struct UISnapshots {
         )
         try SnapshotSupport.render(editor, "disabled-clip", size: CGSize(width: 1500, height: 900))
     }
+
+    /// Two videos with sound, the upper one's muted: its speaker badge is
+    /// struck through.
+    @Test func mutedClip() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        func video(_ name: String) -> MediaClip {
+            MediaClip(
+                name: name, kind: .video, url: nil, duration: CMTime(value: 10, timescale: 1),
+                frameRate: 24, colorSpace: .rec709, codecName: "H.264", hasAudio: true
+            )
+        }
+        let playing = project.importClip(video("Playing"), intoTimeline: t)
+        let placed = project.importClip(video("Muted"), intoTimeline: t)
+        _ = try #require(playing)
+        let muted = try #require(placed)
+        project.editClip(muted.clipID, in: t) { $0.soundMuted = true }
+        UserDefaults.standard.set(420.0, forKey: Preferences.timelineHeight)
+        defer { UserDefaults.standard.removeObject(forKey: Preferences.timelineHeight) }
+        let editor = EditorView(
+            project: .constant(project), history: ProjectHistory(project: project), analysis: AssetAnalysis(),
+            replacement: MediaReplacementController(), packageURL: nil
+        )
+        try SnapshotSupport.render(editor, "muted-clip", size: CGSize(width: 1500, height: 900))
+    }
 }

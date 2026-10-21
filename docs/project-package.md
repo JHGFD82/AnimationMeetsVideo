@@ -196,7 +196,8 @@ Requirements for the file:
   `volume` likewise.
   A timeline's `sections` are written only once it has one. Likewise a
   clip's `streams` (`"video"` or `"audio"`) is written only once
-  a video's sound has been detached, and `transitionIn` / `transitionOut`
+  a video's sound has been detached, `soundMuted` (`true`) only while a
+  clip's sound is muted, and `transitionIn` / `transitionOut`
   (`{"kind": "crossDissolve", "duration": "1s"}`) only when the clip has
   one. A transition's
   `curve` is written only when it isn't linear, as its points:

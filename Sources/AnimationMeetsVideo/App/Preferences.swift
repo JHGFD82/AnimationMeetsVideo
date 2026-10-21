@@ -63,6 +63,9 @@ enum Preferences {
     /// Whether skimming a clip in the browser plays its sound under the
     /// pointer.
     static let browserSkimAudio = "browserSkimAudio"
+    /// Whether video put on a timeline from the browser comes with its
+    /// sound muted (`TimelineClip.soundMuted`). Off unless turned on.
+    static let browserMutesAddedSound = "browserMutesAddedSound"
     /// Whether the timeline plays while a take is recorded.
     static let recordWhilePlaying = "recordWhilePlaying"
     /// What takes are recorded from (see `RecordPopover`).

@@ -26,8 +26,8 @@ struct LinkedAudioLane: View {
                 if drawnMaxX > drawnMinX {
                     let tone = Design.ClipTone.audio.color
                     HStack(spacing: Design.Space.tight) {
-                        Image(systemName: "waveform")
-                        Text("Linked audio")
+                        Image(systemName: clip.soundMuted ? "speaker.slash.fill" : "waveform")
+                        Text(clip.soundMuted ? "Linked audio, muted" : "Linked audio")
                             .lineLimit(1)
                     }
                     .font(Design.Typeface.micro)
@@ -36,6 +36,7 @@ struct LinkedAudioLane: View {
                     .frame(width: drawnMaxX - drawnMinX, height: height, alignment: .leading)
                     .background { waveform(of: clip, drawnMinX: drawnMinX, clipX: x, width: drawnMaxX - drawnMinX) }
                     .background(Design.clipFill(tone, selected: false))
+                    .saturation(clip.soundMuted ? 0 : 1)
                     .clipShape(RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)

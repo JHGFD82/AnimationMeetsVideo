@@ -164,6 +164,13 @@ loses the keyboard.
   a clip lands ([timeline.md](timeline.md)).
 - **Add to Timeline** (context menu, or Return) does the same for the
   selection without dragging.
+- **Mute added video sound** (in the view options, and the Settings
+  window's Library tab; off by default) puts video clips that have sound
+  on the timeline with it muted (`TimelineClip.soundMuted`). The sound
+  stays linked, not removed: Unmute Sound in the clip's menu plays it
+  again, and detaching it unmutes it on its new sound layer
+  ([timeline.md](timeline.md#linked-and-detached-audio)). Video dropped
+  in from the Finder follows it too; sound files are never muted.
 
 ### From the Finder
 

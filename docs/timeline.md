@@ -483,6 +483,15 @@ only the sound (`streams = .audio`), go onto a new sound layer. From
 then on the two are ordinary clips: the sound is colored as audio, moves
 freely off the frame grid, carries the beats, and takes no transitions.
 
+**Mute Sound** (in the clip's menu, for any clip that makes sound) keeps
+the sound where it is and silences it (`soundMuted`): it is left out of
+playback, the meter and exports, keeps its volume and effects, and its
+badge and linked audio block show it muted. Unmute Sound, or Undo, plays
+it again. Detaching a muted clip's sound unmutes it: the sound clip on
+the new layer plays, and the picture has no sound left to mute. The
+browser can mute video's sound as it is added
+([browser.md](browser.md#dragging)).
+
 ## Transitions
 
 Transitions are dragged from the panel onto a clip with pictures; the

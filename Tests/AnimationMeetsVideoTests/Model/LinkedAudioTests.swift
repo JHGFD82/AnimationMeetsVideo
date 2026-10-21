@@ -43,6 +43,28 @@ private func videoWithSound(url: URL? = nil, duration: Double = 10) -> MediaClip
         #expect(project.detachAudio(in: timelineID, layer: ids.layerID) == nil)
     }
 
+    @Test func detachingMutedSoundPlaysItOnTheSoundLayer() throws {
+        var project = EditingProject.empty
+        let imported = project.importClip(videoWithSound(), intoTimeline: project.rootTimelineID)
+        let ids = try #require(imported)
+        let timelineID = project.rootTimelineID
+        project.editClip(ids.clipID, in: timelineID) {
+            $0.soundMuted = true
+            $0.volume.set(-6, at: .zero)
+        }
+        // Muted, the sound is still the clip's to detach.
+        let video = try #require(project.clipAndLayer(ids.clipID, in: timelineID)?.clip)
+        #expect(project.hasLinkedAudio(video))
+
+        let detached = project.detachAudio(in: timelineID, layer: ids.layerID)
+        let soundLayerID = try #require(detached)
+        let soundLayer = try #require(project.timeline(id: timelineID)?.layer(id: soundLayerID))
+        #expect(soundLayer.kind == .sound)
+        #expect(!soundLayer.clips[0].soundMuted)
+        #expect(soundLayer.clips[0].volume.value == -6)
+        #expect(project.clipAndLayer(ids.clipID, in: timelineID)?.clip.soundMuted == false)
+    }
+
     @Test func silentVideoHasNothingToDetach() throws {
         var project = EditingProject.empty
         var media = videoWithSound()

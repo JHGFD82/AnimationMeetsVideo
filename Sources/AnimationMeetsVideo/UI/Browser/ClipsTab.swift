@@ -72,6 +72,7 @@ struct ClipsTab: View {
     /// Off, the pointer moving over a strip leaves the viewer alone, and a
     /// click shows the frame clicked instead.
     @AppStorage(Preferences.browserSkimming) private var skimming = true
+    @AppStorage(Preferences.browserMutesAddedSound) private var mutesAddedSound = false
     @State private var picked = BrowserSelection<BrowserItemID>()
     @State private var width: CGFloat = 240
     @State private var sensitivityTarget: SensitivityTarget?
@@ -709,7 +710,8 @@ struct ClipsTab: View {
     // MARK: - Editing
 
     private func addToTimeline(_ pieces: [MediaPiece]) {
-        guard let result = project.addPieces(pieces, intoTimeline: activeTimelineID), let clipID = result.clipIDs.first else { return }
+        guard let result = project.addPieces(pieces, intoTimeline: activeTimelineID, mutingSound: mutesAddedSound),
+              let clipID = result.clipIDs.first else { return }
         selection = TimelineSelection(timelineID: activeTimelineID, layerID: result.layerID, timelineClipID: clipID)
     }
 

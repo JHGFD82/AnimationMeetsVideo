@@ -59,6 +59,7 @@ struct TimelineEditorSurface<Library: View>: View {
     /// As tall as the person makes it, not as tall as its layers need: its
     /// areas share whatever height it has and scroll the rest.
     @AppStorage(Preferences.timelineHeight) private var timelineHeight: Double = 280
+    @AppStorage(Preferences.browserMutesAddedSound) private var mutesAddedSound = false
     /// The Effects Library at the right end of the timeline, and which tab it is on.
     @AppStorage(Preferences.showsEffectsLibrary) private var showsEffectsLibrary = false
     @AppStorage(Preferences.effectsLibraryTab) private var effectsLibraryTab = EffectsLibraryTab.effects
@@ -607,10 +608,10 @@ struct TimelineEditorSurface<Library: View>: View {
     @discardableResult
     private func place(_ pieces: [MediaPiece], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind?) -> Bool {
         var firstClip: (layerID: UUID, clipID: UUID)?
-        if let layerID, let added = project.addPieces(pieces, intoLayer: layerID, in: timelineID, at: time),
+        if let layerID, let added = project.addPieces(pieces, intoLayer: layerID, in: timelineID, at: time, mutingSound: mutesAddedSound),
            let clipID = added.first {
             firstClip = (layerID, clipID)
-        } else if let result = project.addPieces(pieces, intoTimeline: timelineID, at: time, kind: kind),
+        } else if let result = project.addPieces(pieces, intoTimeline: timelineID, at: time, kind: kind, mutingSound: mutesAddedSound),
                   let clipID = result.clipIDs.first {
             firstClip = (result.layerID, clipID)
         }

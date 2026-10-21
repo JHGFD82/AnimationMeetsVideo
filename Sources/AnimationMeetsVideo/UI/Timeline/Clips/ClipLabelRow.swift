@@ -9,6 +9,8 @@ struct ClipLabelRow: View, Equatable {
     var isNestedTimeline: Bool
     var isAudioStream: Bool
     var hasLinkedAudio: Bool
+    /// Shows the sound's badge struck through.
+    var soundMuted: Bool
     var effectCount: Int
     var hasPasteChanges: Bool
     var passesThrough: Bool
@@ -30,7 +32,11 @@ struct ClipLabelRow: View, Equatable {
                 .lineLimit(1)
                 .layoutPriority(-1)
             HStack(spacing: Design.Space.tight) {
-                if hasLinkedAudio {
+                if soundMuted {
+                    Image(systemName: "speaker.slash.fill")
+                        .font(Design.Typeface.micro)
+                        .help("Its sound is muted; unmute it from the clip's menu, or detach it to play it on a layer of its own")
+                } else if hasLinkedAudio {
                     Image(systemName: "speaker.wave.2.fill")
                         .font(Design.Typeface.micro)
                         .help("Plays its own sound; show it with the layer's waveform button")

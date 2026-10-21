@@ -73,6 +73,9 @@ extension ClipBlockView {
         Divider()
         Button(clip.enabled ? "Turn Off" : "Turn On") { onEditClip { $0.enabled.toggle() } }
             .keyboardShortcut("v", modifiers: [])
+        if playsSound {
+            Button(clip.soundMuted ? "Unmute Sound" : "Mute Sound") { onEditClip { $0.soundMuted.toggle() } }
+        }
         Divider()
         if let reach {
             reachMenu(reach)

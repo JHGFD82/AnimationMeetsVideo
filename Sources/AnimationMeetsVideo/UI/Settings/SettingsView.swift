@@ -196,6 +196,7 @@ private struct LibrarySettings: View {
     @AppStorage(Preferences.thumbnailInterval) private var interval = ThumbnailInterval.all
     @AppStorage(Preferences.thumbnailSize) private var size = ThumbnailSize.medium
     @AppStorage(Preferences.browserSkimming) private var skimming = true
+    @AppStorage(Preferences.browserMutesAddedSound) private var mutesAddedSound = false
 
     var body: some View {
         SettingsPane {
@@ -227,6 +228,13 @@ private struct LibrarySettings: View {
                     .fixedSize()
                 }
                 SheetNote("More thumbnails show more of each clip, as a filmstrip, and take longer to draw.")
+            }
+            Groove()
+            SheetSection("Adding to a Timeline") {
+                SheetRow("Sound", alignment: .center) {
+                    Toggle("Mute a video's sound when it is added", isOn: $mutesAddedSound)
+                }
+                SheetNote("The clip keeps its sound, muted: unmute it from the clip's menu, or detach it and it plays on a sound layer of its own. Also in the browser's view options.")
             }
         }
     }

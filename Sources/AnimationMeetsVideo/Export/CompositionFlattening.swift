@@ -165,7 +165,7 @@ extension CompositionExporter {
                         )
                     }
                     if let (placement, base) = main {
-                        if silent { placement.includesAudio = false }
+                        if silent || clip.soundMuted { placement.includesAudio = false }
                         // A retimed clip's sound is silent, or played at its
                         // new speed with or without its pitch changing.
                         if clip.isRetimed, clip.time.sound == .mute || clip.isReversed { placement.includesAudio = false }
@@ -302,7 +302,7 @@ extension CompositionExporter {
                         offset: CMTimeAdd(offset, shift),
                         outerVolume: [clipVolume] + fadeStages + volume,
                         rootClipID: owner,
-                        silent: silent,
+                        silent: silent || clip.soundMuted,
                         hosts: &inner
                     )
                     nestedHosts += inner

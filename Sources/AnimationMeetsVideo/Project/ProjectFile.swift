@@ -87,6 +87,8 @@ struct ProjectFile: Codable {
         var reach: UUID?
         /// `false` for a clip turned off; absent while it plays.
         var enabled: Bool?
+        /// `true` for a clip whose sound is muted; absent while it sounds.
+        var soundMuted: Bool?
     }
 
     /// Echo or trails: `count` copies, `delay` apart, each `decay` as strong
@@ -915,6 +917,7 @@ extension ProjectFile {
             .optional("passThrough", .bool),
             .optional("reach", .uuid),
             .optional("enabled", .bool),
+            .optional("soundMuted", .bool),
             .optional("time", .object(object([
                 .optional("speed", property(.number)),
                 .optional("frameBlending", .choice(["blend", "opticalFlow"], noun: "frame blending")),

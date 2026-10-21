@@ -661,7 +661,8 @@ enum ProjectStore {
                                 time: ProjectFile.ClipTimeEntry(clip.time),
                                 shutter: ProjectFile.ShutterEntry(clip.shutter),
                                 reach: clip.source == .adjustment ? clip.reach : nil,
-                                enabled: clip.enabled ? nil : false
+                                enabled: clip.enabled ? nil : false,
+                                soundMuted: clip.soundMuted ? true : nil
                             )
                         },
                         volume: layer.kind.isAudio && layer.volume != AnimatedValue(0.0)
@@ -830,7 +831,8 @@ enum ProjectStore {
                                 // kept one reach for the whole layer.
                                 reach: source == .adjustment
                                     ? (clipEntry.reach ?? layerEntry.reach).flatMap { layerIDs.contains($0) ? $0 : nil } : nil,
-                                enabled: clipEntry.enabled ?? true
+                                enabled: clipEntry.enabled ?? true,
+                                soundMuted: clipEntry.soundMuted ?? false
                             )
                         },
                         volume: layerEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0),

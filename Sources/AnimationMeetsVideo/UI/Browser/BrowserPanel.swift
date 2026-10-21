@@ -54,6 +54,7 @@ struct BrowserPanel: View {
     @AppStorage(Preferences.thumbnailSize) private var thumbnailSize = ThumbnailSize.medium
     @AppStorage(Preferences.browserSkimming) private var skimming = true
     @AppStorage(Preferences.browserSkimAudio) private var skimAudio = true
+    @AppStorage(Preferences.browserMutesAddedSound) private var mutesAddedSound = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -159,6 +160,8 @@ struct BrowserPanel: View {
                     .disabled(!skimming)
                     .padding(.leading, Design.Space.step)
             }
+            Toggle("Mute added video sound", isOn: $mutesAddedSound)
+                .help("Put video on the timeline with its sound muted; detaching the sound unmutes it")
         }
         .font(Design.Typeface.label)
         .padding(Design.Space.group)

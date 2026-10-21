@@ -144,4 +144,35 @@ import Testing
         let pushed = project.pushedByPieces([MediaPiece(assetID: v.id, start: t(0), end: t(24))], onLayer: layerID, in: timelineID, at: t(10))
         #expect(pushed.values.map(\.to) == [t(24)])
     }
+
+    @Test func mutingSoundMutesOnlyVideoThatCarriesSound() throws {
+        var project = EditingProject.empty
+        var loud = video("Loud")
+        loud.hasAudio = true
+        let quiet = video("Quiet"), s = audio("S")
+        project.clips = [loud, quiet, s]
+        let pieces = [loud, quiet, s].map { MediaPiece(assetID: $0.id, start: t(0), end: t(24)) }
+        let added = project.addPieces(pieces, intoTimeline: project.rootTimelineID, mutingSound: true)
+        let ids = try #require(added).clipIDs
+        let clips = project.timelines[0].layers.flatMap(\.clips)
+        func muted(_ id: UUID) -> Bool? { clips.first { $0.id == id }?.soundMuted }
+        #expect(muted(ids[0]) == true)
+        #expect(muted(ids[1]) == false)
+        // Sound on its own is what is wanted from the clip.
+        #expect(muted(ids[2]) == false)
+    }
+
+    @Test func mutingSoundMutesVideoDroppedOnALayer() throws {
+        var project = EditingProject.empty
+        var loud = video("Loud")
+        loud.hasAudio = true
+        project.clips = [loud]
+        let piece = MediaPiece(assetID: loud.id, start: t(0), end: t(24))
+        let first = project.addPieces([piece], intoTimeline: project.rootTimelineID)
+        let layerID = try #require(first).layerID
+        let added = project.addPieces([piece], intoLayer: layerID, in: project.rootTimelineID, at: t(48), mutingSound: true)
+        let id = try #require(added?.first)
+        let clips = project.timelines[0].layers[0].clips
+        #expect(clips.map(\.soundMuted) == clips.map { $0.id == id })
+    }
 }

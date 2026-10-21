@@ -254,6 +254,7 @@ struct ClipBlockView: View {
                     isNestedTimeline: { if case .timeline = clip.source { true } else { false } }(),
                     isAudioStream: clip.streams == .audio,
                     hasLinkedAudio: hasLinkedAudio,
+                    soundMuted: playsSound && clip.soundMuted,
                     effectCount: effectCount,
                     hasPasteChanges: hasPasteChanges,
                     passesThrough: passesThrough,
@@ -537,6 +538,7 @@ struct ClipBlockView: View {
         if let transition = clip.transitionOut { parts.append("\(transition.kind.name) at the end") }
         if !clip.enabled { parts.append("turned off") }
         if hasLinkedAudio { parts.append("with its own sound") }
+        if playsSound, clip.soundMuted { parts.append("sound muted") }
         if let reach { parts.append("reaches \(reach.summary)") }
         return parts.joined(separator: ", ")
     }
@@ -553,6 +555,9 @@ struct ClipBlockView: View {
         if let onOpenNested { Button("Open timeline", action: onOpenNested) }
         Button(isInGroup ? "Remove from selection" : "Add to selection", action: onToggleInGroup)
         Button(clip.enabled ? "Turn off" : "Turn on") { onEditClip { $0.enabled.toggle() } }
+        if playsSound {
+            Button(clip.soundMuted ? "Unmute sound" : "Mute sound") { onEditClip { $0.soundMuted.toggle() } }
+        }
         Button(isInGroup ? "Cut selection" : "Cut") { onClipboard(.cut) }
         Button(isInGroup ? "Copy selection" : "Copy") { onClipboard(.copy) }
         Button(isInGroup ? "Duplicate selection" : "Duplicate") { onClipboard(.duplicate) }

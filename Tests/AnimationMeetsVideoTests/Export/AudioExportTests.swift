@@ -121,4 +121,17 @@ import Testing
         #expect(levels[0] > 0.45)
         #expect(levels[1...].sorted().enumerated().allSatisfy { abs($1 - [0.2, 0.4][$0]) < 0.01 })
     }
+
+    @Test func aMutedClipLeavesItsSoundOut() async throws {
+        let tone = try AudioMixSupport.tone(frequency: 440, amplitude: 0.25, seconds: 1)
+        defer { try? FileManager.default.removeItem(at: tone) }
+        var (project, clipID, _) = try AudioMixSupport.project(playing: tone)
+        let media = try #require(project.clips.first)
+        _ = project.placeAsset(media.id, intoTimeline: project.rootTimelineID)
+        let playing = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
+        #expect(playing.composition.tracks(withMediaType: .audio).count == 2)
+        project.editClip(clipID, in: project.rootTimelineID) { $0.soundMuted = true }
+        let muted = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: project.rootTimelineID)
+        #expect(muted.composition.tracks(withMediaType: .audio).count == 1)
+    }
 }

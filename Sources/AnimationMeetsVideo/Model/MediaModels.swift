@@ -572,6 +572,11 @@ struct TimelineClip: Identifiable, Equatable {
     /// Off, the clip stays where it is on its layer but plays nothing: it
     /// is left out of the picture, the sound and exports, as a gap (V).
     var enabled = true
+    /// Silences the clip's sound without taking it away: it stays linked,
+    /// keeps its volume, and can be unmuted or detached later (detaching
+    /// unmutes it). Placing video from the browser sets it when the
+    /// browser is set to mute added sound.
+    var soundMuted = false
 
     /// The length of the part of the source the clip plays. How long it lasts
     /// on the timeline is `placedDuration`, which differs when it is retimed.
