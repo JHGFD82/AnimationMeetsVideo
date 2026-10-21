@@ -226,6 +226,33 @@ its time-jumped notification, so following needs no per-frame check. The view op
 Moving the playhead from the keyboard scrolls it to the middle when it
 lands out of view.
 
+### Skimming
+
+With **Skimming** on (the Timeline menu, or the Settings window's
+Timeline tab; off until turned on), moving the pointer over the track
+area or the ruler while paused shows the frame under it in the viewer,
+on the nearest frame, and the playhead stays where it is parked. A
+dimmed hairline in the playhead's colour, with no tab, marks the frame
+skimmed (`TimelineSkimLine`). A grain of the mix plays at each frame, as
+for moving the playhead (docs/audio.md, "Scrubbing"), unless Scrub Audio
+is off. Leaving the tracks, moving over the names column, or turning
+skimming off takes the viewer back to the playhead.
+
+- The pointer is read by the timeline's input monitor
+  (`TimelineInputMonitor`), which watches mouse-moved events without
+  taking them; a drag sends none, so dragging clips or the playhead
+  doesn't skim. Skimming waits while playing or tape scrubbing.
+- `PlaybackModel.skim(to:)` seeks the player through the same queue as
+  the playhead (one seek at a time, the newest move next) without
+  touching the parked time; the player's time-jumped ticks are ignored
+  until it is back at the playhead, so a skim never moves it.
+- Moving the playhead (a click in the ruler, a drag, the keys) ends the
+  skim. Space while skimming moves the playhead to the frame skimmed to
+  and plays from there.
+- Not yet tried on screen: the pointer's moves come from a local event
+  monitor, which the test harness's synthetic events don't reach. The
+  model's side is tested (`PlaybackSkimTests`).
+
 ### Moving the playhead from the keyboard
 
 - **← / →** step one frame; with Shift, ten. Stepping pauses playback.

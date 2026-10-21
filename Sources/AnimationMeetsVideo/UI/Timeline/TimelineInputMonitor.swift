@@ -8,7 +8,7 @@ enum PinchAxis {
 
 /// Pinch and scroll-wheel events over the view it backs, with the pointer's
 /// x in that view, so the timeline can zoom about the pointer and scroll
-/// itself sideways. Vertical scrolling is left for the scroll views of the
+/// itself sideways; and where the pointer moves over it, for skimming. Vertical scrolling is left for the scroll views of the
 /// areas.
 ///
 /// A pinch zooms along the line between the two fingers as they land:
@@ -29,12 +29,16 @@ struct TimelineInputMonitor: NSViewRepresentable {
     let onScroll: (_ deltaX: CGFloat, _ deltaY: CGFloat, _ flags: NSEvent.ModifierFlags, _ x: CGFloat, _ phase: ScrollInputPhase) -> Bool
     /// Called when the fingers of a pinch lift.
     var onMagnifyEnded: () -> Void = {}
+    /// Called with the pointer's x in this view as it moves over it, with
+    /// no button down, and with nil when it leaves.
+    var onHover: (CGFloat?) -> Void = { _ in }
 
     func makeNSView(context: Context) -> MonitorView {
         let view = MonitorView()
         view.onMagnify = onMagnify
         view.onScroll = onScroll
         view.onMagnifyEnded = onMagnifyEnded
+        view.onHover = onHover
         return view
     }
 
@@ -42,6 +46,7 @@ struct TimelineInputMonitor: NSViewRepresentable {
         view.onMagnify = onMagnify
         view.onScroll = onScroll
         view.onMagnifyEnded = onMagnifyEnded
+        view.onHover = onHover
     }
 
     static func dismantleNSView(_ view: MonitorView, coordinator: ()) {
@@ -52,7 +57,11 @@ struct TimelineInputMonitor: NSViewRepresentable {
         var onMagnify: ((CGFloat, PinchAxis, CGFloat, CGPoint) -> Void)?
         var onScroll: ((CGFloat, CGFloat, NSEvent.ModifierFlags, CGFloat, ScrollInputPhase) -> Bool)?
         var onMagnifyEnded: (() -> Void)?
+        var onHover: ((CGFloat?) -> Void)?
         private var monitor: Any?
+        /// Has the window send mouse-moved events while the pointer is over
+        /// this view, and says when it leaves.
+        private var trackingArea: NSTrackingArea?
         /// The axis of the pinch in progress, fixed once its fingers are seen.
         private var pinchAxis: PinchAxis?
 
@@ -72,7 +81,7 @@ struct TimelineInputMonitor: NSViewRepresentable {
             super.viewDidMoveToWindow()
             stopMonitoring()
             guard window != nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .scrollWheel]) { [weak self] event in
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .scrollWheel, .mouseMoved]) { [weak self] event in
                 // Local monitors run on the main thread.
                 nonisolated(unsafe) let event = event
                 let handled = MainActor.assumeIsolated { self?.handle(event) ?? false }
@@ -80,11 +89,32 @@ struct TimelineInputMonitor: NSViewRepresentable {
             }
         }
 
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let trackingArea { removeTrackingArea(trackingArea) }
+            let area = NSTrackingArea(
+                rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self
+            )
+            addTrackingArea(area)
+            trackingArea = area
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            onHover?(nil)
+        }
+
         private func handle(_ event: NSEvent) -> Bool {
             guard let window, event.window === window else { return false }
             let point = convert(event.locationInWindow, from: nil)
-            guard bounds.contains(point) else { return false }
+            guard bounds.contains(point) else {
+                if event.type == .mouseMoved { onHover?(nil) }
+                return false
+            }
             switch event.type {
+            case .mouseMoved:
+                // Seen, never taken: the views under the pointer get it too.
+                onHover?(point.x)
+                return false
             case .magnify:
                 if event.phase == .began || event.phase == .mayBegin { pinchAxis = nil }
                 let axis = pinchAxis ?? axis(of: event)

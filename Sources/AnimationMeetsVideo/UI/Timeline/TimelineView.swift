@@ -160,6 +160,9 @@ struct TimelineView: View {
     @AppStorage(Preferences.snapping) var snapping = true
     /// Whether the view pages along with the playhead while playing.
     @AppStorage(Preferences.followsPlayhead) private var followsPlayhead = true
+    /// Whether the viewer shows the frame under the pointer as it moves
+    /// over the timeline (`skim(atX:viewport:)`).
+    @AppStorage(Preferences.timelineSkimming) private var skimming = false
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
     @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
@@ -333,6 +336,19 @@ struct TimelineView: View {
     var currentViewport: TimelineViewport { viewport(width: trackAreaWidth) }
 
     var playheadTime: CMTime { playhead.time }
+
+    /// Shows the frame under the pointer, at `x` in the timeline (the
+    /// tracks start after the names column), without moving the playhead;
+    /// ends the skim off the tracks, or with skimming off. See
+    /// docs/audio.md, "Scrubbing".
+    func skim(atX x: CGFloat?, viewport: TimelineViewport) {
+        guard skimming, let x, x >= labelColumnWidth else {
+            playback.endSkim()
+            return
+        }
+        let seconds = min(max(viewport.seconds(atX: x - labelColumnWidth), 0), timeline.duration.seconds)
+        playback.skim(to: timeline.snappedToFrame(CMTime(seconds: seconds, preferredTimescale: 600_000)))
+    }
 
     /// Where the playhead is now: the player's time while it plays, which
     /// `playheadTime` doesn't follow, else the parked time.
@@ -595,6 +611,7 @@ struct TimelineView: View {
                                 height: trackHeight
                             )
                         }
+                        TimelineSkimLine(playback: playback, viewport: viewport, height: trackHeight)
                     }
                     .frame(width: viewport.width, height: trackHeight, alignment: .topLeading)
                     .rubberBandStretch(zoomBand)
@@ -627,7 +644,8 @@ struct TimelineView: View {
                         onMagnifyEnded: {
                             zoomBand.endPinch()
                             layerHeightBand.endPinch()
-                        }
+                        },
+                        onHover: { x in skim(atX: x, viewport: viewport) }
                     )
                 )
                 .background(lassoMonitor(pixelsPerSecond: viewport.pixelsPerSecond))
@@ -638,6 +656,10 @@ struct TimelineView: View {
         .rubberBandSettling($zoomBand)
         .rubberBandSettling($scrollBand)
         .rubberBandSettling($layerHeightBand)
+        // Turned off from the menu, with the pointer still over the tracks.
+        .onChange(of: skimming) { _, skimming in
+            if !skimming { playback.endSkim() }
+        }
         .padding(.top, topPadding)
         .background(KeyPressMonitor(handler: handleKey))
         // The Timeline menu rests while a song is beat matched.

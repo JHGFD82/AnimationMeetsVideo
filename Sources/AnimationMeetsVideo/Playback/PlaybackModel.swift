@@ -14,6 +14,10 @@ final class PlaybackModel {
     let beatClicks: BeatClickPlayer
     private(set) var currentTime: CMTime = .zero
     private(set) var isPlaying = false
+    /// Where the pointer skims the timeline while paused: the viewer (and
+    /// the scrub sound) are there, and the playhead stays at `currentTime`.
+    /// Nil when the timeline isn't skimmed. See docs/audio.md, "Scrubbing".
+    private(set) var skimTime: CMTime?
     /// How many times the player's item was swapped for a new build while
     /// playing, after its seek and play. The playhead that follows the
     /// player binds as the item is replaced, before the seek, and binds
@@ -112,7 +116,12 @@ final class PlaybackModel {
             forInterval: CMTime(value: 1, timescale: 30),
             queue: .main
         ) { [weak self] time in
-            MainActor.assumeIsolated { self?.currentTime = time }
+            MainActor.assumeIsolated {
+                // A seek is a jump of time too: while the player is off
+                // showing a skim, its time isn't the playhead's.
+                guard let self, self.isPlaying || !self.playerIsSkimmed else { return }
+                self.currentTime = time
+            }
         }
         statusObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
             let playing = player.timeControlStatus != .paused
@@ -319,7 +328,7 @@ final class PlaybackModel {
         // playhead should land exactly where playing stopped. Not while a
         // seek is in flight: its target is already set, and the player
         // hasn't reached it yet.
-        if !playing, !isSeeking { currentTime = player.currentTime() }
+        if !playing, !isSeeking, !playerIsSkimmed { currentTime = player.currentTime() }
         isPlaying = playing
         if playing {
             clearLive()
@@ -430,13 +439,42 @@ final class PlaybackModel {
     /// Moves the playhead and seeks the player, playing a grain of the
     /// mix there unless the tape scrubber is playing it already.
     private func move(to time: CMTime, playsGrain: Bool = true) {
-        if playsGrain, !isPlaying, UserDefaults.standard.object(forKey: Preferences.scrubAudio) as? Bool ?? true {
-            // From the start of its frame, so every move within one frame
-            // asks for the same grain, which plays once.
-            let seconds = frameRate > 0 ? (time.seconds * frameRate + 1e-6).rounded(.down) / frameRate : time.seconds
-            scrubAudio.play(at: seconds, deviceUID: outputUID)
-        }
+        if playsGrain { playGrain(at: time) }
+        // Moving the playhead takes the viewer back from a skim.
+        skimTime = nil
         currentTime = time
+        show(time)
+    }
+
+    /// Shows the timeline at `time`, where the pointer is, without moving
+    /// the playhead, with a grain of the mix there. Nothing while playing
+    /// or tape scrubbing, which the viewer follows instead.
+    func skim(to time: CMTime) {
+        guard !isPlaying, !isTapeScrubbing, player.currentItem != nil, time != skimTime else { return }
+        skimTime = time
+        playerIsSkimmed = true
+        playGrain(at: time)
+        show(time)
+    }
+
+    /// Ends skimming: the viewer goes back to the playhead.
+    func endSkim() {
+        guard skimTime != nil else { return }
+        skimTime = nil
+        show(currentTime)
+    }
+
+    /// Plays the grain of the mix at `time`, from the start of its frame,
+    /// so every move within one frame asks for the same grain, which plays
+    /// once. Not while playing, or with Scrub Audio off.
+    private func playGrain(at time: CMTime) {
+        guard !isPlaying, UserDefaults.standard.object(forKey: Preferences.scrubAudio) as? Bool ?? true else { return }
+        let seconds = frameRate > 0 ? (time.seconds * frameRate + 1e-6).rounded(.down) / frameRate : time.seconds
+        scrubAudio.play(at: seconds, deviceUID: outputUID)
+    }
+
+    /// Seeks the player to `time`, after any seek under way.
+    private func show(_ time: CMTime) {
         pendingSeek = time
         clearLive()
         clearStill()
@@ -445,12 +483,17 @@ final class PlaybackModel {
         Task { await drainSeeks() }
     }
 
+    /// Whether the player was sent to a skim and hasn't yet come back to
+    /// the playhead: until then its time isn't the playhead's.
+    @ObservationIgnored private var playerIsSkimmed = false
+
     private func drainSeeks() async {
         while let target = pendingSeek {
             pendingSeek = nil
             _ = await player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
         }
         isSeeking = false
+        if skimTime == nil { playerIsSkimmed = false }
         refreshStill()
         prerollIfPaused()
     }
@@ -463,6 +506,8 @@ final class PlaybackModel {
             player.pause()
             return
         }
+        // Play starts from the frame skimmed to, as the viewer shows it.
+        if let skimTime { move(to: skimTime, playsGrain: false) }
         if let item = player.currentItem, item.duration.isNumeric,
            CMTimeCompare(player.currentTime(), item.duration) >= 0 {
             player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)

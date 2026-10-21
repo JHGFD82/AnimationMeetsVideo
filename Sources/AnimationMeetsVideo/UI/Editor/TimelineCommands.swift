@@ -58,7 +58,8 @@ extension FocusedValues {
 }
 
 /// The Timeline menu: playback, moving the playhead, splitting, tools,
-/// snapping and zoom, so they can be found and not only remembered.
+/// snapping, skimming and zoom, so they can be found and not only
+/// remembered.
 ///
 /// Most of these keys have no modifier, and a menu key equivalent without
 /// one would take the key from a text field or list being typed in. The
@@ -68,6 +69,10 @@ extension FocusedValues {
 /// shortcut.
 struct TimelineCommands: Commands {
     @FocusedValue(\.timelineActions) private var actions
+    /// The person's, not a timeline's, so they work with no timeline in
+    /// front.
+    @AppStorage(Preferences.timelineSkimming) private var skimming = false
+    @AppStorage(Preferences.scrubAudio) private var scrubAudio = true
 
     var body: some Commands {
         CommandMenu("Timeline") {
@@ -123,6 +128,8 @@ struct TimelineCommands: Commands {
                 set: { _ in actions?.toggleSnapping() }
             ))
             .disabled(actions == nil)
+            Toggle("Skimming", isOn: $skimming)
+            Toggle("Scrub Audio", isOn: $scrubAudio)
 
             Divider()
 

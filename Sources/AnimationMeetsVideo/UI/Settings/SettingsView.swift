@@ -89,6 +89,7 @@ private struct ViewerSettings: View {
 private struct TimelineSettings: View {
     @AppStorage(Preferences.snapping) private var snapping = true
     @AppStorage(Preferences.followsPlayhead) private var followsPlayhead = true
+    @AppStorage(Preferences.timelineSkimming) private var skimming = false
     @AppStorage(Preferences.clickOnBeats) private var clickOnBeats = false
     @AppStorage(ClickToneSettings.frequencyKey) private var frequency = ClickToneSettings.defaultFrequency
     @AppStorage(ClickToneSettings.volumeKey) private var volume = ClickToneSettings.defaultVolume
@@ -108,6 +109,10 @@ private struct TimelineSettings: View {
                     Toggle("Follow the playhead", isOn: $followsPlayhead)
                 }
                 SheetNote("When zoomed in, the view turns a page each time playback runs off its edge.")
+                SheetRow("Skimming", alignment: .center) {
+                    Toggle("Show the frame under the pointer", isOn: $skimming)
+                }
+                SheetNote("While paused, moving the pointer over the timeline shows its frames in the viewer, and the playhead stays put. Space plays from there. Also in the Timeline menu.")
             }
             Groove()
             SheetSection("Beat tick") {
@@ -153,10 +158,10 @@ private struct SoundSettings: View {
             }
             Groove()
             SheetSection("Scrubbing") {
-                SheetRow("Playhead", alignment: .center) {
-                    Toggle("Play the sound under it as it moves", isOn: $scrubAudio)
+                SheetRow("Timeline", alignment: .center) {
+                    Toggle("Play the sound under the playhead as it moves", isOn: $scrubAudio)
                 }
-                SheetNote("While paused, dragging or stepping the playhead plays a moment of the mix at each place it stops.")
+                SheetNote("While paused, dragging or stepping the playhead, or skimming, plays a moment of the mix at each place it stops. Also Scrub Audio in the Timeline menu.")
                 SheetRow("Browser", alignment: .center) {
                     Toggle("Play a clip's sound as it is skimmed", isOn: $browserSkimAudio)
                 }
