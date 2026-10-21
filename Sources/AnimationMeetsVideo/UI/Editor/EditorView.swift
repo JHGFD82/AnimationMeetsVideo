@@ -25,6 +25,8 @@ struct EditorView: View {
     @State private var renderer = RenderScheduler()
     @State private var beatMatch = BeatMatchController()
     @State private var tapeScrubber = TapeScrubberWindow()
+    /// A clip skimmed in the browser, which the viewer shows.
+    @State private var skim = BrowserSkim()
     /// The project as the browser reads and edits it (see `browserProject`).
     @State private var browserAccess = ProjectAccess()
 
@@ -89,6 +91,7 @@ struct EditorView: View {
                 .grooved(.trailing)
             }
             .environment(renderer)
+            .environment(skim)
         }
         // While a song is beat matched the editor is darkened and takes no
         // input; a click on it brings the panel back.
@@ -121,6 +124,7 @@ struct EditorView: View {
         .onChange(of: project.id) { _, _ in
             activeTimelineID = project.rootTimelineID
             selection = nil
+            skim.end()
             beatMatch.discardAndClose()
         }
         .onChange(of: project) { _, newValue in projectDidChange(newValue) }

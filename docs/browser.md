@@ -89,16 +89,31 @@ Pro, so a long clip takes more rows rather than a wider panel.
 
 Moving the pointer over a filmstrip **skims**: the viewer shows the frame
 under the pointer, following it continuously, with no click. The pointer's
-position along the strip is time in the clip, row by row. Leaving the
-browser returns the viewer to the timeline at its playhead, and nothing on
-the timeline changes. A thin line marks the skimmed frame on the strip.
+position along the strip is time in the clip, row by row, on the clip's
+nearest frame. Leaving the browser returns the viewer to the timeline at
+its playhead, and nothing on the timeline changes. A thin line in the
+playhead's colour marks the skimmed frame on the strip, and the viewer
+shows the clip's name and the time skimmed to (in the asset's original
+time, as the browser's ranges are).
 
-- Skimming plays from the clip's file with its own player layered over the
-  viewer (as the trim preview is), seeking with zero tolerance, so frames
-  follow the pointer without rebuilding the timeline's composition.
+- Skimming plays from the clip's file with its own player (`BrowserSkim`)
+  shown over the viewer's picture, seeking with zero tolerance, so frames
+  follow the pointer without rebuilding the timeline's composition. Seeks
+  go one at a time and only the newest waiting move is sought next, so a
+  fast pointer skips frames rather than falling behind.
+- Starting to skim stops the timeline if it is playing; its playhead
+  stays where it was.
 - Space while skimming plays the clip from the skimmed frame, in the
-  viewer; moving the pointer again goes back to skimming.
-- Sound is not played while skimming, only while playing.
+  viewer, to the end of the clip (or scene) and stops there; Space again
+  stops it, and from the end it plays from the start. Moving the pointer
+  again goes back to skimming.
+- Sound is not played while skimming, only while playing. A sound clip
+  skims with a waveform symbol in the viewer, so Space can play it from
+  any point.
+- Option-dragging a range shows its moving end in the viewer, as skimming
+  does. Dragging clips out of the browser returns the viewer to the
+  timeline they're dropped on.
+- Stills aren't skimmed: they have no time to move through.
 
 ## Selecting
 
@@ -186,11 +201,16 @@ Following [accessibility.md](accessibility.md):
   Return adds the selection to the timeline.
 - With a clip selected, **Option-Left** and **Option-Right** move a skim
   position through it a frame at a time (ten with Shift), shown in the
-  viewer as skimming is. **I** and **O** set the start and end of a range
-  at the skim position, or at the skimmed frame under the pointer.
+  viewer as skimming is; it starts at the clip's range, or its start.
+  **I** and **O** set the start and end of a range at the skim position,
+  or at the skimmed frame under the pointer, keeping the range's other end
+  (or the clip's own). **Escape** stops skimming, as does moving the
+  selection or leaving the browser.
 - Each clip is one accessibility element, read as its name, duration, how
   much of it is used, and its range when it has one, with actions for Add
-  to Timeline, Set Range Start and Set Range End.
+  to Timeline, Skim Forward and Skim Back (a second at a time), and Set
+  Range Start and Set Range End at the skim position. The viewer reads as
+  skimming the clip, with the time as its value.
 
 ## Building it
 
@@ -202,10 +222,10 @@ Following [accessibility.md](accessibility.md):
 3. **Selecting and dragging** (built, Clips tab; not yet tried on screen).
    Click, Command-click and Shift-click; whole-clip drags of several
    assets in browser order; option-drag ranges with handles; arrows,
-   Shift-arrows and Return. Option-arrows and I and O wait for skimming
-   (stage 4). Built together with stage 2, since both needed the clips
-   drawn by hand rather than in a list.
-4. **Skimming** in the viewer, and Space to play.
+   Shift-arrows and Return. Built together with stage 2, since both
+   needed the clips drawn by hand rather than in a list.
+4. **Skimming** (built, Clips tab; not yet tried on screen) in the viewer,
+   Space to play, Option-arrows, I and O.
 5. **Used media** underlines (built, Clips tab; not yet tried on screen).
    The Timelines tab's line comes with stage 6.
 6. **Timelines** as filmstrips, with skimming.
