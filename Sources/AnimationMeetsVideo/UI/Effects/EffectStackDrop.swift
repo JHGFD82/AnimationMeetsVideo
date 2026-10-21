@@ -24,7 +24,7 @@ final class EffectsDragSession {
 /// nothing.
 @MainActor
 final class EffectStackLayout {
-    static let space = "effectStack"
+    nonisolated static let space = "effectStack"
     var effects: [UUID: CGRect] = [:]
     var controls: [UUID: CGRect] = [:]
 }
