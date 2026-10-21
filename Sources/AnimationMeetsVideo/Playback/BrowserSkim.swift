@@ -43,9 +43,10 @@ final class BrowserSkim {
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var endObserver: NSObjectProtocol?
 
-    /// Opens the clip's file. The one place skimming opens media.
+    /// Opens the clip's file, through its reference movie for a Matroska
+    /// file. The one place skimming opens media.
     nonisolated static func asset(at url: URL) -> AVURLAsset {
-        AVURLAsset(url: url)
+        MediaFile.asset(at: url)
     }
 
     /// Whether a clip can be skimmed: one with time to move through.

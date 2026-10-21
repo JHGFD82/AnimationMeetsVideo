@@ -62,6 +62,27 @@ import Testing
         await MediaTrackCache.shared.forget(mkv)
     }
 
+    @MainActor
+    @Test func aMatroskaClipIsSkimmedFromItsMovie() async throws {
+        defer { cleanUp() }
+        let package = try makePackage()
+        let mkv = try await makeMatroska()
+        let clip = try await MediaImporter.importClip(at: mkv, packageURL: package)
+        let skim = BrowserSkim()
+        defer { skim.end() }
+
+        skim.skim(BrowserSkim.Target(item: "clip", clip: clip, start: .zero, duration: clip.duration), at: 1)
+
+        let item = try #require(skim.player.currentItem)
+        #expect((item.asset as? AVURLAsset)?.url == MediaFile.readableURL(for: mkv))
+        for _ in 0..<200 where abs(skim.player.currentTime().seconds - 1) > 0.001 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(abs(skim.player.currentTime().seconds - 1) < 0.001)
+        for _ in 0..<300 where item.status == .unknown { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(item.status == .readyToPlay, "\(String(describing: item.error))")
+    }
+
     @Test func otherFilesOpenAsThemselves() {
         let movie = URL(fileURLWithPath: "/tmp/not-imported.mov")
         #expect(MediaFile.readableURL(for: movie) == movie)

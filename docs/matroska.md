@@ -85,7 +85,8 @@ from Apple's own encoders:
 - **The clip keeps the MKV.** Its URL, `FileStamp`, reference data,
   replacement and copying into `Media/` are all of the MKV; only opening it
   goes elsewhere. `MediaFile` gives everything that reads footage (the
-  track cache compositions are built from, the players, waveforms,
+  track cache compositions are built from, the players (the browser's
+  skimming among them), waveforms,
   spectra, beats, scene scores, reference capture and thumbnails) the
   reference movie in its place.
 - **Where movies live.** In the package's `Cache/References/`, named by a
