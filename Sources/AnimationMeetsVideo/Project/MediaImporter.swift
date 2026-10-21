@@ -29,7 +29,7 @@ enum MediaImporter {
         let readable = MatroskaMedia.isMatroska(url)
             ? try MatroskaMedia.prepare(url, in: MatroskaMedia.folder(in: packageURL), progress: progress)
             : url
-        let asset = AVURLAsset(url: readable)
+        let asset = AVURLAsset(url: readable, options: MediaFile.options)
         let duration = try await asset.load(.duration)
         let tracks = try await asset.load(.tracks)
 
