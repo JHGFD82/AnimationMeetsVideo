@@ -45,10 +45,11 @@ struct UIResponsivenessBenchmark {
         let analysis: AssetAnalysis
         let replacement: MediaReplacementController
         let selection: TimelineSelection?
+        var playback: PlaybackModel?
         var body: some View {
             EditorView(
                 project: $state.value, history: history, analysis: analysis,
-                replacement: replacement, packageURL: nil, selection: selection
+                replacement: replacement, packageURL: nil, selection: selection, playback: playback
             )
             .equatable()
             .environment(state)

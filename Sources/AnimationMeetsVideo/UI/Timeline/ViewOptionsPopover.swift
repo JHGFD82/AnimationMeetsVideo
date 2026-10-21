@@ -17,6 +17,9 @@ struct ViewOptionsPopover: View {
     /// The click's volume, 0...1.
     @Binding var clickVolume: Double
     let onPreviewClick: () -> Void
+    /// The person's, as in the Timeline menu and the Settings window.
+    @AppStorage(Preferences.timelineSkimming) private var skimming = false
+    @AppStorage(Preferences.scrubAudio) private var scrubAudio = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.group + 2) {
@@ -28,6 +31,18 @@ struct ViewOptionsPopover: View {
                     .help("Also on the \\ key")
                 Toggle("Follow the playhead while playing", isOn: $followsPlayhead)
                     .help("When zoomed in, the view turns a page each time playback runs off its edge")
+            }
+
+            Groove()
+
+            SheetSection("Skimming") {
+                Toggle("Skimming", isOn: $skimming)
+                    .help("While paused, show the frame under the pointer in the viewer as it moves over the timeline; the playhead stays put")
+                // Set under Skimming, as in the browser, but never greyed
+                // out: it is also the sound of moving the playhead.
+                Toggle("Scrub audio", isOn: $scrubAudio)
+                    .help("Play a moment of the mix where the playhead is moved, or the pointer skims, while paused")
+                    .padding(.leading, Design.Space.step)
             }
 
             Groove()

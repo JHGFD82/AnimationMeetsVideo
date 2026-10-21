@@ -34,13 +34,16 @@ struct EditorView: View {
 
     /// `selection` is the clip selected to begin with: none in the app,
     /// one for a benchmark hosting the editor with its effects showing.
+    /// `playback` is the player to use, for a test to watch; the editor
+    /// makes its own otherwise.
     init(
         project: Binding<EditingProject>,
         history: ProjectHistory,
         analysis: AssetAnalysis,
         replacement: MediaReplacementController,
         packageURL: URL?,
-        selection: TimelineSelection? = nil
+        selection: TimelineSelection? = nil,
+        playback: PlaybackModel? = nil
     ) {
         self._project = project
         self.history = history
@@ -49,6 +52,7 @@ struct EditorView: View {
         self.packageURL = packageURL
         self._activeTimelineID = State(initialValue: project.wrappedValue.rootTimelineID)
         self._selection = State(initialValue: selection)
+        if let playback { self._playback = State(initialValue: playback) }
     }
 
     /// The project for the browser, through an object SwiftUI doesn't

@@ -551,6 +551,20 @@ struct UISnapshots {
         try SnapshotSupport.render(list.preferredColorScheme(.dark), "presets-list", size: CGSize(width: 280, height: 360))
     }
 
+    /// The timeline's view options, with skimming beside zoom and the
+    /// areas.
+    @Test func timelineViewOptions() throws {
+        let popover = ViewOptionsPopover(
+            zoomFraction: .constant(0.4), onFit: {}, areaLayout: .constant(TimelineAreaLayout()),
+            followsPlayhead: .constant(true), beatLayers: [], beatLayerID: .constant(nil),
+            clickOnBeats: .constant(false), clickFrequency: .constant(1_000), clickVolume: .constant(0.8), onPreviewClick: {}
+        )
+        try SnapshotSupport.render(
+            popover.background(Design.Surface.floating.color).preferredColorScheme(.dark),
+            "timeline-view-options", size: CGSize(width: 320, height: 430)
+        )
+    }
+
     /// Files on their way into the Clips tab: a Matroska file partway
     /// through, and one that can't tell its progress yet.
     @Test func importingClips() throws {

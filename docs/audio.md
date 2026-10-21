@@ -318,8 +318,8 @@ stepping with the arrow keys, jumping to a keyframe) plays a moment of the
 mix where it lands: an 80 ms grain whose ends fade over 10 ms with a
 raised cosine, out of the playback device (`ScrubAudio`). Skimming the
 timeline (docs/timeline.md, "Skimming") plays the same grains where the
-pointer is. Scrub Audio in the Timeline menu, or the Settings window's
-Sound tab, turns them off. Skimming a clip in the browser plays grains
+pointer is. Scrub Audio in the timeline's view options or the Timeline
+menu, or the Settings window's Sound tab, turns them off. Skimming a clip in the browser plays grains
 of the clip's own file, read from its sound tracks rather than a mix,
 with a switch of its own (docs/browser.md, "Skimming").
 

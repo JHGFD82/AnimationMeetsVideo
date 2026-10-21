@@ -228,8 +228,8 @@ lands out of view.
 
 ### Skimming
 
-With **Skimming** on (the Timeline menu, or the Settings window's
-Timeline tab; off until turned on), moving the pointer over the track
+With **Skimming** on (the timeline's view options, the Timeline menu,
+or the Settings window's Timeline tab; off until turned on), moving the pointer over the track
 area or the ruler while paused shows the frame under it in the viewer,
 on the nearest frame, and the playhead stays where it is parked. A
 dimmed hairline in the playhead's colour, with no tab, marks the frame
@@ -249,9 +249,9 @@ skimming off takes the viewer back to the playhead.
 - Moving the playhead (a click in the ruler, a drag, the keys) ends the
   skim. Space while skimming moves the playhead to the frame skimmed to
   and plays from there.
-- Not yet tried on screen: the pointer's moves come from a local event
-  monitor, which the test harness's synthetic events don't reach. The
-  model's side is tested (`PlaybackSkimTests`).
+- Tested in the editor as the app hosts it, with mouse-moved events
+  sent through the application (`TimelineSkimmingTests`), and the
+  model's side on its own (`PlaybackSkimTests`).
 
 ### Moving the playhead from the keyboard
 
