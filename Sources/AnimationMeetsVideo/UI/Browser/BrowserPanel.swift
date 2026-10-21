@@ -153,8 +153,11 @@ struct BrowserPanel: View {
             VStack(alignment: .leading, spacing: Design.Space.tight) {
                 Toggle("Skimming", isOn: $skimming)
                     .help("Show the frame under the pointer in the viewer as it moves over a clip; off, click to show a frame")
+                // Sound comes with skimming, so it is set under it.
                 Toggle("Skim audio", isOn: $skimAudio)
                     .help("Play a moment of a clip's sound at each frame skimmed to")
+                    .disabled(!skimming)
+                    .padding(.leading, Design.Space.step)
             }
         }
         .font(Design.Typeface.label)

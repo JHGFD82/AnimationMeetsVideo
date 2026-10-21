@@ -165,10 +165,13 @@ final class BrowserSkim {
 
     /// Plays a grain of the clip's sound from the start of the frame
     /// skimmed to, so each frame is heard once however many moves of the
-    /// pointer it takes to cross it.
+    /// pointer it takes to cross it. Skim Audio is set under Skimming, so
+    /// with skimming off a frame clicked or stepped to is silent too.
     private func playGrain() {
+        let defaults = UserDefaults.standard
         guard let target, target.clip.hasAudio || target.clip.kind == .audio,
-              UserDefaults.standard.object(forKey: Preferences.browserSkimAudio) as? Bool ?? true
+              defaults.object(forKey: Preferences.browserSkimming) as? Bool ?? true,
+              defaults.object(forKey: Preferences.browserSkimAudio) as? Bool ?? true
         else { return }
         let rate = target.clip.frameRate > 0 ? target.clip.frameRate : 30
         let seconds = fileTime(self.seconds).seconds

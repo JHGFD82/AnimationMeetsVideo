@@ -118,7 +118,8 @@ loses the keyboard.
   "Scrubbing"), read from the file (the reference movie for a Matroska
   file), out of the playback device. A frame is heard once however many
   moves of the pointer cross it. Skim Audio in the browser's view
-  options turns it off. A sound clip skims with a waveform symbol in the
+  options turns it off; it is set under Skimming, and with skimming off
+  it is greyed out and frames clicked or stepped to are silent. A sound clip skims with a waveform symbol in the
   viewer.
 - Option-dragging a range shows its moving end in the viewer, as skimming
   does. Dragging clips out of the browser returns the viewer to the
