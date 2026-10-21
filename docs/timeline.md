@@ -747,6 +747,8 @@ timeline, when it is independent, keeps its own trail.
 
 ## Not implemented yet
 
+- Clips attached to the music, so moving a song moves the footage on it
+  (planned in [motion-designer.md](motion-designer.md#clips-attached-to-the-music)).
 - Audio crossfades under transitions, and transitions on detached sound.
 - A larger graph editor for curves on short transitions.
 - Thumbnails of the frames in the transition footage lane.
