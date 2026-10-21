@@ -110,7 +110,7 @@ struct Waveform: Sendable, Equatable {
     /// Reads the first audio track of a file. Cancelling stops the read.
     static func read(url: URL) async throws -> Waveform {
         let sampleRate = 8_000.0
-        let asset = AVURLAsset(url: url)
+        let asset = MediaFile.asset(at: url)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else { return Waveform(peaks: []) }
         // Two channels at most: more need a channel layout to be read, and
         // the timeline only tells left from right.

@@ -61,7 +61,7 @@ extension DrawingFixture {
         try writeStill(to: url) { _, _ in (200, 255) }
 
         #expect(MediaImporter.isImage(url))
-        let still = try await MediaImporter.importClip(at: url)
+        let still = try await MediaImporter.importClip(at: url, packageURL: nil)
         #expect(still.kind == .image)
         #expect(still.duration == MediaClip.stillLength)
         #expect(still.codecName == "PNG")
@@ -234,7 +234,7 @@ extension DrawingFixture {
 
         let analysis = try await MediaReplacer.analyze(
             candidate: second, replacing: asset, reference: nil,
-            originalScores: .failure(.notCaptured), usedRanges: [CMTimeRange(start: .zero, duration: CMTime(seconds: 20, preferredTimescale: 600))]
+            originalScores: .failure(.notCaptured), usedRanges: [CMTimeRange(start: .zero, duration: CMTime(seconds: 20, preferredTimescale: 600))], packageURL: nil
         )
         #expect(analysis.needsNoQuestions)
 
@@ -242,7 +242,7 @@ extension DrawingFixture {
         try await writeMovie(to: movie, segments: [(luma: 50, frames: 12)])
         await #expect(throws: ReplacementKindError.self) {
             try await MediaReplacer.analyze(
-                candidate: movie, replacing: asset, reference: nil, originalScores: .failure(.notCaptured), usedRanges: []
+                candidate: movie, replacing: asset, reference: nil, originalScores: .failure(.notCaptured), usedRanges: [], packageURL: nil
             )
         }
     }

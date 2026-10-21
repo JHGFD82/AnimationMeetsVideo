@@ -83,7 +83,7 @@ enum FrameThumbnails {
     private static func generator(for url: URL, pixels: Int) -> AVAssetImageGenerator {
         let key = "\(url.path)|\(pixels)"
         if let existing = generators[key] { return existing }
-        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        let generator = AVAssetImageGenerator(asset: MediaFile.asset(at: url))
         generator.appliesPreferredTrackTransform = true
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero

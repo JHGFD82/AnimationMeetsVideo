@@ -71,7 +71,7 @@ struct BeatMatchAudio: Sendable {
     /// alignment offset, so that original time `t` is at `t + alignment` in
     /// the file. Cancelling the calling task stops the read.
     static func load(url: URL, alignment: CMTime, progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> BeatMatchAudio {
-        let asset = AVURLAsset(url: url)
+        let asset = MediaFile.asset(at: url)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
             throw BeatDetector.DetectionError.noAudioTrack
         }

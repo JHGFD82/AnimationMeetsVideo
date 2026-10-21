@@ -46,6 +46,7 @@ MyProject.amv/
       thumbs/ ...         pictures of the original at cuts and intervals
   Cache/              disposable, excluded from backup
     Renders/            rendered timeline segments (see rendering.md)
+    References/         reference movies of Matroska files (see matroska.md)
   Backups/            autosaves
   .lock               single-writer lock (an flock held while the project is open;
                       skipped on volumes that don't support flock)
@@ -213,7 +214,7 @@ Requirements for the file:
 | Folder | May the app delete it? |
 | --- | --- |
 | `Reference/` | No, only through an explicit "forget original" action, applied at the next save. It may be the only record of a replaced file, so Save As copies each asset's folder into the new package. |
-| `Cache/` | Yes. It has a size cap and evicts oldest-first. Entries are keyed by a hash of the exact content they render, so any upstream edit invalidates them. |
+| `Cache/` | Yes. `Renders/` has a size cap and evicts oldest-first; its entries are keyed by a hash of the exact content they render, so any upstream edit invalidates them. `References/` holds one movie per Matroska file, named by a hash of the file's path, size and date; opening the project deletes those no asset uses, and remakes any missing. |
 | `Backups/` | Yes, by age and count. |
 
 `Cache/` is marked excluded from backup and sync, and should be kept out of

@@ -36,7 +36,7 @@ actor MediaTrackCache {
     func info(for url: URL) async throws -> MediaTrackInfo {
         if let cached = entries[url] { return cached }
 
-        let asset = AVURLAsset(url: url)
+        let asset = MediaFile.asset(at: url)
         let video = try await asset.loadTracks(withMediaType: .video).first
         let audio = try await asset.loadTracks(withMediaType: .audio).first
 

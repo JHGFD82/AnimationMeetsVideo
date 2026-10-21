@@ -286,7 +286,7 @@ final class MediaReplacementController {
             do {
                 let analysis = try await MediaReplacer.analyze(
                     candidate: request.url, replacing: asset, reference: reference,
-                    originalScores: scores, usedRanges: used
+                    originalScores: scores, usedRanges: used, packageURL: packageURL
                 ) { fraction in
                     Task { @MainActor in session.progress = fraction }
                 }

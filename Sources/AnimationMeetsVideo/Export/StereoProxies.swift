@@ -1,5 +1,4 @@
 import AVFoundation
-import CryptoKit
 import Foundation
 
 /// Stereo copies of mono sound files, so a mono clip can be panned. A
@@ -39,16 +38,7 @@ enum StereoProxies {
     /// The copy's file name: a hash of the path, size and modification
     /// date. Nil when the file can't be looked at.
     static func cacheName(for url: URL) -> String? {
-        // A URL keeps what it last read of its file; a file replaced since
-        // must be looked at afresh.
-        var url = url
-        url.removeAllCachedResourceValues()
-        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
-              let size = values.fileSize, let date = values.contentModificationDate
-        else { return nil }
-        let key = "\(url.standardizedFileURL.path)|\(size)|\(date.timeIntervalSinceReferenceDate)"
-        let digest = SHA256.hash(data: Data(key.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
-        return "\(digest).caf"
+        FileStamp.cacheDigest(for: url).map { "\($0).caf" }
     }
 
     /// Reads the mono track and writes it on both channels of a 24-bit CAF,

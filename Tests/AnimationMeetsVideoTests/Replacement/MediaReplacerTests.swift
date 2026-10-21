@@ -26,7 +26,7 @@ import Testing
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let original = directory.appending(path: "original.wav")
         try writeTone(to: original, segments: pattern)
-        let asset = try await MediaImporter.importClip(at: original)
+        let asset = try await MediaImporter.importClip(at: original, packageURL: nil)
         let reference = try await ReferenceCapture.capture(url: original)
         return Fixture(directory: directory, original: original, asset: asset, reference: reference)
     }
@@ -39,7 +39,7 @@ import Testing
 
         let analysis = try await MediaReplacer.analyze(
             candidate: replacement, replacing: fixture.asset, reference: fixture.reference,
-            originalScores: .failure(.notCaptured), usedRanges: [range(2, 8)]
+            originalScores: .failure(.notCaptured), usedRanges: [range(2, 8)], packageURL: nil
         )
 
         #expect(analysis.hasReference)
@@ -62,7 +62,7 @@ import Testing
 
         let analysis = try await MediaReplacer.analyze(
             candidate: replacement, replacing: fixture.asset, reference: fixture.reference,
-            originalScores: .failure(.notCaptured), usedRanges: [range(2, 8)]
+            originalScores: .failure(.notCaptured), usedRanges: [range(2, 8)], packageURL: nil
         )
 
         #expect(analysis.verdict == .aligned)
@@ -78,7 +78,7 @@ import Testing
 
         let analysis = try await MediaReplacer.analyze(
             candidate: replacement, replacing: fixture.asset, reference: nil,
-            originalScores: .failure(.notCaptured), usedRanges: [range(2, 8)]
+            originalScores: .failure(.notCaptured), usedRanges: [range(2, 8)], packageURL: nil
         )
 
         #expect(!analysis.hasReference)
@@ -94,7 +94,7 @@ import Testing
 
         let analysis = try await MediaReplacer.analyze(
             candidate: replacement, replacing: fixture.asset, reference: fixture.reference,
-            originalScores: .failure(.notCaptured), usedRanges: [range(2, 10)]
+            originalScores: .failure(.notCaptured), usedRanges: [range(2, 10)], packageURL: nil
         )
 
         #expect(!analysis.missingRanges.isEmpty)
@@ -111,7 +111,7 @@ import Testing
 
         let analysis = try await MediaReplacer.analyze(
             candidate: silentVideo, replacing: fixture.asset, reference: fixture.reference,
-            originalScores: .failure(.notCaptured), usedRanges: []
+            originalScores: .failure(.notCaptured), usedRanges: [], packageURL: nil
         )
 
         #expect(analysis.report.blockers.contains(.lostAudio))
@@ -126,13 +126,13 @@ import Testing
         try await writeMovie(to: original, segments: [(0, 24), (255, 36), (60, 24), (200, 48), (20, 24)])
         try await writeMovie(to: replacement, segments: [(0, 36), (255, 36), (60, 24), (200, 48), (20, 24)])
 
-        let asset = try await MediaImporter.importClip(at: original)
+        let asset = try await MediaImporter.importClip(at: original, packageURL: nil)
         let reference = try await ReferenceCapture.capture(url: original)
         let scores = try await FrameScorer.score(url: original)
 
         let analysis = try await MediaReplacer.analyze(
             candidate: replacement, replacing: asset, reference: reference,
-            originalScores: .success(scores), usedRanges: [range(0, 5)]
+            originalScores: .success(scores), usedRanges: [range(0, 5)], packageURL: nil
         )
 
         #expect(analysis.suggestion?.method == .cuts)

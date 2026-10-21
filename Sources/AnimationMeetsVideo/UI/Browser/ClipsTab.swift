@@ -79,6 +79,9 @@ struct ClipsTab: View {
     @State private var cursor: BrowserItemID?
     @State private var coverageCache = SceneCoverageCache()
     @FocusState private var focused: Bool
+    /// Shows the clip under the pointer in the viewer; absent where there
+    /// is no viewer to show it (previews, tests).
+    @Environment(BrowserSkim.self) private var skim: BrowserSkim?
 
     private var project: EditingProject {
         get { access.value }
@@ -212,8 +215,16 @@ struct ClipsTab: View {
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
-        .onKeyPress(keys: [.upArrow, .downArrow, .return]) { press in
+        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, "i", "o"]) { press in
             handleKey(press, snapshot: snapshot) ? .handled : .ignored
+        }
+        // Leaving the browser gives the viewer back to the timeline; so does
+        // leaving it from the keyboard.
+        .onHover { inside in
+            if !inside { skim?.end() }
+        }
+        .onChange(of: focused) { _, focused in
+            if !focused { skim?.end() }
         }
         .onChange(of: order) { _, order in
             picked.keep(only: order)
@@ -267,6 +278,10 @@ struct ClipsTab: View {
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
         .accessibilityAction { picked.click(entry.id) }
         .accessibilityAction(named: "Add to Timeline") { addToTimeline(dragPieces(for: [entry.id], snapshot: snapshot)) }
+        .accessibilityAction(named: "Skim Forward") { skimStep(entry, seconds: 1) }
+        .accessibilityAction(named: "Skim Back") { skimStep(entry, seconds: -1) }
+        .accessibilityAction(named: "Set Range Start") { setRangeEnd(.start, of: entry) }
+        .accessibilityAction(named: "Set Range End") { setRangeEnd(.end, of: entry) }
     }
 
     /// A video's name over its scenes: not a clip itself, but where the
@@ -323,13 +338,21 @@ struct ClipsTab: View {
             durationText: row == 0 ? durationText(entry) : nil,
             detection: row == 0 && entry.id == .asset(entry.clip.id) ? analysis : nil
         )
+        .overlay(alignment: .topLeading) {
+            if let skim {
+                SkimLine(skim: skim, item: entry.id, layout: layout, row: row)
+            }
+        }
         .overlay {
             FilmstripMouseView(
                 rowOffset: rowTop,
                 onDown: { point, flags in pressBegan(entry, layout: layout, at: point, flags: flags) },
                 onPress: { press in pressed(press, entry: entry, layout: layout, order: snapshot.order) },
                 dragText: { point in dragText(entry, layout: layout, at: point, snapshot: snapshot) },
-                isOnHandle: { point in handle(of: entry, layout: layout, at: point) != nil }
+                isOnHandle: { point in handle(of: entry, layout: layout, at: point) != nil },
+                onHover: { point in
+                    if let point { skim(entry, at: layout.seconds(at: point)) }
+                }
             )
         }
         .contextMenu { menu(for: entry, snapshot: snapshot) }
@@ -375,6 +398,8 @@ struct ClipsTab: View {
         case .track(let point):
             guard let rangeDrag, rangeDrag.item == entry.id else { return }
             picked.setRange(of: entry.id, from: rangeDrag.anchor, to: snapped(layout.seconds(at: point), entry), duration: entry.seconds)
+            // The viewer shows the end being dragged, as skimming does.
+            skim(entry, at: layout.seconds(at: point))
         case .endTrack:
             rangeDrag = nil
             // A press with Option that never moved picks nothing.
@@ -388,6 +413,8 @@ struct ClipsTab: View {
     /// the clip's range, otherwise the clip, or every selected clip when it
     /// is one of them.
     private func dragText(_ entry: BrowserEntry, layout: FilmstripLayout, at point: CGPoint, snapshot: Snapshot) -> (text: String, image: NSImage)? {
+        // Dragged to the timeline, the viewer goes back to showing it.
+        skim?.end()
         let pieces: [MediaPiece]
         if let range = picked.range, range.item == entry.id, range.contains(layout.seconds(at: point)) {
             pieces = [entry.piece(from: range.start, to: range.end)]
@@ -484,12 +511,83 @@ struct ClipsTab: View {
         timecode(entry.seconds, entry)
     }
 
+    // MARK: - Skimming
+
+    private func skimTarget(_ entry: BrowserEntry) -> BrowserSkim.Target {
+        BrowserSkim.Target(item: entry.id, clip: entry.clip, start: entry.start, duration: entry.duration)
+    }
+
+    /// Shows `entry` at `seconds` into it in the viewer, on its nearest frame.
+    private func skim(_ entry: BrowserEntry, at seconds: Double) {
+        skim?.skim(skimTarget(entry), at: snapped(seconds, entry))
+    }
+
+    /// Where `entry` is skimmed, in seconds into it; nil when it isn't.
+    private func skimmed(_ entry: BrowserEntry) -> Double? {
+        guard let skim, skim.target?.item == AnyHashable(entry.id) else { return nil }
+        return skim.seconds
+    }
+
+    private func skimmedEntry(_ snapshot: Snapshot) -> BrowserEntry? {
+        (skim?.target?.item.base as? BrowserItemID).flatMap { snapshot.byID[$0] }
+    }
+
+    /// The clip the keyboard skims: the one last stepped to or clicked
+    /// while it is selected, otherwise the first selected.
+    private func keyboardEntry(_ snapshot: Snapshot) -> BrowserEntry? {
+        let id = cursor.flatMap { picked.contains($0) ? $0 : nil } ?? picked.ordered(in: snapshot.order).first
+        return id.flatMap { snapshot.byID[$0] }
+    }
+
+    /// Moves `entry`'s skim position by `seconds`, from its start when it
+    /// isn't skimmed yet.
+    private func skimStep(_ entry: BrowserEntry, seconds: Double) {
+        skim(entry, at: (skimmed(entry) ?? 0) + seconds)
+    }
+
+    private enum RangeEnd { case start, end }
+
+    /// Sets the start or end of `entry`'s range where it is skimmed, keeping
+    /// the other end (or the clip's own); false when it isn't skimmed.
+    @discardableResult
+    private func setRangeEnd(_ end: RangeEnd, of entry: BrowserEntry) -> Bool {
+        guard let at = skimmed(entry) else { return false }
+        let current = picked.range?.item == entry.id ? picked.range : nil
+        switch end {
+        case .start:
+            picked.setRange(of: entry.id, from: at, to: max(current?.end ?? entry.seconds, at), duration: entry.seconds)
+        case .end:
+            picked.setRange(of: entry.id, from: min(current?.start ?? 0, at), to: at, duration: entry.seconds)
+        }
+        cursor = entry.id
+        return true
+    }
+
     // MARK: - Keys
 
     /// Up and down move the selection (Shift extends it); Return adds the
-    /// selection to the timeline.
+    /// selection to the timeline. Option-Left and Option-Right skim the
+    /// selected clip a frame at a time (ten with Shift), I and O set its
+    /// range's ends where it is skimmed, and Escape stops skimming.
     private func handleKey(_ press: KeyPress, snapshot: Snapshot) -> Bool {
         let order = snapshot.order
+        switch press.key {
+        case .leftArrow, .rightArrow:
+            guard press.modifiers.contains(.option), let entry = keyboardEntry(snapshot) else { return false }
+            let frames = (press.modifiers.contains(.shift) ? 10 : 1) * (press.key == .leftArrow ? -1 : 1)
+            if skimmed(entry) == nil { skim(entry, at: picked.range?.item == entry.id ? picked.range?.start ?? 0 : 0) }
+            skim?.step(frames: frames)
+            return true
+        case "i", "o":
+            guard press.modifiers.isEmpty, let entry = skimmedEntry(snapshot) ?? keyboardEntry(snapshot) else { return false }
+            return setRangeEnd(press.key == "i" ? .start : .end, of: entry)
+        case .escape:
+            guard skim?.isActive == true else { return false }
+            skim?.end()
+            return true
+        default:
+            break
+        }
         if press.key == .return {
             let ids = picked.ordered(in: order)
             guard !ids.isEmpty else { return false }
@@ -509,6 +607,7 @@ struct ClipsTab: View {
         default: return false
         }
         cursor = order[next]
+        skim?.end()
         // Shift extends from the anchor, which stays put, to the cursor.
         if press.modifiers.contains(.shift) {
             picked.shiftClick(order[next], in: order)

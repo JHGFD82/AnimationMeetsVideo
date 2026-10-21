@@ -4,8 +4,8 @@ Design notes for AnimationMeetsVideo. Each document says whether it
 describes something that exists today or a planned design. Unless a
 document says otherwise, treat it as **planned, not implemented**.
 Currently: the package format, the scene-cut browser, media replacement,
-beat detection, audio levels, the timeline view, effects, transitions and
-accessibility are implemented (each document lists what remains).
+beat detection, audio levels, the timeline view, effects, transitions,
+Matroska import and accessibility are implemented (each document lists what remains).
 
 | Document | Covers |
 | --- | --- |
@@ -26,6 +26,7 @@ accessibility are implemented (each document lists what remains).
 | [accessibility.md](accessibility.md) | Implemented (core). Keyboard access to the playhead and clips, VoiceOver across the timeline, inspector, viewer and library, text contrast and reduced motion, the rules new UI follows, and what remains. |
 | [browser.md](browser.md) | Being built. The browser left of the viewer: Clips, Timelines and Presets tabs, filmstrips, skimming in the viewer, whole-clip and range drags, used-media underlines, and preset previews over generated footage. |
 | [graphic-layers.md](graphic-layers.md) | Stills, shapes and strokes (stroke a stroke, inside or outside an edge) built; gradients, free paths and text planned. Still images imported from files, and shapes and text made in the app and drawn as vectors: their model, how the compositor draws them without a track, keeping them sharp, and saving. |
+| [matroska.md](matroska.md) | Implemented. Importing MKV files through reference movies in the package's cache that point at their frames in place, so H.264 and HEVC in Matroska play and edit without a copy; the timing and AAC priming details that keep sound in sync. |
 | [project-package.md](project-package.md) | The on-disk project format: a package folder with a JSON project file, assets, reference data, and a render cache. |
 
 ## Shared principles
@@ -33,9 +34,28 @@ accessibility are implemented (each document lists what remains).
 - **Media files are never modified.** Everything the app learns about a
   file (scene cuts, thumbnails, signatures) is stored as metadata next to
   the project, never in or beside the original footage.
-- **Storage is a first-class concern.** The app does not generate proxy or
-  transcoded copies of footage. Anything it stores per asset is small, and
-  disposable data is kept separate from data that cannot be regenerated.
+- **Footage is played from its own file, in its own codec.** H.264, HEVC
+  and ProRes video (QuickTime or MPEG-4 files), and sound files (WAV,
+  AIFF, AAC, FLAC and the rest Core Audio reads), are decoded straight from
+  the file in the viewer, the browser, analysis and export alike. The app
+  never makes proxies, optimized copies or transcodes of footage, ProRes or
+  otherwise, and never re-encodes a file to make it editable.
+- **Matroska is read in place.** AVFoundation can't open MKV files, so for
+  each one the app makes a reference movie: a QuickTime movie of a few
+  megabytes holding only the index of the MKV's frames, whose samples point
+  at those frames inside the MKV, in `Cache/References/` in the package
+  (see [matroska.md](matroska.md)). Its H.264 or HEVC video and its AAC,
+  FLAC or PCM sound are then decoded from the MKV itself.
+- **What the app does write is small or disposable.** Per asset it keeps
+  reference data (`Reference/`: audio envelopes, change scores, beats,
+  thumbnails), which can't be regenerated once a file is replaced. Its
+  caches can always be made again: rendered segments of the timeline where
+  effects are too costly to draw live (`Cache/Renders/`, ProRes, of the
+  timeline and not of the footage; see [rendering.md](rendering.md)),
+  Matroska reference movies (`Cache/References/`), and a stereo copy of a
+  mono sound file so it can be panned (in the user's Caches folder; see
+  [audio.md](audio.md)), the one copy of a file's media the app makes on
+  its own (copying files into `Media/` is the person's choice).
 - **The person is responsible for the footage.** The app detects and reports
   mismatches, auto-adjusts what is safe to adjust, and only blocks on
   things that would silently break sync.

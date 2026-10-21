@@ -573,6 +573,29 @@ struct UISnapshots {
         }
     }
 
+    /// The viewer while a clip is skimmed in the browser: the clip in place
+    /// of the timeline, with its name and the time skimmed to.
+    @Test func skimmingViewer() async throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-skim-\(UUID().uuidString).mov")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try await writeMovie(to: url, segments: [(40, 24), (200, 24)])
+        let clip = MediaClip(
+            name: "Interview", kind: .video, url: url, duration: CMTime(value: 2, timescale: 1),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        let skim = BrowserSkim()
+        defer { skim.end() }
+        skim.skim(BrowserSkim.Target(item: "clip", clip: clip, start: .zero, duration: clip.duration), at: 1.5)
+        try await Task.sleep(for: .milliseconds(300))
+        let viewer = ViewerPanel(
+            playback: PlaybackModel(), hasContent: false, frameSize: CGSize(width: 1920, height: 1080),
+            frameRate: 24, buildError: nil, trimPreview: TrimPreviewModel()
+        )
+        try SnapshotSupport.render(
+            viewer.environment(skim).preferredColorScheme(.dark), "skimming-viewer", size: CGSize(width: 800, height: 520)
+        )
+    }
+
     /// Two shape layers, the upper clip turned off (V): faded and without
     /// colour, where it was.
     @Test func disabledClip() throws {
