@@ -52,6 +52,7 @@ struct BrowserPanel: View {
     @AppStorage(Preferences.browserTab) private var tab = BrowserTab.clips
     @AppStorage(Preferences.thumbnailInterval) private var interval = ThumbnailInterval.all
     @AppStorage(Preferences.thumbnailSize) private var thumbnailSize = ThumbnailSize.medium
+    @AppStorage(Preferences.browserSkimming) private var skimming = true
     @AppStorage(Preferences.browserSkimAudio) private var skimAudio = true
 
     var body: some View {
@@ -149,8 +150,12 @@ struct BrowserPanel: View {
                 }
             }
             .pickerStyle(.segmented)
-            Toggle("Skim audio", isOn: $skimAudio)
-                .help("Play a moment of a clip's sound at each frame skimmed to")
+            VStack(alignment: .leading, spacing: Design.Space.tight) {
+                Toggle("Skimming", isOn: $skimming)
+                    .help("Show the frame under the pointer in the viewer as it moves over a clip; off, click to show a frame")
+                Toggle("Skim audio", isOn: $skimAudio)
+                    .help("Play a moment of a clip's sound at each frame skimmed to")
+            }
         }
         .font(Design.Typeface.label)
         .padding(Design.Space.group)

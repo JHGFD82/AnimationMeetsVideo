@@ -188,9 +188,17 @@ private struct SoundSettings: View {
 private struct LibrarySettings: View {
     @AppStorage(Preferences.thumbnailInterval) private var interval = ThumbnailInterval.all
     @AppStorage(Preferences.thumbnailSize) private var size = ThumbnailSize.medium
+    @AppStorage(Preferences.browserSkimming) private var skimming = true
 
     var body: some View {
         SettingsPane {
+            SheetSection("Skimming") {
+                SheetRow("Browser", alignment: .center) {
+                    Toggle("Show the frame under the pointer", isOn: $skimming)
+                }
+                SheetNote("Moving the pointer over a clip shows its frames in the viewer. Off, click a clip to show the frame clicked. Also in the browser's view options.")
+            }
+            Groove()
             SheetSection("Thumbnails") {
                 SheetRow("Size") {
                     Picker("Thumbnail size", selection: $size) {

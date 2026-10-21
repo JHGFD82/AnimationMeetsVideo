@@ -96,6 +96,12 @@ playhead's colour marks the skimmed frame on the strip, and the viewer
 shows the clip's name and the time skimmed to (in the asset's original
 time, as the browser's ranges are).
 
+Skimming in the browser's view options (and the Settings window's
+Library tab) turns following the pointer off. A click then shows the
+frame clicked, and the arrow keys step from it; it stays shown when the
+pointer leaves the browser, so it can be looked at, until the browser
+loses the keyboard.
+
 - Skimming plays from the clip's file with its own player (`BrowserSkim`)
   shown over the viewer's picture, seeking with zero tolerance, so frames
   follow the pointer without rebuilding the timeline's composition. Seeks

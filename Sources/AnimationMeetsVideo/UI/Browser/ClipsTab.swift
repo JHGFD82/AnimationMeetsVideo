@@ -69,6 +69,9 @@ struct ClipsTab: View {
 
     @AppStorage(Preferences.thumbnailInterval) private var interval = ThumbnailInterval.all
     @AppStorage(Preferences.thumbnailSize) private var thumbnailSize = ThumbnailSize.medium
+    /// Off, the pointer moving over a strip leaves the viewer alone, and a
+    /// click shows the frame clicked instead.
+    @AppStorage(Preferences.browserSkimming) private var skimming = true
     @State private var picked = BrowserSelection<BrowserItemID>()
     @State private var width: CGFloat = 240
     @State private var sensitivityTarget: SensitivityTarget?
@@ -224,9 +227,11 @@ struct ClipsTab: View {
             handleKey(press, snapshot: snapshot) ? .handled : .ignored
         }
         // Leaving the browser gives the viewer back to the timeline; so does
-        // leaving it from the keyboard.
+        // leaving it from the keyboard. Without skimming, a frame clicked
+        // stays shown until the browser loses the keyboard, so the pointer
+        // can go to look at it.
         .onHover { inside in
-            if !inside { skim?.end() }
+            if !inside, skimming { skim?.end() }
         }
         .onChange(of: focused) { _, focused in
             if !focused { skim?.end() }
@@ -356,7 +361,7 @@ struct ClipsTab: View {
                 dragText: { point in dragText(entry, layout: layout, at: point, snapshot: snapshot) },
                 isOnHandle: { point in handle(of: entry, layout: layout, at: point) != nil },
                 onHover: { point in
-                    if let point { skim(entry, at: layout.seconds(at: point)) }
+                    if skimming, let point { skim(entry, at: layout.seconds(at: point)) }
                 }
             )
         }
@@ -399,6 +404,7 @@ struct ClipsTab: View {
                 picked.shiftClick(entry.id, in: order)
             } else {
                 picked.click(entry.id, at: layout.seconds(at: point))
+                if !skimming { skim(entry, at: layout.seconds(at: point)) }
             }
         case .track(let point):
             guard let rangeDrag, rangeDrag.item == entry.id else { return }
