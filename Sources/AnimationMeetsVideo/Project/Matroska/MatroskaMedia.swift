@@ -50,8 +50,9 @@ enum MatroskaMedia {
 
     /// Makes the reference movie for the Matroska file at `url` in `folder`
     /// unless it is there already, notes it as the file's, and returns it.
+    /// `progress` is told how far the making has got, 0...1.
     @discardableResult
-    static func prepare(_ url: URL, in folder: URL) throws -> URL {
+    static func prepare(_ url: URL, in folder: URL, progress: @escaping (Double) -> Void = { _ in }) throws -> URL {
         guard let name = movieName(for: url) else {
             throw CocoaError(.fileReadNoSuchFile, userInfo: [NSURLErrorKey: url])
         }
@@ -62,7 +63,12 @@ enum MatroskaMedia {
             // is never used.
             let partial = folder.appending(path: "\(UUID().uuidString).partial.mov")
             defer { try? FileManager.default.removeItem(at: partial) }
-            try MatroskaReferenceMovie.write(index: try MatroskaIndex.read(url), source: url, to: partial)
+            // Reading the file is most of the time for a file not yet in
+            // memory; writing the movie the rest.
+            let index = try MatroskaIndex.read(url) { progress($0 * readShare) }
+            try MatroskaReferenceMovie.write(index: index, source: url, to: partial) {
+                progress(readShare + $0 * (1 - readShare))
+            }
             do {
                 try FileManager.default.moveItem(at: partial, to: movie)
             } catch where FileManager.default.fileExists(atPath: movie.path) {
@@ -72,6 +78,10 @@ enum MatroskaMedia {
         movies.withLock { $0[key(url)] = movie }
         return movie
     }
+
+    /// How much of `prepare`'s progress is reading the file (3.4 s of 4.6 s
+    /// for a 16.6 GB, 82-minute film).
+    private static let readShare = 0.75
 
     /// The movie's file name: a hash of the Matroska file's path, size and
     /// modification date, so a moved or changed file gets a new movie.

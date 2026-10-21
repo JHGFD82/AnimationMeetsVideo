@@ -27,6 +27,8 @@ struct EditorView: View {
     @State private var tapeScrubber = TapeScrubberWindow()
     /// A clip skimmed in the browser, which the viewer shows.
     @State private var skim = BrowserSkim()
+    /// Files on their way into the library, which the browser lists.
+    @State private var imports = MediaImports()
     /// The project as the browser reads and edits it (see `browserProject`).
     @State private var browserAccess = ProjectAccess()
 
@@ -92,6 +94,7 @@ struct EditorView: View {
             }
             .environment(renderer)
             .environment(skim)
+            .environment(imports)
         }
         // While a song is beat matched the editor is darkened and takes no
         // input; a click on it brings the panel back.

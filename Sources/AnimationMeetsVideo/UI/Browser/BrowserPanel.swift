@@ -46,6 +46,7 @@ struct BrowserPanel: View {
         var selection: TimelineSelection?
     }
     @State private var importError: String?
+    @Environment(MediaImports.self) private var imports: MediaImports?
     @State private var presets = PresetsModel()
     @State private var showingSettings = false
     @AppStorage(Preferences.browserTab) private var tab = BrowserTab.clips
@@ -225,7 +226,8 @@ struct BrowserPanel: View {
         guard let copying = MediaImportFlow.filesToCopy(urls, copy: copyOption.state == .on, packageURL: packageURL) else { return }
         Task {
             let imported = await MediaImportFlow.importFiles(
-                urls, copying: copying, packageURL: packageURL, project: access.binding, onError: { importError = $0 }
+                urls, copying: copying, packageURL: packageURL, project: access.binding, imports: imports,
+                onError: { importError = $0 }
             )
             if !imported.isEmpty { tab = .clips }
         }
@@ -236,7 +238,9 @@ struct BrowserPanel: View {
     private func importDropped(_ urls: [URL]) -> Bool {
         guard !MediaImportFlow.importable(urls).isEmpty else { return false }
         Task {
-            if await MediaImportFlow.importDropped(urls, packageURL: packageURL, project: access.binding, onError: { importError = $0 }) != nil {
+            if await MediaImportFlow.importDropped(
+                urls, packageURL: packageURL, project: access.binding, imports: imports, onError: { importError = $0 }
+            ) != nil {
                 tab = .clips
             }
         }

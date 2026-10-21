@@ -551,6 +551,22 @@ struct UISnapshots {
         try SnapshotSupport.render(list.preferredColorScheme(.dark), "presets-list", size: CGSize(width: 280, height: 360))
     }
 
+    /// Files on their way into the Clips tab: a Matroska file partway
+    /// through, and one that can't tell its progress yet.
+    @Test func importingClips() throws {
+        let imports = MediaImports()
+        let ids = imports.begin([URL(fileURLWithPath: "/Movies/Movie.mkv"), URL(fileURLWithPath: "/Movies/Interview.mov")])
+        imports.update(ids[0], fraction: 0.42)
+        try SnapshotSupport.render(
+            VStack(alignment: .leading, spacing: 0) { ImportingClips(imports: imports) }
+                .padding(10)
+                .frame(width: 240, alignment: .leading)
+                .background(Design.Surface.base.color)
+                .preferredColorScheme(.dark),
+            "importing-clips", size: CGSize(width: 240, height: 110)
+        )
+    }
+
     /// What a preset holds, as shown while the pointer rests on it: a
     /// recipe, and a stack with a renamed effect that is off.
     @Test func presetContents() throws {

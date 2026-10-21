@@ -82,6 +82,8 @@ struct ClipsTab: View {
     /// Shows the clip under the pointer in the viewer; absent where there
     /// is no viewer to show it (previews, tests).
     @Environment(BrowserSkim.self) private var skim: BrowserSkim?
+    /// Files on their way in, listed after the clips.
+    @Environment(MediaImports.self) private var imports: MediaImports?
 
     private var project: EditingProject {
         get { access.value }
@@ -206,6 +208,9 @@ struct ClipsTab: View {
                             .foregroundStyle(Design.statusWarning)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                }
+                if let imports {
+                    ImportingClips(imports: imports)
                 }
             }
             .padding(.horizontal, Self.padding)

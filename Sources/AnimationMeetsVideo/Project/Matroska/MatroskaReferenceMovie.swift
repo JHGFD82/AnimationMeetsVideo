@@ -14,8 +14,11 @@ import Foundation
 enum MatroskaReferenceMovie {
     /// Writes the movie for the Matroska file at `source` to `destination`,
     /// with its first video track and first audio track that can be used.
-    /// Throws when neither can.
-    static func write(index: MatroskaIndex, source: URL, to destination: URL) throws {
+    /// Throws when neither can. `progress` is told how many of the samples
+    /// are in, 0...1; cancelling the calling task stops the writing.
+    static func write(
+        index: MatroskaIndex, source: URL, to destination: URL, progress: (Double) -> Void = { _ in }
+    ) throws {
         guard index.tracks.contains(where: isUsable) else {
             throw MatroskaError.unsupported("it has no H.264, HEVC, AAC, FLAC or PCM track")
         }
@@ -27,8 +30,13 @@ enum MatroskaReferenceMovie {
         // Fine enough for the video's frames, and for where the sound starts
         // against them.
         movie.timescale = max(plans.first { $0.kind == .video }?.timescale ?? 600, 600)
+        let total = Double(max(plans.reduce(0) { $0 + $1.samples.count }, 1))
+        var done = 0
         for plan in plans {
-            try append(plan, to: movie, source: source, start: start)
+            try append(plan, to: movie, source: source, start: start) { count in
+                done += count
+                progress(Double(done) / total)
+            }
         }
         try? FileManager.default.removeItem(at: destination)
         try movie.writeHeader(to: destination, fileType: .mov, options: .truncateDestinationToMovieHeaderOnly)
@@ -297,7 +305,9 @@ enum MatroskaReferenceMovie {
 
     // MARK: Writing
 
-    private static func append(_ plan: TrackPlan, to movie: AVMutableMovie, source: URL, start: CMTime) throws {
+    private static func append(
+        _ plan: TrackPlan, to movie: AVMutableMovie, source: URL, start: CMTime, appended: (Int) -> Void
+    ) throws {
         let trackStart = CMTimeSubtract(plan.start, start)
         // Core Media drops what it takes for a codec's priming from the start
         // of the media, AAC's 2112 samples, whatever the file says, and
@@ -311,17 +321,22 @@ enum MatroskaReferenceMovie {
         let (trialTrack, skipped) = try addTrack(trial, to: movie, source: source, at: trackStart)
         movie.removeTrack(trialTrack)
         let correction = CMTimeSubtract(skipped, CMTime(value: plan.priming, timescale: plan.timescale))
-        _ = try addTrack(plan, to: movie, source: source, at: CMTimeAdd(trackStart, correction))
+        _ = try addTrack(plan, to: movie, source: source, at: CMTimeAdd(trackStart, correction), appended: appended)
     }
 
     /// Enough samples to cover any priming Core Media skips (AAC's 2112
     /// samples are three packets) and a video's reordered first frames.
     private static let trialSampleCount = 64
 
+    /// How many samples go in between progress reports.
+    private static let reportInterval = 4096
+
     /// Adds the plan's track with its media placed from `trackStart`, and
     /// returns it with how much of the media's start Core Media skipped.
+    /// `appended` is told how many samples went in, every few thousand.
     private static func addTrack(
-        _ plan: TrackPlan, to movie: AVMutableMovie, source: URL, at trackStart: CMTime
+        _ plan: TrackPlan, to movie: AVMutableMovie, source: URL, at trackStart: CMTime,
+        appended: (Int) -> Void = { _ in }
     ) throws -> (AVMutableMovieTrack, skipped: CMTime) {
         let mediaType: AVMediaType = plan.kind == .video ? .video : .audio
         guard let track = movie.addMutableTrack(withMediaType: mediaType, copySettingsFrom: nil) else {
@@ -333,10 +348,15 @@ enum MatroskaReferenceMovie {
         // edit then shows the media from its first shown frame, placed
         // where it starts relative to the file's earliest track.
         let shift = max(0, -(plan.samples.first?.decodeTime ?? 0))
-        for sample in plan.samples {
+        for (position, sample) in plan.samples.enumerated() {
             let buffer = try sampleBuffer(for: sample, plan: plan, shift: shift, source: source)
             try track.append(buffer, decodeTime: nil, presentationTime: nil)
+            if (position + 1) % reportInterval == 0 {
+                try Task.checkCancellation()
+                appended(reportInterval)
+            }
         }
+        appended(plan.samples.count % reportInterval)
 
         guard let first = plan.samples.map(\.presentationTime).min(),
               let last = plan.samples.map({ $0.presentationTime + $0.duration * Int64($0.count) }).max()

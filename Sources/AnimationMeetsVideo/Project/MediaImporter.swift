@@ -20,10 +20,14 @@ enum MediaImporter {
     /// Reads the file at `url`. A Matroska file is read through its
     /// reference movie, made first in `packageURL`'s cache, or for a project
     /// not yet saved (nil), in a temporary folder (see docs/matroska.md).
-    static func importClip(at url: URL, packageURL: URL?) async throws -> MediaClip {
+    /// `progress` is told how far that has got, 0...1, from any thread;
+    /// other files take a moment and don't report.
+    static func importClip(
+        at url: URL, packageURL: URL?, progress: @escaping @Sendable (Double) -> Void = { _ in }
+    ) async throws -> MediaClip {
         if isImage(url) { return try importStill(at: url) }
         let readable = MatroskaMedia.isMatroska(url)
-            ? try MatroskaMedia.prepare(url, in: MatroskaMedia.folder(in: packageURL))
+            ? try MatroskaMedia.prepare(url, in: MatroskaMedia.folder(in: packageURL), progress: progress)
             : url
         let asset = AVURLAsset(url: readable)
         let duration = try await asset.load(.duration)

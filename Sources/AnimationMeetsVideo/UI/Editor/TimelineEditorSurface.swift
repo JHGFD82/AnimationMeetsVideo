@@ -24,6 +24,7 @@ struct TimelineEditorSurface<Library: View>: View {
     @ViewBuilder let library: () -> Library
     /// Renders in the background; absent in windows that don't render.
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
+    @Environment(MediaImports.self) private var imports: MediaImports?
     /// Holds value drags to one side of the project, for the viewer to
     /// follow (see `HeldDragFollower`); absent in previews and tests.
     @Environment(ProjectState.self) private var projectState: ProjectState?
@@ -593,7 +594,7 @@ struct TimelineEditorSurface<Library: View>: View {
         let timelineID = timelineID
         Task {
             guard let imported = await MediaImportFlow.importDropped(
-                urls, packageURL: renderer?.packageURL, project: $project, onError: { dropError = $0 }
+                urls, packageURL: renderer?.packageURL, project: $project, imports: imports, onError: { dropError = $0 }
             ) else { return }
             let pieces = imported.map { MediaPiece(assetID: $0.id, start: .zero, end: $0.duration) }
             guard self.timelineID == timelineID else { return }

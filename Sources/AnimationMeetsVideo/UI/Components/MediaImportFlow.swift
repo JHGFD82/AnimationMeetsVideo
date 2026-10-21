@@ -36,18 +36,23 @@ enum MediaImportFlow {
 
     /// Imports `urls` into the library, adding each to `project` as it is
     /// read, and returns those added, in order. A file that can't be read
-    /// is reported to `onError` and skipped.
+    /// is reported to `onError` and skipped. Each file is listed in
+    /// `imports` until it is in, so the Clips tab can show it coming.
     ///
     /// A file imported before (and since removed, or never saved) comes
     /// back under its old ID, so its analysis is reused, and its earlier
     /// copy in `Media/` is used instead of copying again.
     static func importFiles(
-        _ urls: [URL], copying: Set<URL>, packageURL: URL?, project: Binding<EditingProject>, onError: (String) -> Void
+        _ urls: [URL], copying: Set<URL>, packageURL: URL?, project: Binding<EditingProject>,
+        imports: MediaImports? = nil, onError: (String) -> Void
     ) async -> [MediaClip] {
         var claimedIDs = Set(project.wrappedValue.clips.map(\.id))
         var usedPaths = Set(project.wrappedValue.clips.compactMap { $0.url?.standardizedFileURL.resolvingSymlinksInPath().path })
         var imported: [MediaClip] = []
-        for url in urls {
+        let importIDs = imports?.begin(urls) ?? []
+        for (position, url) in urls.enumerated() {
+            let importID = importIDs.isEmpty ? nil : importIDs[position]
+            defer { if let importID { imports?.end(importID) } }
             var madeCopy: URL?
             do {
                 var source = url
@@ -61,7 +66,9 @@ enum MediaImportFlow {
                         source = madeCopy ?? url
                     }
                 }
-                var clip = try await MediaImporter.importClip(at: source, packageURL: packageURL)
+                var progress: @Sendable (Double) -> Void = { _ in }
+                if let importID, let imports { progress = imports.reporter(for: importID) }
+                var clip = try await MediaImporter.importClip(at: source, packageURL: packageURL, progress: progress)
                 // A copy may be numbered to avoid a name already in Media/.
                 clip.name = url.deletingPathExtension().lastPathComponent
                 if let packageURL, let earlier = ProjectStore.reusableAssetID(for: source, in: packageURL, excluding: claimedIDs) {
@@ -84,13 +91,16 @@ enum MediaImportFlow {
     /// that would use real disk space). Nil when nothing could be imported
     /// or the copy was cancelled.
     static func importDropped(
-        _ urls: [URL], packageURL: URL?, project: Binding<EditingProject>, onError: (String) -> Void
+        _ urls: [URL], packageURL: URL?, project: Binding<EditingProject>,
+        imports: MediaImports? = nil, onError: (String) -> Void
     ) async -> [MediaClip]? {
         let files = importable(urls)
         guard !files.isEmpty,
               let copying = filesToCopy(files, copy: project.wrappedValue.copiesMediaOnImport, packageURL: packageURL)
         else { return nil }
-        let imported = await importFiles(files, copying: copying, packageURL: packageURL, project: project, onError: onError)
+        let imported = await importFiles(
+            files, copying: copying, packageURL: packageURL, project: project, imports: imports, onError: onError
+        )
         return imported.isEmpty ? nil : imported
     }
 }
