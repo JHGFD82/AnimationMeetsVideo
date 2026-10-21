@@ -26,34 +26,8 @@ Follow Google's change-description conventions for every commit.
 
 ## Project notes
 
-- SwiftPM macOS app (`Package.swift`), sources in `Sources/AnimationMeetsVideo`,
-  grouped by folder (one target, so folders are organization only):
-  - `App/`: app entry point and windows.
-  - `Model/`: project data types (`EditingProject`, timelines, transforms),
-    with `Effects/`, `Transitions/` and `Beats/` (beat maps) as subfolders.
-  - `Project/`: saving, loading, undo history, locking, file watching, import.
-  - `Analysis/`: the background runner (`AssetAnalysis`), provenance, sample
-    reading and waveforms, with `Beats/`, `Scenes/` and `Reference/`
-    (reference capture, alignment, comparison) as subfolders.
-  - `Replacement/`: media replacement logic.
-  - `Export/`: building a timeline's composition and ProRes export.
-  - `Rendering/`: drawing frames. `Compositor/` draws a frame's stack,
-    `Transitions/` the transitions that need both pictures, and `Cache/`
-    renders segments ahead; viewer quality stays at the top.
-  - `Playback/`: the shared player, beat ticks, mix meter, output devices
-    and composition key: playback logic that is not a view.
-  - `Recording/`: recording takes from input devices and other apps'
-    sound (Core Audio process taps), and placing them on the timeline.
-  - `UI/`: SwiftUI views by area: `Editor/` (shell, toolbar, editor
-    surface), `Timeline/` (with `Clips/` for what draws on one clip),
-    `Effects/` (effects panel), `EffectsLibrary/` (effects and transitions
-    to drag onto clips), `Keyframes/` (graph editors), `Browser/` (clips,
-    timelines and presets), `Inspector/`, `Viewer/`, `BeatMatch/`,
-    `Replacement/`, `TapeScrubber/` (the Tape Scrubber's dial and panel),
-    `Settings/` (the app's Settings window; its keys are
-    in `App/Preferences.swift`), `Design/` (design system, shared styling,
-    icon buttons and command symbols) and
-    `Components/` for shared controls.
+- One target, `Sources/AnimationMeetsVideo`, grouped by folder for
+  organization only; preference keys live in `App/Preferences.swift`.
   Put new UI code in the folder of the area that uses it, one main view per
   file; keep non-UI logic out of `UI/`.
 - Tests in `Tests/AnimationMeetsVideoTests` mirror the source folders, with
