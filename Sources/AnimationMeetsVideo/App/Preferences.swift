@@ -50,8 +50,19 @@ enum Preferences {
     /// The UID of the device the beat tick plays out of; empty or absent
     /// for the same as the editor's sound.
     static let clickOutputDevice = "clickOutputDevice"
-    /// Whether moving the playhead while paused plays the sound under it.
+    /// Whether moving the playhead while paused, or skimming the timeline,
+    /// plays the sound under it.
     static let scrubAudio = "scrubAudio"
+    /// Whether the timeline's frame under the pointer shows in the viewer
+    /// as the pointer moves over it, without moving the playhead. Off
+    /// unless turned on.
+    static let timelineSkimming = "timelineSkimming"
+    /// Whether a clip's frame under the pointer shows in the viewer as the
+    /// pointer moves over its filmstrip in the browser.
+    static let browserSkimming = "browserSkimming"
+    /// Whether skimming a clip in the browser plays its sound under the
+    /// pointer.
+    static let browserSkimAudio = "browserSkimAudio"
     /// Whether the timeline plays while a take is recorded.
     static let recordWhilePlaying = "recordWhilePlaying"
     /// What takes are recorded from (see `RecordPopover`).

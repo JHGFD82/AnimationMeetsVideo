@@ -3,7 +3,8 @@ import CoreMedia
 import Foundation
 
 /// Reads a stretch of a timeline's mix out through its audio mix, as
-/// playback hears it, for the scrubbers to play from.
+/// playback hears it, or of a file's own sound, for the scrubbers to play
+/// from.
 enum MixReading {
     /// The mix from `start` for `duration` seconds, stereo at
     /// `sampleRate`, with where its first sample falls in the timeline.
@@ -12,10 +13,21 @@ enum MixReading {
     static func read(
         _ composed: ComposedTimeline?, curves: MixCurves?, from start: Double, duration: Double, sampleRate: Double
     ) -> (start: Double, left: [Float], right: [Float])? {
-        guard let composed, let curves, !composed.audioTracks.isEmpty,
-              let reader = try? AVAssetReader(asset: composed.composition)
-        else { return nil }
-        let output = AVAssetReaderAudioMixOutput(audioTracks: composed.composition.tracks(withMediaType: .audio), audioSettings: [
+        guard let composed, let curves, !composed.audioTracks.isEmpty else { return nil }
+        return read(
+            composed.composition, tracks: composed.composition.tracks(withMediaType: .audio), audioMix: composed.audioMix(curves: curves),
+            from: start, duration: duration, sampleRate: sampleRate
+        )
+    }
+
+    /// `tracks` of `asset` mixed, through `audioMix` when there is one,
+    /// from `start` for `duration` seconds as `read` reads a mix: a file's
+    /// own sound, for skimming it in the browser. Times are the asset's.
+    static func read(
+        _ asset: AVAsset, tracks: [AVAssetTrack], audioMix: AVAudioMix? = nil, from start: Double, duration: Double, sampleRate: Double
+    ) -> (start: Double, left: [Float], right: [Float])? {
+        guard !tracks.isEmpty, let reader = try? AVAssetReader(asset: asset) else { return nil }
+        let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVLinearPCMBitDepthKey: 32,
             AVLinearPCMIsFloatKey: true,
@@ -24,7 +36,7 @@ enum MixReading {
             AVSampleRateKey: sampleRate,
             AVNumberOfChannelsKey: 2,
         ])
-        output.audioMix = composed.audioMix(curves: curves)
+        output.audioMix = audioMix
         reader.add(output)
         reader.timeRange = CMTimeRange(
             start: CMTime(seconds: start, preferredTimescale: 48_000),

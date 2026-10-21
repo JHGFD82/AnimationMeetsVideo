@@ -3,8 +3,9 @@ import CoreMedia
 import Observation
 
 /// Skimming a clip in the browser: the viewer shows the clip's frame under
-/// the pointer, or at the keyboard's skim position, and Space plays the
-/// clip from there. It plays from the clip's file with a player of its own,
+/// the pointer, or at the keyboard's skim position, with a grain of its
+/// sound at each frame (`ScrubAudio`, unless Skim Audio is off), and Space
+/// plays the clip from there. It plays from the clip's file with a player of its own,
 /// shown over the viewer's picture, so the timeline's composition is never
 /// rebuilt and nothing on the timeline changes. See docs/browser.md,
 /// "Skimming".
@@ -26,7 +27,7 @@ final class BrowserSkim {
     private(set) var target: Target?
     /// Where in the target the viewer is, in seconds into it.
     private(set) var seconds: Double = 0
-    /// Playing the clip (Space), with its sound; skimming is silent.
+    /// Playing the clip (Space), with its sound; skimming plays grains.
     private(set) var isPlaying = false
 
     var isActive: Bool { target != nil }
@@ -37,6 +38,9 @@ final class BrowserSkim {
     }
 
     @ObservationIgnored let player = AVPlayer()
+    /// Grains of the skimmed file's sound, read from the file itself.
+    @ObservationIgnored let scrubAudio = ScrubAudio()
+    @ObservationIgnored private var soundLoad: Task<Void, Never>?
     @ObservationIgnored private var itemURL: URL?
     @ObservationIgnored private var pendingSeek: CMTime?
     @ObservationIgnored private var isSeeking = false
@@ -59,7 +63,9 @@ final class BrowserSkim {
         guard Self.canSkim(target.clip), let url = target.clip.url else { return }
         if url != itemURL {
             itemURL = url
-            player.replaceCurrentItem(with: AVPlayerItem(asset: Self.asset(at: url)))
+            let asset = Self.asset(at: url)
+            player.replaceCurrentItem(with: AVPlayerItem(asset: asset))
+            loadSound(of: asset, url: url)
         }
         if target != self.target {
             self.target = target
@@ -68,6 +74,7 @@ final class BrowserSkim {
         if isPlaying { stopPlaying() }
         self.seconds = Self.clamped(seconds, to: target)
         chase(fileTime(self.seconds))
+        playGrain()
     }
 
     /// Moves the skim position `frames` frames, a frame being the clip's own
@@ -90,6 +97,7 @@ final class BrowserSkim {
         // At the end, play starts again from the start.
         if let target, seconds >= target.seconds - 1e-3 { skim(target, at: 0) }
         isPlaying = true
+        scrubAudio.stop()
         player.isMuted = false
         player.play()
         let interval = CMTime(value: 1, timescale: 30)
@@ -112,6 +120,10 @@ final class BrowserSkim {
     /// Ends skimming: the viewer shows the timeline again.
     func end() {
         stopPlaying()
+        scrubAudio.stop()
+        soundLoad?.cancel()
+        soundLoad = nil
+        scrubAudio.setFile(nil, tracks: [])
         target = nil
         seconds = 0
         pendingSeek = nil
@@ -135,6 +147,32 @@ final class BrowserSkim {
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = nil
         isPlaying = false
+    }
+
+    // MARK: Sound
+
+    /// Hands the file's sound tracks to the grains once they are loaded;
+    /// until then, and for a file with none, skimming is silent.
+    private func loadSound(of asset: AVURLAsset, url: URL) {
+        scrubAudio.setFile(nil, tracks: [])
+        soundLoad?.cancel()
+        soundLoad = Task { [weak self] in
+            let tracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+            guard let self, !Task.isCancelled, self.itemURL == url, !tracks.isEmpty else { return }
+            self.scrubAudio.setFile(asset, tracks: tracks)
+        }
+    }
+
+    /// Plays a grain of the clip's sound from the start of the frame
+    /// skimmed to, so each frame is heard once however many moves of the
+    /// pointer it takes to cross it.
+    private func playGrain() {
+        guard let target, target.clip.hasAudio || target.clip.kind == .audio,
+              UserDefaults.standard.object(forKey: Preferences.browserSkimAudio) as? Bool ?? true
+        else { return }
+        let rate = target.clip.frameRate > 0 ? target.clip.frameRate : 30
+        let seconds = fileTime(self.seconds).seconds
+        scrubAudio.play(at: (seconds * rate + 1e-6).rounded(.down) / rate, deviceUID: AudioDevices.playbackUID)
     }
 
     // MARK: Seeking

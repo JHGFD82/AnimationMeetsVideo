@@ -36,9 +36,15 @@ final class ScrubAudio: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "AnimationMeetsVideo.scrub-audio", qos: .userInitiated)
 
+    /// What grains are read from: a timeline's mix, or a file's sound
+    /// (skimming in the browser), in its own time.
+    private enum Source {
+        case mix(ComposedTimeline?, MixCurves)
+        case file(AVAsset, tracks: [AVAssetTrack])
+    }
+
     // Touched only on `queue`.
-    private var composed: ComposedTimeline?
-    private var curves: MixCurves?
+    private var source: Source?
     private var cache: (start: Double, left: [Float], right: [Float])?
     private var engine: AVAudioEngine?
     /// Two players, taken in turn, so a grain fades in while the one before
@@ -53,8 +59,18 @@ final class ScrubAudio: @unchecked Sendable {
     func setComposition(_ composed: ComposedTimeline?, curves: MixCurves) {
         let handed = HandedOver(value: composed)
         queue.async {
-            self.composed = handed.value
-            self.curves = curves
+            self.source = .mix(handed.value, curves)
+            self.cache = nil
+        }
+    }
+
+    /// Takes up a file's sound tracks to read from, or nothing (nil), until
+    /// they are loaded.
+    func setFile(_ asset: AVAsset?, tracks: [AVAssetTrack]) {
+        let handed = HandedOver(value: (asset, tracks))
+        queue.async {
+            let (asset, tracks) = handed.value
+            self.source = asset.map { .file($0, tracks: tracks) }
             self.cache = nil
         }
     }
@@ -145,9 +161,17 @@ final class ScrubAudio: @unchecked Sendable {
         schedule(grain, at: start, deviceUID: deviceUID)
     }
 
-    /// Reads the mix from `start` for `before + after` seconds.
+    /// Reads the mix, or the file, from `start` for `before + after` seconds.
     private func read(from start: Double) -> (start: Double, left: [Float], right: [Float])? {
-        MixReading.read(composed, curves: curves, from: start, duration: Self.before + Self.after, sampleRate: Self.sampleRate)
+        let duration = Self.before + Self.after
+        switch source {
+        case .mix(let composed, let curves):
+            return MixReading.read(composed, curves: curves, from: start, duration: duration, sampleRate: Self.sampleRate)
+        case .file(let asset, let tracks):
+            return MixReading.read(asset, tracks: tracks, from: start, duration: duration, sampleRate: Self.sampleRate)
+        case nil:
+            return nil
+        }
     }
 
     private func schedule(_ grain: (left: [Float], right: [Float]), at start: Double?, deviceUID: String?) {

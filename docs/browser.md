@@ -107,9 +107,13 @@ time, as the browser's ranges are).
   viewer, to the end of the clip (or scene) and stops there; Space again
   stops it, and from the end it plays from the start. Moving the pointer
   again goes back to skimming.
-- Sound is not played while skimming, only while playing. A sound clip
-  skims with a waveform symbol in the viewer, so Space can play it from
-  any point.
+- Skimming plays a grain of the clip's own sound at each frame skimmed
+  to, as moving the timeline's playhead does (docs/audio.md,
+  "Scrubbing"), read from the file (the reference movie for a Matroska
+  file), out of the playback device. A frame is heard once however many
+  moves of the pointer cross it. Skim Audio in the browser's view
+  options turns it off. A sound clip skims with a waveform symbol in the
+  viewer.
 - Option-dragging a range shows its moving end in the viewer, as skimming
   does. Dragging clips out of the browser returns the viewer to the
   timeline they're dropped on.

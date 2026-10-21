@@ -137,6 +137,7 @@ private struct SoundSettings: View {
     @AppStorage(Preferences.playbackOutputDevice) private var playbackDevice = ""
     @AppStorage(Preferences.clickOutputDevice) private var clickDevice = ""
     @AppStorage(Preferences.scrubAudio) private var scrubAudio = true
+    @AppStorage(Preferences.browserSkimAudio) private var browserSkimAudio = true
     @State private var list = AudioDeviceList()
 
     var body: some View {
@@ -156,6 +157,10 @@ private struct SoundSettings: View {
                     Toggle("Play the sound under it as it moves", isOn: $scrubAudio)
                 }
                 SheetNote("While paused, dragging or stepping the playhead plays a moment of the mix at each place it stops.")
+                SheetRow("Browser", alignment: .center) {
+                    Toggle("Play a clip's sound as it is skimmed", isOn: $browserSkimAudio)
+                }
+                SheetNote("Skimming a filmstrip plays a moment of the clip's own sound at each frame. Also in the browser's view options.")
             }
         }
     }

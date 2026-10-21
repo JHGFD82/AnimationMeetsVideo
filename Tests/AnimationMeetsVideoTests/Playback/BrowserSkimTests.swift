@@ -135,4 +135,29 @@ import Testing
         skim.skim(target(offline), at: 1)
         #expect(!skim.isActive)
     }
+
+    /// Skimming hears the file's own sound where the pointer is, a mono
+    /// file in both ears, from the file's sound once it is loaded.
+    @Test func skimmingReadsGrainsOfTheFilesSound() async throws {
+        let url = try AudioMixSupport.tone(channels: 1, amplitude: 0.25, seconds: 3)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let clip = MediaClip(
+            name: "Tone", kind: .audio, url: url, duration: seconds(3), frameRate: 0, colorSpace: .rec709, codecName: "PCM", hasAudio: true
+        )
+        let skim = BrowserSkim()
+        defer { skim.end() }
+
+        skim.skim(target(clip, length: 3), at: 2)
+
+        var grain: (left: [Float], right: [Float])?
+        for _ in 0..<200 where grain == nil {
+            grain = await skim.scrubAudio.samples(at: 2)
+            if grain == nil { try? await Task.sleep(for: .milliseconds(10)) }
+        }
+        let read = try #require(grain)
+        #expect(read.left.count == Int(ScrubAudio.grain * ScrubAudio.sampleRate))
+        let middle = read.left.count / 2
+        #expect(abs(read.left[middle] - 0.25) < 0.01)
+        #expect(abs(read.right[middle] - read.left[middle]) < 0.001)
+    }
 }

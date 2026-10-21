@@ -52,6 +52,7 @@ struct BrowserPanel: View {
     @AppStorage(Preferences.browserTab) private var tab = BrowserTab.clips
     @AppStorage(Preferences.thumbnailInterval) private var interval = ThumbnailInterval.all
     @AppStorage(Preferences.thumbnailSize) private var thumbnailSize = ThumbnailSize.medium
+    @AppStorage(Preferences.browserSkimAudio) private var skimAudio = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -62,8 +63,8 @@ struct BrowserPanel: View {
                     Image(systemName: Design.Symbol.viewOptions)
                 }
                 .buttonStyle(.icon)
-                .help("Thumbnail settings")
-                .accessibilityLabel("Thumbnail settings")
+                .help("View options")
+                .accessibilityLabel("View options")
                 .popover(isPresented: $showingSettings, arrowEdge: .bottom) { settings }
                 Button(action: importMedia) {
                     Image(systemName: Design.Symbol.add)
@@ -148,6 +149,8 @@ struct BrowserPanel: View {
                 }
             }
             .pickerStyle(.segmented)
+            Toggle("Skim audio", isOn: $skimAudio)
+                .help("Play a moment of a clip's sound at each frame skimmed to")
         }
         .font(Design.Typeface.label)
         .padding(Design.Space.group)
