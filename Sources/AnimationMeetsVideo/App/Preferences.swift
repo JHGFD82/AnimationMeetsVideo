@@ -54,8 +54,8 @@ enum Preferences {
     /// plays the sound under it.
     static let scrubAudio = "scrubAudio"
     /// Whether the timeline's frame under the pointer shows in the viewer
-    /// as the pointer moves over it, without moving the playhead. Off
-    /// unless turned on.
+    /// as the pointer moves over it, without moving the playhead. On
+    /// unless turned off, as in the browser.
     static let timelineSkimming = "timelineSkimming"
     /// Whether a clip's frame under the pointer shows in the viewer as the
     /// pointer moves over its filmstrip in the browser.

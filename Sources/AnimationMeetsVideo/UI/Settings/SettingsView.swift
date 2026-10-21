@@ -89,7 +89,7 @@ private struct ViewerSettings: View {
 private struct TimelineSettings: View {
     @AppStorage(Preferences.snapping) private var snapping = true
     @AppStorage(Preferences.followsPlayhead) private var followsPlayhead = true
-    @AppStorage(Preferences.timelineSkimming) private var skimming = false
+    @AppStorage(Preferences.timelineSkimming) private var skimming = true
     @AppStorage(Preferences.clickOnBeats) private var clickOnBeats = false
     @AppStorage(ClickToneSettings.frequencyKey) private var frequency = ClickToneSettings.defaultFrequency
     @AppStorage(ClickToneSettings.volumeKey) private var volume = ClickToneSettings.defaultVolume

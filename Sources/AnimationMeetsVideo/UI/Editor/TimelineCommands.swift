@@ -71,7 +71,7 @@ struct TimelineCommands: Commands {
     @FocusedValue(\.timelineActions) private var actions
     /// The person's, not a timeline's, so they work with no timeline in
     /// front.
-    @AppStorage(Preferences.timelineSkimming) private var skimming = false
+    @AppStorage(Preferences.timelineSkimming) private var skimming = true
     @AppStorage(Preferences.scrubAudio) private var scrubAudio = true
 
     var body: some Commands {

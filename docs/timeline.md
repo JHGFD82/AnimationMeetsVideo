@@ -228,10 +228,11 @@ lands out of view.
 
 ### Skimming
 
-With **Skimming** on (the timeline's view options, the Timeline menu,
-or the Settings window's Timeline tab; off until turned on), moving the pointer over the track
-area or the ruler while paused shows the frame under it in the viewer,
-on the nearest frame, and the playhead stays where it is parked. A
+With **Skimming** on (the default; it is switched in the timeline's
+view options, the Timeline menu or the Settings window's Timeline tab),
+moving the pointer over the track area or the ruler while paused shows
+the frame under it in the viewer, on the nearest frame, and the playhead
+stays where it is parked. A
 dimmed hairline in the playhead's colour, with no tab, marks the frame
 skimmed (`TimelineSkimLine`). A grain of the mix plays at each frame, as
 for moving the playhead (docs/audio.md, "Scrubbing"), unless Scrub Audio

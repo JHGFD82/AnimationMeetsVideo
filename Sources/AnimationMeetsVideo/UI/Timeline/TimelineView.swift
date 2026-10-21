@@ -162,7 +162,7 @@ struct TimelineView: View {
     @AppStorage(Preferences.followsPlayhead) private var followsPlayhead = true
     /// Whether the viewer shows the frame under the pointer as it moves
     /// over the timeline (`skim(atX:viewport:)`).
-    @AppStorage(Preferences.timelineSkimming) private var skimming = false
+    @AppStorage(Preferences.timelineSkimming) private var skimming = true
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
     @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?

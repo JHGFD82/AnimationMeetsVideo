@@ -18,7 +18,7 @@ struct ViewOptionsPopover: View {
     @Binding var clickVolume: Double
     let onPreviewClick: () -> Void
     /// The person's, as in the Timeline menu and the Settings window.
-    @AppStorage(Preferences.timelineSkimming) private var skimming = false
+    @AppStorage(Preferences.timelineSkimming) private var skimming = true
     @AppStorage(Preferences.scrubAudio) private var scrubAudio = true
 
     var body: some View {
