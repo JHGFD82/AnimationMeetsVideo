@@ -492,7 +492,7 @@ enum ProjectStore {
         // it's tried again on opening.
         for clip in project.clips {
             guard let url = clip.url, MatroskaMedia.isMatroska(url) else { continue }
-            try? MatroskaMedia.prepare(url, in: MatroskaMedia.folder(in: packageURL))
+            _ = try? MatroskaMedia.prepare(url, in: MatroskaMedia.folder(in: packageURL))
         }
         return project
     }
