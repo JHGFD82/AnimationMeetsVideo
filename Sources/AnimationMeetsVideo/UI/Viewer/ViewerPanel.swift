@@ -22,6 +22,11 @@ struct ViewerPanel: View {
     /// (Show Up to Here).
     var banner: String?
     var onClearBanner: () -> Void = {}
+    /// A clip skimmed in the browser, shown in place of the timeline;
+    /// absent in windows without a browser.
+    @Environment(BrowserSkim.self) private var skim: BrowserSkim?
+
+    private var isSkimming: Bool { skim?.isActive ?? false }
 
     private var aspectRatio: CGFloat {
         frameSize.width > 0 && frameSize.height > 0 ? frameSize.width / frameSize.height : 16.0 / 9.0
@@ -40,6 +45,10 @@ struct ViewerPanel: View {
                     picture { MetalPreviewView() }
                     ContentUnavailableView("No clips yet", systemImage: "film",
                                            description: Text("Drag a scene from the library onto the timeline."))
+                }
+                if let skim, skim.isActive {
+                    SkimPicture(skim: skim)
+                        .padding(36)
                 }
                 if trimPreview.isActive {
                     TrimPreviewOverlay(model: trimPreview, frameRate: frameRate, aspectRatio: aspectRatio)
@@ -81,17 +90,20 @@ struct ViewerPanel: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             HStack(spacing: Design.Space.group) {
+                // While a clip is skimmed, Space plays it rather than the
+                // timeline.
+                let playing = isSkimming ? skim?.isPlaying == true : playback.isPlaying
                 Button {
-                    playback.togglePlayback()
+                    if let skim, skim.isActive { skim.togglePlay() } else { playback.togglePlayback() }
                 } label: {
-                    Image(systemName: playback.isPlaying ? Design.Symbol.pause : Design.Symbol.play)
+                    Image(systemName: playing ? Design.Symbol.pause : Design.Symbol.play)
                         .frame(width: 20)
                         .contentTransition(.symbolEffect(.replace))
                 }
                 .keyboardShortcut(.space, modifiers: [])
-                .help("Play/Pause (Space)")
-                .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
-                .disabled(!hasContent)
+                .help(isSkimming ? "Play/Pause the skimmed clip (Space)" : "Play/Pause (Space)")
+                .accessibilityLabel(playing ? "Pause" : "Play")
+                .disabled(!hasContent && !isSkimming)
 
                 ViewerTimecode(playback: playback, frameRate: frameRate)
                 Spacer()
@@ -115,6 +127,11 @@ struct ViewerPanel: View {
             .padding(.horizontal, Design.Space.rail)
             .padding(.vertical, Design.Space.close)
             .rail(.raised)
+        }
+        // Skimming takes the viewer, so the timeline stops playing; where
+        // its playhead was is kept.
+        .onChange(of: isSkimming) { _, skimming in
+            if skimming, playback.isPlaying { playback.togglePlayback() }
         }
     }
 
@@ -183,5 +200,46 @@ private struct ViewerTimecode: View {
         Text(playback.currentTime.timecode(frameRate: frameRate))
             .font(Design.Typeface.timecode)
             .foregroundStyle(Design.textPrimary)
+    }
+}
+
+/// The skimmed clip in the viewer, over the timeline's picture, with its
+/// name and the time skimmed to. A view of its own, since the time changes
+/// with every move of the pointer.
+private struct SkimPicture: View {
+    let skim: BrowserSkim
+
+    var body: some View {
+        let clip = skim.target?.clip
+        let rate = clip?.frameRate ?? 0
+        let time = rate > 0 ? skim.sourceTime.timecode(frameRate: rate) : skim.sourceTime.formatted
+        ZStack(alignment: .bottom) {
+            Color.black
+            if clip?.kind.hasPictures == true {
+                PlayerLayerView(player: skim.player)
+            } else {
+                Image(systemName: MediaKind.audio.systemImage)
+                    .font(.system(size: 40))
+                    .foregroundStyle(Design.textTertiary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            HStack(spacing: Design.Space.close) {
+                Text(clip?.name ?? "")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textPrimary)
+                    .lineLimit(1)
+                Text(time)
+                    .font(Design.Typeface.numericSmall)
+                    .foregroundStyle(Design.textPrimary)
+            }
+            .padding(.horizontal, Design.Space.step)
+            .padding(.vertical, Design.Space.tight)
+            .beveledChip(fill: Color.black.opacity(0.6))
+            .padding(.bottom, Design.Space.group)
+        }
+        .accessibilityElement()
+        .accessibilityLabel("Viewer, skimming \(clip?.name ?? "")")
+        .accessibilityValue(time)
+        .accessibilityAddTraits(.isImage)
     }
 }
