@@ -19,7 +19,11 @@ bytes where they already sit in the MKV.
    decoding anything, notes each track's codec and settings and, for each
    frame, its byte offset, size, time and whether it is a keyframe. It
    reads SimpleBlocks and BlockGroups, Xiph, EBML and fixed lacing, and
-   clusters of unknown size (live recordings).
+   clusters of unknown size (live recordings). Frame headers sit every few
+   tens of kilobytes, so the file is read straight through in 16 MB pieces
+   (`MatroskaBytes`) rather than memory-mapped: a map faults its pages in
+   one at a time, and took 13.6 s for a 16.6 GB file the read takes 3.4 s
+   for.
 2. `MatroskaReferenceMovie.write` turns each frame into a sample buffer
    with no data, only the MKV's URL and the frame's offset
    (`kCMSampleBufferAttachmentKey_SampleReferenceURL` and

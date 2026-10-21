@@ -19,8 +19,9 @@ enum MatroskaError: LocalizedError {
 /// is shown. A reference movie built from it plays the file's frames from
 /// where they are (see docs/matroska.md).
 ///
-/// Only the headers of the file's elements are read, so scanning a long
-/// file reads little more than its frame headers.
+/// Only the headers of the file's elements are parsed, but since frame
+/// headers sit all through the file, it is read straight through, in large
+/// pieces (`MatroskaBytes`).
 struct MatroskaIndex {
     enum TrackKind: Equatable {
         case video
@@ -68,20 +69,19 @@ struct MatroskaIndex {
     var duration: Double?
     var tracks: [Track] = []
 
-    static func read(_ url: URL) throws -> MatroskaIndex {
-        let data = try Data(contentsOf: url, options: .alwaysMapped)
-        return try data.withUnsafeBytes { bytes in
-            var parser = Parser(bytes: bytes)
-            return try parser.parse()
-        }
+    /// Reads the file at `url`, telling `progress` how far through it the
+    /// read has got, 0...1. Cancelling the calling task stops the read.
+    static func read(_ url: URL, progress: @escaping (Double) -> Void = { _ in }) throws -> MatroskaIndex {
+        let bytes = try MatroskaBytes(url: url)
+        bytes.progress = progress
+        var parser = Parser(bytes: bytes)
+        return try parser.parse()
     }
 
     /// Reads the file's bytes, already in memory.
     static func read(_ data: Data) throws -> MatroskaIndex {
-        try data.withUnsafeBytes { bytes in
-            var parser = Parser(bytes: bytes)
-            return try parser.parse()
-        }
+        var parser = Parser(bytes: MatroskaBytes(data: data))
+        return try parser.parse()
     }
 }
 
@@ -127,10 +127,10 @@ private enum ID {
 // MARK: - Parser
 
 private struct Parser {
-    let bytes: UnsafeRawBufferPointer
+    let bytes: MatroskaBytes
     var index = MatroskaIndex()
 
-    init(bytes: UnsafeRawBufferPointer) {
+    init(bytes: MatroskaBytes) {
         self.bytes = bytes
     }
 
@@ -258,13 +258,13 @@ private struct Parser {
     private mutating func parseBlock(_ block: Element, clusterTime: Int64, simple: Bool, hasReference: Bool) throws {
         guard let end = block.end else { throw MatroskaError.malformed("a block has no size") }
         var position = block.start
-        guard let (trackNumber, numberLength) = vint(at: position, keepMarker: false) else {
+        guard let (trackNumber, numberLength) = try vint(at: position, keepMarker: false) else {
             throw MatroskaError.malformed("a block's track can't be read")
         }
         position += numberLength
         guard position + 3 <= end else { throw MatroskaError.malformed("a block is cut short") }
-        let relative = Int16(bitPattern: UInt16(bytes[position]) << 8 | UInt16(bytes[position + 1]))
-        let flags = bytes[position + 2]
+        let relative = Int16(bitPattern: UInt16(try bytes[position]) << 8 | UInt16(try bytes[position + 1]))
+        let flags = try bytes[position + 2]
         position += 3
         guard let trackIndex = index.tracks.firstIndex(where: { $0.number == trackNumber }) else { return }
 
@@ -285,7 +285,7 @@ private struct Parser {
     private func laceSizes(lacing: UInt8, position: inout Int, end: Int) throws -> [Int] {
         guard lacing != 0 else { return [end - position] }
         guard position < end else { throw MatroskaError.malformed("a laced block is cut short") }
-        let count = Int(bytes[position]) + 1
+        let count = Int(try bytes[position]) + 1
         position += 1
         guard count > 1 else { return [end - position] }
         var sizes: [Int] = []
@@ -295,7 +295,7 @@ private struct Parser {
                 var size = 0
                 while true {
                     guard position < end else { throw MatroskaError.malformed("a laced block is cut short") }
-                    let byte = Int(bytes[position])
+                    let byte = Int(try bytes[position])
                     position += 1
                     size += byte
                     if byte < 255 { break }
@@ -303,13 +303,13 @@ private struct Parser {
                 sizes.append(size)
             }
         case 3: // EBML: the first size, then signed differences.
-            guard let (first, length) = vint(at: position, keepMarker: false) else {
+            guard let (first, length) = try vint(at: position, keepMarker: false) else {
                 throw MatroskaError.malformed("a laced block's sizes can't be read")
             }
             position += length
             sizes.append(Int(first))
             for _ in 0..<(count - 2) {
-                guard let (raw, length) = vint(at: position, keepMarker: false) else {
+                guard let (raw, length) = try vint(at: position, keepMarker: false) else {
                     throw MatroskaError.malformed("a laced block's sizes can't be read")
                 }
                 position += length
@@ -331,8 +331,8 @@ private struct Parser {
     /// The element starting at `position`, or nil at `limit`.
     private func element(at position: Int, limit: Int) throws -> Element? {
         guard position < limit else { return nil }
-        guard let (id, idLength) = vint(at: position, keepMarker: true), idLength <= 4,
-              let (size, sizeLength) = vint(at: position + idLength, keepMarker: false)
+        guard let (id, idLength) = try vint(at: position, keepMarker: true), idLength <= 4,
+              let (size, sizeLength) = try vint(at: position + idLength, keepMarker: false)
         else {
             throw MatroskaError.malformed("an element at byte \(position) can't be read")
         }
@@ -363,27 +363,27 @@ private struct Parser {
 
     /// An EBML variable-length integer: its length is told by its first
     /// set bit. IDs keep that bit; sizes and values drop it.
-    private func vint(at position: Int, keepMarker: Bool) -> (UInt64, Int)? {
+    private func vint(at position: Int, keepMarker: Bool) throws -> (UInt64, Int)? {
         guard position < bytes.count else { return nil }
-        let first = bytes[position]
+        let first = try bytes[position]
         guard first != 0 else { return nil }
         let length = first.leadingZeroBitCount + 1
         guard position + length <= bytes.count else { return nil }
         var value = UInt64(keepMarker ? first : first & (0xFF >> length))
         for offset in 1..<length {
-            value = value << 8 | UInt64(bytes[position + offset])
+            value = value << 8 | UInt64(try bytes[position + offset])
         }
         return (value, length)
     }
 
     private func contents(_ element: Element) throws -> Data {
         guard let end = element.end else { throw MatroskaError.malformed("an element of unknown size") }
-        return Data(bytes[element.start..<end])
+        return try bytes.data(in: element.start..<end)
     }
 
     private func unsigned(_ element: Element) throws -> UInt64 {
         guard let end = element.end, end - element.start <= 8 else { throw MatroskaError.malformed("a number is too long") }
-        return bytes[element.start..<end].reduce(0) { $0 << 8 | UInt64($1) }
+        return try bytes.data(in: element.start..<end).reduce(0) { $0 << 8 | UInt64($1) }
     }
 
     private func float(_ element: Element) throws -> Double {
