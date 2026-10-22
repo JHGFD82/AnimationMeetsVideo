@@ -1,8 +1,8 @@
 # Motion designer
 
 Status: **planned, not implemented**. Two things it needs come first,
-and are planned here too: clips attached to the music, and hold
-keyframes.
+and are described here too: clips attached to the music (built) and
+hold keyframes (planned).
 
 Music videos are cut to the music, and the project already knows the
 music's timing from the beat map ([beat-matching.md](beat-matching.md)).
@@ -84,7 +84,8 @@ off, as the timeline's view options do.
 
 ## Lengths and positions
 
-Retiming changes a clip's length, never where other clips are.
+The music can't move in the designer; only footage does. Retiming
+changes a clip's length, never where other clips are.
 
 - A clip that grows stops against the next clip; moving that clip is up
   to the person.
@@ -147,18 +148,43 @@ unit tested like `BeatFitting`.
 
 ## Clips attached to the music
 
-Video in a music video depends on the music, so clips follow it.
+**Built** (`MusicAttachment`), not yet tried on screen. Video in a music
+video depends on the music, so clips follow it.
 
-- Each visual clip is **attached** to one song: a point in the clip's
-  source and the song time it sits on. Moving the song's clip moves the
-  clips attached to it.
-- The song is the clip on the **first Music layer** at that point, or the
-  second if the first has none there, and so on.
-- **One clip, one song.** A clip that runs across two songs is cut, so
-  the second piece attaches to the second song.
-- The person can **re-attach** a clip (change which of its frames ties to
-  which point of the song) for when a song is cut and moved with footage
-  already on it.
+- Each clip on a video or sound layer is **attached** to one song: one of
+  its frames, and the moment of the song it plays on
+  (`TimelineClip.music`). By default the frame is the clip's first. Moving
+  the song's clip moves the clips attached to it, so that frame plays on
+  that moment again (to the nearest frame for clips with pictures; the
+  rounding never adds up, since each move starts again from the moment).
+- The song is the clip on the **first Music layer** at that frame, or the
+  second if the first has none there, and so on. A clip with no song under
+  it waits unattached until one is put there.
+- **One clip, one song.** A clip that runs across two songs follows the
+  one under its frame; to tie the rest to the second song, cut it.
+- Footage that would be covered by a clip following its song is pushed
+  later on its layer, and attached again where it lands.
+- Moving, trimming, slipping or retiming a clip attaches it again where it
+  now sits, as does being pushed aside. Moving a song and its footage
+  together keeps both where they were put.
+- A cut song's pieces each carry their own footage: the attachment names
+  the song's clip, and once a cut gives the pieces new IDs, the piece of the
+  same file holding the moment.
+- The clip's menu has **Follow Music**, on by default: off, the clip is
+  never attached and stays put when songs move. **Attach to Music at
+  Playhead** ties the frame under the playhead to the song there, for when
+  a song is cut and moved with footage already on it, or a clip straddles
+  two songs. Both are VoiceOver actions on the clip too.
+- It is worked out after each edit, against the project as it was just
+  before (`EditingProject.followMusic(from:)`), so every way of moving a
+  song (dragging, nudging, trimming, slipping, rolling, pasting) is
+  covered alike. It joins the edit's undo step; undo and redo put back
+  snapshots that are already right, so nothing follows then.
+- Saved in `project.json` on each clip: `music` (`song`, `asset`, `time`,
+  and `frame` only when the person chose one), and `followsMusic` only when
+  false.
+- Not yet: footage following while the song is dragged (it follows on the
+  drop), and a mark on the clip for a chosen frame.
 - The designer's hits are forgotten on Done; the attachment is what keeps
   the hit frame on its beat afterwards.
 
@@ -185,7 +211,7 @@ pace is typed.
 
 1. This document. **Done.**
 2. Clips attached to the music: model, saving, moving with the song,
-   cutting at a song change, re-attaching.
+   re-attaching. **Built.**
 3. Hold keyframes: model, saving, `SpeedIntegral`, the graph editor.
 4. The time map: solving, reading keyframes, writing them, unit tested.
 5. The panel (`UI/MotionDesigner/`), built on the beat match panel's

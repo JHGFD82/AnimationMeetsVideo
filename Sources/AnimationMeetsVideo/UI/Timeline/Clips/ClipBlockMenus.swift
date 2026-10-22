@@ -24,6 +24,7 @@ struct ClipMenuHost: View, Equatable {
         var clip: TimelineClip
         var hasLinkedAudio: Bool
         var hasBeatMatch: Bool
+        var canFollowMusic: Bool
         var passesThrough: Bool
         var acceptsEffects: Bool
         var acceptsSoundEffects: Bool
@@ -50,7 +51,7 @@ struct ClipMenuHost: View, Equatable {
 extension ClipBlockView {
     var menuKey: ClipMenuHost.Key {
         ClipMenuHost.Key(
-            clip: clip, hasLinkedAudio: hasLinkedAudio, hasBeatMatch: onBeatMatch != nil, passesThrough: passesThrough,
+            clip: clip, hasLinkedAudio: hasLinkedAudio, hasBeatMatch: onBeatMatch != nil, canFollowMusic: onAttachToMusic != nil, passesThrough: passesThrough,
             acceptsEffects: acceptsEffects, acceptsSoundEffects: acceptsSoundEffects, playsSound: playsSound,
             reachCurrent: reach?.current, reachSummary: reach?.summary,
             reachOptions: reach?.options.map(\.id) ?? [], reachNames: reach?.options.map(\.name) ?? [],
@@ -97,6 +98,11 @@ extension ClipBlockView {
         if case .timeline = clip.source {
             if let onOpenNested { Button("Open Timeline", action: onOpenNested) }
             Toggle("Pass Through", isOn: Binding(get: { passesThrough }, set: { onSetPassThrough($0) }))
+        }
+        if let onAttachToMusic {
+            Divider()
+            Toggle("Follow Music", isOn: Binding(get: { clip.followsMusic }, set: { follows in onEditClip { $0.followsMusic = follows } }))
+            Button("Attach to Music at Playhead", action: onAttachToMusic)
         }
         if acceptsEffects || acceptsSoundEffects {
             Divider()

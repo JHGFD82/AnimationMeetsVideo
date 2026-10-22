@@ -662,7 +662,9 @@ enum ProjectStore {
                                 shutter: ProjectFile.ShutterEntry(clip.shutter),
                                 reach: clip.source == .adjustment ? clip.reach : nil,
                                 enabled: clip.enabled ? nil : false,
-                                soundMuted: clip.soundMuted ? true : nil
+                                soundMuted: clip.soundMuted ? true : nil,
+                                music: layer.kind == .music ? nil : clip.music.map(ProjectFile.MusicEntry.init),
+                                followsMusic: clip.followsMusic ? nil : false
                             )
                         },
                         volume: layer.kind.isAudio && layer.volume != AnimatedValue(0.0)
@@ -832,7 +834,9 @@ enum ProjectStore {
                                 reach: source == .adjustment
                                     ? (clipEntry.reach ?? layerEntry.reach).flatMap { layerIDs.contains($0) ? $0 : nil } : nil,
                                 enabled: clipEntry.enabled ?? true,
-                                soundMuted: clipEntry.soundMuted ?? false
+                                soundMuted: clipEntry.soundMuted ?? false,
+                                music: clipEntry.followsMusic == false ? nil : clipEntry.music?.attachment,
+                                followsMusic: clipEntry.followsMusic ?? true
                             )
                         },
                         volume: layerEntry.volume?.property(default: 0.0) { AudioLevel.clamped($0) } ?? AnimatedValue(0.0),

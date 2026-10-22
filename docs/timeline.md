@@ -636,6 +636,14 @@ is only known to a few microseconds, so these rules apply:
   microsecond of difference never draws a black frame.
 - A gap of a frame or more is a real gap, and is never closed for you.
 
+## Following the music
+
+Clips on video and sound layers are attached to the song under their
+first frame, and move with it when it moves; footage in their way is
+pushed later. A clip's menu turns this off
+(**Follow Music**) or ties another frame (**Attach to Music at
+Playhead**). See [motion-designer.md](motion-designer.md#clips-attached-to-the-music).
+
 ## Adjustment layers
 
 The adjustment button in the timeline's header adds an **adjustment layer**
@@ -747,8 +755,6 @@ timeline, when it is independent, keeps its own trail.
 
 ## Not implemented yet
 
-- Clips attached to the music, so moving a song moves the footage on it
-  (planned in [motion-designer.md](motion-designer.md#clips-attached-to-the-music)).
 - Audio crossfades under transitions, and transitions on detached sound.
 - A larger graph editor for curves on short transitions.
 - Thumbnails of the frames in the transition footage lane.

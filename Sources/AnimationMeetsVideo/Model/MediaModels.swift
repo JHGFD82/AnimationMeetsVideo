@@ -577,6 +577,13 @@ struct TimelineClip: Identifiable, Equatable {
     /// unmutes it). Placing video from the browser sets it when the
     /// browser is set to mute added sound.
     var soundMuted = false
+    /// Where the clip is tied to a song on a Music layer, which it follows
+    /// when the song moves; nil while no song is under it, and always on
+    /// Music layers. See `followMusic(from:)`.
+    var music: MusicAttachment?
+    /// Off, the clip is never attached to the music and stays put when
+    /// songs move.
+    var followsMusic = true
 
     /// The length of the part of the source the clip plays. How long it lasts
     /// on the timeline is `placedDuration`, which differs when it is retimed.

@@ -134,7 +134,7 @@ struct EditorView: View {
             skim.end()
             beatMatch.discardAndClose()
         }
-        .onChange(of: project) { _, newValue in projectDidChange(newValue) }
+        .onChange(of: project) { oldValue, newValue in projectDidChange(newValue, from: oldValue) }
         .onReceive(NotificationCenter.default.publisher(for: .spectrogramsChanged)) { _ in analysisArrived() }
         .onChange(of: analysis.beats, initial: true) { _, beats in
             if DetectedBeats.shared.update(beats) { analysisArrived() }
@@ -153,12 +153,18 @@ struct EditorView: View {
         .onChange(of: replacement.missingMedia) { _, _ in analysis.retryUnavailable(in: project) }
     }
 
-    /// Records an edit for undo and brings the view state along. Keyframing
-    /// effects whose clip or beats moved make their keyframes again first,
-    /// so they join this edit's undo step: this runs again with the result,
-    /// which records it.
-    private func projectDidChange(_ newValue: EditingProject) {
+    /// Records an edit for undo and brings the view state along. Clips
+    /// follow the songs they are attached to, and keyframing effects whose
+    /// clip or beats moved make their keyframes again, first, so they join
+    /// this edit's undo step: this runs again with the result, which
+    /// records it. Undo and redo put back the baseline, which is already
+    /// as it should be, so nothing follows then.
+    private func projectDidChange(_ newValue: EditingProject, from oldValue: EditingProject) {
         var refreshed = newValue
+        if newValue != history.baseline, refreshed.followMusic(from: oldValue) {
+            project = refreshed
+            return
+        }
         if refreshed.refreshKeyframing() {
             project = refreshed
             return

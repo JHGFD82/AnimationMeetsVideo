@@ -116,6 +116,9 @@ struct ClipBlockView: View {
     /// Opens the beat match panel for the clip's song; nil for clips that
     /// aren't on a Music layer.
     var onBeatMatch: (() -> Void)? = nil
+    /// Ties the clip to the music at the playhead; nil for clips on a Music
+    /// layer, which are the music.
+    var onAttachToMusic: (() -> Void)? = nil
     /// For an adjustment clip: what it reaches, and the choices.
     var reach: ReachMenu? = nil
 
@@ -577,6 +580,10 @@ struct ClipBlockView: View {
         }
         if let onBeatMatch {
             Button("Beat match", action: onBeatMatch)
+        }
+        if let onAttachToMusic {
+            Button(clip.followsMusic ? "Stop following music" : "Follow music") { onEditClip { $0.followsMusic.toggle() } }
+            Button("Attach to music at playhead", action: onAttachToMusic)
         }
         if let reach {
             Button("Reach all layers below") { reach.onChoose(nil) }

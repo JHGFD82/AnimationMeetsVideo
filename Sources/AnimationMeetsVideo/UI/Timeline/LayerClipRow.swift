@@ -108,6 +108,8 @@ struct LayerClipRow: View {
     /// Sets how far down an adjustment clip reaches: to a layer, or every
     /// layer below for nil.
     let onSetReach: (UUID, UUID?) -> Void
+    /// Ties a clip to the music at the playhead.
+    let onAttachToMusic: (UUID) -> Void
 
     /// While a slip shortens a clip: how far the clips after it move in.
     private struct FollowerShift: Equatable {
@@ -258,6 +260,7 @@ struct LayerClipRow: View {
                     onEditTime: { change in onEditTime(clip.id, change) },
                     onEditClip: { change in onEditClip(clip.id, change) },
                     onBeatMatch: beatMatchAction(for: clip),
+                    onAttachToMusic: layer.kind == .music ? nil : { onAttachToMusic(clip.id) },
                     reach: reachMenu(for: clip)
                 )
                 .offset(x: shiftX(of: clip))

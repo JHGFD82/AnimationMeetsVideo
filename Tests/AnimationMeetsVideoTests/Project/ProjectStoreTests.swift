@@ -229,6 +229,34 @@ private struct Sandbox {
         #expect(!plainJSON.contains("adjustment") && !plainJSON.contains("reach"))
     }
 
+    @Test func roundTripKeepsMusicAttachments() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, clipID, assetID) = sandbox.makeProject()
+        let t = project.rootTimelineID
+        // The same file's sound stands in for a song.
+        var song = TimelineClip(source: .media(assetID), startOffset: .zero, trimStart: .zero, trimEnd: CMTime(seconds: 10, preferredTimescale: 600))
+        song.streams = .audio
+        project.timelines[0].layers.append(TimelineLayer(customName: nil, kind: .music, clips: [song]))
+        let attachment = MusicAttachment(songClipID: song.id, assetID: assetID, songTime: CMTime(value: 1001, timescale: 24000), frame: CMTime(value: 3003, timescale: 24000))
+        project.editClip(clipID, in: t) { $0.music = attachment }
+        let loose = project.importClip(sandbox.makeProject().project.clips[0], intoTimeline: t)!
+        project.editClip(loose.clipID, in: t) { $0.followsMusic = false }
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        let layers = try #require(loaded.project.timeline(id: t)?.layers)
+        let clips = layers.flatMap(\.clips)
+        #expect(clips.first { $0.id == clipID }?.music == attachment)
+        #expect(clips.first { $0.id == loose.clipID }?.followsMusic == false)
+        #expect(clips.first { $0.id == song.id }?.music == nil)
+
+        // A project with nothing attached writes neither key.
+        try await ProjectStore.save(sandbox.makeProject().project, to: sandbox.packageURL)
+        let plainJSON = try String(contentsOf: sandbox.projectJSON, encoding: .utf8)
+        #expect(!plainJSON.contains("\"music\"") && !plainJSON.contains("followsMusic"))
+    }
+
     @Test func aReachNamingNoLayerReachesEveryLayerBelow() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }

@@ -89,6 +89,33 @@ struct ProjectFile: Codable {
         var enabled: Bool?
         /// `true` for a clip whose sound is muted; absent while it sounds.
         var soundMuted: Bool?
+        /// The song the clip follows; absent while it follows none.
+        var music: MusicEntry?
+        /// `false` for a clip set not to follow the music; absent while it
+        /// does.
+        var followsMusic: Bool? = nil
+    }
+
+    /// Where a clip is tied to a song (see `MusicAttachment`).
+    struct MusicEntry: Codable {
+        /// The song's clip.
+        var song: UUID
+        var asset: UUID
+        /// The moment of the song, in its source time.
+        var time: TimeEntry
+        /// The frame of the clip the person chose; absent for its first.
+        var frame: TimeEntry?
+
+        init(_ attachment: MusicAttachment) {
+            song = attachment.songClipID
+            asset = attachment.assetID
+            time = TimeEntry(attachment.songTime)
+            frame = attachment.frame.map(TimeEntry.init)
+        }
+
+        var attachment: MusicAttachment {
+            MusicAttachment(songClipID: song, assetID: asset, songTime: time.time, frame: frame?.time)
+        }
     }
 
     /// Echo or trails: `count` copies, `delay` apart, each `decay` as strong
@@ -918,6 +945,10 @@ extension ProjectFile {
             .optional("reach", .uuid),
             .optional("enabled", .bool),
             .optional("soundMuted", .bool),
+            .optional("music", .object(object([
+                .required("song", .uuid), .required("asset", .uuid), .required("time", .time), .optional("frame", .time),
+            ]))),
+            .optional("followsMusic", .bool),
             .optional("time", .object(object([
                 .optional("speed", property(.number)),
                 .optional("frameBlending", .choice(["blend", "opticalFlow"], noun: "frame blending")),

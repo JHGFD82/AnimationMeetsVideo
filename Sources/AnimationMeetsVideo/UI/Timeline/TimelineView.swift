@@ -1024,6 +1024,10 @@ struct TimelineView: View {
                         },
                         onSetReach: { clipID, bottom in
                             onEditProject { $0.setReach(ofClip: clipID, in: timelineID, toLayer: bottom) }
+                        },
+                        onAttachToMusic: { clipID in
+                            let time = livePlayheadTime
+                            onEditProject { $0.attachToMusic(clipID, in: timelineID, at: time) }
                         }
                     )
                     // Rows that would draw the same aren't redrawn, so
