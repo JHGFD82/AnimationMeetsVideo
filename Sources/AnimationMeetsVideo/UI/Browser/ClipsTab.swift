@@ -246,7 +246,9 @@ struct ClipsTab: View {
         // Only what the person picks: a scene renamed by an edit dropping
         // out of the selection leaves the splitter where it is.
         .onChange(of: picked.revision) { _, _ in
-            splitter?.follow(splitterFocus(for: picked.ordered(in: order), snapshot: snapshot))
+            let ids = picked.ordered(in: order)
+            let focus = splitterFocus(for: ids, snapshot: snapshot)
+            splitter?.follow(focus, selecting: focus.map { sceneIDs(ids, of: $0.assetID) } ?? [])
         }
         .sheet(item: $sensitivityTarget) { target in
             SensitivitySheet(project: access.binding, target: target, track: analysis.tracks[target.assetID])
@@ -660,7 +662,7 @@ struct ClipsTab: View {
             let scenes = snapshot.scenes(of: entry.clip.id)
             if sceneIDs.count == ids.count {
                 Divider()
-                Button("Split Scenes…") { splitter?.show(splitterFocus(for: ids, snapshot: snapshot)) }
+                Button("Split Scenes…") { splitter?.show(splitterFocus(for: ids, snapshot: snapshot), selecting: sceneIDs) }
                 if !cutsToRemove(Set(sceneIDs), in: scenes).isEmpty {
                     Button("Merge Selected Scenes") { mergeScenes(Set(sceneIDs), assetID: entry.clip.id, scenes: scenes) }
                 }
@@ -701,7 +703,10 @@ struct ClipsTab: View {
     private func sceneMenu(_ entry: BrowserEntry, assetID: UUID, scenes: [SceneRange]) -> some View {
         Divider()
         Button("Split Scenes…") {
-            splitter?.show(SceneSplitter.Focus(assetID: assetID, start: entry.start, end: CMTimeAdd(entry.start, entry.duration)))
+            splitter?.show(
+                SceneSplitter.Focus(assetID: assetID, start: entry.start, end: CMTimeAdd(entry.start, entry.duration)),
+                selecting: sceneIDs([entry.id], of: assetID)
+            )
         }
         if case .scene(_, let sceneID) = entry.id {
             Button("Merge with Previous Scene") { mergeScenes([sceneID], assetID: assetID, scenes: scenes) }
@@ -737,6 +742,14 @@ struct ClipsTab: View {
             for cut in cuts { edits.removeCut(cut) }
         }
         picked.clear()
+    }
+
+    /// The scenes of `assetID` among `ids`.
+    private func sceneIDs(_ ids: [BrowserItemID], of assetID: UUID) -> [String] {
+        ids.compactMap { id in
+            if case .scene(let asset, let scene) = id, asset == assetID { return scene }
+            return nil
+        }
     }
 
     /// What the scene splitter shows for these picks: the stretch from the

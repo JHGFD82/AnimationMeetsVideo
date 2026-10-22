@@ -132,9 +132,10 @@ struct UISnapshots {
     }
 
     /// The scene splitter on the last three shots of a four-shot movie,
-    /// the second of them split by hand, with the picture parked in it;
-    /// then with the sensitivity slider being dragged, which shows the
-    /// extra cut it would find before it is let go.
+    /// the second of them split by hand: two scenes picked, the marker in
+    /// the second and the pointer skimming the next; then with the
+    /// sensitivity slider being dragged, which shows the extra cut it
+    /// would find before it is let go.
     @Test func sceneSplitter() async throws {
         let movie = FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-splitter-\(UUID().uuidString).mov")
         defer { try? FileManager.default.removeItem(at: movie) }
@@ -158,8 +159,15 @@ struct UISnapshots {
         splitter.update(project: project)
         splitter.openWithoutPanel(SceneSplitter.Focus(assetID: footage.id, start: CMTime(value: 1, timescale: 1), end: CMTime(value: 4, timescale: 1)))
         defer { splitter.skim.end() }
-        splitter.skim(toSeconds: 1.75)
-        let size = CGSize(width: 620, height: 640)
+        // Scenes 3 and 4 picked, the marker in 4, the pointer skimming 5.
+        splitter.click(atSeconds: 1.2)
+        splitter.click(atSeconds: 1.75, modifiers: .shift)
+        splitter.hover(atSeconds: 2.4)
+        let size = CGSize(width: 640, height: 480)
+        // The strip's pictures load in the background; the second picture
+        // has them.
+        try SnapshotSupport.render(SceneSplitterView(splitter: splitter), "scene-splitter", size: size)
+        try await Task.sleep(for: .seconds(1.5))
         try SnapshotSupport.render(SceneSplitterView(splitter: splitter), "scene-splitter", size: size)
         splitter.drag(sensitivity: 0.95)
         try SnapshotSupport.render(SceneSplitterView(splitter: splitter), "scene-splitter-sensitivity", size: size)

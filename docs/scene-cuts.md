@@ -326,23 +326,44 @@ same stretch while scenes inside it are split and merged (the scenes shown
 are those overlapping the stretch, so merging the first one with the scene
 before it widens the view to include it).
 
+The panel is as tall as what it holds; only its width can be changed.
+
 - **The picture** plays from the file with a player of its own, so the
   viewer, the browser's skimming and the timeline are left alone.
-- **The strip** under it draws the scenes shown side by side, numbered as
-  the browser numbers them, with hand-set ones marked, the scene the
-  picture is in highlighted, and a line where the picture is. Moving the
-  pointer over it skims; pressing and dragging scrubs.
-- **Keys** while the panel has the keyboard: ← and → step a frame (ten with
-  Shift), ↑ and ↓ go to the previous or next cut, Space plays and pauses, S
-  splits, Escape closes. VoiceOver reads the strip as one adjustable element
-  (a frame a step) with Split Here, the merges and the cut jumps as actions.
+- **The ruler and strip** under it: a ruler with the timeline's tick
+  grouping over a filmstrip of the scenes shown, side by side, each
+  starting with its first frame, numbered as the browser numbers them,
+  hand-set ones marked, picked ones outlined. Only what is on screen is
+  drawn, so zooming in deep stays cheap.
+- **The marker** is a yellow line: the frame clicked or stepped to. It is
+  temporary, never saved. Moving the pointer over the strip **skims**: the
+  picture follows the pointer (a thin white line) but the marker stays,
+  and the picture goes back to it when the pointer leaves. A click on the
+  strip moves the marker there and picks that scene; dragging moves the
+  marker; a click on the ruler moves the marker without picking. The frame
+  buttons, the arrow keys and the cut jumps move the marker, and while
+  playing it rides along, staying where play stops.
+- **Zoom**: pinch the strip, use the slider or its buttons, or = and -.
+  It zooms about the marker (the middle when the marker is off screen), as
+  far as 24 points a frame, and the strip scrolls sideways; a marker
+  stepped or played off screen is scrolled back into view.
+- **Picking** works as in the browser: click, Shift-click for a run,
+  Command-click to add or take away. Picks made in the browser come along
+  when the panel follows them. **Merge** joins the picked scenes into one,
+  and only when there are two or more side by side with no scene between
+  them; otherwise it is off and the panel says why.
+- **Split into new clip** starts a new scene, and so a new clip, at the
+  frame the picture shows (the marker's, or the skimmed one when split
+  with S while skimming), snapped to a real frame of the file.
+- **Keys** while the panel has the keyboard: ← and → move the marker a
+  frame (ten with Shift), ↑ and ↓ to the previous or next cut, Return picks
+  the marker's scene (Shift and Command as clicks), Space plays and
+  pauses, S splits, M merges, = and - zoom, Escape closes. VoiceOver reads
+  the strip as one adjustable element (a frame a step) with the picks,
+  Split, Merge, the cut jumps and zoom as actions.
 - **Sound** has its own switch, kept between sessions
   (`Preferences.sceneSplitterSound`), apart from the browser's Skim Audio:
   off, skimming and playing are silent.
-- **Split Here** starts a new scene at the frame shown, snapped to a real
-  frame of the file. **Merge with Previous** and **Merge with Next** take
-  away the cut before or after the scene the picture is in (not where
-  footage stops between two scenes, which isn't a cut).
 - **Cut sensitivity** sets a sensitivity region over the stretch shown;
   see "Adjusting sensitivity for a selection" above.
 

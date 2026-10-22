@@ -41,6 +41,18 @@ final class SceneSplitter {
     private(set) var allScenes: [SceneRange] = []
     /// The scenes that overlap the focus, in order.
     private(set) var scenes: [SceneRange] = []
+    /// The scenes picked in the panel, by ID, which Merge joins. Seeded
+    /// from the browser's picks.
+    private(set) var selection = BrowserSelection<String>()
+    /// The marker: the frame last clicked or stepped to, in the asset's
+    /// original time. Skimming shows other frames without moving it; only
+    /// a click, the arrow keys and playing do. Never saved.
+    private(set) var marker: CMTime?
+    /// Where the pointer is skimming, in seconds into the stretch shown;
+    /// nil when it isn't over the strip.
+    private(set) var skimming: Double?
+    /// How far the strip is zoomed in: 1 fits the whole stretch.
+    private(set) var zoom: Double = 1
     var pendingEdit: PendingEdit?
     /// The sensitivity under the pointer while its slider is dragged:
     /// shown, not applied until it is let go.
@@ -59,11 +71,15 @@ final class SceneSplitter {
     /// The detected scores of each asset (`AssetAnalysis.tracks`).
     @ObservationIgnored var sceneTracks: () -> [UUID: ChangeScoreTrack] = { [:] }
     @ObservationIgnored var onEdit: ((inout EditingProject) -> Void) -> Void = { _ in }
+    /// How wide the strip is on screen, which sets how far it can zoom.
+    @ObservationIgnored var stripWidth: CGFloat = 560
     @ObservationIgnored private var panel: NSPanel?
     @ObservationIgnored private var keyMonitor: Any?
     @ObservationIgnored private var closeObserver: NSObjectProtocol?
 
     private static let skimItem = AnyHashable("sceneSplitter")
+    /// The most the strip zooms in to: this many points a frame.
+    static let widestFrame: Double = 24
 
     init() {
         isSoundOn = UserDefaults.standard.object(forKey: Preferences.sceneSplitterSound) as? Bool ?? true
@@ -78,16 +94,42 @@ final class SceneSplitter {
     /// From the start of the first scene shown to the end of the last.
     var span: (start: CMTime, end: CMTime)? { scenes.span }
 
-    /// Where the picture is, in the asset's original time.
-    var position: CMTime? {
-        guard skim.target?.item == Self.skimItem else { return nil }
-        return skim.sourceTime
+    /// How long the stretch shown lasts, in seconds.
+    var length: Double {
+        guard let span else { return 0 }
+        return max(CMTimeSubtract(span.end, span.start).seconds, 0)
     }
 
-    /// The scene the picture is in.
-    var currentScene: SceneRange? {
-        guard let position else { return scenes.first }
-        return scenes.last { CMTimeCompare($0.start, position) <= 0 } ?? scenes.first
+    var frameRate: Double {
+        guard let rate = media?.frameRate, rate > 0 else { return 30 }
+        return rate
+    }
+
+    private var isPlaying: Bool { skim.isPlaying && skim.target?.item == Self.skimItem }
+
+    /// The marker in seconds into the stretch; while playing, where play
+    /// has reached, since the marker rides along.
+    var markerSeconds: Double? {
+        if isPlaying { return skim.seconds }
+        guard let span, let marker else { return nil }
+        return CMTimeSubtract(marker, span.start).seconds
+    }
+
+    /// The frame the picture shows, in seconds into the stretch: the one
+    /// skimmed to, else the marker's.
+    var shownSeconds: Double? {
+        isPlaying ? markerSeconds : (skimming ?? markerSeconds)
+    }
+
+    func time(atSeconds seconds: Double) -> CMTime {
+        CMTimeAdd(span?.start ?? .zero, CMTime(seconds: seconds, preferredTimescale: 6000))
+    }
+
+    var markerTime: CMTime? { markerSeconds.map(time(atSeconds:)) }
+
+    /// The scene a moment is in; the last one for the very end.
+    func scene(at time: CMTime) -> SceneRange? {
+        scenes.last { CMTimeCompare($0.start, time) <= 0 } ?? scenes.first
     }
 
     /// A scene's number among all of its asset's, as the browser counts.
@@ -106,16 +148,17 @@ final class SceneSplitter {
 
     // MARK: - Opening
 
-    /// Opens the panel on `focus`, or brings it to the front.
-    func show(_ focus: Focus?) {
-        if let focus { self.focus = focus }
+    /// Opens the panel on `focus` with `selecting` (scene IDs) picked, or
+    /// brings it to the front.
+    func show(_ focus: Focus?, selecting ids: [String] = []) {
+        if let focus { setFocus(focus, selecting: ids) }
         if let panel {
             refresh()
             panel.makeKeyAndOrderFront(nil)
             return
         }
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
             styleMask: [.titled, .closable, .resizable, .utilityWindow],
             backing: .buffered,
             defer: false
@@ -125,15 +168,17 @@ final class SceneSplitter {
         panel.hidesOnDeactivate = true
         panel.isReleasedWhenClosed = false
         panel.appearance = NSAppearance(named: .darkAqua)
-        panel.contentMinSize = NSSize(width: 480, height: 480)
-        panel.contentView = NSHostingView(rootView: SceneSplitterView(splitter: self))
+        // Its height is its content's; only its width is the person's.
+        let host = NSHostingView(rootView: SceneSplitterView(splitter: self))
+        host.sizingOptions = [.minSize, .intrinsicContentSize]
+        panel.contentView = host
         closeObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: panel, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.didClose() }
         }
-        panel.center()
         panel.setFrameAutosaveName("SceneSplitter")
+        if panel.frame.origin == .zero { panel.center() }
         self.panel = panel
         isOpen = true
         watchKeys()
@@ -146,9 +191,9 @@ final class SceneSplitter {
     }
 
     /// Shows `focus` as if open, without a panel, for a picture of the view
-    /// (`UISnapshots`).
-    func openWithoutPanel(_ focus: Focus) {
-        self.focus = focus
+    /// (`UISnapshots`) and tests.
+    func openWithoutPanel(_ focus: Focus, selecting ids: [String] = []) {
+        setFocus(focus, selecting: ids)
         isOpen = true
         refresh()
     }
@@ -162,17 +207,31 @@ final class SceneSplitter {
         isOpen = false
         pendingEdit = nil
         draftSensitivity = nil
+        skimming = nil
         skim.end()
     }
 
-    /// Shows what the browser has picked. Nil, or anything but video,
-    /// leaves the splitter on what it showed.
-    func follow(_ focus: Focus?) {
-        guard let focus, focus != self.focus else { return }
-        self.focus = focus
-        draftSensitivity = nil
-        pendingEdit = nil
+    /// Shows what the browser has picked: `focus`, with the scenes
+    /// `selecting` picked here too. Nil, or anything but video, leaves the
+    /// splitter on what it showed.
+    func follow(_ focus: Focus?, selecting ids: [String] = []) {
+        guard let focus else { return }
+        setFocus(focus, selecting: ids)
         refresh()
+    }
+
+    private func setFocus(_ focus: Focus, selecting ids: [String]) {
+        if focus != self.focus {
+            self.focus = focus
+            marker = focus.start
+            zoom = 1
+            draftSensitivity = nil
+            pendingEdit = nil
+            skimming = nil
+        }
+        var picked = BrowserSelection<String>()
+        for id in ids { picked.commandClick(id) }
+        selection = picked
     }
 
     /// Keeps it current with the project, after any edit, undo or redo.
@@ -185,13 +244,18 @@ final class SceneSplitter {
         refresh()
     }
 
+    private var skimTarget: BrowserSkim.Target? {
+        guard let media, let span else { return nil }
+        return BrowserSkim.Target(item: Self.skimItem, clip: media, start: span.start, duration: CMTimeSubtract(span.end, span.start))
+    }
+
     /// Works out the scenes again, and keeps the picture on the stretch
-    /// shown, at the same moment where it can. Called too when an asset's
-    /// scenes are found while the panel is open. Nothing is worked out while
-    /// it is closed: opening it does that.
+    /// shown, at the marker. Called too when an asset's scenes are found
+    /// while the panel is open. Nothing is worked out while it is closed:
+    /// opening it does that.
     func refresh() {
         guard isOpen else { return }
-        guard let focus, let media else {
+        guard let focus, media != nil else {
             allScenes = []
             scenes = []
             return
@@ -205,82 +269,194 @@ final class SceneSplitter {
         }
         allScenes = all
         scenes = Self.overlapping(all, focus)
-        guard let span else { return }
-        let target = BrowserSkim.Target(item: Self.skimItem, clip: media, start: span.start, duration: CMTimeSubtract(span.end, span.start))
-        guard skim.target != target else { return }
-        let at = position.map { CMTimeSubtract($0, span.start).seconds } ?? 0
-        skim.skim(target, at: at)
+        selection.keep(only: scenes.map(\.id))
+        guard let span, let target = skimTarget else { return }
+        if marker.map({ CMTimeCompare($0, span.start) < 0 || CMTimeCompare($0, span.end) > 0 }) ?? true {
+            marker = span.start
+        }
+        zoom = min(zoom, maximumZoom)
+        guard skim.target != target, let seconds = shownSeconds else { return }
+        skim.skim(target, at: seconds, audible: false)
     }
 
     private static func overlapping(_ scenes: [SceneRange], _ focus: Focus) -> [SceneRange] {
         scenes.filter { CMTimeCompare($0.end, focus.start) > 0 && CMTimeCompare($0.start, focus.end) < 0 }
     }
 
-    // MARK: - Moving
+    // MARK: - The marker and skimming
 
-    /// Shows the frame `seconds` into the stretch, with a grain of sound.
-    func skim(toSeconds seconds: Double) {
-        guard let target = skim.target, target.item == Self.skimItem else { return }
-        skim.skim(target, at: seconds)
+    /// The pointer over the strip at `seconds` into the stretch, or gone
+    /// from it (nil): the picture follows it, and goes back to the marker
+    /// when it leaves. Play isn't interrupted.
+    func hover(atSeconds seconds: Double?) {
+        guard !isPlaying, let target = skimTarget else { return }
+        skimming = seconds.map { min(max($0, 0), length) }
+        if let skimming {
+            skim.skim(target, at: skimming)
+        } else if let markerSeconds {
+            skim.skim(target, at: markerSeconds, audible: false)
+        }
     }
 
-    func step(frames: Int) { skim.step(frames: frames) }
+    /// A click on the strip: the marker goes to the frame clicked, and the
+    /// scene there is picked as a click, Shift-click or Command-click picks.
+    func click(atSeconds seconds: Double, modifiers: NSEvent.ModifierFlags = []) {
+        placeMarker(atSeconds: seconds)
+        guard let marker, let scene = scene(at: marker) else { return }
+        pick(scene, modifiers: modifiers)
+    }
 
-    func togglePlay() { skim.togglePlay() }
+    /// Moves the marker without changing what is picked: a click on the
+    /// ruler, or a drag along the strip.
+    func placeMarker(atSeconds seconds: Double) {
+        stopPlaying()
+        skimming = nil
+        marker = snapped(time(atSeconds: min(max(seconds, 0), length)))
+        showMarker(audible: true)
+    }
 
-    /// Moves the picture to the previous or next cut in the stretch, or its
+    /// Picks the scene the marker is in, from the keyboard (Return).
+    func pickAtMarker(modifiers: NSEvent.ModifierFlags = []) {
+        guard let marker, let scene = scene(at: marker) else { return }
+        pick(scene, modifiers: modifiers)
+    }
+
+    private func pick(_ scene: SceneRange, modifiers: NSEvent.ModifierFlags) {
+        if modifiers.contains(.command) {
+            selection.commandClick(scene.id)
+        } else if modifiers.contains(.shift) {
+            selection.shiftClick(scene.id, in: scenes.map(\.id))
+        } else {
+            selection.click(scene.id)
+        }
+    }
+
+    /// Steps the marker `frames` frames, a frame being the footage's.
+    func step(frames: Int) {
+        stopPlaying()
+        guard let base = marker, let span else { return }
+        let moved = CMTimeAdd(base, CMTime(seconds: Double(frames) / frameRate, preferredTimescale: 6000))
+        let clamped = CMTimeMaximum(span.start, CMTimeMinimum(span.end, moved))
+        marker = snapped(clamped)
+        skimming = nil
+        showMarker(audible: true)
+    }
+
+    /// Plays from the marker, which rides along; pausing leaves it where
+    /// play reached.
+    func togglePlay() {
+        if isPlaying {
+            stopPlaying()
+            return
+        }
+        skimming = nil
+        showMarker(audible: false)
+        skim.togglePlay()
+    }
+
+    /// Leaves the marker where play reached, when play stops by itself at
+    /// the stretch's end or is stopped.
+    func playDidStop() {
+        guard !skim.isPlaying, skim.target?.item == Self.skimItem, span != nil else { return }
+        marker = time(atSeconds: skim.seconds)
+    }
+
+    private func stopPlaying() {
+        guard isPlaying else { return }
+        let reached = skim.seconds
+        skim.togglePlay()
+        marker = time(atSeconds: reached)
+    }
+
+    /// Moves the marker to the previous or next cut in the stretch, or its
     /// start or end.
     func jumpToCut(_ side: Side) {
-        guard let position, let span else { return }
+        stopPlaying()
+        guard let marker, let span else { return }
         let edges = scenes.map(\.start) + [span.end]
         let target = side == .previous
-            ? edges.last { CMTimeCompare($0, position) < 0 }
-            : edges.first { CMTimeCompare($0, position) > 0 }
+            ? edges.last { CMTimeCompare($0, marker) < 0 }
+            : edges.first { CMTimeCompare($0, marker) > 0 }
         guard let target else { return }
-        skim(toSeconds: CMTimeSubtract(target, span.start).seconds)
+        self.marker = target
+        skimming = nil
+        showMarker(audible: true)
     }
+
+    private func showMarker(audible: Bool) {
+        guard let target = skimTarget, let markerSeconds else { return }
+        skim.skim(target, at: markerSeconds, audible: audible)
+    }
+
+    /// A time snapped to a real frame of the file, or to the footage's
+    /// frame grid before its scores are in.
+    private func snapped(_ time: CMTime) -> CMTime {
+        guard let media else { return time }
+        if let track { return track.nearestFrameTime(toOriginal: time, mapping: media.timeMapping) }
+        return CMTime(seconds: (time.seconds * frameRate).rounded() / frameRate, preferredTimescale: 6000)
+    }
+
+    // MARK: - Zooming
+
+    /// The furthest in the strip zooms: until a frame is `widestFrame`
+    /// points wide.
+    var maximumZoom: Double {
+        max(1, length * frameRate * Self.widestFrame / Double(max(stripWidth, 1)))
+    }
+
+    func setZoom(_ value: Double) {
+        zoom = min(max(value, 1), maximumZoom)
+    }
+
+    func zoom(by factor: Double) { setZoom(zoom * factor) }
 
     // MARK: - Editing
 
-    /// The cut Split would make: the frame shown, snapped to a real frame
-    /// of the file, when that is inside the scene and not at its start.
+    /// The cut Split would make: the frame the picture shows (the marker's,
+    /// unless the pointer is skimming), snapped to a real frame of the file,
+    /// when that is inside its scene and not at its start.
     var splitTime: CMTime? {
-        guard let position, let scene = currentScene, let media else { return nil }
+        guard let shownSeconds, let media else { return nil }
+        let position = time(atSeconds: shownSeconds)
+        guard let scene = scene(at: position) else { return nil }
         let inside = CMTimeRange(start: scene.start, end: scene.end)
         let time: CMTime
         if let track {
             time = track.nearestFrameTime(toOriginal: position, mapping: media.timeMapping, within: inside)
         } else {
-            let rate = media.frameRate > 0 ? media.frameRate : 30
-            time = CMTime(seconds: (position.seconds * rate).rounded() / rate, preferredTimescale: 600)
+            time = CMTime(seconds: (position.seconds * frameRate).rounded() / frameRate, preferredTimescale: 6000)
         }
         guard CMTimeCompare(time, scene.start) > 0, CMTimeCompare(time, scene.end) < 0 else { return nil }
         return time
     }
 
+    /// Starts a new scene, and so a new clip, at the frame shown.
     func split() {
         guard let time = splitTime else { return }
         edit { $0.addCut(at: time) }
     }
 
-    /// The cut between the current scene and the one before or after it,
-    /// when the two meet (footage that stops between them has no cut).
-    func cut(toMerge side: Side) -> SceneCut? {
-        guard let scene = currentScene, let index = allScenes.firstIndex(where: { $0.id == scene.id }) else { return nil }
-        switch side {
-        case .previous:
-            guard index > 0, CMTimeCompare(allScenes[index - 1].end, scene.start) == 0 else { return nil }
-            return SceneCut(time: scene.start, origin: scene.origin)
-        case .next:
-            guard index + 1 < allScenes.count, CMTimeCompare(allScenes[index + 1].start, scene.end) == 0 else { return nil }
-            let next = allScenes[index + 1]
-            return SceneCut(time: next.start, origin: next.origin)
-        }
+    /// The picked scenes, in order, when there are two or more side by
+    /// side with nothing between them: what Merge joins. Nil otherwise.
+    var mergeable: [SceneRange]? {
+        let ids = Set(selection.ordered(in: allScenes.map(\.id)))
+        let indices = allScenes.indices.filter { ids.contains(allScenes[$0].id) }
+        guard indices.count > 1, let first = indices.first, indices.last == first + indices.count - 1 else { return nil }
+        let picked = indices.map { allScenes[$0] }
+        for (a, b) in zip(picked, picked.dropFirst()) where CMTimeCompare(a.end, b.start) != 0 { return nil }
+        return picked
     }
 
-    func merge(_ side: Side) {
-        guard let cut = cut(toMerge: side) else { return }
-        edit { $0.removeCut(cut) }
+    /// Joins the picked scenes into one, taking away the cuts between them.
+    func merge() {
+        guard let picked = mergeable, let first = picked.first else { return }
+        let cuts = picked.dropFirst().map { SceneCut(time: $0.start, origin: $0.origin) }
+        edit { edits in
+            for cut in cuts { edits.removeCut(cut) }
+        }
+        var joined = BrowserSelection<String>()
+        joined.click(first.id)
+        selection = joined
     }
 
     /// Shows the scenes `value` would make while its slider is dragged.
@@ -331,9 +507,11 @@ final class SceneSplitter {
 
     // MARK: - Keys
 
-    /// ← and → step a frame (ten with Shift), ↑ and ↓ go to the previous or
-    /// next cut, Space plays, S splits and Escape closes, while the panel
-    /// has the keyboard and no text field does.
+    /// While the panel has the keyboard and no text field does: ← and →
+    /// step the marker a frame (ten with Shift), ↑ and ↓ take it to the
+    /// previous or next cut, Return picks the scene it is in (Shift and
+    /// Command as clicks do), Space plays, S splits, M merges, = and - zoom,
+    /// and Escape closes.
     private func watchKeys() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -350,6 +528,10 @@ final class SceneSplitter {
     private func handle(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
         let shift = flags == .shift
+        if event.keyCode == 36, flags.isDisjoint(with: [.control, .option]) {
+            pickAtMarker(modifiers: flags)
+            return true
+        }
         guard flags.isEmpty || shift else { return false }
         switch event.keyCode {
         case 123: step(frames: shift ? -10 : -1)
@@ -359,8 +541,13 @@ final class SceneSplitter {
         case 49 where !shift: togglePlay()
         case 53 where !shift: close()
         default:
-            guard !shift, event.charactersIgnoringModifiers?.lowercased() == "s" else { return false }
-            split()
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "s" where !shift: split()
+            case "m" where !shift: merge()
+            case "=", "+": zoom(by: 1.5)
+            case "-" where !shift: zoom(by: 1 / 1.5)
+            default: return false
+            }
         }
         return true
     }

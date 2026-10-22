@@ -53,14 +53,14 @@ private final class Harness {
         #expect(selection.revision == 3)
     }
 
-    @Test func splittingKeepsTheStretchShownAndUndoBringsItBack() {
+    @Test func splittingAtTheMarkerKeepsTheStretchShownAndUndoBringsItBack() {
         let harness = Harness(cuts: [2, 5])
         defer { harness.splitter.skim.end() }
         harness.open(from: 2, to: 5)
         #expect(harness.starts == [2])
         let before = harness.project
 
-        harness.splitter.skim(toSeconds: 1.5)
+        harness.splitter.click(atSeconds: 1.5)
         harness.splitter.split()
 
         #expect(harness.starts == [2, 3.5])
@@ -69,18 +69,55 @@ private final class Harness {
         #expect(harness.starts == [2])
     }
 
-    @Test func mergingAcrossTheStretchsEdgeWidensIt() {
+    @Test func skimmingShowsFramesButOnlyAClickOrAStepMovesTheMarker() throws {
         let harness = Harness(cuts: [2, 5])
         defer { harness.splitter.skim.end() }
-        harness.open(from: 2, to: 5)
-        #expect(harness.splitter.cut(toMerge: .previous) != nil)
+        harness.open(from: 0, to: 10)
+        let splitter = harness.splitter
+        #expect(splitter.markerSeconds == 0)
 
-        harness.splitter.merge(.previous)
+        splitter.hover(atSeconds: 4)
+        #expect(splitter.markerSeconds == 0 && splitter.shownSeconds == 4)
+        splitter.hover(atSeconds: nil)
+        #expect(splitter.shownSeconds == 0)
 
-        #expect(harness.starts == [0])
-        #expect(harness.splitter.span?.end == seconds(5))
-        // The first scene of the file has nothing before it to join.
-        #expect(harness.splitter.cut(toMerge: .previous) == nil)
+        splitter.click(atSeconds: 3)
+        #expect(splitter.markerSeconds == 3)
+        #expect(splitter.selection.items == [seconds(2).sceneID])
+        splitter.step(frames: 1)
+        let marker = try #require(splitter.markerSeconds)
+        #expect(abs(marker - (3 + 1.0 / 24)) < 1e-3)
+        splitter.jumpToCut(.next)
+        #expect(splitter.markerSeconds == 5)
+    }
+
+    @Test func mergeJoinsOnlyScenesSideBySide() {
+        let harness = Harness(cuts: [2, 5, 7])
+        defer { harness.splitter.skim.end() }
+        harness.open(from: 0, to: 10)
+        let splitter = harness.splitter
+
+        splitter.click(atSeconds: 1)
+        splitter.click(atSeconds: 6, modifiers: .command)
+        #expect(splitter.selection.items.count == 2 && splitter.mergeable == nil)
+        splitter.merge()
+        #expect(harness.starts == [0, 2, 5, 7])
+
+        splitter.click(atSeconds: 3, modifiers: .shift)
+        #expect(splitter.mergeable?.map(\.start.seconds) == [2, 5])
+        splitter.merge()
+        #expect(harness.starts == [0, 2, 7])
+        #expect(splitter.selection.items == [seconds(2).sceneID])
+    }
+
+    @Test func picksFromTheBrowserSeedTheSelection() {
+        let harness = Harness(cuts: [2, 5])
+        defer { harness.splitter.skim.end() }
+        harness.splitter.openWithoutPanel(
+            SceneSplitter.Focus(assetID: harness.footage.id, start: .zero, end: seconds(5)),
+            selecting: [CMTime.zero.sceneID, seconds(2).sceneID]
+        )
+        #expect(harness.splitter.mergeable?.count == 2)
     }
 
     @Test func splittingAnAnimatedClipWaitsToBeAgreedTo() throws {
@@ -94,7 +131,7 @@ private final class Harness {
         harness.open(from: 0, to: 10)
         let before = harness.project
 
-        harness.splitter.skim(toSeconds: 3)
+        harness.splitter.placeMarker(atSeconds: 3)
         harness.splitter.split()
         let pending = try #require(harness.splitter.pendingEdit)
         #expect(pending.clipCount == 1)
@@ -112,4 +149,9 @@ private final class Harness {
             return
         }
     }
+}
+
+private extension CMTime {
+    /// The ID of the scene starting here.
+    var sceneID: String { SceneRange(start: self, end: self, origin: .auto).id }
 }

@@ -62,8 +62,9 @@ final class BrowserSkim {
         clip.kind != .image && clip.url != nil && clip.duration > .zero
     }
 
-    /// Shows `target` at `seconds` into it, silently, stopping play.
-    func skim(_ target: Target, at seconds: Double) {
+    /// Shows `target` at `seconds` into it, stopping play, with a grain of
+    /// its sound unless `audible` is false.
+    func skim(_ target: Target, at seconds: Double, audible: Bool = true) {
         guard Self.canSkim(target.clip), let url = target.clip.url else { return }
         if url != itemURL {
             itemURL = url
@@ -78,7 +79,7 @@ final class BrowserSkim {
         if isPlaying { stopPlaying() }
         self.seconds = Self.clamped(seconds, to: target)
         chase(fileTime(self.seconds))
-        playGrain()
+        if audible { playGrain() }
     }
 
     /// Moves the skim position `frames` frames, a frame being the clip's own
