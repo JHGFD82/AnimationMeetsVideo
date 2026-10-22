@@ -72,6 +72,16 @@ extension EditingProject {
         return SceneCutChange(from: before, to: copy.scenes(ofAsset: assetID, track: track))
     }
 
+    /// Whether any clip showing the asset's picture has keyframes at all,
+    /// so that a new cut might embed one. Cheap, unlike finding the cuts.
+    func hasAnimatedClips(ofAsset assetID: UUID) -> Bool {
+        timelines.contains { timeline in
+            timeline.layers.contains { layer in
+                layer.clips.contains { follows($0, assetID) && !$0.animatedRanges.isEmpty }
+            }
+        }
+    }
+
     /// The clips of the asset whose keyframes run across one of `cuts`, so
     /// that following them would put the clip into a timeline of its own
     /// rather than split it; see `followSceneCuts(_:ofAsset:)`.

@@ -326,15 +326,26 @@ same stretch while scenes inside it are split and merged (the scenes shown
 are those overlapping the stretch, so merging the first one with the scene
 before it widens the view to include it).
 
-The panel is as tall as what it holds; only its width can be changed.
+The panel resizes freely: the picture takes the room, fitted inside it,
+and the ruler and strip run edge to edge along its bottom.
 
 - **The picture** plays from the file with a player of its own, so the
   viewer, the browser's skimming and the timeline are left alone.
-- **The ruler and strip** under it: a ruler with the timeline's tick
-  grouping over a filmstrip of the scenes shown, side by side, each
-  starting with its first frame, numbered as the browser numbers them,
-  hand-set ones marked, picked ones outlined. Only what is on screen is
-  drawn, so zooming in deep stays cheap.
+- **What redraws.** What moves with the pointer (the skim line, the
+  marker, whether Split can cut) is read only by small views of their own,
+  so skimming doesn't rebuild the strip. Scene numbers are kept in a table
+  made once per change of the scenes, and the scenes are worked out again
+  only when the asset's edits or the default sensitivity change. Merge and
+  edits of assets with no animated clips skip the check for clips to
+  embed, which works the scenes out twice.
+- **The ruler and strip** along the bottom: a ruler with the timeline's
+  tick grouping, and a tall tick at each cut, over a filmstrip of the
+  scenes shown. Each scene is a rounded tile of its own with a gap before
+  the next, starting with its first frame, numbered as the browser numbers
+  them, hand-set ones marked, picked ones outlined. Only what is on screen
+  is drawn, so zooming in deep stays cheap, and the pictures are of frames
+  on a grid of a power of two frames from each scene's start, so zooming
+  reuses the ones already made rather than decoding new ones at each step.
 - **The marker** is a yellow line: the frame clicked or stepped to. It is
   temporary, never saved. Moving the pointer over the strip **skims**: the
   picture follows the pointer (a thin white line) but the marker stays,

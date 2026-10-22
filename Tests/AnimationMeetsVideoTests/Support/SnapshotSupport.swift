@@ -26,15 +26,38 @@ enum SnapshotSupport {
     /// Draws `view` at `size`, in the editor's dark appearance, to
     /// `<SNAPSHOT_DIR>/<name>.png`.
     static func render<V: View>(_ view: V, _ name: String, size: CGSize) throws {
-        guard let directory else { return }
+        guard directory != nil else { return }
+        let (window, host) = hosting(view, size: size)
+        // Lets tasks started on appear (loading, measuring) land first.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        try capture(host, name)
+        _ = window
+    }
+
+    /// The same, after `settle` seconds of letting the main actor run. A
+    /// view whose pictures load in tasks that finish on the main actor
+    /// (thumbnails) needs this: running the run loop from a test, which is
+    /// itself on the main actor, never lets them finish.
+    static func render<V: View>(_ view: V, _ name: String, size: CGSize, settle: Duration) async throws {
+        guard directory != nil else { return }
+        let (window, host) = hosting(view, size: size)
+        try await Task.sleep(for: settle)
+        try capture(host, name)
+        _ = window
+    }
+
+    private static func hosting<V: View>(_ view: V, size: CGSize) -> (NSWindow, NSView) {
         let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height))
         host.frame = CGRect(origin: .zero, size: size)
         let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.appearance = NSAppearance(named: .darkAqua)
         window.contentView = host
         host.layoutSubtreeIfNeeded()
-        // Lets tasks started on appear (loading, measuring) land first.
-        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        return (window, host)
+    }
+
+    private static func capture(_ host: NSView, _ name: String) throws {
+        guard let directory else { return }
         host.layoutSubtreeIfNeeded()
         guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
         host.cacheDisplay(in: host.bounds, to: rep)

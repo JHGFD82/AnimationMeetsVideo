@@ -163,14 +163,14 @@ struct UISnapshots {
         splitter.click(atSeconds: 1.2)
         splitter.click(atSeconds: 1.75, modifiers: .shift)
         splitter.hover(atSeconds: 2.4)
-        let size = CGSize(width: 640, height: 480)
-        // The strip's pictures load in the background; the second picture
-        // has them.
-        try SnapshotSupport.render(SceneSplitterView(splitter: splitter), "scene-splitter", size: size)
-        try await Task.sleep(for: .seconds(1.5))
-        try SnapshotSupport.render(SceneSplitterView(splitter: splitter), "scene-splitter", size: size)
+        let size = CGSize(width: 680, height: 600)
+        // The strip's pictures load in the background.
+        try await SnapshotSupport.render(SceneSplitterView(splitter: splitter), "scene-splitter", size: size, settle: .seconds(2))
         splitter.drag(sensitivity: 0.95)
         try SnapshotSupport.render(SceneSplitterView(splitter: splitter), "scene-splitter-sensitivity", size: size)
+        // Made larger, the picture takes the room and the strip stays at
+        // the bottom.
+        try SnapshotSupport.render(SceneSplitterView(splitter: splitter), "scene-splitter-large", size: CGSize(width: 960, height: 800))
     }
 
     /// The whole editor with a song on a Music layer.

@@ -2,14 +2,16 @@ import AppKit
 import CoreMedia
 import SwiftUI
 
-/// The scene splitter's panel: the picture, a ruler over a filmstrip of the
-/// scenes shown to skim, click and zoom along, the transport, Merge and
-/// Split, and the cut sensitivity of the stretch. As tall as what it holds.
-/// See `SceneSplitter`.
+/// The scene splitter's panel: the picture, which takes whatever room the
+/// panel has, the transport, Merge and Split, the cut sensitivity of the
+/// stretch, and along the bottom a ruler over a filmstrip of the scenes
+/// shown to skim, click and zoom along. See `SceneSplitter`.
+///
+/// What changes as the pointer moves (the skim line, the marker, the frame
+/// Split would cut at) is read only by small views of its own, so skimming
+/// redraws those and not the strip.
 struct SceneSplitterView: View {
     @Bindable var splitter: SceneSplitter
-
-    static let pictureHeight: CGFloat = 220
 
     var body: some View {
         Group {
@@ -19,9 +21,7 @@ struct SceneSplitterView: View {
                 placeholder
             }
         }
-        .padding(Design.Space.group)
-        .frame(minWidth: 520, maxWidth: .infinity)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 520, maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
         .background(Design.Surface.base.color)
         .preferredColorScheme(.dark)
         .tint(Design.accent)
@@ -58,32 +58,37 @@ struct SceneSplitterView: View {
                 .foregroundStyle(Design.textSecondary)
                 .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Design.Space.sheet * 2)
+        .padding(Design.Space.sheet)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-
-    // MARK: - Content
 
     private func content(_ media: MediaClip) -> some View {
-        VStack(alignment: .leading, spacing: Design.Space.step) {
-            header(media)
-            PlayerLayerView(player: splitter.skim.player)
-                .frame(maxWidth: .infinity)
-                .frame(height: Self.pictureHeight)
-                .background(Design.Surface.well.color)
-                .overlay {
-                    Rectangle().strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-                }
-                .accessibilityHidden(true)
-            ScrubArea(splitter: splitter, media: media)
-            transport(media)
-            editing
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: Design.Space.step) {
+                SplitterHeader(splitter: splitter, media: media)
+                // Fills the room left; the frame is fitted inside it.
+                PlayerLayerView(player: splitter.skim.player)
+                    .frame(maxWidth: .infinity, minHeight: 120, maxHeight: .infinity)
+                    .background(Design.Surface.well.color)
+                    .accessibilityHidden(true)
+                SplitterTransport(splitter: splitter, frameRate: media.frameRate)
+                SplitterEditing(splitter: splitter)
+                SplitterSensitivity(splitter: splitter)
+            }
+            .padding(Design.Space.group)
             Groove()
-            sensitivity
+            ScrubArea(splitter: splitter, media: media)
         }
     }
+}
 
-    private func header(_ media: MediaClip) -> some View {
+// MARK: - Header and controls
+
+private struct SplitterHeader: View {
+    let splitter: SceneSplitter
+    let media: MediaClip
+
+    var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Design.Space.step) {
             Text(media.name)
                 .font(Design.Typeface.panelTitle)
@@ -103,14 +108,18 @@ struct SceneSplitterView: View {
     }
 
     private var scenesText: String {
-        let numbers = splitter.scenes.compactMap(splitter.number(of:))
-        guard let first = numbers.first, let last = numbers.last else { return "" }
+        guard let first = splitter.scenes.first.flatMap(splitter.number(of:)),
+              let last = splitter.scenes.last.flatMap(splitter.number(of:))
+        else { return "" }
         return first == last ? "Scene \(first)" : "Scenes \(first)–\(last)"
     }
+}
 
-    // MARK: - Transport
+private struct SplitterTransport: View {
+    @Bindable var splitter: SceneSplitter
+    let frameRate: Double
 
-    private func transport(_ media: MediaClip) -> some View {
+    var body: some View {
         HStack(spacing: Design.Space.step) {
             Button { splitter.step(frames: -1) } label: { Image(systemName: "backward.frame.fill") }
                 .accessibilityLabel("Back one frame")
@@ -125,7 +134,7 @@ struct SceneSplitterView: View {
             Button { splitter.step(frames: 1) } label: { Image(systemName: "forward.frame.fill") }
                 .accessibilityLabel("Forward one frame")
                 .help("Move the marker forward one frame (→, Shift for ten)")
-            Text(splitter.markerTime.map { $0.compactTimecode(frameRate: media.frameRate) } ?? "")
+            Text(splitter.markerTime.map { $0.compactTimecode(frameRate: frameRate) } ?? "")
                 .font(Design.Typeface.timecode)
                 .foregroundStyle(Design.marker)
                 .accessibilityLabel("Marker")
@@ -159,10 +168,12 @@ struct SceneSplitterView: View {
         .buttonStyle(.borderless)
         .font(Design.Typeface.icon)
     }
+}
 
-    // MARK: - Merging and splitting
+private struct SplitterEditing: View {
+    let splitter: SceneSplitter
 
-    private var editing: some View {
+    var body: some View {
         HStack(spacing: Design.Space.step) {
             Button("Merge") { splitter.merge() }
                 .disabled(splitter.mergeable == nil)
@@ -187,10 +198,12 @@ struct SceneSplitterView: View {
         default: return splitter.mergeable == nil ? "\(count) picked, not side by side" : "\(count) scenes picked"
         }
     }
+}
 
-    // MARK: - Sensitivity
+private struct SplitterSensitivity: View {
+    let splitter: SceneSplitter
 
-    private var sensitivity: some View {
+    var body: some View {
         HStack(spacing: Design.Space.step) {
             Text("Cut sensitivity")
                 .font(Design.Typeface.groupTitle)
@@ -248,11 +261,31 @@ private struct SensitivitySlider: View {
 
 // MARK: - The ruler and strip
 
+/// Where the stretch shown lies across the strip: its content width and
+/// the part of it on screen.
+private struct StripGeometry {
+    var contentWidth: CGFloat
+    var length: Double
+    var offset: CGFloat
+    var viewport: CGFloat
+
+    func x(ofSeconds seconds: Double) -> CGFloat { CGFloat(seconds / length) * contentWidth }
+
+    func seconds(atX x: CGFloat) -> Double {
+        guard contentWidth > 0 else { return 0 }
+        return min(max(Double(x / contentWidth), 0), 1) * length
+    }
+
+    /// What is on screen, in content points, with a little to spare.
+    var visible: ClosedRange<CGFloat> { (offset - 40)...(offset + viewport + 40) }
+}
+
 /// A ruler over a filmstrip of the scenes shown, zoomed by `zoom` and
-/// scrolled sideways. Moving the pointer over the strip skims, leaving the
-/// marker where it is; a click puts the marker on the frame and picks the
-/// scene (Shift and Command as in the browser), and dragging moves the
-/// marker. A click on the ruler moves the marker only. Pinching zooms.
+/// scrolled sideways, along the bottom of the panel. Moving the pointer over
+/// the strip skims, leaving the marker where it is; a click puts the marker
+/// on the frame and picks the scene (Shift and Command as in the browser),
+/// and dragging moves the marker. A click on the ruler moves the marker
+/// only. Pinching zooms.
 private struct ScrubArea: View {
     let splitter: SceneSplitter
     let media: MediaClip
@@ -263,33 +296,31 @@ private struct ScrubArea: View {
     @State private var zoomBase: Double?
 
     static let rulerHeight: CGFloat = 18
-    static let stripHeight: CGFloat = 54
-    private static var cellWidth: CGFloat { (stripHeight * 16 / 9).rounded() }
+    static let stripHeight: CGFloat = 58
+    /// Space between two scenes' tiles, so where one ends is plain.
+    static let gap: CGFloat = 4
+    private static let cellHeight = stripHeight - 6
+    private static var cellWidth: CGFloat { (cellHeight * 16 / 9).rounded() }
 
-    private var contentWidth: CGFloat { viewport * CGFloat(splitter.zoom) }
-    private var length: Double { max(splitter.length, 1e-6) }
-    private var start: CMTime { splitter.span?.start ?? .zero }
-
-    private func x(ofSeconds seconds: Double) -> CGFloat { CGFloat(seconds / length) * contentWidth }
-    private func x(of time: CMTime) -> CGFloat { x(ofSeconds: CMTimeSubtract(time, start).seconds) }
-    private func seconds(atX x: CGFloat) -> Double {
-        guard contentWidth > 0 else { return 0 }
-        return min(max(Double(x / contentWidth), 0), 1) * length
+    private var geometry: StripGeometry {
+        StripGeometry(contentWidth: viewport * CGFloat(splitter.zoom), length: max(splitter.length, 1e-6), offset: offset, viewport: viewport)
     }
 
-    /// What is on screen, in content points, with a little to spare.
-    private var visible: ClosedRange<CGFloat> { (offset - 40)...(offset + viewport + 40) }
+    private var start: CMTime { splitter.span?.start ?? .zero }
+
+    private func x(of time: CMTime) -> CGFloat { geometry.x(ofSeconds: CMTimeSubtract(time, start).seconds) }
 
     var body: some View {
+        let geometry = geometry
         ScrollView(.horizontal) {
             ZStack(alignment: .topLeading) {
                 VStack(spacing: 0) {
-                    ruler
-                    strip
+                    ruler(geometry)
+                    strip(geometry)
                 }
-                lines
+                MarkerLines(splitter: splitter, geometry: geometry, reveal: reveal)
             }
-            .frame(width: contentWidth, height: Self.rulerHeight + Self.stripHeight, alignment: .topLeading)
+            .frame(width: geometry.contentWidth, height: Self.rulerHeight + Self.stripHeight, alignment: .topLeading)
         }
         .scrollPosition($scroll)
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.x } action: { _, new in offset = new }
@@ -299,7 +330,6 @@ private struct ScrubArea: View {
         }
         .frame(height: Self.rulerHeight + Self.stripHeight + 10, alignment: .top)
         .background(Design.Surface.sunken.color)
-        .clipShape(RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous))
         .simultaneousGesture(
             MagnifyGesture()
                 .onChanged { value in
@@ -312,57 +342,46 @@ private struct ScrubArea: View {
         // Zooming keeps the marker where it is on screen, or the middle
         // when the marker is off it.
         .onChange(of: splitter.zoom) { old, new in rezoom(from: old, to: new) }
-        // The marker moving off screen (stepping, playing) brings it back.
-        .onChange(of: splitter.markerSeconds) { _, seconds in
-            guard let seconds else { return }
-            let markerX = x(ofSeconds: seconds)
-            if markerX < offset || markerX > offset + viewport { scrollTo(markerX - viewport * 0.3) }
-        }
-        .accessibilityElement()
-        .accessibilityLabel("Scenes")
-        .accessibilityValue(accessibilityValue)
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: splitter.step(frames: 1)
-            case .decrement: splitter.step(frames: -1)
-            @unknown default: break
-            }
-        }
-        .accessibilityAction(named: "Pick Scene at Marker") { splitter.pickAtMarker() }
-        .accessibilityAction(named: "Add Scenes up to Marker") { splitter.pickAtMarker(modifiers: .shift) }
-        .accessibilityAction(named: "Split into New Clip") { splitter.split() }
-        .accessibilityAction(named: "Merge") { splitter.merge() }
-        .accessibilityAction(named: "Previous Cut") { splitter.jumpToCut(.previous) }
-        .accessibilityAction(named: "Next Cut") { splitter.jumpToCut(.next) }
-        .accessibilityAction(named: "Zoom In") { splitter.zoom(by: 1.5) }
-        .accessibilityAction(named: "Zoom Out") { splitter.zoom(by: 1 / 1.5) }
+        .accessibilityHidden(true)
+        .overlay { ScrubAccessibility(splitter: splitter) }
     }
 
     private func rezoom(from old: Double, to new: Double) {
         guard old > 0 else { return }
         let oldWidth = viewport * CGFloat(old)
+        let length = max(splitter.length, 1e-6)
         let markerX = splitter.markerSeconds.map { CGFloat($0 / length) * oldWidth }
         let anchor = markerX.flatMap { (offset...offset + viewport).contains($0) ? $0 : nil } ?? offset + viewport / 2
         let onScreen = anchor - offset
         scrollTo(anchor * CGFloat(new / old) - onScreen, width: viewport * CGFloat(new))
     }
 
+    /// Scrolls `x` (content points) into view when it is off screen.
+    private func reveal(_ x: CGFloat) {
+        if x < offset || x > offset + viewport { scrollTo(x - viewport * 0.3) }
+    }
+
     private func scrollTo(_ x: CGFloat, width: CGFloat? = nil) {
-        let limit = max((width ?? contentWidth) - viewport, 0)
+        let limit = max((width ?? geometry.contentWidth) - viewport, 0)
         scroll.scrollTo(x: min(max(x, 0), limit))
     }
 
     // MARK: Ruler
 
-    /// Ticks and timecodes grouped as the timeline's ruler groups them,
-    /// drawn for the part on screen only, since zoomed in the strip can be
-    /// far wider than anything should draw at once.
-    private var ruler: some View {
-        let from = max(visible.lowerBound, 0), to = min(visible.upperBound, contentWidth)
+    /// Ticks and timecodes grouped as the timeline's ruler groups them, and
+    /// a tall tick at each cut, drawn for the part on screen only, since
+    /// zoomed in the strip can be far wider than anything should draw at
+    /// once.
+    private func ruler(_ geometry: StripGeometry) -> some View {
+        let from = max(geometry.visible.lowerBound, 0), to = min(geometry.visible.upperBound, geometry.contentWidth)
         let rate = splitter.frameRate
-        let perFrame = contentWidth / CGFloat(length * rate)
+        let perFrame = geometry.contentWidth / CGFloat(geometry.length * rate)
         let firstFrame = start.seconds * rate
+        let cuts = splitter.scenes.dropFirst().map { x(of: $0.start) - from }
         return Canvas { context, size in
+            for cut in cuts where cut >= -2 && cut <= size.width + 2 {
+                context.fill(Path(CGRect(x: cut - 1, y: 0, width: 2, height: size.height)), with: .color(Design.textSecondary))
+            }
             let ticks = RulerTicks(frameRate: rate, pixelsPerFrame: perFrame)
             let step = ticks.framesPerTick
             var frame = Int(((firstFrame + Double(from / perFrame)) / Double(step)).rounded(.down)) * step
@@ -385,31 +404,32 @@ private struct ScrubArea: View {
         }
         .frame(width: max(to - from, 0), height: Self.rulerHeight)
         .offset(x: from)
-        .frame(width: contentWidth, height: Self.rulerHeight, alignment: .leading)
+        .frame(width: geometry.contentWidth, height: Self.rulerHeight, alignment: .leading)
         .background(Design.Surface.raised.color)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { splitter.placeMarker(atSeconds: seconds(atX: $0.location.x)) }
+                .onChanged { splitter.placeMarker(atSeconds: geometry.seconds(atX: $0.location.x)) }
         )
     }
 
     // MARK: Strip
 
-    private var strip: some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(Array(splitter.scenes.enumerated()), id: \.element.id) { index, scene in
+    private func strip(_ geometry: StripGeometry) -> some View {
+        let visible = geometry.visible
+        return ZStack(alignment: .topLeading) {
+            ForEach(splitter.scenes, id: \.id) { scene in
                 let left = x(of: scene.start), right = x(of: scene.end)
                 if right >= visible.lowerBound, left <= visible.upperBound {
-                    segment(scene, index: index, left: left, right: right)
+                    tile(scene, left: left, right: right, geometry: geometry)
                 }
             }
         }
-        .frame(width: contentWidth, height: Self.stripHeight, alignment: .topLeading)
+        .frame(width: geometry.contentWidth, height: Self.stripHeight, alignment: .topLeading)
         .contentShape(Rectangle())
         .onContinuousHover { phase in
             switch phase {
-            case .active(let point): splitter.hover(atSeconds: seconds(atX: point.x))
+            case .active(let point): splitter.hover(atSeconds: geometry.seconds(atX: point.x))
             case .ended: splitter.hover(atSeconds: nil)
             }
         }
@@ -418,35 +438,35 @@ private struct ScrubArea: View {
                 .onChanged { value in
                     if !isPressing {
                         isPressing = true
-                        splitter.click(atSeconds: seconds(atX: value.startLocation.x), modifiers: NSEvent.modifierFlags)
+                        splitter.click(atSeconds: geometry.seconds(atX: value.startLocation.x), modifiers: NSEvent.modifierFlags)
                     } else if abs(value.translation.width) > 2 {
-                        splitter.placeMarker(atSeconds: seconds(atX: value.location.x))
+                        splitter.placeMarker(atSeconds: geometry.seconds(atX: value.location.x))
                     }
                 }
                 .onEnded { _ in isPressing = false }
         )
     }
 
-    /// One scene: its pictures from its first frame on, its number, a line
-    /// at the cut that starts it, and an outline when picked. Only the part
-    /// on screen is built.
-    private func segment(_ scene: SceneRange, index: Int, left: CGFloat, right: CGFloat) -> some View {
-        let shownLeft = max(left, visible.lowerBound), shownRight = min(right, visible.upperBound)
+    /// One scene as a tile of its own, set apart from its neighbours by a
+    /// gap: its pictures from its first frame on, its number, and an outline
+    /// when picked. Only the part on screen is built.
+    private func tile(_ scene: SceneRange, left: CGFloat, right: CGFloat, geometry: StripGeometry) -> some View {
+        let inset = min(Self.gap / 2, max((right - left) / 4, 0))
+        let tileLeft = left + inset, tileRight = right - inset
+        let shownLeft = max(tileLeft, geometry.visible.lowerBound), shownRight = min(tileRight, geometry.visible.upperBound)
         let isPicked = splitter.selection.contains(scene.id)
-        let cell = Self.cellWidth
-        let firstCell = max(0, Int(((shownLeft - left) / cell).rounded(.down)))
-        let lastCell = max(firstCell, Int(((shownRight - left) / cell).rounded(.up)))
+        let cells = thumbnailCells(scene, tileLeft: tileLeft, shownLeft: shownLeft, shownRight: shownRight, geometry: geometry)
         return ZStack(alignment: .topLeading) {
-            ForEach(firstCell..<lastCell, id: \.self) { n in
-                let cellLeft = left + CGFloat(n) * cell
-                FilmstripThumbnail(url: media.url, time: thumbnailTime(atX: cellLeft), height: Self.stripHeight)
-                    .frame(width: cell, height: Self.stripHeight)
-                    .offset(x: cellLeft - shownLeft)
+            Design.Surface.raised.color
+            ForEach(cells, id: \.index) { cell in
+                FilmstripThumbnail(url: media.url, time: cell.time, height: Self.cellHeight, keepsPictureWhileLoading: true)
+                    .frame(width: Self.cellWidth, height: Self.cellHeight)
+                    .offset(x: cell.x - shownLeft)
             }
             if isPicked {
-                Rectangle().fill(Design.accent.opacity(0.22))
+                Design.accent.opacity(0.22)
             }
-            if left >= visible.lowerBound, let number = splitter.number(of: scene) {
+            if tileLeft >= geometry.visible.lowerBound, let number = splitter.number(of: scene) {
                 HStack(spacing: 2) {
                     Text("\(number)")
                         .font(Design.Typeface.numericTag)
@@ -460,50 +480,67 @@ private struct ScrubArea: View {
                 .padding(.vertical, 1)
                 .background(Color.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 2))
                 .padding(3)
-                .accessibilityHidden(true)
-            }
-            if index > 0, left >= visible.lowerBound {
-                Rectangle()
-                    .fill(Design.hairline)
-                    .frame(width: 2)
-            }
-            if isPicked {
-                Rectangle()
-                    .strokeBorder(Design.accent, lineWidth: 2)
             }
         }
-        .frame(width: max(shownRight - shownLeft, 1), height: Self.stripHeight, alignment: .topLeading)
-        .clipped()
-        .offset(x: shownLeft)
+        .frame(width: max(shownRight - shownLeft, 1), height: Self.cellHeight, alignment: .topLeading)
+        .clipShape(RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous)
+                .strokeBorder(isPicked ? Design.accent : Design.bevelLightStrong, lineWidth: isPicked ? 2 : 1)
+        }
+        .offset(x: shownLeft, y: (Self.stripHeight - Self.cellHeight) / 2)
         .allowsHitTesting(false)
     }
 
-    /// The frame a picture at `x` shows: the footage's frame there, in the
-    /// file's time.
-    private func thumbnailTime(atX x: CGFloat) -> CMTime {
-        let rate = splitter.frameRate
-        let time = CMTimeAdd(start, CMTime(seconds: seconds(atX: x), preferredTimescale: 6000))
-        let frame = (time.seconds * rate).rounded(.down)
-        return media.fileTime(forSourceTime: CMTime(seconds: frame / rate, preferredTimescale: 6000))
+    /// The pictures of a tile on screen. Each shows a frame on a grid of a
+    /// power of two frames from the scene's start, the finest that gives
+    /// every picture its own frame; so while zooming the frames asked for
+    /// mostly stay the same, and come from the thumbnail cache instead of
+    /// being decoded again at each step.
+    private func thumbnailCells(
+        _ scene: SceneRange, tileLeft: CGFloat, shownLeft: CGFloat, shownRight: CGFloat, geometry: StripGeometry
+    ) -> [(index: Int, x: CGFloat, time: CMTime)] {
+        let width = Self.cellWidth
+        let perSecond = Double(geometry.contentWidth) / geometry.length
+        guard perSecond > 0 else { return [] }
+        let frame = 1 / splitter.frameRate
+        var gridFrames = 1.0
+        while gridFrames * 2 * frame <= Double(width) / perSecond { gridFrames *= 2 }
+        let grid = gridFrames * frame
+        let sceneLength = CMTimeSubtract(scene.end, scene.start).seconds
+        let first = max(0, Int(((shownLeft - tileLeft) / width).rounded(.down)))
+        let last = max(first, Int(((shownRight - tileLeft) / width).rounded(.up)))
+        return (first..<last).map { index in
+            let x = tileLeft + CGFloat(index) * width
+            let into = min((Double(x - tileLeft) / perSecond / grid).rounded(.up) * grid, max(sceneLength - frame, 0))
+            let source = CMTimeAdd(scene.start, CMTime(seconds: into, preferredTimescale: 6000))
+            return (index, x, media.fileTime(forSourceTime: source))
+        }
     }
+}
 
-    // MARK: Lines
+/// The marker, yellow, through the ruler and strip with a head in the
+/// ruler; and while skimming, a thin line where the pointer is. A view of
+/// its own, so the pointer moving redraws only these lines. Brings the
+/// marker back into view when stepping or playing takes it off screen.
+private struct MarkerLines: View {
+    let splitter: SceneSplitter
+    let geometry: StripGeometry
+    let reveal: (CGFloat) -> Void
 
-    /// The marker, yellow, through the ruler and strip with a head in the
-    /// ruler; and while skimming, a thin line where the pointer is.
-    private var lines: some View {
+    var body: some View {
         ZStack(alignment: .topLeading) {
             if let skimming = splitter.skimming, !splitter.skim.isPlaying {
                 Rectangle()
-                    .fill(Design.textPrimary.opacity(0.8))
-                    .frame(width: 1, height: Self.stripHeight)
-                    .offset(x: x(ofSeconds: skimming), y: Self.rulerHeight)
+                    .fill(Design.textPrimary.opacity(0.85))
+                    .frame(width: 1, height: ScrubArea.stripHeight)
+                    .offset(x: geometry.x(ofSeconds: skimming), y: ScrubArea.rulerHeight)
             }
             if let seconds = splitter.markerSeconds {
-                let markerX = x(ofSeconds: seconds)
+                let markerX = geometry.x(ofSeconds: seconds)
                 Rectangle()
                     .fill(Design.marker)
-                    .frame(width: 2, height: Self.rulerHeight + Self.stripHeight)
+                    .frame(width: 2, height: ScrubArea.rulerHeight + ScrubArea.stripHeight)
                     .offset(x: markerX - 1)
                 Path { path in
                     path.move(to: CGPoint(x: 0, y: 0))
@@ -517,9 +554,43 @@ private struct ScrubArea: View {
             }
         }
         .allowsHitTesting(false)
+        .onChange(of: splitter.markerSeconds) { _, seconds in
+            if let seconds { reveal(geometry.x(ofSeconds: seconds)) }
+        }
+    }
+}
+
+/// The strip for VoiceOver: one adjustable element over it (a frame a
+/// step) that reads the marker and the picks, with the picks, Split,
+/// Merge, the cut jumps and zoom as actions. Apart from the strip, so what
+/// it reads changing doesn't redraw the pictures.
+private struct ScrubAccessibility: View {
+    let splitter: SceneSplitter
+
+    var body: some View {
+        Color.clear
+            .allowsHitTesting(false)
+            .accessibilityElement()
+            .accessibilityLabel("Scenes")
+            .accessibilityValue(value)
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: splitter.step(frames: 1)
+                case .decrement: splitter.step(frames: -1)
+                @unknown default: break
+                }
+            }
+            .accessibilityAction(named: "Pick Scene at Marker") { splitter.pickAtMarker() }
+            .accessibilityAction(named: "Add Scenes up to Marker") { splitter.pickAtMarker(modifiers: .shift) }
+            .accessibilityAction(named: "Split into New Clip") { splitter.split() }
+            .accessibilityAction(named: "Merge") { splitter.merge() }
+            .accessibilityAction(named: "Previous Cut") { splitter.jumpToCut(.previous) }
+            .accessibilityAction(named: "Next Cut") { splitter.jumpToCut(.next) }
+            .accessibilityAction(named: "Zoom In") { splitter.zoom(by: 1.5) }
+            .accessibilityAction(named: "Zoom Out") { splitter.zoom(by: 1 / 1.5) }
     }
 
-    private var accessibilityValue: String {
+    private var value: String {
         var parts: [String] = []
         if let time = splitter.markerTime {
             if let scene = splitter.scene(at: time), let number = splitter.number(of: scene) {

@@ -41,6 +41,10 @@ final class SceneSplitter {
     private(set) var allScenes: [SceneRange] = []
     /// The scenes that overlap the focus, in order.
     private(set) var scenes: [SceneRange] = []
+    /// Each scene's index in `allScenes`, by ID, worked out once per
+    /// refresh: a scene's ID is a string made each time it is asked for,
+    /// so finding one by searching was a cost paid at every redraw.
+    @ObservationIgnored private var indexByID: [String: Int] = [:]
     /// The scenes picked in the panel, by ID, which Merge joins. Seeded
     /// from the browser's picks.
     private(set) var selection = BrowserSelection<String>()
@@ -134,7 +138,7 @@ final class SceneSplitter {
 
     /// A scene's number among all of its asset's, as the browser counts.
     func number(of scene: SceneRange) -> Int? {
-        allScenes.firstIndex { $0.id == scene.id }.map { $0 + 1 }
+        indexByID[scene.id].map { $0 + 1 }
     }
 
     /// The sensitivity the slider shows: the one being dragged, or the one
@@ -158,7 +162,7 @@ final class SceneSplitter {
             return
         }
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 600),
             styleMask: [.titled, .closable, .resizable, .utilityWindow],
             backing: .buffered,
             defer: false
@@ -168,9 +172,10 @@ final class SceneSplitter {
         panel.hidesOnDeactivate = true
         panel.isReleasedWhenClosed = false
         panel.appearance = NSAppearance(named: .darkAqua)
-        // Its height is its content's; only its width is the person's.
+        // Resized freely down to what its controls need; the picture takes
+        // the room.
         let host = NSHostingView(rootView: SceneSplitterView(splitter: self))
-        host.sizingOptions = [.minSize, .intrinsicContentSize]
+        host.sizingOptions = [.minSize]
         panel.contentView = host
         closeObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: panel, queue: .main
@@ -235,13 +240,17 @@ final class SceneSplitter {
     }
 
     /// Keeps it current with the project, after any edit, undo or redo.
+    /// The scenes are worked out again only when what they come from
+    /// changed: the asset (its edits) or the project's default sensitivity.
     func update(project: EditingProject) {
-        guard project != self.project else { return }
+        let old = self.project
         self.project = project
-        if let focus, project.mediaClip(id: focus.assetID) == nil {
-            self.focus = nil
+        guard let focus else { return }
+        let media = project.mediaClip(id: focus.assetID)
+        if media == nil { self.focus = nil }
+        if media != old.mediaClip(id: focus.assetID) || project.defaultSensitivity != old.defaultSensitivity {
+            refresh()
         }
-        refresh()
     }
 
     private var skimTarget: BrowserSkim.Target? {
@@ -268,6 +277,7 @@ final class SceneSplitter {
             })
         }
         allScenes = all
+        indexByID = Dictionary(all.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
         scenes = Self.overlapping(all, focus)
         selection.keep(only: scenes.map(\.id))
         guard let span, let target = skimTarget else { return }
@@ -439,9 +449,10 @@ final class SceneSplitter {
     /// The picked scenes, in order, when there are two or more side by
     /// side with nothing between them: what Merge joins. Nil otherwise.
     var mergeable: [SceneRange]? {
-        let ids = Set(selection.ordered(in: allScenes.map(\.id)))
-        let indices = allScenes.indices.filter { ids.contains(allScenes[$0].id) }
-        guard indices.count > 1, let first = indices.first, indices.last == first + indices.count - 1 else { return nil }
+        let indices = selection.items.compactMap { indexByID[$0] }.sorted()
+        guard indices.count > 1, indices.count == selection.items.count,
+              let first = indices.first, indices.last == first + indices.count - 1
+        else { return nil }
         let picked = indices.map { allScenes[$0] }
         for (a, b) in zip(picked, picked.dropFirst()) where CMTimeCompare(a.end, b.start) != 0 { return nil }
         return picked
@@ -451,7 +462,8 @@ final class SceneSplitter {
     func merge() {
         guard let picked = mergeable, let first = picked.first else { return }
         let cuts = picked.dropFirst().map { SceneCut(time: $0.start, origin: $0.origin) }
-        edit { edits in
+        // Taking cuts away adds none, so nothing can be embedded.
+        edit(addsCuts: false) { edits in
             for cut in cuts { edits.removeCut(cut) }
         }
         var joined = BrowserSelection<String>()
@@ -473,9 +485,15 @@ final class SceneSplitter {
     }
 
     /// Makes a change, unless it would put clips into timelines of their
-    /// own: that waits in `pendingEdit` for the person to agree.
-    private func edit(_ change: @escaping (inout SceneEdits) -> Void) {
+    /// own: that waits in `pendingEdit` for the person to agree. Finding
+    /// out means working the scenes out twice, so it is skipped for a
+    /// change that adds no cuts, and when no clip of the asset is animated.
+    private func edit(addsCuts: Bool = true, _ change: @escaping (inout SceneEdits) -> Void) {
         guard let focus else { return }
+        guard addsCuts, project.hasAnimatedClips(ofAsset: focus.assetID) else {
+            commit(change)
+            return
+        }
         let cuts = project.sceneCutChange(ofAsset: focus.assetID, track: track, applying: change)
         let animated = project.clipsAnimated(across: cuts.added, ofAsset: focus.assetID)
         guard animated.isEmpty else {
@@ -497,12 +515,16 @@ final class SceneSplitter {
         refresh()
     }
 
+    /// Makes the change; the project coming back through `update` shows
+    /// it. A dragged sensitivity's preview is put away even if nothing
+    /// changed.
     private func commit(_ change: @escaping (inout SceneEdits) -> Void) {
         guard let focus else { return }
         let track = track
+        let wasDragging = draftSensitivity != nil
         draftSensitivity = nil
         onEdit { $0.editScenesFollowingClips(ofAsset: focus.assetID, track: track, change) }
-        refresh()
+        if wasDragging { refresh() }
     }
 
     // MARK: - Keys
