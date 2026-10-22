@@ -42,6 +42,13 @@ play the draft, the playhead's timecode, **Beats** (show them) and
 rest, on one timeline across: a ruler, the footage, the time graph and
 the music.
 
+- **The window.** The lanes show only the run's stretch of the timeline
+  (`MotionDesignSession.window`): the run as it opened, and wherever it
+  has been moved or grown to since, with a tenth of its length (at least
+  half a second) to spare either side. Songs and beats are drawn only
+  along it, the zoom and scroll stop at its edges, and the playhead stays
+  in it.
+
 - **The footage strip** places each frame where it plays in the draft:
   frames are taken at even steps of the footage, one tile's width apart
   at 100%, so a stretch played slowly spreads them out with the lane
@@ -83,7 +90,11 @@ the music.
   viewer builds it (`CompositionExporter.buildComposedTimeline`, drawn at
   half size for the small monitor). Play plays it, picture and sound in
   the timeline's mix, so the footage is seen moving against the music it
-  is cut to. Paused, the monitor shows the frame under the playhead drawn
+  is cut to, from the playhead to the window's end (from the window's
+start when the playhead is at its end already). The compositor is told
+it is drawing for display, as the viewer's is (`DrawingOptions`), so
+Optical Flow blends frames instead and motion blur takes fewer samples
+while playing. Paused, the monitor shows the frame under the playhead drawn
   from the draft by an image generator, since a player layer may show
   nothing until it plays; the last frame drawn stays until the next one is,
   so scrubbing doesn't flicker. The draft is built again a quarter second
@@ -108,12 +119,12 @@ the music.
   draft, ⌘Return is Done. Scrolling scrolls; ⌥ or ⌘ scrolling, or a
   pinch, zooms.
 - **The zoom's edge** is the editor's shared one (`RubberBandZoom`, see
-  [timeline.md](timeline.md)): zooming out past the whole timeline (with
-  a tenth to spare) squeezes all the lanes together about the pointer,
+  [timeline.md](timeline.md)): zooming out past the whole window
+  squeezes all the lanes together about the pointer,
   over the darker surround, and zooming in past a frame 80 points wide
   stretches them, against more resistance the further it goes; they
   spring back when the pinch lifts, and the zoom buttons, ⌘= and ⌘- give
-  the same bump. Scrolling past the timeline's start or end slides them
+  the same bump. Scrolling past the window's start or end slides them
   on and springs back (`RubberBandScroll`). With reduced motion they
   simply stop.
 
@@ -213,9 +224,10 @@ where other clips are.
   from the keyboard, which lengthens or shortens the gaps around them.
   Unselected clips on the layer are shown but never move, and bound how
   far a selected clip can go.
-- The view fits the run when it opens, and scrolls across the whole
-  timeline (or past its end, as far as the run reaches), so retiming or
-  moving the first or last clip never runs out of room to show it.
+- The view fits the run when it opens, and scrolls across the window,
+  which grows as the run is moved or grown, so retiming or moving the
+  first or last clip never runs out of room to show it. The view doesn't
+  scroll along during a drag.
 
 ### Footage available
 
