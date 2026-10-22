@@ -3,27 +3,28 @@ import CoreMedia
 import Observation
 import SwiftUI
 
-/// One opening of the motion designer on a run of clips: the draft run with
-/// an undo history of its own, the music under it with its beats, what is
-/// selected, the view's zoom and scroll, and a player of the draft. The
-/// player plays the timeline as Done would leave it, picture and sound,
-/// rebuilt shortly after each edit; until the first build is ready it
-/// plays the music alone. Nothing reaches the project until Done. See
+/// One opening of the motion designer on a run of clips: the run with an
+/// undo history of its own, the music under it with its beats, what is
+/// selected, and the view's zoom and scroll. Each change to the run is
+/// written into the project at once (`onDraftChange`), so the timeline
+/// shows the clips where they now play and their speed keyframes as they
+/// are made, and the editor's own player plays them. See
 /// docs/motion-designer.md.
 @MainActor @Observable
 final class MotionDesignSession {
-    /// The draft being edited.
+    /// The run being edited.
     private(set) var run: MotionRun {
-        // A drag rebuilds the preview once it ends.
-        didSet { if dragStart == nil, run != oldValue { schedulePreview() } }
+        didSet { if run != oldValue { onDraftChange(draftProject) } }
     }
-    /// Whether Done would change the project.
+    /// Whether the project differs from how it was when the panel opened.
     var isChanged: Bool { run.isChanged }
-    /// The panel's own undo history, for the draft.
+    /// The panel's own undo history, for the run.
     @ObservationIgnored let undoManager = UndoManager()
+    /// Hears the project as the run now leaves it, after every change.
+    @ObservationIgnored var onDraftChange: (EditingProject) -> Void = { _ in }
 
     /// The project as it was when the panel opened, for names, files and
-    /// the music; the run is the only thing that changes.
+    /// the music, and which the run is written into; Cancel puts it back.
     let project: EditingProject
     let timeline: Timeline
     /// The Music layers with a song under the run, in order: the first with
@@ -84,16 +85,16 @@ final class MotionDesignSession {
 
     // MARK: Transport
 
-    @ObservationIgnored let player: AVPlayer
-    /// Where the playhead is, in timeline seconds: where it was put or
-    /// stopped. While playing, `livePlayhead` reads the player instead.
-    private(set) var playhead = 0.0
-    private(set) var isPlaying = false
-    @ObservationIgnored private var statusObservation: NSKeyValueObservation?
-    /// The draft before a drag began, which its one undo step goes back to.
+    /// The editor's player, which plays the project as the run leaves it,
+    /// as the viewer does: with its renders, its preview size and its mix.
+    @ObservationIgnored let playback: PlaybackModel
+    /// Where the playhead is, in timeline seconds.
+    var playhead: Double { playback.currentTime.seconds }
+    var isPlaying: Bool { playback.isPlaying }
+    /// The run before a drag began, which its one undo step goes back to.
     @ObservationIgnored private var dragStart: MotionRun?
 
-    init(run: MotionRun, project: EditingProject) {
+    init(run: MotionRun, project: EditingProject, playback: PlaybackModel) {
         self.run = run
         self.project = project
         let timeline = project.timeline(id: run.timelineID)!
@@ -106,160 +107,21 @@ final class MotionDesignSession {
         }
         musicLayers = music
         beats = project.musicBeats(in: timeline, tracks: DetectedBeats.shared.tracks)
-        player = AVPlayer(playerItem: Self.musicItem(of: music, in: project))
-        player.actionAtItemEnd = .pause
-        // Media is local: play starts at once, as the viewer's does,
-        // rather than waiting for the player to judge its buffer full.
-        player.automaticallyWaitsToMinimizeStalling = false
-        drawingOptions.update(motionBlurInPreview: UserDefaults.standard.object(forKey: Preferences.motionBlurInPreview) as? Bool ?? true)
-        player.audioOutputDeviceUniqueID = AudioDevices.playbackUID
-        playhead = span.start.seconds
-        statusObservation = player.observe(\.timeControlStatus) { [weak self] player, _ in
-            let playing = player.timeControlStatus != .paused
-            Task { @MainActor in self?.playingChanged(playing) }
-        }
-        schedulePreview(after: .zero)
+        self.playback = playback
+        playback.seek(to: span.start)
     }
 
     func end() {
-        previewTask?.cancel()
-        previewTask = nil
-        player.pause()
-        if let windowEndObserver { player.removeTimeObserver(windowEndObserver) }
+        if playback.isPlaying { playback.player.pause() }
+        if let windowEndObserver { playback.player.removeTimeObserver(windowEndObserver) }
         windowEndObserver = nil
-        player.replaceCurrentItem(with: nil)
-        statusObservation = nil
     }
 
-    // MARK: Preview
-
-    /// Whether the player has the draft's picture to show yet, and whether
-    /// a newer one is being made.
-    private(set) var showsDraft = false
-    private(set) var isUpdatingPreview = false
-    /// Why the draft couldn't be played, until a later build can.
-    private(set) var previewError: String?
-    @ObservationIgnored private var previewTask: Task<Void, Never>?
-    /// The draft's volumes and pans, which its sound plays at.
-    @ObservationIgnored private let mixCurves = MixCurves()
-    /// What the compositor is told, as the viewer tells it: drawing for
-    /// display, so retimed footage blends its frames rather than working out
-    /// optical flow, and motion blur takes fewer samples while playing.
-    /// Without it the draft would be drawn as for export, too slowly to play.
-    @ObservationIgnored private let drawingOptions = DrawingOptions()
-    /// The monitor is small, so the picture is drawn at half size.
-    static let previewScale = 0.5
-    /// Draws paused frames of the draft, which a player layer may not show
-    /// until it plays; counted up with each build, so a frame drawn from an
-    /// older draft is asked for again.
-    @ObservationIgnored private var frameGenerator: AVAssetImageGenerator?
-    private(set) var draftSerial = 0
-
-    /// The last paused frame drawn, which the monitor shows at once when it
-    /// comes back (after playing, say) until the frame it asks for is drawn.
-    @ObservationIgnored private(set) var lastDraftFrame: CGImage?
-
-    /// The draft's frame at `seconds`, drawn from the latest build.
-    func draftFrame(at seconds: Double) async -> CGImage? {
-        guard let frameGenerator else { return nil }
-        let image = await Self.frame(HandedOver(value: frameGenerator), at: CMTime(seconds: max(0, seconds), preferredTimescale: 600))
-        if let image { lastDraftFrame = image }
-        return image
-    }
-
-    /// Set up once and never changed after, so it can be asked from off the
-    /// main actor, as `FrameThumbnails` does.
-    private nonisolated static func frame(_ generator: HandedOver<AVAssetImageGenerator>, at time: CMTime) async -> CGImage? {
-        try? await generator.value.image(at: time).image
-    }
-
-    /// The timeline as Done would leave it.
+    /// The timeline as the run leaves it.
     var draftProject: EditingProject {
         var draft = project
         run.write(into: &draft)
         return draft
-    }
-
-    /// Builds the draft's player item after `delay`, replacing any build
-    /// under way, so a run of edits builds once.
-    private func schedulePreview(after delay: Duration = .milliseconds(250)) {
-        previewTask?.cancel()
-        isUpdatingPreview = true
-        let draft = draftProject
-        let timelineID = run.timelineID
-        let drawingOptions = drawingOptions
-        previewTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: delay)
-                let composed = try await CompositionExporter.buildComposedTimeline(
-                    for: draft, timelineID: timelineID, forPreview: true, options: drawingOptions
-                )
-                try Task.checkCancellation()
-                await self?.present(composed, of: draft)
-            } catch is CancellationError {
-            } catch {
-                self?.previewError = error.localizedDescription
-                self?.isUpdatingPreview = false
-            }
-        }
-    }
-
-    /// Swaps the player onto a newly built draft at the same moment,
-    /// playing on if it was.
-    private func present(_ composed: ComposedTimeline, of draft: EditingProject) async {
-        let item = AVPlayerItem(asset: composed.composition)
-        item.videoComposition = composed.videoComposition(scaledBy: Self.previewScale)
-        mixCurves.replace(with: MixCurves.of(draft))
-        item.audioMix = composed.audioMix(curves: mixCurves)
-        let wasPlaying = isPlaying
-        let time = wasPlaying ? player.currentTime() : CMTime(seconds: playhead, preferredTimescale: 48_000)
-        // Seeked before it's shown, so the swap doesn't flash its first frame.
-        _ = await item.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
-        guard !Task.isCancelled else { return }
-        player.replaceCurrentItem(with: item)
-        if wasPlaying { player.play() }
-        if composed.hasPictures {
-            let generator = AVAssetImageGenerator(asset: composed.composition)
-            generator.videoComposition = item.videoComposition
-            generator.requestedTimeToleranceBefore = .zero
-            generator.requestedTimeToleranceAfter = .zero
-            generator.maximumSize = CGSize(width: 960, height: 540)
-            frameGenerator = generator
-        } else {
-            frameGenerator = nil
-        }
-        draftSerial += 1
-        showsDraft = composed.hasPictures
-        previewError = nil
-        isUpdatingPreview = false
-    }
-
-    /// The Music layers' songs as one sound, each layer a track, at their
-    /// places on the timeline, so the player's time is the timeline's.
-    private static func musicItem(of layers: [TimelineLayer], in project: EditingProject) -> AVPlayerItem? {
-        guard !layers.isEmpty else { return nil }
-        let composition = AVMutableComposition()
-        for layer in layers {
-            guard let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
-            add(layer, to: track, in: project)
-        }
-        return AVPlayerItem(asset: composition)
-    }
-
-    private static func add(_ layer: TimelineLayer, to track: AVMutableCompositionTrack, in project: EditingProject) {
-        for clip in layer.clips {
-            guard case .media(let id) = clip.source, let media = project.mediaClip(id: id), let url = media.url,
-                  let sourceTrack = MediaFile.asset(at: url).tracks(withMediaType: .audio).first
-            else { continue }
-            let range = CMTimeRange(
-                start: media.fileTime(forSourceTime: clip.trimStart),
-                duration: clip.trimmedDuration
-            )
-            try? track.insertTimeRange(range, of: sourceTrack, at: clip.startOffset)
-            if clip.isRetimed {
-                track.scaleTimeRange(CMTimeRange(start: clip.startOffset, duration: clip.trimmedDuration), toDuration: clip.placedDuration)
-            }
-        }
     }
 
     // MARK: Edits
@@ -295,10 +157,7 @@ final class MotionDesignSession {
         dragSnapTime = nil
         guard let start = dragStart else { return }
         dragStart = nil
-        if start != run {
-            registerUndo(restoring: start, name: name)
-            schedulePreview()
-        }
+        if start != run { registerUndo(restoring: start, name: name) }
     }
 
     /// Moves a whole clip `delta` from where it was when the drag began.
@@ -497,24 +356,21 @@ final class MotionDesignSession {
     /// Plays from the playhead to the window's end, starting over from the
     /// window's start when the playhead is there already.
     func togglePlayback() {
-        if isPlaying {
-            player.pause()
-        } else {
-            let window = window
-            if playhead >= window.end - run.frameDuration.seconds { playhead = window.start }
-            player.seek(to: CMTime(seconds: playhead, preferredTimescale: 48_000), toleranceBefore: .zero, toleranceAfter: .zero)
-            stopsAtWindowEnd(window.end)
-            player.play()
-        }
+        if isPlaying { return playback.togglePlayback() }
+        let window = window
+        if playhead >= window.end - run.frameDuration.seconds || playhead < window.start { seek(to: window.start) }
+        stopsAtWindowEnd(window.end)
+        playback.togglePlayback()
     }
 
     /// Pauses the player when it reaches `end`.
     private func stopsAtWindowEnd(_ end: Double) {
+        let player = playback.player
         if let windowEndObserver { player.removeTimeObserver(windowEndObserver) }
         windowEndObserver = player.addBoundaryTimeObserver(
             forTimes: [NSValue(time: CMTime(seconds: end, preferredTimescale: 48_000))], queue: .main
-        ) { [weak self] in
-            MainActor.assumeIsolated { self?.player.pause() }
+        ) { [weak player] in
+            player?.pause()
         }
     }
 
@@ -523,20 +379,12 @@ final class MotionDesignSession {
     /// Moves the playhead to `seconds`, within the window.
     func seek(to seconds: Double) {
         let window = window
-        playhead = min(max(seconds, window.start), window.end)
-        player.seek(to: CMTime(seconds: playhead, preferredTimescale: 48_000), toleranceBefore: .zero, toleranceAfter: .zero)
+        playback.seek(to: CMTime(seconds: min(max(seconds, window.start), window.end), preferredTimescale: 48_000))
     }
 
     /// Where the playhead is at `date`: the player's time while it plays.
     func playhead(at date: Date) -> Double {
-        isPlaying ? player.currentTime().seconds : playhead
-    }
-
-    private func playingChanged(_ playing: Bool) {
-        guard playing != isPlaying else { return }
-        isPlaying = playing
-        drawingOptions.update(isPlaying: playing)
-        if !playing { playhead = player.currentTime().seconds }
+        isPlaying ? playback.player.currentTime().seconds : playhead
     }
 
     // MARK: View
@@ -613,11 +461,4 @@ final class MotionDesignSession {
 
     func x(of seconds: Double) -> CGFloat { CGFloat((seconds - visibleStart) / secondsPerPoint) }
     func seconds(atX x: CGFloat) -> Double { visibleStart + Double(x) * secondsPerPoint }
-
-    // MARK: Done
-
-    /// Writes the changed clips into a project.
-    func write(into project: inout EditingProject) {
-        run.write(into: &project)
-    }
 }

@@ -151,6 +151,9 @@ struct EditorView: View {
             beatMatch.onEdit = { change in change(&project) }
             beatMatch.onOpen = { [playback] in playback.player.pause() }
             motionDesign.onEdit = { change in change(&project) }
+            motionDesign.onApply = { project = $0 }
+            motionDesign.history = history
+            motionDesign.playback = playback
             motionDesign.onOpen = { [playback] in playback.player.pause() }
             motionDesign.sceneTracks = { [analysis] in analysis.tracks }
             connectHistory()

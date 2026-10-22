@@ -58,7 +58,7 @@ struct UISnapshots {
         let paceAdded = run.addMarker(toPiece: second.id, atSource: seconds(5))
         let pace = try #require(paceAdded)
         run.setKind(.pace(250), ofPoint: pace)
-        let session = MotionDesignSession(run: run, project: project)
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
         session.select(point: pace)
         session.seek(to: 2.25)
@@ -75,15 +75,11 @@ struct UISnapshots {
             copy.setEase(TimeEase(before: 0.6, after: 0.4), ofPoint: slow)
             return copy
         }()
-        let easedSession = MotionDesignSession(run: easedRun, project: project)
+        let easedSession = MotionDesignSession(run: easedRun, project: project, playback: PlaybackModel())
         defer { easedSession.end() }
         easedSession.select(point: slow)
         easedSession.seek(to: 2.25)
 
-        // The monitor's frame, which a periodic view asks for only once
-        // it ticks.
-        let shown = session.drafted(session.run.pieces[0]).sourceTime(atTimelineTime: seconds(2.25))
-        _ = await FrameThumbnails.image(url: movie, time: CMTime(seconds: (shown.seconds * 10).rounded() / 10, preferredTimescale: 600), height: 90)
         // The first pass asks for the thumbnails and the waveform.
         try SnapshotSupport.render(view, "motion-designer", size: size)
         _ = WaveformCache.shared.waveform(for: try #require(song.url))
@@ -95,17 +91,13 @@ struct UISnapshots {
         chorus.streams = .audio
         let musicIndex = try #require(twoSongs.timelines[0].layers.firstIndex { $0.kind == .music })
         twoSongs.timelines[0].layers.insert(TimelineLayer(customName: "Chorus", kind: .music, clips: [chorus]), at: musicIndex)
-        let twoSession = MotionDesignSession(run: run, project: twoSongs)
+        let twoSession = MotionDesignSession(run: run, project: twoSongs, playback: PlaybackModel())
         defer { twoSession.end() }
         twoSession.select(point: hit)
         twoSession.seek(to: 2.25)
 
-        // The monitor shows the draft once built, its paused frame drawn.
-        for _ in 0..<200 where !(session.showsDraft && easedSession.showsDraft) { try await Task.sleep(for: .milliseconds(50)) }
-        _ = await session.draftFrame(at: 2.25)
-        _ = await easedSession.draftFrame(at: 2.25)
-        for _ in 0..<200 where !twoSession.showsDraft { try await Task.sleep(for: .milliseconds(50)) }
-        _ = await twoSession.draftFrame(at: 2.25)
+        // The monitor is the editor's player, which has nothing to show
+        // here: no editor builds it.
         try SnapshotSupport.render(view, "motion-designer", size: size)
         try SnapshotSupport.render(MotionDesignView(session: easedSession, onDone: {}, onCancel: {}), "motion-designer-ease", size: size)
         try SnapshotSupport.render(MotionDesignView(session: twoSession, onDone: {}, onCancel: {}), "motion-designer-two-songs", size: size)

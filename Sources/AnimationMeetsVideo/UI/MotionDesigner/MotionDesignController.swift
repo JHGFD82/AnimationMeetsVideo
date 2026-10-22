@@ -5,10 +5,12 @@ import SwiftUI
 
 /// Opens the motion designer on a selection of clips. While it is open the
 /// editor is darkened and takes no input (`isActive`); clicking it brings
-/// the panel back. The panel edits a draft with its own undo; **Done**
-/// writes the clips that changed to the project as one undo step, and
-/// **Cancel** (or closing the panel) leaves the project as it was, asking
-/// first if anything changed. One run at a time.
+/// the panel back. The panel has its own undo, and each change it makes
+/// reaches the project at once, so the timeline follows and the editor's
+/// player plays it; the editor's history holds them back meanwhile.
+/// **Done** keeps them, as one undo step, and **Cancel** (or closing the
+/// panel) puts the project back as it was, asking first if anything
+/// changed. One run at a time.
 @MainActor @Observable
 final class MotionDesignController {
     private(set) var session: MotionDesignSession?
@@ -16,6 +18,12 @@ final class MotionDesignController {
 
     /// Applies an edit to the project, as one undo step.
     @ObservationIgnored var onEdit: ((inout EditingProject) -> Void) -> Void = { _ in }
+    /// Puts the project as the run leaves it in place of the editor's.
+    @ObservationIgnored var onApply: (EditingProject) -> Void = { _ in }
+    /// The editor's history, which records the whole session as one step.
+    @ObservationIgnored var history: ProjectHistory?
+    /// The editor's player, which the panel's monitor shows and plays.
+    @ObservationIgnored var playback: PlaybackModel?
     /// Stops the editor's own playback, so only the panel plays.
     @ObservationIgnored var onOpen: () -> Void = {}
     /// The scene analysis of each video, which sets the footage a clip may
@@ -42,7 +50,9 @@ final class MotionDesignController {
         case .failure(let error): return explain(error, ids: ids, in: timelineID)
         }
         onOpen()
-        let session = MotionDesignSession(run: run, project: project)
+        let session = MotionDesignSession(run: run, project: project, playback: playback ?? PlaybackModel())
+        session.onDraftChange = { [weak self] draft in self?.onApply(draft) }
+        history?.beginGesture(quietly: true)
         self.session = session
 
         let names = run.pieces.compactMap { project.resolvedInfo(for: $0.clip.source)?.name }
@@ -123,12 +133,8 @@ final class MotionDesignController {
         panel?.makeKeyAndOrderFront(nil)
     }
 
-    /// Writes the changed clips to the project, as one undo step, and closes.
+    /// Keeps the changes, already in the project, and closes.
     func done() {
-        guard let session else { return }
-        if session.isChanged {
-            onEdit { project in session.write(into: &project) }
-        }
         tearDown()
     }
 
@@ -139,14 +145,20 @@ final class MotionDesignController {
         guard session.isChanged else { return tearDown() }
         let alert = NSAlert()
         alert.messageText = "Discard your retiming?"
-        alert.informativeText = "Nothing you did in the motion designer reaches the timeline until you press Done."
+        alert.informativeText = "The clips go back to how they were before the motion designer opened."
         alert.addButton(withTitle: "Keep Editing")
         alert.addButton(withTitle: "Discard Changes").hasDestructiveAction = true
         alert.beginSheetModal(for: panel) { [weak self] response in
             if response == .alertSecondButtonReturn {
-                MainActor.assumeIsolated { self?.tearDown() }
+                MainActor.assumeIsolated { self?.revertAndClose() }
             }
         }
+    }
+
+    /// Puts the project back as it was when the panel opened, and closes.
+    private func revertAndClose() {
+        if let session { onApply(session.project) }
+        tearDown()
     }
 
     /// Closes without asking: the project has moved on without the clips.
@@ -154,7 +166,9 @@ final class MotionDesignController {
         tearDown()
     }
 
+    /// Closes, recording what the session changed as one step, if anything.
     private func tearDown() {
+        history?.endGesture()
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers = []
         session?.end()

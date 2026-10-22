@@ -44,7 +44,7 @@ struct MotionDesignSidebar: View {
                     .keyboardShortcut(.return, modifiers: .command)
                     .buttonStyle(.borderedProminent)
                     .tint(Design.accentFill)
-                    .help("Write the retiming to the timeline (⌘Return)")
+                    .help("Keep the retiming and close (⌘Return)")
             }
             .padding(Design.Space.rail)
         }
@@ -276,114 +276,25 @@ struct MotionDesignSidebar: View {
     }
 }
 
-/// The timeline as the draft plays it, every layer as Done would leave it,
-/// once the draft has been built: the player's picture while playing, and
-/// the frame under the playhead drawn from the draft while paused. Until
-/// then, or if it can't be built, the frame of the run under the playhead
-/// from the thumbnails.
+/// The monitor: the editor's own player, which plays the project with the
+/// run written in, as the viewer would, and its paused frame over it.
 private struct MotionDesignMonitor: View {
     let session: MotionDesignSession
 
     var body: some View {
-        Group {
-            if session.showsDraft, session.isPlaying {
-                PlayerLayerView(player: session.player)
-            } else if session.showsDraft {
-                DraftFrame(session: session, seconds: session.playhead, serial: session.draftSerial)
-            } else {
-                SwiftUI.TimelineView(.periodic(from: .now, by: 1.0 / 12)) { context in
-                    let seconds = session.isPlaying ? session.playhead(at: context.date) : session.playhead
-                    frame(at: seconds)
-                }
-            }
-        }
-        .aspectRatio(aspect, contentMode: .fit)
-        .frame(maxWidth: .infinity)
-        .background(Design.Surface.well.color)
-        .clipShape(RoundedRectangle(cornerRadius: Design.Radius.control))
-        .overlay(alignment: .bottomTrailing) {
-            if session.isUpdatingPreview, session.showsDraft {
-                ProgressView()
-                    .controlSize(.mini)
-                    .padding(Design.Space.close)
-                    .help("Updating the picture to your latest change")
-            }
-        }
-        .overlay(alignment: .bottomLeading) {
-            if let error = session.previewError {
-                Label("Can't play the draft: \(error)", systemImage: "exclamationmark.triangle.fill")
-                    .font(Design.Typeface.micro)
-                    .foregroundStyle(Design.statusWarning)
-                    .lineLimit(2)
-                    .padding(Design.Space.close)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Monitor")
-        .accessibilityValue(session.previewError != nil ? "Can't play the draft" : session.isUpdatingPreview ? "Updating" : "Showing the draft")
+        PlayerLayerView(player: session.playback.player, still: session.playback.cover)
+            .aspectRatio(aspect, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .background(Design.Surface.well.color)
+            .clipShape(RoundedRectangle(cornerRadius: Design.Radius.control))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Monitor")
+            .accessibilityAddTraits(.isImage)
     }
 
     /// The timeline's frame shape.
     private var aspect: CGFloat {
         let size = session.timeline.frameSize
         return size.height > 0 ? size.width / size.height : 16 / 9
-    }
-
-    @ViewBuilder
-    private func frame(at seconds: Double) -> some View {
-        let time = CMTime(seconds: seconds, preferredTimescale: ClipTimeMap.timescale)
-        if let piece = session.run.pieces.first(where: { session.drafted($0).startOffset <= time && time < session.drafted($0).endOffset }),
-           case .media(let id) = piece.clip.source, let media = session.project.mediaClip(id: id), let url = media.url {
-            let clip = session.drafted(piece)
-            // A tenth-second grid, so playing reuses what it drew.
-            let file = media.fileTime(forSourceTime: clip.sourceTime(atTimelineTime: time))
-            MonitorFrame(url: url, time: CMTime(seconds: (file.seconds * 10).rounded() / 10, preferredTimescale: 600))
-        } else {
-            Text("No footage here")
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.textTertiary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-}
-
-/// A paused frame of the draft, the last one shown kept until the next is
-/// drawn, so scrubbing doesn't flicker.
-private struct DraftFrame: View {
-    let session: MotionDesignSession
-    let seconds: Double
-    let serial: Int
-    @State private var image: CGImage?
-
-    var body: some View {
-        Group {
-            if let shown = image ?? session.lastDraftFrame {
-                Image(decorative: shown, scale: 1).resizable().aspectRatio(contentMode: .fit)
-            } else {
-                Color.clear
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: "\(serial)/\(seconds)") {
-            if let drawn = await session.draftFrame(at: seconds) { image = drawn }
-        }
-    }
-}
-
-private struct MonitorFrame: View {
-    let url: URL
-    let time: CMTime
-    @State private var image: NSImage?
-
-    var body: some View {
-        Group {
-            if let shown = image ?? FrameThumbnails.nearestCached(url: url, time: time, height: 90) {
-                Image(nsImage: shown).resizable().aspectRatio(contentMode: .fit)
-            } else {
-                Color.clear
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: time) { image = await FrameThumbnails.image(url: url, time: time, height: 90) }
     }
 }

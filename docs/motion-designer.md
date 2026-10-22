@@ -15,15 +15,20 @@ else around it, by dragging frames along a time graph.
 
 ## Overview
 
-- **A tool, not stored data.** The designer is a session. **Done** writes
-  ordinary speed keyframes to the clips, as one undo step, and every
-  marker is forgotten. Opening it again rebuilds markers from those
-  keyframes (see [Opening on keyframed clips](#opening-on-keyframed-clips)).
-  **Cancel** leaves the project as it was, asking first if anything
-  changed.
+- **A tool, not stored data.** The designer is a session, and it edits
+  the timeline as it goes: each change writes ordinary speed keyframes
+  and starts to the clips at once (`MotionDesignSession.onDraftChange`),
+  so the timeline shows a moved clip where it now is and its markers as
+  keyframes. The editor's history holds the changes back meanwhile
+  (`ProjectHistory.beginGesture(quietly:)`). **Done** keeps them, as one
+  undo step, and closes; every marker is forgotten. Opening it again
+  rebuilds markers from those keyframes (see
+  [Opening on keyframed clips](#opening-on-keyframed-clips)). **Cancel**
+  puts the project back as it was when the panel opened, asking first if
+  anything changed, and leaves no undo step.
 - **The panel** floats over the editor like the beat match panel: the
   editor is darkened and takes no input while it is open, and the panel
-  works on a draft with its own undo.
+  has an undo of its own for its changes, which the timeline follows.
 - It shows the footage above the music it is attached to (the song's
   waveform and its beat markers) over the same span, and a **time
   graph** between them: across is timeline time (the music), up is
@@ -84,26 +89,15 @@ the music.
 - Dragging a clip in the strip moves it by whole frames, unless a hit
   holds it. Whichever of its edges comes nearer something to snap to
   lands on it, to the nearest frame.
-- **The monitor**, at the top of the sidebar, shows the draft: the
-  timeline as Done would leave it (`MotionDesignSession.draftProject`, the
-  project with the run written in), every layer and effect, built as the
-  viewer builds it (`CompositionExporter.buildComposedTimeline`, drawn at
-  half size for the small monitor). Play plays it, picture and sound in
-  the timeline's mix, so the footage is seen moving against the music it
-  is cut to, from the playhead to the window's end (from the window's
-start when the playhead is at its end already). The compositor is told
-it is drawing for display, as the viewer's is (`DrawingOptions`), so
-Optical Flow blends frames instead and motion blur takes fewer samples
-while playing. Paused, the monitor shows the frame under the playhead drawn
-  from the draft by an image generator, since a player layer may show
-  nothing until it plays; the last frame drawn stays until the next one is,
-  so scrubbing doesn't flicker. The draft is built again a quarter second
-  after an edit (after a drag, once it ends), the player swapped onto it
-  at the same moment and playing on if it was; meanwhile the old one keeps
-  playing and a small spinner shows. Until the first build is ready the
-  player plays the Music layers alone and the monitor shows the run's
-  thumbnails; a build that fails says why over the monitor and leaves the
-  last one playing.
+- **The monitor**, at the top of the sidebar, is the editor's own viewer
+  player (`PlaybackModel`), which plays the timeline with the run written
+  in, every layer and effect, exactly as the viewer does: its preview
+  size, renders, mix and the frame it holds while paused. Play plays it
+  from the playhead to the window's end (from the window's start when the
+  playhead is at its end already), so the footage is seen moving against
+  the music it is cut to. The editor builds its player again after each
+  change, as for any edit, swapping it while playing once the changes
+  pause; the playhead is the editor's too.
 - **The sidebar** shows the monitor, then what is
   selected: a point's kind (Hit, Marker, Pace), its pace (typed), Ease
   and its ramps in and out,
@@ -247,7 +241,7 @@ where other clips are.
 - Where a clip's trim has reached its scene's edge, the strip draws a
   bracket at that edge, and the sidebar says there is no more of its
   scene that way and to merge scenes for more.
-- Done rounds a clip's start onto a frame by moving its trim, rounding
+- Writing rounds a clip's start onto a frame by moving its trim, rounding
   later instead if earlier would leave its footage.
 
 ## Opening on keyframed clips
@@ -274,7 +268,7 @@ A clip's speed keyframes become points:
 - A clip at one speed has no points; it plays at that speed until some
   are added.
 
-Opening the designer and pressing Done without changing a clip leaves its
+Opening the designer and closing it without changing a clip leaves its
 keyframes as they were: only clips that were changed are written (the
 panel's part, step 5). A ramp
 read from keyframes becomes markers at its ends, and if the person
@@ -283,7 +277,7 @@ if they ease its corners) rather than as the ramp's own curve.
 
 ## Writing keyframes
 
-**Built** (`ClipTimeMap.writtenSpeed()`). On Done each changed clip's
+**Built** (`ClipTimeMap.writtenSpeed()`). With each change, each changed clip's
 time map becomes speed keyframes, in source time, and where the clip then
 starts:
 
@@ -401,7 +395,7 @@ does has a key, a button or an action.
    **Built** (`Model/MotionDesigner/`).
 5. The panel (`UI/MotionDesigner/`), on the shared `DraftPanel` Beat
    Match now uses too. **Built** (`MotionRun` for the rules across clips,
-   unit tested; `MotionDesignSession` for the draft, its undo and the
+   unit tested; `MotionDesignSession` for the run, its undo and the
    player; the views).
 6. Accessibility. **Built** with the panel.
 

@@ -23,50 +23,38 @@ import Testing
         return Double(Int(pixel[0]) + Int(pixel[1]) + Int(pixel[2])) / (3 * 255)
     }
 
-    @Test func thePlayerPlaysTheDraftAndFollowsEdits() async throws {
-        let url = FileManager.default.temporaryDirectory.appending(path: "amv-motion-session-\(UUID().uuidString).mov")
-        defer { try? FileManager.default.removeItem(at: url) }
-        try await writeMovie(to: url, segments: [(60, 96), (200, 96)])
-        let footage = MediaClip(
-            name: "Shot", kind: .video, url: url, duration: CMTime(value: 8, timescale: 1),
-            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
-        )
+    @Test func editsReachTheProjectAsTheyAreMade() throws {
         var project = EditingProject.empty
-        project.addMedia(footage)
-        let clip = TimelineClip(source: .media(footage.id), startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
+        let clip = TimelineClip(source: .adjustment, startOffset: CMTime(value: 2, timescale: 1), trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
         project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
         let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
-        let session = MotionDesignSession(run: run, project: project)
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
+        var applied: [EditingProject] = []
+        session.onDraftChange = { applied.append($0) }
+        func placed() -> TimelineClip? { applied.last?.clipAndLayer(clip.id, in: project.rootTimelineID)?.clip }
 
-        // The first build replaces the music-only start with the draft.
-        try await wait { session.showsDraft && !session.isUpdatingPreview }
-        #expect(session.showsDraft)
-        #expect(session.previewError == nil)
-        let first = try #require(session.player.currentItem)
-        #expect(abs(first.asset.duration.seconds - 4) < 0.05)
+        // A move, every step of a drag included.
+        session.beginDrag()
+        session.dragPiece(clip.id, by: CMTime(value: 1, timescale: 2))
+        #expect(placed()?.startOffset == CMTime(value: 5, timescale: 2))
+        session.dragPiece(clip.id, by: CMTime(value: 1, timescale: 1))
+        #expect(placed()?.startOffset == CMTime(value: 3, timescale: 1))
+        session.endDrag("Move Clip")
 
-        // Paused frames are drawn from the draft: 1 s in is the dark
-        // footage, 5 s in (once trimmed out) the bright.
-        let dark = try #require(await session.draftFrame(at: 1))
-        #expect(Self.brightness(of: dark) < 0.4)
-        #expect(session.lastDraftFrame != nil)
+        // A marker moved after a hit retimes the clip: 1 s of footage over
+        // 2 s, so 50% (with a third point, speed keyframes).
+        let pinned = session.addMarker(toPiece: clip.id, atTime: 4)
+        session.setKind(.hit, ofPoint: try #require(pinned))
+        let added = session.addMarker(toPiece: clip.id, atTime: 5)
+        let marker = try #require(added)
+        session.perform("Move Point") { $0.movePoint(marker, to: CMTime(value: 6, timescale: 1)) }
+        let speed = placed()?.time.speed.value(at: .zero)
+        #expect(speed.map { abs($0 - 50) < 1e-6 } == true)
 
-        // An edit rebuilds it: the end trimmed out to 6 s.
-        session.perform("Trim Clip") { $0.trim(clip.id, edge: .end, to: CMTime(value: 6, timescale: 1)) }
-        #expect(session.isUpdatingPreview)
-        try await wait { session.player.currentItem !== first && !session.isUpdatingPreview }
-        let rebuilt = try #require(session.player.currentItem)
-        #expect(rebuilt !== first)
-        #expect(abs(rebuilt.asset.duration.seconds - 6) < 0.05)
-        #expect(rebuilt.videoComposition != nil)
-
-        let bright = try #require(await session.draftFrame(at: 5))
-        #expect(Self.brightness(of: bright) > 0.6)
-
-        // What it plays is what Done would write.
-        let draft = session.draftProject
-        #expect(abs((draft.timeline(id: draft.rootTimelineID)?.duration.seconds ?? 0) - 6) < 0.05)
+        // Undoing in the panel puts the project back too.
+        while session.undoManager.canUndo { session.undoManager.undo() }
+        #expect(placed() == clip)
     }
 
     @Test func zoomingOrScrollingPastAnEdgeStretchesInstead() throws {
@@ -74,7 +62,7 @@ import Testing
         let clip = TimelineClip(source: .adjustment, startOffset: CMTime(value: 2, timescale: 1), trimStart: .zero, trimEnd: CMTime(value: 10, timescale: 1))
         project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
         let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
-        let session = MotionDesignSession(run: run, project: project)
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
         session.viewWidth = 800
 
@@ -112,7 +100,7 @@ import Testing
             TimelineLayer(customName: nil, kind: .music, clips: [music]),
         ]
         let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
-        let session = MotionDesignSession(run: run, project: project)
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
         session.viewWidth = 800
 
@@ -138,7 +126,7 @@ import Testing
         let other = TimelineClip(source: .adjustment, startOffset: CMTime(value: 8, timescale: 1), trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
         project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip, other])]
         let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
-        let session = MotionDesignSession(run: run, project: project)
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
         defer { session.end() }
 
         // Its end comes within a tenth of a second of the other's start.
