@@ -101,6 +101,11 @@ struct UISnapshots {
         try SnapshotSupport.render(view, "motion-designer", size: size)
         try SnapshotSupport.render(MotionDesignView(session: easedSession, onDone: {}, onCancel: {}), "motion-designer-ease", size: size)
         try SnapshotSupport.render(MotionDesignView(session: twoSession, onDone: {}, onCancel: {}), "motion-designer-two-songs", size: size)
+        // The first shot, held by its hit, dragged: the notice saying why.
+        session.select(point: nil)
+        session.selectedPieceID = first.id
+        session.explainHeldPiece()
+        try SnapshotSupport.render(MotionDesignView(session: session, onDone: {}, onCancel: {}), "motion-designer-held", size: size)
     }
 
     /// The beat match panel at each step: choosing, drawing sections,
@@ -763,5 +768,32 @@ struct UISnapshots {
             replacement: MediaReplacementController(), packageURL: nil
         )
         try SnapshotSupport.render(editor, "muted-clip", size: CGSize(width: 1500, height: 900))
+    }
+
+    /// A video retimed by a speed ramp: the speed readout along its bar,
+    /// each reading and its arrow on a dark shade over the thumbnails.
+    @Test func retimedClip() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let video = MediaClip(
+            name: "Ramped", kind: .video, url: nil, duration: CMTime(value: 10, timescale: 1),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        let placed = project.importClip(video, intoTimeline: t)
+        let ramped = try #require(placed)
+        project.editClip(ramped.clipID, in: t) { clip in
+            clip.time.speed = AnimatedValue(100, keyframes: [
+                Keyframe(time: CMTime(value: 2, timescale: 1), value: 100),
+                Keyframe(time: CMTime(value: 5, timescale: 1), value: 250),
+                Keyframe(time: CMTime(value: 7, timescale: 1), value: 50),
+            ])
+        }
+        UserDefaults.standard.set(420.0, forKey: Preferences.timelineHeight)
+        defer { UserDefaults.standard.removeObject(forKey: Preferences.timelineHeight) }
+        let editor = EditorView(
+            project: .constant(project), history: ProjectHistory(project: project), analysis: AssetAnalysis(),
+            replacement: MediaReplacementController(), packageURL: nil
+        )
+        try SnapshotSupport.render(editor, "retimed-clip", size: CGSize(width: 1500, height: 900))
     }
 }

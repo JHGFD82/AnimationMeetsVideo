@@ -52,7 +52,9 @@ the music.
   has been moved or grown to since, with a tenth of its length (at least
   half a second) to spare either side. Songs and beats are drawn only
   along it, the zoom and scroll stop at its edges, and the playhead stays
-  in it.
+  in it. The playhead is the timeline's own (`PlayheadRail`): a line with
+  its head at the top of the ruler, running on the player's clock while
+  it plays, beside the same snap line.
 
 - **The footage strip** places each frame where it plays in the draft:
   frames are taken at even steps of the footage, one tile's width apart
@@ -82,12 +84,22 @@ the music.
   leading at each moment (`EditingProject.musicBeats(in:tracks:)`), and
   a hit's pin ends on the lane of the song leading at its time.
 - Grabbing the line drops a marker on that frame and drags it; grabbing a
-  point drags it. Drags snap, within 8 points, to the beats (while shown),
+  point drags it. Nothing is dragged until the pointer has moved 3
+  points, so a click on a point only selects it and changes nothing, and
+  a click on the line moves the playhead there. Each step of a drag
+  applies to the run as the drag found it
+  (`MotionDesignSession.dragEdit`), so dragging back undoes what going
+  further did. Drags snap, within 8 points, to the beats (while shown),
   the playhead and the edges of the layer's other clips (the run's other
   clips included); the snap line shows where. A click elsewhere moves the playhead, as a drag on the
   ruler or the music scrubs.
 - Dragging a clip in the strip moves it by whole frames, unless a hit
-  holds it. Whichever of its edges comes nearer something to snap to
+  holds it. A held clip follows the pointer up to 6 points, then (or when
+  let go) springs back with a small bounce, and a notice under the
+  footage says it is held down to the beat and that making all its hits
+  markers frees it; any click anywhere puts the notice away, and
+  VoiceOver announces it. Moving a held clip from the keyboard shows the
+  same notice. Whichever of its edges comes nearer something to snap to
   lands on it, to the nearest frame.
 - **The monitor**, at the top of the sidebar, is the editor's own viewer
   player (`PlaybackModel`), which plays the timeline with the run written
@@ -201,14 +213,16 @@ off, as the timeline's view options do.
 The music can't move in the designer; only footage does, and never
 where other clips are.
 
-- **Retiming keeps a clip's edges.** When moving a point, setting a pace
-  or removing a point changes the speed at a clip's open ends, the clip
-  takes in footage or gives it back so its start and end stay where they
-  were (`MotionRun.hold`): speeding up draws on more footage, slowing
-  down returns some. Only once its footage runs out does an edge move:
-  in, as a clip sped up past its footage gets shorter, or out, when
-  giving footage back would cut past its outermost point. An edge moving
-  out stops against the next clip; moving that clip is up to the person.
+- **Retiming keeps a clip's footage.** When moving a point, setting a
+  pace or removing a point changes the speed at a clip's open ends, the
+  clip plays the same footage and its edges move instead
+  (`MotionRun.keepFootage`): speeding up shortens it, slowing down
+  lengthens it. Footage is cut only where an edge moving out meets the
+  clip beside it (or the timeline's start), and then only as far as its
+  outermost point; moving that clip is up to the person. The footage kept
+  is the clip's trim as it opened, or as the person last trimmed it
+  (`MotionRun.Piece.given`), so footage cut against a neighbour comes back
+  once the clip has room again.
 - **Trimming.** Dragging a clip's edge in the strip reveals or hides
   footage at the speed it plays there, snapping as points do, as far as
   its footage goes, never past its outermost point or to under a frame,

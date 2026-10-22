@@ -5,12 +5,23 @@ import SwiftUI
 /// even steps of the footage and placed by the draft, so a stretch played
 /// slowly spreads them apart, with the lane showing between, and one played
 /// fast crowds them into slivers. At 100% they just touch. Dragging a clip
-/// moves it, either edge snapping, unless a hit holds it to a beat; dragging its edge trims it,
-/// as far as its scene's footage goes, which a bracket marks once reached.
+/// moves it, either edge snapping, unless a hit holds it to a beat: then it
+/// follows the pointer a few points and springs back, saying why. Dragging
+/// its edge trims it, as far as its scene's footage goes, which a bracket
+/// marks once reached.
 struct RetimedFilmstrip: View {
     let session: MotionDesignSession
     let width: CGFloat
     let height: CGFloat
+
+    /// How far a clip held by a hit follows the pointer before it springs
+    /// back.
+    static let tugReach: CGFloat = 6
+    /// A held clip pulled with the pointer, and how far.
+    @State private var tug: (id: UUID, offset: CGFloat)?
+    /// Whether the held clip being pulled has sprung back already, so the
+    /// rest of that drag leaves it be.
+    @State private var tugSprang = false
 
     /// The tiles' height, inside the lane's padding.
     private var tileHeight: CGFloat { height - 10 }
@@ -65,7 +76,7 @@ struct RetimedFilmstrip: View {
             .frame(width: max(1, x1 - x0), height: height)
             .overlay(alignment: .leading) { edgeHandle(piece, edge: .start) }
             .overlay(alignment: .trailing) { edgeHandle(piece, edge: .end) }
-            .offset(x: x0)
+            .offset(x: x0 + (tug?.id == piece.id ? tug?.offset ?? 0 : 0))
             .contentShape(Rectangle())
             .gesture(moveGesture(piece))
             .onTapGesture {
@@ -172,7 +183,13 @@ struct RetimedFilmstrip: View {
                     session.selectedPieceID = piece.id
                     session.selectedPointID = nil
                 }
-                guard session.run.canMove(piece.id) else { return }
+                guard session.run.canMove(piece.id) else {
+                    // Held by a hit: it gives a little, then springs back.
+                    guard !tugSprang else { return }
+                    let pull = drag.translation.width
+                    if abs(pull) <= Self.tugReach { tug = (piece.id, pull) } else { springBack(piece.id) }
+                    return
+                }
                 session.beginDragIfNeeded()
                 let delta = Double(drag.translation.width) * session.secondsPerPoint
                 session.dragPiece(
@@ -181,11 +198,18 @@ struct RetimedFilmstrip: View {
                 )
             }
             .onEnded { _ in
-                if !session.run.canMove(piece.id) {
-                    session.explainHeldPiece()
-                }
+                if !session.run.canMove(piece.id), !tugSprang { springBack(piece.id) }
+                tugSprang = false
                 session.endDrag("Move Clip")
             }
+    }
+
+    /// Lets a held clip go back to its place with a small bounce, and says
+    /// why it can't move.
+    private func springBack(_ id: UUID) {
+        tugSprang = true
+        withAnimation(Design.Motion.respecting(Design.Motion.springBack)) { tug = (id, 0) }
+        session.explainHeldPiece()
     }
 }
 

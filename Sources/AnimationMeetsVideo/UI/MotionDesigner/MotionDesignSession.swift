@@ -44,6 +44,9 @@ final class MotionDesignSession {
     var snaps = true
     /// What an edit couldn't do and why, until the next one.
     private(set) var message: String?
+    /// A notice over the lanes, which any click puts away: why a clip held
+    /// by a hit didn't move.
+    var notice: String?
     /// An edit waiting on the person to agree to what it costs.
     struct PendingConflict: Identifiable {
         let id = UUID()
@@ -93,6 +96,8 @@ final class MotionDesignSession {
     var isPlaying: Bool { playback.isPlaying }
     /// The run before a drag began, which its one undo step goes back to.
     @ObservationIgnored private var dragStart: MotionRun?
+    /// The run a drag's steps apply to (`dragEdit`).
+    @ObservationIgnored private var dragBase: MotionRun?
 
     init(run: MotionRun, project: EditingProject, playback: PlaybackModel) {
         self.run = run
@@ -133,28 +138,48 @@ final class MotionDesignSession {
         change(&edited)
         guard edited != run else { return }
         message = nil
-        if dragStart == nil { registerUndo(restoring: run, name: name) }
+        if dragStart == nil { registerUndo(restoring: run, name: name) } else { dragBase = edited }
         run = edited
     }
 
     func beginDrag() {
         dragStart = run
+        dragBase = run
     }
 
     /// Begins a drag on its first change.
     func beginDragIfNeeded() {
-        if dragStart == nil { dragStart = run }
+        if dragStart == nil { beginDrag() }
+    }
+
+    /// Applies a step of a drag to the run as the drag found it, not as
+    /// its last step left it, so going back undoes what going further did
+    /// (footage cut against a neighbour, a pace set) and a drag back to
+    /// where it began changes nothing. An edit made during the drag (the
+    /// marker it grabbed) is part of where it began.
+    func dragEdit(_ change: (inout MotionRun) -> Void) {
+        guard let base = dragBase else { return }
+        var edited = base
+        change(&edited)
+        message = nil
+        if edited != run { run = edited }
     }
 
     var isDragging: Bool { dragStart != nil }
 
-    /// Says why a clip with a hit didn't move.
+    /// Says why a clip with a hit didn't move, in the notice over the lanes.
     func explainHeldPiece() {
-        message = "A clip with a hit is held by its beat. Make the hits markers to move it."
+        let text = Self.heldPieceNotice
+        notice = text
+        AccessibilityNotification.Announcement(text).post()
     }
+
+    static let heldPieceNotice = "This clip is held down to the beat. Change all Hit markers to regular markers to change clip placement."
+
 
     func endDrag(_ name: String) {
         dragSnapTime = nil
+        dragBase = nil
         guard let start = dragStart else { return }
         dragStart = nil
         if start != run { registerUndo(restoring: start, name: name) }
@@ -207,6 +232,7 @@ final class MotionDesignSession {
     /// Puts the draft back as it was when the drag began (Escape).
     func cancelDrag() {
         dragSnapTime = nil
+        dragBase = nil
         guard let start = dragStart else { return }
         dragStart = nil
         run = start

@@ -31,6 +31,9 @@ extension Design {
         /// pointer. Slower than `panel`, and settling without bounce, so
         /// it reads as travelling there, not as jumping.
         static let glide = Animation.spring(response: 0.34, dampingFraction: 0.92)
+        /// Something the person pulled that can't go there, going back to
+        /// where it was with a small bounce, so the refusal reads as one.
+        static let springBack = Animation.spring(response: 0.3, dampingFraction: 0.45)
         /// A selection rectangle or other mark that has done its job.
         static let fade = Animation.easeOut(duration: 0.22)
 

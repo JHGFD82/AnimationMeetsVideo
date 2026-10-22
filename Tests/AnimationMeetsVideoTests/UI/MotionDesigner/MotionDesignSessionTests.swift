@@ -57,6 +57,32 @@ import Testing
         #expect(placed() == clip)
     }
 
+    @Test func aDragDraggedBackToWhereItBeganChangesNothing() throws {
+        // A shot with a neighbour 1 s after it.
+        var project = EditingProject.empty
+        func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferredTimescale: 600) }
+        let clip = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: seconds(4))
+        let next = TimelineClip(source: .adjustment, startOffset: seconds(5), trimStart: .zero, trimEnd: seconds(2))
+        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip, next])]
+        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
+        let session = MotionDesignSession(run: run, project: project, playback: PlaybackModel())
+        defer { session.end() }
+        let pinned = session.addMarker(toPiece: clip.id, atTime: 1)
+        session.setKind(.hit, ofPoint: try #require(pinned))
+        let added = session.addMarker(toPiece: clip.id, atTime: 2)
+        let marker = try #require(added)
+        let before = session.run
+
+        // Slowed to 25%, the shot runs into its neighbour and is cut there;
+        // dragged back, it has all its footage again, and nothing changed.
+        session.beginDrag()
+        session.dragEdit { $0.movePoint(marker, to: seconds(5)) }
+        #expect(session.run.pieces[0].map.trimEnd < seconds(4))
+        session.dragEdit { $0.movePoint(marker, to: seconds(2)) }
+        session.endDrag("Move Point")
+        #expect(session.run == before)
+    }
+
     @Test func zoomingOrScrollingPastAnEdgeStretchesInstead() throws {
         var project = EditingProject.empty
         let clip = TimelineClip(source: .adjustment, startOffset: CMTime(value: 2, timescale: 1), trimStart: .zero, trimEnd: CMTime(value: 10, timescale: 1))

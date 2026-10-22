@@ -19,10 +19,23 @@ struct MotionDesignLanes: View {
     private static let graphInset: CGFloat = 14
 
     private enum GraphDrag {
+        /// Pressed on something, which isn't dragged until the pointer
+        /// moves `dragDistance` from where it went down: a click only
+        /// selects, and changes nothing.
+        case pressed(Grab)
         case point(UUID, from: Double, added: Bool)
         case handle(UUID, before: Bool)
         case seek
     }
+
+    private enum Grab {
+        case point(UUID, from: Double)
+        case handle(UUID, before: Bool)
+        /// The line, where a drag drops a marker.
+        case line(piece: UUID, time: Double)
+    }
+
+    private static let dragDistance: CGFloat = 3
 
     @State private var drag: GraphDrag?
     /// Where the drag snapped, to draw.
@@ -41,6 +54,7 @@ struct MotionDesignLanes: View {
             .overlay(alignment: .topLeading) {
                 markings(width: width, height: geometry.size.height, graphHeight: graphHeight)
             }
+            .overlay(alignment: .top) { noticeView }
             // Squeezed by a zoom out past the whole timeline, stretched by
             // one in past the closest, slid along by a scroll past either
             // end; all the lanes together, so they stay lined up.
@@ -65,6 +79,31 @@ struct MotionDesignLanes: View {
                 onMagnifyEnded: { session.endPinch() }
             )
         )
+    }
+
+    // MARK: Notice
+
+    /// Why a clip didn't move, just under the footage; any click anywhere
+    /// puts it away.
+    @ViewBuilder
+    private var noticeView: some View {
+        ZStack {
+            if let notice = session.notice {
+                Label(notice, systemImage: "pin.fill")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textPrimary)
+                    .padding(.horizontal, Design.Space.rail)
+                    .padding(.vertical, Design.Space.step)
+                    .floatingSurface(radius: Design.Radius.chip)
+                    .frame(maxWidth: 460)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, Self.rulerHeight + Self.filmHeight + Design.Space.step)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .animation(Design.Motion.respecting(Design.Motion.fade), value: session.notice)
+        .onClickAnywhere(isActive: session.notice != nil) { session.notice = nil }
     }
 
     // MARK: Ruler
@@ -364,31 +403,43 @@ struct MotionDesignLanes: View {
         return nil
     }
 
+    /// What a press at `location` takes hold of: a selected point's ease
+    /// handle, a point (selecting it), the line, or else the playhead.
+    private func grab(at location: CGPoint, stack: Stack) -> GraphDrag {
+        if let handle = easeHandles(stack: stack).first(where: { hypot($0.point.x - location.x, $0.point.y - location.y) <= 7 }) {
+            return .pressed(.handle(handle.pointID, before: handle.before))
+        }
+        if let id = point(at: location, stack: stack), let found = session.run.piece(holdingPoint: id) {
+            session.select(point: id)
+            return .pressed(.point(id, from: session.run.pieces[found.piece].map.points[found.point].time.seconds))
+        }
+        if let hit = line(at: location, stack: stack) { return .pressed(.line(piece: hit.piece, time: hit.time)) }
+        session.select(point: nil)
+        return .seek
+    }
+
+    /// Starts dragging what was pressed, once the pointer has moved.
+    private func startDragging(_ grab: Grab) -> GraphDrag {
+        session.beginDrag()
+        switch grab {
+        case .point(let id, let from):
+            return .point(id, from: from, added: false)
+        case .handle(let id, let before):
+            return .handle(id, before: before)
+        case .line(let piece, let time):
+            if let id = session.addMarker(toPiece: piece, atTime: time) { return .point(id, from: time, added: true) }
+            session.endDrag("Add Marker")
+            return .seek
+        }
+    }
+
     private func graphGesture(stack: Stack) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { gesture in
-                if drag == nil {
-                    if let handle = easeHandles(stack: stack).first(where: {
-                        hypot($0.point.x - gesture.startLocation.x, $0.point.y - gesture.startLocation.y) <= 7
-                    }) {
-                        session.beginDrag()
-                        drag = .handle(handle.pointID, before: handle.before)
-                    } else if let id = point(at: gesture.startLocation, stack: stack), let found = session.run.piece(holdingPoint: id) {
-                        session.select(point: id)
-                        session.beginDrag()
-                        drag = .point(id, from: session.run.pieces[found.piece].map.points[found.point].time.seconds, added: false)
-                    } else if let hit = line(at: gesture.startLocation, stack: stack) {
-                        session.beginDrag()
-                        if let id = session.addMarker(toPiece: hit.piece, atTime: hit.time) {
-                            drag = .point(id, from: hit.time, added: true)
-                        } else {
-                            session.endDrag("Add Marker")
-                            drag = .seek
-                        }
-                    } else {
-                        session.select(point: nil)
-                        drag = .seek
-                    }
+                if drag == nil { drag = grab(at: gesture.startLocation, stack: stack) }
+                if case .pressed(let grab) = drag {
+                    guard hypot(gesture.translation.width, gesture.translation.height) >= Self.dragDistance else { return }
+                    drag = startDragging(grab)
                 }
                 switch drag {
                 case .point(let id, let from, _):
@@ -396,25 +447,31 @@ struct MotionDesignLanes: View {
                     let piece = session.run.piece(holdingPoint: id).map { session.run.pieces[$0.piece].id }
                     let snapped = session.snapped(target, tolerance: 8 * session.secondsPerPoint, excluding: piece)
                     snapTime = snapped
-                    session.perform("Move Point") {
+                    session.dragEdit {
                         $0.movePoint(id, to: CMTime(seconds: snapped ?? target, preferredTimescale: ClipTimeMap.timescale))
                     }
                 case .handle(let id, let before):
                     guard let reach = reach(dragging: before, of: id, toX: gesture.location.x),
                           let ease = session.run.piece(holdingPoint: id).flatMap({ session.run.pieces[$0.piece].map.points[$0.point].ease })
                     else { break }
-                    session.perform("Shape Ease") {
+                    session.dragEdit {
                         $0.setEase(TimeEase(before: before ? reach : ease.before, after: before ? ease.after : reach), ofPoint: id)
                     }
                 case .seek:
                     session.seek(to: session.seconds(atX: gesture.location.x))
-                case nil:
+                case .pressed, nil:
                     break
                 }
             }
             .onEnded { _ in
-                if case .point(_, _, let added) = drag { session.endDrag(added ? "Add Marker" : "Move Point") }
-                if case .handle = drag { session.endDrag("Shape Ease") }
+                switch drag {
+                case .point(_, _, let added): session.endDrag(added ? "Add Marker" : "Move Point")
+                case .handle: session.endDrag("Shape Ease")
+                // A click on the line moves the playhead there, as one
+                // beside it does.
+                case .pressed(.line(_, let time)): session.seek(to: time)
+                default: break
+                }
                 drag = nil
                 snapTime = nil
             }
@@ -596,7 +653,7 @@ struct MotionDesignLanes: View {
 
     // MARK: Over every lane
 
-    /// The playhead, each hit's pin from its frame to its beat, and where a
+    /// Each hit's pin from its frame to its beat, the playhead, and where a
     /// drag snapped, drawn over the lanes.
     private func markings(width: CGFloat, height: CGFloat, graphHeight: CGFloat) -> some View {
         let stack = stack(height: graphHeight, width: width)
@@ -618,18 +675,27 @@ struct MotionDesignLanes: View {
                         context.fill(Path(ellipseIn: CGRect(x: at.x - 3, y: y - 3, width: 6, height: 6)), with: .color(Design.snap))
                     }
                 }
-                if let snapTime = snapTime ?? session.dragSnapTime {
-                    let x = session.x(of: snapTime)
-                    context.fill(Path(CGRect(x: x - 0.5, y: 0, width: 1, height: size.height)), with: .color(Design.snap))
-                }
             }
-            SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !session.isPlaying)) { context in
-                let x = session.x(of: session.playhead(at: context.date))
-                Design.playhead
-                    .frame(width: 1, height: height)
-                    .offset(x: x)
-                    .opacity(x >= 0 && x <= width ? 1 : 0)
-            }
+            // The timeline's own playhead, its head at the top of the
+            // ruler, and its snap line; while playing it runs on the
+            // player's clock.
+            let x = session.x(of: session.playhead)
+            PlayheadRail(
+                playheadX: x,
+                isPlayheadVisible: (-1...(width + 1)).contains(x),
+                snapX: (snapTime ?? session.dragSnapTime).map { session.x(of: $0) },
+                height: height,
+                following: session.isPlaying
+                    ? PlayheadRail.Following(
+                        player: session.playback.player,
+                        pixelsPerSecond: CGFloat(1 / session.secondsPerPoint),
+                        originX: session.x(of: 0),
+                        seconds: session.window.end,
+                        generation: session.playback.itemSwaps
+                    )
+                    : nil
+            )
+            .frame(width: width, height: height)
         }
         .frame(width: width, height: height, alignment: .topLeading)
         .allowsHitTesting(false)

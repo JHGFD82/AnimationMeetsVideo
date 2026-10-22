@@ -33,6 +33,10 @@ struct MotionRun: Equatable {
         /// The footage its trim may reach, in source time: its scene (or the
         /// scenes it already spans), or the whole file.
         let footage: CMTimeRange
+        /// The footage the person gave it, in source time: its trim as it
+        /// opened, or as they last trimmed it. Retiming plays all of it,
+        /// short of where an edge would run into a neighbour.
+        var given: CMTimeRange
         /// Whether the person changed it, so Done writes it.
         var isEdited = false
 
@@ -100,7 +104,7 @@ struct MotionRun: Equatable {
                 let file = CMTimeRange(start: .zero, end: project.sourceDuration(for: clip.source) ?? clip.trimEnd)
                 return Piece(
                     clip: clip, map: ClipTimeMap(reading: clip, frameDuration: frame), start: clip.startOffset,
-                    footage: (footage(clip) ?? file).union(trim)
+                    footage: (footage(clip) ?? file).union(trim), given: trim
                 )
             },
             others: layer.clips.filter { !ids.contains($0.id) }.map { CMTimeRange(start: $0.startOffset, end: $0.endOffset) }
@@ -144,22 +148,22 @@ struct MotionRun: Equatable {
     mutating func addMarker(toPiece id: UUID, atSource source: CMTime) -> UUID? {
         guard let p = index(of: id) else { return nil }
         let time = pieces[p].time(atSource: source)
-        return edit(p, holdingEdges: false) { $0.addMarker(atSource: source, time: time) } ?? nil
+        return edit(p, keepingFootage: false) { $0.addMarker(atSource: source, time: time) } ?? nil
     }
 
     /// Moves a point along the timeline as `ClipTimeMap.move` does. The
-    /// clip's outer edges stay where they are, taking in footage or giving
-    /// it back, as far as its footage goes; past that an edge moves, and it
-    /// stops against a neighbouring clip, which is the person's to move.
+    /// clip keeps its footage, so its outer edges move with the retiming;
+    /// one moving out stops against a neighbouring clip, giving up the
+    /// footage past it (`keepFootage`). Moving a point to where it already
+    /// is changes nothing.
     mutating func movePoint(_ id: UUID, to time: CMTime) {
-        guard let (p, _) = piece(holdingPoint: id) else { return }
+        guard let (p, i) = piece(holdingPoint: id), pieces[p].map.points[i].time != time else { return }
         let original = self
-        let span = pieces[p].span
-        let start = pieces[p].map.points.first { $0.id == id }!.time.seconds
+        let start = pieces[p].map.points[i].time.seconds
         let fitted = Self.furthest { fraction in
             var copy = original
             copy.pieces[p].map.move(id, to: CMTime(seconds: start + (time.seconds - start) * fraction, preferredTimescale: ClipTimeMap.timescale))
-            copy.hold(p, to: span)
+            copy.keepFootage(p)
             copy.pieces[p].isEdited = true
             return copy
         }
@@ -196,21 +200,41 @@ struct MotionRun: Equatable {
             let earliest = piece.map.points.last?.source ?? CMTimeAdd(piece.map.trimStart, frame)
             piece.map.trimEnd = CMTimeMaximum(CMTimeMinimum(source, piece.footage.end), earliest)
         }
+        piece.given = CMTimeRange(start: piece.map.trimStart, end: piece.map.trimEnd)
         piece.isEdited = true
         pieces[p] = piece
     }
 
-    /// Keeps piece `p` spanning `span` by moving its trim, as far as its
-    /// footage and its outermost points allow.
-    private mutating func hold(_ p: Int, to span: CMTimeRange) {
+    /// Has piece `p` play the footage it was given, its edges following the
+    /// retiming, except where an edge would run into the clip beside it (or
+    /// before the timeline's start): there the footage is cut to stop
+    /// against it, never past the outermost points. Footage cut that way
+    /// comes back once there is room again.
+    private mutating func keepFootage(_ p: Int) {
         var map = pieces[p].map
-        guard let first = map.points.first, let last = map.points.last,
-              let start = map.source(atTime: span.start), let end = map.source(atTime: span.end)
-        else { return }
-        let footage = pieces[p].footage
-        map.trimStart = CMTimeMinimum(CMTimeMaximum(start, footage.start), first.source)
-        map.trimEnd = CMTimeMaximum(CMTimeMinimum(end, footage.end), last.source)
+        guard let first = map.points.first, let last = map.points.last else { return }
+        let room = room(around: p)
+        map.trimStart = pieces[p].given.start
+        map.trimEnd = pieces[p].given.end
+        if let start = map.source(atTime: room.start), start > map.trimStart {
+            map.trimStart = CMTimeMinimum(start, first.source)
+        }
+        if let end = room.end.flatMap({ map.source(atTime: $0) }), end < map.trimEnd {
+            map.trimEnd = CMTimeMaximum(end, last.source)
+        }
         pieces[p].map = map
+    }
+
+    /// Where piece `p` may play, from what is beside it where it plays now:
+    /// from the end of the clip before it (or the timeline's start) to the
+    /// start of the clip after it, if there is one.
+    private func room(around p: Int) -> (start: CMTime, end: CMTime?) {
+        let points = pieces[p].map.points
+        guard let first = points.first?.time, let last = points.last?.time else { return (.zero, nil) }
+        let neighbours = others + pieces.indices.filter { $0 != p }.map { pieces[$0].span }
+        let start = neighbours.map(\.end).filter { $0 <= first }.max() ?? .zero
+        let end = neighbours.map(\.start).filter { $0 >= last }.min()
+        return (start, end)
     }
 
     /// Sets a point's kind, as `ClipTimeMap.setKind` does; refused, with
@@ -221,7 +245,7 @@ struct MotionRun: Equatable {
         guard let (p, _) = piece(holdingPoint: id) else { return nil }
         var copy = self
         if let conflict = copy.pieces[p].map.setKind(kind, of: id, confirmed: confirmed) { return conflict }
-        copy.hold(p, to: pieces[p].span)
+        copy.keepFootage(p)
         copy.pieces[p].isEdited = true
         guard copy.fits else { return .noRoom }
         self = copy
@@ -230,18 +254,18 @@ struct MotionRun: Equatable {
 
     mutating func setEased(_ eased: Bool, ofPoint id: UUID) {
         guard let (p, _) = piece(holdingPoint: id) else { return }
-        edit(p, holdingEdges: true) { $0.setEased(eased, of: id) }
+        edit(p, keepingFootage: true) { $0.setEased(eased, of: id) }
     }
 
     /// Shapes an eased point's ramps (`ClipTimeMap.setEase`).
     mutating func setEase(_ ease: TimeEase, ofPoint id: UUID) {
         guard let (p, _) = piece(holdingPoint: id) else { return }
-        edit(p, holdingEdges: true) { $0.setEase(ease, of: id) }
+        edit(p, keepingFootage: true) { $0.setEase(ease, of: id) }
     }
 
     mutating func removePoint(_ id: UUID) {
         guard let (p, _) = piece(holdingPoint: id) else { return }
-        edit(p, holdingEdges: true) { $0.remove(id) }
+        edit(p, keepingFootage: true) { $0.remove(id) }
     }
 
     /// Whether a piece can be moved: one with a hit is held by its beat.
@@ -267,13 +291,13 @@ struct MotionRun: Equatable {
         if let fitted { self = fitted }
     }
 
-    /// Applies a change to one piece's map, holding its edges if asked,
+    /// Applies a change to one piece's map, keeping its footage if asked,
     /// kept only if the run still fits.
     @discardableResult
-    private mutating func edit<Result>(_ p: Int, holdingEdges: Bool, _ change: (inout ClipTimeMap) -> Result) -> Result? {
+    private mutating func edit<Result>(_ p: Int, keepingFootage: Bool, _ change: (inout ClipTimeMap) -> Result) -> Result? {
         var copy = self
         let result = change(&copy.pieces[p].map)
-        if holdingEdges { copy.hold(p, to: pieces[p].span) }
+        if keepingFootage { copy.keepFootage(p) }
         guard copy.pieces[p].map != pieces[p].map else { return result }
         copy.pieces[p].isEdited = true
         guard copy.fits else { return nil }
