@@ -88,6 +88,10 @@ struct UISnapshots {
         try SnapshotSupport.render(view, "motion-designer", size: size)
         _ = WaveformCache.shared.waveform(for: try #require(song.url))
         try await Task.sleep(for: .milliseconds(1500))
+        // The monitor shows the draft once built, its paused frame drawn.
+        for _ in 0..<200 where !(session.showsDraft && easedSession.showsDraft) { try await Task.sleep(for: .milliseconds(50)) }
+        _ = await session.draftFrame(at: 2.25)
+        _ = await easedSession.draftFrame(at: 2.25)
         try SnapshotSupport.render(view, "motion-designer", size: size)
         try SnapshotSupport.render(MotionDesignView(session: easedSession, onDone: {}, onCancel: {}), "motion-designer-ease", size: size)
     }

@@ -5,12 +5,18 @@ import SwiftUI
 
 /// One opening of the motion designer on a run of clips: the draft run with
 /// an undo history of its own, the music under it with its beats, what is
-/// selected, the view's zoom and scroll, and a player of the music alone.
-/// Nothing reaches the project until Done. See docs/motion-designer.md.
+/// selected, the view's zoom and scroll, and a player of the draft. The
+/// player plays the timeline as Done would leave it, picture and sound,
+/// rebuilt shortly after each edit; until the first build is ready it
+/// plays the music alone. Nothing reaches the project until Done. See
+/// docs/motion-designer.md.
 @MainActor @Observable
 final class MotionDesignSession {
     /// The draft being edited.
-    private(set) var run: MotionRun
+    private(set) var run: MotionRun {
+        // A drag rebuilds the preview once it ends.
+        didSet { if dragStart == nil, run != oldValue { schedulePreview() } }
+    }
     /// Whether Done would change the project.
     var isChanged: Bool { run.isChanged }
     /// The panel's own undo history, for the draft.
@@ -88,11 +94,110 @@ final class MotionDesignSession {
             let playing = player.timeControlStatus != .paused
             Task { @MainActor in self?.playingChanged(playing) }
         }
+        schedulePreview(after: .zero)
     }
 
     func end() {
+        previewTask?.cancel()
+        previewTask = nil
         player.pause()
+        player.replaceCurrentItem(with: nil)
         statusObservation = nil
+    }
+
+    // MARK: Preview
+
+    /// Whether the player has the draft's picture to show yet, and whether
+    /// a newer one is being made.
+    private(set) var showsDraft = false
+    private(set) var isUpdatingPreview = false
+    /// Why the draft couldn't be played, until a later build can.
+    private(set) var previewError: String?
+    @ObservationIgnored private var previewTask: Task<Void, Never>?
+    /// The draft's volumes and pans, which its sound plays at.
+    @ObservationIgnored private let mixCurves = MixCurves()
+    /// The monitor is small, so the picture is drawn at half size.
+    static let previewScale = 0.5
+    /// Draws paused frames of the draft, which a player layer may not show
+    /// until it plays; counted up with each build, so a frame drawn from an
+    /// older draft is asked for again.
+    @ObservationIgnored private var frameGenerator: AVAssetImageGenerator?
+    private(set) var draftSerial = 0
+
+    /// The last paused frame drawn, which the monitor shows at once when it
+    /// comes back (after playing, say) until the frame it asks for is drawn.
+    @ObservationIgnored private(set) var lastDraftFrame: CGImage?
+
+    /// The draft's frame at `seconds`, drawn from the latest build.
+    func draftFrame(at seconds: Double) async -> CGImage? {
+        guard let frameGenerator else { return nil }
+        let image = await Self.frame(HandedOver(value: frameGenerator), at: CMTime(seconds: max(0, seconds), preferredTimescale: 600))
+        if let image { lastDraftFrame = image }
+        return image
+    }
+
+    /// Set up once and never changed after, so it can be asked from off the
+    /// main actor, as `FrameThumbnails` does.
+    private nonisolated static func frame(_ generator: HandedOver<AVAssetImageGenerator>, at time: CMTime) async -> CGImage? {
+        try? await generator.value.image(at: time).image
+    }
+
+    /// The timeline as Done would leave it.
+    var draftProject: EditingProject {
+        var draft = project
+        run.write(into: &draft)
+        return draft
+    }
+
+    /// Builds the draft's player item after `delay`, replacing any build
+    /// under way, so a run of edits builds once.
+    private func schedulePreview(after delay: Duration = .milliseconds(250)) {
+        previewTask?.cancel()
+        isUpdatingPreview = true
+        let draft = draftProject
+        let timelineID = run.timelineID
+        previewTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: delay)
+                let composed = try await CompositionExporter.buildComposedTimeline(for: draft, timelineID: timelineID, forPreview: true)
+                try Task.checkCancellation()
+                await self?.present(composed, of: draft)
+            } catch is CancellationError {
+            } catch {
+                self?.previewError = error.localizedDescription
+                self?.isUpdatingPreview = false
+            }
+        }
+    }
+
+    /// Swaps the player onto a newly built draft at the same moment,
+    /// playing on if it was.
+    private func present(_ composed: ComposedTimeline, of draft: EditingProject) async {
+        let item = AVPlayerItem(asset: composed.composition)
+        item.videoComposition = composed.videoComposition(scaledBy: Self.previewScale)
+        mixCurves.replace(with: MixCurves.of(draft))
+        item.audioMix = composed.audioMix(curves: mixCurves)
+        let wasPlaying = isPlaying
+        let time = wasPlaying ? player.currentTime() : CMTime(seconds: playhead, preferredTimescale: 48_000)
+        // Seeked before it's shown, so the swap doesn't flash its first frame.
+        _ = await item.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        guard !Task.isCancelled else { return }
+        player.replaceCurrentItem(with: item)
+        if wasPlaying { player.play() }
+        if composed.hasPictures {
+            let generator = AVAssetImageGenerator(asset: composed.composition)
+            generator.videoComposition = item.videoComposition
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            generator.maximumSize = CGSize(width: 960, height: 540)
+            frameGenerator = generator
+        } else {
+            frameGenerator = nil
+        }
+        draftSerial += 1
+        showsDraft = composed.hasPictures
+        previewError = nil
+        isUpdatingPreview = false
     }
 
     /// The music layer's songs as one sound, at their places on the
@@ -148,7 +253,10 @@ final class MotionDesignSession {
     func endDrag(_ name: String) {
         guard let start = dragStart else { return }
         dragStart = nil
-        if start != run { registerUndo(restoring: start, name: name) }
+        if start != run {
+            registerUndo(restoring: start, name: name)
+            schedulePreview()
+        }
     }
 
     /// Moves a whole clip `delta` from where it was when the drag began.

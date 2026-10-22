@@ -52,7 +52,7 @@ struct MotionDesignView: View {
                     Image(systemName: session.isPlaying ? Design.Symbol.pause : Design.Symbol.play)
                         .frame(width: 18)
                 }
-                .help(session.isPlaying ? "Pause (Space)" : "Play the music (Space)")
+                .help(session.isPlaying ? "Pause (Space)" : "Play the draft (Space)")
                 .accessibilityLabel(session.isPlaying ? "Pause" : "Play")
                 SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !session.isPlaying)) { context in
                     let time = CMTime(seconds: max(0, session.playhead(at: context.date)), preferredTimescale: 600)

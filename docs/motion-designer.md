@@ -37,7 +37,7 @@ else around it, by dragging frames along a time graph.
 ## The panel
 
 **Built** (`UI/MotionDesigner/`). The transport runs across the top:
-play the music, the playhead's timecode, **Beats** (show them) and
+play the draft, the playhead's timecode, **Beats** (show them) and
 **Snap**, and zoom. The sidebar is on the left, and the lanes fill the
 rest, on one timeline across: a ruler, the footage, the time graph and
 the music.
@@ -59,7 +59,6 @@ the music.
   to its beat in the music lane.
 - **The music lane** shows the first Music layer under the run: its
   waveform and its beats, which are also drawn faintly across the graph.
-  Play plays that layer alone, laid out in timeline time.
 - Grabbing the line drops a marker on that frame and drags it; grabbing a
   point drags it. Drags snap, within 8 points, to the beats (while shown),
   the playhead and the edges of the layer's other clips; the snap line
@@ -67,7 +66,23 @@ the music.
   ruler or the music scrubs.
 - Dragging a clip in the strip moves it by whole frames, unless a hit
   holds it.
-- **The sidebar** shows the frame under the playhead, then what is
+- **The monitor**, at the top of the sidebar, shows the draft: the
+  timeline as Done would leave it (`MotionDesignSession.draftProject`, the
+  project with the run written in), every layer and effect, built as the
+  viewer builds it (`CompositionExporter.buildComposedTimeline`, drawn at
+  half size for the small monitor). Play plays it, picture and sound in
+  the timeline's mix, so the footage is seen moving against the music it
+  is cut to. Paused, the monitor shows the frame under the playhead drawn
+  from the draft by an image generator, since a player layer may show
+  nothing until it plays; the last frame drawn stays until the next one is,
+  so scrubbing doesn't flicker. The draft is built again a quarter second
+  after an edit (after a drag, once it ends), the player swapped onto it
+  at the same moment and playing on if it was; meanwhile the old one keeps
+  playing and a small spinner shows. Until the first build is ready the
+  player plays the music layer alone and the monitor shows the run's
+  thumbnails; a build that fails says why over the monitor and leaves the
+  last one playing.
+- **The sidebar** shows the monitor, then what is
   selected: a point's kind (Hit, Marker, Pace), its pace (typed), Ease
   and its ramps in and out,
   a frame earlier or later and Remove; or a clip's start and end and a
@@ -358,6 +373,5 @@ does has a key, a button or an action.
    player; the views).
 6. Accessibility. **Built** with the panel.
 
-Not yet: the monitor shows stills, not moving footage, while the
-music plays; the zoom has no rubber-band edge; and the panel hasn't been
-used on screen.
+Not yet: the zoom has no rubber-band edge, and the panel hasn't been used
+on screen.

@@ -276,20 +276,57 @@ struct MotionDesignSidebar: View {
     }
 }
 
-/// The frame of the run under the playhead, as it plays in the draft.
+/// The timeline as the draft plays it, every layer as Done would leave it,
+/// once the draft has been built: the player's picture while playing, and
+/// the frame under the playhead drawn from the draft while paused. Until
+/// then, or if it can't be built, the frame of the run under the playhead
+/// from the thumbnails.
 private struct MotionDesignMonitor: View {
     let session: MotionDesignSession
 
     var body: some View {
-        SwiftUI.TimelineView(.periodic(from: .now, by: 1.0 / 12)) { context in
-            let seconds = session.isPlaying ? session.playhead(at: context.date) : session.playhead
-            frame(at: seconds)
+        Group {
+            if session.showsDraft, session.isPlaying {
+                PlayerLayerView(player: session.player)
+            } else if session.showsDraft {
+                DraftFrame(session: session, seconds: session.playhead, serial: session.draftSerial)
+            } else {
+                SwiftUI.TimelineView(.periodic(from: .now, by: 1.0 / 12)) { context in
+                    let seconds = session.isPlaying ? session.playhead(at: context.date) : session.playhead
+                    frame(at: seconds)
+                }
+            }
         }
-        .aspectRatio(16 / 9, contentMode: .fit)
+        .aspectRatio(aspect, contentMode: .fit)
         .frame(maxWidth: .infinity)
         .background(Design.Surface.well.color)
         .clipShape(RoundedRectangle(cornerRadius: Design.Radius.control))
-        .accessibilityHidden(true)
+        .overlay(alignment: .bottomTrailing) {
+            if session.isUpdatingPreview, session.showsDraft {
+                ProgressView()
+                    .controlSize(.mini)
+                    .padding(Design.Space.close)
+                    .help("Updating the picture to your latest change")
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if let error = session.previewError {
+                Label("Can't play the draft: \(error)", systemImage: "exclamationmark.triangle.fill")
+                    .font(Design.Typeface.micro)
+                    .foregroundStyle(Design.statusWarning)
+                    .lineLimit(2)
+                    .padding(Design.Space.close)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Monitor")
+        .accessibilityValue(session.previewError != nil ? "Can't play the draft" : session.isUpdatingPreview ? "Updating" : "Showing the draft")
+    }
+
+    /// The timeline's frame shape.
+    private var aspect: CGFloat {
+        let size = session.timeline.frameSize
+        return size.height > 0 ? size.width / size.height : 16 / 9
     }
 
     @ViewBuilder
@@ -306,6 +343,29 @@ private struct MotionDesignMonitor: View {
                 .font(Design.Typeface.label)
                 .foregroundStyle(Design.textTertiary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+/// A paused frame of the draft, the last one shown kept until the next is
+/// drawn, so scrubbing doesn't flicker.
+private struct DraftFrame: View {
+    let session: MotionDesignSession
+    let seconds: Double
+    let serial: Int
+    @State private var image: CGImage?
+
+    var body: some View {
+        Group {
+            if let shown = image ?? session.lastDraftFrame {
+                Image(decorative: shown, scale: 1).resizable().aspectRatio(contentMode: .fit)
+            } else {
+                Color.clear
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: "\(serial)/\(seconds)") {
+            if let drawn = await session.draftFrame(at: seconds) { image = drawn }
         }
     }
 }
