@@ -299,6 +299,8 @@ struct ProjectFile: Codable {
         var easeOut: EaseEntry?
         /// The Keyframing effect that wrote it; absent for one set by hand.
         var generatedBy: UUID?
+        /// `true` for a hold keyframe; absent otherwise.
+        var hold: Bool?
 
         init<V>(_ keyframe: Keyframe<V>, value: Value) {
             time = TimeEntry(keyframe.time)
@@ -306,10 +308,11 @@ struct ProjectFile: Codable {
             easeIn = keyframe.easeIn.map(EaseEntry.init)
             easeOut = keyframe.easeOut.map(EaseEntry.init)
             generatedBy = keyframe.generatedBy
+            hold = keyframe.hold ? true : nil
         }
 
         func keyframe<V>(_ value: V) -> Keyframe<V> {
-            Keyframe(time: time.time, value: value, easeIn: easeIn?.ease, easeOut: easeOut?.ease, generatedBy: generatedBy)
+            Keyframe(time: time.time, value: value, easeIn: easeIn?.ease, easeOut: easeOut?.ease, generatedBy: generatedBy, hold: hold ?? false)
         }
     }
 
@@ -812,7 +815,7 @@ extension ProjectFile {
         static func keyframe(_ value: JSONShape) -> JSONShape {
             .object(object([
                 .required("time", .time), .required("value", value),
-                .optional("easeIn", ease), .optional("easeOut", ease), .optional("generatedBy", .uuid),
+                .optional("easeIn", ease), .optional("easeOut", ease), .optional("generatedBy", .uuid), .optional("hold", .bool),
             ]))
         }
         static let keyframing = object([

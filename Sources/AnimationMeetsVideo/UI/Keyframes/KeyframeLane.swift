@@ -1,19 +1,22 @@
 import CoreMedia
 import SwiftUI
 
-/// A keyframe as the lane draws it: where, which sides are eased, and
-/// whether a Keyframing effect wrote it.
+/// A keyframe as the lane draws it: where, which sides are eased, whether
+/// it holds, and whether a Keyframing effect wrote it.
 struct KeyframeMark: Hashable {
     var time: CMTime
     var easedIn: Bool
     var easedOut: Bool
     var isGenerated = false
+    var holds = false
 }
 
 extension AnimatedValue {
     var marks: [KeyframeMark] {
         keyframes.map {
-            KeyframeMark(time: $0.time, easedIn: $0.easeIn != nil, easedOut: $0.easeOut != nil, isGenerated: $0.generatedBy != nil)
+            KeyframeMark(
+                time: $0.time, easedIn: $0.easeIn != nil, easedOut: $0.easeOut != nil, isGenerated: $0.generatedBy != nil, holds: $0.hold
+            )
         }
     }
 }
@@ -58,16 +61,21 @@ struct KeyframeLane: View {
 }
 
 /// A keyframe's mark: a diamond, with each eased side pinched in so the
-/// two together read as an hourglass, as in After Effects.
+/// two together read as an hourglass, and a hold keyframe's outgoing side
+/// squared off, as in After Effects.
 struct KeyframeMarkShape: Shape {
     var easedIn: Bool
     var easedOut: Bool
+    var holds = false
 
     func path(in rect: CGRect) -> Path {
         let pinch = rect.width * 0.18
         var path = Path()
         path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        if easedOut {
+        if holds {
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        } else if easedOut {
             path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
             path.addLine(to: CGPoint(x: rect.midX + pinch, y: rect.midY))
             path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
@@ -124,7 +132,7 @@ private struct KeyframeDiamond: View {
 
     var body: some View {
         let x = CGFloat(time.seconds) * pixelsPerSecond + dragX
-        let shape = KeyframeMarkShape(easedIn: mark.easedIn, easedOut: mark.easedOut)
+        let shape = KeyframeMarkShape(easedIn: mark.easedIn, easedOut: mark.easedOut, holds: mark.holds)
         shape
             .fill(isAtPlayhead ? Design.keyframe : mark.isGenerated ? Design.generatedKeyframe : Design.textSecondary)
             .overlay { shape.stroke(Color.black.opacity(0.45), lineWidth: 0.5) }
@@ -191,11 +199,12 @@ private struct KeyframeDiamond: View {
     }
 
     private var easeDescription: String {
+        if mark.holds { return mark.easedIn ? "eased in, holds" : "holds" }
         switch (mark.easedIn, mark.easedOut) {
-        case (false, false): "linear"
-        case (true, false): "eased in"
-        case (false, true): "eased out"
-        case (true, true): "eased in and out"
+        case (false, false): return "linear"
+        case (true, false): return "eased in"
+        case (false, true): return "eased out"
+        case (true, true): return "eased in and out"
         }
     }
 

@@ -58,6 +58,10 @@ extension TimelineView {
                 : .easyEase
             return easeKeyframesAtPlayhead(preset)
         }
+        // Control-Option-H holds, as After Effects' Toggle Hold Keyframe.
+        if event.keyCode == 4, flags == [.control, .option] {
+            return easeKeyframesAtPlayhead(.hold)
+        }
         guard flags.isDisjoint(with: [.command, .control, .option]),
               let key = event.charactersIgnoringModifiers?.lowercased().first
         else {

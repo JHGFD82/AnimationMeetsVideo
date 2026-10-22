@@ -34,7 +34,7 @@ struct KeyframeEase: Equatable, Sendable {
 
     /// Ready-made eases, named as on transitions and in After Effects.
     enum Preset: CaseIterable, Identifiable {
-        case linear, easeIn, easeOut, easyEase
+        case linear, easeIn, easeOut, easyEase, hold
 
         var id: Self { self }
 
@@ -44,6 +44,7 @@ struct KeyframeEase: Equatable, Sendable {
             case .easeIn: "Ease In"
             case .easeOut: "Ease Out"
             case .easyEase: "Easy Ease"
+            case .hold: "Hold"
             }
         }
 
@@ -53,6 +54,7 @@ struct KeyframeEase: Equatable, Sendable {
             case .easeIn: "Slows into the keyframe"
             case .easeOut: "Leaves the keyframe slowly"
             case .easyEase: "Slows in and leaves slowly"
+            case .hold: "Keeps its value until the next keyframe, then jumps"
             }
         }
 
@@ -63,6 +65,7 @@ struct KeyframeEase: Equatable, Sendable {
             case .easeIn: "⇧F9"
             case .easeOut: "⌘⇧F9"
             case .easyEase: "F9"
+            case .hold: "⌃⌥H"
             }
         }
     }
@@ -140,7 +143,7 @@ extension AnimatedValue where Value: KeyframeComponents {
         AnimatedValue<ComponentValue>(
             ComponentValue(values: value.components),
             keyframes: keyframes.map {
-                Keyframe(time: $0.time, value: ComponentValue(values: $0.value.components), easeIn: $0.easeIn, easeOut: $0.easeOut, generatedBy: $0.generatedBy)
+                $0.with(value: ComponentValue(values: $0.value.components))
             }
         )
     }
@@ -149,7 +152,7 @@ extension AnimatedValue where Value: KeyframeComponents {
         self.init(
             Value(components: components.value.values),
             keyframes: components.keyframes.map {
-                Keyframe(time: $0.time, value: Value(components: $0.value.values), easeIn: $0.easeIn, easeOut: $0.easeOut, generatedBy: $0.generatedBy)
+                $0.with(value: Value(components: $0.value.values))
             }
         )
     }

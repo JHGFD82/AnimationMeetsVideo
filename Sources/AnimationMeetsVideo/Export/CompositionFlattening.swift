@@ -437,9 +437,14 @@ extension CompositionExporter {
             // footage is a piece for every frame, each placed after the
             // one that follows it in the file.
             let step = clip.isReversed ? frameDuration : CMTimeMultiply(frameDuration, multiplier: 4)
+            // A piece plays at one speed, so one also ends where a hold
+            // keyframe's step does, rather than spreading the jump over it.
+            let keyframes = clip.time.speed.keyframes
+            let steps = zip(keyframes, keyframes.dropFirst()).filter { $0.0.hold }.map { clip.timelineTime(forSourceTime: $0.1.time) }.sorted()
             var cursor = visible.start
             while cursor < visible.end {
-                let end = CMTimeMinimum(CMTimeAdd(cursor, step), visible.end)
+                var end = CMTimeMinimum(CMTimeAdd(cursor, step), visible.end)
+                if let jump = steps.first(where: { $0 > cursor && $0 < end }) { end = jump }
                 pieces.append(piece(from: cursor, to: end))
                 cursor = end
             }

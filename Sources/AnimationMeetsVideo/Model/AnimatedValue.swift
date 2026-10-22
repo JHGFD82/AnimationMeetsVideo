@@ -41,13 +41,23 @@ struct Keyframe<Value: Interpolatable>: Equatable, Sendable {
     /// replaces only its own (see docs/keyframing-effects.md). Nil for one
     /// set by hand.
     var generatedBy: UUID?
+    /// A hold keyframe keeps its value until the next keyframe, then jumps
+    /// to that one's: its outgoing side is a step, and its `easeOut` and the
+    /// next keyframe's `easeIn` do nothing.
+    var hold = false
+
+    /// The same keyframe, its time, eases, hold and author kept, with
+    /// another value.
+    func with<Other>(value: Other) -> Keyframe<Other> {
+        Keyframe<Other>(time: time, value: value, easeIn: easeIn, easeOut: easeOut, generatedBy: generatedBy, hold: hold)
+    }
 }
 
 /// A property that is either a single value or animated by keyframes.
 /// With no keyframes `value` applies everywhere. With keyframes, the value
 /// holds the first keyframe's value before it, the last one's after it, and
 /// is blended in between, linearly or along the curve the two keyframes'
-/// eases make; `value` is then unused.
+/// eases make, or held after a hold keyframe; `value` is then unused.
 ///
 /// A keyframe is identified by its time: a property has at most one per
 /// time, so setting a value at an existing keyframe's time replaces it.
@@ -77,6 +87,7 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
         let next = keyframes.lowerBound(of: time) { $0.time }
         let before = keyframes[next - 1]
         let after = keyframes[next]
+        if before.hold, time < after.time { return before.value }
         let span = CMTimeSubtract(after.time, before.time).seconds
         guard span > 0 else { return after.value }
         let fraction = CMTimeSubtract(time, before.time).seconds / span
@@ -100,6 +111,7 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
         }
         let before = keyframes[low - 1]
         let after = keyframes[low]
+        if before.hold { return before.value }
         let span = after.time.seconds - before.time.seconds
         guard span > 0 else { return after.value }
         let progress = KeyframeEase.progress((seconds - before.time.seconds) / span, leaving: before.easeOut, arriving: after.easeIn)
@@ -142,15 +154,19 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
     }
 
     /// Applies a ready-made ease to the keyframe at `time`. Ease In and
-    /// Ease Out change only their own side.
+    /// Ease Out change only their own side, and Hold only how it leaves.
+    /// Any preset that sets how it leaves ends a hold.
     mutating func applyEase(_ preset: KeyframeEase.Preset, at time: CMTime) {
-        guard let keyframe = keyframe(at: time) else { return }
+        guard let index = keyframes.firstIndex(where: { $0.time == time }) else { return }
+        let keyframe = keyframes[index]
         switch preset {
         case .linear: setEase(at: time, in: nil, out: nil)
         case .easeIn: setEase(at: time, in: .easy, out: keyframe.easeOut)
         case .easeOut: setEase(at: time, in: keyframe.easeIn, out: .easy)
         case .easyEase: setEase(at: time, in: .easy, out: .easy)
+        case .hold: setEase(at: time, in: keyframe.easeIn, out: nil)
         }
+        keyframes[index].hold = preset == .hold || (preset == .easeIn && keyframe.hold)
     }
 
     /// Switches the keyframe at `time` between linear and bezier: one with
@@ -158,6 +174,15 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
     mutating func toggleBezier(at time: CMTime) {
         guard let keyframe = keyframe(at: time) else { return }
         applyEase(keyframe.easeIn == nil && keyframe.easeOut == nil ? .easyEase : .linear, at: time)
+    }
+
+    /// Makes the keyframe at `time` a hold keyframe, or ends its hold,
+    /// leaving it linear on that side, as After Effects' Toggle Hold
+    /// Keyframe does.
+    mutating func toggleHold(at time: CMTime) {
+        guard let index = keyframes.firstIndex(where: { $0.time == time }) else { return }
+        keyframes[index].easeOut = nil
+        keyframes[index].hold.toggle()
     }
 
     /// Turns animation on with one keyframe holding the current value at

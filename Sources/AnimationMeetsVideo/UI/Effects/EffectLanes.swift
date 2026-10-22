@@ -79,7 +79,10 @@ struct ParameterLane: View {
         let after = marks.filter { $0.time > clip.trimEnd }.count
         KeyframeLane(
             marks: inside.map {
-                KeyframeMark(time: geometry.lane(fromSource: $0.time), easedIn: $0.easedIn, easedOut: $0.easedOut, isGenerated: $0.isGenerated)
+                KeyframeMark(
+                    time: geometry.lane(fromSource: $0.time), easedIn: $0.easedIn, easedOut: $0.easedOut,
+                    isGenerated: $0.isGenerated, holds: $0.holds
+                )
             },
             currentTime: geometry.lane(fromTimeline: playhead),
             pixelsPerSecond: geometry.pixelsPerSecond,

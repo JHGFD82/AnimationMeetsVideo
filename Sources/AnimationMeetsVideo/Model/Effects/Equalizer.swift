@@ -372,7 +372,7 @@ extension Equalizer {
             AnimatedValue(
                 ComponentValue(values: make(first(number.value))),
                 keyframes: number.keyframes.map {
-                    Keyframe(time: $0.time, value: ComponentValue(values: make(first($0.value))), easeIn: $0.easeIn, easeOut: $0.easeOut)
+                    $0.with(value: ComponentValue(values: make(first($0.value))))
                 }
             )
         }

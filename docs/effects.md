@@ -588,7 +588,8 @@ button at the right of the panel's title hides them and the lanes, so the
 controls take the panel's whole width, and shows them again; the choice is
 kept between launches. To the right of each control row is its keyframe lane, with the same diamonds
 and interactions as the timeline's lanes today: click to go to it, drag to
-retime, right-click for ease presets and Delete Keyframe. The panel's
+retime, right-click for ease presets (Hold among them, see
+[hold keyframes](motion-designer.md#hold-keyframes)) and Delete Keyframe. The panel's
 playhead is the timeline's: scrubbing either moves both.
 
 The control column is as wide as its widest row needs, and no narrower than

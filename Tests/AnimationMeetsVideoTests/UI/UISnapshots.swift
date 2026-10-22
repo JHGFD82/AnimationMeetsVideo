@@ -411,7 +411,8 @@ struct UISnapshots {
     }
 
     /// The graph editor on a Position keyframed in x and y, the second
-    /// keyframe eased and selected: the legend's chips, the zoom dials and
+    /// keyframe eased and selected and the third a hold, stepping to the
+    /// fourth: the legend's chips, the zoom dials, the toolbar's eases and
     /// the playhead inside the clip, which starts later on the timeline
     /// than its footage does.
     @Test func keyframeGraph() throws {
@@ -429,7 +430,8 @@ struct UISnapshots {
             clip.effects[e].controls[0].number = AnimatedValue(ComponentValue(values: [0, 0]), keyframes: [
                 Keyframe(time: .zero, value: ComponentValue(values: [0, 0])),
                 Keyframe(time: CMTime(value: 2, timescale: 1), value: ComponentValue(values: [400, 60]), easeIn: .easy, easeOut: .easy),
-                Keyframe(time: CMTime(value: 4, timescale: 1), value: ComponentValue(values: [200, -40])),
+                Keyframe(time: CMTime(value: 4, timescale: 1), value: ComponentValue(values: [200, -40]), hold: true),
+                Keyframe(time: CMTime(value: 5, timescale: 1), value: ComponentValue(values: [320, 20])),
             ])
         }
         let hud = KeyframeGraphHUDs()

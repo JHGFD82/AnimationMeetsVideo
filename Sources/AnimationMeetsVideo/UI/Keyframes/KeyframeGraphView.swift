@@ -422,7 +422,7 @@ struct KeyframeGraphView: View {
                     y: layout.y(keyframe.value.values[component] + c.offset[component], component: component)
                 )
                 let rect = CGRect(x: center.x - 5, y: center.y - 5, width: 10, height: 10)
-                let mark = KeyframeMarkShape(easedIn: keyframe.easeIn != nil, easedOut: keyframe.easeOut != nil).path(in: rect)
+                let mark = KeyframeMarkShape(easedIn: keyframe.easeIn != nil, easedOut: keyframe.easeOut != nil, holds: keyframe.hold).path(in: rect)
                 context.fill(mark, with: .color(isSelected ? Design.keyframe : Design.textSecondary))
                 context.stroke(mark, with: .color(.black.opacity(0.5)), lineWidth: 0.5)
             }
@@ -468,11 +468,11 @@ struct KeyframeGraphView: View {
     }
 
     /// The handles of the selected keyframe's eased sides. A linear side
-    /// has none to show.
+    /// has none to show, nor does either side of a held segment.
     private func handles(_ c: Context, layout: KeyframeGraphLayout) -> [Handle] {
         guard let selected else { return [] }
         var result: [Handle] = []
-        for (index, segment) in KeyframeGraphLayout.segments(of: c.value).enumerated() {
+        for (index, segment) in KeyframeGraphLayout.segments(of: c.value).enumerated() where !segment.from.hold {
             if segment.from.time == selected, segment.from.easeOut != nil,
                let handle = handle(segment: index, outgoing: true, c, value: c.value, layout: layout) {
                 result.append(handle)

@@ -49,6 +49,7 @@ keyboard (the library's list uses the arrows).
 | = / − / \\ | Zoom in, zoom out, fit the timeline to the window |
 | P / S / R / T, L | Show position, scale, rotation, opacity, or volume rows |
 | F9 | Easy ease the keyframes at the playhead; Shift for ease in, ⌘⇧ for ease out |
+| ⌃⌥H | Hold the keyframes at the playhead |
 
 The Tape Scrubber (Window menu) runs the sound like tape while the Left
 or Right Arrow key is held, at four times normal speed with Shift; its

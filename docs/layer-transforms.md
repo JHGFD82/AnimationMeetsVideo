@@ -301,8 +301,7 @@ ignore it, and drop the transforms if it saved the project.
 
 ## Not implemented yet
 
-- **Hold keyframes** (planned in
-  [motion-designer.md](motion-designer.md#hold-keyframes)), spatial (curved) motion paths for position, and
+- Spatial (curved) motion paths for position, and
   separate easing per component.
 - In the graph editor: a speed graph, selecting several keyframes, and keeping linked scale's aspect when
   dragging one component.

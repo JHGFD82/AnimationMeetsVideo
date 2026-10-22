@@ -115,7 +115,7 @@ struct ClipTime: Equatable, Sendable {
         let sign: Double = reversed ? -1 : 1
         speed = AnimatedValue(
             abs(speed.value) * sign,
-            keyframes: speed.keyframes.map { Keyframe(time: $0.time, value: abs($0.value) * sign, easeIn: $0.easeIn, easeOut: $0.easeOut) }
+            keyframes: speed.keyframes.map { $0.with(value: abs($0.value) * sign) }
         )
     }
 
@@ -477,7 +477,7 @@ extension EditingProject {
         settings.speed = AnimatedValue(
             Self.clampedSpeed(settings.speed.value, direction: direction),
             keyframes: settings.speed.keyframes.map {
-                Keyframe(time: $0.time, value: Self.clampedSpeed($0.value, direction: direction), easeIn: $0.easeIn, easeOut: $0.easeOut)
+                $0.with(value: Self.clampedSpeed($0.value, direction: direction))
             }
         )
         settings.echo = settings.echo?.clamped

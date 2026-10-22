@@ -1,8 +1,8 @@
 # Motion designer
 
 Status: **planned, not implemented**. Two things it needs come first,
-and are described here too: clips attached to the music (built) and
-hold keyframes (planned).
+and are described here too, and both are built: clips attached to the
+music, and hold keyframes.
 
 Music videos are cut to the music, and the project already knows the
 music's timing from the beat map ([beat-matching.md](beat-matching.md)).
@@ -190,15 +190,28 @@ video depends on the music, so clips follow it.
 
 ## Hold keyframes
 
-A hold keyframe keeps its value until the next keyframe, then jumps to
-that keyframe's value, as After Effects' hold keyframes do (listed as not
-implemented in [layer-transforms.md](layer-transforms.md)).
+**Built.** A hold keyframe keeps its value until the next keyframe, then
+jumps to that keyframe's value, as After Effects' hold keyframes do.
 
-- `Keyframe` gains a hold flag, saved only when true.
-- `SpeedIntegral` treats a held piece as a constant speed, exactly.
-- The graph editor draws a held piece as a step and offers **Hold** with
-  the eases in a keyframe's menu.
-- It works on every keyframed control, not only speed.
+- `Keyframe.hold`, saved as `"hold": true` on the keyframe only when set.
+  It is how the keyframe leaves: its `easeOut` and the next keyframe's
+  `easeIn` do nothing while it holds.
+- **Hold** is an ease preset (`KeyframeEase.Preset.hold`), so it is in
+  every keyframe menu, the graph editor's toolbar and the keyframe's
+  VoiceOver actions, and on ⌃⌥H at the playhead beside F9's eases.
+  Linear, Ease Out and Easy Ease set how the keyframe leaves, so they end
+  a hold; Ease In keeps it. `AnimatedValue.toggleHold(at:)` switches it,
+  leaving that side linear.
+- Its mark is squared off on the side it leaves by, on the lanes and in
+  the graph; the graph draws the held piece flat with a step at the next
+  keyframe, and shows no handles across it.
+- A held speed is a constant speed between the two keyframes, which
+  `SpeedIntegral` integrates exactly. Exports cut a ramped clip's pieces
+  at the step too, so it lands on its frame instead of being spread over
+  a piece.
+- It works on every keyframed control, not only speed. Moving, copying,
+  reversing and the graph editor's conversions keep it
+  (`Keyframe.with(value:)`).
 
 ## Accessibility
 
@@ -213,6 +226,7 @@ pace is typed.
 2. Clips attached to the music: model, saving, moving with the song,
    re-attaching. **Built.**
 3. Hold keyframes: model, saving, `SpeedIntegral`, the graph editor.
+   **Built.**
 4. The time map: solving, reading keyframes, writing them, unit tested.
 5. The panel (`UI/MotionDesigner/`), built on the beat match panel's
    shell, waveform, transport and zoom (`RubberBandZoom`), with the graph

@@ -105,6 +105,7 @@ private struct Sandbox {
             $0.soundMuted = true
             $0.time.speed.setAnimated(true, at: .zero)
             $0.time.speed.set(300, at: CMTime(value: 3, timescale: 1))
+            $0.time.speed.applyEase(.hold, at: .zero)
             $0.time.frameBlending = .blend
             $0.time.echo = Echo(count: 3, delay: CMTime(value: 1, timescale: 24), decay: 0.5)
             $0.time.sound = .mute
@@ -117,6 +118,7 @@ private struct Sandbox {
 
         let saved = try #require(project.clipAndLayer(clipID, in: timelineID)?.clip)
         let restored = try #require(loaded.project.clipAndLayer(clipID, in: timelineID)?.clip)
+        #expect(restored.time.speed.keyframes.map(\.hold) == [true, false])
         #expect(restored.passThrough)
         #expect(!restored.enabled)
         #expect(restored.soundMuted)

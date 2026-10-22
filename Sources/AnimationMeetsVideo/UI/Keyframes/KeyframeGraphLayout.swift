@@ -148,7 +148,7 @@ struct KeyframeGraphLayout: Equatable {
                 include(values[component] + (component < offset.count ? offset[component] : 0))
             }
         }
-        for segment in segments(of: value) {
+        for segment in segments(of: value) where !segment.from.hold {
             for component in segment.from.value.values.indices where wanted.contains(component) {
                 let shift = component < offset.count ? offset[component] : 0
                 let a = segment.from.value.values[component] + shift

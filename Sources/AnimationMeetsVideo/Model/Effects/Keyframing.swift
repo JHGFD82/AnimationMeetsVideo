@@ -236,6 +236,7 @@ struct KeyframingPrint {
                 add(ease?.influence ?? -1)
                 add(ease?.speed ?? -1)
             }
+            add(UInt64(keyframe.hold ? 1 : 0))
             add(keyframe.generatedBy)
         }
     }
