@@ -24,14 +24,36 @@ struct TimePoint: Identifiable, Equatable {
     /// Where it plays on the timeline.
     var time: CMTime
     var kind: Kind
+    /// How the speed ramps through it, when it does instead of stepping.
+    var ease: TimeEase?
+
     /// Whether the speed ramps through it instead of stepping.
-    var eased = false
+    var eased: Bool { ease != nil }
 
     var isHit: Bool { kind == .hit }
 
     var pace: Double? {
         if case .pace(let speed) = kind { return speed }
         return nil
+    }
+}
+
+/// How far an eased point's ramp reaches into the stretch on either side,
+/// as a share of that stretch: the ramp's handles on the graph. The rest of
+/// each stretch plays steadily at the speed that keeps its length, so
+/// longer ramps never move a point.
+struct TimeEase: Equatable {
+    var before: Double
+    var after: Double
+
+    /// A share of a stretch a ramp may reach; two ramps meeting in one
+    /// stretch share `limit` of it.
+    static let reach = 0.05...0.9
+    static let limit = 0.9
+
+    init(before: Double = 1.0 / 3, after: Double = 1.0 / 3) {
+        self.before = min(max(before, Self.reach.lowerBound), Self.reach.upperBound)
+        self.after = min(max(after, Self.reach.lowerBound), Self.reach.upperBound)
     }
 }
 
@@ -228,7 +250,25 @@ struct ClipTimeMap: Equatable {
 
     mutating func setEased(_ eased: Bool, of id: UUID) {
         guard let index = index(of: id) else { return }
-        points[index].eased = eased
+        guard eased else {
+            points[index].ease = nil
+            return
+        }
+        if points[index].ease == nil { setEase(TimeEase(), of: id) }
+    }
+
+    /// Shapes an eased point's ramps, each kept within the room the ramp of
+    /// the point beyond leaves in their stretch.
+    mutating func setEase(_ ease: TimeEase, of id: UUID) {
+        guard let index = index(of: id) else { return }
+        var ease = ease
+        if index > 0, let other = points[index - 1].ease {
+            ease.before = min(ease.before, TimeEase.limit - other.after)
+        }
+        if index + 1 < points.count, let other = points[index + 1].ease {
+            ease.after = min(ease.after, TimeEase.limit - other.before)
+        }
+        points[index].ease = TimeEase(before: ease.before, after: ease.after)
     }
 
     /// Takes a point away. A pace marker left right before a hit becomes a

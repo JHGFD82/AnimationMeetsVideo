@@ -152,6 +152,56 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
         #expect(!clip.time.speed.keyframes.contains { $0.hold })
     }
 
+    @Test func rampsShareTheirStretch() {
+        var (map, ids) = map(markers: [2, 4])
+        map.setEase(TimeEase(before: 0.2, after: 0.8), of: ids[0])
+        // The stretch from 2 s to 4 s has 10% left for the second's ramp in.
+        map.setEase(TimeEase(before: 0.5, after: 0.4), of: ids[1])
+        #expect(abs((map.points[1].ease?.before ?? 0) - 0.1) < 1e-9)
+        #expect(map.points[1].ease?.after == 0.4)
+        // Reach is held to its range.
+        map.setEase(TimeEase(before: 2, after: -1), of: ids[0])
+        #expect(map.points[0].ease == TimeEase(before: TimeEase.reach.upperBound, after: TimeEase.reach.lowerBound))
+    }
+
+    @Test func longerRampsStillPlayEveryPointWhereItWasPut() throws {
+        var (map, ids) = map(markers: [1, 3])
+        map.setKind(.hit, of: ids[0])
+        map.move(ids[1], to: seconds(5))
+        let added = map.addMarker(atSource: seconds(6))
+        let third = try #require(added)
+        map.move(third, to: seconds(6))
+        map.setEase(TimeEase(before: 0.15, after: 0.7), of: ids[1])
+        let clip = try played(map)
+        for point in map.points {
+            #expect(near(clip.timelineTime(forSourceTime: point.source), point.time.seconds, within: 1e-5))
+        }
+        // The ramps end where their reach says: 15% of the 2 s before and
+        // 70% of the 3 s after.
+        let times = clip.time.speed.keyframes.map(\.time.seconds)
+        #expect(times.contains { abs($0 - 2.7) < 1e-4 })
+        #expect(times.contains { abs($0 - 5.1) < 1e-4 })
+    }
+
+    @Test func rampsThatWouldCrossAreShrunkToShareTheStretch() throws {
+        var (map, ids) = map(markers: [2, 4])
+        map.move(ids[1], to: seconds(6))
+        map.setEase(TimeEase(before: 0.5, after: 0.8), of: ids[0])
+        map.setEase(TimeEase(before: 0.1, after: 0.5), of: ids[1])
+        // A third point between them halves the stretch, but each keeps its
+        // share; writing makes room rather than crossing them.
+        let added = map.addMarker(atSource: seconds(3))
+        let middle = try #require(added)
+        map.setEase(TimeEase(before: 0.9, after: 0.9), of: middle)
+        map.move(middle, to: seconds(3))
+        let clip = try played(map)
+        let times = clip.time.speed.keyframes.map(\.time)
+        #expect(times == times.sorted())
+        for point in map.points {
+            #expect(near(clip.timelineTime(forSourceTime: point.source), point.time.seconds, within: 1e-5))
+        }
+    }
+
     // MARK: Reading
 
     @Test func aKeyframeAfterAHoldIsAPaceMarker() {
@@ -224,6 +274,21 @@ private func played(_ map: ClipTimeMap, _ clip: TimelineClip = footage()) throws
         let read = ClipTimeMap(reading: clip, frameDuration: CMTime(value: 1, timescale: 24))
         #expect(read.points.map(\.source).contains(seconds(4)))
         #expect(read.points.first { $0.source == seconds(4) }?.eased == true)
+        // Shaped ramps read back as they were shaped, so they write the same
+        // again. The marker at 7 s changes no speed, but beside an eased
+        // point it keeps its keyframe, so the ramp out is read against the
+        // same stretch.
+        var shaped = map
+        shaped.setEase(TimeEase(before: 0.6, after: 0.2), of: ids[1])
+        let written = try played(shaped)
+        let reread = ClipTimeMap(reading: written, frameDuration: CMTime(value: 1, timescale: 24))
+        let ease = try #require(reread.points.first { $0.source == seconds(4) }?.ease)
+        #expect(abs(ease.before - 0.6) < 1e-4 && abs(ease.after - 0.2) < 1e-4)
+        let again = try played(reread)
+        #expect(again.time.speed.keyframes.count == written.time.speed.keyframes.count)
+        for (a, b) in zip(again.time.speed.keyframes, written.time.speed.keyframes) {
+            #expect(abs(a.time.seconds - b.time.seconds) < 2.0 / 240_000)
+        }
         #expect(read.points.allSatisfy { [seconds(2), seconds(4), seconds(7)].contains($0.source) })
     }
 }

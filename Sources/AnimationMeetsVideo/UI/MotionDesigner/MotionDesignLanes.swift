@@ -6,7 +6,9 @@ import SwiftUI
 /// graph runs up through the run's footage, clip after clip, so the run
 /// reads as one line: steep where it plays fast, shallow where slow, and
 /// flat over a gap. Grabbing the line drops a marker on that frame and
-/// drags it; a hit's pin runs from its frame down to its beat.
+/// drags it; a hit's pin runs from its frame down to its beat. A selected
+/// eased point shows a handle where each of its ramps ends, which slides
+/// along the line to lengthen or shorten that ramp.
 struct MotionDesignLanes: View {
     @Bindable var session: MotionDesignSession
 
@@ -18,6 +20,7 @@ struct MotionDesignLanes: View {
 
     private enum GraphDrag {
         case point(UUID, from: Double, added: Bool)
+        case handle(UUID, before: Bool)
         case seek
     }
 
@@ -192,11 +195,64 @@ struct MotionDesignLanes: View {
             context.stroke(line, with: .color(tone), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
             drawSpeeds(of: session.run.pieces[index], clip: clip, index: index, stack: stack, in: &context)
         }
+        for handle in easeHandles(stack: stack) {
+            var stem = Path()
+            stem.move(to: handle.anchor)
+            stem.addLine(to: handle.point)
+            context.stroke(stem, with: .color(.white.opacity(0.6)), lineWidth: 1)
+            context.fill(Path(ellipseIn: CGRect(x: handle.point.x - 3.5, y: handle.point.y - 3.5, width: 7, height: 7)), with: .color(.white))
+        }
         for (index, piece) in session.run.pieces.enumerated() {
             for point in piece.map.points {
                 drawPoint(point, at: location(of: point, piece: index, stack: stack), in: &context)
             }
         }
+    }
+
+    // MARK: Ease handles
+
+    private struct EaseHandle {
+        var pointID: UUID
+        var before: Bool
+        /// The point, and where its ramp ends on the drawn line.
+        var anchor: CGPoint
+        var point: CGPoint
+    }
+
+    /// The handles of the selected point's ramps, where they end on the line.
+    private func easeHandles(stack: Stack) -> [EaseHandle] {
+        guard let id = session.selectedPointID, let (p, i) = session.run.piece(holdingPoint: id) else { return [] }
+        let piece = session.run.pieces[p]
+        let point = piece.map.points[i]
+        guard let ease = point.ease else { return [] }
+        let clip = session.drafted(piece)
+        let anchor = location(of: point, piece: p, stack: stack)
+        let earlier = i > 0 ? piece.map.points[i - 1].source : piece.map.trimStart
+        let later = i + 1 < piece.map.points.count ? piece.map.points[i + 1].source : piece.map.trimEnd
+        var handles: [EaseHandle] = []
+        for (before, end) in [(true, point.source.seconds - ease.before * (point.source.seconds - earlier.seconds)),
+                              (false, point.source.seconds + ease.after * (later.seconds - point.source.seconds))] {
+            let source = CMTime(seconds: end, preferredTimescale: ClipTimeMap.timescale)
+            let at = CGPoint(x: session.x(of: clip.timelineTime(forSourceTime: source).seconds), y: stack.y(piece: p, source: source))
+            // Only where the ramp has room to show.
+            if hypot(at.x - anchor.x, at.y - anchor.y) > 6 { handles.append(EaseHandle(pointID: id, before: before, anchor: anchor, point: at)) }
+        }
+        return handles
+    }
+
+    /// The ramp's reach for a handle dragged to `x`: how far toward the next
+    /// point (or the clip's edge) along the line it is.
+    private func reach(dragging before: Bool, of id: UUID, toX x: CGFloat) -> Double? {
+        guard let (p, i) = session.run.piece(holdingPoint: id) else { return nil }
+        let piece = session.run.pieces[p]
+        let point = piece.map.points[i]
+        let time = session.seconds(atX: x)
+        let neighbour = before
+            ? (i > 0 ? piece.map.points[i - 1].time : piece.span.start).seconds
+            : (i + 1 < piece.map.points.count ? piece.map.points[i + 1].time : piece.span.end).seconds
+        let span = neighbour - point.time.seconds
+        guard abs(span) > 1e-9 else { return nil }
+        return (time - point.time.seconds) / span
     }
 
     /// Each stretch's speed, over its middle, where it has room; stretches
@@ -306,7 +362,12 @@ struct MotionDesignLanes: View {
         DragGesture(minimumDistance: 0)
             .onChanged { gesture in
                 if drag == nil {
-                    if let id = point(at: gesture.startLocation, stack: stack), let found = session.run.piece(holdingPoint: id) {
+                    if let handle = easeHandles(stack: stack).first(where: {
+                        hypot($0.point.x - gesture.startLocation.x, $0.point.y - gesture.startLocation.y) <= 7
+                    }) {
+                        session.beginDrag()
+                        drag = .handle(handle.pointID, before: handle.before)
+                    } else if let id = point(at: gesture.startLocation, stack: stack), let found = session.run.piece(holdingPoint: id) {
                         session.select(point: id)
                         session.beginDrag()
                         drag = .point(id, from: session.run.pieces[found.piece].map.points[found.point].time.seconds, added: false)
@@ -331,6 +392,13 @@ struct MotionDesignLanes: View {
                     session.perform("Move Point") {
                         $0.movePoint(id, to: CMTime(seconds: snapped ?? target, preferredTimescale: ClipTimeMap.timescale))
                     }
+                case .handle(let id, let before):
+                    guard let reach = reach(dragging: before, of: id, toX: gesture.location.x),
+                          let ease = session.run.piece(holdingPoint: id).flatMap({ session.run.pieces[$0.piece].map.points[$0.point].ease })
+                    else { break }
+                    session.perform("Shape Ease") {
+                        $0.setEase(TimeEase(before: before ? reach : ease.before, after: before ? ease.after : reach), ofPoint: id)
+                    }
                 case .seek:
                     session.seek(to: session.seconds(atX: gesture.location.x))
                 case nil:
@@ -339,6 +407,7 @@ struct MotionDesignLanes: View {
             }
             .onEnded { _ in
                 if case .point(_, _, let added) = drag { session.endDrag(added ? "Add Marker" : "Move Point") }
+                if case .handle = drag { session.endDrag("Shape Ease") }
                 drag = nil
                 snapTime = nil
             }
@@ -379,7 +448,7 @@ struct MotionDesignLanes: View {
         let speed = session.run.pieces[index].map.index(of: point.id).map { session.run.pieces[index].map.speed(after: $0) }
         return Rectangle()
             .accessibilityLabel("\(kind) at \(timecode(point.time.seconds))")
-            .accessibilityValue("Frame \(timecode(point.source.seconds))\(speed.map { ", then \(Self.speedText($0))" } ?? "")\(point.eased ? ", eased" : "")")
+            .accessibilityValue("Frame \(timecode(point.source.seconds))\(speed.map { ", then \(Self.speedText($0))" } ?? "")\(point.ease.map { ", eased, ramps in over \(Int(($0.before * 100).rounded())) percent and out over \(Int(($0.after * 100).rounded())) percent" } ?? "")")
             .accessibilityAddTraits(point.id == session.selectedPointID ? [.isButton, .isSelected] : .isButton)
             .accessibilityAction { session.select(point: point.id) }
             .accessibilityAdjustableAction { direction in
@@ -392,6 +461,12 @@ struct MotionDesignLanes: View {
                 Button("Set pace") { session.select(point: point.id); session.focusesPace = true }
                 Button(point.eased ? "Sharpen" : "Ease") {
                     session.perform(point.eased ? "Sharpen" : "Ease") { $0.setEased(!point.eased, ofPoint: point.id) }
+                }
+                if point.eased {
+                    Button("Longer ramp in") { session.select(point: point.id); session.reshapeSelectedEase(before: true, by: 0.1) }
+                    Button("Shorter ramp in") { session.select(point: point.id); session.reshapeSelectedEase(before: true, by: -0.1) }
+                    Button("Longer ramp out") { session.select(point: point.id); session.reshapeSelectedEase(before: false, by: 0.1) }
+                    Button("Shorter ramp out") { session.select(point: point.id); session.reshapeSelectedEase(before: false, by: -0.1) }
                 }
                 Button("Remove") { session.select(point: point.id); session.deleteSelected() }
             }

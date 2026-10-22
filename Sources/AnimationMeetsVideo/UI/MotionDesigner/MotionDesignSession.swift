@@ -265,6 +265,18 @@ final class MotionDesignSession {
         perform("Move Point") { $0.movePoint(point.id, to: CMTimeAdd(point.time, delta)) }
     }
 
+    /// Lengthens or shortens one of the selected point's ramps by `step` of
+    /// its stretch, easing it first if it wasn't.
+    func reshapeSelectedEase(before: Bool, by step: Double) {
+        guard let point = selectedPoint else { return }
+        var ease = point.ease ?? TimeEase()
+        if before { ease.before += step } else { ease.after += step }
+        perform("Shape Ease") {
+            $0.setEased(true, ofPoint: point.id)
+            $0.setEase(TimeEase(before: ease.before, after: ease.after), ofPoint: point.id)
+        }
+    }
+
     func deleteSelected() {
         guard let id = selectedPointID else { return }
         perform("Remove Point") { $0.removePoint(id) }

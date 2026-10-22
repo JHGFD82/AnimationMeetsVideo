@@ -68,7 +68,8 @@ the music.
 - Dragging a clip in the strip moves it by whole frames, unless a hit
   holds it.
 - **The sidebar** shows the frame under the playhead, then what is
-  selected: a point's kind (Hit, Marker, Pace), its pace (typed), Ease,
+  selected: a point's kind (Hit, Marker, Pace), its pace (typed), Ease
+  and its ramps in and out,
   a frame earlier or later and Remove; or a clip's start and end and a
   frame earlier or later. With nothing selected it says what to do.
   Warnings sit under that; Cancel and Done at the foot.
@@ -131,11 +132,22 @@ doesn't step at the outermost point.
 
 ### Easing
 
-Corners between segments can be eased as in the graph editor (the same
-eases and presets, `KeyframeEase`), so the speed ramps instead of
-stepping. Eases bend the curve between points without moving them, so
-hits still land on their beats. Speeds are held to what Time allows
-(1% to 10000%, never through zero).
+A point can be eased, so the speed ramps through it instead of stepping
+(E, the sidebar's **Ease through this point**, or the menu). Its ramps
+are shaped by **handles**: with an eased point selected, the graph shows
+a handle on the line where each ramp ends, with a stem back to the
+point, as the graph editor's do. Dragging a handle along the line
+lengthens or shortens that ramp, from 5% to 90% of the stretch on its
+side (`TimeEase`), so a ramp can be short and sharp on one side and long
+on the other. Two ramps meeting in one stretch share 90% of it, each
+held to what the other leaves. The handles move only along the line,
+never up or down: bending it would move frames off their places. However
+the ramps are shaped, the rest of each stretch is solved to keep its
+length, so hits still land on their beats. The sidebar's **Ramp in** and
+**Ramp out** sliders, and the point's VoiceOver actions (longer or
+shorter ramp in or out, a tenth of the stretch at a time), do the same
+from the keyboard. Speeds are held to what Time allows (1% to 10000%,
+never through zero).
 
 ### Beat markers and snapping
 
@@ -210,7 +222,8 @@ A clip's speed keyframes become points:
   (the speed before the first point), and the keyframes that only shape
   an eased corner (linear, beside a keyframe eased toward them). A
   hand-made linear keyframe beside an eased one is taken for one of those.
-- A keyframe with eases makes an eased point.
+- A keyframe with eases makes an eased point, whose ramps reach as far
+  as the ramp keyframes beside it (a third of each stretch without them).
 - A clip at one speed has no points; it plays at that speed until some
   are added.
 
@@ -232,9 +245,14 @@ starts:
 - A sharp corner, every pace marker included, is the keyframe before it
   set to **hold**, then a keyframe at the corner with the new speed: the
   pattern read back as a pace marker.
-- An eased corner ramps over a third of the stretch on either side,
-  through the speed of the line joining the two stretches, with Easy
-  Ease on the corner's keyframe so the speed turns smoothly. The rest of
+- An eased corner ramps over the share of each stretch its handles reach
+  (a third by default), shrunk to share a stretch where two ramps would
+  cross, through the speed of the line joining the two stretches, with
+  Easy Ease on the corner's keyframe so the speed turns smoothly. A
+  linear keyframe ends each ramp. A point beside an eased one keeps its
+  keyframe even where the speed doesn't change there, since reading
+  skips the ramp keyframes and needs both ends of each stretch; so a
+  shaped ramp reads back with the reach it was given. The rest of
   each stretch plays steadily at the speed that keeps the stretch its
   length (solved against `SpeedIntegral`), so every point, and so every
   hit, lands where it was put, to within a placed time (1/240000 s). A
@@ -340,7 +358,6 @@ does has a key, a button or an action.
    player; the views).
 6. Accessibility. **Built** with the panel.
 
-Not yet: handles to shape an ease (a point is
-eased or not); the monitor shows stills, not moving footage, while the
+Not yet: the monitor shows stills, not moving footage, while the
 music plays; the zoom has no rubber-band edge; and the panel hasn't been
 used on screen.

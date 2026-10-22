@@ -58,13 +58,28 @@ struct UISnapshots {
         let paceAdded = run.addMarker(toPiece: second.id, atSource: seconds(5))
         let pace = try #require(paceAdded)
         run.setKind(.pace(250), ofPoint: pace)
-        run.setEased(true, ofPoint: slow)
         let session = MotionDesignSession(run: run, project: project)
         defer { session.end() }
         session.select(point: pace)
         session.seek(to: 2.25)
         let view = MotionDesignView(session: session, onDone: {}, onCancel: {})
         let size = CGSize(width: 1240, height: 600)
+        // The same, with the first shot's slow marker eased into a quick
+        // stretch after it and selected: its two ramp handles, the ramp in
+        // reaching further than the ramp out, and the sidebar's sliders.
+        let easedRun: MotionRun = {
+            var copy = run
+            let quick = copy.addMarker(toPiece: first.id, atSource: seconds(1.5))!
+            copy.movePoint(quick, to: seconds(3.4))
+            copy.setEased(true, ofPoint: slow)
+            copy.setEase(TimeEase(before: 0.6, after: 0.4), ofPoint: slow)
+            return copy
+        }()
+        let easedSession = MotionDesignSession(run: easedRun, project: project)
+        defer { easedSession.end() }
+        easedSession.select(point: slow)
+        easedSession.seek(to: 2.25)
+
         // The monitor's frame, which a periodic view asks for only once
         // it ticks.
         let shown = session.drafted(session.run.pieces[0]).sourceTime(atTimelineTime: seconds(2.25))
@@ -74,6 +89,7 @@ struct UISnapshots {
         _ = WaveformCache.shared.waveform(for: try #require(song.url))
         try await Task.sleep(for: .milliseconds(1500))
         try SnapshotSupport.render(view, "motion-designer", size: size)
+        try SnapshotSupport.render(MotionDesignView(session: easedSession, onDone: {}, onCancel: {}), "motion-designer-ease", size: size)
     }
 
     /// The beat match panel at each step: choosing, drawing sections,

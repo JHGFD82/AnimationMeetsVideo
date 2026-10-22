@@ -93,7 +93,7 @@ struct MotionDesignSidebar: View {
                 Text("Pace")
                     .font(Design.Typeface.label)
                     .foregroundStyle(Design.textSecondary)
-                TextField("Speed after", text: $paceText)
+                TextField("None", text: $paceText)
                     .font(Design.Typeface.numericSmall)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 80)
@@ -110,6 +110,10 @@ struct MotionDesignSidebar: View {
             }))
             .font(Design.Typeface.label)
             .help("Ramp the speed through this point instead of stepping (E)")
+            if let ease = point.ease {
+                rampSlider("Ramp in", value: ease.before, point: point, before: true)
+                rampSlider("Ramp out", value: ease.after, point: point, before: false)
+            }
             HStack(spacing: Design.Space.close) {
                 Button { session.nudgeSelected(byFrames: -1) } label: { Image(systemName: "chevron.left") }
                     .help("A frame earlier (←)")
@@ -122,6 +126,39 @@ struct MotionDesignSidebar: View {
                     .help("Remove this point (Delete)")
             }
         }
+    }
+
+    /// How far one of a point's ramps reaches into its stretch, as the
+    /// handle on the graph sets it. A drag of the slider is one undo step.
+    private func rampSlider(_ label: String, value: Double, point: TimePoint, before: Bool) -> some View {
+        let percent = "\(Int((value * 100).rounded()))%"
+        return HStack(spacing: Design.Space.close) {
+            Text(label)
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.textSecondary)
+                .frame(width: 58, alignment: .leading)
+            Slider(
+                value: Binding(get: { value }, set: { reach in
+                    guard let ease = point.ease else { return }
+                    session.perform("Shape Ease") {
+                        $0.setEase(TimeEase(before: before ? reach : ease.before, after: before ? ease.after : reach), ofPoint: point.id)
+                    }
+                }),
+                in: TimeEase.reach
+            ) { editing in
+                if editing { session.beginDragIfNeeded() } else { session.endDrag("Shape Ease") }
+            }
+            .accessibilityLabel(label)
+            .accessibilityValue("\(percent) of the stretch")
+            Text(percent)
+                .font(Design.Typeface.numericSmall)
+                .foregroundStyle(Design.textPrimary)
+                .frame(width: 34, alignment: .trailing)
+                .accessibilityHidden(true)
+        }
+        .help(before
+              ? "How far into the stretch before this point the speed ramps"
+              : "How far into the stretch after this point the speed ramps")
     }
 
     private func kind(of point: TimePoint) -> Kind {
