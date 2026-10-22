@@ -111,6 +111,23 @@ private struct Layout {
         #expect(abs(run.pieces[0].span.end.seconds - 2) < 1e-6)
     }
 
+    @Test func movingAPointToWhereItIsChangesNothing() throws {
+        let layout = Layout(starts: [0, 10])
+        var run = try layout.run(layout.shots)
+        let first = layout.shots[0]
+        let added1 = run.addMarker(toPiece: first, atSource: seconds(2))
+        let pace = try #require(added1)
+        run.setKind(.pace(50), ofPoint: pace)
+        let added2 = run.addMarker(toPiece: first, atSource: seconds(3))
+        let after = try #require(added2)
+        let before = run
+        // The point after a pace marker sets that pace when moved; staying
+        // put mustn't reset it.
+        let point = try #require(run.pieces[0].map.points.first { $0.id == after })
+        run.movePoint(after, to: point.time)
+        #expect(run == before)
+    }
+
     @Test func trimmingAnEdgeRevealsFootageUpToItsSceneAndNeighbours() throws {
         let layout = Layout(starts: [4, 12])
         var run = try MotionRun.opening(Set(layout.shots), in: layout.timelineID, of: layout.project) { _ in

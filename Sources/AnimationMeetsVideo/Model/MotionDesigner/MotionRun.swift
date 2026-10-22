@@ -154,9 +154,10 @@ struct MotionRun: Equatable {
     /// Moves a point along the timeline as `ClipTimeMap.move` does. The
     /// clip keeps its footage, so its outer edges move with the retiming;
     /// one moving out stops against a neighbouring clip, giving up the
-    /// footage past it (`keepFootage`).
+    /// footage past it (`keepFootage`). Moving a point to where it already
+    /// is changes nothing.
     mutating func movePoint(_ id: UUID, to time: CMTime) {
-        guard let (p, i) = piece(holdingPoint: id) else { return }
+        guard let (p, i) = piece(holdingPoint: id), pieces[p].map.points[i].time != time else { return }
         let original = self
         let start = pieces[p].map.points[i].time.seconds
         let fitted = Self.furthest { fraction in

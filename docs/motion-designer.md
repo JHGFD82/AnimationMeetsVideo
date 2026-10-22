@@ -82,7 +82,12 @@ the music.
   leading at each moment (`EditingProject.musicBeats(in:tracks:)`), and
   a hit's pin ends on the lane of the song leading at its time.
 - Grabbing the line drops a marker on that frame and drags it; grabbing a
-  point drags it. Drags snap, within 8 points, to the beats (while shown),
+  point drags it. Nothing is dragged until the pointer has moved 3
+  points, so a click on a point only selects it and changes nothing, and
+  a click on the line moves the playhead there. Each step of a drag
+  applies to the run as the drag found it
+  (`MotionDesignSession.dragEdit`), so dragging back undoes what going
+  further did. Drags snap, within 8 points, to the beats (while shown),
   the playhead and the edges of the layer's other clips (the run's other
   clips included); the snap line shows where. A click elsewhere moves the playhead, as a drag on the
   ruler or the music scrubs.
