@@ -206,6 +206,12 @@ struct ClipTimeMap: Equatable {
         return nil
     }
 
+    /// Moves every point `delta` later on the timeline (earlier if
+    /// negative), as moving the whole clip does.
+    mutating func shift(by delta: CMTime) {
+        for index in points.indices { points[index].time = CMTimeAdd(points[index].time, delta) }
+    }
+
     mutating func setEased(_ eased: Bool, of id: UUID) {
         guard let index = index(of: id) else { return }
         points[index].eased = eased
