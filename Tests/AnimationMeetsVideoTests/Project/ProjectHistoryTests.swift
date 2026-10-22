@@ -63,6 +63,24 @@ private final class Harness {
         #expect(h.project.name == "Before")
     }
 
+    @Test func aQuietGestureIsOneStepAndDoesNotHoldTheViewer() {
+        let h = Harness()
+        h.edit { $0.name = "Before" }
+        var told = 0
+        let observers = [Notification.Name.valueGestureDidBegin, .valueGestureDidEnd].map {
+            NotificationCenter.default.addObserver(forName: $0, object: h.history, queue: nil) { _ in told += 1 }
+        }
+        defer { observers.forEach(NotificationCenter.default.removeObserver) }
+        h.history.beginGesture(quietly: true)
+        h.edit(after: 5) { $0.name = "A" }
+        h.edit(after: 5) { $0.name = "B" }
+        h.history.endGesture(h.project)
+        h.closeEventGroup()
+        #expect(told == 0)
+        h.undo()
+        #expect(h.project.name == "Before")
+    }
+
     @Test func aGesturePutBackLeavesNoStep() {
         let h = Harness()
         h.edit { $0.name = "Before" }

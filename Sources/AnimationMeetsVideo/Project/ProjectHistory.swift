@@ -50,14 +50,20 @@ final class ProjectHistory {
 
     /// Whether a gesture holds the changes back (see `beginGesture`).
     private(set) var isInGesture = false
+    /// Whether the gesture under way told the viewer it began.
+    private var gestureNotified = false
 
     /// Starts a gesture, such as dragging a value, whose changes are one
     /// step however long it takes: they aren't recorded until `endGesture`,
     /// so the project can be put back as it was in the meantime (Escape)
-    /// without leaving a step behind.
-    func beginGesture() {
+    /// without leaving a step behind. Unless `quietly`, the viewer is told,
+    /// and holds back swapping its player until the gesture ends; a
+    /// session of edits the viewer should follow as they are made (the
+    /// motion designer's) is quiet.
+    func beginGesture(quietly: Bool = false) {
         isInGesture = true
-        NotificationCenter.default.post(name: .valueGestureDidBegin, object: self)
+        gestureNotified = !quietly
+        if !quietly { NotificationCenter.default.post(name: .valueGestureDidBegin, object: self) }
     }
 
     /// Records the gesture's changes, if there were any, as one step.
@@ -67,7 +73,8 @@ final class ProjectHistory {
         isInGesture = false
         lastRecordedAt = nil
         if let project = project ?? current?() { projectDidChange(project) }
-        NotificationCenter.default.post(name: .valueGestureDidEnd, object: self)
+        if gestureNotified { NotificationCenter.default.post(name: .valueGestureDidEnd, object: self) }
+        gestureNotified = false
     }
 
     /// Takes on the file locations a save gave the assets of `original` in
