@@ -536,6 +536,46 @@ struct UISnapshots {
         )
     }
 
+    /// Two shapes' Position graphs linked into one panel, the second shape
+    /// starting 2 s after the first: each headed with its name and Unlink,
+    /// on one shared stretch of the timeline, so their keyframes, 2 s apart
+    /// in each clip, sit 2 s apart across too.
+    @Test func linkedKeyframeGraphs() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        var keys: [ParameterKey] = []
+        for start in [1.0, 3.0] {
+            let added = project.addShapeLayer(.rectangle, to: timelineID)
+            let shape = try #require(added)
+            let transform = project.addEffect(.transform, toClip: shape.clipID, in: timelineID)
+            let effectID = try #require(transform)
+            var controlID = UUID()
+            project.editClip(shape.clipID, in: timelineID) { clip in
+                clip.startOffset = CMTime(seconds: start, preferredTimescale: 600)
+                let e = clip.effects.index(of: effectID)!
+                controlID = clip.effects[e].controls[0].id
+                clip.effects[e].controls[0].number = AnimatedValue(ComponentValue(values: [0, 0]), keyframes: [
+                    Keyframe(time: .zero, value: ComponentValue(values: [0, 0])),
+                    Keyframe(time: CMTime(value: 2, timescale: 1), value: ComponentValue(values: [300, 80]), easeIn: .easy),
+                ])
+            }
+            keys.append(ParameterKey(timelineID: timelineID, parameter: .control(.position, clipID: shape.clipID, effectID: effectID, controlID: controlID)))
+        }
+        let hud = KeyframeGraphHUDs()
+        hud.update(project: project)
+        hud.playhead = CMTime(value: 3, timescale: 1)
+        try SnapshotSupport.render(
+            KeyframeGraphStack(hud: hud, link: KeyframeGraphLink(keys), input: GraphInput()),
+            "keyframe-graphs-linked", size: CGSize(width: 620, height: 600)
+        )
+        // One graph alone: no name over it, the hint to drag another in, and
+        // Link With.
+        try SnapshotSupport.render(
+            KeyframeGraphStack(hud: hud, link: KeyframeGraphLink([keys[0]]), input: GraphInput()),
+            "keyframe-graph-single", size: CGSize(width: 620, height: 320)
+        )
+    }
+
     /// The Audio Keys editor on the same song, the playhead in its low
     /// burst: the spectrum filling the panel, the box with the level
     /// across it, and every setting as fields.

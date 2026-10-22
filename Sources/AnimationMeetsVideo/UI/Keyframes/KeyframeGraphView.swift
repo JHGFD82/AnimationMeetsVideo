@@ -21,11 +21,15 @@ import SwiftUI
 /// by the same ratio wherever the zoom is, time no further out than the
 /// clip; pinching zooms time about the pointer (values with Option), and
 /// scrolling moves the view. The legend's chips show or hide each
-/// component, and Separate Scales draws each on its own scale.
+/// component, and Separate Scales draws each on its own scale. Linked with
+/// other graphs in one panel (`link`), time is theirs together: zooming or
+/// scrolling it in one moves them all.
 struct KeyframeGraphView: View {
     let hud: KeyframeGraphHUDs
     let key: ParameterKey
     let input: GraphInput
+    /// The graphs this one shares its time with, when it is linked.
+    var link: KeyframeGraphLink?
 
     /// The keyframes as a drag in progress leaves them, drawn instead of
     /// the project's and saved when the drag ends.
@@ -100,10 +104,10 @@ struct KeyframeGraphView: View {
                         VStack(spacing: 0) {
                             HStack(spacing: 0) {
                                 graph(c, layout: layout)
-                                    .rubberBand($timeBand, axis: .horizontal)
+                                    .rubberBand(timeBandBinding, axis: .horizontal)
                                     .rubberBand($valueBand, axis: .vertical)
-                                    .rubberBandScroll(timeScrollBand, length: layout.plot.width)
-                                    .rubberBandSettling($timeScrollBand)
+                                    .rubberBandScroll(link?.timeScrollBand ?? timeScrollBand, length: layout.plot.width)
+                                    .rubberBandSettling(timeScrollBandBinding)
                                     .clipped()
                                 VStack(spacing: 0) {
                                     Spacer(minLength: 0)
@@ -124,8 +128,9 @@ struct KeyframeGraphView: View {
                                     zoomTimes(by: factor, around: timeAnchor(c, layout: layout), c, layout: layout, pinching: held)
                                 } onReset: {
                                     viewport.times = nil
+                                    link?.viewport.times = nil
                                 } onRelease: {
-                                    timeBand.endPinch()
+                                    endTimePinch()
                                 }
                                 .frame(width: reach(geometry.size.width - ZoomDial.thickness))
                                 fitButton
@@ -133,6 +138,9 @@ struct KeyframeGraphView: View {
                         }
                         .onChange(of: input.scroll) { _, scroll in
                             guard let scroll else { return }
+                            // Linked graphs share the panel's input: the one
+                            // under the pointer takes the scroll.
+                            if link != nil, let at = scroll.location, !geometry.frame(in: .global).contains(at) { return }
                             scrolled(scroll, c, layout: layout)
                         }
                     }
@@ -150,8 +158,25 @@ struct KeyframeGraphView: View {
 
     private func layout(_ c: Context, size: CGSize) -> KeyframeGraphLayout {
         KeyframeGraphLayout(
-            c.value, offset: c.offset, size: size, viewport: viewport, span: c.axis.span, frame: c.timeline.frameDuration.seconds
+            c.value, offset: c.offset, size: size, viewport: viewport, span: c.axis.span, frame: c.timeline.frameDuration.seconds,
+            shared: link?.keyTimes(for: c.axis, in: hud.project)
         )
+    }
+
+    /// Time's zoom edge: the link's while linked, so all its graphs stretch
+    /// together.
+    private var timeBandBinding: Binding<RubberBandZoom> {
+        guard let link else { return $timeBand }
+        return Binding(get: { link.timeBand }, set: { link.timeBand = $0 })
+    }
+
+    private var timeScrollBandBinding: Binding<RubberBandScroll> {
+        guard let link else { return $timeScrollBand }
+        return Binding(get: { link.timeScrollBand }, set: { link.timeScrollBand = $0 })
+    }
+
+    private func endTimePinch() {
+        if let link { link.timeBand.endPinch() } else { timeBand.endPinch() }
     }
 
     private func graph(_ c: Context, layout: KeyframeGraphLayout) -> some View {
@@ -179,7 +204,7 @@ struct KeyframeGraphView: View {
             }
             .onEnded { _ in
                 lastMagnification = nil
-                timeBand.endPinch()
+                endTimePinch()
                 valueBand.endPinch()
             })
         .contextMenu {
@@ -203,7 +228,10 @@ struct KeyframeGraphView: View {
     /// Fits the keyframes in view, both ways, in the corner between the
     /// dials.
     private var fitButton: some View {
-        Button { viewport = KeyframeGraphViewport(hidden: viewport.hidden, separateScales: viewport.separateScales) } label: {
+        Button {
+            viewport = KeyframeGraphViewport(hidden: viewport.hidden, separateScales: viewport.separateScales)
+            link?.viewport.times = nil
+        } label: {
             Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
                 .font(Design.Typeface.glyphSmall)
                 .foregroundStyle(Design.textSecondary)
@@ -225,10 +253,20 @@ struct KeyframeGraphView: View {
     /// Zooms time about `anchor`; past the clip or the closest zoom the
     /// plot stretches instead (`timeBand`).
     private func zoomTimes(by factor: Double, around anchor: Double, _ c: Context, layout: KeyframeGraphLayout, pinching: Bool) {
+        let share = layout.plot.width > 0 ? (layout.x(anchor) - layout.plot.minX) / layout.plot.width : 0.5
+        if let link {
+            let moment = c.axis.timelineTime(atKey: CMTime(seconds: anchor, preferredTimescale: 240_000)).seconds
+            let project = hud.project
+            var band = link.timeBand
+            band.zoom(by: factor, about: share, pinching: pinching) { factor in
+                link.zoomTimes(by: factor, around: moment, in: project)
+            }
+            link.timeBand = band
+            return
+        }
         let padded = KeyframeGraphLayout.padded(c.axis.span)
         let frame = c.timeline.frameDuration.seconds
         let fit = KeyframeGraphLayout.fitTimes(c.value, span: padded, frame: frame)
-        let share = layout.plot.width > 0 ? (layout.x(anchor) - layout.plot.minX) / layout.plot.width : 0.5
         timeBand.zoom(by: factor, about: share, pinching: pinching) { factor in
             let before = viewport.shownTimes(fit: fit, span: padded)
             viewport.zoomTimes(by: factor, around: anchor, fit: fit, span: padded, frame: frame)
@@ -252,7 +290,14 @@ struct KeyframeGraphView: View {
     private func scrolled(_ scroll: GraphInput.Scroll, _ c: Context, layout: KeyframeGraphLayout) {
         let padded = KeyframeGraphLayout.padded(c.axis.span)
         // Also without movement across, so a lift lets go of the edge.
-        if scroll.dx != 0 || scroll.phase == .lifted {
+        if scroll.dx != 0 || scroll.phase == .lifted, let link {
+            let project = hud.project
+            var band = link.timeScrollBand
+            band.scroll(by: -scroll.dx, phase: scroll.phase) { points in
+                link.panTimes(byPoints: points, across: layout.plot.width, in: project)
+            }
+            link.timeScrollBand = band
+        } else if scroll.dx != 0 || scroll.phase == .lifted {
             let fit = KeyframeGraphLayout.fitTimes(c.value, span: padded, frame: c.timeline.frameDuration.seconds)
             // Toward later times is against the scroll's dx.
             timeScrollBand.scroll(by: -scroll.dx, phase: scroll.phase) { points in
