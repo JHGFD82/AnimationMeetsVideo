@@ -90,6 +90,10 @@ final class MotionDesignSession {
         beats = project.musicBeats(in: timeline, tracks: DetectedBeats.shared.tracks)
         player = AVPlayer(playerItem: Self.musicItem(of: music, in: project))
         player.actionAtItemEnd = .pause
+        // Media is local: play starts at once, as the viewer's does,
+        // rather than waiting for the player to judge its buffer full.
+        player.automaticallyWaitsToMinimizeStalling = false
+        drawingOptions.update(motionBlurInPreview: UserDefaults.standard.object(forKey: Preferences.motionBlurInPreview) as? Bool ?? true)
         player.audioOutputDeviceUniqueID = AudioDevices.playbackUID
         playhead = span.start.seconds
         statusObservation = player.observe(\.timeControlStatus) { [weak self] player, _ in
@@ -118,6 +122,11 @@ final class MotionDesignSession {
     @ObservationIgnored private var previewTask: Task<Void, Never>?
     /// The draft's volumes and pans, which its sound plays at.
     @ObservationIgnored private let mixCurves = MixCurves()
+    /// What the compositor is told, as the viewer tells it: drawing for
+    /// display, so retimed footage blends its frames rather than working out
+    /// optical flow, and motion blur takes fewer samples while playing.
+    /// Without it the draft would be drawn as for export, too slowly to play.
+    @ObservationIgnored private let drawingOptions = DrawingOptions()
     /// The monitor is small, so the picture is drawn at half size.
     static let previewScale = 0.5
     /// Draws paused frames of the draft, which a player layer may not show
@@ -158,10 +167,13 @@ final class MotionDesignSession {
         isUpdatingPreview = true
         let draft = draftProject
         let timelineID = run.timelineID
+        let drawingOptions = drawingOptions
         previewTask = Task { [weak self] in
             do {
                 try await Task.sleep(for: delay)
-                let composed = try await CompositionExporter.buildComposedTimeline(for: draft, timelineID: timelineID, forPreview: true)
+                let composed = try await CompositionExporter.buildComposedTimeline(
+                    for: draft, timelineID: timelineID, forPreview: true, options: drawingOptions
+                )
                 try Task.checkCancellation()
                 await self?.present(composed, of: draft)
             } catch is CancellationError {
@@ -455,6 +467,7 @@ final class MotionDesignSession {
     private func playingChanged(_ playing: Bool) {
         guard playing != isPlaying else { return }
         isPlaying = playing
+        drawingOptions.update(isPlaying: playing)
         if !playing { playhead = player.currentTime().seconds }
     }
 
