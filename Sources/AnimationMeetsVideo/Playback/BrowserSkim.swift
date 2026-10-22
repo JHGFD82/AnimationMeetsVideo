@@ -38,6 +38,10 @@ final class BrowserSkim {
     }
 
     @ObservationIgnored let player = AVPlayer()
+    /// Whether this skimmer is heard, skimming and playing, whatever the
+    /// browser's Skimming settings say; nil follows them. The scene
+    /// splitter has a sound switch of its own.
+    @ObservationIgnored var soundOverride: Bool?
     /// Grains of the skimmed file's sound, read from the file itself.
     @ObservationIgnored let scrubAudio = ScrubAudio()
     @ObservationIgnored private var soundLoad: Task<Void, Never>?
@@ -98,7 +102,7 @@ final class BrowserSkim {
         if let target, seconds >= target.seconds - 1e-3 { skim(target, at: 0) }
         isPlaying = true
         scrubAudio.stop()
-        player.isMuted = false
+        player.isMuted = soundOverride == false
         player.play()
         let interval = CMTime(value: 1, timescale: 30)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
@@ -170,8 +174,8 @@ final class BrowserSkim {
     private func playGrain() {
         let defaults = UserDefaults.standard
         guard let target, target.clip.hasAudio || target.clip.kind == .audio,
-              defaults.object(forKey: Preferences.browserSkimming) as? Bool ?? true,
-              defaults.object(forKey: Preferences.browserSkimAudio) as? Bool ?? true
+              soundOverride ?? (defaults.object(forKey: Preferences.browserSkimming) as? Bool ?? true
+                  && defaults.object(forKey: Preferences.browserSkimAudio) as? Bool ?? true)
         else { return }
         let rate = target.clip.frameRate > 0 ? target.clip.frameRate : 30
         let seconds = fileTime(self.seconds).seconds

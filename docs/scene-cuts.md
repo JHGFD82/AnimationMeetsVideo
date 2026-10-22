@@ -34,10 +34,12 @@ with those trims. No new kind of timeline object is needed.
 
 Consequences:
 
-- Deleting, merging, or re-detecting scenes never changes the media or any
-  timeline clip that was already created from them.
-- Timeline clips created from a scene are independent afterwards. Trimming
-  one does not move the scene boundary in the browser.
+- Deleting, merging, or re-detecting scenes never changes the media.
+  Re-detecting never changes a timeline clip.
+- Splitting and merging scenes, by hand or by sensitivity, splits and joins
+  the timeline clips cut from them, so a clip keeps to its scenes' edges
+  (see [Clips follow their scenes](#clips-follow-their-scenes)). Trimming a
+  clip does not move the scene boundary in the browser.
 - Scenes cost almost nothing to store: only the edits are saved.
 
 ## Detecting cuts
@@ -123,8 +125,8 @@ the old package; reopening the same one keeps them pending.
    changed. There is no screen to change it yet.
 2. **Per-asset override**, set from the media's context menu ("Cut
    Sensitivity..."), with "Use Project Default" to clear it.
-3. **Per-selection region**, set from the context menu on selected scenes
-   ("Adjust Cut Sensitivity...").
+3. **Per-selection region**, set with the scene splitter's Cut sensitivity
+   slider for the scenes it shows.
 
 ### Adjusting sensitivity for a selection
 
@@ -132,10 +134,11 @@ One setting rarely fits a whole long-form file. A person can select **a range
 of scenes, or a single scene** that did not cut enough (or cut too much), and
 adjust the sensitivity for just that selection:
 
-- The sheet shows a slider and lists the scenes the span would become, live.
-  This is instant because detection saved its per-frame scores; the video is
-  not decoded again. Nothing changes until **Apply**; Cancel leaves the
-  project untouched and adds nothing to undo.
+- While the scene splitter's slider is dragged, its strip shows the scenes
+  the span would become, live. This is instant because detection saved its
+  per-frame scores; the video is not decoded again. Nothing changes until
+  the slider is let go, which applies it as one undo step. A change made
+  without dragging (the keyboard, VoiceOver) applies at once.
 - Only the time span covered by the selected scenes is re-evaluated. The
   region applies **strictly between** the span's two outer edges, so the cuts
   at the edges keep the sensitivity they had and every scene and boundary
@@ -298,23 +301,101 @@ Implemented:
   with no gaps, on one new layer at the top, starting at time zero (the same
   placement as importing a whole file). Dragging selected scenes onto the
   timeline does the same.
-- **Preview...** (one scene) opens a sheet with its own player limited to the
-  scene's range, so the timeline is untouched. **Split Here** starts a new
-  scene at the frame shown (snapped to a real frame).
+- **Split Scenes...** (on scenes, or a video's menu) opens the scene
+  splitter on them; see below. It replaces the former Preview and Adjust
+  Cut Sensitivity sheets, which were the same task twice.
 - **Merge with Previous Scene** (one scene) and **Merge Selected Scenes**
   (adjacent picks). Merging an automatic cut records it as ignored so it does
   not return when sensitivity changes; merging a manual cut deletes it.
-- **Adjust Cut Sensitivity...** and the per-asset **Cut Sensitivity...**.
+- The per-asset **Cut Sensitivity...** sheet. It changes nothing until
+  Apply, and warns before Apply when clips would be embedded (see below).
 - **Find Scenes Again** discards the asset's scores and re-scores it. Edits
   are kept.
 
 All edits go through the project, so they are undoable and tracked as unsaved
 changes like any other.
 
+### The scene splitter
+
+Implemented. A floating panel (`SceneSplitter`, `SceneSplitterView`) for
+splitting and merging the scenes of one video. It works like an
+inspector: it shows what is picked in the browser and follows it as the
+picks change. Picking scenes shows the stretch from the first to the end
+of the last; a video's own Split Scenes shows all of it. It stays on the
+same stretch while scenes inside it are split and merged (the scenes shown
+are those overlapping the stretch, so merging the first one with the scene
+before it widens the view to include it).
+
+- **The picture** plays from the file with a player of its own, so the
+  viewer, the browser's skimming and the timeline are left alone.
+- **The strip** under it draws the scenes shown side by side, numbered as
+  the browser numbers them, with hand-set ones marked, the scene the
+  picture is in highlighted, and a line where the picture is. Moving the
+  pointer over it skims; pressing and dragging scrubs.
+- **Keys** while the panel has the keyboard: ← and → step a frame (ten with
+  Shift), ↑ and ↓ go to the previous or next cut, Space plays and pauses, S
+  splits, Escape closes. VoiceOver reads the strip as one adjustable element
+  (a frame a step) with Split Here, the merges and the cut jumps as actions.
+- **Sound** has its own switch, kept between sessions
+  (`Preferences.sceneSplitterSound`), apart from the browser's Skim Audio:
+  off, skimming and playing are silent.
+- **Split Here** starts a new scene at the frame shown, snapped to a real
+  frame of the file. **Merge with Previous** and **Merge with Next** take
+  away the cut before or after the scene the picture is in (not where
+  footage stops between two scenes, which isn't a cut).
+- **Cut sensitivity** sets a sensitivity region over the stretch shown;
+  see "Adjusting sensitivity for a selection" above.
+
+Every change is made at once, as one undo step, and the timeline follows
+it (next section). A change that would embed clips asks first, saying how
+many; Cancel makes no change.
+
+### Clips follow their scenes
+
+Implemented (`EditingProject.followSceneCuts`, `SceneFollowing.swift`). An
+edit of an asset's scenes made from the browser or the splitter is
+compared before and after: scene starts that appear are added cuts, those
+that go are removed cuts. Every clip showing that asset's picture, in every
+timeline (nested ones included), follows. Sound detached into a clip of
+its own is left whole: it has no picture edge to keep to.
+
+- **An added cut** inside a clip splits it there, as the blade does. Effects
+  and keyframes are in the clip's source time and both halves keep them,
+  so nothing about how the clip plays changes.
+- **Animation across an added cut.** If any keyframed value on the clip
+  (anchor point, volume, pan, speed, or a control of one of its effects)
+  has keyframes on both sides of the cut, splitting would leave one
+  animation on two clips. Instead, after the person agrees, the clip is
+  **embedded**: a new timeline like the one it is in (named for the media,
+  "… Scenes") gets a plain copy of the clip, split at the cut; the clip
+  keeps its ID, place, effects, keyframes, speed and transitions, now plays
+  that timeline, and its keyframes move by its trim start into the new
+  timeline's time. A later cut inside it splits the clips in the embedded
+  timeline.
+- **A removed cut** joins two clips that meet there: next to each other on
+  the layer (within `Timeline.abutmentTolerance`) and on either side of the
+  cut in the footage. Keyframed values that are the same on both stay as
+  they are. Otherwise they are joined: the first clip's keyframes before
+  its last frame, a **hold keyframe** on its last frame with its value
+  there, a keyframe at the cut with the second clip's value there, then
+  the second's later keyframes. At frame sampling this plays as the two
+  clips did; where a joined stretch was eased, the re-anchored keyframes
+  keep its ends but not its curve. Clips with a transition between them, or
+  different effects, speed, motion blur, settings or direction stay apart,
+  rather than lose any of that. Clips that play backwards join only when
+  animated alike.
+
+Limits: a clip placed whole before its scenes were found spans many scenes,
+and so is split at each cut made in it later. Trimming, slipping and
+moving a clip on the timeline don't yet stop at its scenes' edges.
+
 ### Not implemented yet
 
 - Rename a scene, and the optional name field.
 - Moving a boundary by dragging, and splitting at the timeline playhead.
+- Holding a timeline clip's trim, slip and moves to its scenes' edges, so
+  it can't reach into the next scene by accident (clips follow splits and
+  merges already).
 - The original whole file as a separate item next to its scenes.
 - A screen for the project default sensitivity.
 - Dense reference frames near the ranges the project uses.
