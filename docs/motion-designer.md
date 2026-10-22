@@ -201,14 +201,16 @@ off, as the timeline's view options do.
 The music can't move in the designer; only footage does, and never
 where other clips are.
 
-- **Retiming keeps a clip's edges.** When moving a point, setting a pace
-  or removing a point changes the speed at a clip's open ends, the clip
-  takes in footage or gives it back so its start and end stay where they
-  were (`MotionRun.hold`): speeding up draws on more footage, slowing
-  down returns some. Only once its footage runs out does an edge move:
-  in, as a clip sped up past its footage gets shorter, or out, when
-  giving footage back would cut past its outermost point. An edge moving
-  out stops against the next clip; moving that clip is up to the person.
+- **Retiming keeps a clip's footage.** When moving a point, setting a
+  pace or removing a point changes the speed at a clip's open ends, the
+  clip plays the same footage and its edges move instead
+  (`MotionRun.keepFootage`): speeding up shortens it, slowing down
+  lengthens it. Footage is cut only where an edge moving out meets the
+  clip beside it (or the timeline's start), and then only as far as its
+  outermost point; moving that clip is up to the person. The footage kept
+  is the clip's trim as it opened, or as the person last trimmed it
+  (`MotionRun.Piece.given`), so footage cut against a neighbour comes back
+  once the clip has room again.
 - **Trimming.** Dragging a clip's edge in the strip reveals or hides
   footage at the speed it plays there, snapping as points do, as far as
   its footage goes, never past its outermost point or to under a frame,

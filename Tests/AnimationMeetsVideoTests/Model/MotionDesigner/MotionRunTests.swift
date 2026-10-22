@@ -62,7 +62,7 @@ private struct Layout {
         #expect(run.others == [CMTimeRange(start: seconds(4), end: seconds(8))])
     }
 
-    @Test func slowingAClipGivesBackFootageAndKeepsItsEdges() throws {
+    @Test func slowingAClipKeepsItsFootageUntilItMeetsItsNeighbour() throws {
         // The first shot ends at 4 s, where the second starts.
         let layout = Layout(starts: [0, 4])
         var run = try layout.run(layout.shots)
@@ -70,39 +70,45 @@ private struct Layout {
         let added1 = run.addMarker(toPiece: first, atSource: seconds(2))
         run.setKind(.hit, ofPoint: try #require(added1))
         let added2 = run.addMarker(toPiece: first, atSource: seconds(3))
-        // 1 s of footage over 4 s: 25%, which would run far past 4 s.
-        run.movePoint(try #require(added2), to: seconds(4))
+        let marker = try #require(added2)
+        // 1 s of footage over 4 s: 25%, which would run far past 4 s, so
+        // the footage stops against the second shot.
+        run.movePoint(marker, to: seconds(4))
         #expect(run.fits)
         #expect(abs(run.pieces[0].span.end.seconds - 4) < 1e-6)
         #expect(abs(run.pieces[0].map.trimEnd.seconds - 3) < 1e-6)
         #expect(run.pieces[0].isEdited && !run.pieces[1].isEdited)
+        // Sped up again, the footage cut comes back: 1 s over 0.5 s is
+        // 200%, so all 4 s of it end at 2 s.
+        run.movePoint(marker, to: seconds(0.5))
+        #expect(abs(run.pieces[0].map.trimEnd.seconds - 6) < 1e-6)
+        #expect(abs(run.pieces[0].span.end.seconds - 2) < 1e-6)
     }
 
-    @Test func speedingUpTakesInFootageUpToItsScene() throws {
+    @Test func slowingAClipWithRoomLengthensItInsteadOfCuttingIt() throws {
+        let layout = Layout(starts: [0, 12])
+        var run = try layout.run(layout.shots)
+        let first = layout.shots[0]
+        let added1 = run.addMarker(toPiece: first, atSource: seconds(2))
+        run.setKind(.hit, ofPoint: try #require(added1))
+        let added2 = run.addMarker(toPiece: first, atSource: seconds(4))
+        // 50%: the 4 s of footage now take 8 s.
+        run.movePoint(try #require(added2), to: seconds(4))
+        #expect(run.pieces[0].map.trimStart == seconds(2) && run.pieces[0].map.trimEnd == seconds(6))
+        #expect(abs(run.pieces[0].span.end.seconds - 8) < 1e-6)
+    }
+
+    @Test func speedingUpKeepsItsFootageAndShortensTheClip() throws {
         let layout = Layout(starts: [0, 10])
-        // The shot's scene runs from 0 s to 8 s of its file.
-        var run = try MotionRun.opening(Set(layout.shots), in: layout.timelineID, of: layout.project) { _ in
-            CMTimeRange(start: .zero, end: seconds(8))
-        }.get()
+        var run = try layout.run(layout.shots)
         let first = layout.shots[0]
         let added1 = run.addMarker(toPiece: first, atSource: seconds(2))
         run.setKind(.hit, ofPoint: try #require(added1))
         let added2 = run.addMarker(toPiece: first, atSource: seconds(3))
-        // 200%: holding the end at 4 s would need footage up to 10 s.
+        // 200%: the 3 s after the marker play in 1.5 s.
         run.movePoint(try #require(added2), to: seconds(0.5))
-        #expect(run.pieces[0].map.trimEnd == seconds(8))
-        #expect(run.pieces[0].isAtFootageEdge(.end))
-        // So the end comes in: 5 s of footage after the marker at 200%.
-        #expect(abs(run.pieces[0].span.end.seconds - 3) < 1e-6)
-
-        // With the whole 20 s file to use, the end stays put.
-        var whole = try layout.run(layout.shots)
-        let added3 = whole.addMarker(toPiece: first, atSource: seconds(2))
-        whole.setKind(.hit, ofPoint: try #require(added3))
-        let added4 = whole.addMarker(toPiece: first, atSource: seconds(3))
-        whole.movePoint(try #require(added4), to: seconds(0.5))
-        #expect(abs(whole.pieces[0].map.trimEnd.seconds - 10) < 1e-6)
-        #expect(abs(whole.pieces[0].span.end.seconds - 4) < 1e-6)
+        #expect(run.pieces[0].map.trimEnd == seconds(6))
+        #expect(abs(run.pieces[0].span.end.seconds - 2) < 1e-6)
     }
 
     @Test func trimmingAnEdgeRevealsFootageUpToItsSceneAndNeighbours() throws {
