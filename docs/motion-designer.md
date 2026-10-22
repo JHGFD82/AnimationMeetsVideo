@@ -94,7 +94,12 @@ the music.
   clips included); the snap line shows where. A click elsewhere moves the playhead, as a drag on the
   ruler or the music scrubs.
 - Dragging a clip in the strip moves it by whole frames, unless a hit
-  holds it. Whichever of its edges comes nearer something to snap to
+  holds it. A held clip follows the pointer up to 6 points, then (or when
+  let go) springs back with a small bounce, and a notice under the
+  footage says it is held down to the beat and that making all its hits
+  markers frees it; any click anywhere puts the notice away, and
+  VoiceOver announces it. Moving a held clip from the keyboard shows the
+  same notice. Whichever of its edges comes nearer something to snap to
   lands on it, to the nearest frame.
 - **The monitor**, at the top of the sidebar, is the editor's own viewer
   player (`PlaybackModel`), which plays the timeline with the run written

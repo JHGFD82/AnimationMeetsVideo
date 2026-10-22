@@ -44,6 +44,9 @@ final class MotionDesignSession {
     var snaps = true
     /// What an edit couldn't do and why, until the next one.
     private(set) var message: String?
+    /// A notice over the lanes, which any click puts away: why a clip held
+    /// by a hit didn't move.
+    var notice: String?
     /// An edit waiting on the person to agree to what it costs.
     struct PendingConflict: Identifiable {
         let id = UUID()
@@ -164,10 +167,15 @@ final class MotionDesignSession {
 
     var isDragging: Bool { dragStart != nil }
 
-    /// Says why a clip with a hit didn't move.
+    /// Says why a clip with a hit didn't move, in the notice over the lanes.
     func explainHeldPiece() {
-        message = "A clip with a hit is held by its beat. Make the hits markers to move it."
+        let text = Self.heldPieceNotice
+        notice = text
+        AccessibilityNotification.Announcement(text).post()
     }
+
+    static let heldPieceNotice = "This clip is held down to the beat. Change all Hit markers to regular markers to change clip placement."
+
 
     func endDrag(_ name: String) {
         dragSnapTime = nil

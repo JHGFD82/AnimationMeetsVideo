@@ -54,6 +54,7 @@ struct MotionDesignLanes: View {
             .overlay(alignment: .topLeading) {
                 markings(width: width, height: geometry.size.height, graphHeight: graphHeight)
             }
+            .overlay(alignment: .top) { noticeView }
             // Squeezed by a zoom out past the whole timeline, stretched by
             // one in past the closest, slid along by a scroll past either
             // end; all the lanes together, so they stay lined up.
@@ -78,6 +79,31 @@ struct MotionDesignLanes: View {
                 onMagnifyEnded: { session.endPinch() }
             )
         )
+    }
+
+    // MARK: Notice
+
+    /// Why a clip didn't move, just under the footage; any click anywhere
+    /// puts it away.
+    @ViewBuilder
+    private var noticeView: some View {
+        ZStack {
+            if let notice = session.notice {
+                Label(notice, systemImage: "pin.fill")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textPrimary)
+                    .padding(.horizontal, Design.Space.rail)
+                    .padding(.vertical, Design.Space.step)
+                    .floatingSurface(radius: Design.Radius.chip)
+                    .frame(maxWidth: 460)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, Self.rulerHeight + Self.filmHeight + Design.Space.step)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .animation(Design.Motion.respecting(Design.Motion.fade), value: session.notice)
+        .onClickAnywhere(isActive: session.notice != nil) { session.notice = nil }
     }
 
     // MARK: Ruler

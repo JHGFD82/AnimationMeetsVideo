@@ -101,6 +101,11 @@ struct UISnapshots {
         try SnapshotSupport.render(view, "motion-designer", size: size)
         try SnapshotSupport.render(MotionDesignView(session: easedSession, onDone: {}, onCancel: {}), "motion-designer-ease", size: size)
         try SnapshotSupport.render(MotionDesignView(session: twoSession, onDone: {}, onCancel: {}), "motion-designer-two-songs", size: size)
+        // The first shot, held by its hit, dragged: the notice saying why.
+        session.select(point: nil)
+        session.selectedPieceID = first.id
+        session.explainHeldPiece()
+        try SnapshotSupport.render(MotionDesignView(session: session, onDone: {}, onCancel: {}), "motion-designer-held", size: size)
     }
 
     /// The beat match panel at each step: choosing, drawing sections,
