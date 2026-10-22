@@ -14,7 +14,8 @@ struct UISnapshots {
     /// The motion designer on two shots over a click song: the first held
     /// by a hit on a downbeat and slowed by a dragged marker, the second
     /// sped up by a pace marker that is selected; the retimed filmstrip,
-    /// the graph's speeds and the hit's pin down to its beat.
+    /// the graph's speeds, the hit's pin down to its beat, and the bracket
+    /// where the first shot's scene starts.
     @Test func motionDesigner() async throws {
         var song = try SnapshotSupport.clickSong(named: "motion-designer-song", seconds: 16)
         let beats = (0..<31).map { MappedBeat(time: CMTime(seconds: 0.25 + Double($0) * 0.5, preferredTimescale: 600), position: $0 % 4 + 1) }
@@ -42,7 +43,11 @@ struct UISnapshots {
             TimelineLayer(customName: nil, kind: .music, clips: [music]),
         ]
 
-        var run = try MotionRun.opening([first.id, second.id], in: timelineID, of: project).get()
+        // The first shot's scene starts where its trim does, so its start
+        // shows the scene's edge.
+        var run = try MotionRun.opening([first.id, second.id], in: timelineID, of: project) { clip in
+            clip.id == first.id ? CMTimeRange(start: .zero, end: seconds(3.5)) : nil
+        }.get()
         let hitAdded = run.addMarker(toPiece: first.id, atSource: seconds(0.25))
         let hit = try #require(hitAdded)
         run.movePoint(hit, to: seconds(1.25))

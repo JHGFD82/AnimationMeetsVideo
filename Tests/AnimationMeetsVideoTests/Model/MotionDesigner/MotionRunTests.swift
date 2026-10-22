@@ -62,21 +62,99 @@ private struct Layout {
         #expect(run.others == [CMTimeRange(start: seconds(4), end: seconds(8))])
     }
 
-    @Test func aClipGrowingIntoItsNeighbourStopsThere() throws {
+    @Test func slowingAClipGivesBackFootageAndKeepsItsEdges() throws {
         // The first shot ends at 4 s, where the second starts.
         let layout = Layout(starts: [0, 4])
         var run = try layout.run(layout.shots)
         let first = layout.shots[0]
         let added1 = run.addMarker(toPiece: first, atSource: seconds(2))
-        let hit = try #require(added1)
-        run.setKind(.hit, ofPoint: hit)
+        run.setKind(.hit, ofPoint: try #require(added1))
         let added2 = run.addMarker(toPiece: first, atSource: seconds(3))
-        let marker = try #require(added2)
-        // Slowing the shot down would make it run past 4 s.
-        run.movePoint(marker, to: seconds(4))
+        // 1 s of footage over 4 s: 25%, which would run far past 4 s.
+        run.movePoint(try #require(added2), to: seconds(4))
         #expect(run.fits)
-        #expect(abs(run.pieces[0].span.end.seconds - 4) < 0.01)
+        #expect(abs(run.pieces[0].span.end.seconds - 4) < 1e-6)
+        #expect(abs(run.pieces[0].map.trimEnd.seconds - 3) < 1e-6)
         #expect(run.pieces[0].isEdited && !run.pieces[1].isEdited)
+    }
+
+    @Test func speedingUpTakesInFootageUpToItsScene() throws {
+        let layout = Layout(starts: [0, 10])
+        // The shot's scene runs from 0 s to 8 s of its file.
+        var run = try MotionRun.opening(Set(layout.shots), in: layout.timelineID, of: layout.project) { _ in
+            CMTimeRange(start: .zero, end: seconds(8))
+        }.get()
+        let first = layout.shots[0]
+        let added1 = run.addMarker(toPiece: first, atSource: seconds(2))
+        run.setKind(.hit, ofPoint: try #require(added1))
+        let added2 = run.addMarker(toPiece: first, atSource: seconds(3))
+        // 200%: holding the end at 4 s would need footage up to 10 s.
+        run.movePoint(try #require(added2), to: seconds(0.5))
+        #expect(run.pieces[0].map.trimEnd == seconds(8))
+        #expect(run.pieces[0].isAtFootageEdge(.end))
+        // So the end comes in: 5 s of footage after the marker at 200%.
+        #expect(abs(run.pieces[0].span.end.seconds - 3) < 1e-6)
+
+        // With the whole 20 s file to use, the end stays put.
+        var whole = try layout.run(layout.shots)
+        let added3 = whole.addMarker(toPiece: first, atSource: seconds(2))
+        whole.setKind(.hit, ofPoint: try #require(added3))
+        let added4 = whole.addMarker(toPiece: first, atSource: seconds(3))
+        whole.movePoint(try #require(added4), to: seconds(0.5))
+        #expect(abs(whole.pieces[0].map.trimEnd.seconds - 10) < 1e-6)
+        #expect(abs(whole.pieces[0].span.end.seconds - 4) < 1e-6)
+    }
+
+    @Test func trimmingAnEdgeRevealsFootageUpToItsSceneAndNeighbours() throws {
+        let layout = Layout(starts: [4, 12])
+        var run = try MotionRun.opening(Set(layout.shots), in: layout.timelineID, of: layout.project) { _ in
+            CMTimeRange(start: .zero, end: seconds(16))
+        }.get()
+        let first = layout.shots[0]
+        // The end out to 10 s reveals 2 s more footage.
+        run.trim(first, edge: .end, to: seconds(10))
+        #expect(abs(run.pieces[0].map.trimEnd.seconds - 8) < 1e-6)
+        // Further, it stops against the next shot at 12 s.
+        run.trim(first, edge: .end, to: seconds(20))
+        #expect(abs(run.pieces[0].span.end.seconds - 12) < 1e-3)
+        // The start back to 2 s reveals the file's first 2 s; there is none
+        // before that.
+        run.trim(first, edge: .start, to: seconds(2))
+        #expect(run.pieces[0].map.trimStart == .zero)
+        #expect(abs(run.pieces[0].span.start.seconds - 2) < 1e-6)
+        run.trim(first, edge: .start, to: seconds(1))
+        #expect(abs(run.pieces[0].span.start.seconds - 2) < 1e-6)
+        #expect(run.pieces[0].isAtFootageEdge(.start))
+        // And in, it hides footage, keeping at least a frame.
+        run.trim(first, edge: .end, to: seconds(1))
+        #expect(run.pieces[0].map.trimEnd > run.pieces[0].map.trimStart)
+    }
+
+    @Test func aClipsFootageIsItsSceneOrTheScenesItSpans() throws {
+        var layout = Layout(starts: [0])
+        let clip = layout.clip(layout.shots[0])
+        guard case .media(let assetID) = clip.source else { return }
+        let index = try #require(layout.project.clips.firstIndex { $0.id == assetID })
+        // Cuts at 1 s and 8 s make the shot's trim, 2 s to 6 s, one scene.
+        layout.project.clips[index].sceneEdits.manualCuts = [seconds(1), seconds(8)]
+        #expect(layout.project.sceneFootage(of: clip, track: nil) == CMTimeRange(start: seconds(1), end: seconds(8)))
+        // Merged (no cut at 8 s), the scene runs to the file's end.
+        layout.project.clips[index].sceneEdits.manualCuts = [seconds(1)]
+        #expect(layout.project.sceneFootage(of: clip, track: nil) == CMTimeRange(start: seconds(1), end: seconds(20)))
+        // A clip across a cut reaches both scenes.
+        layout.project.clips[index].sceneEdits.manualCuts = [seconds(1), seconds(4), seconds(8)]
+        #expect(layout.project.sceneFootage(of: clip, track: nil) == CMTimeRange(start: seconds(1), end: seconds(8)))
+    }
+
+    @Test func aTrimStopsAtTheOutermostPoint() throws {
+        let layout = Layout(starts: [0])
+        var run = try layout.run(layout.shots)
+        let first = layout.shots[0]
+        run.addMarker(toPiece: first, atSource: seconds(3))
+        run.trim(first, edge: .start, to: seconds(3))
+        #expect(run.pieces[0].map.trimStart == seconds(3))
+        run.trim(first, edge: .end, to: seconds(0))
+        #expect(run.pieces[0].map.trimEnd == seconds(3))
     }
 
     @Test func movingAClipStopsAtItsNeighbourAndNotWithAHit() throws {
@@ -106,9 +184,12 @@ private struct Layout {
         let marker = try #require(added5)
         run.movePoint(marker, to: seconds(4.01))
         let untouched = layout.clip(layout.shots[1])
+        run.trim(layout.shots[0], edge: .end, to: seconds(7))
         run.write(into: &layout.project)
 
         let written = layout.clip(first)
+        // The trimmed end, on a frame.
+        #expect(abs(written.endOffset.seconds - 7) < 0.05)
         #expect(layout.clip(layout.shots[1]) == untouched)
         // On a frame, with the hit's frame still at the hit's time.
         let timeline = try #require(layout.project.timeline(id: layout.timelineID))

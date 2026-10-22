@@ -146,11 +146,22 @@ off, as the timeline's view options do.
 
 ## Lengths and positions
 
-The music can't move in the designer; only footage does. Retiming
-changes a clip's length, never where other clips are.
+The music can't move in the designer; only footage does, and never
+where other clips are.
 
-- A clip that grows stops against the next clip; moving that clip is up
-  to the person.
+- **Retiming keeps a clip's edges.** When moving a point, setting a pace
+  or removing a point changes the speed at a clip's open ends, the clip
+  takes in footage or gives it back so its start and end stay where they
+  were (`MotionRun.hold`): speeding up draws on more footage, slowing
+  down returns some. Only once its footage runs out does an edge move:
+  in, as a clip sped up past its footage gets shorter, or out, when
+  giving footage back would cut past its outermost point. An edge moving
+  out stops against the next clip; moving that clip is up to the person.
+- **Trimming.** Dragging a clip's edge in the strip reveals or hides
+  footage at the speed it plays there, snapping as points do, as far as
+  its footage goes, never past its outermost point or to under a frame,
+  and stopping against a neighbour (`MotionRun.trim`). The sidebar and
+  the clip's VoiceOver actions trim a frame at a time.
 - Clips can be **moved** in the designer: dragged along time, or moved
   from the keyboard, which lengthens or shortens the gaps around them.
   Unselected clips on the layer are shown but never move, and bound how
@@ -161,19 +172,24 @@ changes a clip's length, never where other clips are.
 
 ### Footage available
 
-**Not built yet**: retiming changes a clip's length on the timeline but
-not the footage it plays. Planned: a growing clip extends its trim into
-the footage around it, as far as
-there is footage:
+**Built.** A clip's trim reaches only the footage of its scene
+(`EditingProject.sceneFootage(of:track:)`, `MotionRun.Piece.footage`):
 
-- A clip of a **scene** grows only to that scene's edges
-  ([scene-cuts.md](scene-cuts.md)), even where the file carries on into
-  the next shot. Merging scenes in the browser is how the person makes
-  more footage available, so the designer reads scene edges as they are
-  now.
-- A clip of a whole file grows to the file's ends.
-- Where retiming would need footage past the edge, the graph shows the
-  edge and the run stops there, with a note pointing to merging scenes.
+- From the start of the scene its first frame is in to the end of the
+  scene its last frame is in ([scene-cuts.md](scene-cuts.md)), even where
+  the file carries on into the next shot. A clip already spanning a cut
+  reaches both scenes, and one placed whole reaches the whole file.
+- The scenes are the browser's: detected cuts with the person's edits,
+  read when the designer opens. Merging scenes in the browser is how the
+  person gives a clip more footage; a video not yet analyzed is one
+  scene.
+- Anything but video (stills, shapes, nested timelines) may use all of
+  its source.
+- Where a clip's trim has reached its scene's edge, the strip draws a
+  bracket at that edge, and the sidebar says there is no more of its
+  scene that way and to merge scenes for more.
+- Done rounds a clip's start onto a frame by moving its trim, rounding
+  later instead if earlier would leave its footage.
 
 ## Opening on keyframed clips
 
@@ -324,7 +340,7 @@ does has a key, a button or an action.
    player; the views).
 6. Accessibility. **Built** with the panel.
 
-Not yet: footage available (above); handles to shape an ease (a point is
+Not yet: handles to shape an ease (a point is
 eased or not); the monitor shows stills, not moving footage, while the
 music plays; the zoom has no rubber-band edge; and the panel hasn't been
 used on screen.

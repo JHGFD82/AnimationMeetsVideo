@@ -159,6 +159,24 @@ final class MotionDesignSession {
         if edited != run { run = edited }
     }
 
+    /// Trims a clip's edge to `seconds`, from where it was when the drag
+    /// began.
+    func dragTrim(_ id: UUID, edge: MotionRun.Edge, to seconds: Double) {
+        guard let start = dragStart else { return }
+        var edited = start
+        edited.trim(id, edge: edge, to: CMTime(seconds: seconds, preferredTimescale: ClipTimeMap.timescale))
+        if edited != run { run = edited }
+    }
+
+    /// Trims the selected clip's edge by whole frames: later reveals footage
+    /// at the end and hides it at the start.
+    func trimSelectedPiece(_ edge: MotionRun.Edge, byFrames frames: Int) {
+        guard let id = selectedPieceID, let piece = run.pieces.first(where: { $0.id == id }) else { return }
+        let at = edge == .start ? piece.span.start : piece.span.end
+        let delta = CMTimeMultiply(run.frameDuration, multiplier: Int32(frames))
+        perform("Trim Clip") { $0.trim(id, edge: edge, to: CMTimeAdd(at, delta)) }
+    }
+
     /// Puts the draft back as it was when the drag began (Escape).
     func cancelDrag() {
         guard let start = dragStart else { return }

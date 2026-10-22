@@ -102,6 +102,9 @@ struct MotionDesignSidebar: View {
                     .accessibilityLabel("Pace, speed after this point in percent")
                     .help("The speed after this point, in percent (P)")
             }
+            if let found = session.run.piece(holdingPoint: point.id) {
+                footageNote(session.run.pieces[found.piece])
+            }
             Toggle("Ease through this point", isOn: Binding(get: { point.eased }, set: { eased in
                 session.perform(eased ? "Ease" : "Sharpen") { $0.setEased(eased, ofPoint: point.id) }
             }))
@@ -155,6 +158,9 @@ struct MotionDesignSidebar: View {
             heading(session.project.resolvedInfo(for: piece.clip.source)?.name ?? "Clip")
             reading("Starts", timecode(drafted.startOffset))
             reading("Ends", timecode(drafted.endOffset))
+            trimRow("Start", piece: piece, edge: .start)
+            trimRow("End", piece: piece, edge: .end)
+            footageNote(piece)
             if session.run.canMove(piece.id) {
                 HStack(spacing: Design.Space.close) {
                     Button { session.nudgeSelectedPiece(byFrames: -1) } label: { Image(systemName: "chevron.left") }
@@ -174,6 +180,35 @@ struct MotionDesignSidebar: View {
                     .foregroundStyle(Design.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    /// A frame either way for one edge of a clip, as dragging it does.
+    private func trimRow(_ label: String, piece: MotionRun.Piece, edge: MotionRun.Edge) -> some View {
+        HStack(spacing: Design.Space.close) {
+            Text("Trim \(label.lowercased())")
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.textSecondary)
+            Spacer()
+            Button { session.trimSelectedPiece(edge, byFrames: -1) } label: { Image(systemName: "chevron.left") }
+                .help("\(label) a frame earlier")
+                .accessibilityLabel("\(label) a frame earlier")
+            Button { session.trimSelectedPiece(edge, byFrames: 1) } label: { Image(systemName: "chevron.right") }
+                .help("\(label) a frame later")
+                .accessibilityLabel("\(label) a frame later")
+        }
+    }
+
+    /// Says when a clip has used all the footage its scene has on a side.
+    @ViewBuilder
+    private func footageNote(_ piece: MotionRun.Piece) -> some View {
+        let start = piece.isAtFootageEdge(.start), end = piece.isAtFootageEdge(.end)
+        if start || end {
+            let side = start && end ? "either side" : start ? "before its start" : "after its end"
+            Text("No more of its scene \(side). Merge scenes in the browser to give it more footage.")
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

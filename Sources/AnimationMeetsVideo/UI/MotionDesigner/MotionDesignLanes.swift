@@ -97,9 +97,11 @@ struct MotionDesignLanes: View {
     // MARK: Graph
 
     /// Where each piece's footage starts up the graph, as a share of all of
-    /// it, so the run stacks clip on clip.
+    /// it, so the run stacks clip on clip. The footage is the draft's, so a
+    /// trim or a held edge resizes its clip's band.
     private struct Stack {
         var offsets: [Double]
+        var trimStarts: [Double]
         var total: Double
         var rect: CGRect
 
@@ -108,15 +110,16 @@ struct MotionDesignLanes: View {
             var total = 0.0
             for piece in run.pieces {
                 offsets.append(total)
-                total += piece.clip.trimmedDuration.seconds
+                total += piece.map.trimEnd.seconds - piece.map.trimStart.seconds
             }
             self.offsets = offsets
+            trimStarts = run.pieces.map(\.map.trimStart.seconds)
             self.total = max(total, 1e-6)
             self.rect = rect
         }
 
-        func y(piece index: Int, source: CMTime, of clip: TimelineClip) -> CGFloat {
-            let up = offsets[index] + (source.seconds - clip.trimStart.seconds)
+        func y(piece index: Int, source: CMTime) -> CGFloat {
+            let up = offsets[index] + (source.seconds - trimStarts[index])
             return rect.maxY - CGFloat(up / total) * rect.height
         }
     }
@@ -156,8 +159,8 @@ struct MotionDesignLanes: View {
     private func drawGraph(in context: inout GraphicsContext, size: CGSize, stack: Stack) {
         // A faint band for each clip's footage, up the graph.
         for (index, piece) in session.run.pieces.enumerated() where index % 2 == 1 {
-            let top = stack.y(piece: index, source: piece.clip.trimEnd, of: piece.clip)
-            let bottom = stack.y(piece: index, source: piece.clip.trimStart, of: piece.clip)
+            let top = stack.y(piece: index, source: piece.map.trimEnd)
+            let bottom = stack.y(piece: index, source: piece.map.trimStart)
             context.fill(Path(CGRect(x: 0, y: top, width: size.width, height: bottom - top)), with: .color(.white.opacity(0.025)))
         }
         if session.showsBeats { drawBeats(in: &context, height: size.height, strong: 0.32, weak: 0.14) }
@@ -166,7 +169,7 @@ struct MotionDesignLanes: View {
         // Gaps: flat, since no footage plays.
         for index in drafts.indices.dropLast() {
             let a = drafts[index], b = drafts[index + 1]
-            let y = stack.y(piece: index, source: a.trimEnd, of: a)
+            let y = stack.y(piece: index, source: a.trimEnd)
             var gap = Path()
             gap.move(to: CGPoint(x: session.x(of: a.endOffset.seconds), y: y))
             gap.addLine(to: CGPoint(x: session.x(of: b.startOffset.seconds), y: y))
@@ -181,7 +184,7 @@ struct MotionDesignLanes: View {
             while true {
                 let time = CMTime(seconds: session.seconds(atX: x), preferredTimescale: ClipTimeMap.timescale)
                 let source = CMTimeClampToRange(clip.sourceTime(atTimelineTime: time), range: CMTimeRange(start: clip.trimStart, end: clip.trimEnd))
-                let point = CGPoint(x: x, y: stack.y(piece: index, source: source, of: clip))
+                let point = CGPoint(x: x, y: stack.y(piece: index, source: source))
                 if line.isEmpty { line.move(to: point) } else { line.addLine(to: point) }
                 if x >= x1 { break }
                 x = min(x + 2, x1)
@@ -219,7 +222,7 @@ struct MotionDesignLanes: View {
             let middle = (a + b) / 2
             let time = CMTime(seconds: middle, preferredTimescale: ClipTimeMap.timescale)
             let speed = speed(at: middle)
-            let y = stack.y(piece: index, source: clip.sourceTime(atTimelineTime: time), of: clip)
+            let y = stack.y(piece: index, source: clip.sourceTime(atTimelineTime: time))
             context.draw(
                 Text(Self.speedText(speed)).font(Design.Typeface.numericScale).foregroundStyle(Design.textSecondary),
                 at: CGPoint(x: session.x(of: middle), y: y - 8), anchor: .bottom
@@ -253,8 +256,7 @@ struct MotionDesignLanes: View {
     }
 
     private func location(of point: TimePoint, piece index: Int, stack: Stack) -> CGPoint {
-        let clip = session.run.pieces[index].clip
-        return CGPoint(x: session.x(of: point.time.seconds), y: stack.y(piece: index, source: point.source, of: clip))
+        CGPoint(x: session.x(of: point.time.seconds), y: stack.y(piece: index, source: point.source))
     }
 
     private func drawBeats(in context: inout GraphicsContext, height: CGFloat, strong: Double, weak: Double) {
@@ -294,7 +296,7 @@ struct MotionDesignLanes: View {
         for (index, piece) in session.run.pieces.enumerated() {
             let clip = session.drafted(piece)
             guard clip.startOffset <= time, time <= clip.endOffset else { continue }
-            let y = stack.y(piece: index, source: clip.sourceTime(atTimelineTime: time), of: clip)
+            let y = stack.y(piece: index, source: clip.sourceTime(atTimelineTime: time))
             if abs(y - location.y) <= 12 { return (piece.id, seconds) }
         }
         return nil

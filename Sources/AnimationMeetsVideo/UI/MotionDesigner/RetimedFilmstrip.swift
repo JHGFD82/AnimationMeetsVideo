@@ -5,7 +5,8 @@ import SwiftUI
 /// even steps of the footage and placed by the draft, so a stretch played
 /// slowly spreads them apart, with the lane showing between, and one played
 /// fast crowds them into slivers. At 100% they just touch. Dragging a clip
-/// moves it, unless a hit holds it to a beat.
+/// moves it, unless a hit holds it to a beat; dragging its edge trims it,
+/// as far as its scene's footage goes, which a bracket marks once reached.
 struct RetimedFilmstrip: View {
     let session: MotionDesignSession
     let width: CGFloat
@@ -52,11 +53,18 @@ struct RetimedFilmstrip: View {
                     .padding(.horizontal, Design.Space.tight)
                     .background(tone.opacity(0.85), in: RoundedRectangle(cornerRadius: Design.Radius.chip))
                     .padding(Design.Space.tight)
+                    // Clear of a scene bracket at the start.
+                    .padding(.leading, piece.isAtFootageEdge(.start) ? Design.Space.close : 0)
                 RoundedRectangle(cornerRadius: Design.Radius.chip)
                     .strokeBorder(isSelected ? Design.accent : tone, lineWidth: isSelected ? 2 : 1)
                     .allowsHitTesting(false)
+                footageBracket(piece, edge: .start)
+                footageBracket(piece, edge: .end)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .frame(width: max(1, x1 - x0), height: height)
+            .overlay(alignment: .leading) { edgeHandle(piece, edge: .start) }
+            .overlay(alignment: .trailing) { edgeHandle(piece, edge: .end) }
             .offset(x: x0)
             .contentShape(Rectangle())
             .gesture(moveGesture(piece))
@@ -72,6 +80,10 @@ struct RetimedFilmstrip: View {
             .accessibilityActions {
                 Button("Move a frame earlier") { session.selectedPieceID = piece.id; session.nudgeSelectedPiece(byFrames: -1) }
                 Button("Move a frame later") { session.selectedPieceID = piece.id; session.nudgeSelectedPiece(byFrames: 1) }
+                Button("Start a frame earlier") { session.selectedPieceID = piece.id; session.trimSelectedPiece(.start, byFrames: -1) }
+                Button("Start a frame later") { session.selectedPieceID = piece.id; session.trimSelectedPiece(.start, byFrames: 1) }
+                Button("End a frame earlier") { session.selectedPieceID = piece.id; session.trimSelectedPiece(.end, byFrames: -1) }
+                Button("End a frame later") { session.selectedPieceID = piece.id; session.trimSelectedPiece(.end, byFrames: 1) }
             }
         }
     }
@@ -108,6 +120,49 @@ struct RetimedFilmstrip: View {
             previous = (index, max(source, clip.trimStart), x)
         }
         return result
+    }
+
+    /// A bracket at an edge whose trim has reached the end of its scene's
+    /// footage: there is no more to reveal that way.
+    @ViewBuilder
+    private func footageBracket(_ piece: MotionRun.Piece, edge: MotionRun.Edge) -> some View {
+        if piece.isAtFootageEdge(edge) {
+            Path { path in
+                let w: CGFloat = 5
+                let outer: CGFloat = edge == .start ? 0 : w
+                let inner: CGFloat = edge == .start ? w : 0
+                path.move(to: CGPoint(x: inner, y: 3))
+                path.addLine(to: CGPoint(x: outer, y: 3))
+                path.addLine(to: CGPoint(x: outer, y: height - 3))
+                path.addLine(to: CGPoint(x: inner, y: height - 3))
+            }
+            .stroke(Design.textPrimary, lineWidth: 2)
+            .frame(width: 5, height: height)
+            .padding(.horizontal, 1)
+            .help(edge == .start ? "The start of this clip's scene" : "The end of this clip's scene")
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// The strip at a clip's edge that trims it, revealing or hiding
+    /// footage; it snaps like a point.
+    private func edgeHandle(_ piece: MotionRun.Piece, edge: MotionRun.Edge) -> some View {
+        Color.clear
+            .frame(width: 7, height: height)
+            .contentShape(Rectangle())
+            .onHover { inside in (inside ? NSCursor.resizeLeftRight : NSCursor.arrow).set() }
+            .highPriorityGesture(DragGesture(minimumDistance: 1)
+                .onChanged { drag in
+                    session.selectedPieceID = piece.id
+                    session.selectedPointID = nil
+                    session.beginDragIfNeeded()
+                    let from = (edge == .start ? piece.span.start : piece.span.end).seconds
+                    let target = from + Double(drag.translation.width) * session.secondsPerPoint
+                    let snapped = session.snapped(target, tolerance: 8 * session.secondsPerPoint)
+                    session.dragTrim(piece.id, edge: edge, to: snapped ?? target)
+                }
+                .onEnded { _ in session.endDrag("Trim Clip") })
+            .accessibilityHidden(true)
     }
 
     private func moveGesture(_ piece: MotionRun.Piece) -> some Gesture {

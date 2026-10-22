@@ -1,4 +1,5 @@
 import AppKit
+import CoreMedia
 import Observation
 import SwiftUI
 
@@ -17,6 +18,9 @@ final class MotionDesignController {
     @ObservationIgnored var onEdit: ((inout EditingProject) -> Void) -> Void = { _ in }
     /// Stops the editor's own playback, so only the panel plays.
     @ObservationIgnored var onOpen: () -> Void = {}
+    /// The scene analysis of each video, which sets the footage a clip may
+    /// reach: its scene.
+    @ObservationIgnored var sceneTracks: () -> [UUID: ChangeScoreTrack] = { [:] }
 
     @ObservationIgnored private var panel: DraftPanel?
     @ObservationIgnored private var panelDelegate: DraftPanelDelegate?
@@ -28,7 +32,12 @@ final class MotionDesignController {
         if session != nil { bringToFront(); return }
         editorWindow = NSApp.mainWindow ?? NSApp.keyWindow
         let run: MotionRun
-        switch MotionRun.opening(ids, in: timelineID, of: project) {
+        let tracks = sceneTracks()
+        let footage = { (clip: TimelineClip) -> CMTimeRange? in
+            guard case .media(let id) = clip.source else { return nil }
+            return project.sceneFootage(of: clip, track: tracks[id])
+        }
+        switch MotionRun.opening(ids, in: timelineID, of: project, footage: footage) {
         case .success(let opened): run = opened
         case .failure(let error): return explain(error, ids: ids, in: timelineID)
         }

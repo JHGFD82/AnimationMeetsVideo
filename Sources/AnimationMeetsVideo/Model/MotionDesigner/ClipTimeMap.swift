@@ -108,6 +108,20 @@ struct ClipTimeMap: Equatable {
         return along(points[next], speed: speed(after: next))
     }
 
+    /// The frame playing at `time`, along the line through the points, past
+    /// the footage too.
+    func source(atTime time: CMTime) -> CMTime? {
+        guard let first = points.first, let last = points.last else { return nil }
+        func along(_ from: TimePoint, speed: Double) -> CMTime {
+            let seconds = from.source.seconds + CMTimeSubtract(time, from.time).seconds * speed / 100
+            return CMTime(seconds: seconds, preferredTimescale: Self.timescale)
+        }
+        if time <= first.time { return along(first, speed: speedBeforeFirst) }
+        if time >= last.time { return along(last, speed: speedAfterLast) }
+        let index = points.firstIndex { $0.time > time }! - 1
+        return along(points[index], speed: speed(after: index))
+    }
+
     /// Where the clip starts and ends on the timeline, along the line.
     var span: (start: CMTime, end: CMTime)? {
         guard let start = time(atSource: trimStart), let end = time(atSource: trimEnd) else { return nil }
