@@ -18,6 +18,15 @@ final class KeyframeGraphLink: Identifiable {
     /// Time's edges, shared as the time is.
     var timeBand = RubberBandZoom()
     var timeScrollBand = RubberBandScroll()
+    /// Each linked graph's selected keyframe, kept here so the panel's one
+    /// row of ease presets can act on it.
+    var selected: [ParameterKey: CMTime] = [:]
+    /// The graph last clicked, which the presets act on; the top one until
+    /// another is.
+    var active: ParameterKey?
+    /// Counts the shared Fit button's presses, which each graph answers by
+    /// fitting its values.
+    var fits = 0
 
     init(_ keys: [ParameterKey]) {
         self.keys = keys
@@ -25,6 +34,18 @@ final class KeyframeGraphLink: Identifiable {
 
     /// Whether the panel holds more than one graph, which then share time.
     var isLinked: Bool { keys.count > 1 }
+
+    /// The graph the presets act on.
+    var activeKey: ParameterKey? {
+        active.flatMap { keys.contains($0) ? $0 : nil } ?? keys.first
+    }
+
+    /// Fits the shared time to every graph's keyframes, and each graph's
+    /// values to its own.
+    func fit() {
+        viewport.times = nil
+        fits += 1
+    }
 
     /// Whether `other`'s graphs can join these: graphs of one timeline
     /// only, since a shared time must mean the same moment in each.

@@ -6,8 +6,7 @@ import SwiftUI
 /// The graph editors open for an editor surface: floating HUD panels, one
 /// per parameter (a layer's position, its volume, …) or several linked
 /// into one on a shared timeline, so several can be open side by side, and
-/// the Audio Keys editors, one per effect. Dragging a graph panel by its
-/// title bar onto another links their graphs into that one. The surface
+/// the Audio Keys editors, one per effect. The surface
 /// keeps `project` and `playhead` current and says how to edit and seek;
 /// the panels' graphs read from here.
 @MainActor @Observable
@@ -28,21 +27,6 @@ final class KeyframeGraphHUDs {
     @ObservationIgnored private var observers: [Subject: [NSObjectProtocol]] = [:]
     /// The graphs of each graph panel.
     private var links: [UUID: KeyframeGraphLink] = [:]
-
-    /// A graph panel dragged over another, which letting go links into it
-    /// when `allowed`.
-    struct DropTarget: Equatable {
-        var link: UUID
-        var allowed: Bool
-    }
-
-    /// The graph panel under a graph panel being dragged, for it to show.
-    private(set) var dropTarget: DropTarget?
-    /// The graph panel being dragged by its title bar.
-    @ObservationIgnored private var draggedLink: UUID?
-    /// Watches for the end of a panel's drag, which the window server
-    /// moves without telling the app when the mouse goes up.
-    @ObservationIgnored private var dragTimer: Timer?
 
     /// What a panel shows.
     private enum Subject: Hashable {
@@ -104,19 +88,11 @@ final class KeyframeGraphHUDs {
         panel.contentView = content
         watchSpace()
         place(panel)
-        var watching = [NotificationCenter.default.addObserver(
+        observers[key] = [NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: panel, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.forget(key) }
         }]
-        if case .graphs(let id) = key {
-            watching.append(NotificationCenter.default.addObserver(
-                forName: NSWindow.didMoveNotification, object: panel, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.panelMoved(id) }
-            })
-        }
-        observers[key] = watching
         panels[key] = panel
         panel.orderFront(nil)
     }
@@ -197,49 +173,6 @@ final class KeyframeGraphHUDs {
         panel.setFrame(frame, display: true, animate: !Design.Motion.isReduced)
     }
 
-    /// A graph panel moved: while the mouse is down, it is being dragged
-    /// by its title bar, and may be over another to link into.
-    private func panelMoved(_ id: UUID) {
-        guard NSEvent.pressedMouseButtons & 1 != 0 else { return }
-        if draggedLink != id {
-            draggedLink = id
-            let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.watchDrag() }
-            }
-            RunLoop.main.add(timer, forMode: .common)
-            dragTimer?.invalidate()
-            dragTimer = timer
-        }
-        updateDropTarget()
-    }
-
-    /// Follows a panel's drag until the mouse goes up, then links it into
-    /// the panel under it, if it may.
-    private func watchDrag() {
-        guard NSEvent.pressedMouseButtons & 1 == 0 else { return updateDropTarget() }
-        dragTimer?.invalidate()
-        dragTimer = nil
-        let source = draggedLink, target = dropTarget
-        draggedLink = nil
-        dropTarget = nil
-        if let source, let target, target.allowed { link(source, into: target.link) }
-    }
-
-    /// The graph panel under the pointer, behind the one being dragged.
-    private func updateDropTarget() {
-        guard let source = draggedLink, let dragged = links[source], let draggedPanel = panels[.graphs(source)] else {
-            if dropTarget != nil { dropTarget = nil }
-            return
-        }
-        let mouse = NSEvent.mouseLocation
-        let under = NSApp.orderedWindows.first { $0 !== draggedPanel && $0.isVisible && $0.frame.contains(mouse) }
-        let target = panels.first { $0.value === under }.flatMap { entry -> DropTarget? in
-            guard case .graphs(let id) = entry.key, let link = links[id] else { return nil }
-            return DropTarget(link: id, allowed: link.canLink(dragged))
-        }
-        if target != dropTarget { dropTarget = target }
-    }
-
     // MARK: Panels
 
     /// Starts listening for Space in the graphs' panels, once.
@@ -270,15 +203,7 @@ final class KeyframeGraphHUDs {
             NotificationCenter.default.removeObserver(observer)
         }
         panels.removeValue(forKey: key)
-        if case .graphs(let id) = key {
-            links.removeValue(forKey: id)
-            if draggedLink == id {
-                draggedLink = nil
-                dragTimer?.invalidate()
-                dragTimer = nil
-            }
-            if dropTarget?.link == id { dropTarget = nil }
-        }
+        if case .graphs(let id) = key { links.removeValue(forKey: id) }
     }
 
     private func title(of subject: Subject) -> String {

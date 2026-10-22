@@ -183,6 +183,35 @@ when it ends, as one undo step; in-between states don't rebuild the
 player. After release the graph keeps drawing the drag's result until the
 project has it, so the old curve never shows for a frame.
 
+### Linking graph editors
+
+Graphs of one timeline can be linked into one panel, stacked over one
+shared stretch of the timeline (`KeyframeGraphLink`), to time one layer's
+curve against another's. The link button at the end of a graph's
+toolbar lists the other open graphs of its timeline; choosing one moves
+its graphs into this panel, under its own, and closes theirs. The panel
+grows by them, its top staying put. **Unlink** takes a graph back out
+into a panel of its own.
+
+The shared time is kept in timeline seconds and each graph maps it into
+its own time, so the same moment lines up down the panel; for a clip
+whose speed ramps only the ends match exactly. A zoom, scroll or pinch
+of time in any graph moves them all; values stay each graph's own.
+
+A linked panel isn't the graphs' panels stacked: what they would repeat
+it shows once.
+
+- **One row of presets** along the top, with the link button. It acts on
+  the graph last clicked (the top one until another is), named in front
+  of its keyframe's time, as a single graph's presets do on its own.
+  Each graph's name, at the start of its row, is in full tone while the
+  presets act on it; clicking the name picks it too.
+- **Each graph's row** has its name, its values at the playhead and
+  Separate Scales, and Unlink.
+- **One time dial** under all the graphs, with **Fit** in the corner
+  under their value dials. Fit fits the time to every graph's keyframes
+  and each graph's values to its own. Each graph keeps its value dial.
+
 ## In the timeline
 
 Each visual layer has a disclosure arrow left of its number. The arrow shows

@@ -537,9 +537,10 @@ struct UISnapshots {
     }
 
     /// Two shapes' Position graphs linked into one panel, the second shape
-    /// starting 2 s after the first: each headed with its name and Unlink,
-    /// on one shared stretch of the timeline, so their keyframes, 2 s apart
-    /// in each clip, sit 2 s apart across too.
+    /// starting 2 s after the first: one row of presets on top for the
+    /// first, each graph's row with its name and Unlink, and one time dial
+    /// under both, on one shared stretch of the timeline, so their
+    /// keyframes, 2 s apart in each clip, sit 2 s apart across too.
     @Test func linkedKeyframeGraphs() throws {
         var project = EditingProject.empty
         let timelineID = project.rootTimelineID
@@ -568,8 +569,7 @@ struct UISnapshots {
             KeyframeGraphStack(hud: hud, link: KeyframeGraphLink(keys), input: GraphInput()),
             "keyframe-graphs-linked", size: CGSize(width: 620, height: 600)
         )
-        // One graph alone: no name over it, the hint to drag another in, and
-        // Link With.
+        // One graph alone: one row, its presets ending in Link With.
         try SnapshotSupport.render(
             KeyframeGraphStack(hud: hud, link: KeyframeGraphLink([keys[0]]), input: GraphInput()),
             "keyframe-graph-single", size: CGSize(width: 620, height: 320)

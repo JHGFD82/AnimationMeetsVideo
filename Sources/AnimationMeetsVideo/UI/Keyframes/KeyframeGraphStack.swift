@@ -1,11 +1,13 @@
+import CoreMedia
 import SwiftUI
 
 /// A graph editor panel's graphs: one parameter's, or several linked into
 /// the panel, stacked over one shared stretch of the timeline
-/// (`KeyframeGraphLink`). Dragging another graph panel by its title bar
-/// onto this one links its graphs in; while it is over this one, an
-/// outline says whether letting go will. Link With does the same from a
-/// menu, and Unlink takes a graph back out into a panel of its own.
+/// (`KeyframeGraphLink`). Link With adds another open graph from a menu,
+/// and Unlink takes a graph back out into a panel of its own. Linked, the
+/// panel has one row of ease presets along the top, acting on the graph
+/// last clicked, and one time dial with Fit along the bottom; each graph
+/// keeps its own row (its name, values and Unlink) and value dial.
 struct KeyframeGraphStack: View {
     let hud: KeyframeGraphHUDs
     let link: KeyframeGraphLink
@@ -13,50 +15,94 @@ struct KeyframeGraphStack: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if link.isLinked {
+                presetBar
+                Divider()
+            }
             ForEach(Array(link.keys.enumerated()), id: \.element) { index, key in
                 if index > 0 { Groove() }
-                header(key, first: index == 0)
-                KeyframeGraphView(hud: hud, key: key, input: input, link: link.isLinked ? link : nil)
+                KeyframeGraphView(hud: hud, key: key, input: input, link: link)
             }
+            if link.isLinked { timeDial }
         }
-        .overlay { dropIndicator }
     }
 
-    /// The graph's name when linked, with Unlink; the first row also has
-    /// Link With.
-    private func header(_ key: ParameterKey, first: Bool) -> some View {
+    /// The presets, for the active graph's selected keyframe or the one at
+    /// the playhead, and Link With.
+    private var presetBar: some View {
         HStack(spacing: Design.Space.step) {
-            if link.isLinked {
-                Text(hud.project.parameterTitle(of: key))
-                    .font(Design.Typeface.groupTitle)
-                    .foregroundStyle(Design.textPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            } else {
-                Text("Drag another graph's panel here to link their time")
-                    .font(Design.Typeface.micro)
-                    .foregroundStyle(Design.textTertiary)
-                    .lineLimit(1)
-            }
             Spacer(minLength: Design.Space.step)
-            if first { linkMenu }
-            if link.isLinked {
-                Button("Unlink") { hud.unlink(key, from: link.id) }
-                    .help("Take this graph out into a panel of its own")
-                    .accessibilityLabel("Unlink \(hud.project.parameterTitle(of: key))")
+            if let key = link.activeKey, let timeline = hud.project.timeline(id: key.timelineID),
+               let value = hud.project.components(of: key), let axis = hud.project.timeAxis(of: key) {
+                let target = KeyframeGraphView.presetTarget(
+                    selected: link.selected[key], value: value, axis: axis, timeline: timeline, playhead: hud.playhead
+                )
+                KeyframeEasePresets(hud: hud, key: key, target: target, axis: axis, timeline: timeline, named: true)
             }
+            KeyframeGraphLinkMenu(hud: hud, link: link)
         }
         .font(Design.Typeface.label)
         .controlSize(.small)
         .padding(.horizontal, Design.Space.step)
-        .padding(.vertical, 3)
+        .padding(.vertical, Design.Space.close)
         .background(Design.Surface.raised.color)
     }
 
-    /// The other open graphs this panel's can link with.
-    private var linkMenu: some View {
+    /// The shared time's dial, under the graphs, with Fit in the corner
+    /// under their value dials.
+    private var timeDial: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                ZoomDial(axis: .horizontal, label: "Time zoom") { factor, held in
+                    zoomTimes(by: factor, pinching: held)
+                } onReset: {
+                    link.viewport.times = nil
+                } onRelease: {
+                    link.timeBand.endPinch()
+                }
+                .frame(width: min(ZoomDial.length, max(geometry.size.width - ZoomDial.thickness - 8, 40)))
+                Button(action: link.fit) {
+                    Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
+                        .font(Design.Typeface.glyphSmall)
+                        .foregroundStyle(Design.textSecondary)
+                        .frame(width: ZoomDial.thickness, height: ZoomDial.thickness)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Fit every graph's keyframes in view")
+                .accessibilityLabel("Fit")
+            }
+        }
+        .frame(height: ZoomDial.thickness)
+        .background(Color.black.opacity(0.2))
+    }
+
+    /// Zooms the shared time about the playhead while it is in view, else
+    /// the middle; past the limits the graphs stretch together.
+    private func zoomTimes(by factor: Double, pinching: Bool) {
+        let project = hud.project
+        guard let shown = link.shownTimes(in: project), shown.upperBound > shown.lowerBound else { return }
+        let playhead = hud.playhead.seconds
+        let anchor = shown.contains(playhead) ? playhead : (shown.lowerBound + shown.upperBound) / 2
+        let share = CGFloat((anchor - shown.lowerBound) / (shown.upperBound - shown.lowerBound))
+        var band = link.timeBand
+        band.zoom(by: factor, about: share, pinching: pinching) { factor in
+            link.zoomTimes(by: factor, around: anchor, in: project)
+        }
+        link.timeBand = band
+    }
+}
+
+/// Link With: the other open graphs of the timeline, to link into this
+/// panel.
+struct KeyframeGraphLinkMenu: View {
+    let hud: KeyframeGraphHUDs
+    let link: KeyframeGraphLink
+
+    var body: some View {
         let candidates = hud.linkCandidates(for: link.id)
-        return Menu {
+        Menu {
             ForEach(candidates, id: \.id) { candidate in
                 Button(candidate.title) { hud.link(candidate.id, into: link.id) }
             }
@@ -69,30 +115,5 @@ struct KeyframeGraphStack: View {
         .disabled(candidates.isEmpty)
         .help(candidates.isEmpty ? "Open another graph of this timeline to link it here" : "Link another open graph into this panel")
         .accessibilityLabel("Link with another graph")
-    }
-
-    /// While another graph panel is dragged over this one: an outline in
-    /// the accent and what letting go will do, or why it won't.
-    @ViewBuilder
-    private var dropIndicator: some View {
-        if let target = hud.dropTarget, target.link == link.id {
-            let tone = target.allowed ? Design.accent : Design.statusDanger
-            ZStack {
-                tone.opacity(0.12)
-                RoundedRectangle(cornerRadius: Design.Radius.chip)
-                    .strokeBorder(tone, lineWidth: 3)
-                Label(
-                    target.allowed ? "Release to link these graphs on one timeline" : "Graphs of different timelines can't be linked",
-                    systemImage: target.allowed ? "link" : "nosign"
-                )
-                .font(Design.Typeface.bodyEmphasis)
-                .foregroundStyle(Design.textPrimary)
-                .padding(.horizontal, Design.Space.rail)
-                .padding(.vertical, Design.Space.step)
-                .floatingSurface(radius: Design.Radius.chip)
-            }
-            .allowsHitTesting(false)
-            .transition(.opacity)
-        }
     }
 }
