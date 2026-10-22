@@ -30,7 +30,8 @@ struct RetimeMark: Equatable {
 
 /// A retimed clip's speed along its bar: a bar, a space and the speed at
 /// each point it is set, with a stretched arrow to the next point where
-/// the speed ramps to a different value.
+/// the speed ramps to a different value. Each reading sits on a faint dark
+/// shade, so it stays legible over the clip's thumbnails.
 struct RetimeStrip: View {
     let marks: [RetimeMark]
     let pixelsPerSecond: CGFloat
@@ -57,6 +58,9 @@ struct RetimeStrip: View {
                             .padding(.trailing, 3)
                     }
                 }
+                .padding(.horizontal, 2)
+                .background(Design.bevelShade, in: RoundedRectangle(cornerRadius: 2))
+                .padding(.trailing, 1)
                 .frame(width: max(0, end - x), alignment: .leading)
                 .clipped()
                 .offset(x: x)
