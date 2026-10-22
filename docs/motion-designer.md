@@ -54,18 +54,30 @@ on Done each clip gets its own share of the keyframes.
   value (**Set Pace…**). With hit H and marker M dragged so H→M plays at
   50%, a pace marker P past M at 200% makes the footage after P play at
   200%.
-  - Another marker beyond P slides in time so P's pace holds.
+  - Another marker beyond P slides in time so P's pace holds, and a run
+    of pace markers carries on, each placing the next.
   - A hit beyond P can't stay put and hold the pace too. The person is
     warned that the hit will become a marker and move to honour the
-    pace; on OK it does, on Cancel the pace isn't set.
+    pace; on OK it does, on Cancel the pace isn't set. Making the point
+    right after a pace marker a hit asks the same way, and ends that pace.
+  - Dragging the point right after P sets P's pace instead of bending the
+    line at P. Taking away the point between P and a hit ends P's pace.
 - Any marker can be made a hit, and a hit a marker.
+- A drag stops where a stretch would play faster than 10000% or slower
+  than 1%, or backwards; an edit that can't fit at all is refused.
+- A new marker lands where its frame plays now, so adding one changes
+  nothing until it is moved.
 
 ### Open ends
 
 Past the outermost point on a side, the speed carries on at the speed of
 the segment next to it, **to the end of that clip**. With H→M at 50%,
 the rest of that clip plays at 50% too. The next clip keeps whatever
-speed it already had.
+speed it already had. A lone point carries on at the speed the clip
+played at before (a lone pace marker at its pace after it). Where an
+eased corner nearby makes the stretch's steady part faster or slower
+than its average, the open end carries on at that steady speed, so it
+doesn't step at the outermost point.
 
 ### Easing
 
@@ -115,36 +127,57 @@ there is footage:
 
 A clip's speed keyframes become points:
 
-- Each speed keyframe becomes a **marker**; the person can turn any into
-  a hit.
+**Built** (`ClipTimeMap(reading:frameDuration:)`).
+
+- Each speed keyframe the clip plays becomes a **marker**, where it plays
+  now; the person can turn any into a hit. Hits aren't kept on Done, so
+  they come back as markers.
 - A [hold keyframe](#hold-keyframes) followed by another keyframe is a
   step in speed: the keyframe after the hold becomes a **pace marker** at
   its speed.
-- Two keyframes on **adjacent frames** with different speeds do the job
+- Two keyframes a frame or less apart with different speeds do the job
   of one pace marker, so they are read the same way: a pace marker at the
   second, and no marker for the first.
+- What writing adds makes no point: a hold at the very start of the trim
+  (the speed before the first point), and the keyframes that only shape
+  an eased corner (linear, beside a keyframe eased toward them). A
+  hand-made linear keyframe beside an eased one is taken for one of those.
+- A keyframe with eases makes an eased point.
+- A clip at one speed has no points; it plays at that speed until some
+  are added.
 
-Opening the designer and pressing Done without changing anything leaves
-the keyframes as they were.
+Opening the designer and pressing Done without changing a clip leaves its
+keyframes as they were: only clips that were changed are written (the
+panel's part, step 5). A ramp
+read from keyframes becomes markers at its ends, and if the person
+changes that clip, the stretch between them is written steady (or eased,
+if they ease its corners) rather than as the ramp's own curve.
 
 ## Writing keyframes
 
-On Done the run's time map becomes speed keyframes, per clip, in source
-time:
+**Built** (`ClipTimeMap.writtenSpeed()`). On Done each changed clip's
+time map becomes speed keyframes, in source time, and where the clip then
+starts:
 
-- Keyframes go only where the speed changes; a steady stretch needs none.
+- Keyframes go only where the speed changes; a steady stretch needs none,
+  and a clip at one speed throughout gets a single speed.
 - A sharp corner, every pace marker included, is the keyframe before it
   set to **hold**, then a keyframe at the corner with the new speed: the
   pattern read back as a pace marker.
-- An eased corner is keyframes with eases chosen so the speed's integral
-  (`SpeedIntegral`) over each segment equals the segment's length on the
-  timeline, so each hit lands on its beat to within a placed time
-  (1/240000 s).
-- Each clip's start and trim follow, in the same undo step.
+- An eased corner ramps over a third of the stretch on either side,
+  through the speed of the line joining the two stretches, with Easy
+  Ease on the corner's keyframe so the speed turns smoothly. The rest of
+  each stretch plays steadily at the speed that keeps the stretch its
+  length (solved against `SpeedIntegral`), so every point, and so every
+  hit, lands where it was put, to within a placed time (1/240000 s). A
+  corner whose speed doesn't change has nothing to ease.
+- Each clip's start follows, in the same undo step.
 
-The time map itself (ordered points, each a source time across the run, a
-song time, a kind and its eases) and the rules above are pure functions,
-unit tested like `BeatFitting`.
+The time map is one clip's (`ClipTimeMap`: the points in source order,
+each with its frame, its time on the timeline, its kind and whether it is
+eased), since open ends stop at the clip's edges; the panel keeps one for
+each clip of the run. It and the rules above are pure functions, unit
+tested like `BeatFitting`.
 
 ## Clips attached to the music
 
@@ -228,6 +261,7 @@ pace is typed.
 3. Hold keyframes: model, saving, `SpeedIntegral`, the graph editor.
    **Built.**
 4. The time map: solving, reading keyframes, writing them, unit tested.
+   **Built** (`Model/MotionDesigner/`).
 5. The panel (`UI/MotionDesigner/`), built on the beat match panel's
    shell, waveform, transport and zoom (`RubberBandZoom`), with the graph
    drawn like the keyframe graph.
