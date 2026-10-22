@@ -218,4 +218,41 @@ private struct Edit {
         edit.addSong(at: 0)
         #expect(edit.clip(first.clipID).music == nil)
     }
+
+    @Test func aLowerSongIsTheSongOnlyWhereNoneAbovePlays() throws {
+        var edit = Edit()
+        let upper = edit.addSong(at: 10, length: 10)
+        let lower = edit.addSong(at: 0, length: 40)
+        let timeline = try #require(edit.project.timeline(id: edit.project.rootTimelineID))
+        let clip = try #require(timeline.songClip(id: lower.clipID))
+        let stretches = timeline.songStretches(of: clip, onLayer: lower.layerID)
+        #expect(stretches == [
+            CMTimeRange(start: seconds(0), end: seconds(10)),
+            CMTimeRange(start: seconds(20), end: seconds(40)),
+        ])
+        let top = try #require(timeline.songClip(id: upper.clipID))
+        #expect(timeline.songStretches(of: top, onLayer: upper.layerID) == [CMTimeRange(start: seconds(10), end: seconds(20))])
+    }
+
+    @Test func theMusicsBeatsAreTheSongInChargesAtEachMoment() throws {
+        var edit = Edit()
+        edit.addSong(at: 10, length: 10)
+        edit.addSong(at: 0, length: 40)
+        // Each song beat matched with a beat every second, 0.5 s into it.
+        for index in edit.project.clips.indices where edit.project.clips[index].kind == .audio {
+            let beats = (0..<40).map { MappedBeat(time: seconds(0.5 + Double($0)), position: $0 % 4 + 1) }
+            edit.project.clips[index].hasAudio = true
+            edit.project.clips[index].beatMap = BeatMap(sections: [
+                BeatSection(kind: .consistent, start: .zero, end: seconds(60), isConfirmed: true, beats: beats)
+            ])
+        }
+        let timeline = try #require(edit.project.timeline(id: edit.project.rootTimelineID))
+        let beats = edit.project.musicBeats(in: timeline, tracks: [:]).map(\.time.seconds)
+        // The lower song's beats to 10 s, the upper's from 10 s (its own
+        // start, 0.5 s in) to 20 s, then the lower's again.
+        #expect(beats.filter { $0 < 10 } == (0..<10).map { 0.5 + Double($0) })
+        #expect(beats.filter { $0 >= 10 && $0 < 20 } == (0..<10).map { 10.5 + Double($0) })
+        #expect(beats.filter { $0 >= 20 }.first == 20.5)
+        #expect(beats.count == 40)
+    }
 }

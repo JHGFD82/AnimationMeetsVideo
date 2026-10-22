@@ -185,3 +185,43 @@ extension EditingProject {
         }
     }
 }
+
+extension Timeline {
+    /// The stretches of a Music layer's clip where it is the song (see
+    /// `song(at:)`): all of it but where a clip on a Music layer above
+    /// plays.
+    func songStretches(of clip: TimelineClip, onLayer layerID: UUID) -> [CMTimeRange] {
+        var stretches = [CMTimeRange(start: clip.startOffset, end: clip.endOffset)]
+        for layer in layers where layer.kind == .music {
+            if layer.id == layerID { break }
+            for above in layer.clips {
+                guard case .media = above.source else { continue }
+                let cut = CMTimeRange(start: above.startOffset, end: above.endOffset)
+                stretches = stretches.flatMap { stretch -> [CMTimeRange] in
+                    guard cut.start < stretch.end, stretch.start < cut.end else { return [stretch] }
+                    var left: [CMTimeRange] = []
+                    if stretch.start < cut.start { left.append(CMTimeRange(start: stretch.start, end: cut.start)) }
+                    if cut.end < stretch.end { left.append(CMTimeRange(start: cut.end, end: stretch.end)) }
+                    return left
+                }
+            }
+        }
+        return stretches
+    }
+}
+
+extension EditingProject {
+    /// The beats of the music a timeline's footage is cut to: at each
+    /// moment, those of the song playing then (`Timeline.song(at:)`), so a
+    /// song on a lower Music layer counts only where none above plays.
+    func musicBeats(in timeline: Timeline, tracks: [UUID: BeatTrack]) -> [BeatMarker] {
+        var beats: [BeatMarker] = []
+        for layer in timeline.layers where layer.kind == .music {
+            let songs = Set(layer.clips.map(\.id))
+            for beat in beatMarkers(in: layer, tracks: tracks) {
+                if let song = timeline.song(at: beat.time), songs.contains(song.id) { beats.append(beat) }
+            }
+        }
+        return beats.sorted { CMTimeCompare($0.time, $1.time) < 0 }
+    }
+}

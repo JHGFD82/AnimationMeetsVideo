@@ -57,8 +57,18 @@ the music.
   ringed in the accent.
 - **A hit's pin** runs from its frame in the strip, through the graph,
   to its beat in the music lane.
-- **The music lane** shows the first Music layer under the run: its
-  waveform and its beats, which are also drawn faintly across the graph.
+- **The music lanes**: a lane for each Music layer with a song under
+  the run, in the timeline's order and named as there when there are
+  several (one lane is 96 points tall; several share up to twice that,
+  the waveform drawn full height and fitted to its lane so it stays
+  visible). The music the footage is cut to is, at each moment, the song
+  on the first Music layer that has one there, as for clips attached to
+  the music (`Timeline.song(at:)`); a song is drawn in full where it
+  leads and dimmed where a layer above has the song
+  (`Timeline.songStretches(of:onLayer:)`). The beats drawn over the lanes
+  and faintly across the graph, and snapped to, are those of the song
+  leading at each moment (`EditingProject.musicBeats(in:tracks:)`), and
+  a hit's pin ends on the lane of the song leading at its time.
 - Grabbing the line drops a marker on that frame and drags it; grabbing a
   point drags it. Drags snap, within 8 points, to the beats (while shown),
   the playhead and the edges of the layer's other clips; the snap line
@@ -79,7 +89,7 @@ the music.
   after an edit (after a drag, once it ends), the player swapped onto it
   at the same moment and playing on if it was; meanwhile the old one keeps
   playing and a small spinner shows. Until the first build is ready the
-  player plays the music layer alone and the monitor shows the run's
+  player plays the Music layers alone and the monitor shows the run's
   thumbnails; a build that fails says why over the monitor and leaves the
   last one playing.
 - **The sidebar** shows the monitor, then what is

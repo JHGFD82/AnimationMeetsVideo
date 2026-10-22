@@ -88,12 +88,27 @@ struct UISnapshots {
         try SnapshotSupport.render(view, "motion-designer", size: size)
         _ = WaveformCache.shared.waveform(for: try #require(song.url))
         try await Task.sleep(for: .milliseconds(1500))
+        // Two songs: a second Music layer above with a song from 3 s to 6 s,
+        // which leads there, its lane full and the first's dimmed beneath.
+        var twoSongs = project
+        var chorus = TimelineClip(source: .media(song.id), startOffset: seconds(3), trimStart: seconds(8), trimEnd: seconds(11))
+        chorus.streams = .audio
+        let musicIndex = try #require(twoSongs.timelines[0].layers.firstIndex { $0.kind == .music })
+        twoSongs.timelines[0].layers.insert(TimelineLayer(customName: "Chorus", kind: .music, clips: [chorus]), at: musicIndex)
+        let twoSession = MotionDesignSession(run: run, project: twoSongs)
+        defer { twoSession.end() }
+        twoSession.select(point: hit)
+        twoSession.seek(to: 2.25)
+
         // The monitor shows the draft once built, its paused frame drawn.
         for _ in 0..<200 where !(session.showsDraft && easedSession.showsDraft) { try await Task.sleep(for: .milliseconds(50)) }
         _ = await session.draftFrame(at: 2.25)
         _ = await easedSession.draftFrame(at: 2.25)
+        for _ in 0..<200 where !twoSession.showsDraft { try await Task.sleep(for: .milliseconds(50)) }
+        _ = await twoSession.draftFrame(at: 2.25)
         try SnapshotSupport.render(view, "motion-designer", size: size)
         try SnapshotSupport.render(MotionDesignView(session: easedSession, onDone: {}, onCancel: {}), "motion-designer-ease", size: size)
+        try SnapshotSupport.render(MotionDesignView(session: twoSession, onDone: {}, onCancel: {}), "motion-designer-two-songs", size: size)
     }
 
     /// The beat match panel at each step: choosing, drawing sections,

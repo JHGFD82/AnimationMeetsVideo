@@ -32,7 +32,7 @@ struct MotionDesignLanes: View {
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
-            let graphHeight = max(120, geometry.size.height - Self.rulerHeight - Self.filmHeight - Self.musicHeight)
+            let graphHeight = max(120, geometry.size.height - Self.rulerHeight - Self.filmHeight - musicHeight)
             VStack(spacing: 0) {
                 ruler(width: width)
                 RetimedFilmstrip(session: session, width: width, height: Self.filmHeight)
@@ -474,11 +474,28 @@ struct MotionDesignLanes: View {
 
     // MARK: Music
 
+    /// The music area: one lane for a single Music layer, and for several a
+    /// lane each, in their order, sharing up to twice that.
+    private var musicHeight: CGFloat {
+        let count = session.musicLayers.count
+        return count <= 1 ? Self.musicHeight : min(CGFloat(count) * 64, 2 * Self.musicHeight)
+    }
+
+    private var laneHeight: CGFloat {
+        musicHeight / CGFloat(max(1, session.musicLayers.count))
+    }
+
+    /// Which lane holds the song in charge at `seconds`, if one does.
+    private func lane(at seconds: Double) -> Int? {
+        guard let song = session.timeline.song(at: CMTime(seconds: seconds, preferredTimescale: 48_000)) else { return nil }
+        return session.musicLayers.firstIndex { layer in layer.clips.contains { $0.id == song.id } }
+    }
+
     private func musicLane(width: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
-            if let layer = session.musicLayer {
-                ForEach(layer.clips) { clip in
-                    songBlock(clip, width: width)
+            VStack(spacing: 0) {
+                ForEach(session.musicLayers) { layer in
+                    layerLane(layer, width: width)
                 }
             }
             Canvas { context, size in
@@ -486,39 +503,83 @@ struct MotionDesignLanes: View {
                 drawBeats(in: &context, height: size.height, strong: 0.9, weak: 0.45)
             }
             .allowsHitTesting(false)
-            if session.musicLayer == nil {
+            if session.musicLayers.isEmpty {
                 Text("No song under these clips")
                     .font(Design.Typeface.label)
                     .foregroundStyle(Design.textTertiary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(width: width, height: Self.musicHeight, alignment: .topLeading)
+        .frame(width: width, height: musicHeight, alignment: .topLeading)
         .clipped()
         .background(Design.Surface.well.color)
         .contentShape(Rectangle())
         .gesture(scrubGesture)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Music")
-        .accessibilityValue(session.musicLayer == nil ? "No song" : "\(session.beats.count) beats")
+        .accessibilityValue(musicSummary)
+    }
+
+    private var musicSummary: String {
+        let layers = session.musicLayers.map { session.project.displayName(of: $0, in: session.timeline) }
+        guard !layers.isEmpty else { return "No song" }
+        let beats = "\(session.beats.count) beats"
+        return layers.count == 1 ? "\(layers[0]), \(beats)" : "\(layers.joined(separator: ", ")), the first with a song at a moment leading; \(beats)"
+    }
+
+    /// One Music layer's songs, dimmed where a layer above has the song.
+    private func layerLane(_ layer: TimelineLayer, width: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(layer.clips) { clip in
+                songBlock(clip, on: layer, width: width)
+            }
+            if session.musicLayers.count > 1 {
+                Text(session.project.displayName(of: layer, in: session.timeline))
+                    .font(Design.Typeface.tag)
+                    .foregroundStyle(Design.textSecondary)
+                    .padding(.horizontal, Design.Space.tight)
+                    .background(Design.Surface.well.color.opacity(0.8), in: RoundedRectangle(cornerRadius: Design.Radius.chip))
+                    .padding(Design.Space.tight)
+            }
+            if layer.id != session.musicLayers.last?.id {
+                Design.hairline.frame(height: 1).frame(maxHeight: .infinity, alignment: .bottom)
+            }
+        }
+        .frame(width: width, height: laneHeight, alignment: .topLeading)
+        .clipped()
     }
 
     @ViewBuilder
-    private func songBlock(_ clip: TimelineClip, width: CGFloat) -> some View {
+    private func songBlock(_ clip: TimelineClip, on layer: TimelineLayer, width: CGFloat) -> some View {
         let x0 = session.x(of: clip.startOffset.seconds), x1 = session.x(of: clip.endOffset.seconds)
         if x1 > 0, x0 < width, case .media(let id) = clip.source, let media = session.project.mediaClip(id: id) {
             let drawn0 = max(0, x0), drawn1 = min(width, x1)
             let source = clip.sourceTime(atTimelineTime: CMTime(seconds: session.seconds(atX: drawn0), preferredTimescale: 48_000))
+            let led = session.timeline.songStretches(of: clip, onLayer: layer.id)
             ZStack(alignment: .topLeading) {
                 Design.ClipTone.music.color.opacity(0.18)
                 if let url = media.url {
+                    // Drawn at the single lane's height, where the waveform
+                    // shows in full, then fitted to this one.
                     ClipWaveform(
                         url: url, fileStart: media.fileTime(forSourceTime: source).seconds,
                         secondsPerPoint: session.secondsPerPoint, width: drawn1 - drawn0, height: Self.musicHeight
                     )
+                    .scaleEffect(x: 1, y: laneHeight / Self.musicHeight, anchor: .top)
+                }
+                // Where a layer above has the song, this one only waits.
+                Canvas { context, size in
+                    var from = drawn0
+                    for stretch in led + [CMTimeRange(start: clip.endOffset, duration: .zero)] {
+                        let to = min(drawn1, session.x(of: stretch.start.seconds))
+                        if to > from {
+                            context.fill(Path(CGRect(x: from - drawn0, y: 0, width: to - from, height: size.height)), with: .color(Design.Surface.well.color.opacity(0.5)))
+                        }
+                        from = max(from, session.x(of: stretch.end.seconds))
+                    }
                 }
             }
-            .frame(width: drawn1 - drawn0, height: Self.musicHeight)
+            .frame(width: drawn1 - drawn0, height: laneHeight, alignment: .topLeading)
             .offset(x: drawn0)
             .accessibilityHidden(true)
         }
@@ -542,7 +603,10 @@ struct MotionDesignLanes: View {
                         pin.move(to: CGPoint(x: at.x, y: graphTop + at.y + 8))
                         pin.addLine(to: CGPoint(x: at.x, y: size.height))
                         context.stroke(pin, with: .color(Design.snap.opacity(0.7)), lineWidth: 1)
-                        context.fill(Path(ellipseIn: CGRect(x: at.x - 3, y: size.height - Self.musicHeight / 2 - 3, width: 6, height: 6)), with: .color(Design.snap))
+                        // On the lane of the song in charge there.
+                        let lane = CGFloat(lane(at: point.time.seconds) ?? 0)
+                        let y = size.height - musicHeight + (lane + 0.5) * laneHeight
+                        context.fill(Path(ellipseIn: CGRect(x: at.x - 3, y: y - 3, width: 6, height: 6)), with: .color(Design.snap))
                     }
                 }
                 if let snapTime {

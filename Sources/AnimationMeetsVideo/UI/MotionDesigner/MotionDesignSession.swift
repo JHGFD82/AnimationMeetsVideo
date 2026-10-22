@@ -26,10 +26,10 @@ final class MotionDesignSession {
     /// the music; the run is the only thing that changes.
     let project: EditingProject
     let timeline: Timeline
-    /// The Music layer the run's clips are cut to: the first with a song
-    /// under the run.
-    let musicLayer: TimelineLayer?
-    /// That layer's beats, in timeline time.
+    /// The Music layers with a song under the run, in order: the first with
+    /// a song at a moment is the one the footage is cut to then.
+    let musicLayers: [TimelineLayer]
+    /// The beats of the song in charge at each moment, in timeline time.
     let beats: [BeatMarker]
 
     // MARK: Editing
@@ -81,12 +81,12 @@ final class MotionDesignSession {
         let timeline = project.timeline(id: run.timelineID)!
         self.timeline = timeline
         let span = run.span
-        let music = timeline.layers.first { layer in
+        let music = timeline.layers.filter { layer in
             layer.kind == .music && layer.clips.contains { CMTimeRangeGetIntersection(CMTimeRange(start: $0.startOffset, end: $0.endOffset), otherRange: span).duration > .zero }
         }
-        musicLayer = music
-        beats = music.map { project.beatMarkers(in: $0, tracks: DetectedBeats.shared.tracks) } ?? []
-        player = AVPlayer(playerItem: music.flatMap { Self.musicItem(of: $0, in: project) })
+        musicLayers = music
+        beats = project.musicBeats(in: timeline, tracks: DetectedBeats.shared.tracks)
+        player = AVPlayer(playerItem: Self.musicItem(of: music, in: project))
         player.actionAtItemEnd = .pause
         player.audioOutputDeviceUniqueID = AudioDevices.playbackUID
         playhead = span.start.seconds
@@ -200,11 +200,19 @@ final class MotionDesignSession {
         isUpdatingPreview = false
     }
 
-    /// The music layer's songs as one sound, at their places on the
-    /// timeline, so the player's time is the timeline's.
-    private static func musicItem(of layer: TimelineLayer, in project: EditingProject) -> AVPlayerItem? {
+    /// The Music layers' songs as one sound, each layer a track, at their
+    /// places on the timeline, so the player's time is the timeline's.
+    private static func musicItem(of layers: [TimelineLayer], in project: EditingProject) -> AVPlayerItem? {
+        guard !layers.isEmpty else { return nil }
         let composition = AVMutableComposition()
-        guard let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return nil }
+        for layer in layers {
+            guard let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
+            add(layer, to: track, in: project)
+        }
+        return AVPlayerItem(asset: composition)
+    }
+
+    private static func add(_ layer: TimelineLayer, to track: AVMutableCompositionTrack, in project: EditingProject) {
         for clip in layer.clips {
             guard case .media(let id) = clip.source, let media = project.mediaClip(id: id), let url = media.url,
                   let sourceTrack = MediaFile.asset(at: url).tracks(withMediaType: .audio).first
@@ -218,7 +226,6 @@ final class MotionDesignSession {
                 track.scaleTimeRange(CMTimeRange(start: clip.startOffset, duration: clip.trimmedDuration), toDuration: clip.placedDuration)
             }
         }
-        return AVPlayerItem(asset: composition)
     }
 
     // MARK: Edits
