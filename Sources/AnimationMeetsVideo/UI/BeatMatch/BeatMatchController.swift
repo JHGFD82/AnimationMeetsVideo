@@ -27,8 +27,8 @@ final class BeatMatchController {
     /// Stops the editor's own playback, so only the song plays.
     @ObservationIgnored var onOpen: () -> Void = {}
 
-    @ObservationIgnored private var panel: BeatMatchPanel?
-    @ObservationIgnored private var panelDelegate: BeatMatchPanelDelegate?
+    @ObservationIgnored private var panel: DraftPanel?
+    @ObservationIgnored private var panelDelegate: DraftPanelDelegate?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private weak var editorWindow: NSWindow?
 
@@ -46,23 +46,11 @@ final class BeatMatchController {
         self.session = session
 
         editorWindow = NSApp.mainWindow ?? NSApp.keyWindow
-        // A standard titled panel rather than a HUD, which has no zoom
-        // button; the zoom button widens it to the screen.
-        let panel = BeatMatchPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 1060, height: 480),
-            styleMask: [.titled, .closable, .resizable],
-            backing: .buffered,
-            defer: false
+        let panel = DraftPanel.make(
+            title: "Beat Match: \(asset.name)", size: NSSize(width: 1060, height: 480),
+            minimum: NSSize(width: 820, height: 340), undo: session.undoManager, over: editorWindow
         )
-        panel.appearance = NSAppearance(named: .darkAqua)
-        panel.draftUndoManager = session.undoManager
-        panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = true
-        panel.isReleasedWhenClosed = false
-        panel.isMovableByWindowBackground = false
-        panel.contentMinSize = NSSize(width: 820, height: 340)
-        panel.title = "Beat Match: \(asset.name)"
-        let host = BeatMatchHostingView(rootView: BeatMatchView(
+        let host = DraftPanelHostingView(rootView: BeatMatchView(
             session: session,
             onConfirm: { [weak self] in self?.confirm() },
             onCancel: { [weak self] in self?.requestClose() }
@@ -70,18 +58,13 @@ final class BeatMatchController {
         // The panel's size is the person's; the view fills whatever it is.
         host.sizingOptions = [.minSize]
         panel.contentView = host
-        let delegate = BeatMatchPanelDelegate()
+        let delegate = DraftPanelDelegate()
         delegate.shouldClose = { [weak self] in
             self?.requestClose()
             return false
         }
         panel.delegate = delegate
         panelDelegate = delegate
-        if let frame = editorWindow?.frame {
-            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.midY - panel.frame.height / 2))
-        } else {
-            panel.center()
-        }
         // The editor takes no input meanwhile, so a click on it means the
         // person is looking for the panel.
         observers = [
@@ -151,32 +134,4 @@ final class BeatMatchController {
         panelDelegate = nil
         editorWindow?.makeKeyAndOrderFront(nil)
     }
-}
-
-/// The close button asks the controller, and the zoom button widens the
-/// panel to the screen while keeping its height and place up and down.
-private final class BeatMatchPanelDelegate: NSObject, NSWindowDelegate {
-    var shouldClose: () -> Bool = { true }
-
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        MainActor.assumeIsolated { shouldClose() }
-    }
-
-    func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame newFrame: NSRect) -> NSRect {
-        let visible = window.screen?.visibleFrame ?? newFrame
-        return NSRect(x: visible.minX, y: window.frame.minY, width: visible.width, height: window.frame.height)
-    }
-}
-
-/// Undo in the panel undoes the draft, not the project.
-private final class BeatMatchPanel: NSPanel {
-    weak var draftUndoManager: UndoManager?
-    override var undoManager: UndoManager? { draftUndoManager ?? super.undoManager }
-}
-
-/// Drags on the waveform belong to it, not to moving the panel, and the
-/// first click goes through.
-private final class BeatMatchHostingView: NSHostingView<BeatMatchView> {
-    override var mouseDownCanMoveWindow: Bool { false }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

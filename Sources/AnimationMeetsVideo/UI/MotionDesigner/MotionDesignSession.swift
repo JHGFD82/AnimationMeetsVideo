@@ -30,6 +30,8 @@ final class MotionDesignSession {
 
     var selectedPointID: UUID?
     var selectedPieceID: UUID?
+    /// Asks the sidebar to focus the pace field (P, and Set Pace…).
+    var focusesPace = false
     /// Shows the beats, and lets points and clips snap to them.
     var showsBeats = true
     var snaps = true
@@ -131,10 +133,30 @@ final class MotionDesignSession {
         dragStart = run
     }
 
+    /// Begins a drag on its first change.
+    func beginDragIfNeeded() {
+        if dragStart == nil { dragStart = run }
+    }
+
+    var isDragging: Bool { dragStart != nil }
+
+    /// Says why a clip with a hit didn't move.
+    func explainHeldPiece() {
+        message = "A clip with a hit is held by its beat. Make the hits markers to move it."
+    }
+
     func endDrag(_ name: String) {
         guard let start = dragStart else { return }
         dragStart = nil
         if start != run { registerUndo(restoring: start, name: name) }
+    }
+
+    /// Moves a whole clip `delta` from where it was when the drag began.
+    func dragPiece(_ id: UUID, by delta: CMTime) {
+        guard let start = dragStart else { return }
+        var edited = start
+        edited.movePiece(id, by: delta)
+        if edited != run { run = edited }
     }
 
     /// Puts the draft back as it was when the drag began (Escape).
@@ -185,7 +207,7 @@ final class MotionDesignSession {
     @discardableResult
     func addMarker(toPiece id: UUID, atTime seconds: Double) -> UUID? {
         guard let index = run.index(of: id) else { return nil }
-        let drafted = run.pieces[index].drafted
+        let drafted = drafted(run.pieces[index])
         let time = CMTime(seconds: seconds, preferredTimescale: ClipTimeMap.timescale)
         guard drafted.startOffset <= time, time <= drafted.endOffset else { return nil }
         let source = drafted.sourceTime(atTimelineTime: time)
@@ -234,12 +256,20 @@ final class MotionDesignSession {
     /// Moves the selected clip by whole frames, if it has no hit.
     func nudgeSelectedPiece(byFrames frames: Int) {
         guard let id = selectedPieceID else { return }
-        guard run.canMove(id) else {
-            message = "A clip with a hit is held by its beat. Make the hits markers to move it."
-            return
-        }
+        guard run.canMove(id) else { return explainHeldPiece() }
         perform("Move Clip") { $0.movePiece(id, by: CMTimeMultiply(run.frameDuration, multiplier: Int32(frames))) }
     }
+
+    /// A piece as it plays in the draft, kept until its map or start
+    /// changes, since an eased map is solved to write it.
+    func drafted(_ piece: MotionRun.Piece) -> TimelineClip {
+        if let kept = draftCache[piece.id], kept.map == piece.map, kept.start == piece.start { return kept.clip }
+        let clip = piece.drafted
+        draftCache[piece.id] = (piece.map, piece.start, clip)
+        return clip
+    }
+
+    @ObservationIgnored private var draftCache: [UUID: (map: ClipTimeMap, start: CMTime, clip: TimelineClip)] = [:]
 
     // MARK: Snapping
 

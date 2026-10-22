@@ -1,0 +1,154 @@
+import CoreMedia
+import SwiftUI
+
+/// The run's footage, each frame shown where it plays: frames are taken at
+/// even steps of the footage and placed by the draft, so a stretch played
+/// slowly spreads them apart, with the lane showing between, and one played
+/// fast crowds them into slivers. At 100% they just touch. Dragging a clip
+/// moves it, unless a hit holds it to a beat.
+struct RetimedFilmstrip: View {
+    let session: MotionDesignSession
+    let width: CGFloat
+    let height: CGFloat
+
+    /// The tiles' height, inside the lane's padding.
+    private var tileHeight: CGFloat { height - 10 }
+    private var tileWidth: CGFloat { (tileHeight * 16 / 9).rounded() }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(session.run.pieces) { piece in
+                pieceStrip(piece)
+            }
+        }
+        .frame(width: width, height: height, alignment: .topLeading)
+        .clipped()
+        .background(Design.Surface.sunken.color)
+    }
+
+    @ViewBuilder
+    private func pieceStrip(_ piece: MotionRun.Piece) -> some View {
+        let drafted = session.drafted(piece)
+        let x0 = session.x(of: drafted.startOffset.seconds), x1 = session.x(of: drafted.endOffset.seconds)
+        let info = session.project.resolvedInfo(for: piece.clip.source)
+        let tone = Design.ClipTone.of(info, streams: piece.clip.streams).color
+        let isSelected = session.selectedPieceID == piece.id && session.selectedPointID == nil
+        if x1 > 0, x0 < width {
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: Design.Radius.chip)
+                    .fill(tone.opacity(0.22))
+                if case .media(let media) = info, let url = media.url {
+                    ForEach(tiles(of: drafted, x0: x0), id: \.index) { tile in
+                        FilmstripTile(url: url, time: media.fileTime(forSourceTime: tile.source), height: tileHeight)
+                            .frame(width: tile.width, height: tileHeight, alignment: .leading)
+                            .clipped()
+                            .offset(x: tile.x - x0, y: 5)
+                    }
+                }
+                Text(info?.name ?? "Clip")
+                    .font(Design.Typeface.tag)
+                    .foregroundStyle(Design.textOnColor)
+                    .lineLimit(1)
+                    .padding(.horizontal, Design.Space.tight)
+                    .background(tone.opacity(0.85), in: RoundedRectangle(cornerRadius: Design.Radius.chip))
+                    .padding(Design.Space.tight)
+                RoundedRectangle(cornerRadius: Design.Radius.chip)
+                    .strokeBorder(isSelected ? Design.accent : tone, lineWidth: isSelected ? 2 : 1)
+                    .allowsHitTesting(false)
+            }
+            .frame(width: max(1, x1 - x0), height: height)
+            .offset(x: x0)
+            .contentShape(Rectangle())
+            .gesture(moveGesture(piece))
+            .onTapGesture {
+                session.selectedPieceID = piece.id
+                session.selectedPointID = nil
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(info?.name ?? "Clip"), clip")
+            .accessibilityValue("From \(Self.timecode(drafted.startOffset, session)) to \(Self.timecode(drafted.endOffset, session))")
+            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { session.selectedPieceID = piece.id }
+            .accessibilityActions {
+                Button("Move a frame earlier") { session.selectedPieceID = piece.id; session.nudgeSelectedPiece(byFrames: -1) }
+                Button("Move a frame later") { session.selectedPieceID = piece.id; session.nudgeSelectedPiece(byFrames: 1) }
+            }
+        }
+    }
+
+    static func timecode(_ time: CMTime, _ session: MotionDesignSession) -> String {
+        CMTimeMaximum(time, .zero).timecode(frameRate: session.timeline.frameRate)
+    }
+
+    private struct Tile {
+        var index: Int
+        var source: CMTime
+        var x: CGFloat
+        var width: CGFloat
+    }
+
+    /// The frames on screen: one every tile's width of footage at 100%,
+    /// each as wide as the room before the next, up to a whole tile.
+    private func tiles(of clip: TimelineClip, x0: CGFloat) -> [Tile] {
+        let step = Double(tileWidth) * session.secondsPerPoint
+        guard step > 0 else { return [] }
+        let length = clip.trimmedDuration.seconds
+        let count = Int((length / step).rounded(.up))
+        var result: [Tile] = []
+        var previous: (index: Int, source: CMTime, x: CGFloat)?
+        // Footage times on a tenth-second grid, so a frame drawn once is
+        // found again as the zoom changes.
+        for index in 0...count {
+            let seconds = min(clip.trimStart.seconds + Double(index) * step, clip.trimEnd.seconds)
+            let source = CMTime(seconds: (seconds * 10).rounded(.down) / 10, preferredTimescale: 600)
+            let x = session.x(of: clip.timelineTime(forSourceTime: CMTime(seconds: seconds, preferredTimescale: 600)).seconds)
+            if let previous, previous.x < width, x > 0 {
+                result.append(Tile(index: previous.index, source: previous.source, x: previous.x, width: min(tileWidth, max(1, x - previous.x))))
+            }
+            previous = (index, max(source, clip.trimStart), x)
+        }
+        return result
+    }
+
+    private func moveGesture(_ piece: MotionRun.Piece) -> some Gesture {
+        DragGesture(minimumDistance: 3)
+            .onChanged { drag in
+                if session.selectedPieceID != piece.id || session.selectedPointID != nil {
+                    session.selectedPieceID = piece.id
+                    session.selectedPointID = nil
+                }
+                guard session.run.canMove(piece.id) else { return }
+                session.beginDragIfNeeded()
+                let delta = Double(drag.translation.width) * session.secondsPerPoint
+                session.dragPiece(piece.id, by: CMTime(seconds: delta, preferredTimescale: ClipTimeMap.timescale))
+            }
+            .onEnded { _ in
+                if !session.run.canMove(piece.id) {
+                    session.explainHeldPiece()
+                }
+                session.endDrag("Move Clip")
+            }
+    }
+}
+
+/// One frame of the strip, from the shared thumbnail cache.
+private struct FilmstripTile: View {
+    let url: URL
+    let time: CMTime
+    let height: CGFloat
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let shown = image ?? FrameThumbnails.nearestCached(url: url, time: time, height: height) {
+                Image(nsImage: shown)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Design.Surface.raised.color
+            }
+        }
+        .task(id: time) { image = await FrameThumbnails.image(url: url, time: time, height: height) }
+        .accessibilityHidden(true)
+    }
+}

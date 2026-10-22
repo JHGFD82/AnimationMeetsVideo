@@ -11,6 +11,66 @@ import Testing
 @MainActor
 @Suite(.serialized, .enabled(if: SnapshotSupport.isEnabled))
 struct UISnapshots {
+    /// The motion designer on two shots over a click song: the first held
+    /// by a hit on a downbeat and slowed by a dragged marker, the second
+    /// sped up by a pace marker that is selected; the retimed filmstrip,
+    /// the graph's speeds and the hit's pin down to its beat.
+    @Test func motionDesigner() async throws {
+        var song = try SnapshotSupport.clickSong(named: "motion-designer-song", seconds: 16)
+        let beats = (0..<31).map { MappedBeat(time: CMTime(seconds: 0.25 + Double($0) * 0.5, preferredTimescale: 600), position: $0 % 4 + 1) }
+        song.hasAudio = true
+        song.beatMap = BeatMap(sections: [BeatSection(kind: .consistent, start: .zero, end: CMTime(value: 16, timescale: 1), isConfirmed: true, beats: beats)])
+        let movie = FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-motion-\(UUID().uuidString).mov")
+        defer { try? FileManager.default.removeItem(at: movie) }
+        try await writeMovie(to: movie, segments: [(90, 24), (200, 24), (120, 24), (230, 24), (100, 24), (180, 24), (140, 24), (240, 24)])
+        let footage = MediaClip(
+            name: "Skate", kind: .video, url: movie, duration: CMTime(value: 8, timescale: 1),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        project.addMedia(footage)
+        project.addMedia(song)
+        func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferredTimescale: 600) }
+        let first = TimelineClip(source: .media(footage.id), startOffset: seconds(1), trimStart: .zero, trimEnd: seconds(3))
+        let second = TimelineClip(source: .media(footage.id), startOffset: seconds(6), trimStart: seconds(4), trimEnd: seconds(7))
+        var music = TimelineClip(source: .media(song.id), startOffset: .zero, trimStart: .zero, trimEnd: seconds(16))
+        music.streams = .audio
+        project.timelines[0].layers = [
+            TimelineLayer(customName: nil, kind: .video, clips: [first, second]),
+            TimelineLayer(customName: nil, kind: .music, clips: [music]),
+        ]
+
+        var run = try MotionRun.opening([first.id, second.id], in: timelineID, of: project).get()
+        let hitAdded = run.addMarker(toPiece: first.id, atSource: seconds(0.25))
+        let hit = try #require(hitAdded)
+        run.movePoint(hit, to: seconds(1.25))
+        run.setKind(.hit, ofPoint: hit)
+        let slowAdded = run.addMarker(toPiece: first.id, atSource: seconds(1.25))
+        let slow = try #require(slowAdded)
+        run.movePoint(slow, to: seconds(3.25))
+        let paceAdded = run.addMarker(toPiece: second.id, atSource: seconds(5))
+        let pace = try #require(paceAdded)
+        run.setKind(.pace(250), ofPoint: pace)
+        run.setEased(true, ofPoint: slow)
+        let session = MotionDesignSession(run: run, project: project)
+        defer { session.end() }
+        session.select(point: pace)
+        session.seek(to: 2.25)
+        let view = MotionDesignView(session: session, onDone: {}, onCancel: {})
+        let size = CGSize(width: 1240, height: 600)
+        // The monitor's frame, which a periodic view asks for only once
+        // it ticks.
+        let shown = session.drafted(session.run.pieces[0]).sourceTime(atTimelineTime: seconds(2.25))
+        _ = await FrameThumbnails.image(url: movie, time: CMTime(seconds: (shown.seconds * 10).rounded() / 10, preferredTimescale: 600), height: 90)
+        // The first pass asks for the thumbnails and the waveform.
+        try SnapshotSupport.render(view, "motion-designer", size: size)
+        _ = WaveformCache.shared.waveform(for: try #require(song.url))
+        try await Task.sleep(for: .milliseconds(1500))
+        try SnapshotSupport.render(view, "motion-designer", size: size)
+    }
+
     /// The beat match panel at each step: choosing, drawing sections,
     /// marking, and a filled section with a beat selected.
     @Test func beatMatchSteps() async throws {

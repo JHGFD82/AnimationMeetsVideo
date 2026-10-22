@@ -119,6 +119,9 @@ struct ClipBlockView: View {
     /// Ties the clip to the music at the playhead; nil for clips on a Music
     /// layer, which are the music.
     var onAttachToMusic: (() -> Void)? = nil
+    /// Opens the motion designer on the clip, or on the clips picked with
+    /// it; nil for songs and clips that play backwards.
+    var onMotionDesign: (() -> Void)? = nil
     /// For an adjustment clip: what it reaches, and the choices.
     var reach: ReachMenu? = nil
 
@@ -584,6 +587,9 @@ struct ClipBlockView: View {
         if let onAttachToMusic {
             Button(clip.followsMusic ? "Stop following music" : "Follow music") { onEditClip { $0.followsMusic.toggle() } }
             Button("Attach to music at playhead", action: onAttachToMusic)
+        }
+        if let onMotionDesign {
+            Button(isInGroup ? "Open selection in motion designer" : "Open in motion designer", action: onMotionDesign)
         }
         if let reach {
             Button("Reach all layers below") { reach.onChoose(nil) }

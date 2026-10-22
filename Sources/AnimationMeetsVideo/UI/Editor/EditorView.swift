@@ -24,6 +24,7 @@ struct EditorView: View {
     @State private var externalDisplay = ExternalDisplayController()
     @State private var renderer = RenderScheduler()
     @State private var beatMatch = BeatMatchController()
+    @State private var motionDesign = MotionDesignController()
     @State private var tapeScrubber = TapeScrubberWindow()
     /// A clip skimmed in the browser, which the viewer shows.
     @State private var skim = BrowserSkim()
@@ -100,21 +101,25 @@ struct EditorView: View {
             .environment(skim)
             .environment(imports)
         }
-        // While a song is beat matched the editor is darkened and takes no
-        // input; a click on it brings the panel back.
-        .disabled(beatMatch.isActive)
+        // While a song is beat matched, or clips are in the motion
+        // designer, the editor is darkened and takes no input; a click on it
+        // brings the panel back.
+        .disabled(beatMatch.isActive || motionDesign.isActive)
         .overlay {
-            if beatMatch.isActive {
+            if beatMatch.isActive || motionDesign.isActive {
+                let name = beatMatch.isActive ? "Beat match" : "The motion designer"
+                let bringToFront = { beatMatch.isActive ? beatMatch.bringToFront() : motionDesign.bringToFront() }
                 Color.black.opacity(0.55)
                     .contentShape(Rectangle())
-                    .onTapGesture { beatMatch.bringToFront() }
-                    .accessibilityLabel("Beat match is open")
-                    .accessibilityHint("Bring the beat match panel to the front")
+                    .onTapGesture { bringToFront() }
+                    .accessibilityLabel("\(name) is open")
+                    .accessibilityHint("Bring its panel to the front")
                     .accessibilityAddTraits(.isButton)
-                    .accessibilityAction { beatMatch.bringToFront() }
+                    .accessibilityAction { bringToFront() }
             }
         }
         .environment(beatMatch)
+        .environment(motionDesign)
         .background(Design.Surface.base.color)
         // A picture can only be judged against a neutral dim surround, so
         // the editor is dark whatever the system appearance is. See
@@ -133,6 +138,7 @@ struct EditorView: View {
             selection = nil
             skim.end()
             beatMatch.discardAndClose()
+            motionDesign.discardAndClose()
         }
         .onChange(of: project) { oldValue, newValue in projectDidChange(newValue, from: oldValue) }
         .onReceive(NotificationCenter.default.publisher(for: .spectrogramsChanged)) { _ in analysisArrived() }
@@ -144,6 +150,8 @@ struct EditorView: View {
         .onAppear {
             beatMatch.onEdit = { change in change(&project) }
             beatMatch.onOpen = { [playback] in playback.player.pause() }
+            motionDesign.onEdit = { change in change(&project) }
+            motionDesign.onOpen = { [playback] in playback.player.pause() }
             connectHistory()
             analysis.projectSource = { project }
             analysis.update(with: project)
@@ -172,6 +180,7 @@ struct EditorView: View {
         history.projectDidChange(newValue)
         keepViewStateValid(for: newValue)
         beatMatch.update(project: newValue)
+        motionDesign.update(project: newValue)
     }
 
     /// Keyframing effects waiting on analysis make their keyframes: Audio

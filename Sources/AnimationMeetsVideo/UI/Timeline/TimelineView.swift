@@ -166,6 +166,7 @@ struct TimelineView: View {
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
     @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
+    @Environment(MotionDesignController.self) private var motionDesign: MotionDesignController?
     @Environment(RenderScheduler.self) var renderer: RenderScheduler?
     /// Where a drag in progress snapped, drawn as a line across the layers.
     @State private var snapIndicator: CMTime?
@@ -1028,6 +1029,10 @@ struct TimelineView: View {
                         onAttachToMusic: { clipID in
                             let time = livePlayheadTime
                             onEditProject { $0.attachToMusic(clipID, in: timelineID, at: time) }
+                        },
+                        onMotionDesign: { clipID in
+                            let ids = groupSelection.contains(clipID) ? groupSelection : [clipID]
+                            motionDesign?.open(clips: ids, in: timelineID, of: project)
                         }
                     )
                     // Rows that would draw the same aren't redrawn, so

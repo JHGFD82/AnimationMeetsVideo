@@ -110,6 +110,8 @@ struct LayerClipRow: View {
     let onSetReach: (UUID, UUID?) -> Void
     /// Ties a clip to the music at the playhead.
     let onAttachToMusic: (UUID) -> Void
+    /// Opens the motion designer on a clip, with the clips picked with it.
+    let onMotionDesign: (UUID) -> Void
 
     /// While a slip shortens a clip: how far the clips after it move in.
     private struct FollowerShift: Equatable {
@@ -261,6 +263,7 @@ struct LayerClipRow: View {
                     onEditClip: { change in onEditClip(clip.id, change) },
                     onBeatMatch: beatMatchAction(for: clip),
                     onAttachToMusic: layer.kind == .music ? nil : { onAttachToMusic(clip.id) },
+                    onMotionDesign: layer.kind == .music || clip.isReversed ? nil : { onMotionDesign(clip.id) },
                     reach: reachMenu(for: clip)
                 )
                 .offset(x: shiftX(of: clip))
