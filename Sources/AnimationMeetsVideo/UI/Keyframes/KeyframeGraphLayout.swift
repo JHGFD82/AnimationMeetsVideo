@@ -93,8 +93,10 @@ struct KeyframeGraphLayout: Equatable {
     /// Lays `value` (shown with `offset` added) out in `size` as `viewport`
     /// says, time going no further than `span`, the parameter's own: a
     /// clip's trimmed range, padded a little so points at its ends show.
+    /// A graph linked with others shows the `shared` times instead, which
+    /// may reach past its span.
     init(_ value: AnimatedValue<ComponentValue>, offset: [Double], size: CGSize, viewport: KeyframeGraphViewport,
-         span: ClosedRange<Double>, frame: Double) {
+         span: ClosedRange<Double>, frame: Double, shared: ClosedRange<Double>? = nil) {
         let insets = Self.insets
         plot = CGRect(
             x: insets.leading, y: insets.top,
@@ -102,7 +104,7 @@ struct KeyframeGraphLayout: Equatable {
             height: max(1, size.height - insets.top - insets.bottom)
         )
         let padded = Self.padded(span)
-        times = viewport.shownTimes(fit: Self.fitTimes(value, span: padded, frame: frame), span: padded)
+        times = shared ?? viewport.shownTimes(fit: Self.fitTimes(value, span: padded, frame: frame), span: padded)
         let count = value.value.values.count
         let shown = (0..<count).filter { !viewport.hidden.contains($0) }
         if viewport.separateScales {

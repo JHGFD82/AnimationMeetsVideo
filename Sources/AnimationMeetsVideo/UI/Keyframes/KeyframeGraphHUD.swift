@@ -3,10 +3,12 @@ import CoreMedia
 import Observation
 import SwiftUI
 
-/// The graph editors open for an editor surface: one floating HUD panel
-/// per parameter (a layer's position, its volume, …), so several can be
-/// open side by side, and the Audio Keys editors, one per effect. The surface keeps `project` and `playhead` current
-/// and says how to edit and seek; the panels' graphs read from here.
+/// The graph editors open for an editor surface: floating HUD panels, one
+/// per parameter (a layer's position, its volume, …) or several linked
+/// into one on a shared timeline, so several can be open side by side, and
+/// the Audio Keys editors, one per effect. The surface
+/// keeps `project` and `playhead` current and says how to edit and seek;
+/// the panels' graphs read from here.
 @MainActor @Observable
 final class KeyframeGraphHUDs {
     private(set) var project = EditingProject.empty
@@ -22,26 +24,45 @@ final class KeyframeGraphHUDs {
     /// window: the viewer's shortcut for it only reaches the key window.
     @ObservationIgnored private var spaceMonitor: Any?
     @ObservationIgnored private var panels: [Subject: NSPanel] = [:]
-    @ObservationIgnored private var closeObservers: [Subject: NSObjectProtocol] = [:]
+    @ObservationIgnored private var observers: [Subject: [NSObjectProtocol]] = [:]
+    /// The graphs of each graph panel.
+    private var links: [UUID: KeyframeGraphLink] = [:]
 
     /// What a panel shows.
     private enum Subject: Hashable {
-        case parameter(ParameterKey)
+        case graphs(UUID)
         case audioKeys(AudioKeysEditorKey)
     }
 
-    /// Opens the parameter's graph editor, or brings it to the front.
+    /// A graph's height in a panel, which a linked graph adds to it.
+    private static let graphHeight: CGFloat = 300
+
+    /// Opens the parameter's graph editor, or brings forward the panel that
+    /// has it.
     func show(_ key: ParameterKey) {
-        let input = GraphInput()
-        let host = GraphHostingView(rootView: KeyframeGraphView(hud: self, key: key, input: input))
-        host.input = input
-        open(.parameter(key), content: host, size: NSSize(width: 520, height: 280), minimum: NSSize(width: 360, height: 200))
+        if let link = links.values.first(where: { $0.keys.contains(key) }), let panel = panels[.graphs(link.id)] {
+            panel.orderFront(nil)
+            return
+        }
+        openGraphs(KeyframeGraphLink([key]))
     }
 
     /// Opens an Audio Keys effect's editor, or brings it to the front.
     func showAudioKeys(_ key: AudioKeysEditorKey) {
         let host = GraphHostingView(rootView: AudioKeysEditor(hud: self, key: key))
         open(.audioKeys(key), content: host, size: NSSize(width: 640, height: 460), minimum: NSSize(width: 480, height: 360))
+    }
+
+    private func openGraphs(_ link: KeyframeGraphLink) {
+        links[link.id] = link
+        let input = GraphInput()
+        let host = GraphHostingView(rootView: KeyframeGraphStack(hud: self, link: link, input: input))
+        host.input = input
+        let count = CGFloat(link.keys.count)
+        open(
+            .graphs(link.id), content: host, size: NSSize(width: 520, height: Self.graphHeight * count),
+            minimum: NSSize(width: 360, height: 220 * count)
+        )
     }
 
     private func open(_ subject: Subject, content: NSView, size: NSSize, minimum: NSSize) {
@@ -67,19 +88,24 @@ final class KeyframeGraphHUDs {
         panel.contentView = content
         watchSpace()
         place(panel)
-        closeObservers[key] = NotificationCenter.default.addObserver(
+        observers[key] = [NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: panel, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.forget(key) }
-        }
+        }]
         panels[key] = panel
         panel.orderFront(nil)
     }
 
     /// Keeps the graphs current, retitles panels whose layer was renamed,
-    /// and closes those whose layer is gone.
+    /// and closes those whose layer is gone; a linked graph whose layer is
+    /// gone leaves its panel.
     func update(project: EditingProject) {
         self.project = project
+        for link in links.values {
+            let kept = link.keys.filter { project.components(of: $0) != nil }
+            if kept.count != link.keys.count, !kept.isEmpty { link.keys = kept }
+        }
         for (key, panel) in panels {
             if !exists(key) {
                 panel.close()
@@ -93,6 +119,61 @@ final class KeyframeGraphHUDs {
     func closeAll() {
         for panel in Array(panels.values) { panel.close() }
     }
+
+    // MARK: Linking
+
+    /// The other open graph panels whose graphs can join `id`'s, with their
+    /// titles.
+    func linkCandidates(for id: UUID) -> [(id: UUID, title: String)] {
+        guard let link = links[id] else { return [] }
+        return links.values
+            .filter { link.canLink($0) && panels[.graphs($0.id)] != nil }
+            .map { ($0.id, title(of: .graphs($0.id))) }
+            .sorted { $0.title < $1.title }
+    }
+
+    /// Links the graphs of panel `source` into panel `target`, under its
+    /// own, and closes `source`. The panel grows by the graphs it takes
+    /// in, its top staying put, within the screen; their time fits them all.
+    func link(_ source: UUID, into target: UUID) {
+        guard source != target, let from = links[source], let into = links[target], into.canLink(from),
+              let panel = panels[.graphs(target)]
+        else { return }
+        let added = from.keys.filter { !into.keys.contains($0) }
+        into.keys += added
+        into.viewport.times = nil
+        panels[.graphs(source)]?.close()
+        resize(panel, toHold: into.keys.count)
+        panel.title = title(of: .graphs(target))
+        panel.makeKeyAndOrderFront(nil)
+        AccessibilityNotification.Announcement("Linked \(added.count == 1 ? "a graph" : "\(added.count) graphs"); \(into.keys.count) graphs now share one timeline").post()
+    }
+
+    /// Takes a linked graph out of panel `id` into a panel of its own; the
+    /// panel it leaves shrinks by it.
+    func unlink(_ key: ParameterKey, from id: UUID) {
+        guard let link = links[id], link.isLinked, let panel = panels[.graphs(id)] else { return }
+        link.keys.removeAll { $0 == key }
+        link.viewport.times = nil
+        resize(panel, toHold: link.keys.count)
+        panel.title = title(of: .graphs(id))
+        openGraphs(KeyframeGraphLink([key]))
+    }
+
+    /// Sizes a graph panel for `count` graphs, its top where it was.
+    private func resize(_ panel: NSPanel, toHold count: Int) {
+        let graphs = CGFloat(max(count, 1))
+        panel.contentMinSize = NSSize(width: 360, height: 220 * graphs)
+        var frame = panel.frame
+        let visible = panel.screen?.visibleFrame ?? frame
+        let chrome = frame.height - panel.contentLayoutRect.height
+        let height = min(Self.graphHeight * graphs + chrome, visible.height)
+        frame.origin.y = max(frame.maxY - height, visible.minY)
+        frame.size.height = height
+        panel.setFrame(frame, display: true, animate: !Design.Motion.isReduced)
+    }
+
+    // MARK: Panels
 
     /// Starts listening for Space in the graphs' panels, once.
     private func watchSpace() {
@@ -112,22 +193,24 @@ final class KeyframeGraphHUDs {
 
     private func exists(_ subject: Subject) -> Bool {
         switch subject {
-        case .parameter(let key): project.components(of: key) != nil
+        case .graphs(let id): links[id]?.keys.contains { project.components(of: $0) != nil } == true
         case .audioKeys(let key): project.clipAndLayer(key.clipID, in: key.timelineID)?.clip.effect(id: key.effectID) != nil
         }
     }
 
     private func forget(_ key: Subject) {
-        if let observer = closeObservers.removeValue(forKey: key) {
+        for observer in observers.removeValue(forKey: key) ?? [] {
             NotificationCenter.default.removeObserver(observer)
         }
         panels.removeValue(forKey: key)
+        if case .graphs(let id) = key { links.removeValue(forKey: id) }
     }
 
     private func title(of subject: Subject) -> String {
         switch subject {
-        case .parameter(let key):
-            return project.parameterTitle(of: key)
+        case .graphs(let id):
+            let titles = (links[id]?.keys ?? []).map { project.parameterTitle(of: $0) }
+            return titles.count > 1 ? "Linked: \(titles.joined(separator: ", "))" : titles.first ?? "Graph"
         case .audioKeys(let key):
             let name = project.clipAndLayer(key.clipID, in: key.timelineID)?.clip.effect(id: key.effectID)?.displayName ?? "Audio Keys"
             return "\(project.clipName(key.clipID, in: key.timelineID)) · \(name)"
@@ -164,7 +247,11 @@ private final class GraphHostingView<Content: View>: NSHostingView<Content> {
     override func scrollWheel(with event: NSEvent) {
         guard let input else { return super.scrollWheel(with: event) }
         let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 10
-        input.scroll = GraphInput.Scroll(dx: event.scrollingDeltaX * scale, dy: event.scrollingDeltaY * scale, phase: ScrollInputPhase(event))
+        let point = convert(event.locationInWindow, from: nil)
+        input.scroll = GraphInput.Scroll(
+            dx: event.scrollingDeltaX * scale, dy: event.scrollingDeltaY * scale, phase: ScrollInputPhase(event),
+            location: CGPoint(x: point.x, y: isFlipped ? point.y : bounds.height - point.y)
+        )
     }
 }
 
@@ -178,6 +265,9 @@ final class GraphInput {
         var dy: CGFloat
         /// For time's edge to know when to spring back.
         var phase = ScrollInputPhase.wheel
+        /// Where the pointer is, from the panel's top left, for linked
+        /// graphs to tell which one it is over.
+        var location: CGPoint?
     }
 
     var scroll: Scroll?

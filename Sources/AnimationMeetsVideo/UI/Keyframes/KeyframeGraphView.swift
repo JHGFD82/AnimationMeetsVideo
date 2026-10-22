@@ -21,11 +21,18 @@ import SwiftUI
 /// by the same ratio wherever the zoom is, time no further out than the
 /// clip; pinching zooms time about the pointer (values with Option), and
 /// scrolling moves the view. The legend's chips show or hide each
-/// component, and Separate Scales draws each on its own scale.
+/// component, and Separate Scales draws each on its own scale. Linked with
+/// other graphs in one panel (`link`), time is theirs together: zooming or
+/// scrolling it in one moves them all. The panel then has one time dial
+/// and one row of presets for them all (`KeyframeGraphStack`), and each
+/// graph's own row names it, with Unlink.
 struct KeyframeGraphView: View {
     let hud: KeyframeGraphHUDs
     let key: ParameterKey
     let input: GraphInput
+    /// The panel's graphs, which hold this one's selection; with others,
+    /// this one shares its time with them.
+    var link: KeyframeGraphLink?
 
     /// The keyframes as a drag in progress leaves them, drawn instead of
     /// the project's and saved when the drag ends.
@@ -34,7 +41,7 @@ struct KeyframeGraphView: View {
     /// the old ones don't show for a frame on release.
     @State private var committed: AnimatedValue<ComponentValue>?
     @State private var drag: Drag?
-    @State private var selected: CMTime?
+    @State private var ownSelected: CMTime?
     @State private var viewport = KeyframeGraphViewport()
     /// The pinch's magnification when it last changed the zoom.
     @State private var lastMagnification: CGFloat?
@@ -74,6 +81,19 @@ struct KeyframeGraphView: View {
         var axis: ParameterTimeAxis
     }
 
+    /// The link when the graph shares its time with others in it.
+    private var shared: KeyframeGraphLink? {
+        link?.isLinked == true ? link : nil
+    }
+
+    /// The selected keyframe, kept in the link for the panel's presets.
+    private var selected: CMTime? {
+        get { link.map { $0.selected[key] } ?? ownSelected }
+        nonmutating set {
+            if let link { link.selected[key] = newValue } else { ownSelected = newValue }
+        }
+    }
+
     var body: some View {
         if let timeline = hud.project.timeline(id: key.timelineID), let stored = hud.project.components(of: key),
            let axis = hud.project.timeAxis(of: key) {
@@ -93,17 +113,19 @@ struct KeyframeGraphView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     GeometryReader { geometry in
-                        let layout = drag?.layout ?? layout(c, size: CGSize(width: geometry.size.width - ZoomDial.thickness, height: geometry.size.height - ZoomDial.thickness))
+                        // Linked, the panel's one time dial is under them all.
+                        let timeDial = shared == nil ? ZoomDial.thickness : 0
+                        let layout = drag?.layout ?? layout(c, size: CGSize(width: geometry.size.width - ZoomDial.thickness, height: geometry.size.height - timeDial))
                         // The dials meet in the bottom right corner, each along
                         // the axis it zooms, with Fit where they meet.
                         let reach = { (room: CGFloat) in min(ZoomDial.length, max(room - 8, 40)) }
                         VStack(spacing: 0) {
                             HStack(spacing: 0) {
                                 graph(c, layout: layout)
-                                    .rubberBand($timeBand, axis: .horizontal)
+                                    .rubberBand(timeBandBinding, axis: .horizontal)
                                     .rubberBand($valueBand, axis: .vertical)
-                                    .rubberBandScroll(timeScrollBand, length: layout.plot.width)
-                                    .rubberBandSettling($timeScrollBand)
+                                    .rubberBandScroll(shared?.timeScrollBand ?? timeScrollBand, length: layout.plot.width)
+                                    .rubberBandSettling(timeScrollBandBinding)
                                     .clipped()
                                 VStack(spacing: 0) {
                                     Spacer(minLength: 0)
@@ -115,24 +137,29 @@ struct KeyframeGraphView: View {
                                     } onRelease: {
                                         valueBand.endPinch()
                                     }
-                                    .frame(height: reach(geometry.size.height - ZoomDial.thickness))
+                                    .frame(height: reach(geometry.size.height - timeDial))
                                 }
                             }
-                            HStack(spacing: 0) {
-                                Spacer(minLength: 0)
-                                ZoomDial(axis: .horizontal, label: "Time zoom") { factor, held in
-                                    zoomTimes(by: factor, around: timeAnchor(c, layout: layout), c, layout: layout, pinching: held)
-                                } onReset: {
-                                    viewport.times = nil
-                                } onRelease: {
-                                    timeBand.endPinch()
+                            if shared == nil {
+                                HStack(spacing: 0) {
+                                    Spacer(minLength: 0)
+                                    ZoomDial(axis: .horizontal, label: "Time zoom") { factor, held in
+                                        zoomTimes(by: factor, around: timeAnchor(c, layout: layout), c, layout: layout, pinching: held)
+                                    } onReset: {
+                                        viewport.times = nil
+                                    } onRelease: {
+                                        endTimePinch()
+                                    }
+                                    .frame(width: reach(geometry.size.width - ZoomDial.thickness))
+                                    fitButton
                                 }
-                                .frame(width: reach(geometry.size.width - ZoomDial.thickness))
-                                fitButton
                             }
                         }
                         .onChange(of: input.scroll) { _, scroll in
                             guard let scroll else { return }
+                            // Linked graphs share the panel's input: the one
+                            // under the pointer takes the scroll.
+                            if shared != nil, let at = scroll.location, !geometry.frame(in: .global).contains(at) { return }
                             scrolled(scroll, c, layout: layout)
                         }
                     }
@@ -140,6 +167,7 @@ struct KeyframeGraphView: View {
             }
             .background(Color.black.opacity(0.2))
             .onChange(of: stored) { _, _ in committed = nil }
+            .onChange(of: link?.fits) { _, _ in fitValues() }
         } else {
             Text("This layer is no longer on the timeline.")
                 .font(Design.Typeface.label)
@@ -150,8 +178,25 @@ struct KeyframeGraphView: View {
 
     private func layout(_ c: Context, size: CGSize) -> KeyframeGraphLayout {
         KeyframeGraphLayout(
-            c.value, offset: c.offset, size: size, viewport: viewport, span: c.axis.span, frame: c.timeline.frameDuration.seconds
+            c.value, offset: c.offset, size: size, viewport: viewport, span: c.axis.span, frame: c.timeline.frameDuration.seconds,
+            shared: shared?.keyTimes(for: c.axis, in: hud.project)
         )
+    }
+
+    /// Time's zoom edge: the link's while linked, so all its graphs stretch
+    /// together.
+    private var timeBandBinding: Binding<RubberBandZoom> {
+        guard let shared else { return $timeBand }
+        return Binding(get: { shared.timeBand }, set: { shared.timeBand = $0 })
+    }
+
+    private var timeScrollBandBinding: Binding<RubberBandScroll> {
+        guard let shared else { return $timeScrollBand }
+        return Binding(get: { shared.timeScrollBand }, set: { shared.timeScrollBand = $0 })
+    }
+
+    private func endTimePinch() {
+        if let shared { shared.timeBand.endPinch() } else { timeBand.endPinch() }
     }
 
     private func graph(_ c: Context, layout: KeyframeGraphLayout) -> some View {
@@ -179,7 +224,7 @@ struct KeyframeGraphView: View {
             }
             .onEnded { _ in
                 lastMagnification = nil
-                timeBand.endPinch()
+                endTimePinch()
                 valueBand.endPinch()
             })
         .contextMenu {
@@ -195,7 +240,9 @@ struct KeyframeGraphView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(key.parameter.name) graph")
         .accessibilityValue("\(c.value.keyframes.count) keyframes")
-        .accessibilityHint("The dials zoom; the buttons above ease the selected keyframe or the one at the playhead")
+        .accessibilityHint(shared == nil
+                           ? "The dials zoom; the buttons above ease the selected keyframe or the one at the playhead"
+                           : "The dials zoom; the buttons at the top of the panel ease its selected keyframe or the one at the playhead")
     }
 
     // MARK: - Zooming and scrolling
@@ -203,7 +250,9 @@ struct KeyframeGraphView: View {
     /// Fits the keyframes in view, both ways, in the corner between the
     /// dials.
     private var fitButton: some View {
-        Button { viewport = KeyframeGraphViewport(hidden: viewport.hidden, separateScales: viewport.separateScales) } label: {
+        Button {
+            viewport = KeyframeGraphViewport(hidden: viewport.hidden, separateScales: viewport.separateScales)
+        } label: {
             Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
                 .font(Design.Typeface.glyphSmall)
                 .foregroundStyle(Design.textSecondary)
@@ -213,6 +262,12 @@ struct KeyframeGraphView: View {
         .buttonStyle(.plain)
         .help("Fit the keyframes in view")
         .accessibilityLabel("Fit")
+    }
+
+    /// Fits the values to the keyframes, for the panel's Fit when linked.
+    private func fitValues() {
+        viewport.valueZoom = 1
+        viewport.valuePan = 0
     }
 
     /// The time the dial zooms about: the playhead while it's in view, else
@@ -225,10 +280,20 @@ struct KeyframeGraphView: View {
     /// Zooms time about `anchor`; past the clip or the closest zoom the
     /// plot stretches instead (`timeBand`).
     private func zoomTimes(by factor: Double, around anchor: Double, _ c: Context, layout: KeyframeGraphLayout, pinching: Bool) {
+        let share = layout.plot.width > 0 ? (layout.x(anchor) - layout.plot.minX) / layout.plot.width : 0.5
+        if let link = shared {
+            let moment = c.axis.timelineTime(atKey: CMTime(seconds: anchor, preferredTimescale: 240_000)).seconds
+            let project = hud.project
+            var band = link.timeBand
+            band.zoom(by: factor, about: share, pinching: pinching) { factor in
+                link.zoomTimes(by: factor, around: moment, in: project)
+            }
+            link.timeBand = band
+            return
+        }
         let padded = KeyframeGraphLayout.padded(c.axis.span)
         let frame = c.timeline.frameDuration.seconds
         let fit = KeyframeGraphLayout.fitTimes(c.value, span: padded, frame: frame)
-        let share = layout.plot.width > 0 ? (layout.x(anchor) - layout.plot.minX) / layout.plot.width : 0.5
         timeBand.zoom(by: factor, about: share, pinching: pinching) { factor in
             let before = viewport.shownTimes(fit: fit, span: padded)
             viewport.zoomTimes(by: factor, around: anchor, fit: fit, span: padded, frame: frame)
@@ -252,7 +317,14 @@ struct KeyframeGraphView: View {
     private func scrolled(_ scroll: GraphInput.Scroll, _ c: Context, layout: KeyframeGraphLayout) {
         let padded = KeyframeGraphLayout.padded(c.axis.span)
         // Also without movement across, so a lift lets go of the edge.
-        if scroll.dx != 0 || scroll.phase == .lifted {
+        if scroll.dx != 0 || scroll.phase == .lifted, let link = shared {
+            let project = hud.project
+            var band = link.timeScrollBand
+            band.scroll(by: -scroll.dx, phase: scroll.phase) { points in
+                link.panTimes(byPoints: points, across: layout.plot.width, in: project)
+            }
+            link.timeScrollBand = band
+        } else if scroll.dx != 0 || scroll.phase == .lifted {
             let fit = KeyframeGraphLayout.fitTimes(c.value, span: padded, frame: c.timeline.frameDuration.seconds)
             // Toward later times is against the scroll's dx.
             timeScrollBand.scroll(by: -scroll.dx, phase: scroll.phase) { points in
@@ -268,19 +340,28 @@ struct KeyframeGraphView: View {
 
     // MARK: - Toolbar
 
-    /// The selected keyframe if it still exists, else the one at the playhead.
     private func presetTarget(_ c: Context) -> CMTime? {
-        if let selected, c.value.keyframe(at: selected) != nil { return selected }
-        let playhead = c.axis.keyTime(atTimeline: c.timeline.snappedToFrame(hud.playhead))
-        return c.value.keyframes.first { abs($0.time.seconds - playhead.seconds) < c.timeline.frameDuration.seconds / 2 }?.time
+        Self.presetTarget(selected: selected, value: c.value, axis: c.axis, timeline: c.timeline, playhead: hud.playhead)
     }
 
+    /// The selected keyframe if it still exists, else the one at the playhead.
+    static func presetTarget(
+        selected: CMTime?, value: AnimatedValue<ComponentValue>, axis: ParameterTimeAxis, timeline: Timeline, playhead: CMTime
+    ) -> CMTime? {
+        if let selected, value.keyframe(at: selected) != nil { return selected }
+        let now = axis.keyTime(atTimeline: timeline.snappedToFrame(playhead))
+        return value.keyframes.first { abs($0.time.seconds - now.seconds) < timeline.frameDuration.seconds / 2 }?.time
+    }
+
+    /// The values at the playhead, Separate Scales, and the presets with
+    /// Link With; linked, the graph's name and Unlink instead, the panel
+    /// having one row of presets for all its graphs.
     private func toolbar(_ c: Context) -> some View {
-        let target = presetTarget(c)
         let now = c.axis.keyTime(atTimeline: c.timeline.snappedToFrame(hud.playhead))
         let shown = zip(c.value.value(at: now).values, c.offset).map { $0 + $1 }
         let names = key.parameter.componentNames
         return HStack(spacing: Design.Space.step) {
+            if let shared { nameButton(shared) }
             ForEach(shown.indices, id: \.self) { index in
                 if names.count > 1 {
                     componentChip(index, name: names[index], shown: shown[index])
@@ -299,22 +380,38 @@ struct KeyframeGraphView: View {
                     .accessibilityLabel("Separate scales")
             }
             Spacer(minLength: Design.Space.step)
-            Text(target.map { "Keyframe \(c.axis.timelineTime(atKey: $0).timecode(frameRate: c.timeline.frameRate))" } ?? "No keyframe selected")
-                .foregroundStyle(Design.textTertiary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            ForEach(KeyframeEase.Preset.allCases) { preset in
-                Button(preset.name) {
-                    if let target { edit { $0.applyEase(preset, at: target) } }
-                }
-                .help(preset.detail + (preset.shortcutHint.map { " (\($0) on the timeline)" } ?? ""))
+            if let shared {
+                Button("Unlink") { hud.unlink(key, from: shared.id) }
+                    .help("Take this graph out into a panel of its own")
+                    .accessibilityLabel("Unlink \(hud.project.parameterTitle(of: key))")
+            } else {
+                KeyframeEasePresets(hud: hud, key: key, target: presetTarget(c), axis: c.axis, timeline: c.timeline)
+                if let link { KeyframeGraphLinkMenu(hud: hud, link: link) }
             }
-            .disabled(target == nil)
         }
         .font(Design.Typeface.label)
         .controlSize(.small)
         .padding(.horizontal, Design.Space.step)
         .padding(.vertical, Design.Space.close)
+    }
+
+    /// The graph's name in a linked panel; clicking it, or the graph, has
+    /// the panel's presets act on it, which its name shows in full tone.
+    private func nameButton(_ link: KeyframeGraphLink) -> some View {
+        let isActive = link.activeKey == key
+        let title = hud.project.parameterTitle(of: key)
+        return Button { link.active = key } label: {
+            Text(title)
+                .font(Design.Typeface.groupTitle)
+                .foregroundStyle(isActive ? Design.textPrimary : Design.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .buttonStyle(.plain)
+        .help(isActive ? "The presets at the top act on this graph" : "Have the presets at the top act on this graph")
+        .accessibilityLabel(title)
+        .accessibilityValue(isActive ? "Presets act on this graph" : "")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     /// A component's color, name and value, which shows or hides its curve.
@@ -340,6 +437,8 @@ struct KeyframeGraphView: View {
                     .font(Design.Typeface.numericSmall)
                     .foregroundStyle(isShown ? Design.textPrimary : Design.textTertiary)
             }
+            // The keyframe's time gives way first.
+            .fixedSize()
         }
         .buttonStyle(.plain)
         .help(isShown ? "Hide \(name)" : "Show \(name)")
@@ -539,6 +638,7 @@ struct KeyframeGraphView: View {
         DragGesture(minimumDistance: 0)
             .onChanged { gesture in
                 if drag == nil {
+                    link?.active = key
                     let target = target(at: gesture.startLocation, c, layout: layout)
                     drag = Drag(target: target, layout: layout, original: c.value)
                     if case .keyframe(let time, _) = target { selected = time }
@@ -648,6 +748,36 @@ struct KeyframeGraphView: View {
     private func edit(_ change: @escaping (inout AnimatedValue<ComponentValue>) -> Void) {
         let key = key
         hud.onEdit { $0.editComponents(of: key, change) }
+    }
+}
+
+/// Which keyframe the ease presets act on, and the presets: on a graph's
+/// own row, or for a linked panel on its top row, where the keyframe is
+/// named with its graph (`named`).
+struct KeyframeEasePresets: View {
+    let hud: KeyframeGraphHUDs
+    let key: ParameterKey
+    let target: CMTime?
+    let axis: ParameterTimeAxis
+    let timeline: Timeline
+    var named = false
+
+    var body: some View {
+        let title = named ? "\(hud.project.parameterTitle(of: key)) · " : ""
+        Text(target.map { "\(title)Keyframe \(axis.timelineTime(atKey: $0).timecode(frameRate: timeline.frameRate))" } ?? "\(title)No keyframe selected")
+            .foregroundStyle(Design.textTertiary)
+            .lineLimit(1)
+            .truncationMode(named ? .middle : .tail)
+        ForEach(KeyframeEase.Preset.allCases) { preset in
+            Button(preset.name) {
+                guard let target else { return }
+                let key = key
+                hud.onEdit { $0.editComponents(of: key) { $0.applyEase(preset, at: target) } }
+            }
+            .help(preset.detail + (preset.shortcutHint.map { " (\($0) on the timeline)" } ?? ""))
+            .fixedSize()
+        }
+        .disabled(target == nil)
     }
 }
 
