@@ -1,8 +1,9 @@
 # Motion designer
 
-Status: **planned, not implemented**. Two things it needs come first,
-and are described here too, and both are built: clips attached to the
-music, and hold keyframes.
+Status: **built** except where noted (see [Building it](#building-it));
+the panel is compile-checked and was rendered offscreen, but hasn't been
+used on screen yet. Two things it needs came first and are described
+here too: clips attached to the music, and hold keyframes.
 
 Music videos are cut to the music, and the project already knows the
 music's timing from the beat map ([beat-matching.md](beat-matching.md)).
@@ -29,7 +30,56 @@ else around it, by dragging frames along a time graph.
   source time (the footage). The line's slope is the speed; a straight
   line is a steady speed.
 - It opens on one clip or several selected clips (the clip's menu,
-  **Motion Designer…**).
+  **Motion Designer…**, or **Motion Designer for Selection…** on a clip
+  lassoed with others). Songs, and clips that play backwards, are refused
+  with the reason.
+
+## The panel
+
+**Built** (`UI/MotionDesigner/`). The transport runs across the top:
+play the music, the playhead's timecode, **Beats** (show them) and
+**Snap**, and zoom. The sidebar is on the left, and the lanes fill the
+rest, on one timeline across: a ruler, the footage, the time graph and
+the music.
+
+- **The footage strip** places each frame where it plays in the draft:
+  frames are taken at even steps of the footage, one tile's width apart
+  at 100%, so a stretch played slowly spreads them out with the lane
+  showing between, and one played fast crowds them into slivers. It is
+  the one thing in the panel that shows retiming at a glance.
+- **The graph** runs up through the run's footage clip after clip, so
+  the run reads as one line in each clip's own colour: steep where fast,
+  shallow where slow, flat (dashed) over a gap. Each stretch's speed is
+  read out over it, once for stretches either side of a point at one
+  speed. Points use the keyframes' marks: hits in the bright "placed"
+  tone, markers quieter, a pace marker squared off where the speed steps
+  with its pace beside it, an eased point pinched; the selected one is
+  ringed in the accent.
+- **A hit's pin** runs from its frame in the strip, through the graph,
+  to its beat in the music lane.
+- **The music lane** shows the first Music layer under the run: its
+  waveform and its beats, which are also drawn faintly across the graph.
+  Play plays that layer alone, laid out in timeline time.
+- Grabbing the line drops a marker on that frame and drags it; grabbing a
+  point drags it. Drags snap, within 8 points, to the beats (while shown),
+  the playhead and the edges of the layer's other clips; the snap line
+  shows where. A click elsewhere moves the playhead, as a drag on the
+  ruler or the music scrubs.
+- Dragging a clip in the strip moves it by whole frames, unless a hit
+  holds it.
+- **The sidebar** shows the frame under the playhead, then what is
+  selected: a point's kind (Hit, Marker, Pace), its pace (typed), Ease,
+  a frame earlier or later and Remove; or a clip's start and end and a
+  frame earlier or later. With nothing selected it says what to do.
+  Warnings sit under that; Cancel and Done at the foot.
+- A pace marker before a hit, or a hit right after a pace marker, asks
+  first, naming what it costs.
+- Keys: Space plays, M puts a marker under the playhead, H makes the
+  selected point a hit, P edits its pace, E eases it, Delete removes it,
+  ← → move it (or the selected clip, or the playhead) a frame and ⇧ ten,
+  Escape lets go (or cancels a drag), ⌘= ⌘- ⌘0 zoom, ⌘Z undoes in the
+  draft, ⌘Return is Done. Scrolling scrolls; ⌥ or ⌘ scrolling, or a
+  pinch, zooms.
 
 ## Several clips as one piece
 
@@ -105,13 +155,15 @@ changes a clip's length, never where other clips are.
   from the keyboard, which lengthens or shortens the gaps around them.
   Unselected clips on the layer are shown but never move, and bound how
   far a selected clip can go.
-- The designer's span grows and shrinks with the run: retiming or moving
-  the first or last clip extends or contracts the time shown, and the
-  music under it.
+- The view fits the run when it opens and scrolls freely past it, so
+  retiming or moving the first or last clip never runs out of room to
+  show it.
 
 ### Footage available
 
-A growing clip extends its trim into the footage around it, as far as
+**Not built yet**: retiming changes a clip's length on the timeline but
+not the footage it plays. Planned: a growing clip extends its trim into
+the footage around it, as far as
 there is footage:
 
 - A clip of a **scene** grows only to that scene's edges
@@ -248,10 +300,14 @@ jumps to that keyframe's value, as After Effects' hold keyframes do.
 
 ## Accessibility
 
-Following [accessibility.md](accessibility.md): each point and clip on
-the graph is an accessibility element with actions (move, make hit or
-marker, set pace, delete); points and clips move from the keyboard; the
-pace is typed.
+Following [accessibility.md](accessibility.md). The graph is a group
+named with its clips and hits; each point is an element read as its kind
+and time, then its frame and the speed after it, adjustable a frame at a
+time, with Make hit, Make marker, Set pace, Ease (or Sharpen) and Remove
+as actions; the graph adds Add marker at playhead. Each clip in the strip
+reads its name and span, with a frame earlier or later as actions. The
+ruler is the playhead, adjustable a frame at a time. Everything a drag
+does has a key, a button or an action.
 
 ## Building it
 
@@ -262,7 +318,13 @@ pace is typed.
    **Built.**
 4. The time map: solving, reading keyframes, writing them, unit tested.
    **Built** (`Model/MotionDesigner/`).
-5. The panel (`UI/MotionDesigner/`), built on the beat match panel's
-   shell, waveform, transport and zoom (`RubberBandZoom`), with the graph
-   drawn like the keyframe graph.
-6. Accessibility.
+5. The panel (`UI/MotionDesigner/`), on the shared `DraftPanel` Beat
+   Match now uses too. **Built** (`MotionRun` for the rules across clips,
+   unit tested; `MotionDesignSession` for the draft, its undo and the
+   player; the views).
+6. Accessibility. **Built** with the panel.
+
+Not yet: footage available (above); handles to shape an ease (a point is
+eased or not); the monitor shows stills, not moving footage, while the
+music plays; the zoom has no rubber-band edge; and the panel hasn't been
+used on screen.

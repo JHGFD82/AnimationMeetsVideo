@@ -51,6 +51,10 @@ keyboard (the library's list uses the arrows).
 | F9 | Easy ease the keyframes at the playhead; Shift for ease in, ⌘⇧ for ease out |
 | ⌃⌥H | Hold the keyframes at the playhead |
 
+The motion designer has keys of its own for everything its drags do
+(points and clips a frame at a time, M, H, P, E, Delete); see
+[motion-designer.md](motion-designer.md#the-panel).
+
 The Tape Scrubber (Window menu) runs the sound like tape while the Left
 or Right Arrow key is held, at four times normal speed with Shift; its
 dial is one element whose adjust action plays half a second either way.
