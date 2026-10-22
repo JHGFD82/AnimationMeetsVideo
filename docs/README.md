@@ -9,7 +9,7 @@ Matroska import and accessibility are implemented (each document lists what rema
 
 | Document | Covers |
 | --- | --- |
-| [scene-cuts.md](scene-cuts.md) | Implemented (core). Detecting scene cuts in a media file and treating each scene as a virtual clip in the browser, without touching the file. |
+| [scene-cuts.md](scene-cuts.md) | Implemented (core). Detecting scene cuts in a media file and treating each scene as a virtual clip in the browser, without touching the file; splitting and merging them in the scene splitter, with timeline clips split, joined or embedded to follow. |
 | [beat-detection.md](beat-detection.md) | Implemented. Finding the beats of audio tracks, and showing one audio layer's beats as timeline markers chosen from the view options. |
 | [beat-matching.md](beat-matching.md) | Built, not yet tried on screen. Confirming a song's beats by hand in the beat match panel: anchors, sections of one tempo or a ramp, measures, and the beat map saved with the project. |
 | [motion-designer.md](motion-designer.md) | Built, not yet tried on screen. Retiming clips to the music in a panel: hits that pin a frame to a beat, markers dragged along a time graph, pace markers, eases, written out as speed keyframes, with clips trimmed and their edges held within their scenes; clips attached to the music, and hold keyframes. |

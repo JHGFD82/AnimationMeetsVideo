@@ -18,6 +18,11 @@ struct BrowserSelection<ID: Hashable>: Equatable {
     /// The item Shift-click extends from: the last one clicked.
     private(set) var anchor: ID?
     private(set) var range: Range?
+    /// Goes up each time the person picks something (clicks, Shift- and
+    /// Command-clicks, ranges, clearing); dropping items that are gone
+    /// doesn't count. What follows the selection, as the scene splitter
+    /// does, watches this, so an edit that renames a scene doesn't move it.
+    private(set) var revision = 0
 
     func contains(_ id: ID) -> Bool { items.contains(id) }
 
@@ -25,6 +30,7 @@ struct BrowserSelection<ID: Hashable>: Equatable {
     /// whole item, unless the click is inside the item's range, which stays.
     mutating func click(_ id: ID, at seconds: Double? = nil) {
         if let range, range.item == id, let seconds, range.contains(seconds) { return }
+        revision += 1
         items = [id]
         anchor = id
         range = nil
@@ -32,6 +38,7 @@ struct BrowserSelection<ID: Hashable>: Equatable {
 
     /// Command-click: adds the item, or takes it out if it was in.
     mutating func commandClick(_ id: ID) {
+        revision += 1
         range = nil
         if items.contains(id) { items.remove(id) } else { items.insert(id) }
         anchor = id
@@ -44,6 +51,7 @@ struct BrowserSelection<ID: Hashable>: Equatable {
             click(id)
             return
         }
+        revision += 1
         range = nil
         items = Set(order[min(from, to)...max(from, to)])
     }
@@ -52,12 +60,14 @@ struct BrowserSelection<ID: Hashable>: Equatable {
     /// come in either order. Anything else picked is dropped.
     mutating func setRange(of id: ID, from a: Double, to b: Double, duration: Double) {
         let start = min(max(min(a, b), 0), duration), end = min(max(max(a, b), 0), duration)
+        revision += 1
         items = [id]
         anchor = id
         range = Range(item: id, start: start, end: end)
     }
 
     mutating func clear() {
+        revision += 1
         items = []
         anchor = nil
         range = nil

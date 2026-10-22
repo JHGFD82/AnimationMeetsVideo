@@ -76,7 +76,6 @@ struct ClipsTab: View {
     @State private var picked = BrowserSelection<BrowserItemID>()
     @State private var width: CGFloat = 240
     @State private var sensitivityTarget: SensitivityTarget?
-    @State private var previewTarget: ScenePreviewTarget?
     /// The end of the range being dragged out, and its fixed end.
     @State private var rangeDrag: (item: BrowserItemID, anchor: Double)?
     /// Where the arrow keys move from: the last clip clicked or stepped to.
@@ -86,6 +85,9 @@ struct ClipsTab: View {
     /// Shows the clip under the pointer in the viewer; absent where there
     /// is no viewer to show it (previews, tests).
     @Environment(BrowserSkim.self) private var skim: BrowserSkim?
+    /// Splits and merges scenes, showing what is picked here; absent where
+    /// there is no editor (previews, tests).
+    @Environment(SceneSplitter.self) private var splitter: SceneSplitter?
     /// Files on their way in, listed after the clips.
     @Environment(MediaImports.self) private var imports: MediaImports?
 
@@ -241,11 +243,15 @@ struct ClipsTab: View {
             picked.keep(only: order)
             coverageCache.keep(only: Set(project.clips.map(\.id)))
         }
+        // Only what the person picks: a scene renamed by an edit dropping
+        // out of the selection leaves the splitter where it is.
+        .onChange(of: picked.revision) { _, _ in
+            let ids = picked.ordered(in: order)
+            let focus = splitterFocus(for: ids, snapshot: snapshot)
+            splitter?.follow(focus, selecting: focus.map { sceneIDs(ids, of: $0.assetID) } ?? [])
+        }
         .sheet(item: $sensitivityTarget) { target in
             SensitivitySheet(project: access.binding, target: target, track: analysis.tracks[target.assetID])
-        }
-        .sheet(item: $previewTarget) { target in
-            ScenePreviewSheet(project: access.binding, target: target, track: analysis.tracks[target.assetID])
         }
         .sunken(.sunken)
     }
@@ -654,9 +660,12 @@ struct ClipsTab: View {
                 return nil
             }
             let scenes = snapshot.scenes(of: entry.clip.id)
-            if sceneIDs.count == ids.count, !cutsToRemove(Set(sceneIDs), in: scenes).isEmpty {
+            if sceneIDs.count == ids.count {
                 Divider()
-                Button("Merge Selected Scenes") { mergeScenes(Set(sceneIDs), assetID: entry.clip.id, scenes: scenes) }
+                Button("Split Scenes…") { splitter?.show(splitterFocus(for: ids, snapshot: snapshot), selecting: sceneIDs) }
+                if !cutsToRemove(Set(sceneIDs), in: scenes).isEmpty {
+                    Button("Merge Selected Scenes") { mergeScenes(Set(sceneIDs), assetID: entry.clip.id, scenes: scenes) }
+                }
             }
         }
     }
@@ -665,8 +674,11 @@ struct ClipsTab: View {
     private func assetMenu(_ clip: MediaClip) -> some View {
         if clip.kind == .video {
             Divider()
+            Button("Split Scenes…") {
+                splitter?.show(SceneSplitter.Focus(assetID: clip.id, start: .zero, end: clip.duration))
+            }
             Button("Cut Sensitivity…") {
-                sensitivityTarget = SensitivityTarget(assetID: clip.id, scope: .asset)
+                sensitivityTarget = SensitivityTarget(assetID: clip.id)
             }
             .disabled(analysis.tracks[clip.id] == nil)
             AnalysisIdleButton(title: "Find Scenes Again", analysis: analysis, assetID: clip.id) {
@@ -689,17 +701,12 @@ struct ClipsTab: View {
 
     @ViewBuilder
     private func sceneMenu(_ entry: BrowserEntry, assetID: UUID, scenes: [SceneRange]) -> some View {
-        if let url = entry.clip.url, let number = entry.sceneNumber {
-            Button("Preview…") {
-                let scene = SceneRange(start: entry.start, end: CMTimeAdd(entry.start, entry.duration), origin: entry.setByHand ? .manual : .auto)
-                previewTarget = ScenePreviewTarget(assetID: assetID, url: url, scene: scene, number: number)
-            }
-        }
         Divider()
-        if analysis.tracks[assetID] != nil {
-            Button("Adjust Cut Sensitivity…") {
-                sensitivityTarget = SensitivityTarget(assetID: assetID, scope: .span(start: entry.start, end: CMTimeAdd(entry.start, entry.duration)))
-            }
+        Button("Split Scenes…") {
+            splitter?.show(
+                SceneSplitter.Focus(assetID: assetID, start: entry.start, end: CMTimeAdd(entry.start, entry.duration)),
+                selecting: sceneIDs([entry.id], of: assetID)
+            )
         }
         if case .scene(_, let sceneID) = entry.id {
             Button("Merge with Previous Scene") { mergeScenes([sceneID], assetID: assetID, scenes: scenes) }
@@ -731,10 +738,29 @@ struct ClipsTab: View {
 
     private func mergeScenes(_ sceneIDs: Set<String>, assetID: UUID, scenes: [SceneRange]) {
         let cuts = cutsToRemove(sceneIDs, in: scenes)
-        project.editScenes(ofAsset: assetID) { edits in
+        project.editScenesFollowingClips(ofAsset: assetID, track: analysis.tracks[assetID]) { edits in
             for cut in cuts { edits.removeCut(cut) }
         }
         picked.clear()
+    }
+
+    /// The scenes of `assetID` among `ids`.
+    private func sceneIDs(_ ids: [BrowserItemID], of assetID: UUID) -> [String] {
+        ids.compactMap { id in
+            if case .scene(let asset, let scene) = id, asset == assetID { return scene }
+            return nil
+        }
+    }
+
+    /// What the scene splitter shows for these picks: the stretch from the
+    /// first to the end of the last of them that belong to the first one's
+    /// video. Nil when that isn't a video.
+    private func splitterFocus(for ids: [BrowserItemID], snapshot: Snapshot) -> SceneSplitter.Focus? {
+        guard let first = ids.first.flatMap({ snapshot.byID[$0] }), first.clip.kind == .video else { return nil }
+        let entries = ids.compactMap { snapshot.byID[$0] }.filter { $0.clip.id == first.clip.id }
+        let start = entries.map(\.start).reduce(first.start, CMTimeMinimum)
+        let end = entries.map { CMTimeAdd($0.start, $0.duration) }.reduce(CMTimeAdd(first.start, first.duration), CMTimeMaximum)
+        return SceneSplitter.Focus(assetID: first.clip.id, start: start, end: end)
     }
 
     // MARK: - Status

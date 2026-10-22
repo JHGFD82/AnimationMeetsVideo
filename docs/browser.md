@@ -34,8 +34,8 @@ remembered.
   are being found (shortened to "Detecting", then the bar alone, when a
   single small thumbnail has no room). Once they are found the clip is
   **replaced by its scenes**: the video's name becomes a heading with its
-  scene count and its own menu (Add Whole Clip to Timeline, Cut
-  Sensitivity, Find Scenes Again, replacing the file), and **each scene
+  scene count and its own menu (Add Whole Clip to Timeline, Split
+  Scenes, Cut Sensitivity, Find Scenes Again, replacing the file), and **each scene
   is a clip** of its own (a "virtual clip", as in
   [scene-cuts.md](scene-cuts.md)) under it, in source order. Finding
   scenes again shows the whole clip until they are found. Audio files are

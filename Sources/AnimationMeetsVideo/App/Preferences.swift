@@ -63,6 +63,9 @@ enum Preferences {
     /// Whether skimming a clip in the browser plays its sound under the
     /// pointer.
     static let browserSkimAudio = "browserSkimAudio"
+    /// Whether the scene splitter is heard as it skims and plays. On
+    /// unless turned off; its own switch, apart from the browser's.
+    static let sceneSplitterSound = "sceneSplitterSound"
     /// Whether video put on a timeline from the browser comes with its
     /// sound muted (`TimelineClip.soundMuted`). Off unless turned on.
     static let browserMutesAddedSound = "browserMutesAddedSound"

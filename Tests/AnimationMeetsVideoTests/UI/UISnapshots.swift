@@ -136,6 +136,48 @@ struct UISnapshots {
         try render("beat-match-4-filled")
     }
 
+    /// The scene splitter on the last three shots of a four-shot movie,
+    /// the second of them split by hand: two scenes picked, the marker in
+    /// the second and the pointer skimming the next; then with the
+    /// sensitivity slider being dragged, which shows the extra cut it
+    /// would find before it is let go.
+    @Test func sceneSplitter() async throws {
+        let movie = FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-splitter-\(UUID().uuidString).mov")
+        defer { try? FileManager.default.removeItem(at: movie) }
+        try await writeMovie(to: movie, segments: [(90, 24), (200, 24), (120, 24), (230, 24)])
+        var footage = MediaClip(
+            name: "Skate.mov", kind: .video, url: movie, duration: CMTime(value: 4, timescale: 1),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        footage.sceneEdits.manualCuts = [CMTime(value: 60, timescale: 24)]
+        var scores = [UInt8](repeating: 2, count: 96)
+        scores[0] = 0
+        for frame in [24, 48, 72] { scores[frame] = 200 }
+        // A small change, a cut only at a high sensitivity.
+        scores[84] = 14
+        let track = ChangeScoreTrack(timescale: 24, times: (0..<96).map(Int64.init), scores: scores)
+        var project = EditingProject.empty
+        project.addMedia(footage)
+
+        let splitter = SceneSplitter()
+        splitter.sceneTracks = { [footage.id: track] }
+        splitter.update(project: project)
+        splitter.openWithoutPanel(SceneSplitter.Focus(assetID: footage.id, start: CMTime(value: 1, timescale: 1), end: CMTime(value: 4, timescale: 1)))
+        defer { splitter.skim.end() }
+        // Scenes 3 and 4 picked, the marker in 4, the pointer skimming 5.
+        splitter.click(atSeconds: 1.2)
+        splitter.click(atSeconds: 1.75, modifiers: .shift)
+        splitter.hover(atSeconds: 2.4)
+        let size = CGSize(width: 680, height: 600)
+        // The strip's pictures load in the background.
+        try await SnapshotSupport.render(SceneSplitterView(splitter: splitter), "scene-splitter", size: size, settle: .seconds(2))
+        splitter.drag(sensitivity: 0.95)
+        try SnapshotSupport.render(SceneSplitterView(splitter: splitter), "scene-splitter-sensitivity", size: size)
+        // Made larger, the picture takes the room and the strip stays at
+        // the bottom.
+        try SnapshotSupport.render(SceneSplitterView(splitter: splitter), "scene-splitter-large", size: CGSize(width: 960, height: 800))
+    }
+
     /// The whole editor with a song on a Music layer.
     @Test func editor() throws {
         let song = try SnapshotSupport.clickSong(named: "editor-song")

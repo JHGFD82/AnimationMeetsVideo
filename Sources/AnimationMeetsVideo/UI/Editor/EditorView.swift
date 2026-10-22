@@ -26,6 +26,9 @@ struct EditorView: View {
     @State private var beatMatch = BeatMatchController()
     @State private var motionDesign = MotionDesignController()
     @State private var tapeScrubber = TapeScrubberWindow()
+    /// The floating panel that splits and merges the scenes picked in the
+    /// browser.
+    @State private var sceneSplitter = SceneSplitter()
     /// A clip skimmed in the browser, which the viewer shows.
     @State private var skim = BrowserSkim()
     /// Files on their way into the library, which the browser lists.
@@ -100,6 +103,7 @@ struct EditorView: View {
             .environment(renderer)
             .environment(skim)
             .environment(imports)
+            .environment(sceneSplitter)
         }
         // While a song is beat matched, or clips are in the motion
         // designer, the editor is darkened and takes no input; a click on it
@@ -132,11 +136,15 @@ struct EditorView: View {
         .onChange(of: activeTimeline.wrappedValue == project.rootTimelineID, initial: true) { _, isMain in
             tapeScrubber.isMainTimeline = isMain
         }
-        .onDisappear { tapeScrubber.close() }
+        .onDisappear {
+            tapeScrubber.close()
+            sceneSplitter.close()
+        }
         .onChange(of: project.id) { _, _ in
             activeTimelineID = project.rootTimelineID
             selection = nil
             skim.end()
+            sceneSplitter.close()
             beatMatch.discardAndClose()
             motionDesign.discardAndClose()
         }
@@ -156,6 +164,9 @@ struct EditorView: View {
             motionDesign.playback = playback
             motionDesign.onOpen = { [playback] in playback.player.pause() }
             motionDesign.sceneTracks = { [analysis] in analysis.tracks }
+            sceneSplitter.sceneTracks = { [analysis] in analysis.tracks }
+            sceneSplitter.onEdit = { change in change(&project) }
+            sceneSplitter.update(project: project)
             connectHistory()
             analysis.projectSource = { project }
             analysis.update(with: project)
@@ -185,6 +196,7 @@ struct EditorView: View {
         keepViewStateValid(for: newValue)
         beatMatch.update(project: newValue)
         motionDesign.update(project: newValue)
+        sceneSplitter.update(project: newValue)
     }
 
     /// Keyframing effects waiting on analysis make their keyframes: Audio

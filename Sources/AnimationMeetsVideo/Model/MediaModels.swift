@@ -376,7 +376,7 @@ struct EditingProject: Identifiable, Equatable {
 
     /// Splits at source time `time`. The second half starts at
     /// `startingSecondAt` in the timeline, or where that source time plays.
-    private static func split(_ clips: inout [TimelineClip], id: UUID, at time: CMTime, startingSecondAt secondStartTime: CMTime? = nil) {
+    static func split(_ clips: inout [TimelineClip], id: UUID, at time: CMTime, startingSecondAt secondStartTime: CMTime? = nil) {
         guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
         let clip = clips[index]
         guard time > clip.trimStart, time < clip.trimEnd else { return }
