@@ -53,6 +53,22 @@ final class MotionDesignSession {
 
     // MARK: View
 
+    /// The run as it opened, and the room the window keeps either side of
+    /// it (`window`).
+    private let openedSpan: (start: Double, end: Double)
+    private let windowRoom: Double
+
+    /// The stretch of the timeline the designer shows and plays: the run as
+    /// it opened, and wherever it has been moved or grown to since, with a
+    /// tenth of its length to spare either side. Only the music along it is
+    /// drawn, and playing stops at its end, so the panel is about these
+    /// clips and the music they are cut to, not the whole song.
+    var window: (start: Double, end: Double) {
+        let span = run.span
+        let start = min(openedSpan.start, span.start.seconds), end = max(openedSpan.end, span.end.seconds)
+        return (max(0, start - windowRoom), end + windowRoom)
+    }
+
     /// The left edge of the lanes, in timeline seconds, and the zoom.
     var visibleStart = 0.0
     var secondsPerPoint = 0.02
@@ -83,6 +99,8 @@ final class MotionDesignSession {
         let timeline = project.timeline(id: run.timelineID)!
         self.timeline = timeline
         let span = run.span
+        openedSpan = (span.start.seconds, span.end.seconds)
+        windowRoom = max(0.5, span.duration.seconds * 0.1)
         let music = timeline.layers.filter { layer in
             layer.kind == .music && layer.clips.contains { CMTimeRangeGetIntersection(CMTimeRange(start: $0.startOffset, end: $0.endOffset), otherRange: span).duration > .zero }
         }
@@ -107,6 +125,8 @@ final class MotionDesignSession {
         previewTask?.cancel()
         previewTask = nil
         player.pause()
+        if let windowEndObserver { player.removeTimeObserver(windowEndObserver) }
+        windowEndObserver = nil
         player.replaceCurrentItem(with: nil)
         statusObservation = nil
     }
@@ -432,12 +452,18 @@ final class MotionDesignSession {
 
     // MARK: Snapping
 
+    /// The beats along the window, which are drawn and snapped to.
+    var beatsInWindow: [BeatMarker] {
+        let window = window
+        return beats.filter { window.start <= $0.time.seconds && $0.time.seconds <= window.end }
+    }
+
     /// What a dragged time snaps to: the beats while shown, the playhead,
     /// and the edges of the clips, within `tolerance` seconds.
     func snapped(_ seconds: Double, tolerance: Double) -> Double? {
         guard snaps else { return nil }
         var targets = [playhead] + run.others.flatMap { [$0.start.seconds, $0.end.seconds] }
-        if showsBeats { targets += beats.map(\.time.seconds) }
+        if showsBeats { targets += beatsInWindow.map(\.time.seconds) }
         let nearest = targets.min { abs($0 - seconds) < abs($1 - seconds) }
         guard let nearest, abs(nearest - seconds) <= tolerance else { return nil }
         return nearest
@@ -445,17 +471,36 @@ final class MotionDesignSession {
 
     // MARK: Transport
 
+    /// Plays from the playhead to the window's end, starting over from the
+    /// window's start when the playhead is there already.
     func togglePlayback() {
         if isPlaying {
             player.pause()
         } else {
+            let window = window
+            if playhead >= window.end - run.frameDuration.seconds { playhead = window.start }
             player.seek(to: CMTime(seconds: playhead, preferredTimescale: 48_000), toleranceBefore: .zero, toleranceAfter: .zero)
+            stopsAtWindowEnd(window.end)
             player.play()
         }
     }
 
+    /// Pauses the player when it reaches `end`.
+    private func stopsAtWindowEnd(_ end: Double) {
+        if let windowEndObserver { player.removeTimeObserver(windowEndObserver) }
+        windowEndObserver = player.addBoundaryTimeObserver(
+            forTimes: [NSValue(time: CMTime(seconds: end, preferredTimescale: 48_000))], queue: .main
+        ) { [weak self] in
+            MainActor.assumeIsolated { self?.player.pause() }
+        }
+    }
+
+    @ObservationIgnored private var windowEndObserver: Any?
+
+    /// Moves the playhead to `seconds`, within the window.
     func seek(to seconds: Double) {
-        playhead = max(0, seconds)
+        let window = window
+        playhead = min(max(seconds, window.start), window.end)
         player.seek(to: CMTime(seconds: playhead, preferredTimescale: 48_000), toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
@@ -473,33 +518,34 @@ final class MotionDesignSession {
 
     // MARK: View
 
-    /// Fits the run, with a little room either side.
+    /// Fits the run, with the window's room either side.
     func fit() {
         let span = run.span
-        let length = max(span.duration.seconds, 1)
-        secondsPerPoint = min(max(length * 1.2 / Double(max(viewWidth, 100)), closestZoom), farthestZoom)
-        visibleStart = span.start.seconds - length * 0.1
+        let length = span.duration.seconds + 2 * windowRoom
+        secondsPerPoint = min(max(length / Double(max(viewWidth, 100)), closestZoom), farthestZoom)
+        visibleStart = span.start.seconds - windowRoom
         clampView()
         hasFitted = true
     }
 
-    /// The zoom's edge: a zoom past the whole timeline, or closer than the
+    /// The zoom's edge: a zoom past the whole window, or closer than the
     /// closest, stretches the lanes and springs back (`RubberBandZoom`).
     var zoomBand = RubberBandZoom()
-    /// The scroll's edge: past the timeline's start or end the lanes slide
+    /// The scroll's edge: past the window's start or end the lanes slide
     /// on and spring back. Only sideways, the one way they zoom.
     var scrollBand = RubberBandScroll()
 
     /// The closest zoom: a frame about 80 points across, as the effects
     /// panel's lanes allow.
     var closestZoom: Double { run.frameDuration.seconds / 80 }
-    /// Where the lanes end: the timeline's end, or the run's if it runs on.
-    private var contentEnd: Double { max(timeline.duration.seconds, run.span.end.seconds) }
-    /// The farthest zoom: the whole timeline across, with a tenth to spare.
-    var farthestZoom: Double { max(contentEnd * 1.1 / Double(max(viewWidth, 100)), closestZoom) }
+    /// The farthest zoom: the whole window across.
+    var farthestZoom: Double {
+        let window = window
+        return max((window.end - window.start) / Double(max(viewWidth, 100)), closestZoom)
+    }
 
     /// Zooms by `factor` (above 1 zooms in) about a point `x` in the lanes.
-    /// Zooming past the whole timeline or the closest zoom stretches the
+    /// Zooming past the whole window or the closest zoom stretches the
     /// lanes instead (`zoomBand`), until the pinch lifts, or at once for
     /// any other zoom.
     func zoom(by factor: Double, aboutX x: CGFloat, pinching: Bool = false) {
@@ -518,7 +564,7 @@ final class MotionDesignSession {
     /// The pinch's fingers lifted: the stretch springs back.
     func endPinch() { zoomBand.endPinch() }
 
-    /// Scrolls the lanes sideways; past the timeline's ends they slide on
+    /// Scrolls the lanes sideways; past the window's ends they slide on
     /// and spring back (`scrollBand`).
     func scroll(byPoints points: CGFloat, phase: ScrollInputPhase = .wheel) {
         var band = scrollBand
@@ -531,11 +577,12 @@ final class MotionDesignSession {
         scrollBand = band
     }
 
-    /// The timeline's start sits at the left edge at most, and the lanes'
-    /// end at the right edge at least, while the whole fits.
+    /// The window's start sits at the left edge at most, and its end at the
+    /// right edge at least, while the whole fits.
     private func clampView() {
         let span = Double(viewWidth) * secondsPerPoint
-        visibleStart = min(max(visibleStart, 0), max(0, contentEnd - span))
+        let window = window
+        visibleStart = min(max(visibleStart, window.start), max(window.start, window.end - span))
     }
 
     func zoomIn() { zoom(by: 2, aboutX: x(of: selectedPoint?.time.seconds ?? playhead)) }

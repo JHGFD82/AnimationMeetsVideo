@@ -321,14 +321,15 @@ struct MotionDesignLanes: View {
     }
 
     private func drawBeats(in context: inout GraphicsContext, height: CGFloat, strong: Double, weak: Double) {
+        let beats = session.beatsInWindow
         let visibleEnd = session.seconds(atX: session.viewWidth)
         // Thinned as on the timeline: every beat while they are 10 points
         // apart, else only downbeats.
-        let spaced = (session.beats.count > 1) && session.beats.indices.dropLast().contains { i in
-            session.beats[i].time.seconds >= session.visibleStart
-                && session.x(of: session.beats[i + 1].time.seconds) - session.x(of: session.beats[i].time.seconds) < 10
+        let spaced = (beats.count > 1) && beats.indices.dropLast().contains { i in
+            beats[i].time.seconds >= session.visibleStart
+                && session.x(of: beats[i + 1].time.seconds) - session.x(of: beats[i].time.seconds) < 10
         }
-        for beat in session.beats where beat.time.seconds >= session.visibleStart && beat.time.seconds <= visibleEnd {
+        for beat in beats where beat.time.seconds >= session.visibleStart && beat.time.seconds <= visibleEnd {
             let downbeat = beat.position == 1
             if spaced, !downbeat { continue }
             let x = session.x(of: beat.time.seconds)
@@ -532,7 +533,8 @@ struct MotionDesignLanes: View {
         return layers.count == 1 ? "\(layers[0]), \(beats)" : "\(layers.joined(separator: ", ")), the first with a song at a moment leading; \(beats)"
     }
 
-    /// One Music layer's songs, dimmed where a layer above has the song.
+    /// One Music layer's songs within the window, dimmed where a layer
+    /// above has the song.
     private func layerLane(_ layer: TimelineLayer, width: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             ForEach(layer.clips) { clip in
@@ -556,8 +558,9 @@ struct MotionDesignLanes: View {
 
     @ViewBuilder
     private func songBlock(_ clip: TimelineClip, on layer: TimelineLayer, width: CGFloat) -> some View {
-        let x0 = session.x(of: clip.startOffset.seconds), x1 = session.x(of: clip.endOffset.seconds)
-        if x1 > 0, x0 < width, case .media(let id) = clip.source, let media = session.project.mediaClip(id: id) {
+        let window = session.window
+        let x0 = session.x(of: max(clip.startOffset.seconds, window.start)), x1 = session.x(of: min(clip.endOffset.seconds, window.end))
+        if x1 > x0, x1 > 0, x0 < width, case .media(let id) = clip.source, let media = session.project.mediaClip(id: id) {
             let drawn0 = max(0, x0), drawn1 = min(width, x1)
             let source = clip.sourceTime(atTimelineTime: CMTime(seconds: session.seconds(atX: drawn0), preferredTimescale: 48_000))
             let led = session.timeline.songStretches(of: clip, onLayer: layer.id)

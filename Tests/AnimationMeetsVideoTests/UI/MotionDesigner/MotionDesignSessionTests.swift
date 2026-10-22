@@ -78,10 +78,11 @@ import Testing
         defer { session.end() }
         session.viewWidth = 800
 
-        // Out past the whole timeline (12 s and a tenth across 800 points).
+        // Out past the whole window (the clip's 10 s and a second either
+        // side, across 800 points).
         session.zoom(by: 0.01, aboutX: 400)
         #expect(abs(session.secondsPerPoint - session.farthestZoom) < 1e-12)
-        #expect(abs(session.farthestZoom - 12 * 1.1 / 800) < 1e-9)
+        #expect(abs(session.farthestZoom - 12.0 / 800) < 1e-9)
         #expect(session.zoomBand.scale < 1)
         // In past a frame 80 points wide.
         session.zoomBand.release()
@@ -91,11 +92,42 @@ import Testing
         session.endPinch()
         #expect(session.zoomBand.settle == .lifted)
 
-        // Before the timeline's start, the lanes slide on instead.
+        // Before the window's start, the lanes slide on instead.
         session.zoomBand.release()
         session.fit()
         session.scroll(byPoints: -10_000)
-        #expect(session.visibleStart == 0)
+        #expect(session.visibleStart == 1)
         #expect(session.scrollBand.offset(length: 800) > 0)
+    }
+
+    @Test func theWindowIsTheRunAndFollowsItsMoves() throws {
+        // A long song under a 4 s clip at 20 s.
+        var project = EditingProject.empty
+        let song = MediaClip(name: "Song", kind: .audio, url: nil, duration: CMTime(value: 180, timescale: 1), frameRate: 0, colorSpace: .rec709, codecName: "AAC")
+        project.addMedia(song)
+        let music = TimelineClip(source: .media(song.id), startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 180, timescale: 1))
+        let clip = TimelineClip(source: .adjustment, startOffset: CMTime(value: 20, timescale: 1), trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
+        project.timelines[0].layers = [
+            TimelineLayer(customName: nil, kind: .video, clips: [clip]),
+            TimelineLayer(customName: nil, kind: .music, clips: [music]),
+        ]
+        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
+        let session = MotionDesignSession(run: run, project: project)
+        defer { session.end() }
+        session.viewWidth = 800
+
+        // The clip with half a second either side, not the whole song.
+        #expect(session.window.start == 19.5)
+        #expect(session.window.end == 24.5)
+        session.zoom(by: 0.01, aboutX: 400)
+        let shown = Double(session.viewWidth) * session.secondsPerPoint
+        #expect(abs(shown - 5) < 1e-9)
+        session.seek(to: 100)
+        #expect(session.playhead == 24.5)
+
+        // Moving the clip later takes the window along.
+        session.perform("Move Clip") { $0.movePiece(clip.id, by: CMTime(value: 2, timescale: 1)) }
+        #expect(session.window.start == 19.5)
+        #expect(abs(session.window.end - 26.5) < 1e-6)
     }
 }
