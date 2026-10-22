@@ -627,7 +627,7 @@ struct MotionDesignLanes: View {
 
     // MARK: Over every lane
 
-    /// The playhead, each hit's pin from its frame to its beat, and where a
+    /// Each hit's pin from its frame to its beat, the playhead, and where a
     /// drag snapped, drawn over the lanes.
     private func markings(width: CGFloat, height: CGFloat, graphHeight: CGFloat) -> some View {
         let stack = stack(height: graphHeight, width: width)
@@ -649,18 +649,27 @@ struct MotionDesignLanes: View {
                         context.fill(Path(ellipseIn: CGRect(x: at.x - 3, y: y - 3, width: 6, height: 6)), with: .color(Design.snap))
                     }
                 }
-                if let snapTime = snapTime ?? session.dragSnapTime {
-                    let x = session.x(of: snapTime)
-                    context.fill(Path(CGRect(x: x - 0.5, y: 0, width: 1, height: size.height)), with: .color(Design.snap))
-                }
             }
-            SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !session.isPlaying)) { context in
-                let x = session.x(of: session.playhead(at: context.date))
-                Design.playhead
-                    .frame(width: 1, height: height)
-                    .offset(x: x)
-                    .opacity(x >= 0 && x <= width ? 1 : 0)
-            }
+            // The timeline's own playhead, its head at the top of the
+            // ruler, and its snap line; while playing it runs on the
+            // player's clock.
+            let x = session.x(of: session.playhead)
+            PlayheadRail(
+                playheadX: x,
+                isPlayheadVisible: (-1...(width + 1)).contains(x),
+                snapX: (snapTime ?? session.dragSnapTime).map { session.x(of: $0) },
+                height: height,
+                following: session.isPlaying
+                    ? PlayheadRail.Following(
+                        player: session.playback.player,
+                        pixelsPerSecond: CGFloat(1 / session.secondsPerPoint),
+                        originX: session.x(of: 0),
+                        seconds: session.window.end,
+                        generation: session.playback.itemSwaps
+                    )
+                    : nil
+            )
+            .frame(width: width, height: height)
         }
         .frame(width: width, height: height, alignment: .topLeading)
         .allowsHitTesting(false)

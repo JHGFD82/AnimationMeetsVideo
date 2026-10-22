@@ -52,7 +52,9 @@ the music.
   has been moved or grown to since, with a tenth of its length (at least
   half a second) to spare either side. Songs and beats are drawn only
   along it, the zoom and scroll stop at its edges, and the playhead stays
-  in it.
+  in it. The playhead is the timeline's own (`PlayheadRail`): a line with
+  its head at the top of the ruler, running on the player's clock while
+  it plays, beside the same snap line.
 
 - **The footage strip** places each frame where it plays in the draft:
   frames are taken at even steps of the footage, one tile's width apart
