@@ -27,7 +27,6 @@ struct MotionDesignLanes: View {
     @State private var drag: GraphDrag?
     /// Where the drag snapped, to draw.
     @State private var snapTime: Double?
-    @State private var lastMagnification: CGFloat?
 
     var body: some View {
         GeometryReader { geometry in
@@ -42,24 +41,30 @@ struct MotionDesignLanes: View {
             .overlay(alignment: .topLeading) {
                 markings(width: width, height: geometry.size.height, graphHeight: graphHeight)
             }
+            // Squeezed by a zoom out past the whole timeline, stretched by
+            // one in past the closest, slid along by a scroll past either
+            // end; all the lanes together, so they stay lined up.
+            .rubberBand($session.zoomBand)
+            .rubberBandScroll(session.scrollBand, length: width)
+            .rubberBandSettling($session.scrollBand)
+            .background(Design.Surface.well.color)
             .onChange(of: width, initial: true) { _, width in session.viewWidth = width }
         }
         .clipped()
-        .background(ScrollWheelMonitor { deltaY, location in
-            if NSEvent.modifierFlags.contains(.option) || NSEvent.modifierFlags.contains(.command) {
-                session.zoom(by: pow(1.01, Double(deltaY)), aboutX: location.x)
-            } else {
-                session.scroll(byPoints: -deltaY)
-            }
-            return true
-        })
-        .simultaneousGesture(MagnifyGesture()
-            .onChanged { pinch in
-                let factor = pinch.magnification / (lastMagnification ?? 1)
-                lastMagnification = pinch.magnification
-                session.zoom(by: Double(factor), aboutX: pinch.startLocation.x)
-            }
-            .onEnded { _ in lastMagnification = nil })
+        .background(
+            TimelineInputMonitor(
+                onMagnify: { factor, _, x, _ in session.zoom(by: factor, aboutX: x, pinching: true) },
+                onScroll: { deltaX, deltaY, flags, x, phase in
+                    if flags.contains(.option) || flags.contains(.command) {
+                        session.zoom(by: pow(1.01, Double(deltaY)), aboutX: x)
+                    } else {
+                        session.scroll(byPoints: abs(deltaX) >= abs(deltaY) ? deltaX : -deltaY, phase: phase)
+                    }
+                    return true
+                },
+                onMagnifyEnded: { session.endPinch() }
+            )
+        )
     }
 
     // MARK: Ruler

@@ -59,7 +59,9 @@ final class MotionDesignSession {
     var viewWidth: CGFloat = 800 {
         didSet {
             guard viewWidth > 0, viewWidth != oldValue else { return }
-            if !hasFitted { fit() }
+            if !hasFitted { return fit() }
+            secondsPerPoint = min(max(secondsPerPoint, closestZoom), farthestZoom)
+            clampView()
         }
     }
     @ObservationIgnored private var hasFitted = false
@@ -462,19 +464,65 @@ final class MotionDesignSession {
     func fit() {
         let span = run.span
         let length = max(span.duration.seconds, 1)
-        secondsPerPoint = length * 1.2 / Double(max(viewWidth, 100))
-        visibleStart = max(0, span.start.seconds - length * 0.1)
+        secondsPerPoint = min(max(length * 1.2 / Double(max(viewWidth, 100)), closestZoom), farthestZoom)
+        visibleStart = span.start.seconds - length * 0.1
+        clampView()
         hasFitted = true
     }
 
-    func zoom(by factor: Double, aboutX x: CGFloat) {
-        let anchor = seconds(atX: x)
-        secondsPerPoint = min(max(secondsPerPoint / factor, 1.0 / 48_000), 2)
-        visibleStart = max(0, anchor - Double(x) * secondsPerPoint)
+    /// The zoom's edge: a zoom past the whole timeline, or closer than the
+    /// closest, stretches the lanes and springs back (`RubberBandZoom`).
+    var zoomBand = RubberBandZoom()
+    /// The scroll's edge: past the timeline's start or end the lanes slide
+    /// on and spring back. Only sideways, the one way they zoom.
+    var scrollBand = RubberBandScroll()
+
+    /// The closest zoom: a frame about 80 points across, as the effects
+    /// panel's lanes allow.
+    var closestZoom: Double { run.frameDuration.seconds / 80 }
+    /// Where the lanes end: the timeline's end, or the run's if it runs on.
+    private var contentEnd: Double { max(timeline.duration.seconds, run.span.end.seconds) }
+    /// The farthest zoom: the whole timeline across, with a tenth to spare.
+    var farthestZoom: Double { max(contentEnd * 1.1 / Double(max(viewWidth, 100)), closestZoom) }
+
+    /// Zooms by `factor` (above 1 zooms in) about a point `x` in the lanes.
+    /// Zooming past the whole timeline or the closest zoom stretches the
+    /// lanes instead (`zoomBand`), until the pinch lifts, or at once for
+    /// any other zoom.
+    func zoom(by factor: Double, aboutX x: CGFloat, pinching: Bool = false) {
+        var band = zoomBand
+        band.zoom(by: factor, about: viewWidth > 0 ? x / viewWidth : 0.5, pinching: pinching) { factor in
+            let anchor = seconds(atX: x)
+            let before = secondsPerPoint
+            secondsPerPoint = min(max(secondsPerPoint / factor, closestZoom), farthestZoom)
+            visibleStart = anchor - Double(x) * secondsPerPoint
+            clampView()
+            return before / secondsPerPoint
+        }
+        zoomBand = band
     }
 
-    func scroll(byPoints points: CGFloat) {
-        visibleStart = max(0, visibleStart + Double(points) * secondsPerPoint)
+    /// The pinch's fingers lifted: the stretch springs back.
+    func endPinch() { zoomBand.endPinch() }
+
+    /// Scrolls the lanes sideways; past the timeline's ends they slide on
+    /// and spring back (`scrollBand`).
+    func scroll(byPoints points: CGFloat, phase: ScrollInputPhase = .wheel) {
+        var band = scrollBand
+        band.scroll(by: points, phase: phase) { points in
+            let before = visibleStart
+            visibleStart += Double(points) * secondsPerPoint
+            clampView()
+            return CGFloat((visibleStart - before) / secondsPerPoint)
+        }
+        scrollBand = band
+    }
+
+    /// The timeline's start sits at the left edge at most, and the lanes'
+    /// end at the right edge at least, while the whole fits.
+    private func clampView() {
+        let span = Double(viewWidth) * secondsPerPoint
+        visibleStart = min(max(visibleStart, 0), max(0, contentEnd - span))
     }
 
     func zoomIn() { zoom(by: 2, aboutX: x(of: selectedPoint?.time.seconds ?? playhead)) }

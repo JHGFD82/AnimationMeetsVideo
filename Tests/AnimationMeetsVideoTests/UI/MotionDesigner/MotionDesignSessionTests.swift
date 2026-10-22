@@ -68,4 +68,34 @@ import Testing
         let draft = session.draftProject
         #expect(abs((draft.timeline(id: draft.rootTimelineID)?.duration.seconds ?? 0) - 6) < 0.05)
     }
+
+    @Test func zoomingOrScrollingPastAnEdgeStretchesInstead() throws {
+        var project = EditingProject.empty
+        let clip = TimelineClip(source: .adjustment, startOffset: CMTime(value: 2, timescale: 1), trimStart: .zero, trimEnd: CMTime(value: 10, timescale: 1))
+        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip])]
+        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
+        let session = MotionDesignSession(run: run, project: project)
+        defer { session.end() }
+        session.viewWidth = 800
+
+        // Out past the whole timeline (12 s and a tenth across 800 points).
+        session.zoom(by: 0.01, aboutX: 400)
+        #expect(abs(session.secondsPerPoint - session.farthestZoom) < 1e-12)
+        #expect(abs(session.farthestZoom - 12 * 1.1 / 800) < 1e-9)
+        #expect(session.zoomBand.scale < 1)
+        // In past a frame 80 points wide.
+        session.zoomBand.release()
+        session.zoom(by: 10_000, aboutX: 400, pinching: true)
+        #expect(abs(session.secondsPerPoint - session.closestZoom) < 1e-12)
+        #expect(session.zoomBand.scale > 1)
+        session.endPinch()
+        #expect(session.zoomBand.settle == .lifted)
+
+        // Before the timeline's start, the lanes slide on instead.
+        session.zoomBand.release()
+        session.fit()
+        session.scroll(byPoints: -10_000)
+        #expect(session.visibleStart == 0)
+        #expect(session.scrollBand.offset(length: 800) > 0)
+    }
 }

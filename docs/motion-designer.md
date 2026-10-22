@@ -106,6 +106,15 @@ the music.
   Escape lets go (or cancels a drag), ⌘= ⌘- ⌘0 zoom, ⌘Z undoes in the
   draft, ⌘Return is Done. Scrolling scrolls; ⌥ or ⌘ scrolling, or a
   pinch, zooms.
+- **The zoom's edge** is the editor's shared one (`RubberBandZoom`, see
+  [timeline.md](timeline.md)): zooming out past the whole timeline (with
+  a tenth to spare) squeezes all the lanes together about the pointer,
+  over the darker surround, and zooming in past a frame 80 points wide
+  stretches them, against more resistance the further it goes; they
+  spring back when the pinch lifts, and the zoom buttons, ⌘= and ⌘- give
+  the same bump. Scrolling past the timeline's start or end slides them
+  on and springs back (`RubberBandScroll`). With reduced motion they
+  simply stop.
 
 ## Several clips as one piece
 
@@ -203,9 +212,9 @@ where other clips are.
   from the keyboard, which lengthens or shortens the gaps around them.
   Unselected clips on the layer are shown but never move, and bound how
   far a selected clip can go.
-- The view fits the run when it opens and scrolls freely past it, so
-  retiming or moving the first or last clip never runs out of room to
-  show it.
+- The view fits the run when it opens, and scrolls across the whole
+  timeline (or past its end, as far as the run reaches), so retiming or
+  moving the first or last clip never runs out of room to show it.
 
 ### Footage available
 
@@ -383,5 +392,4 @@ does has a key, a button or an action.
    player; the views).
 6. Accessibility. **Built** with the panel.
 
-Not yet: the zoom has no rubber-band edge, and the panel hasn't been used
-on screen.
+Not yet: the panel hasn't been used on screen.
