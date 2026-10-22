@@ -393,7 +393,8 @@ struct MotionDesignLanes: View {
                 switch drag {
                 case .point(let id, let from, _):
                     let target = from + Double(gesture.translation.width) * session.secondsPerPoint
-                    let snapped = session.snapped(target, tolerance: 8 * session.secondsPerPoint)
+                    let piece = session.run.piece(holdingPoint: id).map { session.run.pieces[$0.piece].id }
+                    let snapped = session.snapped(target, tolerance: 8 * session.secondsPerPoint, excluding: piece)
                     snapTime = snapped
                     session.perform("Move Point") {
                         $0.movePoint(id, to: CMTime(seconds: snapped ?? target, preferredTimescale: ClipTimeMap.timescale))
@@ -617,7 +618,7 @@ struct MotionDesignLanes: View {
                         context.fill(Path(ellipseIn: CGRect(x: at.x - 3, y: y - 3, width: 6, height: 6)), with: .color(Design.snap))
                     }
                 }
-                if let snapTime {
+                if let snapTime = snapTime ?? session.dragSnapTime {
                     let x = session.x(of: snapTime)
                     context.fill(Path(CGRect(x: x - 0.5, y: 0, width: 1, height: size.height)), with: .color(Design.snap))
                 }

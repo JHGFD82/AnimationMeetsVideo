@@ -71,11 +71,12 @@ the music.
   a hit's pin ends on the lane of the song leading at its time.
 - Grabbing the line drops a marker on that frame and drags it; grabbing a
   point drags it. Drags snap, within 8 points, to the beats (while shown),
-  the playhead and the edges of the layer's other clips; the snap line
-  shows where. A click elsewhere moves the playhead, as a drag on the
+  the playhead and the edges of the layer's other clips (the run's other
+  clips included); the snap line shows where. A click elsewhere moves the playhead, as a drag on the
   ruler or the music scrubs.
 - Dragging a clip in the strip moves it by whole frames, unless a hit
-  holds it.
+  holds it. Whichever of its edges comes nearer something to snap to
+  lands on it, to the nearest frame.
 - **The monitor**, at the top of the sidebar, shows the draft: the
   timeline as Done would leave it (`MotionDesignSession.draftProject`, the
   project with the run written in), every layer and effect, built as the

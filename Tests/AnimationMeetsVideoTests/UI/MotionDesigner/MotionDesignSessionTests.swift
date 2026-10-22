@@ -130,4 +130,30 @@ import Testing
         #expect(session.window.start == 19.5)
         #expect(abs(session.window.end - 26.5) < 1e-6)
     }
+
+    @Test func aMovedClipSnapsByEitherEdge() throws {
+        // A clip at 2 s to 6 s, and another left out at 8 s.
+        var project = EditingProject.empty
+        let clip = TimelineClip(source: .adjustment, startOffset: CMTime(value: 2, timescale: 1), trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
+        let other = TimelineClip(source: .adjustment, startOffset: CMTime(value: 8, timescale: 1), trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
+        project.timelines[0].layers = [TimelineLayer(customName: nil, kind: .video, clips: [clip, other])]
+        let run = try MotionRun.opening([clip.id], in: project.rootTimelineID, of: project).get()
+        let session = MotionDesignSession(run: run, project: project)
+        defer { session.end() }
+
+        // Its end comes within a tenth of a second of the other's start.
+        session.beginDrag()
+        session.dragPiece(clip.id, by: CMTime(seconds: 1.95, preferredTimescale: 600), snapTolerance: 0.1)
+        #expect(session.run.pieces[0].span.start == CMTime(value: 4, timescale: 1))
+        #expect(session.dragSnapTime == 8)
+        // Its start near where it began, the playhead.
+        session.dragPiece(clip.id, by: CMTime(seconds: 0.07, preferredTimescale: 600), snapTolerance: 0.1)
+        #expect(session.run.pieces[0].span.start == CMTime(value: 2, timescale: 1))
+        // Off, it lands where it was dragged, on a frame.
+        session.snaps = false
+        session.dragPiece(clip.id, by: CMTime(seconds: 1.95, preferredTimescale: 600), snapTolerance: 0.1)
+        #expect(abs(session.run.pieces[0].span.start.seconds - (2 + 47.0 / 24)) < 1e-9)
+        session.endDrag("Move Clip")
+        #expect(session.dragSnapTime == nil)
+    }
 }

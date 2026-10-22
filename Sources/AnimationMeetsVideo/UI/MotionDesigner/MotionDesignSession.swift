@@ -292,6 +292,7 @@ final class MotionDesignSession {
     }
 
     func endDrag(_ name: String) {
+        dragSnapTime = nil
         guard let start = dragStart else { return }
         dragStart = nil
         if start != run {
@@ -301,12 +302,30 @@ final class MotionDesignSession {
     }
 
     /// Moves a whole clip `delta` from where it was when the drag began.
-    func dragPiece(_ id: UUID, by delta: CMTime) {
-        guard let start = dragStart else { return }
+    /// With a `snapTolerance` (in seconds), whichever of its edges comes
+    /// nearer something to snap to lands on it (`snapped`), to the nearest
+    /// frame, as a moved clip does.
+    func dragPiece(_ id: UUID, by delta: CMTime, snapTolerance: Double? = nil) {
+        guard let start = dragStart, let piece = start.pieces.first(where: { $0.id == id }) else { return }
+        var seconds = delta.seconds
+        dragSnapTime = nil
+        if let snapTolerance {
+            let edges = [piece.span.start.seconds, piece.span.end.seconds]
+            let nearest = edges.compactMap { edge -> (shift: Double, at: Double)? in
+                snapped(edge + seconds, tolerance: snapTolerance, excluding: id).map { ($0 - edge, $0) }
+            }.min { abs($0.shift - seconds) < abs($1.shift - seconds) }
+            if let nearest {
+                seconds = nearest.shift
+                dragSnapTime = nearest.at
+            }
+        }
         var edited = start
-        edited.movePiece(id, by: delta)
+        edited.movePiece(id, by: CMTime(seconds: seconds, preferredTimescale: ClipTimeMap.timescale))
         if edited != run { run = edited }
     }
+
+    /// Where a clip being moved snapped, for the lanes to draw.
+    private(set) var dragSnapTime: Double?
 
     /// Trims a clip's edge to `seconds`, from where it was when the drag
     /// began.
@@ -328,6 +347,7 @@ final class MotionDesignSession {
 
     /// Puts the draft back as it was when the drag began (Escape).
     func cancelDrag() {
+        dragSnapTime = nil
         guard let start = dragStart else { return }
         dragStart = nil
         run = start
@@ -459,10 +479,13 @@ final class MotionDesignSession {
     }
 
     /// What a dragged time snaps to: the beats while shown, the playhead,
-    /// and the edges of the clips, within `tolerance` seconds.
-    func snapped(_ seconds: Double, tolerance: Double) -> Double? {
+    /// and the edges of the layer's clips, the run's own but the piece
+    /// `excluding` (the one being dragged) included, within `tolerance`
+    /// seconds.
+    func snapped(_ seconds: Double, tolerance: Double, excluding id: UUID? = nil) -> Double? {
         guard snaps else { return nil }
-        var targets = [playhead] + run.others.flatMap { [$0.start.seconds, $0.end.seconds] }
+        let clips = run.others + run.pieces.filter { $0.id != id }.map(\.span)
+        var targets = [playhead] + clips.flatMap { [$0.start.seconds, $0.end.seconds] }
         if showsBeats { targets += beatsInWindow.map(\.time.seconds) }
         let nearest = targets.min { abs($0 - seconds) < abs($1 - seconds) }
         guard let nearest, abs(nearest - seconds) <= tolerance else { return nil }

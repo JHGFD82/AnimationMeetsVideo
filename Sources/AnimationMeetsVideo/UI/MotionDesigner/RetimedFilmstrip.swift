@@ -5,7 +5,7 @@ import SwiftUI
 /// even steps of the footage and placed by the draft, so a stretch played
 /// slowly spreads them apart, with the lane showing between, and one played
 /// fast crowds them into slivers. At 100% they just touch. Dragging a clip
-/// moves it, unless a hit holds it to a beat; dragging its edge trims it,
+/// moves it, either edge snapping, unless a hit holds it to a beat; dragging its edge trims it,
 /// as far as its scene's footage goes, which a bracket marks once reached.
 struct RetimedFilmstrip: View {
     let session: MotionDesignSession
@@ -158,7 +158,7 @@ struct RetimedFilmstrip: View {
                     session.beginDragIfNeeded()
                     let from = (edge == .start ? piece.span.start : piece.span.end).seconds
                     let target = from + Double(drag.translation.width) * session.secondsPerPoint
-                    let snapped = session.snapped(target, tolerance: 8 * session.secondsPerPoint)
+                    let snapped = session.snapped(target, tolerance: 8 * session.secondsPerPoint, excluding: piece.id)
                     session.dragTrim(piece.id, edge: edge, to: snapped ?? target)
                 }
                 .onEnded { _ in session.endDrag("Trim Clip") })
@@ -175,7 +175,10 @@ struct RetimedFilmstrip: View {
                 guard session.run.canMove(piece.id) else { return }
                 session.beginDragIfNeeded()
                 let delta = Double(drag.translation.width) * session.secondsPerPoint
-                session.dragPiece(piece.id, by: CMTime(seconds: delta, preferredTimescale: ClipTimeMap.timescale))
+                session.dragPiece(
+                    piece.id, by: CMTime(seconds: delta, preferredTimescale: ClipTimeMap.timescale),
+                    snapTolerance: 8 * session.secondsPerPoint
+                )
             }
             .onEnded { _ in
                 if !session.run.canMove(piece.id) {
