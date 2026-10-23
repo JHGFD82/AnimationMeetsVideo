@@ -148,7 +148,7 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                 }
                 // A value drag held to one side of the project is seen as the
                 // viewer plays (see `LiveValues`).
-                let drawn = instruction.followingHeldValues(LiveValues.shared.clips)
+                let drawn = instruction.followingHeldValues(instruction.options?.liveValues.clips)
                 let image = Self.compose(drawn, at: request.compositionTime, outputSize: size) {
                     request.sourceFrame(byTrackID: $0)
                 }

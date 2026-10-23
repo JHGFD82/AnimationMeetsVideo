@@ -14,6 +14,14 @@ final class DrawingOptions: @unchecked Sendable {
 
     private let state = OSAllocatedUnfairLock(initialState: State())
 
+    /// The held drag the viewer's frames follow: the app's one, or a test's
+    /// own, so tests drawing at once don't see each other's drags.
+    let liveValues: LiveValues
+
+    init(liveValues: LiveValues = .shared) {
+        self.liveValues = liveValues
+    }
+
     func update(isPlaying: Bool? = nil, isQuarterSize: Bool? = nil, motionBlurInPreview: Bool? = nil) {
         state.withLock { state in
             if let isPlaying { state.isPlaying = isPlaying }

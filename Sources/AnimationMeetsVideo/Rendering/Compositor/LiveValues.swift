@@ -7,6 +7,8 @@ import Foundation
 /// patches those clips' effects and anchor points in
 /// (`DrawClip.withValues`), so a drag can be seen as it plays, as it is
 /// when paused, without building the timeline again. Export never reads it.
+/// The compositor reads the one its frames' `DrawingOptions` name: the
+/// viewer's is `shared`, which the editor sets.
 ///
 /// Only values: a drag that changes the project's structure, or a stretch
 /// of the timeline that plays from a render, can't follow (see

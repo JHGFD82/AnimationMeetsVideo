@@ -170,18 +170,20 @@ import Testing
     /// (`LiveValues`), then as built once the drag's values are in the build.
     @Test func aPlayingFrameFollowsAHeldDrag() async throws {
         var (fixture, shape) = try await fixture()
-        defer { fixture.cleanUp(); LiveValues.shared.clips = nil }
+        defer { fixture.cleanUp() }
         let time = CMTime(seconds: 1, preferredTimescale: 600)
+        // Its own, since the editor in other tests sets the app's.
+        let live = LiveValues()
         let built = try await CompositionExporter.buildComposedTimeline(
-            for: fixture.project, timelineID: fixture.timelineID, forPreview: true, options: DrawingOptions()
+            for: fixture.project, timelineID: fixture.timelineID, forPreview: true, options: DrawingOptions(liveValues: live)
         )
         #expect(try await grayLevel(of: built, at: time) > 180)
 
         fixture.setControl(.fill, [0.2, 0.2, 0.2, 1], ofClip: shape)
-        LiveValues.shared.clips = fixture.project.clipsByID
+        live.clips = fixture.project.clipsByID
         #expect(try await grayLevel(of: built, at: time) < 80)
 
-        LiveValues.shared.clips = nil
+        live.clips = nil
         #expect(try await grayLevel(of: built, at: time) > 180)
     }
 }
