@@ -157,11 +157,19 @@ struct TapeScrubEngineTests {
         try await Task.sleep(for: .milliseconds(300))
         #expect(tape.position == 3)
 
+        // Timed by the clock rather than by the sleep, which a busy machine
+        // stretches while the tape keeps going.
+        let clock = ContinuousClock()
+        let started = clock.now
         tape.setRate(-2)
         try await Task.sleep(for: .milliseconds(500))
-        // A second back, less the moment it took to get going.
-        #expect(tape.position < 2.2)
-        #expect(tape.position > 1.8)
+        let position = tape.position
+        let ran = clock.now - started
+        let seconds = Double(ran.components.seconds) + Double(ran.components.attoseconds) / 1e18
+        // Twice as far back as it ran, less the moment it took to get going.
+        let expected = 3 - 2 * seconds
+        #expect(position > expected - 0.05)
+        #expect(position < expected + 0.2)
 
         tape.setRate(0)
         try await Task.sleep(for: .milliseconds(300))
