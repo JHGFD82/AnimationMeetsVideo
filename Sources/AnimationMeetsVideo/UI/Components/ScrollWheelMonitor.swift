@@ -47,7 +47,7 @@ struct ScrollWheelMonitor: NSViewRepresentable {
         }
 
         private func handle(_ event: NSEvent) -> Bool {
-            guard let window, event.window === window, !isHiddenOrHasHiddenAncestor else { return false }
+            guard let window, event.window === window, !isHiddenOrHasHiddenAncestor, !WindowInputBlock.isBlocked(window) else { return false }
             let point = convert(event.locationInWindow, from: nil)
             guard bounds.contains(point), event.scrollingDeltaY != 0 else { return false }
             // A mouse wheel reports lines, not points.

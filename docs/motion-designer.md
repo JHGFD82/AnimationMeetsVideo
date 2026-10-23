@@ -27,7 +27,8 @@ else around it, by dragging frames along a time graph.
   puts the project back as it was when the panel opened, asking first if
   anything changed, and leaves no undo step.
 - **The panel** floats over the editor like the beat match panel: the
-  editor is darkened and takes no input while it is open, and the panel
+  editor is darkened and takes no input while it is open, not even
+  hovering or skimming (`WindowInputBlock`), and the panel
   has an undo of its own for its changes, which the timeline follows.
 - It shows the footage above the music it is attached to (the song's
   waveform and its beat markers) over the same span, and a **time

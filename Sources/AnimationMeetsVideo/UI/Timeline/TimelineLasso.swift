@@ -71,7 +71,9 @@ struct LassoMonitor: NSViewRepresentable {
         }
 
         private func handle(_ event: NSEvent) {
-            guard let window, event.window === window, let height = window.contentView?.bounds.height else { return }
+            guard let window, event.window === window, !WindowInputBlock.isBlocked(window),
+                  let height = window.contentView?.bounds.height
+            else { return }
             // Window coordinates, top left origin, as SwiftUI's global space.
             let point = CGPoint(x: event.locationInWindow.x, y: height - event.locationInWindow.y)
             switch event.type {

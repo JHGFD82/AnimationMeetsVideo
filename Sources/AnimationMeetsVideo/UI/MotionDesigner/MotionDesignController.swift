@@ -34,6 +34,8 @@ final class MotionDesignController {
     @ObservationIgnored private var panelDelegate: DraftPanelDelegate?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private weak var editorWindow: NSWindow?
+    /// Keeps the pointer out of the editor while the panel is open.
+    @ObservationIgnored private var inputBlock: WindowInputBlock?
 
     /// Opens the panel on the clips with these IDs, or says why it can't.
     func open(clips ids: Set<UUID>, in timelineID: UUID, of project: EditingProject) {
@@ -76,8 +78,9 @@ final class MotionDesignController {
         }
         panel.delegate = delegate
         panelDelegate = delegate
-        // The editor takes no input meanwhile, so a click on it means the
-        // person is looking for the panel.
+        // The editor takes no input meanwhile, not even hovering, so a
+        // click on it means the person is looking for the panel.
+        inputBlock = WindowInputBlock(window: editorWindow) { [weak self] in self?.bringToFront() }
         observers = [
             NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: editorWindow, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.bringToFront() }
@@ -171,6 +174,8 @@ final class MotionDesignController {
         history?.endGesture()
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers = []
+        inputBlock?.end()
+        inputBlock = nil
         session?.end()
         session = nil
         panel?.delegate = nil

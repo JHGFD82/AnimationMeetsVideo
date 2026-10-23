@@ -31,6 +31,8 @@ final class BeatMatchController {
     @ObservationIgnored private var panelDelegate: DraftPanelDelegate?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private weak var editorWindow: NSWindow?
+    /// Keeps the pointer out of the editor while the panel is open.
+    @ObservationIgnored private var inputBlock: WindowInputBlock?
 
     /// Opens the panel for an asset, or brings it to the front if it is
     /// open for that asset already. Nothing happens for an offline asset.
@@ -65,8 +67,9 @@ final class BeatMatchController {
         }
         panel.delegate = delegate
         panelDelegate = delegate
-        // The editor takes no input meanwhile, so a click on it means the
-        // person is looking for the panel.
+        // The editor takes no input meanwhile, not even hovering, so a
+        // click on it means the person is looking for the panel.
+        inputBlock = WindowInputBlock(window: editorWindow) { [weak self] in self?.bringToFront() }
         observers = [
             NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: editorWindow, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.bringToFront() }
@@ -126,6 +129,8 @@ final class BeatMatchController {
     private func tearDown() {
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers = []
+        inputBlock?.end()
+        inputBlock = nil
         session?.end()
         session = nil
         panel?.delegate = nil

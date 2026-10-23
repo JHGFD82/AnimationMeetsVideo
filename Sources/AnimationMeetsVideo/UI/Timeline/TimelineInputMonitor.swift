@@ -104,7 +104,7 @@ struct TimelineInputMonitor: NSViewRepresentable {
         }
 
         private func handle(_ event: NSEvent) -> Bool {
-            guard let window, event.window === window else { return false }
+            guard let window, event.window === window, !WindowInputBlock.isBlocked(window) else { return false }
             let point = convert(event.locationInWindow, from: nil)
             guard bounds.contains(point) else {
                 if event.type == .mouseMoved { onHover?(nil) }

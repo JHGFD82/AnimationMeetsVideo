@@ -122,6 +122,13 @@ struct EditorView: View {
                     .accessibilityAction { bringToFront() }
             }
         }
+        // The pointer is kept out meanwhile (`WindowInputBlock`); a skim
+        // under way when the panel opened stops with it.
+        .onChange(of: beatMatch.isActive || motionDesign.isActive) { _, blocked in
+            guard blocked else { return }
+            skim.end()
+            playback.endSkim()
+        }
         .environment(beatMatch)
         .environment(motionDesign)
         .background(Design.Surface.base.color)

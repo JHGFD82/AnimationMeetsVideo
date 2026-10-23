@@ -16,7 +16,9 @@ and the beats they confirm are what the timeline uses.
   beats in a dimmer, dashed style, marked "not confirmed".
 - **Beat match** (the music clip's context menu, or the inspector) opens a
   floating panel for the clip's asset. While it is open the main window is
-  darkened and takes no input; the panel plays the song on its own.
+  darkened and wholly inactive: no clicks, hovering, skimming, scrolling
+  or pinching reach it (`WindowInputBlock`), and a click on it brings the
+  panel back. The panel plays the song on its own.
 - The person marks one tempo for the whole song, or switches to
   **sections** at the start. Either way the result is a **beat map**: the
   song's beats, each with its place in the measure, saved with the project.
@@ -329,8 +331,8 @@ the pinned one), and wraps positions into the measure.
    anchors, the accent for the selected beat. When the beats are too close
    for every tag, only downbeats keep theirs, and closer still none do,
    though a pinned beat keeps a small handle. While it is open the editor is
-   darkened and disabled, the Timeline menu rests, and a click on the
-   editor brings the panel back. Edits change the draft in place, so a
+   darkened and takes no pointer input at all, the Timeline menu rests,
+   and a click on the editor brings the panel back. Edits change the draft in place, so a
    nudge or drop never shows the old beat for a frame. While the song
    plays nothing in the panel is rebuilt: the playhead (Core Animation
    layers, as on the timeline) and the timecode read the player on each
