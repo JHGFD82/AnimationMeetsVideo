@@ -206,7 +206,8 @@ never through zero).
 The song's beats are drawn on the graph and the music lane, thinned by
 zoom as on the timeline, and points snap to them (and to the playhead and
 the clips' edges) as on the timeline. A toggle turns the beat markers
-off, as the timeline's view options do.
+off, as the timeline's view options do; like the timeline's choice, it
+is remembered between launches (`Preferences.motionDesignerShowsBeats`).
 
 ## Lengths and positions
 

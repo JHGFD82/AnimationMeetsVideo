@@ -128,7 +128,9 @@ be unreadable. The view options popover (the sliders button on the timeline)
 has a **Beat Markers** picker listing the Music layers whose clips have
 beats, plus None.
 
-The choice is just a layer ID held by the timeline view. The choices are
+The choice is a layer ID for each timeline, kept between launches in the
+app's defaults (`BeatMarkerChoices`, under `Preferences.beatMarkerLayers`),
+so markers turned on are still on when the app opens again. The choices are
 the layers for which `EditingProject.layerHasBeats(_:tracks:)` holds,
 checked every time (`beatLayers(in:tracks:)` gives the same list). It
 holds when the layer would get at least one marker: it looks clips up the

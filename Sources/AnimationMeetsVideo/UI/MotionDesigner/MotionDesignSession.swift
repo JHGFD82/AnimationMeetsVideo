@@ -39,8 +39,11 @@ final class MotionDesignSession {
     var selectedPieceID: UUID?
     /// Asks the sidebar to focus the pace field (P, and Set Pace…).
     var focusesPace = false
-    /// Shows the beats, and lets points and clips snap to them.
-    var showsBeats = true
+    /// Shows the beats, and lets points and clips snap to them. Kept
+    /// between sessions, as the timeline keeps its beat markers.
+    var showsBeats = UserDefaults.standard.object(forKey: Preferences.motionDesignerShowsBeats) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showsBeats, forKey: Preferences.motionDesignerShowsBeats) }
+    }
     var snaps = true
     /// What an edit couldn't do and why, until the next one.
     private(set) var message: String?

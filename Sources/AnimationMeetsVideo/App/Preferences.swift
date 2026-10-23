@@ -19,6 +19,11 @@ enum Preferences {
     static let snapping = "snapping"
     static let followsPlayhead = "followsPlayhead"
     static let clickOnBeats = "clickOnBeats"
+    /// A `BeatMarkerChoices`: whose beats each timeline shows.
+    static let beatMarkerLayers = "beatMarkerLayers"
+    /// Whether the motion designer shows the song's beats and snaps to
+    /// them. On unless turned off.
+    static let motionDesignerShowsBeats = "motionDesignerShowsBeats"
 
     // MARK: Library
 

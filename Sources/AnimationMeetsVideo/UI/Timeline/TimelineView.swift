@@ -126,9 +126,11 @@ struct TimelineView: View {
     @State var newLayerHover: NewLayerHover?
     @State private var showingViewOptions = false
     @State private var showingNewShape = false
-    /// The layer whose beats are shown. Only layers that still have beats are
-    /// offered, so a deleted layer simply stops matching and markers vanish.
-    @State private var chosenBeatLayerID: UUID?
+    /// The layer whose beats each timeline shows, kept between launches.
+    /// Only layers that still have beats are offered, so a deleted layer
+    /// simply stops matching and markers vanish.
+    @AppStorage(Preferences.beatMarkerLayers) private var beatMarkerChoices = BeatMarkerChoices()
+    private var chosenBeatLayerID: UUID? { beatMarkerChoices.layer(for: timelineID) }
     /// The chosen layer's markers, worked out again only when what they
     /// depend on changes. The view's body runs on every playback tick and
     /// scroll, and a long song has thousands of beats to collect and sort.
@@ -319,7 +321,7 @@ struct TimelineView: View {
     private var beatLayerSelection: Binding<UUID?> {
         Binding(
             get: { beatLayerChoices.contains { $0.id == chosenBeatLayerID } ? chosenBeatLayerID : nil },
-            set: { chosenBeatLayerID = $0 }
+            set: { beatMarkerChoices.choose($0, for: timelineID) }
         )
     }
     func viewport(width: CGFloat) -> TimelineViewport {
@@ -695,7 +697,7 @@ struct TimelineView: View {
             let layer = timeline.layers.first { layer in
                 layer.kind == .music && layer.clips.contains { $0.source == .media(confirmation.assetID) }
             }
-            if let layer { chosenBeatLayerID = layer.id }
+            if let layer { beatMarkerChoices.choose(layer.id, for: timelineID) }
         }
         .onChange(of: soleMusic) { old, new in
             if new.clipID != nil, new.clipID != old.clipID, new.clipCount >= old.clipCount { fitToWindow() }
