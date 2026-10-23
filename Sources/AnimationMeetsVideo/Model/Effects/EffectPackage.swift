@@ -48,6 +48,8 @@ struct EffectPackage: Sendable {
     let contentHash: String
     let kernelType: KernelType
     let kernelFunction: String
+    /// The kernel's file in the package, for its compiler's messages.
+    let kernelFile: String
     let kernelSource: String
     /// The package's own controls, in order, without Amount.
     let controls: [ControlDefinition]

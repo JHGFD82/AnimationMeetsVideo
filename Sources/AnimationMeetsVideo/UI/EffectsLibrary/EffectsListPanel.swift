@@ -15,6 +15,8 @@ struct EffectsListPanel: View {
     /// Selects a shape layer's clip once it is made.
     let onSelect: (TimelineSelection) -> Void
     let state: EffectsPanelState
+    /// Which packages' kernels don't compile, as found after launch.
+    var packageStatus = EffectPackageStatus.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -29,13 +31,14 @@ struct EffectsListPanel: View {
                                 // The double-click goes inside the drag: on
                                 // the outside its tap gesture takes the mouse
                                 // down first, and the chip never starts a drag.
-                                EffectLibraryChip(kind: kind)
+                                EffectLibraryChip(kind: kind, problem: packageStatus.kernelProblems[kind.rawValue])
                                     .onTapGesture(count: 2) { addToSelectedClip(kind) }
                                     .draggable(EffectDragPayload(kind: kind)) { EffectLibraryChip(kind: kind) }
                                     .accessibilityAction(named: "Add to the selected clip") { addToSelectedClip(kind) }
                             }
                         }
                     }
+                    problems
                 }
                 .padding(Design.Space.group)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -52,6 +55,28 @@ struct EffectsListPanel: View {
                 .overlay(alignment: .top) { Groove() }
         }
         .panelSurface(.base)
+    }
+
+    /// The packages that couldn't be read or installed, then those whose
+    /// look can't draw, each with why.
+    @ViewBuilder
+    private var problems: some View {
+        let unread = EffectRegistry.current.problems
+        let broken = EffectKind.all.compactMap { kind in
+            kind.definition.package.flatMap { package in packageStatus.kernelProblems[kind.rawValue].map { (package, $0) } }
+        }
+        if !unread.isEmpty || !broken.isEmpty {
+            Text("Can't Be Used")
+                .font(Design.Typeface.groupTitle)
+                .foregroundStyle(Design.textSecondary)
+                .accessibilityAddTraits(.isHeader)
+            ForEach(unread) { problem in
+                PackageProblemRow(name: problem.url.deletingPathExtension().lastPathComponent, message: problem.message, url: problem.url)
+            }
+            ForEach(broken, id: \.0.id) { package, message in
+                PackageProblemRow(name: package.name, message: "Its kernel doesn't compile. \(message)", url: package.url)
+            }
+        }
     }
 
     /// Adds to the selected clip, or for a shape with no shape clip
@@ -73,13 +98,16 @@ struct EffectsListPanel: View {
 /// An effect in the library.
 struct EffectLibraryChip: View {
     let kind: EffectKind
+    /// Why its package's kernel doesn't compile, for one that can be added
+    /// but leaves the picture as it is.
+    var problem: String?
 
     @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: kind.systemImage)
-                .foregroundStyle(isHovering ? Design.textPrimary : Design.textSecondary)
+            Image(systemName: problem == nil ? kind.systemImage : "exclamationmark.triangle")
+                .foregroundStyle(problem != nil ? Design.statusWarning : isHovering ? Design.textPrimary : Design.textSecondary)
                 .frame(width: 16)
             Text(kind.name)
                 .font(Design.Typeface.label)
@@ -92,8 +120,9 @@ struct EffectLibraryChip: View {
         .beveledChip(fill: isHovering ? Design.Surface.floating.color : Design.Surface.overlay.color)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .help(kind.drawsShape
+        .help(problem.map { "\(kind.name) can't draw: its kernel doesn't compile. \($0)" } ?? (kind.drawsShape
             ? "\(kind.name): drag onto a clip or onto empty timeline, or double-click to make a shape layer (or add it to the selected shape clip)"
-            : "\(kind.name): drag onto a clip or into the stack, or double-click to add it to the selected clip")
+            : "\(kind.name): drag onto a clip or into the stack, or double-click to add it to the selected clip"))
+        .accessibilityValue(problem == nil ? "" : "Can't draw: its kernel doesn't compile")
     }
 }

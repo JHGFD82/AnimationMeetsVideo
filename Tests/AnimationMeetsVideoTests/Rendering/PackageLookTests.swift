@@ -127,7 +127,14 @@ import Testing
             effectManifest("com.example.broken", function: "exBroken"),
             kernel: "extern \"C\" [[stitchable]] float4 exBroken(coreimage::sample_t s, float space) { return nope; }"
         )
-        #expect(PackageKernels.problem(for: broken) != nil)
+        // Not compiled until something asks for the kernel; a view asking
+        // only reads what is known.
+        #expect(PackageKernels.knownProblem(for: broken) == nil)
+        // The compiler's own words, at the line in the package's file.
+        let problem = try #require(PackageKernels.problem(for: broken))
+        #expect(problem.hasPrefix("kernel.metal:1:"))
+        #expect(problem.contains("use of undeclared identifier 'nope'"))
+        #expect(PackageKernels.knownProblem(for: broken) == problem)
         #expect(try draw(broken, on: solid(1, 0, 0), size: CGSize(width: 4, height: 1))[0] == SIMD4(1, 0, 0, 1))
 
         let mislabeled = try package(
@@ -168,6 +175,36 @@ import Testing
             effect.controls[0].enabled = false
             #expect(!effect.changesOnItsOwn)
             #expect(Effect(kind: grainy.kind).changesOnItsOwn)
+        }
+    }
+
+    @Test func theLibraryHearsWhichKernelsDontCompile() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let good = try package(
+            effectManifest("com.example.fine", function: "exFine"),
+            kernel: "extern \"C\" [[stitchable]] float4 exFine(coreimage::sample_t s, float space) { return s; }"
+        )
+        let broken = try package(
+            effectManifest("com.example.unfinished", function: "exUnfinished"),
+            kernel: "extern \"C\" [[stitchable]] float4 exUnfinished(coreimage::sample_t s, float space) {\n    return s\n}"
+        )
+        let status = await EffectPackageStatus()
+        await status.compileKernels(of: [good, broken])
+        let problems = await status.kernelProblems
+        #expect(problems.keys.sorted() == ["com.example.unfinished"])
+        #expect(problems["com.example.unfinished"]?.hasPrefix("kernel.metal:2:") == true)
+
+        // The effects panel says so under the effect.
+        try EffectRegistry.$override.withValue(EffectRegistry.withBuiltIns([good, broken])) {
+            var project = EditingProject.empty
+            let created = project.addShapeLayer(.rectangle, to: project.rootTimelineID)
+            let shape = try #require(created)
+            project.editClip(shape.clipID, in: project.rootTimelineID) { $0.effects.append(Effect(kind: broken.kind)) }
+            let (clip, layer) = try #require(project.clipAndLayer(shape.clipID, in: project.rootTimelineID))
+            let timeline = try #require(project.timelines.first)
+            let note = project.note(forEffectAt: clip.effects.count - 1, in: clip, on: layer, of: timeline)
+            #expect(note?.dims == true)
+            #expect(note?.text.hasPrefix("Its kernel doesn't compile, so it leaves the picture as it is. kernel.metal:2:") == true)
         }
     }
 }

@@ -1,5 +1,6 @@
 import CoreImage
 import Foundation
+import Observation
 
 /// An effect package that can't be used, and why.
 struct EffectPackageProblem: Identifiable, Equatable, Sendable {
@@ -7,6 +8,35 @@ struct EffectPackageProblem: Identifiable, Equatable, Sendable {
     var message: String
 
     var id: URL { url }
+}
+
+/// What the effects library shows of the packages' kernels: which don't
+/// compile, and why, once they have been compiled in the background after
+/// launch. The packages that couldn't be read or installed are the
+/// registry's `problems`.
+@MainActor
+@Observable
+final class EffectPackageStatus {
+    static let shared = EffectPackageStatus()
+
+    /// Why each package's kernel doesn't compile, by package ID.
+    private(set) var kernelProblems: [String: String]
+
+    init(kernelProblems: [String: String] = [:]) {
+        self.kernelProblems = kernelProblems
+    }
+
+    /// Compiles each package's kernel away from the main thread, then
+    /// says which failed.
+    func compileKernels(of packages: [EffectPackage]) async {
+        kernelProblems = await Task.detached(priority: .utility) {
+            var problems: [String: String] = [:]
+            for package in packages {
+                if let problem = PackageKernels.problem(for: package) { problems[package.id] = problem }
+            }
+            return problems
+        }.value
+    }
 }
 
 struct EffectPackageLibrary: Sendable {
@@ -64,9 +94,7 @@ enum EffectPackageStore {
         // Compiled now rather than at first use, so a kernel's mistake shows
         // up at once and the first frame of a look doesn't wait on it.
         let packages = EffectRegistry.current.effects.compactMap(\.package)
-        Task.detached(priority: .utility) {
-            for package in packages { _ = PackageKernels.kernel(for: package) }
-        }
+        Task { @MainActor in await EffectPackageStatus.shared.compileKernels(of: packages) }
     }
 
     /// Every package in the folder, and each that couldn't be read.
@@ -268,7 +296,8 @@ enum EffectPackageStore {
                 url: url, id: id, version: version, name: json["name"] as! String,
                 category: EffectCategory(rawValue: json["category"] as! String)!, systemImage: json["symbol"] as! String,
                 contentHash: EffectPackage.contentHash(manifest, source),
-                kernelType: kernelType, kernelFunction: function, kernelSource: source, controls: controls,
+                kernelType: kernelType, kernelFunction: function, kernelFile: kernel["file"] as! String, kernelSource: source,
+                controls: controls,
                 amountIndex: amountIndex ?? (json["amount"] as? Bool == true ? controls.count : nil), arguments: arguments,
                 generates: json["generates"] as? Bool ?? false, changesEveryFrame: json["changesEveryFrame"] as? Bool ?? false,
                 dependsOnPixelSize: json["dependsOnPixelSize"] as? Bool ?? false, flashes: flashes,

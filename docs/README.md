@@ -5,7 +5,7 @@ describes something that exists today or a planned design. Unless a
 document says otherwise, treat it as **planned, not implemented**.
 Currently: the package format, the scene-cut browser, media replacement,
 beat detection, audio levels, the timeline view, effects, transitions,
-Matroska import and accessibility are implemented (each document lists what remains).
+Matroska import, effect packages and accessibility are implemented (each document lists what remains).
 
 | Document | Covers |
 | --- | --- |
@@ -18,7 +18,7 @@ Matroska import and accessibility are implemented (each document lists what rema
 | [equalizer.md](equalizer.md) | Implemented. The EQ sound effect's eight parametric bands, its own biquad filters in playback and export, the graph over a live spectrum, and loading EQs saved before bands; why Logic Pro's Channel EQ can't be borrowed. |
 | [keyframing-effects.md](keyframing-effects.md) | Built. A Keyframing category of effects that write real keyframes onto controls below them: Audio Keys (from a sound's frequency bands), Beat Keys, Wiggler, Oscillator, Smoother, Looper, Time Step and Overshoot. |
 | [psychedelic-effects.md](psychedelic-effects.md) | Built. 25 Noise, Color and Distortion effect kinds that combine into psychedelic looks over footage or generated pictures, recipes, and the cheapest built-in macOS way (Core Image filters, Metal kernels, Vision) to draw each. |
-| [effect-packages.md](effect-packages.md) | Built but for showing problems in the library. Looks as effect packages (`.amveffect` folders of JSON and a Metal kernel): the 21 that ship, and the person's, read at launch; missing effects in projects; what stays in Swift. Effect packages (`.amveffect` folders of JSON and a Metal kernel) read at launch, so looks can be written and installed without building the app; which effects move into them, missing effects in projects, and what stays in Swift. |
+| [effect-packages.md](effect-packages.md) | Built. Looks as effect packages (`.amveffect` folders of JSON and a Metal kernel), written and installed without building the app: the 21 that ship, and the person's, read at launch; problems shown in the effects library; missing effects in projects; what stays in Swift. |
 | [audio.md](audio.md) | Implemented (core). Keyframed volume and pan on clips and layers, sound effects (EQ, Compressor, Limiter) on clips, fades under transitions, a level and loudness meter of the whole mix, and exports mastered to a loudness target. |
 | [transitions.md](transitions.md) | Implemented. The 25 transition kinds in five categories, their settings, how each is drawn, and what counts as a kind. |
 | [timeline.md](timeline.md) | Implemented. Zooming and scrolling the timeline, the ruler's tick grouping, the playhead, frame-locked moving and trimming of clips, linked and detached audio, and transitions. |

@@ -24,14 +24,24 @@ enum PackageKernels {
         return nil
     }
 
-    /// Why the package's kernel doesn't compile, or nil when it does.
+    /// Why the package's kernel doesn't compile, or nil when it does,
+    /// compiling it the first time it is asked for.
     static func problem(for package: EffectPackage) -> String? {
         if case .failed(let message) = outcome(for: package) { return message }
         return nil
     }
 
+    /// Why the package's kernel didn't compile, if it has been compiled; so
+    /// a view can ask without waiting for a compile.
+    static func knownProblem(for package: EffectPackage) -> String? {
+        if case .failed(let message)? = outcomes.withLock({ $0[key(package)] }) { return message }
+        return nil
+    }
+
+    private static func key(_ package: EffectPackage) -> String { package.id + "#" + package.contentHash }
+
     private static func outcome(for package: EffectPackage) -> Outcome {
-        let key = package.id + "#" + package.contentHash
+        let key = key(package)
         if let known = outcomes.withLock({ $0[key] }) { return known }
         let outcome = compile(package)
         outcomes.withLock { $0[key] = outcome }
@@ -44,9 +54,10 @@ enum PackageKernels {
     private static func compile(_ package: EffectPackage) -> Outcome {
         let kernels: [CIKernel]
         do {
-            kernels = try CIKernel.kernels(withMetalString: LookKernels.prelude + "\n" + package.kernelSource)
+            kernels = try CIKernel.kernels(withMetalString: prelude + package.kernelSource)
         } catch {
-            return .failed(error.localizedDescription)
+            let message = linesBefore.flatMap { compilerMessage(error, file: package.kernelFile, linesBefore: $0) }
+            return .failed(message ?? error.localizedDescription)
         }
         let function = package.kernelFunction
         guard let kernel = kernels.first(where: { $0.name == function }) else {
@@ -57,6 +68,44 @@ enum PackageKernels {
             return .failed("\(function) is a \(type.rawValue) kernel, not the \(package.kernelType.rawValue) kernel effect.json says.")
         }
         return .compiled(kernel)
+    }
+
+    private static let prelude = LookKernels.prelude + "\n"
+
+    /// How many lines the compiler counts before a package's kernel: the
+    /// prelude's, and those Core Image puts before the source, which it
+    /// doesn't say. Found once, from where an error on the kernel's first
+    /// line is reported.
+    private static let linesBefore: Int? = {
+        do {
+            _ = try CIKernel.kernels(withMetalString: prelude + "#error amvFirstLine\n")
+        } catch {
+            var current: NSError? = error as NSError
+            while let error = current, error.domain != "MTLLibraryErrorDomain" {
+                current = error.userInfo[NSUnderlyingErrorKey] as? NSError
+            }
+            let reported = current?.localizedDescription.firstMatch(of: /program_source:(\d+):\d+: error: amvFirstLine/)
+            return reported.flatMap { Int($0.output.1) }.map { $0 - 1 }
+        }
+        return nil
+    }()
+
+    /// The Metal compiler's first error inside `error`, Core Image's being
+    /// only a code, as "kernel.metal:3:12: use of undeclared identifier":
+    /// its line counted in `file`, less the `linesBefore` it was compiled
+    /// after. With how many more errors there were, if any.
+    static func compilerMessage(_ error: Error, file: String, linesBefore: Int) -> String? {
+        var current: NSError? = error as NSError
+        while let error = current, error.domain != "MTLLibraryErrorDomain" {
+            current = error.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        guard let output = current?.localizedDescription else { return nil }
+        let pattern = /program_source:(\d+):(\d+): error: (.*)/
+        let errors = output.split(separator: "\n").compactMap { $0.wholeMatch(of: pattern) }
+        guard let first = errors.first, let line = Int(first.output.1) else { return nil }
+        let place = line > linesBefore ? "\(file):\(line - linesBefore):\(first.output.2)" : file
+        let more = errors.count > 1 ? " (and \(errors.count - 1) more)" : ""
+        return "\(place): \(first.output.3)\(more)"
     }
 }
 

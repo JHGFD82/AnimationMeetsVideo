@@ -1,7 +1,7 @@
 # Effect packages
 
-Status: **steps 1 to 5 of [Building it](#building-it) built**; step 6
-(problems shown in the library) remains. `EffectKind` and `ControlKind`
+Status: **built** (see [Building it](#building-it)); inputs, and the
+looks still in Swift, are under [Not yet](#not-yet). `EffectKind` and `ControlKind`
 are names looked up in an `EffectRegistry` of the effects written in
 Swift (BuiltInEffects.swift), the 21 looks that ship as packages
 (Resources/Effects) and the person's packages, which
@@ -209,13 +209,20 @@ A filter name Core Image doesn't know refuses the package when it loads.
 
 The person's packages load after the built-in ones. One whose `id` is
 already taken is refused, so a built-in effect can't be replaced by
-mistake. Each package that can't be used is listed in the effects
-library with why, as preset problems are in the Presets tab.
+mistake. Each package that can't be used is listed at the end of the
+effects library, under "Can't Be Used", with why and Show in Finder, as
+preset problems are in the Presets tab.
 
 Kernels are compiled in the background just after launch, not at first
-use, so a mistake shows up in the library at once. One that doesn't
-compile stays listed, marked with the compiler's message, and leaves the
-picture as it is, as a look whose kernel fails does now.
+use, so a mistake shows up in the library at once
+(`EffectPackageStatus`). One that doesn't compile stays listed, its
+chip marked with a warning, and is listed under "Can't Be Used" too; it
+can be added, but leaves the picture as it is, and its note in the
+effects panel says why. The message is the Metal compiler's first error
+at its place in the package's file ("kernel.metal:4:12: use of
+undeclared identifier 'turnn'"): Core Image's own error is only a
+code, and counts lines from a header of its own, whose length the app
+finds once by compiling an error on a kernel's first line.
 
 ## Missing effects
 
@@ -364,4 +371,4 @@ In order, each step usable on its own:
 4. Missing effects in projects and presets. **Built.**
 5. The other Color looks, then the Noise looks, then the Distortion
    looks, as packages, a category at a time. **Built.**
-6. Problems and compile errors shown in the effects library.
+6. Problems and compile errors shown in the effects library. **Built.**

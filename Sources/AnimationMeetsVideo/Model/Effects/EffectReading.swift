@@ -56,6 +56,9 @@ extension EditingProject {
         // Said even while it is off, as it explains what the effect is.
         if let missing = effect.missing { return EffectNote(text: missing.explanation, dims: true) }
         guard effect.enabled else { return nil }
+        if let package = effect.kind.definition.package, let problem = PackageKernels.knownProblem(for: package) {
+            return EffectNote(text: "Its kernel doesn't compile, so it leaves the picture as it is. \(problem)", dims: true)
+        }
 
         if effect.kind.isKeyframing { return keyframingNote(for: effect, in: clip) }
         if reachesNothing(clip, on: layer, in: timeline) {

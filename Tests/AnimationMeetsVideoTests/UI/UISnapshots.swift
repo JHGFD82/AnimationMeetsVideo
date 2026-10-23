@@ -399,6 +399,27 @@ struct UISnapshots {
         )
     }
 
+    /// The effects library with a package that couldn't be read and a look
+    /// whose kernel doesn't compile: the chip is marked, and both are
+    /// listed at the end with why.
+    @Test func effectsLibraryProblems() throws {
+        let project = EditingProject.empty
+        let unread = EffectPackageProblem(
+            url: URL(filePath: "/Effects/Glow.amveffect"),
+            message: "The package can't be used. Unknown name \"spped\" at arguments[1]."
+        )
+        let status = EffectPackageStatus(kernelProblems: ["hueCycle": "kernel.metal:4:12: use of undeclared identifier 'turnn'"])
+        try EffectRegistry.$override.withValue(EffectRegistry.withBuiltIns(problems: [unread])) {
+            try SnapshotSupport.render(
+                EffectsListPanel(
+                    project: .constant(project), timelineID: project.rootTimelineID, selection: nil,
+                    playhead: PlayheadState(), onSelect: { _ in }, state: EffectsPanelState(), packageStatus: status
+                ),
+                "effects-library-problems", size: CGSize(width: 380, height: 1100)
+            )
+        }
+    }
+
     /// A rectangle with an effect whose package isn't installed below it,
     /// and a copy turned off: each says what it is and does nothing.
     @Test func missingEffectsPanel() throws {
