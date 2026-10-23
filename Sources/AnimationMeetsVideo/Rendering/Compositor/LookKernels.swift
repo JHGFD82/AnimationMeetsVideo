@@ -166,71 +166,6 @@ enum LookKernels {
     // A generator's own picture, opaque, mixed over what reached it.
     inline float4 generated(float4 s, float3 c, float amount) { return mix(s, float4(c, 1.0), amount); }
 
-    // Film grain, strongest in the midtones, `size` timeline pixels a grain.
-    extern "C" [[stitchable]] float4 amvGrain(coreimage::sample_t s, float space, float scale, float size, float color,
-                                              float seed, float frame, float amount, coreimage::destination dest) {
-        int3 cell = int3(int2(floor(dest.coord() / (size * scale))), int(frame) * 31 + int(seed));
-        float3 n = float3(rand(cell) + rand(cell, 3), rand(cell, 1) + rand(cell, 4), rand(cell, 2) + rand(cell, 5)) - 1.0;
-        if (color < 0.5) n = float3(n.x);
-        float3 t = toTones(straight(s), space);
-        float y = clamp(luma(t), 0.0, 1.0);
-        t += n * 0.25 * amount * (0.25 + 3.0 * y * (1.0 - y));
-        return float4(fromTones(t, space) * s.a, s.a);
-    }
-
-    // Television snow, with dark bars rolling up through it.
-    extern "C" [[stitchable]] float4 amvStatic(coreimage::sample_t s, float space, float scale, float size, float bars, float roll,
-                                               float seed, float frame, float height, float amount, coreimage::destination dest) {
-        float2 p = dest.coord() / scale;
-        float v = rand(int3(int2(floor(p / size)), int(frame) * 31 + int(seed)));
-        float band = 0.5 + 0.5 * cos(6.283185307 * (p.y / height * bars + roll));
-        v *= 1.0 - 0.6 * smoothstep(0.55, 1.0, band);
-        return generated(s, fromTones(float3(v), space), amount);
-    }
-
-    // Fractal gradient noise, gray, evolving through its third dimension.
-    extern "C" [[stitchable]] float4 amvFractalNoise(coreimage::sample_t s, float space, float scale, float size, float octaves,
-                                                     float roughness, float type, float evolution, float seed, float amount,
-                                                     coreimage::destination dest) {
-        float3 p = float3(dest.coord() / (scale * size), evolution);
-        float sum = 0.0, weight = 1.0, weights = 0.0;
-        for (int i = 0; i < int(octaves); i++) {
-            float n = noise3(p, int(seed) + i * 13);
-            if (type > 1.5) { n = 1.0 - abs(n); n *= n; }
-            else if (type > 0.5) { n = abs(n); }
-            else { n = 0.5 + 0.5 * n; }
-            sum += n * weight;
-            weights += weight;
-            weight *= roughness;
-            p = p * 2.0 + 17.13;
-        }
-        return generated(s, fromTones(float3(clamp(sum / weights, 0.0, 1.0)), space), amount);
-    }
-
-    // Worley's cells: each cell's point drifts round a circle as it evolves.
-    extern "C" [[stitchable]] float4 amvCells(coreimage::sample_t s, float space, float scale, float size, float jitter,
-                                              float output, float evolution, float seed, float amount, coreimage::destination dest) {
-        float2 p = dest.coord() / (scale * size);
-        float2 base = floor(p);
-        float nearest = 8.0, second = 8.0;
-        int3 owner = int3(0);
-        for (int j = -1; j <= 1; j++) {
-            for (int i = -1; i <= 1; i++) {
-                int3 cell = int3(int2(base) + int2(i, j), int(seed));
-                float2 home = float2(rand(cell), rand(cell, 1)) - 0.5;
-                float turn = 6.283185307 * (evolution + rand(cell, 2));
-                float2 point = base + float2(i, j) + 0.5 + jitter * (home * 0.7 + 0.15 * float2(cos(turn), sin(turn)));
-                float d = distance(p, point);
-                if (d < nearest) { second = nearest; nearest = d; owner = cell; }
-                else if (d < second) { second = d; }
-            }
-        }
-        float v = output < 0.5 ? 1.0 - smoothstep(0.0, 0.08, second - nearest)
-                : output < 1.5 ? clamp(nearest, 0.0, 1.0)
-                : rand(owner, 3);
-        return generated(s, fromTones(float3(v), space), amount);
-    }
-
     // The Bayer matrix's threshold for an output pixel, 2^bits on a side.
     inline float bayer(uint2 p, uint bits) {
         uint v = 0;
@@ -239,47 +174,6 @@ enum LookKernels {
             v = v * 4u + 2u * (x ^ y) + y;
         }
         return (float(v) + 0.5) / float(1u << (2u * bits));
-    }
-
-    extern "C" [[stitchable]] float4 amvDither(coreimage::sample_t s, float space, float levels, float pattern, float frame,
-                                               float amount, coreimage::destination dest) {
-        uint2 p = uint2(int2(floor(dest.coord())) & 0xFFFF);
-        float threshold = pattern < 0.5 ? bayer(p, 2u) : pattern < 1.5 ? bayer(p, 3u) : rand(int3(int2(p), int(frame)));
-        float steps = max(levels - 1.0, 1.0);
-        float3 t = clamp(toTones(straight(s), space), 0.0, 1.0);
-        return mixed(s, fromTones(floor(t * steps + threshold) / steps, space), amount);
-    }
-
-    // Two line patterns, one turned against the other, beating into moiré.
-    extern "C" [[stitchable]] float4 amvInterference(coreimage::sample_t s, float space, float scale, float spacing, float angle,
-                                                     float drift, float amount, coreimage::destination dest) {
-        float2 p = dest.coord() / scale;
-        float2 turned = float2(p.x * cos(angle) - p.y * sin(angle), p.x * sin(angle) + p.y * cos(angle));
-        float a = 0.5 + 0.5 * cos(6.283185307 * p.x / spacing);
-        float b = 0.5 + 0.5 * cos(6.283185307 * (turned.x / spacing + drift));
-        return generated(s, fromTones(float3(a * b), space), amount);
-    }
-
-    // Blocks of the picture jump sideways and lose a channel, a new set
-    // each tick.
-    extern "C" [[stitchable]] float4 amvBlockGlitch(coreimage::sampler src, float scale, float size, float intensity, float seed,
-                                                    float tick, float reach, float amount, coreimage::destination dest) {
-        float2 d = dest.coord();
-        float4 original = src.sample(src.transform(d));
-        float2 block = float2(size * 2.0, size * 0.5) * scale;
-        int3 id = int3(int2(floor(d / block)), int(tick) * 131 + int(seed));
-        if (rand(id) >= intensity) return original;
-        float2 offset = float2((rand(id, 1) - 0.5) * 2.0 * reach, 0.0);
-        float split = 3.0 * scale;
-        float4 r = src.sample(src.transform(d + offset + float2(split, 0.0)));
-        float4 g = src.sample(src.transform(d + offset));
-        float4 b = src.sample(src.transform(d + offset - float2(split, 0.0)));
-        float4 glitched = float4(r.r, g.g, b.b, g.a);
-        int drop = int(rand(id, 2) * 4.0);
-        if (drop == 1) glitched.r = 0.0;
-        else if (drop == 2) glitched.g = 0.0;
-        else if (drop == 3) glitched.b = 0.0;
-        return mix(original, glitched, amount);
     }
 
     // MARK: Distortion
@@ -432,61 +326,6 @@ enum LookRenderer {
             return v.count >= 4 ? CIVector(x: v[0], y: v[1], z: v[2], w: v[3]) : CIVector(x: v[0], y: v.count > 1 ? v[1] : 0, z: v.count > 2 ? v[2] : 0)
         }
         switch step.kind {
-        case .grain:
-            let mono = step.choice(.grainChannels, as: GrainChannels.self) != .color
-            return color("amvGrain", [
-                Float(scale), Float(step.value(.grainSize)), Float(mono ? 0 : 1), Float(step.value(.seed)), frameNumber(step),
-            ])
-        case .staticNoise:
-            return color("amvStatic", [
-                Float(scale), Float(step.value(.grainSize)), Float(step.value(.bars)), Float(step.value(.rollSpeed) * step.seconds),
-                Float(step.value(.seed)), frameNumber(step), Float(canvas.height / scale),
-            ])
-        case .fractalNoise:
-            let type: Float = switch step.choice(.noiseType, as: NoiseType.self) ?? .smooth {
-            case .smooth: 0
-            case .turbulent: 1
-            case .ridged: 2
-            }
-            return color("amvFractalNoise", [
-                Float(scale), Float(step.value(.noiseScale)), Float(step.value(.noiseOctaves)), Float(step.value(.roughness) / 100),
-                type, Float(step.value(.evolution) * step.seconds), Float(step.value(.seed)),
-            ])
-        case .cells:
-            let output: Float = switch step.choice(.cellOutput, as: CellOutput.self) ?? .edges {
-            case .edges: 0
-            case .distance: 1
-            case .flat: 2
-            }
-            return color("amvCells", [
-                Float(scale), Float(step.value(.cellSize)), Float(step.value(.jitter) / 100), output,
-                Float(step.value(.evolution) * step.seconds), Float(step.value(.seed)),
-            ])
-        case .dither:
-            let pattern: Float = switch step.choice(.ditherPattern, as: DitherPattern.self) ?? .bayer4 {
-            case .bayer4: 0
-            case .bayer8: 1
-            case .noise: 2
-            }
-            return color("amvDither", [Float(step.value(.ditherLevels)), pattern, frameNumber(step)])
-        case .interference:
-            return color("amvInterference", [
-                Float(scale), Float(step.value(.spacing)), Float(step.value(.crossAngle) * .pi / 180),
-                Float(step.value(.driftSpeed) * step.seconds),
-            ])
-        case .blockGlitch:
-            guard let kernel = LookKernels.compiled["amvBlockGlitch"] else { return picture }
-            let reach = canvas.width * 0.08
-            let tick = floor(step.value(.glitchRate) * step.seconds)
-            let input = picture.cropped(to: region).clampedToExtent()
-            return kernel.apply(
-                extent: region,
-                roiCallback: { _, rect in rect.insetBy(dx: -reach - 4 * scale, dy: 0) },
-                arguments: [
-                    input, Float(scale), Float(step.value(.blockSize)), Float(step.value(.intensity) / 100), Float(step.value(.seed)),
-                    Float(tick), Float(reach), amount,
-                ]
-            )?.cropped(to: region) ?? picture
         case .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile:
             return warped(step, picture, canvas: canvas, frame: frame, scale: scale)
         case .chromaticAberration:

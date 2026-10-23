@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "interference",
+  "version": 1,
+  "name": "Interference",
+  "category": "noise",
+  "symbol": "line.3.horizontal.decrease",
+  "kernel": {"file": "kernel.metal", "function": "amvInterference", "type": "color"},
+  "controls": [
+    {"id": "spacing", "name": "Spacing", "type": "number", "default": 8, "range": [1, 1000], "unit": "px"},
+    {"id": "crossAngle", "name": "Angle", "type": "number", "default": 3, "range": [-90, 90], "unit": "°", "step": 0.1},
+    {"id": "driftSpeed", "name": "Drift", "type": "number", "default": 0.5, "range": [-20, 20], "unit": "/s", "rate": true}
+  ],
+  "amount": true,
+  "arguments": ["scale", "spacing", "rad(crossAngle)", "driftSpeed * seconds"],
+  "generates": true
+}

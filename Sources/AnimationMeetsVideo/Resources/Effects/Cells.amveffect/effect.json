@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "cells",
+  "version": 1,
+  "name": "Cells",
+  "category": "noise",
+  "symbol": "circle.hexagongrid",
+  "kernel": {"file": "kernel.metal", "function": "amvCells", "type": "color"},
+  "controls": [
+    {"id": "cellSize", "name": "Cell Size", "type": "number", "default": 80, "range": [2, 10000], "unit": "px"},
+    {"id": "jitter", "name": "Jitter", "type": "number", "default": 100, "range": [0, 100], "unit": "%"},
+    {"id": "cellOutput", "name": "Output", "type": "choice", "default": "edges", "options": [{"id": "edges", "name": "Edges"}, {"id": "distance", "name": "Distance"}, {"id": "flat", "name": "Flat Cells"}]},
+    {"id": "evolution", "name": "Evolution", "type": "number", "default": 0.25, "range": [-20, 20], "unit": "/s", "rate": true},
+    {"id": "seed", "name": "Seed", "type": "number", "default": 1, "range": [0, 100000], "whole": true}
+  ],
+  "amount": true,
+  "arguments": ["scale", "cellSize", "jitter / 100", "index(cellOutput)", "evolution * seconds", "seed"],
+  "generates": true
+}

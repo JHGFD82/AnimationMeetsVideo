@@ -1,0 +1,21 @@
+{
+  "formatVersion": 1,
+  "id": "blockGlitch",
+  "version": 1,
+  "name": "Block Glitch",
+  "category": "noise",
+  "symbol": "rectangle.split.3x3",
+  "kernel": {"file": "kernel.metal", "function": "amvBlockGlitch", "type": "general"},
+  "controls": [
+    {"id": "intensity", "name": "Intensity", "type": "number", "default": 30, "range": [0, 100], "unit": "%"},
+    {"id": "blockSize", "name": "Block Size", "type": "number", "default": 80, "range": [2, 2000], "unit": "px"},
+    {"id": "glitchRate", "name": "Rate", "type": "number", "default": 2, "range": [0, 60], "unit": "/s", "step": 1},
+    {"id": "seed", "name": "Seed", "type": "number", "default": 1, "range": [0, 100000], "whole": true}
+  ],
+  "amount": true,
+  "arguments": ["scale", "blockSize", "intensity / 100", "seed", "floor(glitchRate * seconds)", "canvasWidth * 0.08"],
+  "changesEveryFrame": true,
+  "flashes": "abs(glitchRate) > 3",
+  "reach": "canvasWidth * 0.08 + 4 * scale",
+  "input": "clamped"
+}

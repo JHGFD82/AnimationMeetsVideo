@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "id": "dither",
+  "version": 1,
+  "name": "Dither",
+  "category": "noise",
+  "symbol": "checkerboard.rectangle",
+  "kernel": {"file": "kernel.metal", "function": "amvDither", "type": "color"},
+  "controls": [
+    {"id": "ditherLevels", "name": "Levels", "type": "number", "default": 4, "range": [2, 64], "whole": true},
+    {"id": "ditherPattern", "name": "Pattern", "type": "choice", "default": "bayer4", "options": [{"id": "bayer4", "name": "Bayer 4×4"}, {"id": "bayer8", "name": "Bayer 8×8"}, {"id": "noise", "name": "Noise"}]}
+  ],
+  "amount": true,
+  "arguments": ["ditherLevels", "index(ditherPattern)", "frame"],
+  "dependsOnPixelSize": true
+}

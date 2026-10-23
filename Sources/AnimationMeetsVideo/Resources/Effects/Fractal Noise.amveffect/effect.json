@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "id": "fractalNoise",
+  "version": 1,
+  "name": "Fractal Noise",
+  "category": "noise",
+  "symbol": "cloud",
+  "kernel": {"file": "kernel.metal", "function": "amvFractalNoise", "type": "color"},
+  "controls": [
+    {"id": "noiseScale", "name": "Scale", "type": "number", "default": 200, "range": [2, 10000], "unit": "px"},
+    {"id": "noiseOctaves", "name": "Octaves", "type": "number", "default": 4, "range": [1, 8], "whole": true},
+    {"id": "roughness", "name": "Roughness", "type": "number", "default": 50, "range": [0, 100], "unit": "%"},
+    {"id": "noiseType", "name": "Type", "type": "choice", "default": "smooth", "options": [{"id": "smooth", "name": "Smooth"}, {"id": "turbulent", "name": "Turbulent"}, {"id": "ridged", "name": "Ridged"}]},
+    {"id": "evolution", "name": "Evolution", "type": "number", "default": 0.25, "range": [-20, 20], "unit": "/s", "rate": true},
+    {"id": "seed", "name": "Seed", "type": "number", "default": 1, "range": [0, 100000], "whole": true}
+  ],
+  "amount": true,
+  "arguments": ["scale", "noiseScale", "noiseOctaves", "roughness / 100", "index(noiseType)", "evolution * seconds", "seed"],
+  "generates": true
+}

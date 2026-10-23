@@ -223,10 +223,6 @@ extension OscillatorWave: ControlChoice {}
 extension LoopMode: ControlChoice {}
 extension LoopSide: ControlChoice {}
 extension KeyCurve: ControlChoice {}
-extension GrainChannels: ControlChoice {}
-extension NoiseType: ControlChoice {}
-extension CellOutput: ControlChoice {}
-extension DitherPattern: ControlChoice {}
 extension MapCenter: ControlChoice {}
 extension TwirlShape: ControlChoice {}
 extension WaveDirection: ControlChoice {}

@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "grain",
+  "version": 1,
+  "name": "Grain",
+  "category": "noise",
+  "symbol": "circle.dotted",
+  "kernel": {"file": "kernel.metal", "function": "amvGrain", "type": "color"},
+  "controls": [
+    {"type": "amount"},
+    {"id": "grainSize", "name": "Size", "type": "number", "default": 1, "range": [0.25, 64], "unit": "px", "step": 0.1},
+    {"id": "grainChannels", "name": "Channels", "type": "choice", "default": "mono", "options": [{"id": "mono", "name": "Mono"}, {"id": "color", "name": "Color"}]},
+    {"id": "seed", "name": "Seed", "type": "number", "default": 1, "range": [0, 100000], "whole": true}
+  ],
+  "arguments": ["scale", "grainSize", "index(grainChannels)", "seed", "frame"],
+  "changesEveryFrame": true
+}

@@ -596,15 +596,13 @@ struct Effect: Identifiable, Equatable, Sendable {
         if let package = kind.definition.package {
             return package.changesEveryFrame || package.rateControls.contains { moves(control($0)) }
         }
-        // Grain, snow and glitches are new every frame, and so is a picture
-        // drawn from other moments.
+        // A picture drawn from other moments is new every frame.
         switch kind {
-        case .grain, .staticNoise, .blockGlitch, .flowSmear, .slitScan, .feedback: return true
+        case .flowSmear, .slitScan, .feedback: return true
         default: break
         }
         let moving: ControlKind? = switch kind {
-        case .fractalNoise, .cells, .liquid: .evolution
-        case .interference: .driftSpeed
+        case .liquid: .evolution
         case .wave: .waveSpeed
         case .kaleidoscope: .spinSpeed
         default: nil

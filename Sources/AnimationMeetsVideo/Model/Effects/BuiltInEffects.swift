@@ -8,16 +8,6 @@ extension EffectKind {
     static let blending = EffectKind(builtIn: "blending")
     static let color = EffectKind(builtIn: "color")
     static let matte = EffectKind(builtIn: "matte")
-    /// Noise looks: grain and glitches over the picture, or generators
-    /// that replace it.
-    static let grain = EffectKind(builtIn: "grain")
-    static let staticNoise = EffectKind(builtIn: "staticNoise")
-    static let fractalNoise = EffectKind(builtIn: "fractalNoise")
-    static let cells = EffectKind(builtIn: "cells")
-    /// A dither's pattern is a pixel's.
-    static let dither = EffectKind(builtIn: "dither")
-    static let interference = EffectKind(builtIn: "interference")
-    static let blockGlitch = EffectKind(builtIn: "blockGlitch")
     /// Distortion looks: they move the picture's pixels.
     static let displace = EffectKind(builtIn: "displace")
     static let liquid = EffectKind(builtIn: "liquid")
@@ -61,6 +51,13 @@ extension EffectKind {
 
     // From the packages in Resources/Effects, which ship with the app.
     static let posterize = EffectKind(package: "posterize")
+    static let grain = EffectKind(package: "grain")
+    static let staticNoise = EffectKind(package: "staticNoise")
+    static let fractalNoise = EffectKind(package: "fractalNoise")
+    static let cells = EffectKind(package: "cells")
+    static let dither = EffectKind(package: "dither")
+    static let interference = EffectKind(package: "interference")
+    static let blockGlitch = EffectKind(package: "blockGlitch")
     static let hueCycle = EffectKind(package: "hueCycle")
     static let cosinePalette = EffectKind(package: "cosinePalette")
     static let gradientMap = EffectKind(package: "gradientMap")
@@ -93,37 +90,12 @@ extension ControlKind {
     static let gain = ControlKind(builtIn: "gain")
     // Matte
     static let matteMode = ControlKind(builtIn: "matteMode")
-    // Grain
-    static let grainSize = ControlKind(builtIn: "grainSize")
-    static let grainChannels = ControlKind(builtIn: "grainChannels")
-    // Static
-    static let bars = ControlKind(builtIn: "bars")
-    static let rollSpeed = ControlKind(builtIn: "rollSpeed")
-    // Fractal Noise
-    static let noiseScale = ControlKind(builtIn: "noiseScale")
-    static let noiseOctaves = ControlKind(builtIn: "noiseOctaves")
-    static let roughness = ControlKind(builtIn: "roughness")
-    static let noiseType = ControlKind(builtIn: "noiseType")
-    static let evolution = ControlKind(builtIn: "evolution")
-    // Cells
-    static let cellSize = ControlKind(builtIn: "cellSize")
-    static let jitter = ControlKind(builtIn: "jitter")
-    static let cellOutput = ControlKind(builtIn: "cellOutput")
-    // Dither
-    static let ditherLevels = ControlKind(builtIn: "ditherLevels")
-    static let ditherPattern = ControlKind(builtIn: "ditherPattern")
-    // Interference
-    static let spacing = ControlKind(builtIn: "spacing")
-    static let crossAngle = ControlKind(builtIn: "crossAngle")
-    static let driftSpeed = ControlKind(builtIn: "driftSpeed")
-    // Block Glitch
-    static let intensity = ControlKind(builtIn: "intensity")
-    static let blockSize = ControlKind(builtIn: "blockSize")
-    static let glitchRate = ControlKind(builtIn: "glitchRate")
     // Displace
     static let displacement = ControlKind(builtIn: "displacement")
     static let mapCenter = ControlKind(builtIn: "mapCenter")
     // Liquid
+    static let noiseScale = ControlKind(builtIn: "noiseScale")
+    static let evolution = ControlKind(builtIn: "evolution")
     static let warps = ControlKind(builtIn: "warps")
     // Twirl
     static let twirlShape = ControlKind(builtIn: "twirlShape")
@@ -273,33 +245,6 @@ enum BuiltInEffects {
         EffectDefinition(
             .matte, "Matte", .mattes, "circle.dashed.inset.filled", controls: [.matteMode, .amount], takesInput: true
         ),
-        // Noise looks: grain and glitches over the picture, or generators
-        // that replace it.
-        EffectDefinition(.grain, "Grain", .noise, "circle.dotted", controls: [.amount, .grainSize, .grainChannels, .seed]),
-        EffectDefinition(
-            .staticNoise, "Static", .noise, "tv", controls: [.grainSize, .bars, .rollSpeed, .seed, .amount], generates: true
-        ),
-        EffectDefinition(
-            .fractalNoise, "Fractal Noise", .noise, "cloud",
-            controls: [.noiseScale, .noiseOctaves, .roughness, .noiseType, .evolution, .seed, .amount], generates: true
-        ),
-        EffectDefinition(
-            .cells, "Cells", .noise, "circle.hexagongrid",
-            controls: [.cellSize, .jitter, .cellOutput, .evolution, .seed, .amount], generates: true
-        ),
-        // A dither's pattern is a pixel's.
-        EffectDefinition(
-            .dither, "Dither", .noise, "checkerboard.rectangle", controls: [.ditherLevels, .ditherPattern, .amount],
-            dependsOnPixelSize: true
-        ),
-        EffectDefinition(
-            .interference, "Interference", .noise, "line.3.horizontal.decrease",
-            controls: [.spacing, .crossAngle, .driftSpeed, .amount], generates: true
-        ),
-        EffectDefinition(
-            .blockGlitch, "Block Glitch", .noise, "rectangle.split.3x3",
-            controls: [.intensity, .blockSize, .glitchRate, .seed, .amount]
-        ),
         // Distortion looks: they move the picture's pixels.
         EffectDefinition(
             .displace, "Displace", .distortion, "arrow.up.and.down.and.arrow.left.and.right",
@@ -433,39 +378,13 @@ enum BuiltInEffects {
         ),
         // Matte
         ControlDefinition(.matteMode, "Take", .matte, choice: MatteMode.alpha),
-        // Grain
-        ControlDefinition(.grainSize, "Size", .grain, defaults: [1], unit: " px", dragStep: 0.1, range: 0.25...64),
-        ControlDefinition(.grainChannels, "Channels", .grain, choice: GrainChannels.mono),
-        // Static
-        ControlDefinition(.bars, "Bars", .staticNoise, defaults: [2], range: 0...16, isWhole: true),
-        ControlDefinition(.rollSpeed, "Roll", .staticNoise, defaults: [0.5], unit: " /s", dragStep: 0.01, range: -20...20),
-        // Fractal Noise
-        ControlDefinition(.noiseScale, "Scale", .fractalNoise, defaults: [200], unit: " px", range: 2...10_000),
-        ControlDefinition(.noiseOctaves, "Octaves", .fractalNoise, defaults: [4], range: 1...8, isWhole: true),
-        ControlDefinition(.roughness, "Roughness", .fractalNoise, defaults: [50], unit: "%", range: 0...100),
-        ControlDefinition(.noiseType, "Type", .fractalNoise, choice: NoiseType.smooth),
-        ControlDefinition(.evolution, "Evolution", .fractalNoise, defaults: [0.25], unit: " /s", dragStep: 0.01, range: -20...20),
-        // Cells
-        ControlDefinition(.cellSize, "Cell Size", .cells, defaults: [80], unit: " px", range: 2...10_000),
-        ControlDefinition(.jitter, "Jitter", .cells, defaults: [100], unit: "%", range: 0...100),
-        ControlDefinition(.cellOutput, "Output", .cells, choice: CellOutput.edges),
-        // Dither
-        ControlDefinition(.ditherLevels, "Levels", .dither, defaults: [4], range: 2...64, isWhole: true),
-        ControlDefinition(.ditherPattern, "Pattern", .dither, choice: DitherPattern.bayer4),
-        // Interference
-        ControlDefinition(.spacing, "Spacing", .interference, defaults: [8], unit: " px", range: 1...1000),
-        ControlDefinition(.crossAngle, "Angle", .interference, defaults: [3], unit: "°", dragStep: 0.1, range: -90...90),
-        ControlDefinition(.driftSpeed, "Drift", .interference, defaults: [0.5], unit: " /s", dragStep: 0.01, range: -20...20),
-        // Block Glitch
-        ControlDefinition(.intensity, "Intensity", .blockGlitch, defaults: [30], unit: "%", range: 0...100),
-        ControlDefinition(.blockSize, "Block Size", .blockGlitch, defaults: [80], unit: " px", range: 2...2000),
-        // Under three flashes a second (docs/psychedelic-effects.md, "Safety").
-        ControlDefinition(.glitchRate, "Rate", .blockGlitch, defaults: [2], unit: " /s", range: 0...60),
         // Displace
         ControlDefinition(.displacement, "Amount", .displace, defaults: [2], unit: "%", dragStep: 0.1, range: -100...100),
         ControlDefinition(.mapCenter, "Still At", .displace, choice: MapCenter.gray),
         // Liquid
         ControlDefinition(.warps, "Warps", .liquid, defaults: [2], range: 1...4, isWhole: true),
+        ControlDefinition(.noiseScale, "Scale", .liquid, defaults: [200], unit: " px", range: 2...10_000),
+        ControlDefinition(.evolution, "Evolution", .liquid, defaults: [0.25], unit: " /s", dragStep: 0.01, range: -20...20),
         // Twirl
         ControlDefinition(.twirlShape, "Shape", .twirl, choice: TwirlShape.twirl),
         ControlDefinition(.distortCenter, "Center", .twirl, defaults: [0, 0], unit: " px", componentNames: ["Δx", "Δy"]),

@@ -3,13 +3,12 @@
 Status: **planned; steps 1 to 4 of [Building it](#building-it) built**.
 `EffectKind` and `ControlKind` are names looked up in an
 `EffectRegistry` of the effects written in Swift (BuiltInEffects.swift),
-the packages that ship with the app (Resources/Effects: Posterize and the
-Color looks so far)
+the packages that ship with the app (Resources/Effects: Posterize, the
+Color looks and the Noise looks so far)
 and the person's, which `EffectPackageStore` reads from the Effects
 folder at launch. A package's look is listed, saved and drawn like any
 other (`PackageLookRenderer`), and one whose package is missing is kept;
-the Noise and Distortion looks are still a `case` in `LookRenderer`
-each. This plan moves the looks of
+the Distortion looks are still a `case` in `LookRenderer` each. This plan moves the looks of
 [psychedelic-effects.md](psychedelic-effects.md) out of Swift into
 **effect packages**: folders the app reads at launch, which can be
 written, shared and installed without building the app. Effects that need
@@ -362,5 +361,5 @@ In order, each step usable on its own:
    built-in package, checked against its reference frames. **Built.**
 4. Missing effects in projects and presets. **Built.**
 5. The other Color looks, then the Noise looks, then the Distortion
-   looks, as packages, a category at a time. Color **built**.
+   looks, as packages, a category at a time. Color and Noise **built**.
 6. Problems and compile errors shown in the effects library.

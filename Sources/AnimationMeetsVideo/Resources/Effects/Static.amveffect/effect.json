@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "id": "staticNoise",
+  "version": 1,
+  "name": "Static",
+  "category": "noise",
+  "symbol": "tv",
+  "kernel": {"file": "kernel.metal", "function": "amvStatic", "type": "color"},
+  "controls": [
+    {"id": "grainSize", "name": "Size", "type": "number", "default": 1, "range": [0.25, 64], "unit": "px", "step": 0.1},
+    {"id": "bars", "name": "Bars", "type": "number", "default": 2, "range": [0, 16], "whole": true},
+    {"id": "rollSpeed", "name": "Roll", "type": "number", "default": 0.5, "range": [-20, 20], "unit": "/s"},
+    {"id": "seed", "name": "Seed", "type": "number", "default": 1, "range": [0, 100000], "whole": true}
+  ],
+  "amount": true,
+  "arguments": ["scale", "grainSize", "bars", "rollSpeed * seconds", "seed", "frame", "canvasHeight / scale"],
+  "generates": true,
+  "changesEveryFrame": true,
+  "flashes": true
+}

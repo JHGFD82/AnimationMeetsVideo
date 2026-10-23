@@ -162,11 +162,6 @@ func look(_ kind: EffectKind, _ settings: [String: [Double]] = [:], choices: [St
         return (reds.max() ?? 0) - (reds.min() ?? 0)
     }
 
-    @Test func everyNoiseKernelCompiles() {
-        let names = ["amvGrain", "amvStatic", "amvFractalNoise", "amvCells", "amvDither", "amvInterference", "amvBlockGlitch"]
-        #expect(names.allSatisfy { LookKernels.compiled[$0] != nil })
-    }
-
     @Test func grainIsTheSameEachTimeAFrameIsDrawnAndNewEachFrame() throws {
         let effect = look(.grain)
         let first = try draw(effect, at: 1)

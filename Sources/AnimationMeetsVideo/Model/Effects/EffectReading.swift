@@ -102,15 +102,11 @@ extension EditingProject {
     }
 
     /// A warning on the looks that can flash more than three times a
-    /// second (see docs/psychedelic-effects.md, "Safety: flashing"): Static
-    /// and Feedback always, Block Glitch and Hue Cycle when set faster than
-    /// that. Their defaults stay below it.
+    /// second (see docs/psychedelic-effects.md, "Safety: flashing"):
+    /// Feedback always, and a package's look as its `flashes` says (Static
+    /// always, Block Glitch and Hue Cycle when set faster than that). Their
+    /// defaults stay below it.
     static func flashingNote(for effect: Effect) -> EffectNote? {
-        func fastest(_ kind: ControlKind) -> Double {
-            guard let control = effect.control(kind), control.enabled else { return 0 }
-            let values = control.number.isAnimated ? control.number.keyframes.map(\.value) : [control.number.value]
-            return values.compactMap { $0.values.first.map(abs) }.max() ?? 0
-        }
         let flashes = if let package = effect.kind.definition.package {
             switch package.flashes {
             case .never: false
@@ -118,11 +114,7 @@ extension EditingProject {
             case .when(let condition): condition.number(FastestValues(effect: effect, package: package)) != 0
             }
         } else {
-            switch effect.kind {
-            case .staticNoise, .feedback: true
-            case .blockGlitch: fastest(.glitchRate) > 3
-            default: false
-            }
+            effect.kind == .feedback
         }
         guard flashes else { return nil }
         return EffectNote(

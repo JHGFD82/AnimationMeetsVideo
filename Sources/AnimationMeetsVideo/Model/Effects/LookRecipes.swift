@@ -83,20 +83,20 @@ enum LookRecipes {
 
     private static var lavaLamp: [Effect] {
         [
-            effect(.fractalNoise, choices: [.noiseType: NoiseType.smooth.rawValue]), effect(.liquid),
+            look(.fractalNoise, choices: ["noiseType": "smooth"]), effect(.liquid),
             look(.gradientMap, ["scrollSpeed": [0.05]]),
         ]
     }
 
     private static var noiseMelt: [Effect] {
-        let noise = effect(.fractalNoise, choices: [.noiseType: NoiseType.turbulent.rawValue])
+        let noise = look(.fractalNoise, choices: ["noiseType": "turbulent"])
         var displace = effect(.displace, [.displacement: [4]])
         displace.against = noise.id
         return [noise, displace, effect(.hueCycle), effect(.grain)]
     }
 
     private static var electricCells: [Effect] {
-        let cells = effect(.cells, choices: [.cellOutput: CellOutput.edges.rawValue])
+        let cells = look(.cells, choices: ["cellOutput": "edges"])
         return [cells, effect(.neonEdges), look(.hueCycle, ["hueSpread": [120]]), blend(.screen, against: cells)]
     }
 
@@ -104,7 +104,7 @@ enum LookRecipes {
         let interference = effect(.interference)
         return [
             effect(.blockGlitch), effect(.chromaticAberration, choices: [.aberrationMode: AberrationMode.linear.rawValue]),
-            interference, blend(.overlay, against: interference), effect(.staticNoise, [.amount: [15]]),
+            interference, blend(.overlay, against: interference), look(.staticNoise, ["amount": [15]]),
         ]
     }
 
@@ -137,7 +137,7 @@ enum LookRecipes {
             // Each channel from the next: red from green, green from blue,
             // blue from red.
             look(.channelMixer, ["mixRed": [0, 1, 0], "mixGreen": [0, 0, 1], "mixBlue": [1, 0, 0]]),
-            effect(.dither, choices: [.ditherPattern: DitherPattern.bayer4.rawValue]),
+            look(.dither, choices: ["ditherPattern": "bayer4"]),
         ]
     }
 
