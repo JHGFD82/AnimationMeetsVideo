@@ -11,26 +11,14 @@ struct TimelineZoomSliders: View {
 
     var body: some View {
         HStack(spacing: Design.Space.step) {
-            slider(
-                $horizontal, systemImage: "arrow.left.and.right",
+            ZoomSlider(
+                fraction: $horizontal, label: "Time zoom",
                 help: "Zoom time about the playhead (pinch, Option-scroll, - and =)"
             )
-            slider(
-                $vertical, systemImage: "arrow.up.and.down",
+            ZoomSlider(
+                fraction: $vertical, label: "Layer height", axis: .vertical,
                 help: "Layer height in every shown area (pinch up and down, or Option-pinch)"
             )
         }
-    }
-
-    private func slider(_ value: Binding<Double>, systemImage: String, help: String) -> some View {
-        HStack(spacing: Design.Space.tight) {
-            Image(systemName: systemImage)
-                .font(Design.Typeface.micro)
-                .foregroundStyle(Design.textTertiary)
-            Slider(value: value, in: 0...1)
-                .controlSize(.mini)
-                .frame(width: 84)
-        }
-        .help(help)
     }
 }

@@ -6,8 +6,8 @@ import SwiftUI
 /// (`KeyframeGraphLink`). Link With adds another open graph from a menu,
 /// and Unlink takes a graph back out into a panel of its own. Linked, the
 /// panel has one row of ease presets along the top, acting on the graph
-/// last clicked, and one time dial with Fit along the bottom; each graph
-/// keeps its own row (its name, values and Unlink) and value dial.
+/// last clicked, and one time slider with Fit along the bottom; each graph
+/// keeps its own row (its name, values, value slider and Unlink).
 struct KeyframeGraphStack: View {
     let hud: KeyframeGraphHUDs
     let link: KeyframeGraphLink
@@ -23,7 +23,10 @@ struct KeyframeGraphStack: View {
                 if index > 0 { Groove() }
                 KeyframeGraphView(hud: hud, key: key, input: input, link: link)
             }
-            if link.isLinked { timeDial }
+            if link.isLinked {
+                Divider()
+                timeBar
+            }
         }
     }
 
@@ -48,34 +51,38 @@ struct KeyframeGraphStack: View {
         .background(Design.Surface.raised.color)
     }
 
-    /// The shared time's dial, under the graphs, with Fit in the corner
-    /// under their value dials.
-    private var timeDial: some View {
-        GeometryReader { geometry in
-            HStack(spacing: 0) {
-                Spacer(minLength: 0)
-                ZoomDial(axis: .horizontal, label: "Time zoom") { factor, held in
-                    zoomTimes(by: factor, pinching: held)
-                } onReset: {
-                    link.viewport.times = nil
-                } onRelease: {
-                    link.timeBand.endPinch()
-                }
-                .frame(width: min(ZoomDial.length, max(geometry.size.width - ZoomDial.thickness - 8, 40)))
-                Button(action: link.fit) {
-                    Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
-                        .font(Design.Typeface.glyphSmall)
-                        .foregroundStyle(Design.textSecondary)
-                        .frame(width: ZoomDial.thickness, height: ZoomDial.thickness)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+    /// The shared time's slider, under the graphs, with Fit; each graph's
+    /// value slider is in its own row.
+    private var timeBar: some View {
+        HStack(spacing: Design.Space.step) {
+            Spacer(minLength: 0)
+            ZoomSlider(fraction: timeZoomFraction, label: "Time zoom", help: "Zoom every graph's time about the playhead (pinch)")
+            Button(action: link.fit) { Image(systemName: Design.Symbol.zoomToFitBoth) }
+                .buttonStyle(.icon)
                 .help("Fit every graph's keyframes in view")
                 .accessibilityLabel("Fit")
-            }
         }
-        .frame(height: ZoomDial.thickness)
+        .padding(.horizontal, Design.Space.step)
+        .frame(height: KeyframeGraphView.zoomBarHeight)
         .background(Color.black.opacity(0.2))
+    }
+
+    /// The shared time's zoom for its slider, from all the graphs' spans to
+    /// a few frames.
+    private var timeZoomFraction: Binding<Double> {
+        Binding(
+            get: {
+                guard let bounds = link.bounds(in: hud.project) else { return 0 }
+                let zooms = KeyframeGraphViewport.timeZooms(span: bounds.span, frame: bounds.frame)
+                return ZoomScale.fraction(of: link.viewport.timeZoom(fit: bounds.fit, span: bounds.span), in: zooms)
+            },
+            set: { fraction in
+                guard let bounds = link.bounds(in: hud.project) else { return }
+                let zooms = KeyframeGraphViewport.timeZooms(span: bounds.span, frame: bounds.frame)
+                let zoom = link.viewport.timeZoom(fit: bounds.fit, span: bounds.span)
+                zoomTimes(by: ZoomScale.factor(from: zoom, toFraction: fraction, in: zooms), pinching: false)
+            }
+        )
     }
 
     /// Zooms the shared time about the playhead while it is in view, else

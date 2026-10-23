@@ -82,18 +82,11 @@ struct MotionDesignView: View {
             .help("Snap dragged points to beats, the playhead and clip edges")
             .accessibilityValue(session.snaps ? "On" : "Off")
             Spacer()
-            HStack(spacing: 2) {
-                Button(action: session.zoomOut) { Image(systemName: Design.Symbol.zoomOut) }
-                    .help("Zoom out (⌘-)")
-                    .accessibilityLabel("Zoom out")
-                Button(action: session.zoomIn) { Image(systemName: Design.Symbol.zoomIn) }
-                    .help("Zoom in (⌘=)")
-                    .accessibilityLabel("Zoom in")
-                Button(action: session.fit) { Image(systemName: Design.Symbol.zoomToFit) }
-                    .help("Fit the clips (⌘0)")
-                    .accessibilityLabel("Fit the clips")
-            }
-            .buttonStyle(.icon)
+            ZoomControls(
+                fraction: $session.zoomFraction, keys: .command,
+                zoomOut: session.zoomOut, zoomIn: session.zoomIn,
+                fit: (session.fit, "Fit the clips")
+            )
         }
         .frame(minHeight: 28)
     }

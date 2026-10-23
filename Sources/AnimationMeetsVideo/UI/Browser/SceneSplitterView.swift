@@ -139,23 +139,16 @@ private struct SplitterTransport: View {
                 .foregroundStyle(Design.marker)
                 .accessibilityLabel("Marker")
             Spacer()
-            Button { splitter.zoom(by: 1 / 1.5) } label: { Image(systemName: "minus.magnifyingglass") }
-                .accessibilityLabel("Zoom out")
-                .help("Zoom out (-)")
-                .disabled(splitter.zoom <= 1)
-            Slider(
-                value: Binding(get: { log(splitter.zoom) }, set: { splitter.setZoom(exp($0)) }),
-                in: 0...max(log(splitter.maximumZoom), 0.001)
+            ZoomControls(
+                fraction: Binding(
+                    get: { ZoomScale.fraction(of: splitter.zoom, in: 1...max(splitter.maximumZoom, 1)) },
+                    set: { splitter.setZoom(ZoomScale.zoom(atFraction: $0, in: 1...max(splitter.maximumZoom, 1))) }
+                ),
+                keys: .plain,
+                zoomOut: { splitter.zoom(by: 1 / 1.5) }, zoomIn: { splitter.zoom(by: 1.5) },
+                fit: ({ splitter.setZoom(1) }, "Fit the whole stretch")
             )
-            .frame(width: 90)
-            .controlSize(.small)
             .disabled(splitter.maximumZoom <= 1)
-            .accessibilityLabel("Zoom")
-            .accessibilityValue("\(Int((splitter.zoom * 100).rounded())) percent")
-            Button { splitter.zoom(by: 1.5) } label: { Image(systemName: "plus.magnifyingglass") }
-                .accessibilityLabel("Zoom in")
-                .help("Zoom in (=), or pinch the strip")
-                .disabled(splitter.zoom >= splitter.maximumZoom)
             Toggle(isOn: $splitter.isSoundOn) {
                 Image(systemName: splitter.isSoundOn ? "speaker.wave.2.fill" : "speaker.slash.fill")
                     .frame(width: 18)

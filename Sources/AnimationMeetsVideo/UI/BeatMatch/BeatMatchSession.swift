@@ -735,6 +735,21 @@ final class BeatMatchSession {
     func zoomIn() { zoom(by: 2, aboutX: x(of: selectedBeat?.seconds ?? livePlayhead)) }
     func zoomOut() { zoom(by: 0.5, aboutX: x(of: selectedBeat?.seconds ?? livePlayhead)) }
 
+    /// The zoom as its slider shows it (`ZoomSlider`): 0 the whole song, 1
+    /// the closest. Moving it zooms about where zooming in does.
+    var zoomFraction: Double {
+        get { ZoomScale.fraction(of: 1 / secondsPerPoint, in: zoomRange) }
+        set {
+            let factor = ZoomScale.factor(from: 1 / secondsPerPoint, toFraction: newValue, in: zoomRange)
+            zoom(by: factor, aboutX: x(of: selectedBeat?.seconds ?? livePlayhead))
+        }
+    }
+
+    /// The zooms the slider spans, as points per second.
+    private var zoomRange: ClosedRange<Double> {
+        (1 / farthestZoom)...max(1 / closestZoom, 1 / farthestZoom)
+    }
+
     func x(of seconds: Double) -> CGFloat { CGFloat((seconds - visibleStart) / secondsPerPoint) }
     func seconds(atX x: CGFloat) -> Double { visibleStart + Double(x) * secondsPerPoint }
 

@@ -533,7 +533,7 @@ final class SceneSplitter {
     /// step the marker a frame (ten with Shift), ↑ and ↓ take it to the
     /// previous or next cut, Return picks the scene it is in (Shift and
     /// Command as clicks do), Space plays, S splits, M merges, = and - zoom,
-    /// and Escape closes.
+    /// \ fits, as on the timeline, and Escape closes.
     private func watchKeys() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -568,6 +568,7 @@ final class SceneSplitter {
             case "m" where !shift: merge()
             case "=", "+": zoom(by: 1.5)
             case "-" where !shift: zoom(by: 1 / 1.5)
+            case "\\" where !shift: setZoom(1)
             default: return false
             }
         }

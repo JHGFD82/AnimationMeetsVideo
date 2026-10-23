@@ -42,6 +42,20 @@ struct KeyframeGraphViewport: Equatable {
         times = Self.clamped(start...(start + newLength), to: span)
     }
 
+    /// How many times closer than `span` time is shown, for its slider.
+    func timeZoom(fit: ClosedRange<Double>, span: ClosedRange<Double>) -> Double {
+        let shown = shownTimes(fit: fit, span: span)
+        let length = shown.upperBound - shown.lowerBound
+        return length > 0 ? (span.upperBound - span.lowerBound) / length : 1
+    }
+
+    /// The time zooms `zoomTimes` reaches: all of `span` to `fewestFrames`.
+    static func timeZooms(span: ClosedRange<Double>, frame: Double) -> ClosedRange<Double> {
+        let length = span.upperBound - span.lowerBound
+        let shortest = min(fewestFrames * frame, length)
+        return 1...max(shortest > 0 ? length / shortest : 1, 1)
+    }
+
     /// Scrolls time by `seconds`, inside `span`.
     mutating func panTimes(by seconds: Double, fit: ClosedRange<Double>, span: ClosedRange<Double>) {
         let shown = shownTimes(fit: fit, span: span)

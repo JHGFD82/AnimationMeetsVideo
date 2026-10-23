@@ -151,7 +151,7 @@ the snap line's arrival.
 - **Applying transitions** from the panel without a pointer: tiles are
   dragged onto clips, with no action to apply one to the selected clip.
 - **Transition curves** can only be shaped by dragging their points.
-- **Keyframe graph editor** panels: VoiceOver reads the graph as one element (its parameter and keyframe count), the component chips and the zoom dials (adjustable, with a Fit action), but can't move keyframes or handles. In a linked panel each graph's name is a button that has the panel's presets act on that graph, and reads as selected while they do.
+- **Keyframe graph editor** panels: VoiceOver reads the graph as one element (its parameter and keyframe count), the component chips, and the zoom sliders and Fit button, but can't move keyframes or handles. In a linked panel each graph's name is a button that has the panel's presets act on that graph, and reads as selected while they do.
 - **Sections and keyframes** can't be moved or resized from the keyboard,
   only selected, renamed, eased and deleted.
 - **Times read as timecode**, which can be wordy ("00:00:05:12"); a choice

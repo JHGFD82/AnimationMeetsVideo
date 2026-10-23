@@ -18,6 +18,8 @@ extension Design {
         static let zoomIn = "plus.magnifyingglass"
         static let zoomOut = "minus.magnifyingglass"
         static let zoomToFit = "arrow.left.and.right.square"
+        /// Fit along both axes, as a graph's values and time.
+        static let zoomToFitBoth = "arrow.up.left.and.down.right.magnifyingglass"
 
         /// A popover of how a panel shows things: thumbnails, zoom,
         /// preview quality. Never what the project contains.

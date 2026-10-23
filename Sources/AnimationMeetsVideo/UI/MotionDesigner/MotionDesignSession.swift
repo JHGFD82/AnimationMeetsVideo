@@ -488,6 +488,21 @@ final class MotionDesignSession {
     func zoomIn() { zoom(by: 2, aboutX: x(of: selectedPoint?.time.seconds ?? playhead)) }
     func zoomOut() { zoom(by: 0.5, aboutX: x(of: selectedPoint?.time.seconds ?? playhead)) }
 
+    /// The zoom as its slider shows it (`ZoomSlider`): 0 the whole window, 1
+    /// the closest. Moving it zooms about where zooming in does.
+    var zoomFraction: Double {
+        get { ZoomScale.fraction(of: 1 / secondsPerPoint, in: zoomRange) }
+        set {
+            let factor = ZoomScale.factor(from: 1 / secondsPerPoint, toFraction: newValue, in: zoomRange)
+            zoom(by: factor, aboutX: x(of: selectedPoint?.time.seconds ?? playhead))
+        }
+    }
+
+    /// The zooms the slider spans, as points per second.
+    private var zoomRange: ClosedRange<Double> {
+        (1 / farthestZoom)...max(1 / closestZoom, 1 / farthestZoom)
+    }
+
     func x(of seconds: Double) -> CGFloat { CGFloat((seconds - visibleStart) / secondsPerPoint) }
     func seconds(atX x: CGFloat) -> Double { visibleStart + Double(x) * secondsPerPoint }
 }

@@ -551,7 +551,7 @@ struct UISnapshots {
 
     /// The graph editor on a Position keyframed in x and y, the second
     /// keyframe eased and selected and the third a hold, stepping to the
-    /// fourth: the legend's chips, the zoom dials, the toolbar's eases and
+    /// fourth: the legend's chips, the zoom sliders, the toolbar's eases and
     /// the playhead inside the clip, which starts later on the timeline
     /// than its footage does.
     @Test func keyframeGraph() throws {
@@ -585,7 +585,7 @@ struct UISnapshots {
 
     /// Two shapes' Position graphs linked into one panel, the second shape
     /// starting 2 s after the first: one row of presets on top for the
-    /// first, each graph's row with its name and Unlink, and one time dial
+    /// first, each graph's row with its name and Unlink, and one time slider
     /// under both, on one shared stretch of the timeline, so their
     /// keyframes, 2 s apart in each clip, sit 2 s apart across too.
     @Test func linkedKeyframeGraphs() throws {

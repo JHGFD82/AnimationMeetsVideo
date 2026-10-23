@@ -17,15 +17,15 @@ import SwiftUI
 /// right-click menu apply ease presets to the selected keyframe, or to the
 /// one at the playhead.
 ///
-/// The dials under and beside the graph zoom time and values, each turn
-/// by the same ratio wherever the zoom is, time no further out than the
-/// clip; pinching zooms time about the pointer (values with Option), and
-/// scrolling moves the view. The legend's chips show or hide each
+/// The sliders under the graph zoom values and time, each step by the same
+/// ratio wherever the zoom is, time no further out than the clip; pinching
+/// zooms time about the pointer (values with Option), and scrolling moves
+/// the view. The legend's chips show or hide each
 /// component, and Separate Scales draws each on its own scale. Linked with
 /// other graphs in one panel (`link`), time is theirs together: zooming or
-/// scrolling it in one moves them all. The panel then has one time dial
+/// scrolling it in one moves them all. The panel then has one time slider
 /// and one row of presets for them all (`KeyframeGraphStack`), and each
-/// graph's own row names it, with Unlink.
+/// graph's own row names it, with its value slider and Unlink.
 struct KeyframeGraphView: View {
     let hud: KeyframeGraphHUDs
     let key: ParameterKey
@@ -113,48 +113,13 @@ struct KeyframeGraphView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     GeometryReader { geometry in
-                        // Linked, the panel's one time dial is under them all.
-                        let timeDial = shared == nil ? ZoomDial.thickness : 0
-                        let layout = drag?.layout ?? layout(c, size: CGSize(width: geometry.size.width - ZoomDial.thickness, height: geometry.size.height - timeDial))
-                        // The dials meet in the bottom right corner, each along
-                        // the axis it zooms, with Fit where they meet.
-                        let reach = { (room: CGFloat) in min(ZoomDial.length, max(room - 8, 40)) }
-                        VStack(spacing: 0) {
-                            HStack(spacing: 0) {
-                                graph(c, layout: layout)
-                                    .rubberBand(timeBandBinding, axis: .horizontal)
-                                    .rubberBand($valueBand, axis: .vertical)
-                                    .rubberBandScroll(shared?.timeScrollBand ?? timeScrollBand, length: layout.plot.width)
-                                    .rubberBandSettling(timeScrollBandBinding)
-                                    .clipped()
-                                VStack(spacing: 0) {
-                                    Spacer(minLength: 0)
-                                    ZoomDial(axis: .vertical, label: "Value zoom") { factor, held in
-                                        zoomValues(by: factor, around: 0.5, pinching: held)
-                                    } onReset: {
-                                        viewport.valueZoom = 1
-                                        viewport.valuePan = 0
-                                    } onRelease: {
-                                        valueBand.endPinch()
-                                    }
-                                    .frame(height: reach(geometry.size.height - timeDial))
-                                }
-                            }
-                            if shared == nil {
-                                HStack(spacing: 0) {
-                                    Spacer(minLength: 0)
-                                    ZoomDial(axis: .horizontal, label: "Time zoom") { factor, held in
-                                        zoomTimes(by: factor, around: timeAnchor(c, layout: layout), c, layout: layout, pinching: held)
-                                    } onReset: {
-                                        viewport.times = nil
-                                    } onRelease: {
-                                        endTimePinch()
-                                    }
-                                    .frame(width: reach(geometry.size.width - ZoomDial.thickness))
-                                    fitButton
-                                }
-                            }
-                        }
+                        let layout = drag?.layout ?? layout(c, size: geometry.size)
+                        graph(c, layout: layout)
+                            .rubberBand(timeBandBinding, axis: .horizontal)
+                            .rubberBand($valueBand, axis: .vertical)
+                            .rubberBandScroll(shared?.timeScrollBand ?? timeScrollBand, length: layout.plot.width)
+                            .rubberBandSettling(timeScrollBandBinding)
+                            .clipped()
                         .onChange(of: input.scroll) { _, scroll in
                             guard let scroll else { return }
                             // Linked graphs share the panel's input: the one
@@ -162,6 +127,10 @@ struct KeyframeGraphView: View {
                             if shared != nil, let at = scroll.location, !geometry.frame(in: .global).contains(at) { return }
                             scrolled(scroll, c, layout: layout)
                         }
+                    }
+                    if shared == nil {
+                        Divider()
+                        zoomBar(c)
                     }
                 }
             }
@@ -241,25 +210,68 @@ struct KeyframeGraphView: View {
         .accessibilityLabel("\(key.parameter.name) graph")
         .accessibilityValue("\(c.value.keyframes.count) keyframes")
         .accessibilityHint(shared == nil
-                           ? "The dials zoom; the buttons above ease the selected keyframe or the one at the playhead"
-                           : "The dials zoom; the buttons at the top of the panel ease its selected keyframe or the one at the playhead")
+                           ? "The sliders below zoom; the buttons above ease the selected keyframe or the one at the playhead"
+                           : "The sliders zoom; the buttons at the top of the panel ease its selected keyframe or the one at the playhead")
     }
 
     // MARK: - Zooming and scrolling
 
-    /// Fits the keyframes in view, both ways, in the corner between the
-    /// dials.
+    /// The zoom sliders under an unlinked graph, values then time, with
+    /// Fit, as the other timelines have them.
+    private func zoomBar(_ c: Context) -> some View {
+        HStack(spacing: Design.Space.step) {
+            Spacer(minLength: 0)
+            valueZoomSlider
+            ZoomSlider(fraction: timeZoomFraction(c), label: "Time zoom", help: "Zoom time about the playhead (pinch)")
+            fitButton
+        }
+        .padding(.horizontal, Design.Space.step)
+        .frame(height: Self.zoomBarHeight)
+    }
+
+    static let zoomBarHeight: CGFloat = 24
+
+    private var valueZoomSlider: some View {
+        ZoomSlider(
+            fraction: Binding(
+                get: { ZoomScale.fraction(of: viewport.valueZoom, in: KeyframeGraphViewport.valueZooms) },
+                set: { fraction in
+                    let factor = ZoomScale.factor(from: viewport.valueZoom, toFraction: fraction, in: KeyframeGraphViewport.valueZooms)
+                    viewport.zoomValues(by: factor, around: 0.5)
+                }
+            ),
+            label: "Value zoom", axis: .vertical, help: "Zoom the values about the middle (Option-pinch)"
+        )
+    }
+
+    /// Time's zoom for its slider, from the whole clip to a few frames;
+    /// moving it zooms about the playhead while it is in view, else the
+    /// middle.
+    private func timeZoomFraction(_ c: Context) -> Binding<Double> {
+        let padded = KeyframeGraphLayout.padded(c.axis.span)
+        let frame = c.timeline.frameDuration.seconds
+        let fit = KeyframeGraphLayout.fitTimes(c.value, span: padded, frame: frame)
+        let zooms = KeyframeGraphViewport.timeZooms(span: padded, frame: frame)
+        return Binding(
+            get: { ZoomScale.fraction(of: viewport.timeZoom(fit: fit, span: padded), in: zooms) },
+            set: { fraction in
+                let shown = viewport.shownTimes(fit: fit, span: padded)
+                let playhead = c.axis.keyTime(atTimeline: hud.playhead).seconds
+                let anchor = shown.contains(playhead) ? playhead : (shown.lowerBound + shown.upperBound) / 2
+                let factor = ZoomScale.factor(from: viewport.timeZoom(fit: fit, span: padded), toFraction: fraction, in: zooms)
+                viewport.zoomTimes(by: factor, around: anchor, fit: fit, span: padded, frame: frame)
+            }
+        )
+    }
+
+    /// Fits the keyframes in view, both ways.
     private var fitButton: some View {
         Button {
             viewport = KeyframeGraphViewport(hidden: viewport.hidden, separateScales: viewport.separateScales)
         } label: {
-            Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
-                .font(Design.Typeface.glyphSmall)
-                .foregroundStyle(Design.textSecondary)
-                .frame(width: ZoomDial.thickness, height: ZoomDial.thickness)
-                .contentShape(Rectangle())
+            Image(systemName: Design.Symbol.zoomToFitBoth)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.icon)
         .help("Fit the keyframes in view")
         .accessibilityLabel("Fit")
     }
@@ -268,13 +280,6 @@ struct KeyframeGraphView: View {
     private func fitValues() {
         viewport.valueZoom = 1
         viewport.valuePan = 0
-    }
-
-    /// The time the dial zooms about: the playhead while it's in view, else
-    /// the middle.
-    private func timeAnchor(_ c: Context, layout: KeyframeGraphLayout) -> Double {
-        let playhead = c.axis.keyTime(atTimeline: hud.playhead).seconds
-        return layout.times.contains(playhead) ? playhead : (layout.times.lowerBound + layout.times.upperBound) / 2
     }
 
     /// Zooms time about `anchor`; past the clip or the closest zoom the
@@ -381,6 +386,7 @@ struct KeyframeGraphView: View {
             }
             Spacer(minLength: Design.Space.step)
             if let shared {
+                valueZoomSlider
                 Button("Unlink") { hud.unlink(key, from: shared.id) }
                     .help("Take this graph out into a panel of its own")
                     .accessibilityLabel("Unlink \(hud.project.parameterTitle(of: key))")

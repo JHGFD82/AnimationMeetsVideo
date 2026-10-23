@@ -127,8 +127,9 @@ song does not.
   waveform) has the same edge (`RubberBandZoom`): pushed past its
   farthest or closest, the view squeezes or stretches toward the pointer
   instead, against more resistance the further it goes, up to a fifth.
-  A pinch or a dial drag holds the stretch until it lets go; a zoom
-  button, key, menu command or Option-scroll springs back a moment after
+  A pinch holds the stretch until it lets go; a zoom slider stops at
+  the limits, and a zoom button, key, menu command or Option-scroll
+  springs back a moment after
   the last push, so a hard stop still answers. Zooming back takes up the
   stretch before the view zooms again. With reduced motion it simply
   stops. The zoom sliders stop at their ends, as sliders do.
@@ -172,6 +173,21 @@ song does not.
   again.
 - Zoom and scroll are view state: they reset when switching timelines and
   are not saved.
+
+### Zoom controls
+
+**Built.** Every view with a timeline of its own zooms with the same
+controls as this header, in the same order: a time zoom slider
+(`ZoomSlider`: the arrows across, then a mini slider, even in ratio,
+`ZoomScale`), then zoom out, zoom in and fit. The scene splitter, the
+Beat Match panel and the motion designer use `ZoomControls`; the keyframe
+graph editor has a value slider (the arrows up and down) and a time
+slider along its bottom, with Fit. Panels that take typing (Beat Match,
+the motion designer) zoom with ⌘- ⌘= ⌘0; the timeline and the scene
+splitter with - = and \\.
+
+The Tape Scrubber is the main timeline's alone: no other view has a dial
+(the graph editor's zoom dials were replaced by these sliders).
 
 ## Ruler
 

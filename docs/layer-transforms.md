@@ -156,20 +156,17 @@ The graph starts fitted to the keyframes, their curves and their handles
 so nothing moves under the pointer. How it is zoomed and scrolled is the
 panel's `KeyframeGraphViewport`:
 
-- **Zoom dials** meeting in the graph's bottom right corner, each along
-  the axis it zooms: time along the bottom, values up the right, with the
-  Fit button where they meet. They are drawn as the Tape Scrubber's ridged
-  dial (`RidgedDial`, `ZoomDial`), 200 points long at most, so they never
-  outgrow it and a turn feels the same in any size of panel. Dragging
-  along one turns it; rightward or upward zooms in. Every point turned
-  changes the zoom by the same ratio (e every 150 points), so a turn
-  does as much zoomed far out as far in, and turning back returns
-  exactly. Time zooms about the playhead while it is in view, no further
-  out than the clip (padded 4% so points at its ends show) and no closer
-  than four frames; values zoom from a quarter of the fitted range to a
-  thousandth. Past either limit the plot stretches and springs back when
-  the dial or pinch lets go (the shared zoom edge, see timeline.md).
-  Double-click a dial to fit its axis, or press Fit for both.
+- **Zoom sliders** along the bottom of the graph, values then time, with
+  Fit for both after them: the same `ZoomSlider` the timeline's header and
+  the other timelines use (see "Zoom controls" in timeline.md). Each is
+  even in ratio, so a step does as much zoomed far out as far in. Time
+  zooms about the playhead while it is in view, no further out than the
+  clip (padded 4% so points at its ends show) and no closer than four
+  frames; values zoom about the middle from a quarter of the fitted range
+  to a thousandth. A pinch past either limit stretches the plot, which
+  springs back when it lets go (the shared zoom edge, see timeline.md).
+  The Tape Scrubber's dial, which these used to be drawn as, is now the
+  main timeline's alone.
 - **Pinch** zooms time about where the pinch started, or values with
   Option. **Scrolling** moves the view: across in time, inside the clip,
   and up and down in value.
@@ -207,10 +204,9 @@ it shows once.
   Each graph's name, at the start of its row, is in full tone while the
   presets act on it; clicking the name picks it too.
 - **Each graph's row** has its name, its values at the playhead and
-  Separate Scales, and Unlink.
-- **One time dial** under all the graphs, with **Fit** in the corner
-  under their value dials. Fit fits the time to every graph's keyframes
-  and each graph's values to its own. Each graph keeps its value dial.
+  Separate Scales, its value zoom slider, and Unlink.
+- **One time slider** under all the graphs, with **Fit**. Fit fits the
+  time to every graph's keyframes and each graph's values to its own.
 
 ## In the timeline
 

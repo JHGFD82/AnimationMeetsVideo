@@ -118,18 +118,11 @@ struct BeatMatchView: View {
                 }
             }
             Spacer()
-            HStack(spacing: 2) {
-                Button(action: session.zoomOut) { Image(systemName: Design.Symbol.zoomOut) }
-                    .help("Zoom out (⌘-)")
-                    .accessibilityLabel("Zoom out")
-                Button(action: session.zoomIn) { Image(systemName: Design.Symbol.zoomIn) }
-                    .help("Zoom in (⌘=)")
-                    .accessibilityLabel("Zoom in")
-                Button(action: session.fit) { Image(systemName: Design.Symbol.zoomToFit) }
-                    .help("Fit the whole song (⌘0)")
-                    .accessibilityLabel("Fit the whole song")
-            }
-            .buttonStyle(.icon)
+            ZoomControls(
+                fraction: $session.zoomFraction, keys: .command,
+                zoomOut: session.zoomOut, zoomIn: session.zoomIn,
+                fit: (session.fit, "Fit the whole song")
+            )
         }
         .frame(minHeight: 28)
     }
