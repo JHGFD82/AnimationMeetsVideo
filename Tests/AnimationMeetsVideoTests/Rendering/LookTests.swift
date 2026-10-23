@@ -254,10 +254,6 @@ func look(_ kind: EffectKind, _ settings: [String: [Double]] = [:], choices: [St
         try harness.draw([CompositorHarness.clip(track: 1, effects: effects, frame: harness.size)], at: CMTime(value: 1, timescale: 1))
     }
 
-    @Test func displacesKernelCompiles() {
-        #expect(LookKernels.compiled["amvDisplace"] != nil)
-    }
-
     @Test func aTwirlLeavesWhatIsOutsideItsRadiusAlone() throws {
         let h = try harness()
         let original = try draw([], h)
@@ -300,6 +296,28 @@ func look(_ kind: EffectKind, _ settings: [String: [Double]] = [:], choices: [St
         #expect(close(h.pixel(drawn, x: 16, y: 16), h.pixel(original, x: 16, y: 16), tolerance: 0.02))
         // Without a map it does nothing at all.
         #expect(look(.displace).isNoOp)
+    }
+
+    /// Displace, a package reading its input and Against, says what it
+    /// lacks, and does nothing without either.
+    @Test func displaceSaysWhatItReads() throws {
+        var project = EditingProject.empty
+        let created = project.addShapeLayer(.rectangle, to: project.rootTimelineID)
+        let shape = try #require(created)
+        let displace = look(.displace)
+        #expect(displace.kind.takesInput && displace.kind.readsAgainst && displace.isNoOp)
+        project.editClip(shape.clipID, in: project.rootTimelineID) { $0.effects.append(displace) }
+        func note() throws -> String? {
+            let (clip, layer) = try #require(project.clipAndLayer(shape.clipID, in: project.rootTimelineID))
+            return project.note(forEffectAt: clip.effects.count - 1, in: clip, on: layer, of: project.timelines[0])?.text
+        }
+        #expect(try note() == "Drop a picture from the browser onto it, or set Against to an earlier step, for the picture it reads.")
+        // Against a step that isn't above it.
+        project.editClip(shape.clipID, in: project.rootTimelineID) { $0.effects[$0.effects.count - 1].against = UUID() }
+        #expect(try note() == "The step it reads (Against) is gone or below this one, so it does nothing until pointed elsewhere.")
+        // Against the rectangle above it: it draws.
+        project.editClip(shape.clipID, in: project.rootTimelineID) { $0.effects[$0.effects.count - 1].against = $0.effects[0].id }
+        #expect(try note() == nil)
     }
 
     @Test func radialAberrationLeavesTheMiddleAlone() throws {

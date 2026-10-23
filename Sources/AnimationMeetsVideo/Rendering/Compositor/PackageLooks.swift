@@ -117,12 +117,14 @@ enum PackageLookRenderer {
     /// nothing there, over `canvas`); a general kernel over `region` with
     /// its edges repeating, or over `canvas` transparent past them; a warp
     /// over `canvas`. The picture as it is if the kernel didn't compile.
+    /// `pictures` are the package's others, in its order (transparent for
+    /// one it doesn't have), and `flags` say which it has (`hasInput`).
     static func apply(
         _ package: EffectPackage, _ step: LookStep, to picture: CIImage, over region: CGRect, canvas: CGRect,
-        frame: CGRect, scale: CGFloat, space: ProjectColorSpace
+        frame: CGRect, scale: CGFloat, space: ProjectColorSpace, pictures: [CIImage] = [], flags: [String: Double] = [:]
     ) -> CIImage {
         guard let kernel = PackageKernels.kernel(for: package) else { return picture }
-        let values = Values(package: package, step: step, frame: frame, canvas: canvas, scale: scale)
+        let values = Values(package: package, step: step, frame: frame, canvas: canvas, scale: scale, flags: flags)
         var arguments = package.arguments.map { kernelArgument($0.evaluate(values)) }
         if package.hasAmount { arguments.append(Float(step.amount)) }
         let spaceIndex = Float(space.gradingSpaceIndex)
@@ -150,10 +152,12 @@ enum PackageLookRenderer {
                 extent = canvas.integral
                 input = picture.composited(over: clear).cropped(to: canvas)
             }
+            // The others, as the picture is past its edges: transparent.
+            let others: [Any] = pictures.map { $0.composited(over: clear).cropped(to: canvas) }
             let image = kernel.apply(
                 extent: extent,
                 roiCallback: { _, rect in reach.map { rect.insetBy(dx: -abs($0) - 1, dy: -abs($0) - 1) } ?? canvas },
-                arguments: [input, spaceIndex] + arguments
+                arguments: [input, spaceIndex] + others + arguments
             )
             guard let image else { return picture }
             drawn = image.cropped(to: extent)
@@ -196,6 +200,8 @@ enum PackageLookRenderer {
         let frame: CGRect
         let canvas: CGRect
         let scale: CGFloat
+        /// Whether it has its pictures: `hasInput`, `hasAgainst`.
+        let flags: [String: Double]
 
         private func definition(_ name: String) -> ControlDefinition? {
             let kind = ControlKind(package: package.id, control: name)
@@ -215,6 +221,7 @@ enum PackageLookRenderer {
             case "canvasWidth": return [Double(canvas.width)]
             case "canvasHeight": return [Double(canvas.height)]
             case "pi": return [.pi]
+            case _ where flags[name] != nil: return [flags[name]!]
             default:
                 guard let definition = definition(name) else { return [0] }
                 return step.numbers[definition.kind] ?? definition.defaultValues

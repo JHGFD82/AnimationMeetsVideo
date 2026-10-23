@@ -4,23 +4,6 @@ import Foundation
 // The choices of the looks still written in Swift, Displace and Slit-Scan
 // (see docs/psychedelic-effects.md); the others' are in their packages.
 
-/// Which of a Displace map's values leaves a pixel where it is.
-enum MapCenter: String, CaseIterable, Identifiable, Sendable {
-    /// Middle gray: darker moves one way, lighter the other.
-    case gray
-    /// Black: the map only ever pushes one way.
-    case black
-
-    var id: Self { self }
-
-    var name: String {
-        switch self {
-        case .gray: "Gray"
-        case .black: "Black"
-        }
-    }
-}
-
 /// Which way Slit-Scan's bands run: each from a moment later than the last.
 enum SlitDirection: String, CaseIterable, Identifiable, Sendable {
     /// Across, the top now.

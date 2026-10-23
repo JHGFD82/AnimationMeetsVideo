@@ -736,27 +736,39 @@ struct Drawing {
                     )
                     continue
                 }
-                if look.kind == .displace {
-                    // Against an earlier step, that picture moves by this
-                    // one; otherwise this one moves by the input.
-                    let moved: CIImage, map: CIImage
-                    if let against = look.against {
-                        guard let earlier = kept[against] else { continue }
-                        moved = earlier
-                        map = picture
-                    } else {
-                        guard let input = clip.inputs[look.effectID], let image = matteImage(input, frame: frameSize, start: start) else { continue }
-                        moved = picture
-                        map = image
+                // A package's other pictures: its input, and the picture
+                // before the step Against names. One not set is transparent;
+                // one set but not to be had (a missing file, a step not above
+                // this one) leaves the picture as it is.
+                let package = look.kind.definition.package
+                var pictures: [CIImage] = [], flags: [String: Double] = [:], unavailable = false
+                for wanted in package?.pictures ?? [] {
+                    switch wanted.source {
+                    case .input:
+                        guard let input = clip.inputs[look.effectID] else {
+                            pictures.append(CIImage(color: .clear))
+                            flags["hasInput"] = 0
+                            continue
+                        }
+                        guard let image = matteImage(input, frame: frameSize, start: start) else { unavailable = true; break }
+                        pictures.append(image)
+                        flags["hasInput"] = 1
+                    case .against:
+                        guard let against = look.against else {
+                            pictures.append(CIImage(color: .clear))
+                            flags["hasAgainst"] = 0
+                            continue
+                        }
+                        guard let earlier = kept[against] else { unavailable = true; break }
+                        pictures.append(earlier)
+                        flags["hasAgainst"] = 1
                     }
-                    if let displaced = LookRenderer.displace(look, moved: moved, map: map, canvas: canvas, frame: frame) {
-                        picture = displaced
-                    }
-                    continue
                 }
+                let flagValues = PictureFlags(hasInput: flags["hasInput"] == 1, hasAgainst: flags["hasAgainst"] == 1)
+                if unavailable || package?.drawsWhen.map({ $0.number(flagValues) == 0 }) == true { continue }
                 picture = LookRenderer.apply(
                     look, to: picture, over: picture.extent.intersection(canvas), canvas: canvas, frame: frame, scale: scale.width,
-                    space: clip.stack.colorSpace
+                    space: clip.stack.colorSpace, pictures: pictures, flags: flags
                 )
             case .matte(let effectID, let mode, let amount):
                 settleOpacity()

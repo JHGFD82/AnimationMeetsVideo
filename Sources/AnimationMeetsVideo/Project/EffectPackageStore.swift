@@ -186,6 +186,11 @@ enum EffectPackageStore {
             .optional("dependsOnPixelSize", .bool), .optional("flashes", .any),
             .optional("reach", .string),
             .optional("input", .choice(EffectPackage.Edges.allCases.map(\.rawValue), noun: "input")),
+            .optional("pictures", .array(.object(object([
+                .required("id", .string),
+                .required("from", .choice(EffectPackage.Picture.Source.allCases.map(\.rawValue), noun: "picture source")),
+            ])))),
+            .optional("drawsWhen", .string),
             .optional("after", .array(.object(object([
                 .required("filter", .string), .optional("when", .string), .optional("parameters", .any),
             ])))),
@@ -251,6 +256,35 @@ enum EffectPackageStore {
                 return parsed
             }
 
+            var pictures: [EffectPackage.Picture] = []
+            for (index, entry) in (json["pictures"] as? [[String: Any]] ?? []).enumerated() {
+                let path = "pictures[\(index)]"
+                guard kernelType == .general else {
+                    throw JSONShapeError(message: "Only a general kernel reads more than one picture", path: path)
+                }
+                let pictureID = entry["id"] as! String
+                guard EffectPackage.isValidControlID(pictureID), names[pictureID] == nil, !pictures.contains(where: { $0.id == pictureID }) else {
+                    throw JSONShapeError(message: "\"\(pictureID)\" isn't a name a picture can take: use letters and digits, not a control's", path: path + ".id")
+                }
+                let source = EffectPackage.Picture.Source(rawValue: entry["from"] as! String)!
+                guard !pictures.contains(where: { $0.source == source }) else {
+                    throw JSONShapeError(message: "It already reads a picture from \(source.rawValue)", path: path + ".from")
+                }
+                pictures.append(EffectPackage.Picture(id: pictureID, source: source))
+            }
+            var flags: [String: EffectExpression.ValueType] = [:]
+            if pictures.contains(where: { $0.source == .input }) { flags["hasInput"] = .number }
+            if pictures.contains(where: { $0.source == .against }) { flags["hasAgainst"] = .number }
+            names.merge(flags) { own, _ in own }
+            var drawsWhen: EffectExpression?
+            if let text = json["drawsWhen"] as? String {
+                do {
+                    drawsWhen = try EffectExpression(text, names: flags)
+                } catch {
+                    throw JSONShapeError(message: error.message + "; drawsWhen reads only whether it has its pictures", path: "drawsWhen")
+                }
+            }
+
             let arguments = try (json["arguments"] as! [String]).enumerated().map { try expression($1, "arguments[\($0)]") }
             var reach: EffectExpression?
             if let text = json["reach"] as? String {
@@ -301,7 +335,7 @@ enum EffectPackageStore {
                 amountIndex: amountIndex ?? (json["amount"] as? Bool == true ? controls.count : nil), arguments: arguments,
                 generates: json["generates"] as? Bool ?? false, changesEveryFrame: json["changesEveryFrame"] as? Bool ?? false,
                 dependsOnPixelSize: json["dependsOnPixelSize"] as? Bool ?? false, flashes: flashes,
-                rateControls: rates, reach: reach,
+                rateControls: rates, reach: reach, pictures: pictures, drawsWhen: drawsWhen,
                 edges: (json["input"] as? String).flatMap(EffectPackage.Edges.init(rawValue:)) ?? .clear, after: after
             )
         }

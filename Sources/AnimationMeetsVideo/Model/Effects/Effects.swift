@@ -494,9 +494,12 @@ struct Effect: Identifiable, Equatable, Sendable {
         guard enabled, missing == nil else { return true }
         // It wrote its keyframes onto another control, which draws them.
         if kind.isKeyframing { return true }
-        // Displace needs a map: an input, or the picture read against an
-        // earlier step.
-        if kind == .displace, input == nil, against == nil { return true }
+        // A package's look that needs its pictures does nothing without them
+        // (Displace, a map: an input, or the picture before an earlier step).
+        if let drawsWhen = kind.definition.package?.drawsWhen,
+           drawsWhen.number(PictureFlags(hasInput: input != nil, hasAgainst: against != nil)) == 0 {
+            return true
+        }
         // A look always changes the picture, unless it is mixed in at none.
         if kind.isLook {
             guard let amount = control(.amount), amount.enabled else { return false }

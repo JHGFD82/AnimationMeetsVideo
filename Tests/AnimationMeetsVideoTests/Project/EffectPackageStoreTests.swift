@@ -154,6 +154,16 @@ import Testing
             (filter("filter", "CINope"), "Core Image has no filter \"CINope\" at after[0].filter."),
             (filter("parameters", ["inputNope": "1"]), "CIBloom has no input \"inputNope\" at after[0].parameters.inputNope."),
             (filter("when", "mode"), "\"mode\" is a choice; read it as index(mode) at after[0].when."),
+            (changed { $0["pictures"] = [["id": "map", "from": "input"], ["id": "other", "from": "input"]] },
+             "It already reads a picture from input at pictures[1].from."),
+            (changed { $0["pictures"] = [["id": "radius", "from": "input"]] },
+             "\"radius\" isn't a name a picture can take: use letters and digits, not a control's at pictures[0].id."),
+            (changed { $0["pictures"] = [["id": "map", "from": "input"]]; $0["drawsWhen"] = "radius > 0" },
+             "Unknown name \"radius\"; drawsWhen reads only whether it has its pictures at drawsWhen."),
+            (changed {
+                $0["kernel"] = ["file": "kernel.metal", "function": "exGlow", "type": "color"]
+                $0["input"] = nil; $0["reach"] = nil; $0["pictures"] = [["id": "map", "from": "input"]]
+            }, "Only a general kernel reads more than one picture at pictures[0]."),
         ]
         for (manifest, message) in cases {
             #expect(try problem(manifest) == "The package can't be used. " + message)

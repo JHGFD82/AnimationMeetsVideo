@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "displace",
+  "version": 1,
+  "name": "Displace",
+  "category": "distortion",
+  "symbol": "arrow.up.and.down.and.arrow.left.and.right",
+  "kernel": {"file": "kernel.metal", "function": "amvDisplace", "type": "general"},
+  "controls": [
+    {"id": "displacement", "name": "Amount", "type": "number", "default": 2, "range": [-100, 100], "unit": "%", "step": 0.1},
+    {"id": "mapCenter", "name": "Still At", "type": "choice", "default": "gray", "options": [{"id": "gray", "name": "Gray"}, {"id": "black", "name": "Black"}]}
+  ],
+  "pictures": [{"id": "map", "from": "input"}, {"id": "earlier", "from": "against"}],
+  "drawsWhen": "hasInput + hasAgainst > 0",
+  "arguments": ["hasAgainst", "displacement / 100 * frameWidth", "1 - index(mapCenter)"],
+  "reach": "displacement / 100 * frameWidth"
+}

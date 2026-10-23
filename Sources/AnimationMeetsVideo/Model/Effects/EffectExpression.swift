@@ -57,7 +57,7 @@ struct EffectExpression: Equatable, Sendable {
 
     /// Every name a package's control can't take.
     static var reservedNames: Set<String> {
-        Set(builtInNames.keys).union(functions.keys).union(["center", "index", "amount"])
+        Set(builtInNames.keys).union(functions.keys).union(["center", "index", "amount", "hasInput", "hasAgainst"])
     }
 
     indirect enum Node: Equatable, Sendable {

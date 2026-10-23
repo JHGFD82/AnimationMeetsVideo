@@ -67,15 +67,21 @@ extension EditingProject {
         if passesThrough(clip), effect.kind != .transform {
             return EffectNote(text: "Pass Through can't apply this: it needs one combined picture.", dims: true)
         }
-        if effect.kind == .displace {
-            if effect.against != nil {
-                if !clip.effects.againstIsReachable(at: index) {
-                    return EffectNote(text: "The effect whose picture it moves is gone or below this step, so it does nothing until pointed elsewhere.", dims: true)
-                }
-            } else if effect.input == nil {
-                return EffectNote(text: "Drop a picture onto it for its map, or set Against to an earlier step to move that picture by the one reaching this step.", dims: true)
-            } else if let input = effect.input, isMissing(input) {
+        if let package = effect.kind.definition.package, !package.pictures.isEmpty {
+            // A package's look reading pictures besides its own (Displace).
+            if effect.against != nil, package.readsAgainst, !clip.effects.againstIsReachable(at: index) {
+                return EffectNote(text: "The step it reads (Against) is gone or below this one, so it does nothing until pointed elsewhere.", dims: true)
+            }
+            if let input = effect.input, package.takesInput, isMissing(input) {
                 return EffectNote(text: "The picture it takes is missing, so the clip is left as it is until it is found or replaced.", dims: true)
+            }
+            if effect.isNoOp {
+                let how = switch (package.takesInput, package.readsAgainst) {
+                case (true, true): "Drop a picture from the browser onto it, or set Against to an earlier step,"
+                case (true, false): "Drop a picture from the browser onto it"
+                default: "Set Against to an earlier step"
+                }
+                return EffectNote(text: "\(how) for the picture it reads.", dims: true)
             }
         } else if effect.kind.takesInput {
             guard let input = effect.input else {

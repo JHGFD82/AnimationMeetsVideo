@@ -8,8 +8,6 @@ extension EffectKind {
     static let blending = EffectKind(builtIn: "blending")
     static let color = EffectKind(builtIn: "color")
     static let matte = EffectKind(builtIn: "matte")
-    /// Distortion looks: they move the picture's pixels.
-    static let displace = EffectKind(builtIn: "displace")
     /// Distortions drawn from the picture at several moments. Flow
     /// Smear's motion is measured between neighboring pixels.
     static let flowSmear = EffectKind(builtIn: "flowSmear")
@@ -45,6 +43,7 @@ extension EffectKind {
 
     // From the packages in Resources/Effects, which ship with the app.
     static let posterize = EffectKind(package: "posterize")
+    static let displace = EffectKind(package: "displace")
     static let liquid = EffectKind(package: "liquid")
     static let twirl = EffectKind(package: "twirl")
     static let wave = EffectKind(package: "wave")
@@ -90,9 +89,6 @@ extension ControlKind {
     static let gain = ControlKind(builtIn: "gain")
     // Matte
     static let matteMode = ControlKind(builtIn: "matteMode")
-    // Displace
-    static let displacement = ControlKind(builtIn: "displacement")
-    static let mapCenter = ControlKind(builtIn: "mapCenter")
     // Flow Smear
     static let smear = ControlKind(builtIn: "smear")
     static let framesAhead = ControlKind(builtIn: "framesAhead")
@@ -222,11 +218,6 @@ enum BuiltInEffects {
         EffectDefinition(
             .matte, "Matte", .mattes, "circle.dashed.inset.filled", controls: [.matteMode, .amount], takesInput: true
         ),
-        // Distortion looks: they move the picture's pixels.
-        EffectDefinition(
-            .displace, "Displace", .distortion, "arrow.up.and.down.and.arrow.left.and.right",
-            controls: [.displacement, .mapCenter], takesInput: true, readsAgainst: true
-        ),
         // Distortions drawn from the picture at several moments. Flow
         // Smear's motion is measured between neighboring pixels.
         EffectDefinition(
@@ -335,9 +326,6 @@ enum BuiltInEffects {
         ),
         // Matte
         ControlDefinition(.matteMode, "Take", .matte, choice: MatteMode.alpha),
-        // Displace
-        ControlDefinition(.displacement, "Amount", .displace, defaults: [2], unit: "%", dragStep: 0.1, range: -100...100),
-        ControlDefinition(.mapCenter, "Still At", .displace, choice: MapCenter.gray),
         // Flow Smear
         ControlDefinition(.smear, "Amount", .flowSmear, defaults: [100], unit: "%", range: 0...400),
         ControlDefinition(.framesAhead, "Frames Ahead", .flowSmear, defaults: [1], unit: " frames", range: 1...8, isWhole: true),

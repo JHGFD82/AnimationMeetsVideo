@@ -90,7 +90,7 @@ enum LookRecipes {
 
     private static var noiseMelt: [Effect] {
         let noise = look(.fractalNoise, choices: ["noiseType": "turbulent"])
-        var displace = effect(.displace, [.displacement: [4]])
+        var displace = look(.displace, ["displacement": [4]])
         displace.against = noise.id
         return [noise, displace, effect(.hueCycle), effect(.grain)]
     }

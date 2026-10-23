@@ -19,6 +19,20 @@ struct EffectPackage: Sendable {
         case clear, clamped
     }
 
+    /// A picture the kernel reads besides the one reaching it (see
+    /// docs/effect-packages.md, "Pictures besides the clip's").
+    struct Picture: Sendable {
+        enum Source: String, CaseIterable, Sendable {
+            /// One dropped from the browser onto the effect.
+            case input
+            /// The clip's picture before the earlier step Against names.
+            case against
+        }
+
+        var id: String
+        var source: Source
+    }
+
     /// Whether the effects panel warns that it can flash more than three
     /// times a second (see docs/psychedelic-effects.md, "Safety: flashing").
     enum Flashing: Sendable {
@@ -64,6 +78,11 @@ struct EffectPackage: Sendable {
     /// The speeds: while one isn't 0 the effect changes on its own.
     let rateControls: Set<ControlKind>
     let reach: EffectExpression?
+    /// What the kernel reads besides its picture, in order after it.
+    let pictures: [Picture]
+    /// When it does anything, from `hasInput` and `hasAgainst`; nil for
+    /// always.
+    let drawsWhen: EffectExpression?
     let edges: Edges
     let after: [Filter]
 
@@ -71,11 +90,16 @@ struct EffectPackage: Sendable {
 
     var hasAmount: Bool { amountIndex != nil }
 
+    var takesInput: Bool { pictures.contains { $0.source == .input } }
+
+    var readsAgainst: Bool { pictures.contains { $0.source == .against } }
+
     var definition: EffectDefinition {
         var kinds = controls.map(\.kind)
         if let amountIndex { kinds.insert(.amount, at: amountIndex) }
         var definition = EffectDefinition(
-            kind, name, category, systemImage, controls: kinds, dependsOnPixelSize: dependsOnPixelSize, generates: generates
+            kind, name, category, systemImage, controls: kinds, takesInput: takesInput, readsAgainst: readsAgainst,
+            dependsOnPixelSize: dependsOnPixelSize, generates: generates
         )
         definition.package = self
         return definition
@@ -106,6 +130,25 @@ struct EffectPackage: Sendable {
         guard let first = id.first, first.isASCII, first.isLetter else { return false }
         return id.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
     }
+}
+
+/// What a package's `drawsWhen` reads: whether the effect has its
+/// pictures.
+struct PictureFlags: EffectExpression.Values {
+    var hasInput: Bool
+    var hasAgainst: Bool
+
+    func value(_ name: String) -> [Double] {
+        switch name {
+        case "hasInput": [hasInput ? 1 : 0]
+        case "hasAgainst": [hasAgainst ? 1 : 0]
+        default: [0]
+        }
+    }
+
+    func center(_ name: String) -> [Double] { [0, 0] }
+
+    func index(_ name: String) -> Double { 0 }
 }
 
 extension EffectKind {

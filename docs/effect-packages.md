@@ -1,12 +1,13 @@
 # Effect packages
 
-Status: **built** through step 6 of [Building it](#building-it), with a
-guide to [writing a package](#making-a-package);
-[pictures besides the clip's](#pictures-besides-the-clips), which move
-the last four looks out of Swift, and making packages from the app are
-planned. `EffectKind` and `ControlKind`
+Status: **built** through step 8 of [Building it](#building-it), with a
+guide to [writing a package](#making-a-package); of
+[pictures besides the clip's](#pictures-besides-the-clips), inputs and
+Against are built and Displace is a package, while moments and motion,
+which move Feedback, Slit-Scan and Flow Smear, and making packages from
+the app are planned. `EffectKind` and `ControlKind`
 are names looked up in an `EffectRegistry` of the effects written in
-Swift (BuiltInEffects.swift), the 21 looks that ship as packages
+Swift (BuiltInEffects.swift), the 22 looks that ship as packages
 (Resources/Effects) and the person's packages, which
 `EffectPackageStore` reads from the Effects folder at launch. A
 package's look is listed, saved and drawn like any other
@@ -330,8 +331,9 @@ as editing one does, since effects in the open project use its controls.
 
 ## Pictures besides the clip's
 
-Status: **planned, not implemented**. The four looks still in Swift
-(see [What stays in Swift](#what-stays-in-swift)) each draw from a
+Status: **`input` and `against` built**, and Displace a package;
+`moment`, `motion` and [repeating](#repeating) planned. The four looks
+that were left in Swift each draw from a
 picture besides the one reaching them: Displace from a dropped picture
 or an earlier step's, Feedback and Slit-Scan from the footage at other
 moments, Flow Smear from its motion. The app fetches these before the
@@ -354,12 +356,22 @@ space, in the order listed:
 | `motion` | The motion from this frame to the footage's frame `ahead` frames later, an expression, as a picture: red across and green up, in output pixels, as Flow Smear measures it now (`BlockMatchFlow`). Not measured while the viewer plays. | `hasMotion` |
 
 A picture that isn't there (no input dropped, no earlier frame yet, no
-motion while playing) is transparent. `"drawsWhen"`, an expression, says
-when the effect does anything; while it is 0 the effect is a no-op and
-the effects panel says what it lacks. Displace's is
-`"hasInput + hasAgainst > 0"`, and its kernel picks its roles itself:
-the earlier picture moved by the one reaching it with Against set, else
-the one reaching it moved by its input.
+motion while playing) is transparent. One that is set but can't be had,
+a dropped file that is missing or an Against step no longer above this
+one, leaves the picture as it is, and the effects panel says why.
+`"drawsWhen"`, an expression reading only the `has…` names, says when
+the effect does anything; while it is 0 the effect is a no-op and the
+effects panel says what it lacks ("Drop a picture from the browser onto
+it, or set Against to an earlier step, for the picture it reads").
+Displace's is `"hasInput + hasAgainst > 0"`, and its kernel picks its
+roles itself: the earlier picture moved by the one reaching it with
+Against set, else the one reaching it moved by its input.
+
+A look reading an input or Against has the effects panel's Input or
+Against row, as Matte and Blending do; Against's first option is "Its
+Input" for a look that takes one, "None" for one that doesn't. Its
+pictures are what makes a kind `takesInput` or `readsAgainst`, so saving,
+pasting and presets treat them as the built-in effects'.
 
 Pictures need a general kernel, the only kind that reads more than one.
 Expressions also gain `frameDuration` (the timeline's frame, in seconds)
@@ -463,15 +475,14 @@ kernel:
 - The shapes and Stroke: vector drawing, sized to the frame.
 - The sound effects: biquad filters and Audio Units.
 - The Keyframing effects: they write keyframes, not pictures.
-- Feedback, Slit-Scan and Flow Smear: they draw the picture at other
-  moments, and Flow Smear uses Vision's optical flow.
-- Displace: it reads an input or an earlier step's picture
-  ([Against](effects.md#against)). Packages taking inputs are under
-  [Not yet](#not-yet).
+- Feedback, Slit-Scan and Flow Smear, until
+  [moments and motion](#pictures-besides-the-clips) are built: they draw
+  the picture at other moments, and Flow Smear the motion to a frame
+  ahead (from `BlockMatchFlow`, the block matcher morphs use).
 
-The other 21 looks are built-in packages: the eight Color looks, the
-seven Noise looks, Liquid, Twirl, Wave, Kaleidoscope, Mirror Tile and
-Chromatic Aberration. Each was generated from the Swift it replaced
+The other 22 looks are built-in packages: the eight Color looks, the
+seven Noise looks, Displace, Liquid, Twirl, Wave, Kaleidoscope, Mirror
+Tile and Chromatic Aberration. Each was generated from the Swift it replaced
 and checked against it: its controls one by one, its pictures against
 the reference frames, and the recipes using it.
 
@@ -553,6 +564,7 @@ In order, each step usable on its own:
    against an earlier step, from twelve earlier moments, and from a frame
    ahead, each picture different, paused and playing. **Built.**
 8. Pictures from inputs and Against, and Displace moved into a package.
+   **Built.**
 9. Moments and repeating, and Feedback and Slit-Scan moved.
 10. Motion, and Flow Smear moved.
 11. Writing a package by hand, described above. **Built.**

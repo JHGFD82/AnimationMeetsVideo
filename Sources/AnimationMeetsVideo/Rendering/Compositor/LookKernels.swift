@@ -186,17 +186,6 @@ enum LookKernels {
     // Back and forth between 0 and 1, so mirrored copies meet seamlessly.
     inline float2 mirrored(float2 w) { return 1.0 - abs(fract(w * 0.5) * 2.0 - 1.0); }
 
-    // Moves each point of `image` by `map`'s red (across) and green (down),
-    // from middle gray or from black.
-    extern "C" [[stitchable]] float4 amvDisplace(coreimage::sampler image, coreimage::sampler map, float reach, float fromGray,
-                                                 coreimage::destination dest) {
-        float2 d = dest.coord();
-        float4 m = map.sample(map.transform(d));
-        float2 v = m.a > 0.0 ? m.rg / m.a : float2(fromGray > 0.5 ? 0.5 : 0.0);
-        float2 offset = fromGray > 0.5 ? (v - 0.5) * 2.0 : v;
-        return image.sample(image.transform(d + float2(offset.x, -offset.y) * reach));
-    }
-
     // White from `inner` out to `outer` around the center: one of
     // Slit-Scan's rings.
     extern "C" [[stitchable]] float4 amvRingMask(float2 center, float inner, float outer, coreimage::destination dest) {
@@ -217,10 +206,13 @@ enum LookRenderer {
     /// it is for any other.
     static func apply(
         _ step: LookStep, to picture: CIImage, over region: CGRect, canvas: CGRect, frame: CGRect, scale: CGFloat,
-        space: ProjectColorSpace
+        space: ProjectColorSpace, pictures: [CIImage] = [], flags: [String: Double] = [:]
     ) -> CIImage {
         guard let package = step.kind.definition.package else { return picture }
-        return PackageLookRenderer.apply(package, step, to: picture, over: region, canvas: canvas, frame: frame, scale: scale, space: space)
+        return PackageLookRenderer.apply(
+            package, step, to: picture, over: region, canvas: canvas, frame: frame, scale: scale, space: space,
+            pictures: pictures, flags: flags
+        )
     }
 
     /// The looks drawn from the picture at other moments: `earlier` gives
@@ -316,22 +308,6 @@ enum LookRenderer {
         return kernel.apply(extent: region.integral, arguments: [
             image.cropped(to: region), Float(space.gradingSpaceIndex), Float(turn - floor(turn)), Float(0), Float(0), Float(1),
         ]) ?? image
-    }
-
-    /// Displace: `moved` taken from along `map`'s red and green.
-    static func displace(_ step: LookStep, moved: CIImage, map: CIImage, canvas: CGRect, frame: CGRect) -> CIImage? {
-        guard let kernel = LookKernels.compiled["amvDisplace"] else { return nil }
-        let reach = CGFloat(step.value(.displacement) / 100) * frame.width
-        let fromGray = step.choice(.mapCenter, as: MapCenter.self) != .black
-        let clear = CIImage(color: .clear)
-        return kernel.apply(
-            extent: canvas.integral,
-            roiCallback: { index, rect in index == 0 ? rect.insetBy(dx: -abs(reach) - 1, dy: -abs(reach) - 1) : rect },
-            arguments: [
-                moved.composited(over: clear).cropped(to: canvas), map.composited(over: clear).cropped(to: canvas),
-                Float(reach), Float(fromGray ? 1 : 0),
-            ]
-        )
     }
 
     /// Where a look's Center is, in output pixels: an offset from the

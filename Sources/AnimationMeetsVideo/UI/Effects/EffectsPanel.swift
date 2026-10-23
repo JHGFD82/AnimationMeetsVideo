@@ -602,16 +602,18 @@ struct EffectsPanel: View {
         }
     }
 
-    /// What a Blending step blends with: the backdrop, or the clip's own
+    /// What a Blending step blends with, or a package's look reads: the
+    /// backdrop, or for a look its input or nothing; or the clip's own
     /// picture as it was before one of the effects above it.
     private func againstRow(_ effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
         let clip = c.clip
         let index = clip.effects.index(of: effect.id) ?? 0
         let above = clip.effects.effectsAbove(index)
-        // Blending reads the backdrop by default; Displace its input, as
-        // the map.
-        let displaces = effect.kind == .displace
-        var options: [(id: String, name: String)] = [("backdrop", displaces ? "Its Input" : "Backdrop")]
+        // Blending reads the backdrop by default; a look its input, if it
+        // takes one (Displace's map).
+        let blends = effect.kind == .blending
+        let unset = blends ? "Backdrop" : effect.kind.takesInput ? "Its Input" : "None"
+        var options: [(id: String, name: String)] = [("backdrop", unset)]
         options += above.map { ($0.id.uuidString, "Before \($0.displayName)") }
         // An effect that is gone, or has been moved below the step, can't be
         // read; the step does nothing until it points somewhere else.
@@ -634,9 +636,9 @@ struct EffectsPanel: View {
             ),
             lane: emptyLane(c)
         )
-        .help(displaces
-              ? "What is moved: its input, by the picture reaching this step; or the clip's own picture before an earlier effect, by the picture reaching it"
-              : "What the clip is blended with: the backdrop, or its own picture before an earlier effect")
+        .help(blends
+              ? "What the clip is blended with: the backdrop, or its own picture before an earlier effect"
+              : "What it reads besides the picture reaching it: its input, or the clip's own picture before an earlier effect")
     }
 
     @ViewBuilder
