@@ -220,21 +220,15 @@ enum StackFolding {
                 guard amount > 0 else { continue }
                 flush()
                 steps.append(.blend(mode: mode.blendMode, amount: amount, against: effect.against))
-            case .equalizer, .compressor, .limiter, .voiceIsolation:
-                // Sound effects live in a clip's `audioEffects`, played by
-                // its audio track's tap.
-                continue
-            case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot:
-                // Keyframing effects draw nothing: the keyframes they wrote
-                // are on the controls below.
-                continue
-            case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges,
-                 .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch,
-                 .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration,
-                 .flowSmear, .slitScan, .feedback:
+            case _ where effect.kind.isLook:
                 guard let look = LookStep(effect, at: time) else { continue }
                 flush()
                 steps.append(.look(look))
+            default:
+                // Sound effects live in a clip's `audioEffects`, played by
+                // its audio track's tap. Keyframing effects draw nothing:
+                // the keyframes they wrote are on the controls below.
+                continue
             }
         }
         flush()

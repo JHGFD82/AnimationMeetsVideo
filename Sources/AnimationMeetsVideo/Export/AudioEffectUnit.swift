@@ -58,12 +58,7 @@ final class AudioEffectUnit: SoundEffectProcessor {
         case .compressor: subType = kAudioUnitSubType_DynamicsProcessor
         case .limiter: subType = kAudioUnitSubType_PeakLimiter
         case .voiceIsolation: subType = kAudioUnitSubType_AUSoundIsolation
-        case .equalizer, .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke,
-             .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot,
-             .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges,
-             .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch,
-             .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration,
-             .flowSmear, .slitScan, .feedback: return nil
+        default: return nil
         }
         guard format.mFormatID == kAudioFormatLinearPCM, format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
               format.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0, format.mBitsPerChannel == 32,
@@ -189,12 +184,7 @@ final class AudioEffectUnit: SoundEffectProcessor {
             set(kLimiterParam_DecayTime, value(.limiterRelease) / 1000)
         case .voiceIsolation:
             set(kAUSoundIsolationParam_WetDryMixPercent, value(.isolation))
-        case .equalizer, .transform, .blending, .color, .matte, .rectangle, .ellipse, .polygon, .star, .stroke,
-             .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot,
-             .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges,
-             .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch,
-             .displace, .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration,
-             .flowSmear, .slitScan, .feedback:
+        default:
             break
         }
     }

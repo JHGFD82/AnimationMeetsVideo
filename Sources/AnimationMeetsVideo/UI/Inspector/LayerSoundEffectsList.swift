@@ -38,7 +38,7 @@ struct LayerSoundEffectsList: View {
                 }
             }
             Menu {
-                ForEach(EffectKind.allCases.filter(\.isAudio)) { kind in
+                ForEach(EffectKind.all.filter(\.isAudio)) { kind in
                     Button(kind.name) {
                         if let id = project.addEffect(kind, toLayer: layer.id, in: timelineID) { open.insert(id) }
                     }

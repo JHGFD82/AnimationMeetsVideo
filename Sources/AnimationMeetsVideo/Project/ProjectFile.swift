@@ -856,28 +856,15 @@ extension ProjectFile {
             var fields: [O.Field] = [
                 .required("id", .uuid), .required("kind", .string), .optional("name", .string), .optional("enabled", .bool),
             ]
-            switch kind {
-            case .transform: fields.append(.optional("movesAnchor", .bool))
-            case .blending: fields.append(.optional("against", .uuid))
-            case .color, .rectangle, .ellipse, .polygon, .star, .stroke, .equalizer, .compressor, .limiter, .voiceIsolation: break
-            case .hueCycle, .cosinePalette, .gradientMap, .solarize, .posterize, .channelMixer, .falseColor, .neonEdges: break
-            case .grain, .staticNoise, .fractalNoise, .cells, .dither, .interference, .blockGlitch: break
-            case .liquid, .twirl, .wave, .kaleidoscope, .mirrorTile, .chromaticAberration: break
-            case .flowSmear, .slitScan, .feedback: break
-            case .displace:
-                fields.append(.optional("against", .uuid))
-                fields.append(.optional("input", .object(object([
-                    .optional("asset", .uuid), .optional("timeline", .uuid),
-                    .optional("offset", .time), .optional("loops", .bool),
-                ], oneOf: [["asset", "timeline"]]))))
-            case .audioKeys, .beatKeys, .wiggler, .oscillator, .smoother, .looper, .timeStep, .overshoot:
-                fields.append(.optional("keyframing", .object(keyframing)))
-            case .matte:
+            if kind == .transform { fields.append(.optional("movesAnchor", .bool)) }
+            if kind.readsAgainst { fields.append(.optional("against", .uuid)) }
+            if kind.takesInput {
                 fields.append(.optional("input", .object(object([
                     .optional("asset", .uuid), .optional("timeline", .uuid),
                     .optional("offset", .time), .optional("loops", .bool),
                 ], oneOf: [["asset", "timeline"]]))))
             }
+            if kind.isKeyframing { fields.append(.optional("keyframing", .object(keyframing))) }
             fields += extra
             var controls = Dictionary(uniqueKeysWithValues: kind.controlKinds.map { ($0.rawValue, control($0)) })
             if kind == .equalizer {
@@ -896,7 +883,7 @@ extension ProjectFile {
         /// each (a project's effects may have paste changes, a preset's
         /// may say what was left behind).
         static func effects(extra: [O.Field]) -> JSONShape {
-            let byKind = Dictionary(uniqueKeysWithValues: EffectKind.allCases.map { ($0.rawValue, effect($0, extra: extra)) })
+            let byKind = Dictionary(uniqueKeysWithValues: EffectKind.all.map { ($0.rawValue, effect($0, extra: extra)) })
             return .array(.tagged(key: "kind", noun: "effect kind", byKind))
         }
     }

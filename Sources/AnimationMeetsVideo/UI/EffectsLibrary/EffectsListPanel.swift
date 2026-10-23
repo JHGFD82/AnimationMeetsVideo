@@ -25,7 +25,7 @@ struct EffectsListPanel: View {
                             .font(Design.Typeface.groupTitle)
                             .foregroundStyle(Design.textSecondary)
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 6)], alignment: .leading, spacing: 6) {
-                            ForEach(EffectKind.allCases.filter { $0.category == category }) { kind in
+                            ForEach(EffectKind.all.filter { $0.category == category }) { kind in
                                 // The double-click goes inside the drag: on
                                 // the outside its tap gesture takes the mouse
                                 // down first, and the chip never starts a drag.

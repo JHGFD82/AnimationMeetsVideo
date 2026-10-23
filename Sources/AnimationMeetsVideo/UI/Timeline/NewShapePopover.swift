@@ -13,7 +13,7 @@ struct NewShapePopover: View {
                 .foregroundStyle(Design.textSecondary)
                 .padding(.horizontal, 6)
                 .padding(.bottom, 2)
-            ForEach(EffectKind.allCases.filter(\.drawsShape)) { kind in
+            ForEach(EffectKind.all.filter(\.drawsShape)) { kind in
                 Button {
                     onAdd(kind)
                 } label: {

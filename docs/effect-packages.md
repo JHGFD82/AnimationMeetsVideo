@@ -1,8 +1,9 @@
 # Effect packages
 
-Status: **planned, not implemented**. Today every effect kind is a case
-of `EffectKind`, its controls cases of `ControlKind`, and each look's
-drawing a `case` in `LookRenderer`. This plan moves the looks of
+Status: **planned; step 1 of [Building it](#building-it) built**.
+`EffectKind` and `ControlKind` are names looked up in an
+`EffectRegistry` that only the built-in effects fill (BuiltInEffects.swift),
+and each look's drawing is still a `case` in `LookRenderer`. This plan moves the looks of
 [psychedelic-effects.md](psychedelic-effects.md) out of Swift into
 **effect packages**: folders the app reads at launch, which can be
 written, shared and installed without building the app. Effects that need
@@ -288,7 +289,7 @@ In order, each step usable on its own:
 
 1. `EffectKind` and `ControlKind` as structs over their strings, and the
    `EffectRegistry` with every effect registered from Swift. No change in
-   behavior or saved files.
+   behavior or saved files. **Built.**
 2. The package reader and its strict checks, the expression parser, and
    the Effects folders; packages load but none ship.
 3. `LookRenderer` drawing a package look, and Posterize moved into a
