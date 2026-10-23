@@ -1,14 +1,14 @@
 # Effect packages
 
-Status: **planned; steps 1 to 4 of [Building it](#building-it) built**.
-`EffectKind` and `ControlKind` are names looked up in an
-`EffectRegistry` of the effects written in Swift (BuiltInEffects.swift),
-the packages that ship with the app (Resources/Effects: Posterize, the
-Color looks and the Noise looks so far)
-and the person's, which `EffectPackageStore` reads from the Effects
-folder at launch. A package's look is listed, saved and drawn like any
-other (`PackageLookRenderer`), and one whose package is missing is kept;
-the Distortion looks are still a `case` in `LookRenderer` each. This plan moves the looks of
+Status: **steps 1 to 5 of [Building it](#building-it) built**; step 6
+(problems shown in the library) remains. `EffectKind` and `ControlKind`
+are names looked up in an `EffectRegistry` of the effects written in
+Swift (BuiltInEffects.swift), the 21 looks that ship as packages
+(Resources/Effects) and the person's packages, which
+`EffectPackageStore` reads from the Effects folder at launch. A
+package's look is listed, saved and drawn like any other
+(`PackageLookRenderer`), and one whose package is missing is kept.
+This plan moved the looks of
 [psychedelic-effects.md](psychedelic-effects.md) out of Swift into
 **effect packages**: folders the app reads at launch, which can be
 written, shared and installed without building the app. Effects that need
@@ -285,9 +285,11 @@ kernel:
   ([Against](effects.md#against)). Packages taking inputs are under
   [Not yet](#not-yet).
 
-The other 21 looks become built-in packages: the eight Color looks, the
+The other 21 looks are built-in packages: the eight Color looks, the
 seven Noise looks, Liquid, Twirl, Wave, Kaleidoscope, Mirror Tile and
-Chromatic Aberration.
+Chromatic Aberration. Each was generated from the Swift it replaced
+and checked against it: its controls one by one, its pictures against
+the reference frames, and the recipes using it.
 
 ## Inside the app
 
@@ -309,9 +311,9 @@ Chromatic Aberration.
 - The project and preset shapes strict loading checks against are made
   at each load, from the registry, so they always know its packages.
 - `LookRenderer` hands every package look to `PackageLookRenderer`, which
-  draws it one way, from the package; its `case` per look goes away as
-  each moves. `PackageKernels` compiles each package's kernel once,
-  keyed by its content hash.
+  draws it one way, from the package; it has no `case` per look left.
+  `PackageKernels` compiles each package's kernel once, keyed by its
+  content hash.
 - Strict loading checks a package effect against its definition, as
   `ProjectFile.ShapeKit.effect` checks a built-in one, and missing
   effects as above.
@@ -361,5 +363,5 @@ In order, each step usable on its own:
    built-in package, checked against its reference frames. **Built.**
 4. Missing effects in projects and presets. **Built.**
 5. The other Color looks, then the Noise looks, then the Distortion
-   looks, as packages, a category at a time. Color and Noise **built**.
+   looks, as packages, a category at a time. **Built.**
 6. Problems and compile errors shown in the effects library.

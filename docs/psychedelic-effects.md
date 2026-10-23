@@ -218,9 +218,11 @@ In order, each step usable on its own:
    `.look` step (`LookStep`: each control's numbers and choices at the
    moment, Amount, and the clip's time for one that moves), which
    `LookRenderer` draws with the kernels in `LookKernels`: one Metal
-   source of Core Image kernels, compiled once at first use. Posterize's
-   is in its effect package instead (see
-   [effect-packages.md](effect-packages.md)), as the others' will be. Where it
+   source of Core Image kernels, compiled once at first use. Since then
+   every look but Displace, Flow Smear, Slit-Scan and Feedback has moved
+   into an effect package of its own (see
+   [effect-packages.md](effect-packages.md)), kernel and all, drawing the
+   same pictures. Where it
    differs from the tables above:
    - **Every look has Amount** (100%), mixing it with the picture it
      changes; at 0% it is a no-op, like other effects.

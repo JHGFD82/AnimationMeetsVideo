@@ -224,8 +224,4 @@ extension LoopMode: ControlChoice {}
 extension LoopSide: ControlChoice {}
 extension KeyCurve: ControlChoice {}
 extension MapCenter: ControlChoice {}
-extension TwirlShape: ControlChoice {}
-extension WaveDirection: ControlChoice {}
-extension TilePattern: ControlChoice {}
-extension AberrationMode: ControlChoice {}
 extension SlitDirection: ControlChoice {}

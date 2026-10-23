@@ -16,6 +16,13 @@ import Testing
         #expect(ControlKind(rawValue: "glowRadius") == nil)
     }
 
+    /// Swift's effects and the shipped packages' together, in the order
+    /// the library has always shown them.
+    @Test func theLibraryKeepsItsOrder() {
+        #expect(EffectKind.all.map(\.rawValue) == BuiltInEffects.libraryOrder)
+        #expect(registry.problems.isEmpty)
+    }
+
     @Test func everyControlAnEffectListsIsRegistered() {
         for kind in EffectKind.all {
             for control in kind.controlKinds {

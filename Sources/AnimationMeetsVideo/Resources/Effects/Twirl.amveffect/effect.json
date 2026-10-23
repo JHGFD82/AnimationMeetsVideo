@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "id": "twirl",
+  "version": 1,
+  "name": "Twirl",
+  "category": "distortion",
+  "symbol": "tornado",
+  "kernel": {"file": "kernel.metal", "function": "amvTwirl", "type": "warp"},
+  "controls": [
+    {"id": "twirlShape", "name": "Shape", "type": "choice", "default": "twirl", "options": [{"id": "twirl", "name": "Twirl"}, {"id": "vortex", "name": "Vortex"}, {"id": "pinch", "name": "Pinch"}, {"id": "bulge", "name": "Bulge"}]},
+    {"id": "distortCenter", "name": "Center", "type": "point"},
+    {"id": "distortRadius", "name": "Radius", "type": "number", "default": 300, "range": [1, 50000], "unit": "px"},
+    {"id": "twirlAmount", "name": "Amount", "type": "number", "default": 100, "range": [-1000, 1000], "unit": "%"}
+  ],
+  "arguments": ["center(distortCenter)", "distortRadius * scale", "twirlAmount / 100", "index(twirlShape)"]
+}

@@ -10,12 +10,6 @@ extension EffectKind {
     static let matte = EffectKind(builtIn: "matte")
     /// Distortion looks: they move the picture's pixels.
     static let displace = EffectKind(builtIn: "displace")
-    static let liquid = EffectKind(builtIn: "liquid")
-    static let twirl = EffectKind(builtIn: "twirl")
-    static let wave = EffectKind(builtIn: "wave")
-    static let kaleidoscope = EffectKind(builtIn: "kaleidoscope")
-    static let mirrorTile = EffectKind(builtIn: "mirrorTile")
-    static let chromaticAberration = EffectKind(builtIn: "chromaticAberration")
     /// Distortions drawn from the picture at several moments. Flow
     /// Smear's motion is measured between neighboring pixels.
     static let flowSmear = EffectKind(builtIn: "flowSmear")
@@ -51,6 +45,12 @@ extension EffectKind {
 
     // From the packages in Resources/Effects, which ship with the app.
     static let posterize = EffectKind(package: "posterize")
+    static let liquid = EffectKind(package: "liquid")
+    static let twirl = EffectKind(package: "twirl")
+    static let wave = EffectKind(package: "wave")
+    static let kaleidoscope = EffectKind(package: "kaleidoscope")
+    static let mirrorTile = EffectKind(package: "mirrorTile")
+    static let chromaticAberration = EffectKind(package: "chromaticAberration")
     static let grain = EffectKind(package: "grain")
     static let staticNoise = EffectKind(package: "staticNoise")
     static let fractalNoise = EffectKind(package: "fractalNoise")
@@ -93,30 +93,6 @@ extension ControlKind {
     // Displace
     static let displacement = ControlKind(builtIn: "displacement")
     static let mapCenter = ControlKind(builtIn: "mapCenter")
-    // Liquid
-    static let noiseScale = ControlKind(builtIn: "noiseScale")
-    static let evolution = ControlKind(builtIn: "evolution")
-    static let warps = ControlKind(builtIn: "warps")
-    // Twirl
-    static let twirlShape = ControlKind(builtIn: "twirlShape")
-    static let distortCenter = ControlKind(builtIn: "distortCenter")
-    static let distortRadius = ControlKind(builtIn: "distortRadius")
-    static let twirlAmount = ControlKind(builtIn: "twirlAmount")
-    // Wave
-    static let waveDirection = ControlKind(builtIn: "waveDirection")
-    static let wavelength = ControlKind(builtIn: "wavelength")
-    static let waveHeight = ControlKind(builtIn: "waveHeight")
-    static let waveSpeed = ControlKind(builtIn: "waveSpeed")
-    // Kaleidoscope
-    static let segments = ControlKind(builtIn: "segments")
-    static let distortAngle = ControlKind(builtIn: "distortAngle")
-    static let spinSpeed = ControlKind(builtIn: "spinSpeed")
-    // Mirror Tile
-    static let tilePattern = ControlKind(builtIn: "tilePattern")
-    static let tileSize = ControlKind(builtIn: "tileSize")
-    // Chromatic Aberration
-    static let aberration = ControlKind(builtIn: "aberration")
-    static let aberrationMode = ControlKind(builtIn: "aberrationMode")
     // Flow Smear
     static let smear = ControlKind(builtIn: "smear")
     static let framesAhead = ControlKind(builtIn: "framesAhead")
@@ -124,6 +100,7 @@ extension ControlKind {
     static let slitDirection = ControlKind(builtIn: "slitDirection")
     static let bands = ControlKind(builtIn: "bands")
     static let timeSpread = ControlKind(builtIn: "timeSpread")
+    static let distortCenter = ControlKind(builtIn: "distortCenter")
     // Feedback
     static let copies = ControlKind(builtIn: "copies")
     static let feedbackDelay = ControlKind(builtIn: "feedbackDelay")
@@ -250,26 +227,6 @@ enum BuiltInEffects {
             .displace, "Displace", .distortion, "arrow.up.and.down.and.arrow.left.and.right",
             controls: [.displacement, .mapCenter], takesInput: true, readsAgainst: true
         ),
-        EffectDefinition(
-            .liquid, "Liquid", .distortion, "drop", controls: [.displacement, .noiseScale, .warps, .evolution, .seed]
-        ),
-        EffectDefinition(
-            .twirl, "Twirl", .distortion, "tornado", controls: [.twirlShape, .distortCenter, .distortRadius, .twirlAmount]
-        ),
-        EffectDefinition(
-            .wave, "Wave", .distortion, "water.waves", controls: [.waveDirection, .wavelength, .waveHeight, .waveSpeed]
-        ),
-        EffectDefinition(
-            .kaleidoscope, "Kaleidoscope", .distortion, "seal", controls: [.segments, .distortCenter, .distortAngle, .spinSpeed]
-        ),
-        EffectDefinition(
-            .mirrorTile, "Mirror Tile", .distortion, "square.grid.2x2",
-            controls: [.tilePattern, .tileSize, .distortCenter, .distortAngle]
-        ),
-        EffectDefinition(
-            .chromaticAberration, "Chromatic Aberration", .distortion, "camera.filters",
-            controls: [.aberration, .aberrationMode, .distortCenter, .distortAngle]
-        ),
         // Distortions drawn from the picture at several moments. Flow
         // Smear's motion is measured between neighboring pixels.
         EffectDefinition(
@@ -381,30 +338,6 @@ enum BuiltInEffects {
         // Displace
         ControlDefinition(.displacement, "Amount", .displace, defaults: [2], unit: "%", dragStep: 0.1, range: -100...100),
         ControlDefinition(.mapCenter, "Still At", .displace, choice: MapCenter.gray),
-        // Liquid
-        ControlDefinition(.warps, "Warps", .liquid, defaults: [2], range: 1...4, isWhole: true),
-        ControlDefinition(.noiseScale, "Scale", .liquid, defaults: [200], unit: " px", range: 2...10_000),
-        ControlDefinition(.evolution, "Evolution", .liquid, defaults: [0.25], unit: " /s", dragStep: 0.01, range: -20...20),
-        // Twirl
-        ControlDefinition(.twirlShape, "Shape", .twirl, choice: TwirlShape.twirl),
-        ControlDefinition(.distortCenter, "Center", .twirl, defaults: [0, 0], unit: " px", componentNames: ["Δx", "Δy"]),
-        ControlDefinition(.distortRadius, "Radius", .twirl, defaults: [300], unit: " px", range: 1...50_000),
-        ControlDefinition(.twirlAmount, "Amount", .twirl, defaults: [100], unit: "%", range: -1000...1000),
-        // Wave
-        ControlDefinition(.waveDirection, "Direction", .wave, choice: WaveDirection.horizontal),
-        ControlDefinition(.wavelength, "Wavelength", .wave, defaults: [120], unit: " px", range: 2...50_000),
-        ControlDefinition(.waveHeight, "Height", .wave, defaults: [12], unit: " px", range: -10_000...10_000),
-        ControlDefinition(.waveSpeed, "Speed", .wave, defaults: [1], unit: " /s", dragStep: 0.01, range: -20...20),
-        // Kaleidoscope
-        ControlDefinition(.segments, "Segments", .kaleidoscope, defaults: [6], range: 2...64, isWhole: true),
-        ControlDefinition(.distortAngle, "Angle", .kaleidoscope, defaults: [0], unit: "°"),
-        ControlDefinition(.spinSpeed, "Speed", .kaleidoscope, defaults: [0], unit: " /s", dragStep: 0.01, range: -20...20),
-        // Mirror Tile
-        ControlDefinition(.tilePattern, "Pattern", .mirrorTile, choice: TilePattern.fourfold),
-        ControlDefinition(.tileSize, "Tile Size", .mirrorTile, defaults: [480], unit: " px", range: 1...50_000),
-        // Chromatic Aberration
-        ControlDefinition(.aberration, "Amount", .chromaticAberration, defaults: [1], unit: "%", dragStep: 0.1, range: -20...20),
-        ControlDefinition(.aberrationMode, "Mode", .chromaticAberration, choice: AberrationMode.radial),
         // Flow Smear
         ControlDefinition(.smear, "Amount", .flowSmear, defaults: [100], unit: "%", range: 0...400),
         ControlDefinition(.framesAhead, "Frames Ahead", .flowSmear, defaults: [1], unit: " frames", range: 1...8, isWhole: true),
@@ -412,6 +345,7 @@ enum BuiltInEffects {
         ControlDefinition(.slitDirection, "Direction", .slitScan, choice: SlitDirection.rows),
         ControlDefinition(.bands, "Bands", .slitScan, defaults: [16], range: 2...64, isWhole: true),
         ControlDefinition(.timeSpread, "Time Spread", .slitScan, defaults: [0.5], unit: " s", range: 0...10),
+        ControlDefinition(.distortCenter, "Center", .slitScan, defaults: [0, 0], unit: " px", componentNames: ["Δx", "Δy"]),
         // Feedback
         ControlDefinition(.copies, "Copies", .feedback, defaults: [8], range: 1...32, isWhole: true),
         ControlDefinition(.feedbackDelay, "Delay", .feedback, defaults: [1], unit: " frames", range: 1...30, isWhole: true),

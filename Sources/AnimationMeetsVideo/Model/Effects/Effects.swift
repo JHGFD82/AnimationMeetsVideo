@@ -602,9 +602,6 @@ struct Effect: Identifiable, Equatable, Sendable {
         default: break
         }
         let moving: ControlKind? = switch kind {
-        case .liquid: .evolution
-        case .wave: .waveSpeed
-        case .kaleidoscope: .spinSpeed
         default: nil
         }
         return moves(moving.flatMap(control))

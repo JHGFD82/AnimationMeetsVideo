@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "id": "mirrorTile",
+  "version": 1,
+  "name": "Mirror Tile",
+  "category": "distortion",
+  "symbol": "square.grid.2x2",
+  "kernel": {"file": "kernel.metal", "function": "amvMirrorTile", "type": "warp"},
+  "controls": [
+    {"id": "tilePattern", "name": "Pattern", "type": "choice", "default": "fourfold", "options": [{"id": "tile", "name": "Tile"}, {"id": "fourfold", "name": "Fourfold"}, {"id": "eightfold", "name": "Eightfold"}, {"id": "droste", "name": "Droste"}]},
+    {"id": "tileSize", "name": "Tile Size", "type": "number", "default": 480, "range": [1, 50000], "unit": "px"},
+    {"id": "distortCenter", "name": "Center", "type": "point"},
+    {"id": "distortAngle", "name": "Angle", "type": "number", "default": 0, "unit": "°"}
+  ],
+  "arguments": ["center(distortCenter)", "tileSize * scale", "-rad(distortAngle)", "index(tilePattern)", "min(frameWidth, frameHeight) / 2"]
+}

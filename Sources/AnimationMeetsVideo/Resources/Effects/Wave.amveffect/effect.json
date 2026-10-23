@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "id": "wave",
+  "version": 1,
+  "name": "Wave",
+  "category": "distortion",
+  "symbol": "water.waves",
+  "kernel": {"file": "kernel.metal", "function": "amvWave", "type": "warp"},
+  "controls": [
+    {"id": "waveDirection", "name": "Direction", "type": "choice", "default": "horizontal", "options": [{"id": "horizontal", "name": "Horizontal"}, {"id": "vertical", "name": "Vertical"}, {"id": "radial", "name": "Radial"}]},
+    {"id": "wavelength", "name": "Wavelength", "type": "number", "default": 120, "range": [2, 50000], "unit": "px"},
+    {"id": "waveHeight", "name": "Height", "type": "number", "default": 12, "range": [-10000, 10000], "unit": "px"},
+    {"id": "waveSpeed", "name": "Speed", "type": "number", "default": 1, "range": [-20, 20], "unit": "/s", "rate": true}
+  ],
+  "arguments": ["frameCenter", "wavelength * scale", "waveHeight * scale", "waveSpeed * seconds", "index(waveDirection)"]
+}

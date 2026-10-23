@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "liquid",
+  "version": 1,
+  "name": "Liquid",
+  "category": "distortion",
+  "symbol": "drop",
+  "kernel": {"file": "kernel.metal", "function": "amvLiquid", "type": "warp"},
+  "controls": [
+    {"id": "displacement", "name": "Amount", "type": "number", "default": 2, "range": [-100, 100], "unit": "%", "step": 0.1},
+    {"id": "noiseScale", "name": "Scale", "type": "number", "default": 200, "range": [2, 10000], "unit": "px"},
+    {"id": "warps", "name": "Warps", "type": "number", "default": 2, "range": [1, 4], "whole": true},
+    {"id": "evolution", "name": "Evolution", "type": "number", "default": 0.25, "range": [-20, 20], "unit": "/s", "rate": true},
+    {"id": "seed", "name": "Seed", "type": "number", "default": 1, "range": [0, 100000], "whole": true}
+  ],
+  "arguments": ["scale", "noiseScale", "displacement / 100 * frameWidth", "warps", "evolution * seconds", "seed"]
+}

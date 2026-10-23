@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "chromaticAberration",
+  "version": 1,
+  "name": "Chromatic Aberration",
+  "category": "distortion",
+  "symbol": "camera.filters",
+  "kernel": {"file": "kernel.metal", "function": "amvChromaticAberration", "type": "general"},
+  "controls": [
+    {"id": "aberration", "name": "Amount", "type": "number", "default": 1, "range": [-20, 20], "unit": "%", "step": 0.1},
+    {"id": "aberrationMode", "name": "Mode", "type": "choice", "default": "radial", "options": [{"id": "radial", "name": "Radial"}, {"id": "linear", "name": "Linear"}]},
+    {"id": "distortCenter", "name": "Center", "type": "point"},
+    {"id": "distortAngle", "name": "Angle", "type": "number", "default": 0, "unit": "°"}
+  ],
+  "arguments": ["center(distortCenter)", "frameWidth / 2", "aberration / 100 * frameWidth", "1 - index(aberrationMode)", "-rad(distortAngle)"],
+  "reach": "2 * abs(aberration / 100 * frameWidth)"
+}

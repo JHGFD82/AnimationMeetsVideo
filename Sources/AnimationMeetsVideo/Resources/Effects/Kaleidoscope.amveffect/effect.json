@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "id": "kaleidoscope",
+  "version": 1,
+  "name": "Kaleidoscope",
+  "category": "distortion",
+  "symbol": "seal",
+  "kernel": {"file": "kernel.metal", "function": "amvKaleidoscope", "type": "warp"},
+  "controls": [
+    {"id": "segments", "name": "Segments", "type": "number", "default": 6, "range": [2, 64], "whole": true},
+    {"id": "distortCenter", "name": "Center", "type": "point"},
+    {"id": "distortAngle", "name": "Angle", "type": "number", "default": 0, "unit": "°"},
+    {"id": "spinSpeed", "name": "Speed", "type": "number", "default": 0, "range": [-20, 20], "unit": "/s", "rate": true}
+  ],
+  "arguments": ["center(distortCenter)", "segments", "-(rad(distortAngle) + spinSpeed * seconds * 2 * pi)"]
+}

@@ -75,7 +75,7 @@ enum LookRecipes {
 
     private static var infiniteTunnel: [Effect] {
         [
-            effect(.kaleidoscope, [.segments: [8]]),
+            look(.kaleidoscope, ["segments": [8]]),
             effect(.feedback, [.copies: [12], .copyScale: [103], .copyRotation: [4], .hueStep: [15]]),
             effect(.chromaticAberration), effect(.grain),
         ]
@@ -103,7 +103,7 @@ enum LookRecipes {
     private static var brokenSignal: [Effect] {
         let interference = effect(.interference)
         return [
-            effect(.blockGlitch), effect(.chromaticAberration, choices: [.aberrationMode: AberrationMode.linear.rawValue]),
+            effect(.blockGlitch), look(.chromaticAberration, choices: ["aberrationMode": "linear"]),
             interference, blend(.overlay, against: interference), look(.staticNoise, ["amount": [15]]),
         ]
     }
@@ -116,9 +116,9 @@ enum LookRecipes {
     }
 
     private static var oilSlick: [Effect] {
-        let wave = effect(.wave, choices: [.waveDirection: WaveDirection.radial.rawValue])
+        let wave = look(.wave, choices: ["waveDirection": "radial"])
         return [
-            wave, effect(.twirl, choices: [.twirlShape: TwirlShape.vortex.rawValue]),
+            wave, look(.twirl, choices: ["twirlShape": "vortex"]),
             look(.cosinePalette, choices: ["palette": "oilSlick"]), blend(.luminosity, against: wave),
         ]
     }
@@ -133,7 +133,7 @@ enum LookRecipes {
 
     private static var eightfoldMandala: [Effect] {
         [
-            effect(.mirrorTile, choices: [.tilePattern: TilePattern.eightfold.rawValue]), effect(.kaleidoscope, [.segments: [12]]),
+            look(.mirrorTile, choices: ["tilePattern": "eightfold"]), look(.kaleidoscope, ["segments": [12]]),
             // Each channel from the next: red from green, green from blue,
             // blue from red.
             look(.channelMixer, ["mixRed": [0, 1, 0], "mixGreen": [0, 0, 1], "mixBlue": [1, 0, 0]]),
@@ -144,7 +144,7 @@ enum LookRecipes {
     private static var moireBreathing: [Effect] {
         [
             effect(.interference),
-            effect(.twirl, choices: [.twirlShape: TwirlShape.pinch.rawValue], keyframes: [.twirlAmount: [(0, [0]), (2, [100]), (4, [0])]]),
+            look(.twirl, choices: ["twirlShape": "pinch"], keyframes: ["twirlAmount": [(0, [0]), (2, [100]), (4, [0])]]),
             effect(.gradientMap), effect(.feedback),
         ]
     }
