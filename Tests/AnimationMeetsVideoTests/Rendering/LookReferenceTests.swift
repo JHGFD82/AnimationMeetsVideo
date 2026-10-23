@@ -82,14 +82,21 @@ import Testing
     @Test(arguments: kinds) func aLookDrawsAsItWasRecorded(_ name: String) throws {
         let kind = try #require(EffectKind(rawValue: name))
         let h = try harness()
-        var drawn: [String: [[Float]]] = [:]
+        var drawn: [String: [SIMD4<Float>]] = [:]
         for (label, effect) in effects(kind) {
             let clip = CompositorHarness.clip(track: 1, effects: [effect], frame: h.size)
-            drawn[label] = try h.draw([clip], at: Self.time).map { [$0.x, $0.y, $0.z, $0.w].map { ($0 * 100_000).rounded() / 100_000 } }
+            drawn[label] = try h.draw([clip], at: Self.time)
         }
-        let url = Self.folder.appending(path: "\(name).json")
-        if Self.recording {
-            try FileManager.default.createDirectory(at: Self.folder, withIntermediateDirectories: true)
+        try Self.check(name, drawn)
+    }
+
+    /// Records `drawn` as look `name`'s references, or compares it with
+    /// them.
+    static func check(_ name: String, _ frames: [String: [SIMD4<Float>]]) throws {
+        let drawn = frames.mapValues { $0.map { [$0.x, $0.y, $0.z, $0.w].map { ($0 * 100_000).rounded() / 100_000 } } }
+        let url = folder.appending(path: "\(name).json")
+        if recording {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
             try encoder.encode(Reference(cases: drawn)).write(to: url)
@@ -102,5 +109,128 @@ import Testing
             let worst = zip(pixels, now).map { zip($0, $1).map { abs($0 - $1) }.max() ?? 0 }.max() ?? 0
             #expect(worst <= 0.002, "\(name) \(label) differs by \(worst)")
         }
+    }
+}
+
+/// The looks drawn from pictures besides the one reaching them, which
+/// docs/effect-packages.md ("Pictures besides the clip's") moves into
+/// packages: Displace from a map or an earlier step's picture, Feedback
+/// and Slit-Scan from earlier moments, Flow Smear from a frame ahead. Each
+/// picture differs, so a moment or a role taken for another shows.
+@Suite struct PicturedLookReferenceTests {
+    private static let size = CGSize(width: 32, height: 16)
+    private static let frame = CMTime(value: 1, timescale: 24)
+    private static let time = CMTime(value: 1, timescale: 1)
+    /// The earlier moments there are pictures for, in frames: enough for
+    /// Slit-Scan's default bands, half a second across.
+    private static let earliest = 12
+    private static let aheadTrack = CMPersistentTrackID(earliest + 2)
+    private static let mapTrack = CMPersistentTrackID(earliest + 3)
+
+    /// The footage at `x` across and `y` down: a sweep with a checker of
+    /// 4-pixel squares in blue, the texture Flow Smear's motion is found in.
+    private static func footage(_ x: Double, _ y: Double, dim: Double = 1) -> SIMD4<Float> {
+        let checker = (Int((x * size.width / 4).rounded(.down)) + Int((y * size.height / 4).rounded(.down))) % 2
+        return SIMD4(Float(x), Float(y * dim), Float(0.2 + 0.6 * Double(checker)), 1)
+    }
+
+    /// Track 1 the footage now, 2 on the footage `k` frames earlier, each
+    /// moved and dimmed a little more; then a frame ahead, moved 2 pixels
+    /// right; then a map for Displace.
+    private func harness() throws -> CompositorHarness {
+        var h = CompositorHarness(size: Self.size)
+        try h.addPicture(track: 1) { x, y in Self.footage(x, y) }
+        for k in 1...Self.earliest {
+            let shift = 0.03 * Double(k), dim = 1 - 0.04 * Double(k)
+            try h.addPicture(track: CMPersistentTrackID(k + 1)) { x, y in
+                Self.footage((x + shift).truncatingRemainder(dividingBy: 1), y, dim: dim)
+            }
+        }
+        try h.addPicture(track: Self.aheadTrack) { x, y in Self.footage(x - 2 / Self.size.width, y) }
+        try h.addPicture(track: Self.mapTrack) { x, y in
+            SIMD4(Float(0.5 + 0.4 * sin(4 * .pi * x)), Float(0.5 + 0.4 * cos(4 * .pi * y)), 0.5, 1)
+        }
+        return h
+    }
+
+    private func copy(_ track: CMPersistentTrackID, delay: CMTime = .zero) -> TrackCopy {
+        TrackCopy(trackID: track, range: CMTimeRange(start: .zero, duration: CMTime(value: 10, timescale: 1)), strength: 1, delay: delay)
+    }
+
+    /// The footage with `effects`, its earlier moments, the frame ahead,
+    /// and the map as the input of any effect that takes one.
+    private func clip(_ effects: [Effect]) -> DrawClip {
+        var media = MediaDraw(
+            trackID: 1, base: .identity, url: URL(fileURLWithPath: "/dev/null"), sourceStart: .zero, segmentStart: .zero,
+            frameDuration: Self.frame
+        )
+        media.moments = (1...Self.earliest).map { copy(CMPersistentTrackID($0 + 1), delay: CMTimeMultiply(Self.frame, multiplier: Int32($0))) }
+        media.ahead = copy(Self.aheadTrack)
+        var timelineClip = TimelineClip(source: .media(UUID()), startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 10, timescale: 1))
+        timelineClip.effects = effects
+        let center = CGPoint(x: Self.size.width / 2, y: Self.size.height / 2)
+        let stack = ClipStack(clip: timelineClip, center: center, shift: .zero, frameDuration: Self.frame)
+        var clip = DrawClip(content: .media(media), stack: stack, range: CMTimeRange(start: .zero, duration: CMTime(value: 10, timescale: 1)), owner: UUID())
+        for effect in effects where effect.input != nil {
+            clip.inputs[effect.id] = .track(copy(Self.mapTrack), base: .identity)
+        }
+        return clip
+    }
+
+    private func draw(_ effects: [Effect], playing: Bool = false) throws -> [SIMD4<Float>] {
+        let options = DrawingOptions()
+        options.update(isPlaying: playing)
+        return try harness().draw([clip(effects)], at: Self.time, options: options)
+    }
+
+    private func withMap(_ effect: Effect) -> Effect {
+        var effect = effect
+        effect.input = EffectInput(source: .asset(UUID()))
+        return effect
+    }
+
+    @Test func displaceDrawsAsItWasRecorded() throws {
+        // Against an earlier step: the picture before it moved by the one
+        // after it.
+        let brighter = look(.color, ["exposure": [1]])
+        var against = look(.displace, ["displacement": [20]])
+        against.against = brighter.id
+        try LookReferenceTests.check("displace", [
+            "defaults": try draw([withMap(look(.displace))]),
+            "tweaked": try draw([withMap(look(.displace, ["displacement": [20]]))]),
+            "choice:mapCenter=black": try draw([withMap(look(.displace, ["displacement": [20]], choices: ["mapCenter": "black"]))]),
+            "against": try draw([brighter, against]),
+        ])
+    }
+
+    @Test func feedbackDrawsAsItWasRecorded() throws {
+        let tweaked = look(.feedback, [
+            "copies": [3], "feedbackDelay": [2], "copyScale": [90], "copyRotation": [-10], "hueStep": [60], "copyDecay": [50],
+        ])
+        try LookReferenceTests.check("feedback", [
+            "defaults": try draw([look(.feedback)]),
+            "playing": try draw([look(.feedback)], playing: true),
+            "tweaked": try draw([tweaked]),
+            "tweaked:playing": try draw([tweaked], playing: true),
+        ])
+    }
+
+    @Test func slitScanDrawsAsItWasRecorded() throws {
+        let tweaked = look(.slitScan, ["bands": [4], "timeSpread": [0.125]])
+        try LookReferenceTests.check("slitScan", [
+            "defaults": try draw([look(.slitScan)]),
+            "playing": try draw([look(.slitScan)], playing: true),
+            "choice:slitDirection=columns": try draw([look(.slitScan, choices: ["slitDirection": "columns"])]),
+            "choice:slitDirection=rings": try draw([look(.slitScan, choices: ["slitDirection": "rings"])]),
+            "tweaked": try draw([tweaked]),
+        ])
+    }
+
+    @Test func flowSmearDrawsAsItWasRecorded() throws {
+        try LookReferenceTests.check("flowSmear", [
+            "defaults": try draw([look(.flowSmear)]),
+            "playing": try draw([look(.flowSmear)], playing: true),
+            "tweaked": try draw([look(.flowSmear, ["smear": [300]])]),
+        ])
     }
 }

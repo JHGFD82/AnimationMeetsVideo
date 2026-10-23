@@ -549,7 +549,9 @@ In order, each step usable on its own:
    looks, as packages, a category at a time. **Built.**
 6. Problems and compile errors shown in the effects library. **Built.**
 7. Reference frames for Displace, Feedback, Slit-Scan and Flow Smear,
-   recorded from Swift.
+   recorded from Swift (`PicturedLookReferenceTests`): from a map and
+   against an earlier step, from twelve earlier moments, and from a frame
+   ahead, each picture different, paused and playing. **Built.**
 8. Pictures from inputs and Against, and Displace moved into a package.
 9. Moments and repeating, and Feedback and Slit-Scan moved.
 10. Motion, and Flow Smear moved.
