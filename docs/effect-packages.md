@@ -1,7 +1,8 @@
 # Effect packages
 
-Status: **built** (see [Building it](#building-it)); inputs, and the
-looks still in Swift, are under [Not yet](#not-yet). `EffectKind` and `ControlKind`
+Status: **built** through step 6 of [Building it](#building-it);
+[pictures besides the clip's](#pictures-besides-the-clips), which move
+the last four looks out of Swift, are planned. `EffectKind` and `ControlKind`
 are names looked up in an `EffectRegistry` of the effects written in
 Swift (BuiltInEffects.swift), the 21 looks that ship as packages
 (Resources/Effects) and the person's packages, which
@@ -224,6 +225,79 @@ undeclared identifier 'turnn'"): Core Image's own error is only a
 code, and counts lines from a header of its own, whose length the app
 finds once by compiling an error on a kernel's first line.
 
+## Pictures besides the clip's
+
+Status: **planned, not implemented**. The four looks still in Swift
+(see [What stays in Swift](#what-stays-in-swift)) each draw from a
+picture besides the one reaching them: Displace from a dropped picture
+or an earlier step's, Feedback and Slit-Scan from the footage at other
+moments, Flow Smear from its motion. The app fetches these before the
+kernel runs, so a package says which it needs, and its kernel receives
+each as one more `coreimage::sampler`, after its picture and color
+space, in the order listed:
+
+```json
+"pictures": [
+  { "id": "map", "from": "input" },
+  { "id": "earlier", "from": "against" }
+]
+```
+
+| `from` | The picture | Names it adds |
+| --- | --- | --- |
+| `input` | One dropped from the browser onto the effect, as Matte's (see [Inputs](effects.md#inputs)). | `hasInput`: 1 while it has one |
+| `against` | The clip's picture as it was before an earlier step, picked in the effect's Against row (see [Against](effects.md#against)). | `hasAgainst` |
+| `moment` | The picture reaching this step `delay` seconds earlier, an expression; at each [pass](#repeating), that pass's. | |
+| `motion` | The motion from this frame to the footage's frame `ahead` frames later, an expression, as a picture: red across and green up, in output pixels, as Flow Smear measures it now (`BlockMatchFlow`). Not measured while the viewer plays. | `hasMotion` |
+
+A picture that isn't there (no input dropped, no earlier frame yet, no
+motion while playing) is transparent. `"drawsWhen"`, an expression, says
+when the effect does anything; while it is 0 the effect is a no-op and
+the effects panel says what it lacks. Displace's is
+`"hasInput + hasAgainst > 0"`, and its kernel picks its roles itself:
+the earlier picture moved by the one reaching it with Against set, else
+the one reaching it moved by its input.
+
+Pictures need a general kernel, the only kind that reads more than one.
+Expressions also gain `frameDuration` (the timeline's frame, in seconds)
+and the functions `mod` and `round`.
+
+### Repeating
+
+Feedback and Slit-Scan draw once per copy or band, each over what the
+ones before drew. `"repeat"` runs the kernel that many times; each pass
+receives as its picture what the pass before made (the first, what
+`start` says: the picture reaching the step, or `"clear"`), and its
+moments are the pass's own:
+
+```json
+"repeat": {
+  "count": "copies", "index": "copies - pass",
+  "countWhilePlaying": "floor(copies / 2)", "indexWhilePlaying": "copies - mod(copies, 2) - 2 * pass"
+},
+"pictures": [{ "id": "copy", "from": "moment", "delay": "index * max(feedbackDelay, 1) * frameDuration" }]
+```
+
+`pass` counts from 0 to `passes`; `index`, which defaults to `pass`, is
+which copy or band a pass draws, for the delay and the kernel's
+arguments. The `WhilePlaying` forms draw less while the viewer plays, as
+Feedback (every other copy) and Slit-Scan (four bands) do now.
+
+The composition loads the earlier frames a package's moments need
+before it plays, as it does Feedback's now (`Effect.momentDelays`): the
+delay of every index up to `count`, with each control at its largest
+value across its keyframes.
+
+### What it moves
+
+With these, the four leave Swift: Displace with an input and Against,
+Feedback and Slit-Scan with moments and repeating (Feedback's hue turn,
+scale and rotation per copy done in its kernel with the prelude's
+`hueRotated`), Flow Smear with its motion. Their pictures are checked
+against reference frames recorded before they move, as the other looks'
+were. What stays in Swift is then the stack's foundations, the shapes,
+the sound effects and the Keyframing effects.
+
 ## Missing effects
 
 A project can use a package that isn't installed where it is opened. The
@@ -351,7 +425,6 @@ the reference frames, and the recipes using it.
 - **Embedding packages in a project** (`Effects/` in the `.amv`
   package), so a project opens with its effects elsewhere. Needs a rule
   for when the embedded and installed versions differ.
-- **Inputs and Against** for package effects, so Displace can move.
 - **Several kernels in one package**, chained, with intermediate images.
 - **New categories** defined by packages.
 - **A package's own help text** and a preview picture in the library.
@@ -372,3 +445,8 @@ In order, each step usable on its own:
 5. The other Color looks, then the Noise looks, then the Distortion
    looks, as packages, a category at a time. **Built.**
 6. Problems and compile errors shown in the effects library. **Built.**
+7. Reference frames for Displace, Feedback, Slit-Scan and Flow Smear,
+   recorded from Swift.
+8. Pictures from inputs and Against, and Displace moved into a package.
+9. Moments and repeating, and Feedback and Slit-Scan moved.
+10. Motion, and Flow Smear moved.
