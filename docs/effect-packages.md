@@ -1,8 +1,10 @@
 # Effect packages
 
-Status: **built** through step 6 of [Building it](#building-it);
+Status: **built** through step 6 of [Building it](#building-it), with a
+guide to [writing a package](#making-a-package);
 [pictures besides the clip's](#pictures-besides-the-clips), which move
-the last four looks out of Swift, are planned. `EffectKind` and `ControlKind`
+the last four looks out of Swift, and making packages from the app are
+planned. `EffectKind` and `ControlKind`
 are names looked up in an `EffectRegistry` of the effects written in
 Swift (BuiltInEffects.swift), the 21 looks that ship as packages
 (Resources/Effects) and the person's packages, which
@@ -224,6 +226,107 @@ at its place in the package's file ("kernel.metal:4:12: use of
 undeclared identifier 'turnn'"): Core Image's own error is only a
 code, and counts lines from a header of its own, whose length the app
 finds once by compiling an error on a kernel's first line.
+
+## Making a package
+
+[Writing one by hand](#writing-one-by-hand) describes what works now;
+[starting one from the app](#starting-one-from-the-app) is planned.
+
+### Writing one by hand
+
+1. In `~/Library/Application Support/AnimationMeetsVideo/Effects/`,
+   make a folder named for the effect, ending in `.amveffect`:
+   `Tint.amveffect`.
+2. In it, write `effect.json`. This one has a color, a strength and the
+   standard Amount:
+
+   ```json
+   {
+     "formatVersion": 1,
+     "id": "com.example.tint",
+     "version": 1,
+     "name": "Tint",
+     "category": "recolor",
+     "symbol": "drop.halffull",
+     "kernel": { "file": "kernel.metal", "function": "exTint", "type": "color" },
+     "controls": [
+       { "id": "tint", "name": "Tint", "type": "color", "default": [1, 0.6, 0.2] },
+       { "id": "strength", "name": "Strength", "type": "number", "default": 100, "range": [0, 200], "unit": "%" }
+     ],
+     "amount": true,
+     "arguments": ["tint", "strength / 100"]
+   }
+   ```
+
+3. Beside it, write `kernel.metal`, the function `kernel.function` names.
+   A color kernel's arguments are the pixel and the color space, then the
+   expressions of `arguments` in order, then Amount; the prelude's
+   functions (see [The kernel](#the-kernel)) turn the timeline's values
+   into tones and back:
+
+   ```metal
+   // Each pixel's tones multiplied by a color, `strength` of the way.
+   extern "C" [[stitchable]] float4 exTint(coreimage::sample_t s, float space, float4 tint, float strength, float amount) {
+       float3 t = toTones(straight(s), space);
+       float3 tinted = t * mix(float3(1.0), tint.rgb, strength);
+       return mixed(s, fromTones(tinted, space), amount);
+   }
+   ```
+
+4. Open the app. The effect is in the library under its category, and
+   adds, keyframes and saves as any other. If it isn't there, it is at
+   the end of the library under "Can't Be Used", with what is wrong and
+   where: a line of `effect.json`'s path ("Unknown name \"strenght\" at
+   arguments[1]") or of `kernel.metal`'s ("kernel.metal:3:24: use of
+   undeclared identifier 'tnt'").
+5. Change it and open the app again to see the change; packages are read
+   at launch (reloading while it runs is under [Not yet](#not-yet)).
+
+What to know:
+
+- **The ID needs a dot**, reverse-DNS style, and never changes: projects
+  save the effect under it.
+- **Never rename or remove a control** once a package is used. An effect
+  saved with a control its package doesn't list loads as missing, as if
+  saved by a newer version. Leave one that is no longer needed, unused.
+- **Raise `version`** when a control is added or a picture changes, so
+  others can tell versions apart. Render caches follow the files
+  themselves, so an edit never shows a stale frame either way.
+- **Names in expressions** are the controls' IDs, so they are letters and
+  digits, and not the names expressions already have (`seconds`,
+  `scale`, `amount`, …). Kernel parameter names are Metal's: `half`,
+  `float` and the other type names can't be used.
+- **The looks that ship are packages too**, in
+  `Sources/AnimationMeetsVideo/Resources/Effects/` in the source: a
+  starting point for each kind of kernel (Posterize for a color kernel,
+  Neon Edges for a general one with a filter after, Twirl for a warp).
+
+### Starting one from the app
+
+Status: **planned, not implemented**.
+
+- **New Effect Package…**, in the File menu and the effects library's
+  menu, asks for a name and writes a package like Tint above into the
+  Effects folder, under the ID `user.` and the name in camel case, then
+  shows it in Finder.
+- **Make a Package from This…**, in the menu of a package look's chip in
+  the library, copies that package into the Effects folder as a new one,
+  "Twirl Copy" with the ID `user.twirlCopy` and version 1, its controls
+  and kernel as they were.
+- **Opening a package**: `Packaging/Info.plist` declares `.amveffect` as
+  a package type (`com.jhgfd.animationmeetsvideo.effect`, kept in sync
+  with `EffectPackageStore.packageTypeIdentifier`), so Finder shows one
+  as a single item. Double-clicking one, or dropping it on the app's icon,
+  reads it; a package that can be used is copied into the Effects folder,
+  and one that can't says why. One whose folder name or ID is already
+  installed asks whether to replace it.
+
+A package made or opened this way is installed at once, beside the others
+in the registry, without opening the app again: adding an effect kind
+changes no effect already in a project. An effect of its kind in the open
+project that loaded as missing comes back when the project is opened
+again. Replacing an installed package takes effect at the next launch,
+as editing one does, since effects in the open project use its controls.
 
 ## Pictures besides the clip's
 
@@ -450,3 +553,7 @@ In order, each step usable on its own:
 8. Pictures from inputs and Against, and Displace moved into a package.
 9. Moments and repeating, and Feedback and Slit-Scan moved.
 10. Motion, and Flow Smear moved.
+11. Writing a package by hand, described above. **Built.**
+12. Installing a package while the app runs, and New Effect Package.
+13. Make a Package from This.
+14. `.amveffect` as a Finder package type, opened by the app.
