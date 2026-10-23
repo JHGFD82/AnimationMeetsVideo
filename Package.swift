@@ -20,7 +20,9 @@ let package = Package(
         ),
         .testTarget(
             name: "AnimationMeetsVideoTests",
-            dependencies: ["AnimationMeetsVideo"]
+            dependencies: ["AnimationMeetsVideo"],
+            // Read by LookReferenceTests from beside its source.
+            exclude: ["Rendering/LookReferences"]
         )
     ]
 )
