@@ -297,6 +297,9 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         let scheduler = RenderScheduler()
         scheduler.idleSeconds = 0.05
         scheduler.packageURL = sandbox.packageURL
+        // A render that runs until it is stopped: a real one can finish
+        // before the drag begins when the machine is busy.
+        scheduler.render = { _, _, _, _ in try await Task.sleep(for: .seconds(60)) }
         let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t, forPreview: true)
 
         scheduler.update(project: project, timelineID: t, segments: composed.segments)

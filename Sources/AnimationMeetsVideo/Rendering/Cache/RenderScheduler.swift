@@ -48,6 +48,14 @@ final class RenderScheduler {
     /// How long the timeline must be quiet before rendering starts.
     @ObservationIgnored var idleSeconds = 2.0
 
+    typealias Render = @Sendable (RenderSegment, ComposedTimeline, RenderCache, @escaping @Sendable (Double) -> Void) async throws -> Void
+
+    /// What renders one segment; a test can hold a render open to stop it
+    /// partway, which a real render may finish too soon for.
+    @ObservationIgnored var render: Render = { segment, composed, cache, progress in
+        try await SegmentRenderer.render(segment, from: composed, into: cache, progress: progress)
+    }
+
     @ObservationIgnored private var project: EditingProject?
     @ObservationIgnored private var timelineID: UUID?
     /// Bumped by every `update`, so work planned from an older project is dropped.
@@ -203,8 +211,9 @@ final class RenderScheduler {
                         self.active?.progress = fraction
                     }
                 }
+                let render = self.render
                 let job = Task.detached(priority: .utility) {
-                    try await SegmentRenderer.render(next, from: composed, into: cache, progress: report)
+                    try await render(next, composed, cache, report)
                 }
                 self.job = job
                 try await job.value
