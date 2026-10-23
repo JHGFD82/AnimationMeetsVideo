@@ -93,4 +93,27 @@ import Testing
         #expect(session.selectedSectionID == sections[1])
         #expect(session.visibleStart == 4)
     }
+
+    @Test func startingOverASongWithBeatsOffersToRemoveThem() throws {
+        var song = try SnapshotSupport.clickSong(named: "beat-match-session-remove")
+        song.beatMap = .oneTempo(duration: CMTime(seconds: 40, preferredTimescale: 48_000))
+        let session = BeatMatchSession(asset: song, url: try #require(song.url))
+        defer { session.end() }
+        #expect(!session.removesBeats)
+        session.startOver()
+        #expect(session.removesBeats)
+        // Choosing sections afresh still leaves nothing drawn to keep.
+        session.chooseSections()
+        #expect(session.removesBeats)
+        session.drawSection(from: 0, to: 10, snap: 0)
+        #expect(!session.removesBeats)
+        #expect(!session.canConfirm)
+
+        // A song without beats has nothing to remove.
+        let fresh = try self.session("beat-match-session-remove-fresh")
+        defer { fresh.end() }
+        fresh.chooseSections()
+        fresh.startOver()
+        #expect(!fresh.removesBeats)
+    }
 }

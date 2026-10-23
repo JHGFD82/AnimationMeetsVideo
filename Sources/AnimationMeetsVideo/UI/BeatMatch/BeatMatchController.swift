@@ -90,18 +90,32 @@ final class BeatMatchController {
     }
 
     /// Writes the draft to the project, as one undo step, shows the song's
-    /// beats on the timeline, and closes.
+    /// beats on the timeline, and closes. A draft emptied by Start Over
+    /// removes the song's beats instead (the panel's Remove Beats).
     func confirm() {
         guard let session else { return }
-        let assetID = session.assetID, map = session.map
+        let assetID = session.assetID
+        let map = session.map.isEmpty ? BeatMap() : session.map
         if session.isChanged {
             onEdit { project in
                 guard let index = project.clips.firstIndex(where: { $0.id == assetID }) else { return }
                 project.clips[index].beatMap = map
             }
         }
-        confirmation = Confirmation(assetID: assetID, serial: (confirmation?.serial ?? 0) + 1)
+        if map.hasConfirmedBeats {
+            confirmation = Confirmation(assetID: assetID, serial: (confirmation?.serial ?? 0) + 1)
+        }
         tearDown()
+    }
+
+    /// Removes a song's beat map from the project, as one undo step,
+    /// without opening the panel: the timeline goes back to the detected
+    /// beats.
+    func removeBeats(assetID: UUID) {
+        onEdit { project in
+            guard let index = project.clips.firstIndex(where: { $0.id == assetID }) else { return }
+            project.clips[index].beatMap = BeatMap()
+        }
     }
 
     /// Cancel and the close button: closes, asking first when the draft

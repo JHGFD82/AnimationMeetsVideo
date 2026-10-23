@@ -30,7 +30,11 @@ and the beats they confirm are what the timeline uses.
   close button, leaves the timeline as it was, asking first if anything
   changed, so a fill gone wrong never touches the project.
 - The person can come back at any time to move, add or delete beats,
-  reanalyze a section, or start over.
+  reanalyze a section, or start over. Starting over on a song that had
+  beats turns Confirm into **Remove Beats**, which takes them off the
+  timeline (back to the detected beats) as one undo step there. The
+  Music clip's context menu also has **Remove Beats**, for a song with a
+  beat map, without opening the panel.
 
 ## The beat map
 

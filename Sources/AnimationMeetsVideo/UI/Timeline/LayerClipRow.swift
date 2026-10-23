@@ -182,6 +182,15 @@ struct LayerClipRow: View {
         return { [project] in beatMatch.open(assetID: assetID, in: project) }
     }
 
+    /// Takes the song's beat map off a Music clip's song; nil when it has
+    /// none, as the timeline then shows the detected beats already.
+    private func removeBeatsAction(for clip: TimelineClip) -> (() -> Void)? {
+        guard layer.kind == .music, case .media(let assetID) = clip.source,
+              project.mediaClip(id: assetID)?.beatMap.isEmpty == false, let beatMatch
+        else { return nil }
+        return { beatMatch.removeBeats(assetID: assetID) }
+    }
+
     /// An adjustment clip's reach choices: every layer below its layer, or
     /// down to any video layer below. Nil for other clips.
     private func reachMenu(for clip: TimelineClip) -> ReachMenu? {
@@ -266,6 +275,7 @@ struct LayerClipRow: View {
                     onEditTime: { change in onEditTime(clip.id, change) },
                     onEditClip: { change in onEditClip(clip.id, change) },
                     onBeatMatch: beatMatchAction(for: clip),
+                    onRemoveBeats: removeBeatsAction(for: clip),
                     onAttachToMusic: layer.kind == .music ? nil : { onAttachToMusic(clip.id, nil) },
                     onSetMusicPoint: layer.kind == .music ? nil : { time in onAttachToMusic(clip.id, time) },
                     musicMarks: musicMarks[clip.id] ?? [],

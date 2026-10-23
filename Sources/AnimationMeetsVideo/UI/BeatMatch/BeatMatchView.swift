@@ -180,20 +180,26 @@ struct BeatMatchView: View {
         .confirmationDialog("Start over?", isPresented: $confirmingStartOver) {
             Button("Start Over", role: .destructive, action: session.startOver)
         } message: {
-            Text("Every section and beat of this song is removed. You can undo this.")
+            Text(session.original.isEmpty
+                 ? "Every section and beat of this song is removed. You can undo this."
+                 : "Every section and beat of this song is removed here. Remove Beats then takes them off the timeline. You can undo this.")
         }
     }
 
     private var footer: some View {
         HStack(spacing: Design.Space.close) {
-            Button { confirmingStartOver = true } label: {
-                Image(systemName: Design.Symbol.startOver)
-            }
-            .buttonStyle(.icon)
-            .disabled(session.step == .chooseMode)
-            .help("Start over: remove every section and beat of this song")
-            .accessibilityLabel("Start over")
             HStack(spacing: 0) {
+                // A draft already emptied has nothing to start over, which
+                // leaves Remove Beats room.
+                if !session.removesBeats {
+                    Button { confirmingStartOver = true } label: {
+                        Image(systemName: Design.Symbol.startOver)
+                    }
+                    .buttonStyle(.icon)
+                    .disabled(session.step == .chooseMode)
+                    .help("Start over: remove every section and beat of this song")
+                    .accessibilityLabel("Start over")
+                }
                 Button(action: session.undo) { Image(systemName: Design.Symbol.undo) }
                     .buttonStyle(.icon)
                     .disabled(!session.canUndo)
@@ -209,9 +215,16 @@ struct BeatMatchView: View {
             Button("Cancel", action: onCancel)
                 .keyboardShortcut(.cancelAction)
                 .fixedSize()
-            // While drawing, the way on is to mark the beats; once a section
-            // has them, they can go on the timeline.
-            if session.step == .drawSections {
+            // Emptied by Start Over, the draft can take the song's beats off
+            // the timeline. While drawing, the way on is to mark the beats;
+            // once a section has them, they can go on the timeline.
+            if session.removesBeats {
+                Button("Remove Beats", role: .destructive, action: onConfirm)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Design.accentFill)
+                    .fixedSize()
+                    .help("Take this song's beats off the timeline, which goes back to the detected beats; you can undo it there")
+            } else if session.step == .drawSections {
                 Button("Continue", action: session.finishDrawing)
                     .buttonStyle(.borderedProminent)
                     .tint(Design.accentFill)
@@ -226,7 +239,7 @@ struct BeatMatchView: View {
                     .fixedSize()
                     .help(session.canConfirm
                           ? "Put these beats on the timeline; until then nothing here changes it"
-                          : "Fill a section with beats first")
+                          : "Fill a section with beats first, or Start Over to remove the song's beats")
             }
         }
         .padding(.horizontal, Design.Space.rail)

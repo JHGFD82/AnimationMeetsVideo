@@ -24,6 +24,7 @@ struct ClipMenuHost: View, Equatable {
         var clip: TimelineClip
         var hasLinkedAudio: Bool
         var hasBeatMatch: Bool
+        var hasBeats: Bool
         var canFollowMusic: Bool
         var canMotionDesign: Bool
         var passesThrough: Bool
@@ -52,7 +53,7 @@ struct ClipMenuHost: View, Equatable {
 extension ClipBlockView {
     var menuKey: ClipMenuHost.Key {
         ClipMenuHost.Key(
-            clip: clip, hasLinkedAudio: hasLinkedAudio, hasBeatMatch: onBeatMatch != nil, canFollowMusic: onAttachToMusic != nil,
+            clip: clip, hasLinkedAudio: hasLinkedAudio, hasBeatMatch: onBeatMatch != nil, hasBeats: onRemoveBeats != nil, canFollowMusic: onAttachToMusic != nil,
             canMotionDesign: onMotionDesign != nil, passesThrough: passesThrough,
             acceptsEffects: acceptsEffects, acceptsSoundEffects: acceptsSoundEffects, playsSound: playsSound,
             reachCurrent: reach?.current, reachSummary: reach?.summary,
@@ -96,6 +97,9 @@ extension ClipBlockView {
         }
         if let onBeatMatch {
             Button("Beat Match…", action: onBeatMatch)
+        }
+        if let onRemoveBeats {
+            Button("Remove Beats", action: onRemoveBeats)
         }
         if case .timeline = clip.source {
             if let onOpenNested { Button("Open Timeline", action: onOpenNested) }

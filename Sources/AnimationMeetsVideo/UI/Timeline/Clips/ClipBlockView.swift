@@ -116,6 +116,8 @@ struct ClipBlockView: View {
     /// Opens the beat match panel for the clip's song; nil for clips that
     /// aren't on a Music layer.
     var onBeatMatch: (() -> Void)? = nil
+    /// Removes the song's beat map; nil unless the clip's song has one.
+    var onRemoveBeats: (() -> Void)? = nil
     /// Ties the clip to the music at the playhead; nil for clips on a Music
     /// layer, which are the music.
     var onAttachToMusic: (() -> Void)? = nil
@@ -595,6 +597,9 @@ struct ClipBlockView: View {
         }
         if let onBeatMatch {
             Button("Beat match", action: onBeatMatch)
+        }
+        if let onRemoveBeats {
+            Button("Remove beats", action: onRemoveBeats)
         }
         if let onAttachToMusic {
             Button(clip.followsMusic ? "Stop following music" : "Follow music") { onEditClip { $0.followsMusic.toggle() } }

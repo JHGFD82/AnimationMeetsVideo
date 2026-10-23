@@ -33,6 +33,9 @@ final class BeatMatchSession {
     private var undoRevision = 0
     /// Whether confirming is offered: once a section has its beats.
     var canConfirm: Bool { map.hasConfirmedBeats }
+    /// Whether the draft was emptied (by Start Over) of what the project
+    /// has, so confirming removes the song's beats.
+    var removesBeats: Bool { map.isEmpty && !original.isEmpty }
 
     // MARK: Transport
 

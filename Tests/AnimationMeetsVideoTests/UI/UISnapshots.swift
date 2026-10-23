@@ -109,7 +109,8 @@ struct UISnapshots {
     }
 
     /// The beat match panel at each step: choosing, drawing sections,
-    /// marking, and a filled section with a beat selected.
+    /// marking, a filled section with a beat selected, and started over on
+    /// a song that had beats.
     @Test func beatMatchSteps() async throws {
         let song = try SnapshotSupport.clickSong(named: "beat-match-song")
         let session = BeatMatchSession(asset: song, url: try #require(song.url))
@@ -134,6 +135,14 @@ struct UISnapshots {
         for _ in 0..<100 where session.isFilling { try await Task.sleep(for: .milliseconds(50)) }
         session.selectBeat(step: 1)
         try render("beat-match-4-filled")
+
+        // Started over on a song that had beats: Remove Beats.
+        var matched = song
+        matched.beatMap = session.map
+        let again = BeatMatchSession(asset: matched, url: try #require(song.url))
+        defer { again.end() }
+        again.startOver()
+        try SnapshotSupport.render(BeatMatchView(session: again, onConfirm: {}, onCancel: {}), "beat-match-5-remove", size: size)
     }
 
     /// The scene splitter on the last three shots of a four-shot movie,
