@@ -558,8 +558,29 @@ struct ProjectFile: Codable {
         var inputName: String?
         var againstName: String?
         var controls: [ControlEntry]
+        /// An effect from a package, as it was read; for a missing effect,
+        /// what is written back.
+        var saved: JSONValue?
+        /// Whether its controls couldn't all be read, as a newer version of
+        /// its package may save them.
+        var controlsUnread = false
+
+        private enum CodingKeys: String, CodingKey {
+            case id, kind, name, enabled, movesAnchor, against, input, keyframing, pasteChanges, inputName, againstName, controls
+        }
 
         init(_ effect: Effect) {
+            if let missing = effect.missing {
+                // As it was saved, but moved or turned off since.
+                var saved = missing.saved
+                saved["id"] = .string(effect.id.uuidString)
+                saved["enabled"] = effect.enabled ? nil : .bool(false)
+                self.saved = saved
+                id = effect.id
+                kind = missing.kind
+                controls = []
+                return
+            }
             id = effect.id
             kind = effect.kind.rawValue
             name = effect.name
@@ -572,7 +593,67 @@ struct ProjectFile: Codable {
             controls = effect.controls.map(ControlEntry.init)
         }
 
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(UUID.self, forKey: .id)
+            kind = try container.decode(String.self, forKey: .kind)
+            name = try container.decodeIfPresent(String.self, forKey: .name)
+            enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
+            let fromPackage = kind.contains(".")
+            if fromPackage { saved = try JSONValue(from: decoder) }
+            guard !fromPackage || EffectKind(rawValue: kind) != nil else {
+                // Not installed: only what it is and whether it's on are read.
+                controls = []
+                return
+            }
+            movesAnchor = try container.decodeIfPresent(Bool.self, forKey: .movesAnchor)
+            against = try container.decodeIfPresent(UUID.self, forKey: .against)
+            input = try container.decodeIfPresent(InputEntry.self, forKey: .input)
+            keyframing = try container.decodeIfPresent(KeyframingEntry.self, forKey: .keyframing)
+            pasteChanges = try container.decodeIfPresent([PasteChangeRecord].self, forKey: .pasteChanges)
+            inputName = try container.decodeIfPresent(String.self, forKey: .inputName)
+            againstName = try container.decodeIfPresent(String.self, forKey: .againstName)
+            if fromPackage {
+                let read = try? container.decode([ControlEntry].self, forKey: .controls)
+                controls = read ?? []
+                controlsUnread = read == nil
+            } else {
+                controls = try container.decode([ControlEntry].self, forKey: .controls)
+            }
+        }
+
+        func encode(to encoder: Encoder) throws {
+            if let saved {
+                try saved.encode(to: encoder)
+                return
+            }
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(id, forKey: .id)
+            try container.encode(kind, forKey: .kind)
+            try container.encodeIfPresent(name, forKey: .name)
+            try container.encodeIfPresent(enabled, forKey: .enabled)
+            try container.encodeIfPresent(movesAnchor, forKey: .movesAnchor)
+            try container.encodeIfPresent(against, forKey: .against)
+            try container.encodeIfPresent(input, forKey: .input)
+            try container.encodeIfPresent(keyframing, forKey: .keyframing)
+            try container.encodeIfPresent(pasteChanges, forKey: .pasteChanges)
+            try container.encodeIfPresent(inputName, forKey: .inputName)
+            try container.encodeIfPresent(againstName, forKey: .againstName)
+            try container.encode(controls, forKey: .controls)
+        }
+
         var effect: Effect? {
+            if let saved {
+                // From a package: missing when it isn't installed, or doesn't
+                // list a control the effect was saved with.
+                func missing(_ reason: MissingEffect.Reason) -> Effect {
+                    .missing(MissingEffect(kind: kind, reason: reason, saved: saved), id: id, enabled: enabled ?? true)
+                }
+                guard let installed = EffectKind(rawValue: kind) else { return missing(.notInstalled) }
+                if controlsUnread || controls.contains(where: { installed.controlKind(savedAs: $0.kind) == nil }) {
+                    return missing(.needsNewerVersion)
+                }
+            }
             guard let kind = EffectKind(rawValue: kind) else { return nil }
             var made = controls.compactMap { $0.control(in: kind) }
             let legacy = controls.filter { Equalizer.legacyNames.contains($0.kind) }
@@ -876,16 +957,33 @@ extension ProjectFile {
                 ], oneOf: [["value", "keyframes"]])
                 for name in Equalizer.legacyNames { controls[name] = legacy }
             }
-            fields.append(.required("controls", .array(.tagged(key: "kind", noun: "control kind", controls))))
+            if kind.definition.package != nil {
+                // Another version of the package may save controls this one
+                // doesn't list; such an effect loads as missing.
+                let other = JSONObjectShape(fields: [.required("id", .uuid), .required("kind", .string)], allowsOtherKeys: true)
+                let others = JSONOtherTags(accepts: { _ in true }, shape: other)
+                fields.append(.required("controls", .array(.taggedOr(key: "kind", noun: "control kind", controls, others: others))))
+            } else {
+                fields.append(.required("controls", .array(.tagged(key: "kind", noun: "control kind", controls))))
+            }
             return object(fields)
         }
 
         /// The shape of a list of effects, with `extra` fields allowed on
         /// each (a project's effects may have paste changes, a preset's
-        /// may say what was left behind).
-        static func effects(extra: [O.Field]) -> JSONShape {
+        /// may say what was left behind). With `allowingMissing`, as a
+        /// picture's effects are, a kind with a dot that isn't installed is
+        /// a package's, kept as it is: only its ID, name and whether it is
+        /// on are checked.
+        static func effects(extra: [O.Field], allowingMissing: Bool = false) -> JSONShape {
             let byKind = Dictionary(uniqueKeysWithValues: EffectKind.all.map { ($0.rawValue, effect($0, extra: extra)) })
-            return .array(.tagged(key: "kind", noun: "effect kind", byKind))
+            guard allowingMissing else { return .array(.tagged(key: "kind", noun: "effect kind", byKind)) }
+            let missing = JSONObjectShape(
+                fields: [.required("id", .uuid), .required("kind", .string), .optional("name", .string), .optional("enabled", .bool)],
+                allowsOtherKeys: true
+            )
+            let others = JSONOtherTags(accepts: { $0.contains(".") }, shape: missing)
+            return .array(.taggedOr(key: "kind", noun: "effect kind", byKind, others: others))
         }
     }
 
@@ -898,10 +996,14 @@ extension ProjectFile {
         func object(_ fields: [O.Field], oneOf: [[String]] = []) -> JSONObjectShape { ShapeKit.object(fields, oneOf: oneOf) }
         func keyframe(_ value: JSONShape) -> JSONShape { ShapeKit.keyframe(value) }
         func property(_ value: JSONShape) -> JSONShape { ShapeKit.property(value) }
-        let effects = ShapeKit.effects(extra: [.optional("pasteChanges", .array(.object(object([
+        let pasteChanges: [O.Field] = [.optional("pasteChanges", .array(.object(object([
             .required("kind", .choice(PasteChange.Kind.allCases.map(\.rawValue), noun: "paste change")),
             .required("detail", .string), .optional("count", .integer),
-        ]))))])
+        ]))))]
+        // Package effects are all pictures', so only a picture's stack can
+        // hold one that isn't installed.
+        let effects = ShapeKit.effects(extra: pasteChanges, allowingMissing: true)
+        let audioEffects = ShapeKit.effects(extra: pasteChanges)
 
         let curvePoint = JSONShape.object(object([
             .required("time", .number), .required("value", .number),
@@ -931,7 +1033,7 @@ extension ProjectFile {
             .optional("streams", .choice(["video", "audio"], noun: "stream")),
             .optional("transitionIn", transition), .optional("transitionOut", transition),
             .optional("anchorPoint", property(.numbers(count: 2))),
-            .optional("effects", effects), .optional("audioEffects", effects),
+            .optional("effects", effects), .optional("audioEffects", audioEffects),
             .optional("volume", property(.number)),
             .optional("pan", property(.number)),
             .optional("passThrough", .bool),
@@ -957,7 +1059,7 @@ extension ProjectFile {
             .required("id", .uuid), .optional("customName", .string),
             .required("kind", .choice(LayerKind.allCases.map(\.rawValue), noun: "layer kind")),
             .required("clips", .array(clip)), .optional("volume", property(.number)), .optional("pan", property(.number)),
-            .optional("audioEffects", effects),
+            .optional("audioEffects", audioEffects),
             .optional("adjustment", .bool), .optional("reach", .uuid),
         ]))
         let timeline = JSONShape.object(object([

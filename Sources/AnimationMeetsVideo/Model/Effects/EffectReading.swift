@@ -53,6 +53,8 @@ extension EditingProject {
     func note(forEffectAt index: Int, in clip: TimelineClip, on layer: TimelineLayer, of timeline: Timeline) -> EffectNote? {
         guard clip.effects.indices.contains(index) else { return nil }
         let effect = clip.effects[index]
+        // Said even while it is off, as it explains what the effect is.
+        if let missing = effect.missing { return EffectNote(text: missing.explanation, dims: true) }
         guard effect.enabled else { return nil }
 
         if effect.kind.isKeyframing { return keyframingNote(for: effect, in: clip) }

@@ -20,6 +20,9 @@ indirect enum JSONShape: Sendable {
     case object(JSONObjectShape)
     /// An object whose other keys depend on the string at `key`.
     case tagged(key: String, noun: String, [String: JSONObjectShape])
+    /// As `tagged`, with tags it doesn't list that `others` accepts
+    /// checked against its shape instead of refused.
+    case taggedOr(key: String, noun: String, [String: JSONObjectShape], others: JSONOtherTags)
     /// A number, or a list of numbers.
     case numberOrNumbers
     /// Anything.
@@ -39,6 +42,15 @@ struct JSONObjectShape: Sendable {
     var fields: [Field]
     /// Groups of keys of which at least one must be present.
     var oneOf: [[String]] = []
+    /// Whether keys it doesn't list are allowed, for a part of a file kept
+    /// as it is without being understood.
+    var allowsOtherKeys = false
+}
+
+/// The tags a `taggedOr` shape takes besides the ones it lists.
+struct JSONOtherTags: Sendable {
+    var accepts: @Sendable (String) -> Bool
+    var shape: JSONObjectShape
 }
 
 /// A problem found in a project file, and where.
@@ -114,12 +126,23 @@ enum StrictJSON {
                 throw JSONShapeError(message: "Unknown \(noun) \"\(name)\"", path: join(path, key))
             }
             try check(dictionary, against: object, path: path)
+        case .taggedOr(let key, let noun, let variants, let others):
+            guard let dictionary = value as? [String: Any] else { throw expected("an object", path) }
+            guard let tag = dictionary[key] else { throw JSONShapeError(message: "Missing \"\(key)\"", path: path) }
+            guard let name = tag as? String else { throw expected("text", join(path, key)) }
+            if let object = variants[name] {
+                try check(dictionary, against: object, path: path)
+            } else if others.accepts(name) {
+                try check(dictionary, against: others.shape, path: path)
+            } else {
+                throw JSONShapeError(message: "Unknown \(noun) \"\(name)\"", path: join(path, key))
+            }
         }
     }
 
     private static func check(_ dictionary: [String: Any], against object: JSONObjectShape, path: String) throws {
         let known = Set(object.fields.map(\.name))
-        for key in dictionary.keys.sorted() where !known.contains(key) {
+        for key in dictionary.keys.sorted() where !known.contains(key) && !object.allowsOtherKeys {
             throw JSONShapeError(message: "Unknown key \"\(key)\"", path: path)
         }
         for field in object.fields where field.required && dictionary[field.name] == nil {

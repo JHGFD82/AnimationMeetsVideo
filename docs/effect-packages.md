@@ -1,13 +1,13 @@
 # Effect packages
 
-Status: **planned; steps 1 to 3 of [Building it](#building-it) built**.
+Status: **planned; steps 1 to 4 of [Building it](#building-it) built**.
 `EffectKind` and `ControlKind` are names looked up in an
 `EffectRegistry` of the effects written in Swift (BuiltInEffects.swift),
 the packages that ship with the app (Resources/Effects: Posterize so far)
 and the person's, which `EffectPackageStore` reads from the Effects
 folder at launch. A package's look is listed, saved and drawn like any
-other (`PackageLookRenderer`); the other 20 looks are still a `case` in
-`LookRenderer` each. This plan moves the looks of
+other (`PackageLookRenderer`), and one whose package is missing is kept;
+the other 20 looks are still a `case` in `LookRenderer` each. This plan moves the looks of
 [psychedelic-effects.md](psychedelic-effects.md) out of Swift into
 **effect packages**: folders the app reads at launch, which can be
 written, shared and installed without building the app. Effects that need
@@ -219,22 +219,37 @@ picture as it is, as a look whose kernel fails does now.
 A project can use a package that isn't installed where it is opened. The
 rule in [Loading is strict](effects.md#loading-is-strict) would refuse
 the whole project, losing the person's work over one effect. Instead, an
-effect whose `kind` contains a dot and isn't installed loads as a
-**missing effect**:
+effect in a picture's stack (or a preset) whose `kind` contains a dot
+and isn't installed loads as a **missing effect**:
 
-- Its saved JSON is kept exactly as read and written back unchanged, so
-  installing the package later brings it back as it was.
+- Only its `id`, `name` and `enabled` are checked. The rest is kept as
+  it was read, keys this app doesn't know included, and written back the
+  same, so installing the package later brings it back as it was.
 - It draws nothing: the picture passes through.
-- The stack shows it as "Glow — not installed (com.example.glow)". It can
-  be turned off, moved, copied and deleted, but not edited.
+- The stack shows it under the name it was given, or else the last part
+  of its ID ("Glow" for `com.example.glow`), dimmed, with a note: "Not
+  installed (com.example.glow), so it draws nothing. Installing its
+  effect package brings it back as it was." The note shows while it is
+  off too.
+- It can be turned off, moved, copied, duplicated, deleted and saved in
+  a preset, but not renamed, reset or edited. A copy gets new IDs, its
+  saved controls' too. Its keyframes stay at the times it was saved
+  with, as nothing in it can be read: pasting it at another moment, or
+  into a preset, doesn't move them.
 
 A saved effect with a control its installed package doesn't list was
 saved by a newer version of the package, and loads as missing in the
-same way ("needs a newer version"). A control the package lists that the
-saved effect lacks was deleted, as for built-in effects.
+same way, its note saying it needs a newer version. A control the
+package lists that the saved effect lacks was deleted, as for built-in
+effects.
 
 A `kind` without a dot that the app doesn't know is still refused, as
-today: it is a typo or a built-in kind of a newer app.
+today: it is a typo or a built-in kind of a newer app. So is a package's
+kind in a sound's stack, since package effects are all pictures'.
+
+Inside the app a missing effect is an `Effect` of the hidden kind
+`missing`, which `EffectKind.all` leaves out, holding a `MissingEffect`:
+the kind it was saved as, why it is missing, and the saved JSON.
 
 ## Render keys and caches
 
@@ -313,9 +328,9 @@ Chromatic Aberration.
 - Package loading checked against a package per kind of error (bad key,
   unknown expression name, unknown filter, duplicate `id`, kernel that
   doesn't compile), for the message and its place.
-- A project with a missing effect opens, draws without it, and saves it
-  back byte for byte; after installing the package it loads as the
-  effect.
+- A project or preset with a missing effect opens, draws without it,
+  and saves it back as the same JSON; after installing the package it
+  loads as the effect.
 - Changing a kernel's source changes the render key.
 
 ## Not yet
@@ -341,7 +356,7 @@ In order, each step usable on its own:
    person's folder only, since there are no built-in packages to read yet.
 3. `LookRenderer` drawing a package look, and Posterize moved into a
    built-in package, checked against its reference frames. **Built.**
-4. Missing effects in projects and presets.
+4. Missing effects in projects and presets. **Built.**
 5. The other Color looks, then the Noise looks, then the Distortion
    looks, as packages, a category at a time.
 6. Problems and compile errors shown in the effects library.

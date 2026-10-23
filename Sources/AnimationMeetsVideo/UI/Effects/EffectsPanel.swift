@@ -555,7 +555,8 @@ struct EffectsPanel: View {
                         onRename: { name in editEffect(effect.id, in: clip) { $0.name = name } },
                         isRenaming: Binding(
                             get: { renamingEffectID == effect.id },
-                            set: { renamingEffectID = $0 ? effect.id : nil }
+                            // A missing effect keeps the name it was saved with.
+                            set: { renamingEffectID = $0 && effect.missing == nil ? effect.id : nil }
                         )
                     ) {
                         effectMenu(effect, in: clip)
@@ -642,13 +643,17 @@ struct EffectsPanel: View {
     private func effectMenu(_ effect: Effect, in clip: TimelineClip) -> some View {
         Button("Duplicate") { duplicate(effect, in: clip) }
             .keyboardShortcut("d", modifiers: .command)
-        Button("Reset") { editEffect(effect.id, in: clip) { $0.reset(in: timeline?.frameSize) } }
-            .disabled(effect.controls.allSatisfy { $0.isNoOp && !$0.isAnimated } && effect.controls.count == effect.kind.controlKinds.count)
-        Button("Rename") { renamingEffectID = effect.id }
+        // A missing effect can be turned off, moved, copied and deleted,
+        // but what it holds can't be read, so not changed.
+        if effect.missing == nil {
+            Button("Reset") { editEffect(effect.id, in: clip) { $0.reset(in: timeline?.frameSize) } }
+                .disabled(effect.controls.allSatisfy { $0.isNoOp && !$0.isAnimated } && effect.controls.count == effect.kind.controlKinds.count)
+            Button("Rename") { renamingEffectID = effect.id }
+        }
         Button(effect.enabled ? "Disable" : "Enable") { editEffect(effect.id, in: clip) { $0.enabled.toggle() } }
         if effect.kind.isKeyframing {
             keyframingMenu(effect, clip)
-        } else if !effect.kind.isAudio {
+        } else if !effect.kind.isAudio, effect.missing == nil {
             Toggle("Show Up to Here", isOn: Binding(
                 get: { state.showUpTo == EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) },
                 set: { state.showUpTo = $0 ? EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) : nil }

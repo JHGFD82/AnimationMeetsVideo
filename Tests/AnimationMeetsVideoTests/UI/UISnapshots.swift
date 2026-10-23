@@ -399,6 +399,28 @@ struct UISnapshots {
         )
     }
 
+    /// A rectangle with an effect whose package isn't installed below it,
+    /// and a copy turned off: each says what it is and does nothing.
+    @Test func missingEffectsPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: timelineID)
+        let shape = try #require(added)
+        let saved = JSONValue.object(["id": .string(UUID().uuidString), "kind": .string("com.example.glow"), "controls": .array([])])
+        let glow = Effect.missing(MissingEffect(kind: "com.example.glow", reason: .notInstalled, saved: saved), id: UUID(), enabled: true)
+        var off = glow.duplicated()
+        off.enabled = false
+        project.editClip(shape.clipID, in: timelineID) { $0.effects += [glow, off] }
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID),
+                playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "missing-effects-panel", size: CGSize(width: 520, height: 520)
+        )
+    }
+
     /// The same panel with a rectangle size too wide for the control column:
     /// the column widens to fit it, and the lanes keep what is left.
     @Test func wideValuesEffectsPanel() throws {

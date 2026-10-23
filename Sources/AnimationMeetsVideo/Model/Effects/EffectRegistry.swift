@@ -117,11 +117,14 @@ struct EffectDefinition: Sendable {
     var generates = false
     /// The package it was read from; nil for one built into the app.
     var package: EffectPackage?
+    /// Whether it is left out of `EffectKind.all`: never offered, nor
+    /// saved under its own name.
+    var isHidden = false
 
     init(
         _ kind: EffectKind, _ name: String, _ category: EffectCategory, _ systemImage: String, controls: [ControlKind],
         reshapesTarget: Bool = false, takesInput: Bool = false, readsAgainst: Bool = false,
-        dependsOnPixelSize: Bool = false, generates: Bool = false
+        dependsOnPixelSize: Bool = false, generates: Bool = false, isHidden: Bool = false
     ) {
         self.kind = kind
         self.name = name
@@ -133,6 +136,7 @@ struct EffectDefinition: Sendable {
         self.readsAgainst = readsAgainst
         self.dependsOnPixelSize = dependsOnPixelSize
         self.generates = generates
+        self.isHidden = isHidden
     }
 }
 

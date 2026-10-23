@@ -65,6 +65,9 @@ extension EffectKind {
     static let looper = EffectKind(builtIn: "looper")
     static let timeStep = EffectKind(builtIn: "timeStep")
     static let overshoot = EffectKind(builtIn: "overshoot")
+    /// Holds an effect whose package isn't installed (`Effect.missing`).
+    /// Never listed or saved under this name.
+    static let missing = EffectKind(builtIn: "missing")
 
     // From the packages in Resources/Effects, which ship with the app.
     static let posterize = EffectKind(package: "posterize")
@@ -464,6 +467,7 @@ enum BuiltInEffects {
             .overshoot, "Overshoot", .keyframing, "arrowshape.bounce.right", controls: [.stiffness, .damping, .mass, .tolerance],
             reshapesTarget: true
         ),
+        EffectDefinition(.missing, "Missing Effect", .foundations, "questionmark.square.dashed", controls: [], isHidden: true),
     ]
 
     static let controls: [ControlDefinition] = [

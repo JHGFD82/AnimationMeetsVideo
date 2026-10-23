@@ -40,7 +40,7 @@ struct PresetFile: Codable {
     static var shape: JSONShape {
         .object(JSONObjectShape(fields: [
             .required("formatVersion", .integer), .required("name", .string),
-            .required("effects", ProjectFile.ShapeKit.effects(extra: [.optional("inputName", .string), .optional("againstName", .string)])),
+            .required("effects", ProjectFile.ShapeKit.effects(extra: [.optional("inputName", .string), .optional("againstName", .string)], allowingMissing: true)),
         ]))
     }
 }

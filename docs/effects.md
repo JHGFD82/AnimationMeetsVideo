@@ -752,6 +752,10 @@ problem and where it is in the file, as a path:
 This also replaces today's rule that an unknown transition kind is dropped
 on load.
 
+The one exception is an effect from an effect package that isn't
+installed, which is kept rather than refused (see
+[Missing effects](effect-packages.md#missing-effects)).
+
 ## Testing
 
 The test that the built-in and custom compositors draw the same picture

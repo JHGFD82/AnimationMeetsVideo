@@ -138,8 +138,9 @@ struct EffectKind: RawRepresentable, Hashable, Identifiable, Sendable {
         self.rawValue = rawValue
     }
 
-    /// Every registered kind, in the library's order.
-    static var all: [EffectKind] { EffectRegistry.current.effects.map(\.kind) }
+    /// Every registered kind that can be added and saved, in the library's
+    /// order.
+    static var all: [EffectKind] { EffectRegistry.current.effects.filter { !$0.isHidden }.map(\.kind) }
 
     var id: Self { self }
 
@@ -449,6 +450,9 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// marked resolved (see docs/effects.md, "Paste changes").
     var pasteChanges: [PasteChange] = []
     var controls: [EffectControl]
+    /// For an effect whose package isn't installed, of kind `.missing`:
+    /// what it was saved as, kept to be written back.
+    var missing: MissingEffect?
 
     init(id: UUID = UUID(), kind: EffectKind, name: String? = nil, controls: [EffectControl]? = nil) {
         self.id = id
@@ -459,7 +463,16 @@ struct Effect: Identifiable, Equatable, Sendable {
         if kind == .audioKeys { keyframing?.audioSource = .mix }
     }
 
-    var displayName: String { name ?? kind.name }
+    var displayName: String { missing?.name ?? name ?? kind.name }
+
+    /// An effect whose package isn't installed, or is older than the one it
+    /// was saved with, held as it was saved.
+    static func missing(_ missing: MissingEffect, id: UUID, enabled: Bool) -> Effect {
+        var effect = Effect(id: id, kind: .missing)
+        effect.enabled = enabled
+        effect.missing = missing
+        return effect
+    }
 
     /// The value of a choice control, or nil if the effect lacks it.
     func choice<Option: RawRepresentable>(_ kind: ControlKind, as type: Option.Type = Option.self) -> Option?
@@ -478,7 +491,7 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// True when nothing in the effect changes the picture, or for a
     /// sound effect the sound.
     var isNoOp: Bool {
-        guard enabled else { return true }
+        guard enabled, missing == nil else { return true }
         // It wrote its keyframes onto another control, which draws them.
         if kind.isKeyframing { return true }
         // Displace needs a map: an input, or the picture read against an
@@ -526,6 +539,8 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// Back to a new effect's controls, all at their defaults, keeping its
     /// ID and name.
     mutating func reset(in frame: CGSize? = nil) {
+        // A missing effect's settings can't be known, so they stay.
+        guard missing == nil else { return }
         let setup = keyframing
         self = Effect(id: id, kind: kind, name: name)
         if let frame { sizeShape(to: frame) }
@@ -568,6 +583,7 @@ struct Effect: Identifiable, Equatable, Sendable {
             control.id = UUID()
             return control
         }
+        copy.missing = missing?.withNewControlIDs()
         if let name { copy.name = name }
         return copy
     }
