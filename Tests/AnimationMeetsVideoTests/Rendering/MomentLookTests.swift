@@ -51,6 +51,19 @@ private let frame = CMTime(value: 1, timescale: 24)
         #expect(abs(h.pixel(drawn, x: 8, y: 4).x - 0.4) < 0.02)
     }
 
+    @Test func feedbacksCopiesTurnInHue() throws {
+        let h = try harness()
+        func drawn(hueStep: Double) throws -> SIMD4<Float> {
+            let effect = look(.feedback, ["copies": [1], "copyScale": [100], "copyRotation": [0], "hueStep": [hueStep], "copyDecay": [0]])
+            return h.pixel(try h.draw([clip([effect], moments: [copy(2, delay: frame)])], at: CMTime(value: 1, timescale: 1)), x: 8, y: 4)
+        }
+        // The red copy turned a third of the way round is green, screened
+        // over the gray: red as the picture's, green brighter.
+        let still = try drawn(hueStep: 0), turned = try drawn(hueStep: 120)
+        #expect(turned.y > still.y + 0.1)
+        #expect(turned.x < still.x - 0.1)
+    }
+
     @Test func slitScanTakesEachBandFromItsMoment() throws {
         let h = try harness()
         // Two bands a frame apart: the top now, the bottom a frame ago.

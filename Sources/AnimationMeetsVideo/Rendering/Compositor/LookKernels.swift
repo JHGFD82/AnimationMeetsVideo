@@ -307,9 +307,12 @@ enum LookRenderer {
         }
     }
 
-    /// `image` with its hues turned by `turn` of a full turn.
+    /// `image` with its hues turned by `turn` of a full turn, by Hue Cycle's
+    /// kernel from its package.
     private static func hueTurned(_ image: CIImage, by turn: Double, space: ProjectColorSpace, over region: CGRect) -> CIImage {
-        guard let kernel = LookKernels.compiled["amvHueCycle"] as? CIColorKernel else { return image }
+        guard let package = EffectKind.hueCycle.definition.package,
+              let kernel = PackageKernels.kernel(for: package) as? CIColorKernel
+        else { return image }
         return kernel.apply(extent: region.integral, arguments: [
             image.cropped(to: region), Float(space.gradingSpaceIndex), Float(turn - floor(turn)), Float(0), Float(0), Float(1),
         ]) ?? image
