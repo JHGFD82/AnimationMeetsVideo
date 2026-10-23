@@ -19,8 +19,9 @@ import Testing
     private static let time = CMTime(seconds: 0.75, preferredTimescale: 600)
 
     private struct Reference: Codable {
-        /// By case: "defaults", "lastChoices" for a look with choices, and
-        /// "tweaked" for one with `tweaks`.
+        /// By case: "defaults", "choice:<control>=<option>" for each option
+        /// of each choice but its default, and "tweaked" for a look with
+        /// `tweaks`.
         var cases: [String: [[Float]]]
     }
 
@@ -52,16 +53,20 @@ import Testing
         "posterize": ["levels": [3], "amount": [40]],
     ]
 
-    /// The look's effect at its defaults, with every choice at its last
-    /// option, and with its tweaks.
+    /// The look's effect at its defaults, with each option of each choice
+    /// (which checks how a choice becomes a kernel argument), and with its
+    /// tweaks.
     private func effects(_ kind: EffectKind) -> [String: Effect] {
         let effect = Effect(kind: kind)
         var cases = ["defaults": effect]
-        var last = effect
-        for index in last.controls.indices where last.controls[index].kind.isChoice {
-            last.controls[index].choice = last.controls[index].kind.choiceOptions.last?.id
+        for index in effect.controls.indices where effect.controls[index].kind.isChoice {
+            let control = effect.controls[index]
+            for option in control.kind.choiceOptions where option.id != control.choice {
+                var chosen = effect
+                chosen.controls[index].choice = option.id
+                cases["choice:\(control.kind.savedName)=\(option.id)"] = chosen
+            }
         }
-        if last != effect { cases["lastChoices"] = last }
         if let tweaks = Self.tweaks[kind.rawValue] {
             var tweaked = effect
             for index in tweaked.controls.indices {
