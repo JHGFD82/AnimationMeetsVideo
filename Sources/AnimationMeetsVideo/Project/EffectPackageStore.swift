@@ -28,6 +28,31 @@ enum EffectPackageStore {
 
     static let manifestName = "effect.json"
 
+    /// The packages that ship with the app, in its resource bundle. In the
+    /// app that is in Contents/Resources (scripts/build-app.sh puts it
+    /// there); built by SwiftPM, beside the executable.
+    static var builtInFolder: URL? {
+        let name = "AnimationMeetsVideo_AnimationMeetsVideo.bundle"
+        if let resources = Bundle.main.resourceURL, let bundle = Bundle(url: resources.appending(path: name)) {
+            return bundle.url(forResource: "Effects", withExtension: nil)
+        }
+        return Bundle.module.url(forResource: "Effects", withExtension: nil)
+    }
+
+    /// The packages that ship with the app. One that can't be read is a
+    /// mistake in the app, logged and left out.
+    static func loadBuiltIn() -> EffectPackageLibrary {
+        guard let folder = builtInFolder else {
+            NSLog("The app's effect packages are missing.")
+            return EffectPackageLibrary()
+        }
+        let library = load(from: folder, builtIn: true)
+        for problem in library.problems {
+            NSLog("The built-in effect package \(problem.url.lastPathComponent) can't be used: \(problem.message)")
+        }
+        return library
+    }
+
     /// Reads the person's packages and installs them beside the built-in
     /// effects. Called once at launch, before a project is opened.
     static func installAtLaunch(from folder: URL = defaultFolder) {
@@ -36,6 +61,12 @@ enum EffectPackageStore {
             NSLog("The effect package \(problem.url.lastPathComponent) can't be used: \(problem.message)")
         }
         EffectRegistry.install(library.packages, problems: library.problems)
+        // Compiled now rather than at first use, so a kernel's mistake shows
+        // up at once and the first frame of a look doesn't wait on it.
+        let packages = EffectRegistry.current.effects.compactMap(\.package)
+        Task.detached(priority: .utility) {
+            for package in packages { _ = PackageKernels.kernel(for: package) }
+        }
     }
 
     /// Every package in the folder, and each that couldn't be read.
@@ -74,7 +105,7 @@ enum EffectPackageStore {
             guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 throw JSONShapeError(message: "Expected an object", path: "")
             }
-            return try Reader(url: url, builtIn: builtIn).package(from: object)
+            return try Reader(url: url, builtIn: builtIn, manifest: data).package(from: object)
         } catch let problem as JSONShapeError {
             throw EffectPackageError("The package can't be used. \(problem.sentence)")
         }
@@ -138,6 +169,7 @@ enum EffectPackageStore {
     private struct Reader {
         let url: URL
         let builtIn: Bool
+        let manifest: Data
 
         func package(from json: [String: Any]) throws -> EffectPackage {
             let id = json["id"] as! String
@@ -220,6 +252,7 @@ enum EffectPackageStore {
             return EffectPackage(
                 url: url, id: id, version: version, name: json["name"] as! String,
                 category: EffectCategory(rawValue: json["category"] as! String)!, systemImage: json["symbol"] as! String,
+                contentHash: EffectPackage.contentHash(manifest, source),
                 kernelType: kernelType, kernelFunction: function, kernelSource: source, controls: controls,
                 hasAmount: json["amount"] as? Bool ?? false, arguments: arguments,
                 generates: json["generates"] as? Bool ?? false, changesEveryFrame: json["changesEveryFrame"] as? Bool ?? false,

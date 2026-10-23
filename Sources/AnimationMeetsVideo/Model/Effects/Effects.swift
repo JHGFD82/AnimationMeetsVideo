@@ -577,6 +577,9 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// at every frame then.
     var changesOnItsOwn: Bool {
         guard enabled, !isNoOp else { return false }
+        if let package = kind.definition.package {
+            return package.changesEveryFrame || package.rateControls.contains { moves(control($0)) }
+        }
         // Grain, snow and glitches are new every frame, and so is a picture
         // drawn from other moments.
         switch kind {
@@ -593,8 +596,13 @@ struct Effect: Identifiable, Equatable, Sendable {
         case .kaleidoscope: .spinSpeed
         default: nil
         }
-        guard let moving, let control = control(moving), control.enabled else { return false }
-        return control.number.isAnimated ? control.number.keyframes.contains { $0.value.values.first != 0 } : control.number.value.values.first != 0
+        return moves(moving.flatMap(control))
+    }
+
+    /// Whether a speed is on and isn't 0 throughout.
+    private func moves(_ speed: EffectControl?) -> Bool {
+        guard let speed, speed.enabled else { return false }
+        return speed.number.isAnimated ? speed.number.keyframes.contains { $0.value.values.first != 0 } : speed.number.value.values.first != 0
     }
 
     /// The earlier moments of the clip's footage the effect draws from, as

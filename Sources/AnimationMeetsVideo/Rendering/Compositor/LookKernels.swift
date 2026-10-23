@@ -31,6 +31,11 @@ enum LookKernels {
         return kernels
     }()
 
+    /// The functions every look's kernel may use, put in front of an
+    /// effect package's kernel too (see docs/effect-packages.md, "The
+    /// kernel").
+    static let prelude = split(source).prelude
+
     /// The source's shared functions, and each kernel's own text: from its
     /// `extern "C"` to the next one, or the end.
     static func split(_ source: String) -> (prelude: String, kernels: [String]) {
@@ -159,12 +164,6 @@ enum LookKernels {
             folded = t + (to - y);
         }
         return mixed(s, fromTones(folded, space), amount);
-    }
-
-    extern "C" [[stitchable]] float4 amvPosterize(coreimage::sample_t s, float space, float levels, float amount) {
-        float3 t = toTones(straight(s), space);
-        float steps = max(levels - 1.0, 1.0);
-        return mixed(s, fromTones(round(clamp(t, 0.0, 1.0) * steps) / steps, space), amount);
     }
 
     extern "C" [[stitchable]] float4 amvChannelMixer(coreimage::sample_t s, float space, float3 red, float3 green, float3 blue, float3 offset, float amount) {
@@ -499,6 +498,11 @@ enum LookRenderer {
         _ step: LookStep, to picture: CIImage, over region: CGRect, canvas: CGRect, frame: CGRect, scale: CGFloat,
         space: ProjectColorSpace
     ) -> CIImage {
+        if let package = step.kind.definition.package {
+            return PackageLookRenderer.apply(
+                package, step, to: picture, over: region, canvas: canvas, frame: frame, scale: scale, space: space
+            )
+        }
         var region = region.integral
         if region.isEmpty, step.kind.generates { region = canvas.integral }
         guard !region.isEmpty, !region.isInfinite else { return picture }
@@ -542,8 +546,6 @@ enum LookRenderer {
         case .solarize:
             let each = step.choice(.solarizeChannels, as: SolarizeChannels.self) == .each
             return color("amvSolarize", [Float(step.value(.solarizeLevel) / 100), Float(step.value(.folds)), Float(each ? 1 : 0)])
-        case .posterize:
-            return color("amvPosterize", [Float(step.value(.levels))])
         case .channelMixer:
             return color("amvChannelMixer", [
                 vector(step.values(.mixRed)), vector(step.values(.mixGreen)), vector(step.values(.mixBlue)), vector(step.values(.mixOffset)),

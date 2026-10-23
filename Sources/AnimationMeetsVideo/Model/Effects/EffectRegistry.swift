@@ -1,9 +1,10 @@
 import Foundation
 import Synchronization
 
-/// Every effect kind and control kind the app knows, and what each is. The
-/// built-in ones are listed in BuiltInEffects.swift, and effect packages
-/// (see docs/effect-packages.md) add theirs at launch.
+/// Every effect kind and control kind the app knows, and what each is: the
+/// ones written in Swift (BuiltInEffects.swift), those of the effect
+/// packages that ship with the app (Resources/Effects), and those of the
+/// person's packages, added at launch (see docs/effect-packages.md).
 struct EffectRegistry: Sendable {
     /// The effect kinds, in the library's order.
     let effects: [EffectDefinition]
@@ -12,14 +13,11 @@ struct EffectRegistry: Sendable {
     private let effectsByName: [String: EffectDefinition]
     private let controlsByName: [String: ControlDefinition]
 
-    init(effects: [EffectDefinition], controls: [ControlDefinition]) {
-        self.init(effects: effects, controls: controls, packages: [])
-    }
-
-    /// The built-in effects and controls, then each package's, in order.
-    /// A package whose ID is taken isn't added, so one can never replace a
-    /// built-in effect or a package installed before it; it joins
-    /// `problems`, the packages that couldn't be read.
+    /// The Swift effects and controls, then each package's, in order, the
+    /// built-in ones sorted into `BuiltInEffects.libraryOrder`. A package
+    /// whose ID is taken isn't added, so one can never replace a built-in
+    /// effect or a package installed before it; it joins `problems`, the
+    /// packages that couldn't be read.
     init(
         effects: [EffectDefinition], controls: [ControlDefinition], packages: [EffectPackage],
         problems: [EffectPackageProblem] = []
@@ -36,13 +34,28 @@ struct EffectRegistry: Sendable {
             effects.append(package.definition)
             controls += package.controls
         }
-        self.effects = effects
+        let order = Dictionary(uniqueKeysWithValues: BuiltInEffects.libraryOrder.enumerated().map { ($1, $0) })
+        self.effects = effects.enumerated()
+            .sorted { (order[$0.element.kind.rawValue] ?? Int.max, $0.offset) < (order[$1.element.kind.rawValue] ?? Int.max, $1.offset) }
+            .map(\.element)
         self.problems = problems
         effectsByName = Dictionary(uniqueKeysWithValues: effects.map { ($0.kind.rawValue, $0) })
         controlsByName = Dictionary(uniqueKeysWithValues: controls.map { ($0.kind.rawValue, $0) })
     }
 
-    static let builtIn = EffectRegistry(effects: BuiltInEffects.effects, controls: BuiltInEffects.controls)
+    /// The packages that ship with the app, read once.
+    static let builtInPackages = EffectPackageStore.loadBuiltIn()
+
+    /// Every built-in effect, Swift's and the shipped packages', with
+    /// `packages` after them.
+    static func withBuiltIns(_ packages: [EffectPackage] = [], problems: [EffectPackageProblem] = []) -> EffectRegistry {
+        EffectRegistry(
+            effects: BuiltInEffects.effects, controls: BuiltInEffects.controls,
+            packages: builtInPackages.packages + packages, problems: builtInPackages.problems + problems
+        )
+    }
+
+    static let builtIn = withBuiltIns()
 
     private static let installed = Mutex(builtIn)
 
@@ -50,16 +63,14 @@ struct EffectRegistry: Sendable {
     /// test can read packages without changing what other tests see.
     @TaskLocal static var override: EffectRegistry?
 
-    /// The registry in use: the built-in effects until `install` adds
-    /// packages, at launch.
+    /// The registry in use: the built-in effects until `install` adds the
+    /// person's packages, at launch.
     static var current: EffectRegistry { override ?? installed.withLock { $0 } }
 
     /// Puts `packages` beside the built-in effects, replacing any installed
     /// before, with `problems` the packages that couldn't be read.
     static func install(_ packages: [EffectPackage], problems: [EffectPackageProblem] = []) {
-        let registry = EffectRegistry(
-            effects: BuiltInEffects.effects, controls: BuiltInEffects.controls, packages: packages, problems: problems
-        )
+        let registry = withBuiltIns(packages, problems: problems)
         installed.withLock { $0 = registry }
     }
 

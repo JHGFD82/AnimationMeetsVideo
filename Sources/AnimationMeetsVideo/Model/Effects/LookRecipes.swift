@@ -44,6 +44,13 @@ enum LookRecipes {
         return effect
     }
 
+    /// A new effect of `kind` with numbers set by the names its controls
+    /// are saved under, for a look from a package, whose controls have no
+    /// Swift names.
+    private static func effect(_ kind: EffectKind, named numbers: [String: [Double]]) -> Effect {
+        effect(kind, Dictionary(uniqueKeysWithValues: numbers.compactMap { name, values in kind.controlKind(savedAs: name).map { ($0, values) } }))
+    }
+
     /// Blending in `mode` against the picture before `earlier`.
     private static func blend(_ mode: BlendMode, against earlier: Effect) -> Effect {
         var blending = effect(.blending, choices: [.mode: mode.rawValue])
@@ -114,7 +121,7 @@ enum LookRecipes {
     private static var thermalDream: [Effect] {
         [
             effect(.falseColor, choices: [.falseColorLook: FalseColorLook.thermal.rawValue]),
-            effect(.slitScan, choices: [.slitDirection: SlitDirection.rows.rawValue]), effect(.posterize, [.levels: [5]]),
+            effect(.slitScan, choices: [.slitDirection: SlitDirection.rows.rawValue]), effect(.posterize, named: ["levels": [5]]),
             effect(.grain),
         ]
     }

@@ -37,12 +37,8 @@ import Testing
     """
 
     @discardableResult
-    private func write(_ manifest: [String: Any], named name: String = "Glow.amveffect", kernel: String? = nil) throws -> URL {
-        let url = folder.appending(path: name, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys]).write(to: url.appending(path: "effect.json"))
-        try (kernel ?? self.kernel).write(to: url.appending(path: "kernel.metal"), atomically: true, encoding: .utf8)
-        return url
+    private func write(_ manifest: [String: Any], named name: String = "Glow.amveffect") throws -> URL {
+        try writeEffectPackage(manifest, kernel: kernel, in: folder, named: name)
     }
 
     private func problem(_ manifest: [String: Any], builtIn: Bool = false) throws -> String? {
@@ -92,16 +88,17 @@ import Testing
         var copy = glow
         copy["id"] = "posterize"
         let clash = try EffectPackageStore.read(try write(copy, named: "Posterize.amveffect"), builtIn: true)
-        let registry = EffectRegistry(effects: BuiltInEffects.effects, controls: BuiltInEffects.controls, packages: [package, package, clash])
+        let registry = EffectRegistry.withBuiltIns([package, package, clash])
 
-        #expect(registry.effects.count == BuiltInEffects.effects.count + 1)
+        #expect(registry.effects.count == EffectRegistry.builtIn.effects.count + 1)
         #expect(registry.effects.last?.package?.id == "com.example.glow")
-        // A taken ID is refused, whether a built-in effect's or another
-        // package's, and the effect that has it is kept.
+        // A taken ID is refused, whether a built-in effect's (Posterize ships
+        // as a package) or another package's, and the effect that has it is
+        // kept.
         #expect(registry.problems.map(\.message) == [
             "An effect called \"com.example.glow\" is already installed.", "An effect called \"posterize\" is already installed.",
         ])
-        #expect(registry.effect(named: "posterize")?.package == nil)
+        #expect(registry.effect(named: "posterize")?.package?.url == EffectKind.posterize.definition.package?.url)
 
         EffectRegistry.$override.withValue(registry) {
             let kind = EffectKind(rawValue: "com.example.glow")
@@ -184,7 +181,7 @@ import Testing
     @Test func aPackageEffectIsSavedUnderItsOwnNames() throws {
         defer { try? FileManager.default.removeItem(at: folder) }
         let package = try EffectPackageStore.read(try write(glow))
-        let registry = EffectRegistry(effects: BuiltInEffects.effects, controls: BuiltInEffects.controls, packages: [package])
+        let registry = EffectRegistry.withBuiltIns([package])
         try EffectRegistry.$override.withValue(registry) {
             var effect = Effect(kind: package.kind)
             let radius = effect.controls.firstIndex { $0.kind.savedName == "radius" }!
@@ -205,5 +202,31 @@ import Testing
             #expect(read.controls.map(\.kind) == effect.controls.map(\.kind))
             #expect(read.control(effect.controls[radius].kind)?.values(at: .zero) == [40])
         }
+    }
+
+    /// Posterize, saved when it was written in Swift (as the app writes
+    /// times, in rational seconds), reads as the package and is saved as it
+    /// was.
+    @Test func anEffectSavedBeforeItsLookMovedReadsAndSavesTheSame() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let effects: [[String: Any]] = [[
+            "id": UUID().uuidString, "kind": "posterize",
+            "controls": [
+                ["id": UUID().uuidString, "kind": "levels", "value": 5],
+                ["id": UUID().uuidString, "kind": "amount", "keyframes": [["time": "0/1s", "value": 20], ["time": "1/1s", "value": 90]]],
+            ],
+        ]]
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appending(path: "Old.json")
+        try JSONSerialization.data(withJSONObject: ["formatVersion": 1, "name": "Old", "effects": effects]).write(to: url)
+
+        let read = try PresetStore.read(url)
+        let effect = read.bundle.effects[0].effect
+        #expect(effect.kind == .posterize && effect.kind.definition.package != nil)
+        #expect(effect.control(EffectKind.posterize.controlKind(savedAs: "levels")!)?.values(at: .zero) == [5])
+
+        let saved = try PresetStore.save(read.bundle, named: "Again", in: folder)
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: saved.url)) as! [String: Any]
+        #expect(NSArray(array: json["effects"] as! [[String: Any]]) == NSArray(array: effects))
     }
 }

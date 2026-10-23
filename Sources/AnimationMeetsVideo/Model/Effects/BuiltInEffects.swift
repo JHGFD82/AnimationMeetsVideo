@@ -14,7 +14,6 @@ extension EffectKind {
     static let cosinePalette = EffectKind(builtIn: "cosinePalette")
     static let gradientMap = EffectKind(builtIn: "gradientMap")
     static let solarize = EffectKind(builtIn: "solarize")
-    static let posterize = EffectKind(builtIn: "posterize")
     static let channelMixer = EffectKind(builtIn: "channelMixer")
     static let falseColor = EffectKind(builtIn: "falseColor")
     /// Its edges are found between neighboring pixels.
@@ -67,6 +66,9 @@ extension EffectKind {
     static let timeStep = EffectKind(builtIn: "timeStep")
     static let overshoot = EffectKind(builtIn: "overshoot")
 
+    // From the packages in Resources/Effects, which ship with the app.
+    static let posterize = EffectKind(package: "posterize")
+
     /// How a shape is filled and stroked, after what shapes it.
     static let paintControls: [ControlKind] = [.fill, .stroke, .strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash]
 }
@@ -112,8 +114,6 @@ extension ControlKind {
     static let solarizeLevel = ControlKind(builtIn: "solarizeLevel")
     static let folds = ControlKind(builtIn: "folds")
     static let solarizeChannels = ControlKind(builtIn: "solarizeChannels")
-    // Posterize
-    static let levels = ControlKind(builtIn: "levels")
     // Channel Mixer
     static let mixRed = ControlKind(builtIn: "mixRed")
     static let mixGreen = ControlKind(builtIn: "mixGreen")
@@ -275,7 +275,21 @@ extension ControlKind {
 }
 
 enum BuiltInEffects {
-    /// In the library's order.
+    /// Every built-in kind, Swift's and those of the packages that ship
+    /// with the app, in the library's order. A kind not listed (a package
+    /// the person installed) comes after them.
+    static let libraryOrder: [String] = [
+        "transform", "blending", "color", "matte",
+        "hueCycle", "cosinePalette", "gradientMap", "solarize", "posterize", "channelMixer", "falseColor", "neonEdges",
+        "grain", "staticNoise", "fractalNoise", "cells", "dither", "interference", "blockGlitch",
+        "displace", "liquid", "twirl", "wave", "kaleidoscope", "mirrorTile", "chromaticAberration",
+        "flowSmear", "slitScan", "feedback",
+        "rectangle", "ellipse", "polygon", "star", "stroke",
+        "equalizer", "compressor", "limiter", "voiceIsolation",
+        "audioKeys", "beatKeys", "wiggler", "oscillator", "smoother", "looper", "timeStep", "overshoot",
+    ]
+
+    /// The effects written in Swift, in the library's order.
     static let effects: [EffectDefinition] = [
         EffectDefinition(
             .transform, "Transform", .foundations, "arrow.up.left.and.down.right.and.arrow.up.right.and.down.left",
@@ -309,7 +323,6 @@ enum BuiltInEffects {
             .solarize, "Solarize", .recolor, "sun.max.trianglebadge.exclamationmark",
             controls: [.solarizeLevel, .folds, .solarizeChannels, .amount]
         ),
-        EffectDefinition(.posterize, "Posterize", .recolor, "square.stack.3d.down.forward", controls: [.levels, .amount]),
         EffectDefinition(
             .channelMixer, "Channel Mixer", .recolor, "circle.grid.cross",
             controls: [.mixRed, .mixGreen, .mixBlue, .mixOffset, .amount]
@@ -523,8 +536,6 @@ enum BuiltInEffects {
         ControlDefinition(.solarizeLevel, "Threshold", .solarize, defaults: [50], unit: "%", range: 1...99),
         ControlDefinition(.folds, "Folds", .solarize, defaults: [1], range: 1...16, isWhole: true),
         ControlDefinition(.solarizeChannels, "Channels", .solarize, choice: SolarizeChannels.luminance),
-        // Posterize
-        ControlDefinition(.levels, "Levels", .posterize, defaults: [6], range: 2...64, isWhole: true),
         // Channel Mixer
         ControlDefinition(
             .mixRed, "Red From", .channelMixer, defaults: [1, 0, 0], dragStep: 0.01, range: -4...4,

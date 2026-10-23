@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "id": "posterize",
+  "version": 1,
+  "name": "Posterize",
+  "category": "recolor",
+  "symbol": "square.stack.3d.down.forward",
+  "kernel": { "file": "kernel.metal", "function": "amvPosterize", "type": "color" },
+  "controls": [
+    { "id": "levels", "name": "Levels", "type": "number", "default": 6, "range": [2, 64], "whole": true }
+  ],
+  "amount": true,
+  "arguments": ["levels"]
+}

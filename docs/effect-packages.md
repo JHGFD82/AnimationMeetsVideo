@@ -1,12 +1,13 @@
 # Effect packages
 
-Status: **planned; steps 1 and 2 of [Building it](#building-it) built**.
+Status: **planned; steps 1 to 3 of [Building it](#building-it) built**.
 `EffectKind` and `ControlKind` are names looked up in an
-`EffectRegistry` of the built-in effects (BuiltInEffects.swift) and the
-packages `EffectPackageStore` reads from the Effects folder at launch. A
-package's effect is listed in the library and saved like any other, but
-draws nothing yet: each look's drawing is still a `case` in
-`LookRenderer`, and no packages ship. This plan moves the looks of
+`EffectRegistry` of the effects written in Swift (BuiltInEffects.swift),
+the packages that ship with the app (Resources/Effects: Posterize so far)
+and the person's, which `EffectPackageStore` reads from the Effects
+folder at launch. A package's look is listed, saved and drawn like any
+other (`PackageLookRenderer`); the other 20 looks are still a `case` in
+`LookRenderer` each. This plan moves the looks of
 [psychedelic-effects.md](psychedelic-effects.md) out of Swift into
 **effect packages**: folders the app reads at launch, which can be
 written, shared and installed without building the app. Effects that need
@@ -154,7 +155,26 @@ the format: its functions keep their names and behavior within a
 
 Each package's kernel is compiled from its own source, as each look's is
 now, because Core Image within one `CIContext` mistook kernels compiled
-from one source for each other.
+from one source for each other. A kernel that compiles as another type
+than `kernel.type` says (a warp declared as a color kernel) is refused
+with that mistake.
+
+Where each type draws, as the built-in looks of that type do:
+
+- **color**: over the picture, one pixel at a time. A generator draws
+  over the frame where there was nothing.
+- **general** with `"input": "clamped"`: over the picture, reading
+  beside it as if its edges went on (Neon Edges, Block Glitch).
+- **general** with `"input": "clear"` (the default): over the whole
+  canvas, reading transparent past the picture's edges (Chromatic
+  Aberration).
+- **warp**: over the whole canvas, sampling the picture where the kernel
+  says, transparent past its edges.
+
+`reach` bounds what a general or warp kernel reads from each pixel; left
+out, Core Image may read the whole canvas. A number argument is a
+`float`; a vector, point or color a `float2`, `float3` or `float4` by its
+count.
 
 ### Built-in filters
 
@@ -173,8 +193,12 @@ A filter name Core Image doesn't know refuses the package when it loads.
 
 ## Where packages come from
 
-- **Built in**: in the app's resources (`Resources/Effects/`, through
-  SwiftPM's `Bundle.module`), always loaded.
+- **Built in**: in the app's resources, from
+  `Sources/AnimationMeetsVideo/Resources/Effects/`, which SwiftPM copies
+  into its resource bundle as they are and `scripts/build-app.sh` puts in
+  the app's Contents/Resources. They are read the first time the
+  registry is, in tests too, and their effects take their places in the
+  library from `BuiltInEffects.libraryOrder`.
 - **The person's**:
   `~/Library/Application Support/AnimationMeetsVideo/Effects/`, beside
   the Presets folder. Installing one means copying it there; the app
@@ -266,19 +290,24 @@ Chromatic Aberration.
   a look by.
 - The project and preset shapes strict loading checks against are made
   at each load, from the registry, so they always know its packages.
-- `LookRenderer` draws every package look one way, from its definition.
-  Its `case` per look goes away.
+- `LookRenderer` hands every package look to `PackageLookRenderer`, which
+  draws it one way, from the package; its `case` per look goes away as
+  each moves. `PackageKernels` compiles each package's kernel once,
+  keyed by its content hash.
 - Strict loading checks a package effect against its definition, as
   `ProjectFile.ShapeKit.effect` checks a built-in one, and missing
   effects as above.
-- `LookRecipes` names kinds by `id`. A recipe whose package is missing
-  isn't installed.
+- `LookRecipes` names a shipped package's kind by a static member
+  (`EffectKind.posterize`) and its controls by saved name. Recipes use
+  only effects that ship with the app, which a test checks load and
+  compile.
 
 ## Testing
 
 - Each look moved into a package draws the same picture as before it
-  moved, against reference frames taken before the move, within the
-  tolerance of [Testing](psychedelic-effects.md#testing).
+  moved, against reference frames taken before the move
+  (`LookReferenceTests`, recorded for all 21 before any moved), within
+  the tolerance of [Testing](psychedelic-effects.md#testing).
 - A project saved before the move opens unchanged, and saves to the same
   JSON.
 - Package loading checked against a package per kind of error (bad key,
@@ -311,7 +340,7 @@ In order, each step usable on its own:
    the Effects folders; packages load but none ship. **Built**: the
    person's folder only, since there are no built-in packages to read yet.
 3. `LookRenderer` drawing a package look, and Posterize moved into a
-   built-in package, checked against its reference frames.
+   built-in package, checked against its reference frames. **Built.**
 4. Missing effects in projects and presets.
 5. The other Color looks, then the Noise looks, then the Distortion
    looks, as packages, a category at a time.

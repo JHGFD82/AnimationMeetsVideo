@@ -420,7 +420,7 @@ struct ProjectFile: Codable {
         /// kind. Nil only for a kind that effect doesn't list, which loading
         /// has already refused.
         func control(in effect: EffectKind) -> EffectControl? {
-            guard let kind = effect.controlKinds.first(where: { $0.savedName == self.kind }) else { return nil }
+            guard let kind = effect.controlKind(savedAs: self.kind) else { return nil }
             var control = EffectControl(id: id, kind: kind, enabled: enabled ?? true)
             control.linked = linked ?? kind.linksByDefault
             control.squircle = squircle ?? false

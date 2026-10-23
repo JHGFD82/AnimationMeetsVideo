@@ -23,6 +23,9 @@ private enum Tones {
     }
 }
 
+/// Posterize's Levels, which comes from its package.
+private let levels = EffectKind.posterize.controlKind(savedAs: "levels")!
+
 /// A look with some of its controls set.
 func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices: [ControlKind: String] = [:]) -> Effect {
     var effect = Effect(kind: kind)
@@ -56,24 +59,24 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
     }
 
     @Test func everyKernelCompiles() {
-        let names = ["amvHueCycle", "amvCosinePalette", "amvGradientMap", "amvSolarize", "amvPosterize",
+        let names = ["amvHueCycle", "amvCosinePalette", "amvGradientMap", "amvSolarize",
                      "amvChannelMixer", "amvFalseColor", "amvNeonEdges"]
         #expect(names.allSatisfy { LookKernels.compiled[$0] != nil })
     }
 
     @Test func atNoAmountALookDrawsNothing() throws {
-        let effect = look(.posterize, [.levels: [2], .amount: [0]])
+        let effect = look(.posterize, [levels: [2], .amount: [0]])
         #expect(effect.isNoOp)
         let drawn = try draw(effect)
         #expect(close(drawn[2], Tones.pixel(0.8, 0.4, 0.1)))
     }
 
     @Test func posterizeRoundsEachToneToALevel() throws {
-        let drawn = try draw(look(.posterize, [.levels: [2]]))
+        let drawn = try draw(look(.posterize, [levels: [2]]))
         #expect(close(drawn[0], Tones.pixel(0, 0, 0)))
         #expect(close(drawn[1], Tones.pixel(1, 1, 1)))
         // Halfway mixes halfway, in the timeline's values.
-        let half = try draw(look(.posterize, [.levels: [2], .amount: [50]]))
+        let half = try draw(look(.posterize, [levels: [2], .amount: [50]]))
         let expected = (Tones.pixel(0.3, 0.3, 0.3) + Tones.pixel(0, 0, 0)) / 2
         #expect(close(half[0], SIMD4(expected.x, expected.y, expected.z, 1), tolerance: 0.02))
     }

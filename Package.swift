@@ -16,7 +16,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "AnimationMeetsVideo",
-            path: "Sources/AnimationMeetsVideo"
+            path: "Sources/AnimationMeetsVideo",
+            // The effect packages that ship with the app, copied as they
+            // are: their Metal is compiled by Core Image at run time.
+            resources: [.copy("Resources/Effects")]
         ),
         .testTarget(
             name: "AnimationMeetsVideoTests",

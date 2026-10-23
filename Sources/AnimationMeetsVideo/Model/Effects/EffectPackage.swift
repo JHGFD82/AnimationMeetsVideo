@@ -34,6 +34,9 @@ struct EffectPackage: Sendable {
     let name: String
     let category: EffectCategory
     let systemImage: String
+    /// A hash of effect.json and the kernel, the same at every launch, so a
+    /// render cached before either changed isn't shown after.
+    let contentHash: String
     let kernelType: KernelType
     let kernelFunction: String
     let kernelSource: String
@@ -63,6 +66,15 @@ struct EffectPackage: Sendable {
         return definition
     }
 
+    /// FNV-1a over the manifest and the kernel source, in hex.
+    static func contentHash(_ manifest: Data, _ source: String) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in manifest + Data(source.utf8) {
+            hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01b3
+        }
+        return String(hash, radix: 16)
+    }
+
     /// Whether `id` is one a package may take: letters, digits and
     /// hyphens, in parts joined by dots, each part starting with a letter.
     static func isValidID(_ id: String) -> Bool {
@@ -85,6 +97,11 @@ extension EffectKind {
     /// The kind of the package effect `id`.
     init(package id: String) {
         self.init(builtIn: id)
+    }
+
+    /// The control the kind lists that is saved as `name`.
+    func controlKind(savedAs name: String) -> ControlKind? {
+        controlKinds.first { $0.savedName == name }
     }
 }
 

@@ -12,12 +12,17 @@ output="${1:-build}"
 app="$output/AnimationMeetsVideo.app"
 
 swift build -c release --product AnimationMeetsVideo
-binary="$(swift build -c release --show-bin-path)/AnimationMeetsVideo"
+bin="$(swift build -c release --show-bin-path)"
+binary="$bin/AnimationMeetsVideo"
+# The resource bundle, which holds the effect packages that ship with the
+# app; EffectPackageStore.builtInFolder looks for it in Contents/Resources.
+resources="$bin/AnimationMeetsVideo_AnimationMeetsVideo.bundle"
 
 plutil -lint Packaging/Info.plist
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/AnimationMeetsVideo"
+cp -R "$resources" "$app/Contents/Resources/"
 cp Packaging/Info.plist "$app/Contents/Info.plist"
 printf 'APPL????' > "$app/Contents/PkgInfo"
 
