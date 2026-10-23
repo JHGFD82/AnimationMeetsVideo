@@ -67,6 +67,28 @@ private struct Fixture {
         #expect(first.endOffset == second.startOffset)
     }
 
+    @Test func aSplitCutsTheSelectedClipsOrEveryClipUnderTheTime() throws {
+        var f = Fixture()
+        let other = f.addNeighbor(start: 12, length: 4)
+        let media = MediaClip(name: "B", kind: .video, url: nil, duration: seconds(10), frameRate: 24, colorSpace: .rec709, codecName: "H.264")
+        let placed = f.project.importClip(media, intoTimeline: f.timelineID)
+        let below = try #require(placed)
+        try #require(below.layerID != f.layerID)
+        f.project.moveClip(below.clipID, in: f.timelineID, layer: below.layerID, to: .zero)
+        let timeline = try #require(f.project.timeline(id: f.timelineID))
+        func cut(_ time: Double, _ selected: Set<UUID>, every: Bool = false) -> Set<UUID> {
+            Set(timeline.clipsToSplit(at: seconds(time), selected: selected, everyClip: every).map(\.clipID))
+        }
+        #expect(cut(5, [f.clipID]) == [f.clipID])
+        #expect(cut(5, [f.clipID], every: true) == [f.clipID, below.clipID])
+        #expect(cut(5, []) == [f.clipID, below.clipID])
+        // A selected clip the time isn't in is left alone, as is every other.
+        #expect(cut(5, [other]).isEmpty)
+        #expect(cut(14, [other]) == [other])
+        // Not at a clip's edge.
+        #expect(cut(10, [], every: true).isEmpty)
+    }
+
     @Test func ignoresSplitOutsideClip() {
         var f = Fixture()
         f.project.split(f.clipID, in: f.timelineID, layer: f.layerID, atTimelineTime: seconds(10))

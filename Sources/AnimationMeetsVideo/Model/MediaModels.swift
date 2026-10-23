@@ -401,6 +401,22 @@ struct EditingProject: Identifiable, Equatable {
 }
 
 extension Timeline {
+    /// The clips a split at `time` cuts, with their layers, as Final Cut's
+    /// Blade and Blade All: of the clips `time` is strictly inside, those
+    /// `selected`, or every one with `everyClip` or nothing selected.
+    func clipsToSplit(at time: CMTime, selected: Set<UUID>, everyClip: Bool) -> [(layerID: UUID, clipID: UUID)] {
+        layers.flatMap { layer in
+            layer.clips.compactMap { clip in
+                guard time > clip.startOffset, time < clip.endOffset,
+                      everyClip || selected.isEmpty || selected.contains(clip.id)
+                else { return nil }
+                return (layer.id, clip.id)
+            }
+        }
+    }
+}
+
+extension Timeline {
     /// Clips on a layer closer than this are taken to meet: the end of a
     /// retimed clip can't be found closer than the rounding of source
     /// time (4 µs), and a gap that small shows as a black frame.

@@ -266,8 +266,12 @@ skimming off takes the viewer back to the playhead.
 - **↑ / ↓** go to the previous or next edit: any clip's start or end, or
   the end of the timeline.
 - **Home / End** go to the start and the end.
-- **⌘B** splits at the playhead: the selected clip if the playhead is in
-  it, otherwise every clip the playhead is in, on every layer.
+- **⌘B** splits the selected clip, or the clips picked together, at the
+  playhead, as Final Cut's Blade; with nothing selected, every clip the
+  playhead is in. **⇧⌘B** splits every clip the playhead is in, on every
+  layer (Blade All). Both cut at the playhead, never at the skimmer, so
+  clicking where to cut and pressing the key cuts there wherever the
+  pointer has gone (`Timeline.clipsToSplit`).
 - **, / .** nudge the selected clip a frame earlier or later; with Shift,
   ten. A nudge follows the same rules as dragging.
 

@@ -11,7 +11,10 @@ struct TimelineActions {
     var goToEnd: () -> Void
     var previousEdit: () -> Void
     var nextEdit: () -> Void
+    /// Splits the selected clips at the playhead (every clip there when
+    /// none is selected), and every clip there.
     var splitAtPlayhead: () -> Void
+    var splitAllAtPlayhead: () -> Void
     /// Moves the selected clip a number of frames, earlier when negative.
     var nudge: (Int) -> Void
     var deleteSelection: () -> Void
@@ -65,8 +68,8 @@ extension FocusedValues {
 /// one would take the key from a text field or list being typed in. The
 /// timeline's own key handling (`TimelineView.handleKey`) leaves those
 /// alone, so here the key is written after the name instead, as the
-/// keyframe ease menu does. Split at Playhead has a modifier and is a real
-/// shortcut.
+/// keyframe ease menu does. The two splits have modifiers and are real
+/// shortcuts.
 struct TimelineCommands: Commands {
     @FocusedValue(\.timelineActions) private var actions
     /// The person's, not a timeline's, so they work with no timeline in
@@ -100,8 +103,11 @@ struct TimelineCommands: Commands {
 
             Divider()
 
-            Button("Split at Playhead") { actions?.splitAtPlayhead() }
+            Button("Split Clip at Playhead") { actions?.splitAtPlayhead() }
                 .keyboardShortcut("b", modifiers: .command)
+                .disabled(actions == nil)
+            Button("Split All Clips at Playhead") { actions?.splitAllAtPlayhead() }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
                 .disabled(actions == nil)
             Button("Nudge Clip Earlier  ,") { actions?.nudge(-1) }
                 .disabled(actions == nil)
