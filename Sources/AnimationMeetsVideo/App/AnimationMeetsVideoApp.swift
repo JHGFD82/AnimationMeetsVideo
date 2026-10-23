@@ -81,6 +81,8 @@ struct AnimationMeetsVideoApp: App {
     private var hasUnsavedChanges: Bool { project != savedProject }
 
     init() {
+        // Before any project is read, so its package effects are known.
+        EffectPackageStore.installAtLaunch()
         let initial = EditingProject.empty
         _projectState = State(initialValue: ProjectState(initial))
         _savedProject = State(initialValue: initial)

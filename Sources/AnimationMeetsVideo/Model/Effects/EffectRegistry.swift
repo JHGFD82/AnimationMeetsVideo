@@ -1,21 +1,67 @@
 import Foundation
+import Synchronization
 
 /// Every effect kind and control kind the app knows, and what each is. The
-/// built-in ones are listed in BuiltInEffects.swift; effect packages (see
-/// docs/effect-packages.md) will add theirs.
+/// built-in ones are listed in BuiltInEffects.swift, and effect packages
+/// (see docs/effect-packages.md) add theirs at launch.
 struct EffectRegistry: Sendable {
     /// The effect kinds, in the library's order.
     let effects: [EffectDefinition]
+    /// The packages that couldn't be installed, and why.
+    let problems: [EffectPackageProblem]
     private let effectsByName: [String: EffectDefinition]
     private let controlsByName: [String: ControlDefinition]
 
     init(effects: [EffectDefinition], controls: [ControlDefinition]) {
+        self.init(effects: effects, controls: controls, packages: [])
+    }
+
+    /// The built-in effects and controls, then each package's, in order.
+    /// A package whose ID is taken isn't added, so one can never replace a
+    /// built-in effect or a package installed before it; it joins
+    /// `problems`, the packages that couldn't be read.
+    init(
+        effects: [EffectDefinition], controls: [ControlDefinition], packages: [EffectPackage],
+        problems: [EffectPackageProblem] = []
+    ) {
+        var effects = effects
+        var controls = controls
+        var problems = problems
+        var taken = Set(effects.map(\.kind.rawValue))
+        for package in packages {
+            guard taken.insert(package.id).inserted else {
+                problems.append(EffectPackageProblem(url: package.url, message: "An effect called \"\(package.id)\" is already installed."))
+                continue
+            }
+            effects.append(package.definition)
+            controls += package.controls
+        }
         self.effects = effects
+        self.problems = problems
         effectsByName = Dictionary(uniqueKeysWithValues: effects.map { ($0.kind.rawValue, $0) })
         controlsByName = Dictionary(uniqueKeysWithValues: controls.map { ($0.kind.rawValue, $0) })
     }
 
-    static let current = EffectRegistry(effects: BuiltInEffects.effects, controls: BuiltInEffects.controls)
+    static let builtIn = EffectRegistry(effects: BuiltInEffects.effects, controls: BuiltInEffects.controls)
+
+    private static let installed = Mutex(builtIn)
+
+    /// A registry used in place of the installed one within a task, so a
+    /// test can read packages without changing what other tests see.
+    @TaskLocal static var override: EffectRegistry?
+
+    /// The registry in use: the built-in effects until `install` adds
+    /// packages, at launch.
+    static var current: EffectRegistry { override ?? installed.withLock { $0 } }
+
+    /// Puts `packages` beside the built-in effects, replacing any installed
+    /// before, with `problems` the packages that couldn't be read.
+    static func install(_ packages: [EffectPackage], problems: [EffectPackageProblem] = []) {
+        let registry = EffectRegistry(
+            effects: BuiltInEffects.effects, controls: BuiltInEffects.controls, packages: packages, problems: problems
+        )
+        installed.withLock { $0 = registry }
+    }
 
     /// The effect kind saved as `name`, if there is one.
     func effect(named name: String) -> EffectDefinition? { effectsByName[name] }
@@ -58,6 +104,8 @@ struct EffectDefinition: Sendable {
     /// Whether it replaces the picture with one it makes, rather than
     /// changing the one that reaches it.
     var generates = false
+    /// The package it was read from; nil for one built into the app.
+    var package: EffectPackage?
 
     init(
         _ kind: EffectKind, _ name: String, _ category: EffectCategory, _ systemImage: String, controls: [ControlKind],

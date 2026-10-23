@@ -35,11 +35,14 @@ struct PresetFile: Codable {
     var name: String
     var effects: [ProjectFile.EffectEntry]
 
-    /// What a preset file may contain, as strict as a project's.
-    static let shape: JSONShape = .object(JSONObjectShape(fields: [
-        .required("formatVersion", .integer), .required("name", .string),
-        .required("effects", ProjectFile.ShapeKit.effects(extra: [.optional("inputName", .string), .optional("againstName", .string)])),
-    ]))
+    /// What a preset file may contain, as strict as a project's, made at
+    /// each read as a project's is.
+    static var shape: JSONShape {
+        .object(JSONObjectShape(fields: [
+            .required("formatVersion", .integer), .required("name", .string),
+            .required("effects", ProjectFile.ShapeKit.effects(extra: [.optional("inputName", .string), .optional("againstName", .string)])),
+        ]))
+    }
 }
 
 enum PresetStore {

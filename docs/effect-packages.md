@@ -1,9 +1,12 @@
 # Effect packages
 
-Status: **planned; step 1 of [Building it](#building-it) built**.
+Status: **planned; steps 1 and 2 of [Building it](#building-it) built**.
 `EffectKind` and `ControlKind` are names looked up in an
-`EffectRegistry` that only the built-in effects fill (BuiltInEffects.swift),
-and each look's drawing is still a `case` in `LookRenderer`. This plan moves the looks of
+`EffectRegistry` of the built-in effects (BuiltInEffects.swift) and the
+packages `EffectPackageStore` reads from the Effects folder at launch. A
+package's effect is listed in the library and saved like any other, but
+draws nothing yet: each look's drawing is still a `case` in
+`LookRenderer`, and no packages ship. This plan moves the looks of
 [psychedelic-effects.md](psychedelic-effects.md) out of Swift into
 **effect packages**: folders the app reads at launch, which can be
 written, shared and installed without building the app. Effects that need
@@ -78,20 +81,23 @@ file, worded as for projects.
 
 ### Controls
 
-Each control has an `id` (unique within the package; saved as the
-control's `kind`), a `name` and a `type`:
+Each control has an `id`, a `name` and a `type`. The `id` is letters and
+digits, starting with a letter, unique within the package, and none of
+the names expressions use (`seconds`, `rad`, `amount`, …). It is what an
+expression calls the control, and what a project saves as the control's
+`kind`.
 
 | Type | Holds | Keys |
 | --- | --- | --- |
 | `number` | One number | `default`, `range`, `unit`, `step`, `whole` |
-| `vector` | Several numbers | `components` (their names, e.g. `["X", "Y"]`), `default`, `range`, `unit`, `step` |
+| `vector` | 2 to 4 numbers | `components` (their names, e.g. `["X", "Y"]`), `default`, `range`, `unit`, `step` |
 | `point` | A position from the middle of the frame, in the timeline's pixels | `default` (`[0, 0]`) |
-| `color` | Red, green and blue, 0–1 | `default` |
+| `color` | Red, green and blue, 0–1, and alpha (1 if left out) | `default` |
 | `choice` | One of a list | `options` (`[{ "id": "bayer4", "name": "Bayer 4×4" }, …]`), `default` |
 
 `unit` is one of `%`, `°`, `px`, `s`, `×`, `/s` or none, and decides how a
 value is shown and dragged, as `ControlKind.unit` does now. `step` is the
-drag step (defaulting by unit). A control with `"rate": true` is a speed:
+drag step (defaulting by unit). A number with `"rate": true` is a speed:
 the effect changes on its own while it isn't 0, as Hue Cycle's Speed does,
 which `Effect.changesOnItsOwn` decides today.
 
@@ -109,11 +115,14 @@ A kernel's first arguments are fixed by its type:
 - `warp`: none; it returns where to sample.
 
 Then come the package's `arguments`, then Amount if the effect has it.
-Each argument is an **expression** in the arithmetic the numeric fields
-already accept (`+ - * /`, parentheses), with names for values:
+Each argument is an **expression**: `+ - * /` with the usual precedence,
+parentheses and unary minus, as in a numeric field, and comparisons
+(`< <= > >= == !=`, giving 1 or 0) for `when`. Dividing by zero gives 0.
+It may use these names:
 
-- each control's `id`: its value now; a vector, point or color is a
-  `float2` or `float3`
+- each control's `id`: its value now; a vector or point is a `float2`,
+  `float3` or `float4` by its count, a color a `float4`. A choice is read
+  only through `index`
 - `seconds`: the clip's source time; `frame`: its frame number, for seeds
 - `scale`: output pixels per timeline pixel, for sizes given in the
   timeline's pixels
@@ -125,8 +134,9 @@ already accept (`+ - * /`, parentheses), with names for values:
 Posterize's `"levels"` is the simplest case. Kaleidoscope's angle, which
 combines two controls and the time, is
 `"-(rad(angle) + spinSpeed * seconds * 2 * pi)"`. Expressions are checked
-when the package loads: an unknown name or a wrong type of value refuses
-it.
+when the package loads: an unknown name or function, a wrong count of
+arguments, or arithmetic on a vector refuses it. A vector, point or color
+can only be an argument's whole value, never part of a sum.
 
 They are only arithmetic, never code: no loops, no reading files, no
 calls but those listed. Anything more belongs in the kernel.
@@ -239,16 +249,23 @@ Chromatic Aberration.
 
 ## Inside the app
 
-- `EffectKind` and `ControlKind` become structs wrapping their saved
-  string. The kinds that stay in Swift keep static members
-  (`EffectKind.transform`), so most code reads as now.
-- An `EffectRegistry`, filled at launch, maps each kind to an
-  `EffectDefinition`: what the `switch`es over `EffectKind` and
-  `ControlKind` answer today (name, symbol, category, controls, ranges,
-  units, defaults, flags). The Swift effects register definitions written
-  in Swift; packages register ones read from `effect.json`.
-- A package's controls are scoped to it: its `levels` and another's
-  `levels` are different controls.
+- `EffectKind` and `ControlKind` are structs wrapping a string. The
+  built-in kinds have static members (`EffectKind.transform`), so most
+  code reads as it did when they were enums.
+- The `EffectRegistry` maps each kind to an `EffectDefinition` or a
+  `ControlDefinition`: name, symbol, category, controls, ranges, units,
+  defaults and flags. The built-in definitions are tables in
+  BuiltInEffects.swift; `EffectPackageStore.installAtLaunch` adds each
+  package's, read from `effect.json`, before a project is opened. Tests
+  give theirs through `EffectRegistry.override`, a task-local, so they
+  don't change what other tests see.
+- A package's controls are scoped to it: its `levels` is
+  `com.example.glow/levels` in the registry, a different control from
+  another's `levels`, and saved as `levels` within its effect. Amount is
+  the one shared control, the built-in `amount`, which the renderer mixes
+  a look by.
+- The project and preset shapes strict loading checks against are made
+  at each load, from the registry, so they always know its packages.
 - `LookRenderer` draws every package look one way, from its definition.
   Its `case` per look goes away.
 - Strict loading checks a package effect against its definition, as
@@ -291,7 +308,8 @@ In order, each step usable on its own:
    `EffectRegistry` with every effect registered from Swift. No change in
    behavior or saved files. **Built.**
 2. The package reader and its strict checks, the expression parser, and
-   the Effects folders; packages load but none ship.
+   the Effects folders; packages load but none ship. **Built**: the
+   person's folder only, since there are no built-in packages to read yet.
 3. `LookRenderer` drawing a package look, and Posterize moved into a
    built-in package, checked against its reference frames.
 4. Missing effects in projects and presets.

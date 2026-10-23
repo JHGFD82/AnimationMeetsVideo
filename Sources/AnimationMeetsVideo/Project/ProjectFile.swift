@@ -403,7 +403,7 @@ struct ProjectFile: Codable {
 
         init(_ control: EffectControl) {
             id = control.id
-            kind = control.kind.rawValue
+            kind = control.kind.savedName
             enabled = control.enabled ? nil : false
             linked = control.kind.isLinkable && control.linked != control.kind.linksByDefault ? control.linked : nil
             squircle = control.kind == .cornerRadius && control.squircle ? true : nil
@@ -416,10 +416,11 @@ struct ProjectFile: Codable {
             }
         }
 
-        /// Nil only for a kind this version doesn't have, which loading has
-        /// already refused.
-        var control: EffectControl? {
-            guard let kind = ControlKind(rawValue: kind) else { return nil }
+        /// The control, saved under its name within effects of `effect`'s
+        /// kind. Nil only for a kind that effect doesn't list, which loading
+        /// has already refused.
+        func control(in effect: EffectKind) -> EffectControl? {
+            guard let kind = effect.controlKinds.first(where: { $0.savedName == self.kind }) else { return nil }
             var control = EffectControl(id: id, kind: kind, enabled: enabled ?? true)
             control.linked = linked ?? kind.linksByDefault
             control.squircle = squircle ?? false
@@ -573,7 +574,7 @@ struct ProjectFile: Codable {
 
         var effect: Effect? {
             guard let kind = EffectKind(rawValue: kind) else { return nil }
-            var made = controls.compactMap(\.control)
+            var made = controls.compactMap { $0.control(in: kind) }
             let legacy = controls.filter { Equalizer.legacyNames.contains($0.kind) }
             if kind == .equalizer, !legacy.isEmpty {
                 // Saved before the EQ had bands: played as it was heard,
@@ -866,7 +867,7 @@ extension ProjectFile {
             }
             if kind.isKeyframing { fields.append(.optional("keyframing", .object(keyframing))) }
             fields += extra
-            var controls = Dictionary(uniqueKeysWithValues: kind.controlKinds.map { ($0.rawValue, control($0)) })
+            var controls = Dictionary(uniqueKeysWithValues: kind.controlKinds.map { ($0.savedName, control($0)) })
             if kind == .equalizer {
                 // The controls it had before bands, which load as bands.
                 let legacy = object([
@@ -890,7 +891,9 @@ extension ProjectFile {
 
     /// What a project file may contain. Loading checks a file against this
     /// before decoding it, so every key and value is one the app knows.
-    static let shape: JSONShape = {
+    /// Made at each load, since the effect kinds it knows are the
+    /// registry's.
+    static var shape: JSONShape {
         typealias O = JSONObjectShape
         func object(_ fields: [O.Field], oneOf: [[String]] = []) -> JSONObjectShape { ShapeKit.object(fields, oneOf: oneOf) }
         func keyframe(_ value: JSONShape) -> JSONShape { ShapeKit.keyframe(value) }
@@ -1005,5 +1008,5 @@ extension ProjectFile {
             .optional("copiesMediaOnImport", .bool), .optional("canvasMargin", .number),
             .required("assets", .array(asset)), .required("timelines", .array(timeline)),
         ]))
-    }()
+    }
 }
