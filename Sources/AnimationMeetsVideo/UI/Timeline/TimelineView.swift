@@ -152,6 +152,9 @@ struct TimelineView: View {
     @State var groupSelection: Set<UUID> = []
     /// The lasso being dragged across the tracks.
     @State var lasso: LassoDrag?
+    /// A press in the tracks, in window coordinates, which moves the
+    /// playhead there if it comes up as a click rather than a drag.
+    @State var playheadClick: CGPoint?
     /// Whether the lasso, let go, is fading out.
     @State var lassoFading = false
     @State var tool: TimelineTool = .arrow
@@ -649,7 +652,7 @@ struct TimelineView: View {
                         onHover: { x in skim(atX: x, viewport: viewport) }
                     )
                 )
-                .background(lassoMonitor(pixelsPerSecond: viewport.pixelsPerSecond))
+                .background(lassoMonitor(viewport: viewport))
                 .overlay { lassoOverlay }
                 .onChange(of: viewport.width, initial: true) { _, width in trackAreaWidth = width }
             }

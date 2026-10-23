@@ -478,7 +478,7 @@ struct ClipBlockView: View {
             }
             if tool == .blade, let bladeX {
                 Rectangle()
-                    .fill(Design.playhead)
+                    .fill(Design.skim)
                     .frame(width: 1.5, height: height)
                     .shadow(color: .black.opacity(0.5), radius: 1.5)
                     .offset(x: bladeX - 0.75)

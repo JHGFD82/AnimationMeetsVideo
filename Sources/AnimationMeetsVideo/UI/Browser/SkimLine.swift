@@ -14,7 +14,7 @@ struct SkimLine: View {
             let position = layout.position(atSeconds: skim.seconds)
             if position.row == row {
                 Rectangle()
-                    .fill(Design.playhead)
+                    .fill(Design.skim)
                     .frame(width: 2, height: layout.cellSize.height)
                     .offset(x: position.x - 1)
                     .allowsHitTesting(false)
