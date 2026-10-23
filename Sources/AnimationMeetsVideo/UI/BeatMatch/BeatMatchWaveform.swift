@@ -9,9 +9,11 @@ import SwiftUI
 /// - Ruler: click or drag to move the playhead.
 /// - Section strip: drag on unmarked song to draw a section of the chosen
 ///   kind, drag an edge to move it, click a section to select it, and
-///   double-click a gap to fill it.
-/// - Waveform: click a beat to select it and drag it to move it (which pins
-///   it); click elsewhere to move the playhead; double-click to add a beat
+///   double-click a gap to fill it. Where two sections meet, the edge of
+///   the one the pointer is over moves.
+/// - Waveform: click a beat to select it, which moves the playhead there
+///   too, and drag it to move it (which pins it); click elsewhere to move
+///   the playhead; double-click to add a beat
 ///   (an anchor, before the section is filled). While drawing sections it
 ///   works as the strip does: dragging on unmarked song draws, an edge
 ///   moves, and double-clicking fills the gap, while a click still moves
@@ -85,7 +87,8 @@ struct BeatMatchWaveform: View {
             })
             // A resize arrow over what a drag moves sideways (a section's
             // edge, or a beat; a section itself doesn't move as a whole),
-            // and a crosshair where a drag draws a section.
+            // a crosshair where a drag draws a section, and a pointing hand
+            // over a section in the strip, which a click selects.
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let point) where drag == nil:
@@ -438,7 +441,11 @@ struct BeatMatchWaveform: View {
                 case .edge(let id, let edge):
                     session.moveEdge(edge, of: id, to: snapped(seconds, excluding: id) ?? seconds, snap: 0)
                 case .beat(let time, let grab):
-                    if abs(value.translation.width) > 1 {
+                    // A click, not a drag: the playhead goes where it
+                    // landed, so seeking works however close the beats are.
+                    if abs(value.translation.width) <= 1 {
+                        session.seek(to: seconds)
+                    } else {
                         let target = session.seconds(atX: value.location.x - grab)
                         if isCopying {
                             session.copyBeat(at: time, to: target)
@@ -541,13 +548,19 @@ struct BeatMatchWaveform: View {
         point.y >= Self.rulerHeight && (point.y < Self.rulerHeight + Self.stripHeight || session.step == .drawSections)
     }
 
-    /// The section edge within reach of `x`, nearest first.
+    /// The section edge within reach of `x`: of the section under the
+    /// pointer first, so where two sections meet the one the pointer is
+    /// over is the one resized, then the nearest.
     private func edge(nearX x: CGFloat) -> (UUID, BeatMap.Edge)? {
-        var best: (id: UUID, edge: BeatMap.Edge, distance: CGFloat)?
+        let seconds = session.seconds(atX: x)
+        var best: (id: UUID, edge: BeatMap.Edge, isUnder: Bool, distance: CGFloat)?
         for section in session.map.sections {
+            let isUnder = seconds >= section.start.seconds && seconds < section.end.seconds
             for (edge, time) in [(BeatMap.Edge.start, section.start), (.end, section.end)] {
                 let distance = abs(session.x(of: time.seconds) - x)
-                if distance <= Self.reach, distance < (best?.distance ?? .infinity) { best = (section.id, edge, distance) }
+                guard distance <= Self.reach else { continue }
+                if let current = best, current.isUnder && !isUnder || current.isUnder == isUnder && current.distance <= distance { continue }
+                best = (section.id, edge, isUnder, distance)
             }
         }
         return best.map { ($0.id, $0.edge) }
@@ -568,7 +581,8 @@ struct BeatMatchWaveform: View {
         if editsSections(at: point) {
             if edge(nearX: point.x) != nil { return .resizeLeftRight }
             if !inStrip, beat(nearX: point.x) != nil { return .resizeLeftRight }
-            return isInGap(atX: point.x) ? .crosshair : .arrow
+            if isInGap(atX: point.x) { return .crosshair }
+            return inStrip ? .pointingHand : .arrow
         }
         return !inStrip && beat(nearX: point.x) != nil ? .resizeLeftRight : .arrow
     }

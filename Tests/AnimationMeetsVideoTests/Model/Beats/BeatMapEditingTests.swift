@@ -34,6 +34,20 @@ private let snap = s(0.5)
         #expect(ranges(map) == [[12, 20], [20, 30]])
     }
 
+    @Test func markingUpToATimeFillsBackToTheSectionBefore() {
+        var map = BeatMap()
+        // Pressed at each change as the song plays.
+        map.drawSection(.consistent, upTo: s(20), duration: song)
+        map.drawSection(.ramp, upTo: s(30), duration: song)
+        map.drawSection(.none, from: s(60), to: s(70), duration: song, snap: .zero)
+        // Stops at its own gap's start, not at earlier unmarked song.
+        map.drawSection(.consistent, upTo: s(50), duration: song)
+        #expect(ranges(map) == [[0, 20], [20, 30], [30, 50], [60, 70]])
+        // Inside a section, or right after the one before, there is nothing to mark.
+        #expect(map.drawSection(.ramp, upTo: s(65), duration: song) == nil)
+        #expect(map.drawSection(.ramp, upTo: s(70.05), duration: song) == nil)
+    }
+
     @Test func pastingStartsTheSectionOnAPinnedDownbeatAndSkipsRamps() throws {
         var map = BeatMap(sections: [
             BeatSection(kind: .consistent, start: s(10), end: s(20), isConfirmed: true, beats: [MappedBeat(time: s(12))]),

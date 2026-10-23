@@ -31,6 +31,8 @@ extension Design {
         static let remove = "minus.circle"
         static let edit = "pencil"
         static let startOver = "arrow.counterclockwise"
+        static let undo = "arrow.uturn.backward"
+        static let redo = "arrow.uturn.forward"
 
         /// Showing the viewer full screen on another display.
         static let externalDisplay = "display"

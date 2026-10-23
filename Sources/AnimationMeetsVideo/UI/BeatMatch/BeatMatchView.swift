@@ -8,12 +8,13 @@ import SwiftUI
 /// docs/beat-matching.md.
 ///
 /// Keys: Space plays, M drops a beat or anchor at the playhead (while
-/// playing, taps in a row count on through the measure), ← → nudge
+/// playing, taps in a row count on through the measure), or while drawing
+/// sections marks the stretch up to the playhead, ← → nudge
 /// the selected beat (1 ms; ⌥ one sample; ⇧ 10 ms), ↑ ↓ select the
 /// previous and next beat, Delete removes the selected beat or section,
 /// L loops, F fills the gap at the playhead, [ and ] move the selected
 /// section's edges to the playhead, Return fills the selected section,
-/// ⌘= and ⌘- zoom and ⌘0 fits.
+/// ⌘Z and ⇧⌘Z undo and redo, ⌘= and ⌘- zoom and ⌘0 fits.
 struct BeatMatchView: View {
     @Bindable var session: BeatMatchSession
     let onConfirm: () -> Void
@@ -184,7 +185,7 @@ struct BeatMatchView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: Design.Space.step) {
+        HStack(spacing: Design.Space.close) {
             Button { confirmingStartOver = true } label: {
                 Image(systemName: Design.Symbol.startOver)
             }
@@ -192,13 +193,41 @@ struct BeatMatchView: View {
             .disabled(session.step == .chooseMode)
             .help("Start over: remove every section and beat of this song")
             .accessibilityLabel("Start over")
+            HStack(spacing: 0) {
+                Button(action: session.undo) { Image(systemName: Design.Symbol.undo) }
+                    .buttonStyle(.icon)
+                    .disabled(!session.canUndo)
+                    .help("Undo (⌘Z)")
+                    .accessibilityLabel("Undo")
+                Button(action: session.redo) { Image(systemName: Design.Symbol.redo) }
+                    .buttonStyle(.icon)
+                    .disabled(!session.canRedo)
+                    .help("Redo (⇧⌘Z)")
+                    .accessibilityLabel("Redo")
+            }
             Spacer(minLength: 0)
             Button("Cancel", action: onCancel)
                 .keyboardShortcut(.cancelAction)
-            Button("Confirm", action: onConfirm)
-                .buttonStyle(.borderedProminent)
-                .tint(Design.accentFill)
-                .help("Put these beats on the timeline; until then nothing here changes it")
+                .fixedSize()
+            // While drawing, the way on is to mark the beats; once a section
+            // has them, they can go on the timeline.
+            if session.step == .drawSections {
+                Button("Continue", action: session.finishDrawing)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Design.accentFill)
+                    .disabled(!session.map.sections.contains { $0.kind != .none })
+                    .fixedSize()
+                    .help("Done drawing sections: go on to mark their beats")
+            } else {
+                Button("Confirm", action: onConfirm)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Design.accentFill)
+                    .disabled(!session.canConfirm)
+                    .fixedSize()
+                    .help(session.canConfirm
+                          ? "Put these beats on the timeline; until then nothing here changes it"
+                          : "Fill a section with beats first")
+            }
         }
         .padding(.horizontal, Design.Space.rail)
         .padding(.vertical, Design.Space.step + 2)
@@ -412,6 +441,8 @@ struct BeatMatchView: View {
                 .help(session.selectedSection == nil
                       ? "The kind of section a drag draws"
                       : "The selected section's kind, and what a drag draws next")
+                command("Mark to Playhead", key: "M", action: session.drawSectionToPlayhead)
+                    .help("Mark from the section before the playhead up to it (M)")
                 command("Fill Gap at Playhead", key: "F") { session.fillGap(at: session.livePlayhead) }
             }
             if let section = session.selectedSection {
@@ -422,8 +453,6 @@ struct BeatMatchView: View {
                     command("Delete Section", key: "⌫", role: .destructive, action: session.deleteSelectedSection)
                 }
             }
-            command("Done Drawing", prominent: true, action: session.finishDrawing)
-                .disabled(!session.map.sections.contains { $0.kind != .none })
         }
     }
 
@@ -648,6 +677,9 @@ struct BeatMatchView: View {
             case "=", "+": session.zoomIn(); return true
             case "-": session.zoomOut(); return true
             case "0": session.fit(); return true
+            case "z":
+                if flags.contains(.shift) { session.redo() } else { session.undo() }
+                return true
             case "c": session.copyDetails(); return session.selectedDetails != nil
             case "v":
                 guard session.canPasteDetails else { return false }
@@ -671,7 +703,7 @@ struct BeatMatchView: View {
             if session.step == .mark, session.selectedSection?.kind != BeatSection.Kind.none { session.fillSelected() } else { return false }
         default:
             switch event.charactersIgnoringModifiers?.lowercased() {
-            case "m": session.addBeatAtPlayhead()
+            case "m": if session.step == .drawSections { session.drawSectionToPlayhead() } else { session.addBeatAtPlayhead() }
             case "l": session.isLooping.toggle()
             case "f": session.fillGap(at: session.livePlayhead)
             case "[": session.moveSelectedEdgeToPlayhead(.start)

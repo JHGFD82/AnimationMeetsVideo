@@ -28,6 +28,11 @@ final class BeatMatchSession {
     var isChanged: Bool { map != original }
     /// The panel's own undo history, for the draft.
     @ObservationIgnored let undoManager = UndoManager()
+    /// Counts changes to the undo history, which isn't observable itself,
+    /// so the undo and redo buttons follow it.
+    private var undoRevision = 0
+    /// Whether confirming is offered: once a section has its beats.
+    var canConfirm: Bool { map.hasConfirmedBeats }
 
     // MARK: Transport
 
@@ -145,7 +150,32 @@ final class BeatMatchSession {
         let current = self.map
         self.map = map
         undoManager.registerUndo(withTarget: self) { $0.restore(current) }
+        undoRevision += 1
         mapChanged()
+    }
+
+    var canUndo: Bool {
+        _ = undoRevision
+        return undoManager.canUndo && !isFilling
+    }
+
+    var canRedo: Bool {
+        _ = undoRevision
+        return undoManager.canRedo && !isFilling
+    }
+
+    /// Undoes the last change to the draft; not while a fill is running,
+    /// whose result would land on the undone map.
+    func undo() {
+        guard canUndo else { return }
+        undoManager.undo()
+        undoRevision += 1
+    }
+
+    func redo() {
+        guard canRedo else { return }
+        undoManager.redo()
+        undoRevision += 1
     }
 
     /// Keeps the selection and ticks in step with the draft.
@@ -169,6 +199,7 @@ final class BeatMatchSession {
         let result = change(&map)
         if map != before {
             undoManager.registerUndo(withTarget: self) { $0.restore(before) }
+            undoRevision += 1
             mapChanged()
         }
         return result
@@ -250,8 +281,10 @@ final class BeatMatchSession {
         case .drawSections:
             return Guidance(lead: "Mark the song's sections.", tips: [
                 "Pick a kind, then drag across the waveform. Double-click a gap to fill it.",
+                "Or play the song and press M where each section ends: it marks back to the section before.",
                 "Click a section to select it; picking a kind then changes it. Drag an edge to move it.",
                 "Edges snap to the next section, to beats and to the playhead. Get the edges between sections close; the song's start and end needn't be exact.",
+                "Continue when the sections are marked.",
             ])
         case .mark:
             break
@@ -387,27 +420,46 @@ final class BeatMatchSession {
         fill(prepared, section: id, tempo: details.tempo)
     }
 
-    /// After a fill, the next consistent section to mark, then ramps.
+    /// After a fill, the next consistent section to mark, then ramps. The
+    /// view stays where it is, on the beats just filled.
     private func selectNextToMark(after id: UUID) {
         guard map.usesSections else { return }
         if let next = map.sections.first(where: { $0.kind == .consistent && !$0.isConfirmed })
             ?? map.sections.first(where: { $0.kind == .ramp && !$0.isConfirmed }) {
-            selectSection(next.id)
+            selectedSectionID = next.id
         }
     }
 
     // MARK: Sections
 
-    /// Draws a section of the chosen kind; see `BeatMap.drawSection`. It
-    /// isn't selected, so picking a kind next sets what is drawn after it
-    /// rather than changing it.
+    /// Draws a section of the chosen kind, selected; see
+    /// `BeatMap.drawSection`. Picking a kind then changes it once.
     func drawSection(from: Double, to: Double, in gapAt: Double? = nil, snap: Double) {
-        edit { [duration, drawKind] map in
+        let id = edit { [duration, drawKind] map in
             map.drawSection(
                 drawKind, from: Self.time(from), to: Self.time(to), in: gapAt.map(Self.time),
                 duration: duration, snap: Self.time(snap)
             )
         }
+        if let id { selectDrawn(id) }
+    }
+
+    /// M while drawing: marks the unmarked stretch up to the playhead with
+    /// the chosen kind, back to the section before it, and selects it.
+    func drawSectionToPlayhead() {
+        let id = edit { [duration, drawKind, livePlayhead] map in
+            map.drawSection(drawKind, upTo: Self.time(livePlayhead), duration: duration)
+        }
+        if let id {
+            selectDrawn(id)
+        } else {
+            message = "The playhead is in a section already, or too close to the one before it."
+        }
+    }
+
+    private func selectDrawn(_ id: UUID) {
+        selectedSectionID = id
+        selectedBeat = nil
     }
 
     /// The map as drawing a section would leave it, for the drag's preview,
@@ -463,16 +515,26 @@ final class BeatMatchSession {
         return preview
     }
 
+    /// Fills the gap at `seconds`, selecting the new section; inside a
+    /// section, changes its kind as picking one does.
     func fillGap(at seconds: Double) {
-        edit { [duration, drawKind] map in map.fill(at: Self.time(seconds), with: drawKind, duration: duration) }
+        let time = Self.time(seconds)
+        if let index = map.sectionIndex(containing: time) {
+            selectedSectionID = map.sections[index].id
+            return chooseKind(drawKind)
+        }
+        let id = edit { [duration, drawKind] map in map.fill(at: time, with: drawKind, duration: duration) }
+        if let id { selectDrawn(id) }
     }
 
     /// The kind picker: sets what is drawn next and, with a section
-    /// selected, changes that section to it.
+    /// selected, changes that section to it and lets go of it, so the
+    /// next pick only sets what is drawn next.
     func chooseKind(_ kind: BeatSection.Kind) {
         drawKind = kind
-        guard let section = selectedSection, section.kind != kind else { return }
-        setKind(kind)
+        guard let section = selectedSection else { return }
+        if section.kind != kind { setKind(kind) }
+        if step == .drawSections { selectedSectionID = nil }
     }
 
     func moveEdge(_ edge: BeatMap.Edge, of id: UUID, to seconds: Double, snap: Double) {

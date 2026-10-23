@@ -69,6 +69,17 @@ extension BeatMap {
         return drawSection(kind, from: gap.start, to: gap.end, duration: duration, snap: .zero)
     }
 
+    /// Marks the unmarked stretch that ends at `time` with a section of
+    /// `kind`: from the section before it (or the start of the song) up to
+    /// `time`. Pressed at each change as the song plays, it marks the
+    /// sections one after another. Gives the new section's ID, or nil when
+    /// `time` is inside a section or too close to the one before.
+    @discardableResult
+    mutating func drawSection(_ kind: BeatSection.Kind, upTo time: CMTime, duration: CMTime) -> UUID? {
+        guard let gap = gap(around: time, duration: duration) else { return nil }
+        return drawSection(kind, from: gap.start, to: time, duration: duration, snap: .zero)
+    }
+
     /// Moves one edge of a section, never past a neighbour or closer than
     /// `shortestSection` to its other edge. Within `snap` of a neighbour's
     /// edge (or the song's start or end) it clicks in against it.

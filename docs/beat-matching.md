@@ -22,7 +22,9 @@ and the beats they confirm are what the timeline uses.
 - The person marks one tempo for the whole song, or switches to
   **sections** at the start. Either way the result is a **beat map**: the
   song's beats, each with its place in the measure, saved with the project.
-- The panel works on a draft with its own undo. **Confirm** puts it on the
+- The panel works on a draft with its own undo (⌘Z and ⇧⌘Z, or the
+  footer's buttons). **Confirm**, offered once a section has its beats
+  filled, puts it on the
   timeline as one undo step there, and turns on that song's beat markers
   (the view options' picker chooses its Music layer). **Cancel**, or the
   close button, leaves the timeline as it was, asking first if anything
@@ -172,7 +174,8 @@ start, and draws them before marking any:
 
 - Pick a kind (consistent, ramp, none), then drag across the waveform, or
   the strip of sections above it, to draw a section of it. Over unmarked
-  song the pointer is a crosshair. A click on the waveform still moves the
+  song the pointer is a crosshair, and over a section in the strip a
+  pointing hand, since a click there selects it. A click on the waveform still moves the
   playhead, and a drag inside a section scrubs. The ends need not be exact
   at the start and end of the song, but should be close between two
   sections.
@@ -183,7 +186,12 @@ start, and draws them before marking any:
   edges. Drawn ends and dragged edges snap as on the timeline, within
   8 points, to the other sections' edges, beats, the playhead and the
   song's ends. The timeline's snap line shows where an edge caught, and
-  also where it stopped against a neighbour.
+  also where it stopped against a neighbour. Where two sections meet, the
+  edge of the one the pointer is over is the one that moves.
+- **M** marks the unmarked stretch up to the playhead with the chosen
+  kind, back to the section before it (or the song's start)
+  (`BeatMap.drawSection(_:upTo:duration:)`). Pressed at each change while
+  the song plays, it marks the sections one after another.
 - **Option-drag a section** in the strip to copy it (`BeatMap.copySection`):
   the copy is drawn where it will land, as a drawn section is, with the
   snap line at its start, which snaps like a drawn end. It takes the
@@ -202,10 +210,12 @@ start, and draws them before marking any:
   the song) on the left to the nearest one on the right. Double-clicking
   inside a section changes its kind to the chosen one.
 - Click inside a section to select it; picking a kind then changes it to
-  that kind, and Delete removes it. A drawn section isn't selected, so
-  picking a kind before drawing the next one sets what is drawn rather
-  than changing the last. Outside drawing, a lone section (as with one
-  tempo) is selected without asking.
+  that kind and lets go of it, so the next pick only sets what is drawn
+  next, and Delete removes it. A section just drawn, filled or marked
+  with M is selected, so picking a kind next changes it once. Outside
+  drawing, a lone section (as with one tempo) is selected without asking.
+- **Continue**, in the footer where Confirm is otherwise, ends drawing and
+  goes on to marking beats.
 - The strip looks like the timeline's section lane, with chips named by
   their kind, then the beats per measure once set, then the tempo once
   filled. Each kind has its colour: consistent sections the timeline's
@@ -319,7 +329,9 @@ the pinned one), and wraps positions into the measure.
    one tempo) and how many sections are filled, then what to do as one
    line with tips under it, then the controls in labelled groups. Each
    command shows its key as a keycap rather than in its name. Start Over,
-   Cancel and Confirm sit in a footer that doesn't scroll. Resizing the
+   Undo, Redo, Cancel and Confirm (Continue while drawing) sit in a footer
+   that doesn't scroll. Filling a section selects the next to mark without
+   scrolling the view. Resizing the
    panel keeps the same stretch of
    song in view. The waveform is drawn to the song's loudest sample and
    clipped to its area, and the panel's size is the window's alone (the
@@ -345,8 +357,11 @@ the pinned one), and wraps positions into the measure.
    stretches it, against more resistance the further it goes; it springs
    back when the pinch ends, and the zoom buttons and ⌘- give the same
    bump. This is the editor's shared zoom edge (`RubberBandZoom`, see
-   timeline.md). With reduced motion it simply stops. Keys: Space plays, M drops a
-   beat or anchor at the playhead, ← → nudge the selected beat (⌥ one
+   timeline.md). With reduced motion it simply stops. Clicking a beat
+   selects it and moves the playhead where the click landed, so clicks
+   seek however close the beats are. Keys: Space plays, M drops a
+   beat or anchor at the playhead (while drawing, marks up to it), ⌘Z
+   and ⇧⌘Z undo and redo, ← → nudge the selected beat (⌥ one
    sample, ⇧ 10 ms; without a selection they move the playhead a second),
    ↑ ↓ select the previous and next beat, Delete, L loops, Return fills,
    ⌘= ⌘- ⌘0 zoom, ⌘C and ⌘V copy and paste a consistent section's tempo. Not yet tried on screen: drag feel, the dimming, and
