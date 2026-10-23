@@ -227,10 +227,16 @@ the same spirit: once they would be closer than 10 points, only every 2nd,
 
 ## Playhead
 
-The playhead is a red line through the track area with a red tab at its
-top, in the ruler. Only clicking or dragging in the ruler moves it, so
-drags on the layers are free for the tools. It lands on frames and stays
-within the timeline.
+The playhead is a yellow line through the track area with a yellow tab at
+its top, in the ruler, as in Final Cut Pro (`Design.playhead`). Clicking or
+dragging in the ruler moves it, and so does a click in the tracks, on a
+clip or in empty space, as in Final Cut: the click still selects the clip
+or nothing, and the playhead goes to where it was. Only a click moves it
+there: drags on the layers (moving, trimming, a lasso) stay free for the
+tools, and so do clicks with ⌘, ⇧ or ⌃ and the blade's. The press and its
+release are watched by the lasso's monitor (`TimelineView.lassoMonitor`),
+which takes no events. It lands on frames, snaps as scrubbing in the ruler
+does, and stays within the timeline.
 
 While playing, only the playhead line and the timeline's timecode follow
 the player. The line runs on the player's own clock: it sits in an
@@ -259,10 +265,10 @@ With **Skimming** on (the default; it is switched in the timeline's
 view options, the Timeline menu or the Settings window's Timeline tab),
 moving the pointer over the track area or the ruler while paused shows
 the frame under it in the viewer, on the nearest frame, and the playhead
-stays where it is parked. A
-dimmed hairline in the playhead's colour, with no tab, marks the frame
-skimmed (`TimelineSkimLine`). A grain of the mix plays at each frame, as
-for moving the playhead (docs/audio.md, "Scrubbing"), unless Scrub Audio
+stays where it is parked. A red hairline with no tab, Final Cut's
+skimmer (`Design.skim`, which the blade's line also uses), marks the
+frame skimmed (`TimelineSkimLine`). A grain of the mix plays at each
+frame, as for moving the playhead (docs/audio.md, "Scrubbing"), unless Scrub Audio
 is off. Leaving the tracks, moving over the names column, or turning
 skimming off takes the viewer back to the playhead.
 
@@ -287,8 +293,12 @@ skimming off takes the viewer back to the playhead.
 - **↑ / ↓** go to the previous or next edit: any clip's start or end, or
   the end of the timeline.
 - **Home / End** go to the start and the end.
-- **⌘B** splits at the playhead: the selected clip if the playhead is in
-  it, otherwise every clip the playhead is in, on every layer.
+- **⌘B** splits the selected clip, or the clips picked together, at the
+  playhead, as Final Cut's Blade; with nothing selected, every clip the
+  playhead is in. **⇧⌘B** splits every clip the playhead is in, on every
+  layer (Blade All). Both cut at the playhead, never at the skimmer, so
+  clicking where to cut and pressing the key cuts there wherever the
+  pointer has gone (`Timeline.clipsToSplit`).
 - **, / .** nudge the selected clip a frame earlier or later; with Shift,
   ten. A nudge follows the same rules as dragging.
 
@@ -667,7 +677,9 @@ is only known to a few microseconds, so these rules apply:
 
 Clips on video and sound layers are attached to the song under their
 first frame, and move with it when it moves; footage in their way is
-pushed later. A clip's menu turns this off
+pushed later. Where each is tied shows as its **music point**, a green
+line with a point at its foot; the selected clip's can be dragged to
+another frame, and is marked on its song too. A clip's menu turns this off
 (**Follow Music**) or ties another frame (**Attach to Music at
 Playhead**). See [motion-designer.md](motion-designer.md#clips-attached-to-the-music).
 

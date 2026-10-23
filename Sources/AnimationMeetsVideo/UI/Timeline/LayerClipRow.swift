@@ -108,8 +108,12 @@ struct LayerClipRow: View {
     /// Sets how far down an adjustment clip reaches: to a layer, or every
     /// layer below for nil.
     let onSetReach: (UUID, UUID?) -> Void
-    /// Ties a clip to the music at the playhead.
-    let onAttachToMusic: (UUID) -> Void
+    /// Ties a clip to the music at a timeline time inside it, or at the
+    /// playhead for nil.
+    let onAttachToMusic: (UUID, CMTime?) -> Void
+    /// On a Music layer: by song clip, the timeline times the selected
+    /// clips are tied to it at.
+    var musicMarks: [UUID: [CMTime]] = [:]
     /// Opens the motion designer on a clip, with the clips picked with it.
     let onMotionDesign: (UUID) -> Void
 
@@ -262,7 +266,9 @@ struct LayerClipRow: View {
                     onEditTime: { change in onEditTime(clip.id, change) },
                     onEditClip: { change in onEditClip(clip.id, change) },
                     onBeatMatch: beatMatchAction(for: clip),
-                    onAttachToMusic: layer.kind == .music ? nil : { onAttachToMusic(clip.id) },
+                    onAttachToMusic: layer.kind == .music ? nil : { onAttachToMusic(clip.id, nil) },
+                    onSetMusicPoint: layer.kind == .music ? nil : { time in onAttachToMusic(clip.id, time) },
+                    musicMarks: musicMarks[clip.id] ?? [],
                     onMotionDesign: layer.kind == .music || clip.isReversed ? nil : { onMotionDesign(clip.id) },
                     reach: reachMenu(for: clip)
                 )
@@ -349,7 +355,7 @@ extension LayerClipRow: Equatable {
                 && lhs.pushed == rhs.pushed && lhs.tool == rhs.tool
                 && lhs.snapTolerance == rhs.snapTolerance
                 && lhs.showsVolumeLines == rhs.showsVolumeLines
-                && lhs.structure == rhs.structure
+                && lhs.structure == rhs.structure && lhs.musicMarks == rhs.musicMarks
         }
     }
 }

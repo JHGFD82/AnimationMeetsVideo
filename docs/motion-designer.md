@@ -358,8 +358,19 @@ video depends on the music, so clips follow it.
 - Saved in `project.json` on each clip: `music` (`song`, `asset`, `time`,
   and `frame` only when the person chose one), and `followsMusic` only when
   false.
+- **The music point** shows where a clip is tied: a line through the
+  clip at its frame, in `Design.musicLink`, with a point at its foot
+  toward the Music area. The selected clip's point has a knob along the
+  clip's bottom edge: dragging it ties another frame to the music there,
+  on frames and snapping to beats and edges as the blade does; the clip
+  stays put (`attachToMusic` at the time let go). The songs mark where
+  the selected clips hold on, with the point at the top
+  (`LayerClipRow.musicMarks`). Without the pointer: **Attach to Music at
+  Playhead**, after clicking the frame, or the clip's VoiceOver actions
+  Music point one frame earlier and later; its value reads where it is
+  tied.
 - Not yet: footage following while the song is dragged (it follows on the
-  drop), and a mark on the clip for a chosen frame.
+  drop).
 - The designer's hits are forgotten on Done; the attachment is what keeps
   the hit frame on its beat afterwards.
 

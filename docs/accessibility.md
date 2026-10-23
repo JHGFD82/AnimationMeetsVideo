@@ -27,8 +27,8 @@ take; a selected control is outlined alone.
 The timeline's keys are handled by `TimelineView.handleKey` and listed in
 the **Timeline** menu (`TimelineCommands`). Keys without a modifier are
 written after the item's name rather than set as menu shortcuts, since a
-menu shortcut would take the key from a text field; ⌘B is a real
-shortcut. The keys are left alone while text is being typed, and the
+menu shortcut would take the key from a text field; ⌘B and ⇧⌘B are real
+shortcuts. The keys are left alone while text is being typed, and the
 arrow, Home and End keys also while a list or other control has the
 keyboard (the library's list uses the arrows).
 
@@ -38,7 +38,8 @@ keyboard (the library's list uses the arrows).
 | ← / → | Step the playhead a frame; ten with Shift |
 | ↑ / ↓ | Go to the previous or next edit (any clip's start or end, or the end of the timeline) |
 | Home / End | Go to the start or the end |
-| ⌘B | Split at the playhead: the selected clip if the playhead is in it, otherwise every clip the playhead is in |
+| ⌘B | Split the selected clip (or the clips picked together) at the playhead; with nothing selected, every clip the playhead is in |
+| ⇧⌘B | Split every clip the playhead is in, on every layer |
 | , / . | Nudge the selected clip a frame earlier or later; ten with Shift |
 | Delete | Delete the selected section, layer, transition, clip, or the clips picked together |
 | Escape | Select nothing (no clip, layer, section or lasso); not during a value drag, which it cancels |

@@ -119,6 +119,7 @@ extension TimelineView {
             previousEdit: { _ = jumpToEdit(forward: false) },
             nextEdit: { _ = jumpToEdit(forward: true) },
             splitAtPlayhead: { _ = splitAtPlayhead() },
+            splitAllAtPlayhead: { _ = splitAtPlayhead(everyClip: true) },
             nudge: { _ = nudgeSelection(byFrames: $0) },
             deleteSelection: { _ = deleteSelection() },
             toggleEnabled: { toggleSelectedClipsEnabled() },
@@ -203,23 +204,17 @@ extension TimelineView {
         return true
     }
 
-    /// Splits at the playhead: the selected clip when the playhead is in
-    /// it, otherwise every clip the playhead is in, on every layer. False
-    /// when it is in none.
+    /// Splits at the playhead, as Final Cut's Blade (⌘B) and Blade All
+    /// (⇧⌘B): the selected clips the playhead is in (the clip selected, or
+    /// those picked together), or with nothing selected, or `everyClip`,
+    /// every clip the playhead is in, on every layer. Always at the
+    /// playhead, never at the skimmer. False when it splits none.
     @discardableResult
-    func splitAtPlayhead() -> Bool {
+    func splitAtPlayhead(everyClip: Bool = false) -> Bool {
         let time = timeline.snappedToFrame(livePlayheadTime)
-        func contains(_ clip: TimelineClip) -> Bool { time > clip.startOffset && time < clip.endOffset }
-        var targets: [(layerID: UUID, clipID: UUID)] = []
-        if let selection, selection.timelineID == timelineID,
-           let clip = timeline.layer(id: selection.layerID)?.clips.first(where: { $0.id == selection.timelineClipID }),
-           contains(clip) {
-            targets = [(selection.layerID, clip.id)]
-        } else {
-            for layer in timeline.layers {
-                for clip in layer.clips where contains(clip) { targets.append((layer.id, clip.id)) }
-            }
-        }
+        var chosen = groupSelection
+        if chosen.isEmpty, let selection, selection.timelineID == timelineID { chosen = [selection.timelineClipID] }
+        let targets = timeline.clipsToSplit(at: time, selected: chosen, everyClip: everyClip)
         for target in targets { onBladeClip(target.layerID, target.clipID, time) }
         return !targets.isEmpty
     }

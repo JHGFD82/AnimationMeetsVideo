@@ -878,4 +878,38 @@ struct UISnapshots {
         )
         try SnapshotSupport.render(editor, "retimed-clip", size: CGSize(width: 1500, height: 900))
     }
+    /// Two videos over a song, each tied to the music: a green line with a
+    /// point at its foot where each is tied, the first at its first frame,
+    /// the second (selected, with a knob to drag) at a frame inside it,
+    /// marked on the song too with its point at the top. The playhead is
+    /// yellow.
+    @Test func musicPoints() throws {
+        let song = try SnapshotSupport.clickSong(named: "music-points-song")
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        project.clips = [song]
+        project.putOnMusicLayer([song.id])
+        func video(_ name: String) -> MediaClip {
+            MediaClip(
+                name: name, kind: .video, url: nil, duration: CMTime(value: 8, timescale: 1),
+                frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+            )
+        }
+        let placedFirst = project.importClip(video("Intro"), intoTimeline: t)
+        let placedSecond = project.importClip(video("Chorus"), intoTimeline: t)
+        let first = try #require(placedFirst)
+        let second = try #require(placedSecond)
+        project.moveClip(first.clipID, in: t, layer: first.layerID, to: CMTime(value: 2, timescale: 1))
+        project.moveClip(second.clipID, in: t, layer: second.layerID, to: CMTime(value: 14, timescale: 1))
+        project.attachToMusic(first.clipID, in: t, at: CMTime(value: 2, timescale: 1))
+        project.attachToMusic(second.clipID, in: t, at: CMTime(value: 17, timescale: 1))
+        UserDefaults.standard.set(420.0, forKey: Preferences.timelineHeight)
+        defer { UserDefaults.standard.removeObject(forKey: Preferences.timelineHeight) }
+        let editor = EditorView(
+            project: .constant(project), history: ProjectHistory(project: project), analysis: AssetAnalysis(),
+            replacement: MediaReplacementController(), packageURL: nil,
+            selection: TimelineSelection(timelineID: t, layerID: second.layerID, timelineClipID: second.clipID)
+        )
+        try SnapshotSupport.render(editor, "music-points", size: CGSize(width: 1500, height: 900))
+    }
 }

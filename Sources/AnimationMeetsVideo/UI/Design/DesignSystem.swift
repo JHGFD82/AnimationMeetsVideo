@@ -115,8 +115,15 @@ enum Design {
 
     // MARK: - Time
 
-    /// Where you are. The hottest colour in the app, used nowhere else.
-    static let playhead = hex(0xFF5A4D)
+    /// Where you are, as Final Cut draws it: a clear lemon yellow, lighter
+    /// and greener than the amber of snaps and keyframes, used nowhere else.
+    static let playhead = hex(0xFFE03D)
+    /// Where the pointer is: the skimmer and the blade's line, red as in
+    /// Final Cut, so a moment shown never reads as the playhead.
+    static let skim = hex(0xFF5A4D)
+    /// Where a clip is tied to the music, on the clip and on its song: a
+    /// bright neighbour of the Music clips' green.
+    static let musicLink = hex(0x9BE27F)
     /// Where an edge just caught. Bright, brief.
     static let snap = hex(0xFFC95C)
     /// Beats: the same warm family, dimmed so thousands of them stay quiet.

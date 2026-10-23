@@ -153,6 +153,16 @@ extension TimelineView {
         return false
     }
 
+    /// Whether a window point is on a clip in a layer's row, beside the
+    /// layer names.
+    private func isOnClip(_ point: CGPoint, pixelsPerSecond: CGFloat) -> Bool {
+        guard point.x >= geometryStore.namesColumn.maxX else { return false }
+        return timeline.layers.contains { layer in
+            guard geometryStore.layerRows[layer.id]?.contains(point) == true else { return false }
+            return layer.clips.contains { frame(of: $0, on: layer, pixelsPerSecond: pixelsPerSecond)?.contains(point) == true }
+        }
+    }
+
     /// The clips a lasso covers, with their layers.
     private func lassoHits(_ rect: CGRect, pixelsPerSecond: CGFloat) -> [(layerID: UUID, clip: TimelineClip)] {
         timeline.layers.flatMap { layer in
@@ -163,16 +173,26 @@ extension TimelineView {
     }
 
     /// Watches for a press in empty track space, which begins a lasso, and
-    /// follows it.
-    func lassoMonitor(pixelsPerSecond: CGFloat) -> LassoMonitor {
-        LassoMonitor(
+    /// follows it. A click there, or on a clip, also moves the playhead to
+    /// where it was, as in Final Cut; drags don't.
+    func lassoMonitor(viewport: TimelineViewport) -> LassoMonitor {
+        let pixelsPerSecond = viewport.pixelsPerSecond
+        return LassoMonitor(
             onDown: { point, flags in
-                guard isEmptyTrackSpace(point, pixelsPerSecond: pixelsPerSecond) else { return false }
-                lassoFading = false
-                lasso = LassoDrag(start: point, current: point, kept: flags.contains(.shift) ? groupSelectionIncludingClip : [])
+                let placesPlayhead = tool != .blade && flags.isDisjoint(with: [.command, .control, .shift])
+                if isEmptyTrackSpace(point, pixelsPerSecond: pixelsPerSecond) {
+                    lassoFading = false
+                    lasso = LassoDrag(start: point, current: point, kept: flags.contains(.shift) ? groupSelectionIncludingClip : [])
+                    playheadClick = placesPlayhead ? point : nil
+                    return true
+                }
+                guard placesPlayhead, isOnClip(point, pixelsPerSecond: pixelsPerSecond) else { return false }
+                playheadClick = point
                 return true
             },
             onDrag: { point in
+                // Past where a clip begins to move, it is a drag.
+                if let start = playheadClick, hypot(point.x - start.x, point.y - start.y) >= 3 { playheadClick = nil }
                 guard var drag = lasso else { return }
                 drag.current = point
                 lasso = drag
@@ -181,6 +201,12 @@ extension TimelineView {
                 }
             },
             onUp: { point in
+                if let start = playheadClick {
+                    playheadClick = nil
+                    if hypot(point.x - start.x, point.y - start.y) < 3 {
+                        scrub(atX: start.x - geometryStore.namesColumn.maxX, in: viewport)
+                    }
+                }
                 guard var drag = lasso else { return }
                 drag.current = point
                 if drag.isClick {

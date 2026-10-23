@@ -68,6 +68,34 @@ import Testing
         NSApp.sendEvent(try! #require(event))
     }
 
+    /// Clicks `x` points into the monitor, halfway down: a press and a
+    /// release in place.
+    private func click(at x: CGFloat, over monitor: NSView, in window: NSWindow, flags: NSEvent.ModifierFlags = []) {
+        let rect = monitor.convert(monitor.bounds, to: nil)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = NSEvent.mouseEvent(
+                with: type, location: NSPoint(x: rect.minX + x, y: rect.midY), modifierFlags: flags, timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+            )
+            NSApp.sendEvent(try! #require(event))
+        }
+        runLoopPass()
+    }
+
+    @Test func clickingInTheTracksMovesThePlayheadThere() async throws {
+        try await hostEditor(skimming: true) { playback, window, monitor in
+            // With Command, a click picks clips and leaves the playhead.
+            click(at: 500, over: monitor, in: window, flags: .command)
+            #expect(playback.currentTime == .zero)
+
+            click(at: 500, over: monitor, in: window)
+            let first = playback.currentTime
+            #expect(first > .zero)
+            click(at: 700, over: monitor, in: window)
+            #expect(playback.currentTime > first)
+        }
+    }
+
     @Test func movingOverTheTracksSkimsAndLeavesThePlayhead() async throws {
         try await hostEditor(skimming: true) { playback, window, monitor in
             movePointer(to: 500, over: monitor, in: window)
