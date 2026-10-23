@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "channelMixer",
+  "version": 1,
+  "name": "Channel Mixer",
+  "category": "recolor",
+  "symbol": "circle.grid.cross",
+  "kernel": {"file": "kernel.metal", "function": "amvChannelMixer", "type": "color"},
+  "controls": [
+    {"id": "mixRed", "name": "Red From", "type": "vector", "components": ["Red", "Green", "Blue"], "default": [1, 0, 0], "range": [-4, 4], "step": 0.01},
+    {"id": "mixGreen", "name": "Green From", "type": "vector", "components": ["Red", "Green", "Blue"], "default": [0, 1, 0], "range": [-4, 4], "step": 0.01},
+    {"id": "mixBlue", "name": "Blue From", "type": "vector", "components": ["Red", "Green", "Blue"], "default": [0, 0, 1], "range": [-4, 4], "step": 0.01},
+    {"id": "mixOffset", "name": "Offset", "type": "vector", "components": ["Red", "Green", "Blue"], "default": [0, 0, 0], "range": [-1, 1], "step": 0.01}
+  ],
+  "amount": true,
+  "arguments": ["mixRed", "mixGreen", "mixBlue", "mixOffset"]
+}

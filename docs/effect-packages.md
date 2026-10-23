@@ -3,11 +3,13 @@
 Status: **planned; steps 1 to 4 of [Building it](#building-it) built**.
 `EffectKind` and `ControlKind` are names looked up in an
 `EffectRegistry` of the effects written in Swift (BuiltInEffects.swift),
-the packages that ship with the app (Resources/Effects: Posterize so far)
+the packages that ship with the app (Resources/Effects: Posterize and the
+Color looks so far)
 and the person's, which `EffectPackageStore` reads from the Effects
 folder at launch. A package's look is listed, saved and drawn like any
 other (`PackageLookRenderer`), and one whose package is missing is kept;
-the other 20 looks are still a `case` in `LookRenderer` each. This plan moves the looks of
+the Noise and Distortion looks are still a `case` in `LookRenderer`
+each. This plan moves the looks of
 [psychedelic-effects.md](psychedelic-effects.md) out of Swift into
 **effect packages**: folders the app reads at launch, which can be
 written, shared and installed without building the app. Effects that need
@@ -66,12 +68,12 @@ Posterize.amveffect/
 | `category` | `recolor`, `noise` or `distortion`. New categories are under [Not yet](#not-yet). |
 | `kernel` | The Metal file, the function in it, and its type: `color`, `warp` or `general`, the rungs of [Efficiency](psychedelic-effects.md#efficiency). |
 | `controls` | The controls a new effect of this kind lists, in order. |
-| `amount` | Whether the standard Amount control (0–100%, default 100%) comes last. A look with it is a no-op at 0%, as today. |
+| `amount` | Whether the standard Amount control (0–100%, default 100%) comes last. A look with it is a no-op at 0%, as today. A `{ "type": "amount" }` entry in `controls` puts it there instead (Grain lists it first). |
 | `arguments` | What the kernel receives after the fixed ones, in order (see [Arguments](#arguments)). |
 | `generates` | `true` for a generator, which replaces the picture and fills the frame where nothing was. |
 | `changesEveryFrame` | `true` when it draws a new picture every frame (Grain, Static, Block Glitch), so the renderer never reuses a frame of it. |
 | `dependsOnPixelSize` | `true` when the picture depends on the size it is drawn at (Neon Edges, Dither), as `EffectKind.dependsOnPixelSize`. |
-| `flashes` | `true` for an effect that can flash several times a second; the panel shows the warning of [Safety](psychedelic-effects.md#safety-flashing). |
+| `flashes` | `true` for an effect that can flash several times a second, or a condition saying when, such as `"abs(hueSpeed) > 3"`, checked with each control at its largest value across its keyframes; the panel shows the warning of [Safety](psychedelic-effects.md#safety-flashing). |
 | `reach` | Warp and general kernels: how far, in output pixels, it reads from each pixel, an [expression](#arguments). Core Image renders only the pixels needed from it. Left out, the whole canvas. |
 | `input` | General kernels: `"clamped"` (edges repeat, for kernels that read beside a pixel) or `"clear"` (transparent past the edges, the default). |
 | `after` | Built-in Core Image filters applied to the kernel's result, in order (see [Built-in filters](#built-in-filters)). |
@@ -96,9 +98,10 @@ expression calls the control, and what a project saves as the control's
 | `color` | Red, green and blue, 0–1, and alpha (1 if left out) | `default` |
 | `choice` | One of a list | `options` (`[{ "id": "bayer4", "name": "Bayer 4×4" }, …]`), `default` |
 
-`unit` is one of `%`, `°`, `px`, `s`, `×`, `/s` or none, and decides how a
-value is shown and dragged, as `ControlKind.unit` does now. `step` is the
-drag step (defaulting by unit). A number with `"rate": true` is a speed:
+`unit` is one of `%`, `°`, `px`, `s`, `×`, `/s`, `turns/s` or none, and
+decides how a value is shown and dragged, as `ControlKind.unit` does now.
+`step` is the drag step: by default 1, a hundredth for speeds and `×`, a
+tenth for `s`. A number with `"rate": true` is a speed:
 the effect changes on its own while it isn't 0, as Hue Cycle's Speed does,
 which `Effect.changesOnItsOwn` decides today.
 
@@ -127,7 +130,8 @@ It may use these names:
 - `seconds`: the clip's source time; `frame`: its frame number, for seeds
 - `scale`: output pixels per timeline pixel, for sizes given in the
   timeline's pixels
-- `frameWidth`, `frameHeight`, `canvasHeight`: in output pixels
+- `frameWidth`, `frameHeight`, `canvasWidth`, `canvasHeight`: in output
+  pixels; `frameCenter`, the frame's middle as a position
 - `center(p)`: point control `p` as a position in output pixels
 - `index(c)`: the position of choice `c`'s option in its list, from 0
 - `rad(x)`, `fract(x)`, `floor(x)`, `min`, `max`, `abs`, `pi`
@@ -358,5 +362,5 @@ In order, each step usable on its own:
    built-in package, checked against its reference frames. **Built.**
 4. Missing effects in projects and presets. **Built.**
 5. The other Color looks, then the Noise looks, then the Distortion
-   looks, as packages, a category at a time.
+   looks, as packages, a category at a time. Color **built**.
 6. Problems and compile errors shown in the effects library.

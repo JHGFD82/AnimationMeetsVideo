@@ -23,17 +23,16 @@ private enum Tones {
     }
 }
 
-/// Posterize's Levels, which comes from its package.
-private let levels = EffectKind.posterize.controlKind(savedAs: "levels")!
-
-/// A look with some of its controls set.
-func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices: [ControlKind: String] = [:]) -> Effect {
+/// A look with some of its controls set, by the names they are saved
+/// under, as a package's controls have no Swift names.
+func look(_ kind: EffectKind, _ settings: [String: [Double]] = [:], choices: [String: String] = [:]) -> Effect {
     var effect = Effect(kind: kind)
     for index in effect.controls.indices {
-        if let values = settings[effect.controls[index].kind] {
+        let name = effect.controls[index].kind.savedName
+        if let values = settings[name] {
             effect.controls[index].number = AnimatedValue(ComponentValue(values: values))
         }
-        if let choice = choices[effect.controls[index].kind] { effect.controls[index].choice = choice }
+        if let choice = choices[name] { effect.controls[index].choice = choice }
     }
     return effect
 }
@@ -58,38 +57,38 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
         return try h.draw([clip], at: CMTime(seconds: seconds, preferredTimescale: 600))
     }
 
+    /// Every kernel left in Swift; the packages' are checked in
+    /// PackageLookTests.
     @Test func everyKernelCompiles() {
-        let names = ["amvHueCycle", "amvCosinePalette", "amvGradientMap", "amvSolarize",
-                     "amvChannelMixer", "amvFalseColor", "amvNeonEdges"]
-        #expect(names.allSatisfy { LookKernels.compiled[$0] != nil })
+        #expect(LookKernels.compiled.count == LookKernels.split(LookKernels.source).kernels.count)
     }
 
     @Test func atNoAmountALookDrawsNothing() throws {
-        let effect = look(.posterize, [levels: [2], .amount: [0]])
+        let effect = look(.posterize, ["levels": [2], "amount": [0]])
         #expect(effect.isNoOp)
         let drawn = try draw(effect)
         #expect(close(drawn[2], Tones.pixel(0.8, 0.4, 0.1)))
     }
 
     @Test func posterizeRoundsEachToneToALevel() throws {
-        let drawn = try draw(look(.posterize, [levels: [2]]))
+        let drawn = try draw(look(.posterize, ["levels": [2]]))
         #expect(close(drawn[0], Tones.pixel(0, 0, 0)))
         #expect(close(drawn[1], Tones.pixel(1, 1, 1)))
         // Halfway mixes halfway, in the timeline's values.
-        let half = try draw(look(.posterize, [levels: [2], .amount: [50]]))
+        let half = try draw(look(.posterize, ["levels": [2], "amount": [50]]))
         let expected = (Tones.pixel(0.3, 0.3, 0.3) + Tones.pixel(0, 0, 0)) / 2
         #expect(close(half[0], SIMD4(expected.x, expected.y, expected.z, 1), tolerance: 0.02))
     }
 
     @Test func solarizeFoldsTonesAboveTheThreshold() throws {
-        let drawn = try draw(look(.solarize, choices: [.solarizeChannels: SolarizeChannels.each.rawValue]))
+        let drawn = try draw(look(.solarize, choices: ["solarizeChannels": "each"]))
         // Below the threshold unchanged; 0.75 folds back to 0.25.
         #expect(close(drawn[0], Tones.pixel(0.3, 0.3, 0.3)))
         #expect(close(drawn[1], Tones.pixel(0.25, 0.25, 0.25)))
     }
 
     @Test func channelMixerSwapsChannels() throws {
-        let drawn = try draw(look(.channelMixer, [.mixRed: [0, 0, 1], .mixBlue: [1, 0, 0]]))
+        let drawn = try draw(look(.channelMixer, ["mixRed": [0, 0, 1], "mixBlue": [1, 0, 0]]))
         #expect(close(drawn[2], Tones.pixel(0.1, 0.4, 0.8)))
     }
 
@@ -106,7 +105,7 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
     @Test func aGradientMapTakesTheEndsToTheirColors() throws {
         var harness = CompositorHarness(size: CGSize(width: 2, height: 1))
         try harness.addPicture(track: 1) { x, _ in x < 0.5 ? SIMD4(0, 0, 0, 1) : SIMD4(1, 1, 1, 1) }
-        let effect = look(.gradientMap, [.shadowColor: [0.1, 0.2, 0.3, 1], .highlightColor: [0.9, 0.8, 0.7, 1]])
+        let effect = look(.gradientMap, ["shadowColor": [0.1, 0.2, 0.3, 1], "highlightColor": [0.9, 0.8, 0.7, 1]])
         let drawn = try harness.draw([CompositorHarness.clip(track: 1, effects: [effect], frame: harness.size)])
         #expect(close(drawn[0], SIMD4(0.1, 0.2, 0.3, 1)))
         #expect(close(drawn[1], SIMD4(0.9, 0.8, 0.7, 1)))
@@ -131,7 +130,7 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
     @Test func neonEdgesLightOnlyWhereThePictureChanges() throws {
         var harness = CompositorHarness(size: CGSize(width: 16, height: 8))
         try harness.addPicture(track: 1) { x, _ in x < 0.5 ? SIMD4(0, 0, 0, 1) : SIMD4(1, 1, 1, 1) }
-        let effect = look(.neonEdges, [.edgeWidth: [1], .glow: [0]])
+        let effect = look(.neonEdges, ["edgeWidth": [1], "glow": [0]])
         let drawn = try harness.draw([CompositorHarness.clip(track: 1, effects: [effect], frame: harness.size)])
         let flat = harness.pixel(drawn, x: 2, y: 4)
         let edge = harness.pixel(drawn, x: 8, y: 4)
@@ -141,7 +140,7 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
 
     @Test func onlyALookThatMovesIsDrawnAfreshEachFrame() {
         let turning = ClipStack(effects: [look(.hueCycle)])
-        let still = ClipStack(effects: [look(.hueCycle, [.hueSpeed: [0]]), look(.posterize)])
+        let still = ClipStack(effects: [look(.hueCycle, ["hueSpeed": [0]]), look(.posterize)])
         #expect(!turning.animatedRanges.isEmpty)
         #expect(still.animatedRanges.isEmpty)
         // And a still one's render key doesn't carry the time.
@@ -176,13 +175,13 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
         #expect(first == again)
         #expect(first != next)
         #expect(spread(first) > 0.01)
-        let otherSeed = try draw(look(.grain, [.seed: [2]]), at: 1)
+        let otherSeed = try draw(look(.grain, ["seed": [2]]), at: 1)
         #expect(otherSeed != first)
     }
 
     @Test func generatorsFillWhereNothingWas() throws {
         for kind in [EffectKind.staticNoise, .fractalNoise, .cells, .interference] {
-            let drawn = try draw(look(kind, [.noiseScale: [4], .cellSize: [4], .spacing: [3]]), at: 0.5, picture: .zero)
+            let drawn = try draw(look(kind, ["noiseScale": [4], "cellSize": [4], "spacing": [3]]), at: 0.5, picture: .zero)
             #expect(drawn.allSatisfy { abs($0.w - 1) < 0.001 }, "\(kind.name) is opaque")
             #expect(drawn.allSatisfy { $0.x >= -0.001 && $0.x <= 1.001 }, "\(kind.name) stays in range")
             #expect(spread(drawn) > 0.05, "\(kind.name) varies")
@@ -190,16 +189,16 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
     }
 
     @Test func fractalNoiseEvolvesOnlyWithEvolution() throws {
-        let still = look(.fractalNoise, [.noiseScale: [4], .evolution: [0]])
+        let still = look(.fractalNoise, ["noiseScale": [4], "evolution": [0]])
         let a = try draw(still, at: 0), b = try draw(still, at: 2)
         #expect(a == b)
-        let moving = look(.fractalNoise, [.noiseScale: [4]])
+        let moving = look(.fractalNoise, ["noiseScale": [4]])
         let c = try draw(moving, at: 0), d = try draw(moving, at: 2)
         #expect(c != d)
     }
 
     @Test func aBayerDitherKeepsTheAverageTone() throws {
-        let drawn = try draw(look(.dither, [.ditherLevels: [2]]), picture: Tones.pixel(0.5, 0.5, 0.5))
+        let drawn = try draw(look(.dither, ["ditherLevels": [2]]), picture: Tones.pixel(0.5, 0.5, 0.5))
         let tones = drawn.map { Tones.tone(Double($0.x)) }
         // Only black and white, half of each.
         #expect(tones.allSatisfy { abs($0) < 0.02 || abs($0 - 1) < 0.02 })
@@ -211,7 +210,7 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
         var harness = CompositorHarness(size: CGSize(width: 16, height: 8))
         try harness.addPicture(track: 1) { x, _ in SIMD4(Float(x), Float(1 - x), 0.5, 1) }
         func drawn(_ intensity: Double) throws -> [SIMD4<Float>] {
-            let effect = look(.blockGlitch, [.intensity: [intensity], .blockSize: [2]])
+            let effect = look(.blockGlitch, ["intensity": [intensity], "blockSize": [2]])
             return try harness.draw([CompositorHarness.clip(track: 1, effects: [effect], frame: harness.size)], at: CMTime(value: 1, timescale: 1))
         }
         let original = try harness.draw([CompositorHarness.clip(track: 1, frame: harness.size)])
@@ -269,18 +268,18 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
     @Test func aTwirlLeavesWhatIsOutsideItsRadiusAlone() throws {
         let h = try harness()
         let original = try draw([], h)
-        let twirled = try draw([look(.twirl, [.distortRadius: [8]])], h)
+        let twirled = try draw([look(.twirl, ["distortRadius": [8]])], h)
         // A corner is well outside 8 pixels from the middle.
         #expect(close(h.pixel(twirled, x: 1, y: 1), h.pixel(original, x: 1, y: 1)))
         // Inside, it moved.
         #expect(!close(h.pixel(twirled, x: 13, y: 16), h.pixel(original, x: 13, y: 16)))
-        let none = try draw([look(.twirl, [.twirlAmount: [0]])], h)
+        let none = try draw([look(.twirl, ["twirlAmount": [0]])], h)
         #expect(none == original)
     }
 
     @Test func aKaleidoscopeIsMirroredAcrossItsWedges() throws {
         let h = try harness()
-        let drawn = try draw([look(.kaleidoscope, [.segments: [4]])], h)
+        let drawn = try draw([look(.kaleidoscope, ["segments": [4]])], h)
         // Four segments mirror left against right about the middle.
         let left = h.pixel(drawn, x: 10, y: 12), right = h.pixel(drawn, x: 21, y: 12)
         #expect(close(left, right, tolerance: 0.05))
@@ -288,7 +287,7 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
 
     @Test func fourfoldTilesMirrorAtTheirEdges() throws {
         let h = try harness()
-        let drawn = try draw([look(.mirrorTile, [.tileSize: [8]])], h)
+        let drawn = try draw([look(.mirrorTile, ["tileSize": [8]])], h)
         // The tile around the middle runs 12...20; the one to its right is
         // it mirrored, so 18 and 21 read the same place.
         let inside = h.pixel(drawn, x: 18, y: 16), mirrored = h.pixel(drawn, x: 21, y: 16)
@@ -298,7 +297,7 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
     @Test func aGrayMapDisplacesNothing() throws {
         var h = try harness()
         try h.addSolid(track: 2, SIMD4(0.5, 0.5, 0.5, 1))
-        var effect = look(.displace, [.displacement: [20]])
+        var effect = look(.displace, ["displacement": [20]])
         effect.input = EffectInput(source: .asset(UUID()))
         var clip = CompositorHarness.clip(track: 1, effects: [effect], frame: h.size)
         let copy = TrackCopy(trackID: 2, range: CMTimeRange(start: .zero, duration: CMTime(value: 10, timescale: 1)), strength: 1)
@@ -313,7 +312,7 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
     @Test func radialAberrationLeavesTheMiddleAlone() throws {
         let h = try harness()
         let original = try draw([], h)
-        let drawn = try draw([look(.chromaticAberration, [.aberration: [10]])], h)
+        let drawn = try draw([look(.chromaticAberration, ["aberration": [10]])], h)
         #expect(close(h.pixel(drawn, x: 16, y: 16), h.pixel(original, x: 16, y: 16), tolerance: 0.03))
         // Further out, red comes from further out still (and not past the
         // picture's edge, where there is nothing).
@@ -364,7 +363,7 @@ func look(_ kind: EffectKind, _ settings: [ControlKind: [Double]] = [:], choices
         #expect(EditingProject.flashingNote(for: Effect(kind: .staticNoise)) != nil)
         #expect(EditingProject.flashingNote(for: Effect(kind: .blockGlitch)) == nil)
         #expect(EditingProject.flashingNote(for: Effect(kind: .hueCycle)) == nil)
-        #expect(EditingProject.flashingNote(for: look(.blockGlitch, [.glitchRate: [8]])) != nil)
-        #expect(EditingProject.flashingNote(for: look(.hueCycle, [.hueSpeed: [-4]])) != nil)
+        #expect(EditingProject.flashingNote(for: look(.blockGlitch, ["glitchRate": [8]])) != nil)
+        #expect(EditingProject.flashingNote(for: look(.hueCycle, ["hueSpeed": [-4]])) != nil)
     }
 }

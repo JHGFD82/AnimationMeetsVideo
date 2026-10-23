@@ -34,7 +34,7 @@ private let frame = CMTime(value: 1, timescale: 24)
 
     @Test func feedbackScreensAnEarlierCopyOverThePicture() throws {
         let h = try harness()
-        let effect = look(.feedback, [.copies: [1], .copyScale: [100], .copyRotation: [0], .hueStep: [0], .copyDecay: [0]])
+        let effect = look(.feedback, ["copies": [1], "copyScale": [100], "copyRotation": [0], "hueStep": [0], "copyDecay": [0]])
         let drawn = try h.draw([clip([effect], moments: [copy(2, delay: frame)])], at: CMTime(value: 1, timescale: 1))
         // Screen: 1 − (1 − 0.2)(1 − 0.5) in red; green and blue as they were.
         #expect(close(h.pixel(drawn, x: 8, y: 4), SIMD4(0.6, 0.2, 0.2, 1), tolerance: 0.02))
@@ -45,7 +45,7 @@ private let frame = CMTime(value: 1, timescale: 24)
 
     @Test func feedbacksCopiesFadeByTheirDecay() throws {
         let h = try harness()
-        let effect = look(.feedback, [.copies: [1], .copyScale: [100], .copyRotation: [0], .hueStep: [0], .copyDecay: [50]])
+        let effect = look(.feedback, ["copies": [1], "copyScale": [100], "copyRotation": [0], "hueStep": [0], "copyDecay": [50]])
         let drawn = try h.draw([clip([effect], moments: [copy(2, delay: frame)])], at: CMTime(value: 1, timescale: 1))
         // Half the copy: 1 − 0.8 · (1 − 0.25).
         #expect(abs(h.pixel(drawn, x: 8, y: 4).x - 0.4) < 0.02)
@@ -54,7 +54,7 @@ private let frame = CMTime(value: 1, timescale: 24)
     @Test func slitScanTakesEachBandFromItsMoment() throws {
         let h = try harness()
         // Two bands a frame apart: the top now, the bottom a frame ago.
-        let effect = look(.slitScan, [.bands: [2], .timeSpread: [1.0 / 24]])
+        let effect = look(.slitScan, ["bands": [2], "timeSpread": [1.0 / 24]])
         let drawn = try h.draw([clip([effect], moments: [copy(2, delay: frame)])], at: CMTime(value: 1, timescale: 1))
         // The harness's rows run from the frame's bottom up (it reverses
         // Core Image's, which already run from the top), so row 6 is near
@@ -65,7 +65,7 @@ private let frame = CMTime(value: 1, timescale: 24)
 
     @Test func slitScanRingsGoOutFromTheMiddle() throws {
         let h = try harness()
-        let effect = look(.slitScan, [.bands: [2], .timeSpread: [1.0 / 24]], choices: [.slitDirection: SlitDirection.rings.rawValue])
+        let effect = look(.slitScan, ["bands": [2], "timeSpread": [1.0 / 24]], choices: ["slitDirection": "rings"])
         let drawn = try h.draw([clip([effect], moments: [copy(2, delay: frame)])], at: CMTime(value: 1, timescale: 1))
         #expect(close(h.pixel(drawn, x: 8, y: 4), SIMD4(0.2, 0.2, 0.2, 1)))
         #expect(close(h.pixel(drawn, x: 0, y: 0), SIMD4(0.5, 0, 0, 1)))
@@ -79,12 +79,12 @@ private let frame = CMTime(value: 1, timescale: 24)
     }
 
     @Test func theCompositionIsAskedForEachMomentOnce() {
-        let feedback = look(.feedback, [.copies: [3], .feedbackDelay: [2]])
+        let feedback = look(.feedback, ["copies": [3], "feedbackDelay": [2]])
         #expect(feedback.momentDelays(frame: frame) == [2, 4, 6].map { CMTimeMultiply(frame, multiplier: $0) })
         // Three bands over a second at 24 fps: half a second and a second.
-        let slit = look(.slitScan, [.bands: [3], .timeSpread: [1]])
+        let slit = look(.slitScan, ["bands": [3], "timeSpread": [1]])
         #expect(slit.momentDelays(frame: frame) == [12, 24].map { CMTimeMultiply(frame, multiplier: $0) })
-        #expect(look(.flowSmear, [.framesAhead: [2]]).framesAhead == 2)
+        #expect(look(.flowSmear, ["framesAhead": [2]]).framesAhead == 2)
         #expect(feedback.changesOnItsOwn)
     }
 }

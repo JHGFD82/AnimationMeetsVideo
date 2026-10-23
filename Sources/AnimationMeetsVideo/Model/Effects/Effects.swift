@@ -603,9 +603,6 @@ struct Effect: Identifiable, Equatable, Sendable {
         default: break
         }
         let moving: ControlKind? = switch kind {
-        case .hueCycle: .hueSpeed
-        case .cosinePalette: .cycleSpeed
-        case .gradientMap: .scrollSpeed
         case .fractalNoise, .cells, .liquid: .evolution
         case .interference: .driftSpeed
         case .wave: .waveSpeed

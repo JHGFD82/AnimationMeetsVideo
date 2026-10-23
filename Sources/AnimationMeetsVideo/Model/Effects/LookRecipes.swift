@@ -44,11 +44,16 @@ enum LookRecipes {
         return effect
     }
 
-    /// A new effect of `kind` with numbers set by the names its controls
-    /// are saved under, for a look from a package, whose controls have no
-    /// Swift names.
-    private static func effect(_ kind: EffectKind, named numbers: [String: [Double]]) -> Effect {
-        effect(kind, Dictionary(uniqueKeysWithValues: numbers.compactMap { name, values in kind.controlKind(savedAs: name).map { ($0, values) } }))
+    /// A new effect of `kind` with controls set by the names they are saved
+    /// under, for a look from a package, whose controls have no Swift names.
+    private static func look(
+        _ kind: EffectKind, _ numbers: [String: [Double]] = [:], choices: [String: String] = [:],
+        keyframes: [String: [(Double, [Double])]] = [:]
+    ) -> Effect {
+        func byKind<Value>(_ named: [String: Value]) -> [ControlKind: Value] {
+            Dictionary(uniqueKeysWithValues: named.compactMap { name, value in kind.controlKind(savedAs: name).map { ($0, value) } })
+        }
+        return effect(kind, byKind(numbers), choices: byKind(choices), keyframes: byKind(keyframes))
     }
 
     /// Blending in `mode` against the picture before `earlier`.
@@ -63,7 +68,7 @@ enum LookRecipes {
     private static var liquidAcid: [Effect] {
         let liquid = effect(.liquid)
         return [
-            liquid, effect(.cosinePalette, choices: [.palette: PaletteLook.acid.rawValue]), effect(.hueCycle),
+            liquid, look(.cosinePalette, choices: ["palette": "acid"]), effect(.hueCycle),
             blend(.softLight, against: liquid),
         ]
     }
@@ -79,7 +84,7 @@ enum LookRecipes {
     private static var lavaLamp: [Effect] {
         [
             effect(.fractalNoise, choices: [.noiseType: NoiseType.smooth.rawValue]), effect(.liquid),
-            effect(.gradientMap, [.scrollSpeed: [0.05]]),
+            look(.gradientMap, ["scrollSpeed": [0.05]]),
         ]
     }
 
@@ -92,7 +97,7 @@ enum LookRecipes {
 
     private static var electricCells: [Effect] {
         let cells = effect(.cells, choices: [.cellOutput: CellOutput.edges.rawValue])
-        return [cells, effect(.neonEdges), effect(.hueCycle, [.hueSpread: [120]]), blend(.screen, against: cells)]
+        return [cells, effect(.neonEdges), look(.hueCycle, ["hueSpread": [120]]), blend(.screen, against: cells)]
     }
 
     private static var brokenSignal: [Effect] {
@@ -105,7 +110,7 @@ enum LookRecipes {
 
     private static var meltingRainbow: [Effect] {
         [
-            effect(.flowSmear), effect(.solarize, [.folds: [3]]), effect(.hueCycle),
+            effect(.flowSmear), look(.solarize, ["folds": [3]]), effect(.hueCycle),
             effect(.feedback, [.copies: [6], .copyScale: [100], .copyRotation: [0], .hueStep: [30]]),
         ]
     }
@@ -114,14 +119,14 @@ enum LookRecipes {
         let wave = effect(.wave, choices: [.waveDirection: WaveDirection.radial.rawValue])
         return [
             wave, effect(.twirl, choices: [.twirlShape: TwirlShape.vortex.rawValue]),
-            effect(.cosinePalette, choices: [.palette: PaletteLook.oilSlick.rawValue]), blend(.luminosity, against: wave),
+            look(.cosinePalette, choices: ["palette": "oilSlick"]), blend(.luminosity, against: wave),
         ]
     }
 
     private static var thermalDream: [Effect] {
         [
-            effect(.falseColor, choices: [.falseColorLook: FalseColorLook.thermal.rawValue]),
-            effect(.slitScan, choices: [.slitDirection: SlitDirection.rows.rawValue]), effect(.posterize, named: ["levels": [5]]),
+            look(.falseColor, choices: ["falseColorLook": "thermal"]),
+            effect(.slitScan, choices: [.slitDirection: SlitDirection.rows.rawValue]), look(.posterize, ["levels": [5]]),
             effect(.grain),
         ]
     }
@@ -131,7 +136,7 @@ enum LookRecipes {
             effect(.mirrorTile, choices: [.tilePattern: TilePattern.eightfold.rawValue]), effect(.kaleidoscope, [.segments: [12]]),
             // Each channel from the next: red from green, green from blue,
             // blue from red.
-            effect(.channelMixer, [.mixRed: [0, 1, 0], .mixGreen: [0, 0, 1], .mixBlue: [1, 0, 0]]),
+            look(.channelMixer, ["mixRed": [0, 1, 0], "mixGreen": [0, 0, 1], "mixBlue": [1, 0, 0]]),
             effect(.dither, choices: [.ditherPattern: DitherPattern.bayer4.rawValue]),
         ]
     }

@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "id": "falseColor",
+  "version": 1,
+  "name": "False Color",
+  "category": "recolor",
+  "symbol": "thermometer.sun",
+  "kernel": {"file": "kernel.metal", "function": "amvFalseColor", "type": "color"},
+  "controls": [
+    {"id": "falseColorLook", "name": "Look", "type": "choice", "default": "thermal", "options": [{"id": "thermal", "name": "Thermal"}, {"id": "xray", "name": "X-Ray"}, {"id": "duotone", "name": "Duotone"}]},
+    {"id": "shadowColor", "name": "Shadows", "type": "color", "default": [0.08, 0.02, 0.18, 1]},
+    {"id": "highlightColor", "name": "Highlights", "type": "color", "default": [1, 0.92, 0.55, 1]}
+  ],
+  "amount": true,
+  "arguments": ["index(falseColorLook)", "shadowColor", "highlightColor"]
+}

@@ -47,7 +47,8 @@ struct EffectExpression: Equatable, Sendable {
     /// The names every expression may use besides a package's controls.
     static let builtInNames: [String: ValueType] = [
         "seconds": .number, "frame": .number, "scale": .number,
-        "frameWidth": .number, "frameHeight": .number, "canvasHeight": .number, "pi": .number,
+        "frameWidth": .number, "frameHeight": .number, "frameCenter": .vector(2),
+        "canvasWidth": .number, "canvasHeight": .number, "pi": .number,
     ]
 
     /// The functions, by how many numbers they take; `center` and `index`

@@ -1,0 +1,21 @@
+{
+  "formatVersion": 1,
+  "id": "neonEdges",
+  "version": 1,
+  "name": "Neon Edges",
+  "category": "recolor",
+  "symbol": "scribble",
+  "kernel": {"file": "kernel.metal", "function": "amvNeonEdges", "type": "general"},
+  "controls": [
+    {"id": "edgeWidth", "name": "Width", "type": "number", "default": 2, "range": [0.5, 50], "unit": "px", "step": 0.1},
+    {"id": "glow", "name": "Glow", "type": "number", "default": 50, "range": [0, 200], "unit": "%"},
+    {"id": "edgeColoring", "name": "Coloring", "type": "choice", "default": "byAngle", "options": [{"id": "byAngle", "name": "By Direction"}, {"id": "oneColor", "name": "One Color"}]},
+    {"id": "edgeColor", "name": "Color", "type": "color", "default": [0.2, 1, 0.9, 1]}
+  ],
+  "amount": true,
+  "arguments": ["edgeWidth * scale", "1 - index(edgeColoring)", "edgeColor"],
+  "dependsOnPixelSize": true,
+  "reach": "-floor(-edgeWidth * scale)",
+  "input": "clamped",
+  "after": [{"filter": "CIBloom", "when": "glow > 0", "parameters": {"inputRadius": "edgeWidth * scale * 4", "inputIntensity": "glow / 100"}}]
+}

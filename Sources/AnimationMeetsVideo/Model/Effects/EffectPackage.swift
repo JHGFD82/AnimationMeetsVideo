@@ -19,6 +19,15 @@ struct EffectPackage: Sendable {
         case clear, clamped
     }
 
+    /// Whether the effects panel warns that it can flash more than three
+    /// times a second (see docs/psychedelic-effects.md, "Safety: flashing").
+    enum Flashing: Sendable {
+        case never
+        case always
+        /// While this isn't 0, with each control at its largest value.
+        case when(EffectExpression)
+    }
+
     /// A built-in Core Image filter applied to the kernel's result.
     struct Filter: Sendable {
         var name: String
@@ -42,13 +51,14 @@ struct EffectPackage: Sendable {
     let kernelSource: String
     /// The package's own controls, in order, without Amount.
     let controls: [ControlDefinition]
-    /// Whether the standard Amount control comes last.
-    let hasAmount: Bool
+    /// Where among `controls` the standard Amount control goes, if the
+    /// effect has it: last unless effect.json places it.
+    let amountIndex: Int?
     let arguments: [EffectExpression]
     let generates: Bool
     let changesEveryFrame: Bool
     let dependsOnPixelSize: Bool
-    let flashes: Bool
+    let flashes: Flashing
     /// The speeds: while one isn't 0 the effect changes on its own.
     let rateControls: Set<ControlKind>
     let reach: EffectExpression?
@@ -57,10 +67,13 @@ struct EffectPackage: Sendable {
 
     var kind: EffectKind { EffectKind(package: id) }
 
+    var hasAmount: Bool { amountIndex != nil }
+
     var definition: EffectDefinition {
+        var kinds = controls.map(\.kind)
+        if let amountIndex { kinds.insert(.amount, at: amountIndex) }
         var definition = EffectDefinition(
-            kind, name, category, systemImage, controls: controls.map(\.kind) + (hasAmount ? [.amount] : []),
-            dependsOnPixelSize: dependsOnPixelSize, generates: generates
+            kind, name, category, systemImage, controls: kinds, dependsOnPixelSize: dependsOnPixelSize, generates: generates
         )
         definition.package = self
         return definition

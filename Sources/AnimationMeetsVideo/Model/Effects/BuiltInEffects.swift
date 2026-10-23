@@ -8,16 +8,6 @@ extension EffectKind {
     static let blending = EffectKind(builtIn: "blending")
     static let color = EffectKind(builtIn: "color")
     static let matte = EffectKind(builtIn: "matte")
-    /// Color looks (see docs/psychedelic-effects.md): each remaps every
-    /// pixel's color on its own, and nothing moves.
-    static let hueCycle = EffectKind(builtIn: "hueCycle")
-    static let cosinePalette = EffectKind(builtIn: "cosinePalette")
-    static let gradientMap = EffectKind(builtIn: "gradientMap")
-    static let solarize = EffectKind(builtIn: "solarize")
-    static let channelMixer = EffectKind(builtIn: "channelMixer")
-    static let falseColor = EffectKind(builtIn: "falseColor")
-    /// Its edges are found between neighboring pixels.
-    static let neonEdges = EffectKind(builtIn: "neonEdges")
     /// Noise looks: grain and glitches over the picture, or generators
     /// that replace it.
     static let grain = EffectKind(builtIn: "grain")
@@ -71,6 +61,13 @@ extension EffectKind {
 
     // From the packages in Resources/Effects, which ship with the app.
     static let posterize = EffectKind(package: "posterize")
+    static let hueCycle = EffectKind(package: "hueCycle")
+    static let cosinePalette = EffectKind(package: "cosinePalette")
+    static let gradientMap = EffectKind(package: "gradientMap")
+    static let solarize = EffectKind(package: "solarize")
+    static let channelMixer = EffectKind(package: "channelMixer")
+    static let falseColor = EffectKind(package: "falseColor")
+    static let neonEdges = EffectKind(package: "neonEdges")
 
     /// How a shape is filled and stroked, after what shapes it.
     static let paintControls: [ControlKind] = [.fill, .stroke, .strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash]
@@ -96,39 +93,6 @@ extension ControlKind {
     static let gain = ControlKind(builtIn: "gain")
     // Matte
     static let matteMode = ControlKind(builtIn: "matteMode")
-    // Hue Cycle
-    static let hueSpeed = ControlKind(builtIn: "hueSpeed")
-    static let hueSpread = ControlKind(builtIn: "hueSpread")
-    static let saturationBoost = ControlKind(builtIn: "saturationBoost")
-    // Cosine Palette
-    static let palette = ControlKind(builtIn: "palette")
-    static let cycleSpeed = ControlKind(builtIn: "cycleSpeed")
-    static let paletteBias = ControlKind(builtIn: "paletteBias")
-    static let paletteAmplitude = ControlKind(builtIn: "paletteAmplitude")
-    static let paletteFrequency = ControlKind(builtIn: "paletteFrequency")
-    static let palettePhase = ControlKind(builtIn: "palettePhase")
-    // Gradient Map
-    static let shadowColor = ControlKind(builtIn: "shadowColor")
-    static let midtoneColor = ControlKind(builtIn: "midtoneColor")
-    static let highlightColor = ControlKind(builtIn: "highlightColor")
-    static let repeats = ControlKind(builtIn: "repeats")
-    static let scrollSpeed = ControlKind(builtIn: "scrollSpeed")
-    // Solarize
-    static let solarizeLevel = ControlKind(builtIn: "solarizeLevel")
-    static let folds = ControlKind(builtIn: "folds")
-    static let solarizeChannels = ControlKind(builtIn: "solarizeChannels")
-    // Channel Mixer
-    static let mixRed = ControlKind(builtIn: "mixRed")
-    static let mixGreen = ControlKind(builtIn: "mixGreen")
-    static let mixBlue = ControlKind(builtIn: "mixBlue")
-    static let mixOffset = ControlKind(builtIn: "mixOffset")
-    // False Color
-    static let falseColorLook = ControlKind(builtIn: "falseColorLook")
-    // Neon Edges
-    static let edgeWidth = ControlKind(builtIn: "edgeWidth")
-    static let glow = ControlKind(builtIn: "glow")
-    static let edgeColoring = ControlKind(builtIn: "edgeColoring")
-    static let edgeColor = ControlKind(builtIn: "edgeColor")
     // Grain
     static let grainSize = ControlKind(builtIn: "grainSize")
     static let grainChannels = ControlKind(builtIn: "grainChannels")
@@ -309,36 +273,6 @@ enum BuiltInEffects {
         EffectDefinition(
             .matte, "Matte", .mattes, "circle.dashed.inset.filled", controls: [.matteMode, .amount], takesInput: true
         ),
-        // Color looks (see docs/psychedelic-effects.md): each remaps every
-        // pixel's color on its own, and nothing moves.
-        EffectDefinition(
-            .hueCycle, "Hue Cycle", .recolor, "paintpalette", controls: [.hueSpeed, .hueSpread, .saturationBoost, .amount]
-        ),
-        EffectDefinition(
-            .cosinePalette, "Cosine Palette", .recolor, "rainbow",
-            controls: [.palette, .cycleSpeed, .paletteBias, .paletteAmplitude, .paletteFrequency, .palettePhase, .amount]
-        ),
-        EffectDefinition(
-            .gradientMap, "Gradient Map", .recolor, "slider.horizontal.below.rectangle",
-            controls: [.shadowColor, .midtoneColor, .highlightColor, .repeats, .scrollSpeed, .amount]
-        ),
-        EffectDefinition(
-            .solarize, "Solarize", .recolor, "sun.max.trianglebadge.exclamationmark",
-            controls: [.solarizeLevel, .folds, .solarizeChannels, .amount]
-        ),
-        EffectDefinition(
-            .channelMixer, "Channel Mixer", .recolor, "circle.grid.cross",
-            controls: [.mixRed, .mixGreen, .mixBlue, .mixOffset, .amount]
-        ),
-        EffectDefinition(
-            .falseColor, "False Color", .recolor, "thermometer.sun",
-            controls: [.falseColorLook, .shadowColor, .highlightColor, .amount]
-        ),
-        // Its edges are found between neighboring pixels.
-        EffectDefinition(
-            .neonEdges, "Neon Edges", .recolor, "scribble", controls: [.edgeWidth, .glow, .edgeColoring, .edgeColor, .amount],
-            dependsOnPixelSize: true
-        ),
         // Noise looks: grain and glitches over the picture, or generators
         // that replace it.
         EffectDefinition(.grain, "Grain", .noise, "circle.dotted", controls: [.amount, .grainSize, .grainChannels, .seed]),
@@ -499,73 +433,6 @@ enum BuiltInEffects {
         ),
         // Matte
         ControlDefinition(.matteMode, "Take", .matte, choice: MatteMode.alpha),
-        // Hue Cycle
-        ControlDefinition(.hueSpeed, "Speed", .hueCycle, defaults: [0.25], unit: " turns/s", dragStep: 0.01, range: -20...20),
-        ControlDefinition(.hueSpread, "Spread", .hueCycle, defaults: [0], unit: "°", range: -1080...1080),
-        ControlDefinition(.saturationBoost, "Saturation", .hueCycle, defaults: [0], unit: "%", range: -100...400),
-        // Cosine Palette
-        ControlDefinition(.palette, "Palette", .cosinePalette, choice: PaletteLook.rainbow),
-        ControlDefinition(.cycleSpeed, "Speed", .cosinePalette, defaults: [0], unit: " /s", dragStep: 0.01, range: -20...20),
-        ControlDefinition(
-            .paletteBias, "Bias", .cosinePalette, defaults: PaletteLook.rainbow.vectors.bias, dragStep: 0.01, range: -2...2,
-            componentNames: ["Red", "Green", "Blue"]
-        ),
-        ControlDefinition(
-            .paletteAmplitude, "Amplitude", .cosinePalette, defaults: PaletteLook.rainbow.vectors.amplitude, dragStep: 0.01,
-            range: -2...2, componentNames: ["Red", "Green", "Blue"]
-        ),
-        ControlDefinition(
-            .paletteFrequency, "Frequency", .cosinePalette, defaults: PaletteLook.rainbow.vectors.frequency, dragStep: 0.01,
-            range: 0...8, componentNames: ["Red", "Green", "Blue"]
-        ),
-        ControlDefinition(
-            .palettePhase, "Phase", .cosinePalette, defaults: PaletteLook.rainbow.vectors.phase, dragStep: 0.01, range: -2...2,
-            componentNames: ["Red", "Green", "Blue"]
-        ),
-        // Gradient Map
-        // A lava gradient, and a navy-to-amber duotone.
-        ControlDefinition(
-            .shadowColor, "Shadows", .gradientMap, defaults: [0.08, 0.02, 0.18, 1], dragStep: 0.01, range: 0...1, isColor: true
-        ),
-        ControlDefinition(
-            .midtoneColor, "Midtones", .gradientMap, defaults: [0.9, 0.25, 0.05, 1], dragStep: 0.01, range: 0...1, isColor: true
-        ),
-        ControlDefinition(
-            .highlightColor, "Highlights", .gradientMap, defaults: [1, 0.92, 0.55, 1], dragStep: 0.01, range: 0...1,
-            isColor: true
-        ),
-        ControlDefinition(.repeats, "Repeat", .gradientMap, defaults: [1], range: 1...32, isWhole: true),
-        ControlDefinition(.scrollSpeed, "Speed", .gradientMap, defaults: [0], unit: " /s", dragStep: 0.01, range: -20...20),
-        // Solarize
-        ControlDefinition(.solarizeLevel, "Threshold", .solarize, defaults: [50], unit: "%", range: 1...99),
-        ControlDefinition(.folds, "Folds", .solarize, defaults: [1], range: 1...16, isWhole: true),
-        ControlDefinition(.solarizeChannels, "Channels", .solarize, choice: SolarizeChannels.luminance),
-        // Channel Mixer
-        ControlDefinition(
-            .mixRed, "Red From", .channelMixer, defaults: [1, 0, 0], dragStep: 0.01, range: -4...4,
-            componentNames: ["Red", "Green", "Blue"]
-        ),
-        ControlDefinition(
-            .mixGreen, "Green From", .channelMixer, defaults: [0, 1, 0], dragStep: 0.01, range: -4...4,
-            componentNames: ["Red", "Green", "Blue"]
-        ),
-        ControlDefinition(
-            .mixBlue, "Blue From", .channelMixer, defaults: [0, 0, 1], dragStep: 0.01, range: -4...4,
-            componentNames: ["Red", "Green", "Blue"]
-        ),
-        ControlDefinition(
-            .mixOffset, "Offset", .channelMixer, defaults: [0, 0, 0], dragStep: 0.01, range: -1...1,
-            componentNames: ["Red", "Green", "Blue"]
-        ),
-        // False Color
-        ControlDefinition(.falseColorLook, "Look", .falseColor, choice: FalseColorLook.thermal),
-        // Neon Edges
-        ControlDefinition(.edgeWidth, "Width", .neonEdges, defaults: [2], unit: " px", dragStep: 0.1, range: 0.5...50),
-        ControlDefinition(.glow, "Glow", .neonEdges, defaults: [50], unit: "%", range: 0...200),
-        ControlDefinition(.edgeColoring, "Coloring", .neonEdges, choice: EdgeColoring.byAngle),
-        ControlDefinition(
-            .edgeColor, "Color", .neonEdges, defaults: [0.2, 1, 0.9, 1], dragStep: 0.01, range: 0...1, isColor: true
-        ),
         // Grain
         ControlDefinition(.grainSize, "Size", .grain, defaults: [1], unit: " px", dragStep: 0.1, range: 0.25...64),
         ControlDefinition(.grainChannels, "Channels", .grain, choice: GrainChannels.mono),

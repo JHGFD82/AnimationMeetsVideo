@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "hueCycle",
+  "version": 1,
+  "name": "Hue Cycle",
+  "category": "recolor",
+  "symbol": "paintpalette",
+  "kernel": {"file": "kernel.metal", "function": "amvHueCycle", "type": "color"},
+  "controls": [
+    {"id": "hueSpeed", "name": "Speed", "type": "number", "default": 0.25, "range": [-20, 20], "unit": "turns/s", "rate": true},
+    {"id": "hueSpread", "name": "Spread", "type": "number", "default": 0, "range": [-1080, 1080], "unit": "°"},
+    {"id": "saturationBoost", "name": "Saturation", "type": "number", "default": 0, "range": [-100, 400], "unit": "%"}
+  ],
+  "amount": true,
+  "flashes": "abs(hueSpeed) > 3",
+  "arguments": ["fract(hueSpeed * seconds)", "rad(hueSpread)", "saturationBoost / 100"]
+}

@@ -114,7 +114,7 @@ enum EffectPackageStore {
     // MARK: Shape
 
     /// The units a control may have, as written in a package and as shown.
-    static let units: [String: String] = ["%": "%", "°": "°", "px": " px", "s": " s", "×": "×", "/s": " /s"]
+    static let units: [String: String] = ["%": "%", "°": "°", "px": " px", "s": " s", "×": "×", "/s": " /s", "turns/s": " turns/s"]
 
     static let categories: [EffectCategory] = [.recolor, .noise, .distortion]
 
@@ -139,6 +139,8 @@ enum EffectPackageStore {
                 .required("options", .array(.object(object([.required("id", .string), .required("name", .string)])))),
                 .required("default", .string),
             ]),
+            // Where the standard Amount goes, when not last.
+            "amount": object([.required("type", .string)]),
         ]
         return .object(object([
             .required("formatVersion", .integer), .required("id", .string), .required("version", .integer),
@@ -153,7 +155,7 @@ enum EffectPackageStore {
             .optional("amount", .bool),
             .required("arguments", .array(.string)),
             .optional("generates", .bool), .optional("changesEveryFrame", .bool),
-            .optional("dependsOnPixelSize", .bool), .optional("flashes", .bool),
+            .optional("dependsOnPixelSize", .bool), .optional("flashes", .any),
             .optional("reach", .string),
             .optional("input", .choice(EffectPackage.Edges.allCases.map(\.rawValue), noun: "input")),
             .optional("after", .array(.object(object([
@@ -192,8 +194,14 @@ enum EffectPackageStore {
             var controls: [ControlDefinition] = []
             var names: [String: EffectExpression.ValueType] = [:]
             var rates: Set<ControlKind> = []
+            var amountIndex: Int?
             for (index, entry) in (json["controls"] as! [[String: Any]]).enumerated() {
                 let path = "controls[\(index)]"
+                if entry["type"] as? String == "amount" {
+                    guard amountIndex == nil else { throw JSONShapeError(message: "Amount is placed twice", path: path) }
+                    amountIndex = controls.count
+                    continue
+                }
                 let control = try self.control(entry, package: id, path: path)
                 let controlID = control.kind.savedName
                 guard names[controlID] == nil else { throw JSONShapeError(message: "Another control is called \"\(controlID)\"", path: path + ".id") }
@@ -226,6 +234,13 @@ enum EffectPackageStore {
             if json["input"] != nil, kernelType != .general {
                 throw JSONShapeError(message: "Only a general kernel reads past its picture's edges", path: "input")
             }
+            let flashes: EffectPackage.Flashing
+            switch json["flashes"] {
+            case nil: flashes = .never
+            case let condition as String: flashes = .when(try number(condition, "flashes"))
+            case let always as NSNumber where CFGetTypeID(always) == CFBooleanGetTypeID(): flashes = always.boolValue ? .always : .never
+            default: throw JSONShapeError(message: "Expected true, false or a condition", path: "flashes")
+            }
             var after: [EffectPackage.Filter] = []
             for (index, entry) in (json["after"] as? [[String: Any]] ?? []).enumerated() {
                 let path = "after[\(index)]"
@@ -254,9 +269,9 @@ enum EffectPackageStore {
                 category: EffectCategory(rawValue: json["category"] as! String)!, systemImage: json["symbol"] as! String,
                 contentHash: EffectPackage.contentHash(manifest, source),
                 kernelType: kernelType, kernelFunction: function, kernelSource: source, controls: controls,
-                hasAmount: json["amount"] as? Bool ?? false, arguments: arguments,
+                amountIndex: amountIndex ?? (json["amount"] as? Bool == true ? controls.count : nil), arguments: arguments,
                 generates: json["generates"] as? Bool ?? false, changesEveryFrame: json["changesEveryFrame"] as? Bool ?? false,
-                dependsOnPixelSize: json["dependsOnPixelSize"] as? Bool ?? false, flashes: json["flashes"] as? Bool ?? false,
+                dependsOnPixelSize: json["dependsOnPixelSize"] as? Bool ?? false, flashes: flashes,
                 rateControls: rates, reach: reach,
                 edges: (json["input"] as? String).flatMap(EffectPackage.Edges.init(rawValue:)) ?? .clear, after: after
             )
@@ -372,7 +387,7 @@ enum EffectPackageStore {
         /// factors by hundredths, seconds by tenths, the rest by one.
         private static func dragStep(_ unit: String) -> Double {
             switch unit {
-            case " /s", "×": 0.01
+            case " /s", " turns/s", "×": 0.01
             case " s": 0.1
             default: 1
             }

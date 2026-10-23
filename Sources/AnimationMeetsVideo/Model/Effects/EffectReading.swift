@@ -111,17 +111,50 @@ extension EditingProject {
             let values = control.number.isAnimated ? control.number.keyframes.map(\.value) : [control.number.value]
             return values.compactMap { $0.values.first.map(abs) }.max() ?? 0
         }
-        let flashes = switch effect.kind {
-        case .staticNoise, .feedback: true
-        case .blockGlitch: fastest(.glitchRate) > 3
-        case .hueCycle: fastest(.hueSpeed) > 3
-        default: false
+        let flashes = if let package = effect.kind.definition.package {
+            switch package.flashes {
+            case .never: false
+            case .always: true
+            case .when(let condition): condition.number(FastestValues(effect: effect, package: package)) != 0
+            }
+        } else {
+            switch effect.kind {
+            case .staticNoise, .feedback: true
+            case .blockGlitch: fastest(.glitchRate) > 3
+            default: false
+            }
         }
         guard flashes else { return nil }
         return EffectNote(
             text: "This can flash more than three times a second, which can trigger seizures in people with photosensitive epilepsy.",
             dims: false
         )
+    }
+
+    /// What a package's flashing condition reads: each control at the value
+    /// of largest size it takes, off or deleted at its default.
+    private struct FastestValues: EffectExpression.Values {
+        let effect: Effect
+        let package: EffectPackage
+
+        func value(_ name: String) -> [Double] {
+            guard let kind = effect.kind.controlKind(savedAs: name), let definition = package.controls.first(where: { $0.kind == kind }) else {
+                return [0]
+            }
+            guard let control = effect.control(kind), control.enabled else { return definition.defaultValues }
+            let values = control.number.isAnimated ? control.number.keyframes.map(\.value.values) : [control.number.value.values]
+            return values.max { ($0.map(abs).max() ?? 0) < ($1.map(abs).max() ?? 0) } ?? definition.defaultValues
+        }
+
+        func center(_ name: String) -> [Double] { value(name) }
+
+        func index(_ name: String) -> Double {
+            guard let kind = effect.kind.controlKind(savedAs: name), let definition = package.controls.first(where: { $0.kind == kind }) else {
+                return 0
+            }
+            let choice = effect.control(kind).flatMap { $0.enabled ? $0.choice : nil } ?? definition.defaultChoice
+            return Double(definition.choiceOptions.firstIndex { $0.id == choice } ?? 0)
+        }
     }
 
     /// Whether a Stroke at `index` has shapes above it to outline: one that

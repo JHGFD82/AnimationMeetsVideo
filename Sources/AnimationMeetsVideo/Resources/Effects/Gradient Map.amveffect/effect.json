@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "id": "gradientMap",
+  "version": 1,
+  "name": "Gradient Map",
+  "category": "recolor",
+  "symbol": "slider.horizontal.below.rectangle",
+  "kernel": {"file": "kernel.metal", "function": "amvGradientMap", "type": "color"},
+  "controls": [
+    {"id": "shadowColor", "name": "Shadows", "type": "color", "default": [0.08, 0.02, 0.18, 1]},
+    {"id": "midtoneColor", "name": "Midtones", "type": "color", "default": [0.9, 0.25, 0.05, 1]},
+    {"id": "highlightColor", "name": "Highlights", "type": "color", "default": [1, 0.92, 0.55, 1]},
+    {"id": "repeats", "name": "Repeat", "type": "number", "default": 1, "range": [1, 32], "whole": true},
+    {"id": "scrollSpeed", "name": "Speed", "type": "number", "default": 0, "range": [-20, 20], "unit": "/s", "rate": true}
+  ],
+  "amount": true,
+  "arguments": ["shadowColor", "midtoneColor", "highlightColor", "repeats", "scrollSpeed * seconds - floor(scrollSpeed * seconds / 2) * 2"]
+}

@@ -162,6 +162,8 @@ enum PackageLookRenderer {
             case "scale": return [Double(scale)]
             case "frameWidth": return [Double(frame.width)]
             case "frameHeight": return [Double(frame.height)]
+            case "frameCenter": return [Double(frame.midX), Double(frame.midY)]
+            case "canvasWidth": return [Double(canvas.width)]
             case "canvasHeight": return [Double(canvas.height)]
             case "pi": return [.pi]
             default:

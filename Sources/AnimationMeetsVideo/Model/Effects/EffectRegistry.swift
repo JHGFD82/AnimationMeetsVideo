@@ -223,10 +223,6 @@ extension OscillatorWave: ControlChoice {}
 extension LoopMode: ControlChoice {}
 extension LoopSide: ControlChoice {}
 extension KeyCurve: ControlChoice {}
-extension PaletteLook: ControlChoice {}
-extension SolarizeChannels: ControlChoice {}
-extension FalseColorLook: ControlChoice {}
-extension EdgeColoring: ControlChoice {}
 extension GrainChannels: ControlChoice {}
 extension NoiseType: ControlChoice {}
 extension CellOutput: ControlChoice {}
