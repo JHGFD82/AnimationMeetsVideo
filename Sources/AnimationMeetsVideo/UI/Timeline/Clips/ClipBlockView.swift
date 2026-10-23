@@ -119,6 +119,13 @@ struct ClipBlockView: View {
     /// Ties the clip to the music at the playhead; nil for clips on a Music
     /// layer, which are the music.
     var onAttachToMusic: (() -> Void)? = nil
+    /// Ties the frame playing at a timeline time inside the clip to the
+    /// music there, from dragging its music point; nil where
+    /// `onAttachToMusic` is.
+    var onSetMusicPoint: ((CMTime) -> Void)? = nil
+    /// For a song: the timeline times the selected clips are tied to it at,
+    /// marked on it to show what their music points hold on to.
+    var musicMarks: [CMTime] = []
     /// Opens the motion designer on the clip, or on the clips picked with
     /// it; nil for songs and clips that play backwards.
     var onMotionDesign: (() -> Void)? = nil
@@ -161,6 +168,8 @@ struct ClipBlockView: View {
     @State private var bladeX: CGFloat?
     /// How far a slip drag in progress moves the footage.
     @State private var slipDelta: CMTime?
+    /// Where the music point is being dragged to, until the edit lands.
+    @State private var musicPointDraft: CMTime?
     /// A transition's length while its inner side is dragged.
     @State private var transitionDraft: (edge: TransitionEdge, duration: CMTime)?
     /// Counts edits that have come back down from the project, which is
@@ -476,6 +485,7 @@ struct ClipBlockView: View {
             if tool == .arrow {
                 transitionSideHandles(of: shown, liveX: liveX)
             }
+            musicLinkMarks(of: shown)
             if tool == .blade, let bladeX {
                 Rectangle()
                     .fill(Design.skim)
@@ -509,6 +519,7 @@ struct ClipBlockView: View {
         .accessibilityHint("Selects the clip. Its actions move and trim it by a frame.")
         .accessibilityAction { onSelect() }
         .accessibilityActions { accessibilityEditActions }
+        .onChange(of: clip.music) { _, _ in musicPointDraft = nil }
         .onChange(of: clip) { _, _ in
             if pendingDrop != nil {
                 endDrop()
@@ -546,6 +557,7 @@ struct ClipBlockView: View {
         if hasLinkedAudio { parts.append("with its own sound") }
         if playsSound, clip.soundMuted { parts.append("sound muted") }
         if let reach { parts.append("reaches \(reach.summary)") }
+        if let time = musicPointTime(of: clip) { parts.append("tied to the music at \(time.timecode(frameRate: frameRate))") }
         return parts.joined(separator: ", ")
     }
 
@@ -587,6 +599,11 @@ struct ClipBlockView: View {
         if let onAttachToMusic {
             Button(clip.followsMusic ? "Stop following music" : "Follow music") { onEditClip { $0.followsMusic.toggle() } }
             Button("Attach to music at playhead", action: onAttachToMusic)
+        }
+        if let onSetMusicPoint, let time = musicPointTime(of: clip) {
+            let frame = Timeline.frameDuration(for: frameRate)
+            Button("Music point one frame earlier") { onSetMusicPoint(clampedMusicPoint(CMTimeSubtract(time, frame))) }
+            Button("Music point one frame later") { onSetMusicPoint(clampedMusicPoint(CMTimeAdd(time, frame))) }
         }
         if let onMotionDesign {
             Button(isInGroup ? "Open selection in motion designer" : "Open in motion designer", action: onMotionDesign)
@@ -695,6 +712,65 @@ struct ClipBlockView: View {
             x: frameBox.frame.minX + liveX + carry.width,
             y: frameBox.frame.minY + (previewTarget?.offsetY ?? 0) + carry.height
         )
+    }
+
+    // MARK: Music point
+
+    /// Where the clip is tied to the music, in timeline time: the frame
+    /// that plays on the song's moment (see `MusicAttachment`). Nil while
+    /// it isn't attached, and for songs.
+    private func musicPointTime(of clip: TimelineClip) -> CMTime? {
+        guard onSetMusicPoint != nil, let music = clip.music else { return nil }
+        return clip.timelineTime(forSourceTime: clip.musicFrame(music.frame))
+    }
+
+    /// A time held to the clip's frames: from its first to its last.
+    private func clampedMusicPoint(_ time: CMTime) -> CMTime {
+        let last = CMTimeSubtract(clip.endOffset, Timeline.frameDuration(for: frameRate))
+        return CMTimeMaximum(clip.startOffset, CMTimeMinimum(snap(time), CMTimeMaximum(clip.startOffset, last)))
+    }
+
+    /// The music point, as a line through the clip at the frame tied to
+    /// the music with a point at its foot, toward the Music area below; the
+    /// selected clip's point is a knob that drags it to another frame,
+    /// snapping to beats and edges as the blade does. On a song, the
+    /// selected clips' points are marked where they hold on, with the
+    /// point at the top, toward the footage.
+    @ViewBuilder
+    private func musicLinkMarks(of shown: TimelineClip) -> some View {
+        if let time = musicPointDraft ?? musicPointTime(of: shown) {
+            let x = time.seconds * pixelsPerSecond
+            if x >= visibleX.lowerBound - 8, x <= visibleX.upperBound + 8 {
+                MusicLinkMark(height: height, pointAtTop: false, emphasized: isSelected)
+                    .offset(x: x - MusicLinkMark.width / 2)
+                if isSelected, !isInGroup, tool == .arrow {
+                    Color.clear
+                        .frame(width: 14, height: 14)
+                        .contentShape(Rectangle())
+                        .offset(x: x - 7, y: height - 14)
+                        .gesture(
+                            DragGesture(minimumDistance: 1, coordinateSpace: .named(space))
+                                .onChanged { value in
+                                    let time = CMTime(seconds: Double(max(0, value.location.x) / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
+                                    musicPointDraft = clampedMusicPoint(snapTime(time) ?? time)
+                                }
+                                .onEnded { _ in
+                                    guard let draft = musicPointDraft else { return }
+                                    if draft == musicPointTime(of: clip) {
+                                        musicPointDraft = nil
+                                    } else {
+                                        onSetMusicPoint?(draft)
+                                    }
+                                }
+                        )
+                        .help("Music point: drag to tie another frame to the music")
+                }
+            }
+        }
+        ForEach(Array(musicMarks.enumerated()), id: \.offset) { _, time in
+            MusicLinkMark(height: height, pointAtTop: true, emphasized: true)
+                .offset(x: time.seconds * pixelsPerSecond - MusicLinkMark.width / 2)
+        }
     }
 
     /// The timeline time the blade cuts at for `x` in the row: on a frame.
@@ -922,5 +998,35 @@ struct TransitionWedge: Shape {
         path.addLine(to: CGPoint(x: edge == .leading ? rect.width : 0, y: rect.height))
         path.closeSubpath()
         return path.offsetBy(dx: rect.minX, dy: rect.minY)
+    }
+}
+
+/// A line through a clip where it is tied to the music, with a point at
+/// one end: drawn only, the knob that drags it is the block's.
+struct MusicLinkMark: View {
+    static let width: CGFloat = 9
+    let height: CGFloat
+    /// At the top on a song, toward the footage tied to it; at the foot on
+    /// footage, toward its song.
+    let pointAtTop: Bool
+    /// Brighter and with a larger point on the selected clip.
+    let emphasized: Bool
+
+    var body: some View {
+        let point: CGFloat = emphasized ? 9 : 6
+        ZStack(alignment: pointAtTop ? .top : .bottom) {
+            Rectangle()
+                .fill(Design.musicLink.opacity(emphasized ? 1 : 0.75))
+                .frame(width: emphasized ? 1.5 : 1, height: height)
+            Circle()
+                .fill(Design.musicLink)
+                .overlay { Circle().strokeBorder(.black.opacity(0.55), lineWidth: 1) }
+                .frame(width: point, height: point)
+                .padding(pointAtTop ? .top : .bottom, 1)
+        }
+        .frame(width: Self.width, height: height)
+        .shadow(color: .black.opacity(0.5), radius: 1)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

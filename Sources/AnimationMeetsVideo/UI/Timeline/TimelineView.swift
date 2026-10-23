@@ -360,6 +360,22 @@ struct TimelineView: View {
         playback.isPlaying ? playback.player.currentTime() : playheadTime
     }
 
+    /// Where the selected clips are tied to the music, by the song clip
+    /// each holds on to, for the Music layers to mark on their songs.
+    var selectedMusicMarks: [UUID: [CMTime]] {
+        var ids = groupSelection
+        if let selection, selection.timelineID == timelineID { ids.insert(selection.timelineClipID) }
+        guard !ids.isEmpty else { return [:] }
+        var marks: [UUID: [CMTime]] = [:]
+        for layer in timeline.layers where layer.kind != .music {
+            for clip in layer.clips where ids.contains(clip.id) {
+                guard let music = clip.music, let song = timeline.song(following: music, near: clip.startOffset) else { continue }
+                marks[song.id, default: []].append(song.timelineTime(forSourceTime: music.songTime))
+            }
+        }
+        return marks
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Design.Space.step) {
@@ -1029,10 +1045,11 @@ struct TimelineView: View {
                         onSetReach: { clipID, bottom in
                             onEditProject { $0.setReach(ofClip: clipID, in: timelineID, toLayer: bottom) }
                         },
-                        onAttachToMusic: { clipID in
-                            let time = livePlayheadTime
+                        onAttachToMusic: { clipID, at in
+                            let time = at ?? livePlayheadTime
                             onEditProject { $0.attachToMusic(clipID, in: timelineID, at: time) }
                         },
+                        musicMarks: layer.kind == .music ? selectedMusicMarks : [:],
                         onMotionDesign: { clipID in
                             let ids = groupSelection.contains(clipID) ? groupSelection : [clipID]
                             motionDesign?.open(clips: ids, in: timelineID, of: project)

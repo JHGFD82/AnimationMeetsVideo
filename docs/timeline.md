@@ -650,7 +650,9 @@ is only known to a few microseconds, so these rules apply:
 
 Clips on video and sound layers are attached to the song under their
 first frame, and move with it when it moves; footage in their way is
-pushed later. A clip's menu turns this off
+pushed later. Where each is tied shows as its **music point**, a green
+line with a point at its foot; the selected clip's can be dragged to
+another frame, and is marked on its song too. A clip's menu turns this off
 (**Follow Music**) or ties another frame (**Attach to Music at
 Playhead**). See [motion-designer.md](motion-designer.md#clips-attached-to-the-music).
 
