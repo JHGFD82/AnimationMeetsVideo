@@ -78,6 +78,7 @@ struct SceneSplitterView: View {
             .padding(Design.Space.group)
             Groove()
             ScrubArea(splitter: splitter, media: media)
+                .toolEdge(.sceneSplitter)
         }
     }
 }
@@ -90,6 +91,7 @@ private struct SplitterHeader: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Design.Space.step) {
+            ToolGlyph(tone: .sceneSplitter)
             Text(media.name)
                 .font(Design.Typeface.panelTitle)
                 .foregroundStyle(Design.textPrimary)

@@ -366,7 +366,7 @@ struct KeyframeGraphView: View {
         let shown = zip(c.value.value(at: now).values, c.offset).map { $0 + $1 }
         let names = key.parameter.componentNames
         return HStack(spacing: Design.Space.step) {
-            if let shared { nameButton(shared) }
+            if let shared { nameButton(shared) } else { ToolGlyph(tone: .graphEditor) }
             ForEach(shown.indices, id: \.self) { index in
                 if names.count > 1 {
                     componentChip(index, name: names[index], shown: shown[index])

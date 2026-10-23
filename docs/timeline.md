@@ -189,6 +189,17 @@ splitter with - = and \\.
 The Tape Scrubber is the main timeline's alone: no other view has a dial
 (the graph editor's zoom dials were replaced by these sliders).
 
+### Tool tones
+
+**Built.** The other timelines share this one's ruler, playhead and zoom
+controls, and each is set apart only by a tone (`Design.ToolTone`): a
+glyph at the start of its header (`ToolGlyph`) and a hairline along the
+top of its time area (`toolEdge`). The tone is the clip tone of what the
+tool shapes, keeping to "hue means category": the scene splitter is
+video's violet, Beat Match music's green, the motion designer graphics'
+amber and the graph editor adjustment's magenta. The main timeline has
+none.
+
 ## Ruler
 
 Ticks are grouped by whole frames. Every step splits a second into a whole

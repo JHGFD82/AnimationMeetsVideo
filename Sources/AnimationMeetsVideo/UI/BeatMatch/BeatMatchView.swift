@@ -37,6 +37,7 @@ struct BeatMatchView: View {
                     .frame(width: 280)
                 Groove(axis: .vertical)
                 waveformArea
+                    .toolEdge(.beatMatcher)
             }
         }
         .background(Design.Surface.base.color)
@@ -58,6 +59,7 @@ struct BeatMatchView: View {
     private var transport: some View {
         HStack(spacing: Design.Space.group) {
             HStack(spacing: Design.Space.step) {
+                ToolGlyph(tone: .beatMatcher)
                 Button(action: session.togglePlayback) {
                     Image(systemName: session.isPlaying ? Design.Symbol.pause : Design.Symbol.play)
                         .frame(width: 18)

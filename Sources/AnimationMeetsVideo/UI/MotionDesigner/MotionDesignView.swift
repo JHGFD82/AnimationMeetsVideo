@@ -21,6 +21,7 @@ struct MotionDesignView: View {
                     .frame(width: 270)
                 Groove(axis: .vertical)
                 MotionDesignLanes(session: session)
+                    .toolEdge(.motionDesigner)
             }
         }
         .background(Design.Surface.base.color)
@@ -48,6 +49,7 @@ struct MotionDesignView: View {
     private var transport: some View {
         HStack(spacing: Design.Space.group) {
             HStack(spacing: Design.Space.step) {
+                ToolGlyph(tone: .motionDesigner)
                 Button(action: session.togglePlayback) {
                     Image(systemName: session.isPlaying ? Design.Symbol.pause : Design.Symbol.play)
                         .frame(width: 18)

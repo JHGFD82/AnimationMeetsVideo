@@ -28,12 +28,14 @@ struct KeyframeGraphStack: View {
                 timeBar
             }
         }
+        .toolEdge(.graphEditor)
     }
 
     /// The presets, for the active graph's selected keyframe or the one at
     /// the playhead, and Link With.
     private var presetBar: some View {
         HStack(spacing: Design.Space.step) {
+            ToolGlyph(tone: .graphEditor)
             Spacer(minLength: Design.Space.step)
             if let key = link.activeKey, let timeline = hud.project.timeline(id: key.timelineID),
                let value = hud.project.components(of: key), let axis = hud.project.timeAxis(of: key) {
