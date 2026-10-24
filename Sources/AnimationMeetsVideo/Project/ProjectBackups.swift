@@ -177,7 +177,7 @@ enum ProjectBackups {
         try fileManager.copyItem(at: backup, to: destination)
         do {
             try fileManager.removeItem(at: destination.appending(path: infoFileName))
-            try rename(projectIn: destination, to: destination.deletingPathExtension().lastPathComponent)
+            try makeNewProject(in: destination, named: destination.deletingPathExtension().lastPathComponent)
             try ProjectStore.preparePackage(at: destination)
             ProjectStore.markAsPackage(destination)
         } catch {
@@ -187,12 +187,15 @@ enum ProjectBackups {
         return destination
     }
 
-    /// Sets the name in a package's `project.json`; the rest is untouched
-    /// and is written in the app's own form at its next save.
-    private static func rename(projectIn packageURL: URL, to name: String) throws {
+    /// Sets the name in a package's `project.json` and gives it an ID of
+    /// its own, so the restored project and the original are told apart
+    /// by ID as well as by place; the rest is untouched and is written in
+    /// the app's own form at its next save.
+    private static func makeNewProject(in packageURL: URL, named name: String) throws {
         let file = packageURL.appending(path: ProjectStore.projectFileName)
         guard var object = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any] else { return }
         object["name"] = name
+        object["id"] = UUID().uuidString
         try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
             .write(to: file, options: .atomic)
     }

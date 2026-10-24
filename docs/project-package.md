@@ -195,7 +195,8 @@ toolbar and is tried again at the next interval.
 Opening a backup (double-clicking it, or choosing it in File > Open)
 never touches the project it came from: it is copied beside that project
 as a new one, "Name from backup 2026-10-24 14.30.amv" (with " 2" if
-taken), its `backup.json` dropped and its name set to match, and opened.
+taken), its `backup.json` dropped, its name set to match and a project
+ID of its own given, so it is never taken for the original, and opened.
 Where that folder is gone, the app asks where to put it.
 
 Because of that, analysis results (change scores, reference data, pictures

@@ -101,6 +101,7 @@ private struct BackupSandbox {
             )
         }
         #expect(loaded.project.name == restored.deletingPathExtension().lastPathComponent)
+        #expect(loaded.project.id != sandbox.project.id)
         #expect(loaded.missingMedia.isEmpty)
         let media = try #require(loaded.project.clips.first?.url)
         #expect(ProjectStore.isInside(media, package: restored))

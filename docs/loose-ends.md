@@ -60,8 +60,5 @@ Built and tested in code, never run on screen.
   File > Open; Settings > Projects can show the folder. A window
   listing a project's backups with their dates, to open one, would save
   the trip.
-- **A restored project keeps the original's project ID.** It has its own
-  package and opens and saves on its own, but nothing tells the two apart
-  by ID if both are open; nothing relies on that yet.
 - **Closing the last window quits the app.** Kept on purpose; with
   recent projects and reopening at launch, getting back is quick.
