@@ -11,8 +11,6 @@ extension EffectKind {
     /// Distortions drawn from the picture at several moments. Flow
     /// Smear's motion is measured between neighboring pixels.
     static let flowSmear = EffectKind(builtIn: "flowSmear")
-    static let slitScan = EffectKind(builtIn: "slitScan")
-    static let feedback = EffectKind(builtIn: "feedback")
     /// Shapes draw over the picture handed down to them (see
     /// docs/graphic-layers.md, "Shapes").
     static let rectangle = EffectKind(builtIn: "rectangle")
@@ -43,6 +41,8 @@ extension EffectKind {
 
     // From the packages in Resources/Effects, which ship with the app.
     static let posterize = EffectKind(package: "posterize")
+    static let feedback = EffectKind(package: "feedback")
+    static let slitScan = EffectKind(package: "slitScan")
     static let displace = EffectKind(package: "displace")
     static let liquid = EffectKind(package: "liquid")
     static let twirl = EffectKind(package: "twirl")
@@ -92,18 +92,6 @@ extension ControlKind {
     // Flow Smear
     static let smear = ControlKind(builtIn: "smear")
     static let framesAhead = ControlKind(builtIn: "framesAhead")
-    // Slit-Scan
-    static let slitDirection = ControlKind(builtIn: "slitDirection")
-    static let bands = ControlKind(builtIn: "bands")
-    static let timeSpread = ControlKind(builtIn: "timeSpread")
-    static let distortCenter = ControlKind(builtIn: "distortCenter")
-    // Feedback
-    static let copies = ControlKind(builtIn: "copies")
-    static let feedbackDelay = ControlKind(builtIn: "feedbackDelay")
-    static let copyScale = ControlKind(builtIn: "copyScale")
-    static let copyRotation = ControlKind(builtIn: "copyRotation")
-    static let hueStep = ControlKind(builtIn: "hueStep")
-    static let copyDecay = ControlKind(builtIn: "copyDecay")
     // Rectangle
     static let shapeSize = ControlKind(builtIn: "shapeSize")
     static let cornerRadius = ControlKind(builtIn: "cornerRadius")
@@ -223,14 +211,6 @@ enum BuiltInEffects {
         EffectDefinition(
             .flowSmear, "Flow Smear", .distortion, "wind", controls: [.smear, .framesAhead], dependsOnPixelSize: true
         ),
-        EffectDefinition(
-            .slitScan, "Slit-Scan", .distortion, "line.3.horizontal",
-            controls: [.slitDirection, .bands, .timeSpread, .distortCenter]
-        ),
-        EffectDefinition(
-            .feedback, "Feedback", .distortion, "circle.circle",
-            controls: [.copies, .feedbackDelay, .copyScale, .copyRotation, .hueStep, .copyDecay, .distortCenter]
-        ),
         // Shapes draw over the picture handed down to them (see
         // docs/graphic-layers.md, "Shapes").
         EffectDefinition(
@@ -329,18 +309,6 @@ enum BuiltInEffects {
         // Flow Smear
         ControlDefinition(.smear, "Amount", .flowSmear, defaults: [100], unit: "%", range: 0...400),
         ControlDefinition(.framesAhead, "Frames Ahead", .flowSmear, defaults: [1], unit: " frames", range: 1...8, isWhole: true),
-        // Slit-Scan
-        ControlDefinition(.slitDirection, "Direction", .slitScan, choice: SlitDirection.rows),
-        ControlDefinition(.bands, "Bands", .slitScan, defaults: [16], range: 2...64, isWhole: true),
-        ControlDefinition(.timeSpread, "Time Spread", .slitScan, defaults: [0.5], unit: " s", range: 0...10),
-        ControlDefinition(.distortCenter, "Center", .slitScan, defaults: [0, 0], unit: " px", componentNames: ["Δx", "Δy"]),
-        // Feedback
-        ControlDefinition(.copies, "Copies", .feedback, defaults: [8], range: 1...32, isWhole: true),
-        ControlDefinition(.feedbackDelay, "Delay", .feedback, defaults: [1], unit: " frames", range: 1...30, isWhole: true),
-        ControlDefinition(.copyScale, "Scale", .feedback, defaults: [103], unit: "%", range: 10...1000),
-        ControlDefinition(.copyRotation, "Rotation", .feedback, defaults: [4], unit: "°", range: -360...360),
-        ControlDefinition(.hueStep, "Hue Shift", .feedback, defaults: [15], unit: "°", range: -360...360),
-        ControlDefinition(.copyDecay, "Decay", .feedback, defaults: [30], unit: "%", range: 0...100),
         // Rectangle
         ControlDefinition(
             .shapeSize, "Size", .rectangle, defaults: [640, 360], unit: " px", range: 0...100_000,

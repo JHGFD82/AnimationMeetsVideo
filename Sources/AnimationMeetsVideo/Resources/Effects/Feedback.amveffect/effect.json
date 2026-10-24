@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "id": "feedback",
+  "version": 1,
+  "name": "Feedback",
+  "category": "distortion",
+  "symbol": "circle.circle",
+  "kernel": {"file": "kernel.metal", "function": "amvFeedback", "type": "general"},
+  "controls": [
+    {"id": "copies", "name": "Copies", "type": "number", "default": 8, "range": [1, 32], "whole": true},
+    {"id": "feedbackDelay", "name": "Delay", "type": "number", "default": 1, "range": [1, 30], "unit": "frames", "whole": true},
+    {"id": "copyScale", "name": "Scale", "type": "number", "default": 103, "range": [10, 1000], "unit": "%"},
+    {"id": "copyRotation", "name": "Rotation", "type": "number", "default": 4, "range": [-360, 360], "unit": "°"},
+    {"id": "hueStep", "name": "Hue Shift", "type": "number", "default": 15, "range": [-360, 360], "unit": "°"},
+    {"id": "copyDecay", "name": "Decay", "type": "number", "default": 30, "range": [0, 100], "unit": "%"},
+    {"id": "distortCenter", "name": "Center", "type": "point"}
+  ],
+  "repeat": {
+    "count": "copies", "index": "copies - pass",
+    "countWhilePlaying": "floor(copies / 2) + (copies < 2)", "indexWhilePlaying": "max(copies - mod(copies, 2) - 2 * pass, 1)"
+  },
+  "pictures": [{"id": "copy", "from": "moment", "delay": "index * max(feedbackDelay, 1) * frameDuration"}],
+  "arguments": ["index", "center(distortCenter)", "copyScale / 100", "rad(copyRotation)", "hueStep / 360", "1 - copyDecay / 100"],
+  "changesEveryFrame": true,
+  "flashes": true
+}

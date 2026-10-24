@@ -223,4 +223,3 @@ extension OscillatorWave: ControlChoice {}
 extension LoopMode: ControlChoice {}
 extension LoopSide: ControlChoice {}
 extension KeyCurve: ControlChoice {}
-extension SlitDirection: ControlChoice {}

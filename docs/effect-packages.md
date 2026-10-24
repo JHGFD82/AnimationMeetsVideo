@@ -1,13 +1,13 @@
 # Effect packages
 
-Status: **built** through step 8 of [Building it](#building-it), with a
+Status: **built** through step 9 of [Building it](#building-it), with a
 guide to [writing a package](#making-a-package); of
-[pictures besides the clip's](#pictures-besides-the-clips), inputs and
-Against are built and Displace is a package, while moments and motion,
-which move Feedback, Slit-Scan and Flow Smear, and making packages from
-the app are planned. `EffectKind` and `ControlKind`
+[pictures besides the clip's](#pictures-besides-the-clips), inputs,
+Against, moments and repeating are built, and Displace, Feedback and
+Slit-Scan are packages, while motion, which moves Flow Smear, and making
+packages from the app are planned. `EffectKind` and `ControlKind`
 are names looked up in an `EffectRegistry` of the effects written in
-Swift (BuiltInEffects.swift), the 22 looks that ship as packages
+Swift (BuiltInEffects.swift), the 24 looks that ship as packages
 (Resources/Effects) and the person's packages, which
 `EffectPackageStore` reads from the Effects folder at launch. A
 package's look is listed, saved and drawn like any other
@@ -101,8 +101,9 @@ expression calls the control, and what a project saves as the control's
 | `color` | Red, green and blue, 0–1, and alpha (1 if left out) | `default` |
 | `choice` | One of a list | `options` (`[{ "id": "bayer4", "name": "Bayer 4×4" }, …]`), `default` |
 
-`unit` is one of `%`, `°`, `px`, `s`, `×`, `/s`, `turns/s` or none, and
-decides how a value is shown and dragged, as `ControlKind.unit` does now.
+`unit` is one of `%`, `°`, `px`, `s`, `×`, `/s`, `turns/s`, `frames` or
+none, and decides how a value is shown and dragged, as `ControlKind.unit`
+does now.
 `step` is the drag step: by default 1, a hundredth for speeds and `×`, a
 tenth for `s`. A number with `"rate": true` is a speed:
 the effect changes on its own while it isn't 0, as Hue Cycle's Speed does,
@@ -331,8 +332,8 @@ as editing one does, since effects in the open project use its controls.
 
 ## Pictures besides the clip's
 
-Status: **`input` and `against` built**, and Displace a package;
-`moment`, `motion` and [repeating](#repeating) planned. The four looks
+Status: **`input`, `against`, `moment` and [repeating](#repeating)
+built**, and Displace, Feedback and Slit-Scan packages; `motion` planned. The four looks
 that were left in Swift each draw from a
 picture besides the one reaching them: Displace from a dropped picture
 or an earlier step's, Feedback and Slit-Scan from the footage at other
@@ -352,7 +353,7 @@ space, in the order listed:
 | --- | --- | --- |
 | `input` | One dropped from the browser onto the effect, as Matte's (see [Inputs](effects.md#inputs)). | `hasInput`: 1 while it has one |
 | `against` | The clip's picture as it was before an earlier step, picked in the effect's Against row (see [Against](effects.md#against)). | `hasAgainst` |
-| `moment` | The picture reaching this step `delay` seconds earlier, an expression; at each [pass](#repeating), that pass's. | |
+| `moment` | The picture reaching this step `delay` seconds earlier, an expression rounded to a frame; at each [pass](#repeating), that pass's. No delay is the picture reaching the step before any pass. One the composition hasn't is transparent, or with `"missing": "picture"` the picture reaching the step, as Slit-Scan's bands are. | |
 | `motion` | The motion from this frame to the footage's frame `ahead` frames later, an expression, as a picture: red across and green up, in output pixels, as Flow Smear measures it now (`BlockMatchFlow`). Not measured while the viewer plays. | `hasMotion` |
 
 A picture that isn't there (no input dropped, no earlier frame yet, no
@@ -388,7 +389,7 @@ moments are the pass's own:
 ```json
 "repeat": {
   "count": "copies", "index": "copies - pass",
-  "countWhilePlaying": "floor(copies / 2)", "indexWhilePlaying": "copies - mod(copies, 2) - 2 * pass"
+  "countWhilePlaying": "floor(copies / 2) + (copies < 2)", "indexWhilePlaying": "max(copies - mod(copies, 2) - 2 * pass, 1)"
 },
 "pictures": [{ "id": "copy", "from": "moment", "delay": "index * max(feedbackDelay, 1) * frameDuration" }]
 ```
@@ -399,9 +400,17 @@ arguments. The `WhilePlaying` forms draw less while the viewer plays, as
 Feedback (every other copy) and Slit-Scan (four bands) do now.
 
 The composition loads the earlier frames a package's moments need
-before it plays, as it does Feedback's now (`Effect.momentDelays`): the
-delay of every index up to `count`, with each control at its largest
-value across its keyframes.
+before it plays (`EffectPackage.momentDelays`): the delay of every index
+up to `count`, with each control at its largest value across its
+keyframes.
+
+Feedback's and Slit-Scan's kernels are new, as the Swift drew them with
+Core Image filters in a loop; each matches the frames recorded from it.
+Two of the filters' habits are now in Feedback's kernel: a copy's color
+is held to 0...1 as it fades, as `CIColorMatrix` held it, so a hue turned
+past white stays white, and copies are screened as `CIScreenBlendMode`
+does. Slit-Scan's bands are cut at the pixels' centers as cropping cut
+them.
 
 ### What it moves
 
@@ -475,14 +484,13 @@ kernel:
 - The shapes and Stroke: vector drawing, sized to the frame.
 - The sound effects: biquad filters and Audio Units.
 - The Keyframing effects: they write keyframes, not pictures.
-- Feedback, Slit-Scan and Flow Smear, until
-  [moments and motion](#pictures-besides-the-clips) are built: they draw
-  the picture at other moments, and Flow Smear the motion to a frame
-  ahead (from `BlockMatchFlow`, the block matcher morphs use).
+- Flow Smear, until [motion](#pictures-besides-the-clips) is built: it
+  draws along the motion to a frame ahead (from `BlockMatchFlow`, the
+  block matcher morphs use).
 
-The other 22 looks are built-in packages: the eight Color looks, the
+The other 24 looks are built-in packages: the eight Color looks, the
 seven Noise looks, Displace, Liquid, Twirl, Wave, Kaleidoscope, Mirror
-Tile and Chromatic Aberration. Each was generated from the Swift it replaced
+Tile, Chromatic Aberration, Slit-Scan and Feedback. Each was generated from the Swift it replaced
 and checked against it: its controls one by one, its pictures against
 the reference frames, and the recipes using it.
 
@@ -565,7 +573,7 @@ In order, each step usable on its own:
    ahead, each picture different, paused and playing. **Built.**
 8. Pictures from inputs and Against, and Displace moved into a package.
    **Built.**
-9. Moments and repeating, and Feedback and Slit-Scan moved.
+9. Moments and repeating, and Feedback and Slit-Scan moved. **Built.**
 10. Motion, and Flow Smear moved.
 11. Writing a package by hand, described above. **Built.**
 12. Installing a package while the app runs, and New Effect Package.

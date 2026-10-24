@@ -48,16 +48,16 @@ struct EffectExpression: Equatable, Sendable {
     static let builtInNames: [String: ValueType] = [
         "seconds": .number, "frame": .number, "scale": .number,
         "frameWidth": .number, "frameHeight": .number, "frameCenter": .vector(2),
-        "canvasWidth": .number, "canvasHeight": .number, "pi": .number,
+        "canvasWidth": .number, "canvasHeight": .number, "frameDuration": .number, "pi": .number,
     ]
 
     /// The functions, by how many numbers they take; `center` and `index`
     /// take a control's name instead.
-    static let functions: [String: Int] = ["rad": 1, "fract": 1, "floor": 1, "abs": 1, "min": 2, "max": 2]
+    static let functions: [String: Int] = ["rad": 1, "fract": 1, "floor": 1, "round": 1, "abs": 1, "min": 2, "max": 2, "mod": 2]
 
     /// Every name a package's control can't take.
     static var reservedNames: Set<String> {
-        Set(builtInNames.keys).union(functions.keys).union(["center", "index", "amount", "hasInput", "hasAgainst"])
+        Set(builtInNames.keys).union(functions.keys).union(["center", "index", "amount", "hasInput", "hasAgainst", "pass", "passes"])
     }
 
     indirect enum Node: Equatable, Sendable {
@@ -126,6 +126,9 @@ struct EffectExpression: Equatable, Sendable {
             case "rad": return [numbers[0] * .pi / 180]
             case "fract": return [numbers[0] - numbers[0].rounded(.down)]
             case "floor": return [numbers[0].rounded(.down)]
+            // Halves away from zero, as Swift's `rounded()`.
+            case "round": return [numbers[0].rounded()]
+            case "mod": return [numbers[1] == 0 ? 0 : numbers[0] - numbers[1] * (numbers[0] / numbers[1]).rounded(.down)]
             case "abs": return [abs(numbers[0])]
             case "min": return [min(numbers[0], numbers[1])]
             default: return [max(numbers[0], numbers[1])]

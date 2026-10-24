@@ -1,3 +1,4 @@
+import CoreMedia
 import Foundation
 
 /// An effect read from an effect package (see docs/effect-packages.md): a
@@ -27,10 +28,30 @@ struct EffectPackage: Sendable {
             case input
             /// The clip's picture before the earlier step Against names.
             case against
+            /// The picture reaching the step `delay` earlier.
+            case moment
         }
 
         var id: String
         var source: Source
+        /// For a moment: how long before, in seconds, at each pass.
+        var delay: EffectExpression?
+        /// For a moment: whether one the composition doesn't have is the
+        /// picture reaching the step, rather than transparent.
+        var missingIsPicture = false
+    }
+
+    /// Running the kernel once per copy or band (see
+    /// docs/effect-packages.md, "Repeating").
+    struct Repeat: Sendable {
+        var count: EffectExpression
+        /// Which copy or band a pass draws; nil for the pass itself.
+        var index: EffectExpression?
+        var countWhilePlaying: EffectExpression?
+        var indexWhilePlaying: EffectExpression?
+        /// Whether the first pass draws over nothing, rather than over the
+        /// picture reaching the step.
+        var startsClear = false
     }
 
     /// Whether the effects panel warns that it can flash more than three
@@ -83,6 +104,10 @@ struct EffectPackage: Sendable {
     /// When it does anything, from `hasInput` and `hasAgainst`; nil for
     /// always.
     let drawsWhen: EffectExpression?
+    let repeats: Repeat?
+
+    /// Whether it draws from moments of the footage besides this one.
+    var readsMoments: Bool { pictures.contains { $0.source == .moment } }
     let edges: Edges
     let after: [Filter]
 
@@ -129,6 +154,59 @@ struct EffectPackage: Sendable {
     static func isValidControlID(_ id: String) -> Bool {
         guard let first = id.first, first.isASCII, first.isLetter else { return false }
         return id.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+    }
+}
+
+extension EffectPackage {
+    /// The earlier moments `effect`, of this kind, draws from, for the
+    /// composition to have frames there: each pass's delay, rounded to a
+    /// frame, with each control at the largest value it takes.
+    func momentDelays(of effect: Effect, frame: CMTime) -> [CMTime] {
+        guard readsMoments, frame.seconds > 0 else { return [] }
+        var values = LargestValues(effect: effect, package: self, frameDuration: frame.seconds)
+        let count = repeats.map { max(0, Int($0.count.number(values))) } ?? 1
+        var delays: Set<CMTime> = []
+        for n in 0..<count {
+            values.extra = ["pass": Double(n), "passes": Double(count)]
+            values.extra["index"] = repeats?.index?.number(values) ?? Double(n)
+            for picture in pictures where picture.source == .moment {
+                let frames = ((picture.delay?.number(values) ?? 0) / frame.seconds).rounded()
+                if frames > 0 { delays.insert(CMTimeMultiply(frame, multiplier: Int32(frames))) }
+            }
+        }
+        return delays.sorted()
+    }
+}
+
+/// What a package's moments are planned from: each control at the largest
+/// value it takes across its keyframes, as it is set when not animated, at
+/// its default when off.
+struct LargestValues: EffectExpression.Values {
+    let effect: Effect
+    let package: EffectPackage
+    let frameDuration: Double
+    var extra: [String: Double] = [:]
+
+    private func definition(_ name: String) -> ControlDefinition? {
+        effect.kind.controlKind(savedAs: name).flatMap { kind in package.controls.first { $0.kind == kind } }
+    }
+
+    func value(_ name: String) -> [Double] {
+        if name == "frameDuration" { return [frameDuration] }
+        if let value = extra[name] { return [value] }
+        guard let definition = definition(name) else { return [0] }
+        guard let control = effect.control(definition.kind), control.enabled else { return definition.defaultValues }
+        let values = control.number.isAnimated ? control.number.keyframes.map(\.value.values) : [control.number.value.values]
+        let largest = values.max { ($0.first ?? 0) < ($1.first ?? 0) } ?? definition.defaultValues
+        return largest.enumerated().map { definition.kind.clamped($1, index: $0) }
+    }
+
+    func center(_ name: String) -> [Double] { value(name) }
+
+    func index(_ name: String) -> Double {
+        guard let definition = definition(name) else { return 0 }
+        let choice = effect.control(definition.kind).flatMap { $0.enabled ? $0.choice : nil } ?? definition.defaultChoice
+        return Double(definition.choiceOptions.firstIndex { $0.id == choice } ?? 0)
     }
 }
 

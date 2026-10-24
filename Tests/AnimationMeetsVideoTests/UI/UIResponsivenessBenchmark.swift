@@ -124,7 +124,7 @@ struct UIResponsivenessBenchmark {
             Scenario(name: "keyframed-scale", base: .media, action: .drag(.transform, .scale, delta: 0.5, keyframed: true)),
             Scenario(name: "wave-height", base: .media, action: .drag(.wave, EffectKind.wave.controlKind(savedAs: "waveHeight")!, delta: 0.5)),
             Scenario(name: "kaleidoscope-angle", base: .media, action: .drag(.kaleidoscope, EffectKind.kaleidoscope.controlKind(savedAs: "distortAngle")!, delta: 1)),
-            Scenario(name: "feedback-scale", base: .media, action: .drag(.feedback, .copyScale, delta: 0.5)),
+            Scenario(name: "feedback-scale", base: .media, action: .drag(.feedback, EffectKind.feedback.controlKind(savedAs: "copyScale")!, delta: 0.5)),
             Scenario(name: "volume", base: .media, panel: .inspector, action: .volume),
             Scenario(name: "step-frame", base: .media, action: .key(.right, back: .left, sweep: true)),
             Scenario(name: "step-ten-frames", base: .media, action: .key(.shiftRight, back: .shiftLeft)),

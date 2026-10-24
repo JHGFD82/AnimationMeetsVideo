@@ -723,7 +723,7 @@ struct Drawing {
                 } else {
                     drawShapes()
                 }
-                if look.kind == .feedback || look.kind == .slitScan || look.kind == .flowSmear {
+                if look.kind == .flowSmear {
                     // Drawn from the steps above at other moments; those
                     // drawn again from a copy can't reach further back.
                     picture = LookRenderer.moments(
@@ -741,34 +741,42 @@ struct Drawing {
                 // one set but not to be had (a missing file, a step not above
                 // this one) leaves the picture as it is.
                 let package = look.kind.definition.package
-                var pictures: [CIImage] = [], flags: [String: Double] = [:], unavailable = false
+                var pictures: [String: CIImage] = [:], flags: [String: Double] = [:], unavailable = false
                 for wanted in package?.pictures ?? [] {
                     switch wanted.source {
                     case .input:
                         guard let input = clip.inputs[look.effectID] else {
-                            pictures.append(CIImage(color: .clear))
                             flags["hasInput"] = 0
                             continue
                         }
                         guard let image = matteImage(input, frame: frameSize, start: start) else { unavailable = true; break }
-                        pictures.append(image)
+                        pictures[wanted.id] = image
                         flags["hasInput"] = 1
                     case .against:
                         guard let against = look.against else {
-                            pictures.append(CIImage(color: .clear))
                             flags["hasAgainst"] = 0
                             continue
                         }
                         guard let earlier = kept[against] else { unavailable = true; break }
-                        pictures.append(earlier)
+                        pictures[wanted.id] = earlier
                         flags["hasAgainst"] = 1
+                    case .moment:
+                        // Fetched for each pass as it is drawn.
+                        break
                     }
                 }
                 let flagValues = PictureFlags(hasInput: flags["hasInput"] == 1, hasAgainst: flags["hasAgainst"] == 1)
                 if unavailable || package?.drawsWhen.map({ $0.number(flagValues) == 0 }) == true { continue }
+                // Other moments, from the steps above at other times; those
+                // drawn again from a copy can't reach further back.
+                let moments = PackageLookRenderer.Moments(
+                    earlier: { delay in earlier?(delay, look.effectID) },
+                    frameDuration: clip.stack.frameDuration > .zero ? clip.stack.frameDuration : CMTime(value: 1, timescale: 24),
+                    isPlaying: options?.isPlaying ?? false
+                )
                 picture = LookRenderer.apply(
                     look, to: picture, over: picture.extent.intersection(canvas), canvas: canvas, frame: frame, scale: scale.width,
-                    space: clip.stack.colorSpace, pictures: pictures, flags: flags
+                    space: clip.stack.colorSpace, pictures: pictures, flags: flags, moments: moments
                 )
             case .matte(let effectID, let mode, let amount):
                 settleOpacity()

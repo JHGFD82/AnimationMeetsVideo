@@ -111,19 +111,16 @@ extension EditingProject {
     }
 
     /// A warning on the looks that can flash more than three times a
-    /// second (see docs/psychedelic-effects.md, "Safety: flashing"):
-    /// Feedback always, and a package's look as its `flashes` says (Static
-    /// always, Block Glitch and Hue Cycle when set faster than that). Their
-    /// defaults stay below it.
+    /// second (see docs/psychedelic-effects.md, "Safety: flashing"), as its
+    /// package's `flashes` says: Static and Feedback always, Block Glitch
+    /// and Hue Cycle when set faster than that. Their defaults stay below
+    /// it.
     static func flashingNote(for effect: Effect) -> EffectNote? {
-        let flashes = if let package = effect.kind.definition.package {
-            switch package.flashes {
-            case .never: false
-            case .always: true
-            case .when(let condition): condition.number(FastestValues(effect: effect, package: package)) != 0
-            }
-        } else {
-            effect.kind == .feedback
+        guard let package = effect.kind.definition.package else { return nil }
+        let flashes = switch package.flashes {
+        case .never: false
+        case .always: true
+        case .when(let condition): condition.number(FastestValues(effect: effect, package: package)) != 0
         }
         guard flashes else { return nil }
         return EffectNote(

@@ -57,12 +57,6 @@ func look(_ kind: EffectKind, _ settings: [String: [Double]] = [:], choices: [St
         return try h.draw([clip], at: CMTime(seconds: seconds, preferredTimescale: 600))
     }
 
-    /// Every kernel left in Swift; the packages' are checked in
-    /// PackageLookTests.
-    @Test func everyKernelCompiles() {
-        #expect(LookKernels.compiled.count == LookKernels.split(LookKernels.source).kernels.count)
-    }
-
     @Test func atNoAmountALookDrawsNothing() throws {
         let effect = look(.posterize, ["levels": [2], "amount": [0]])
         #expect(effect.isNoOp)

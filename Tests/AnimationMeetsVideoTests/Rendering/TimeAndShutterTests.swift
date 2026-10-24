@@ -310,7 +310,7 @@ private let frame = CMTime(value: 1, timescale: 24)
         defer { fixture.cleanUp() }
         let placed = try await movie(in: &fixture, segments: [(100, 48)])
         var feedback = Effect(kind: .feedback)
-        if let index = feedback.controls.firstIndex(where: { $0.kind == .copies }) {
+        if let index = feedback.controls.firstIndex(where: { $0.kind.savedName == "copies" }) {
             feedback.controls[index].number = AnimatedValue(ComponentValue(values: [3]))
         }
         fixture.project.editClip(placed.clipID, in: fixture.timelineID) { $0.effects = [feedback] }

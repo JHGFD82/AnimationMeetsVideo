@@ -599,9 +599,9 @@ struct Effect: Identifiable, Equatable, Sendable {
         if let package = kind.definition.package {
             return package.changesEveryFrame || package.rateControls.contains { moves(control($0)) }
         }
-        // A picture drawn from other moments is new every frame.
+        // A picture drawn from the motion ahead is new every frame.
         switch kind {
-        case .flowSmear, .slitScan, .feedback: return true
+        case .flowSmear: return true
         default: break
         }
         let moving: ControlKind? = switch kind {
@@ -618,25 +618,11 @@ struct Effect: Identifiable, Equatable, Sendable {
 
     /// The earlier moments of the clip's footage the effect draws from, as
     /// how long before the moment drawn, for the composition to have
-    /// frames there (`MomentDelays`). Taken at the most any keyframe asks.
+    /// frames there: a package look's (see `EffectPackage.momentDelays`).
+    /// Taken at the most any keyframe asks.
     func momentDelays(frame: CMTime) -> [CMTime] {
-        guard enabled else { return [] }
-        func most(_ kind: ControlKind) -> Double {
-            guard let control = control(kind), control.enabled else { return kind.defaultValues.first ?? 0 }
-            let values = control.number.isAnimated ? control.number.keyframes.map(\.value) : [control.number.value]
-            return values.compactMap { $0.values.first.map { kind.clamped($0) } }.max() ?? 0
-        }
-        switch kind {
-        case .feedback:
-            let delay = Int(most(.feedbackDelay))
-            return (1...max(Int(most(.copies)), 1)).map { MomentDelays.feedback(copy: $0, delayFrames: delay, frame: frame) }
-        case .slitScan:
-            let bands = max(Int(most(.bands)), 2), spread = most(.timeSpread)
-            return Array(Set((1..<bands).map { MomentDelays.slit(band: $0, of: bands, spread: spread, frame: frame) }))
-                .filter { $0 > .zero }.sorted()
-        default:
-            return []
-        }
+        guard enabled, let package = kind.definition.package else { return [] }
+        return package.momentDelays(of: self, frame: frame)
     }
 
     /// For Flow Smear: how many frames ahead in the footage it measures the

@@ -142,7 +142,7 @@ enum EffectPackageStore {
     // MARK: Shape
 
     /// The units a control may have, as written in a package and as shown.
-    static let units: [String: String] = ["%": "%", "°": "°", "px": " px", "s": " s", "×": "×", "/s": " /s", "turns/s": " turns/s"]
+    static let units: [String: String] = ["%": "%", "°": "°", "px": " px", "s": " s", "×": "×", "/s": " /s", "turns/s": " turns/s", "frames": " frames"]
 
     static let categories: [EffectCategory] = [.recolor, .noise, .distortion]
 
@@ -189,8 +189,14 @@ enum EffectPackageStore {
             .optional("pictures", .array(.object(object([
                 .required("id", .string),
                 .required("from", .choice(EffectPackage.Picture.Source.allCases.map(\.rawValue), noun: "picture source")),
+                .optional("delay", .string), .optional("missing", .choice(["transparent", "picture"], noun: "missing picture")),
             ])))),
             .optional("drawsWhen", .string),
+            .optional("repeat", .object(object([
+                .required("count", .string), .optional("index", .string),
+                .optional("countWhilePlaying", .string), .optional("indexWhilePlaying", .string),
+                .optional("start", .choice(["picture", "clear"], noun: "start")),
+            ]))),
             .optional("after", .array(.object(object([
                 .required("filter", .string), .optional("when", .string), .optional("parameters", .any),
             ])))),
@@ -267,15 +273,37 @@ enum EffectPackageStore {
                     throw JSONShapeError(message: "\"\(pictureID)\" isn't a name a picture can take: use letters and digits, not a control's", path: path + ".id")
                 }
                 let source = EffectPackage.Picture.Source(rawValue: entry["from"] as! String)!
-                guard !pictures.contains(where: { $0.source == source }) else {
+                guard source == .moment || !pictures.contains(where: { $0.source == source }) else {
                     throw JSONShapeError(message: "It already reads a picture from \(source.rawValue)", path: path + ".from")
                 }
-                pictures.append(EffectPackage.Picture(id: pictureID, source: source))
+                guard (entry["delay"] != nil) == (source == .moment), entry["missing"] == nil || source == .moment else {
+                    throw JSONShapeError(message: "A moment, and only a moment, has a delay and says what a missing one is", path: path)
+                }
+                pictures.append(EffectPackage.Picture(id: pictureID, source: source, missingIsPicture: entry["missing"] as? String == "picture"))
             }
             var flags: [String: EffectExpression.ValueType] = [:]
             if pictures.contains(where: { $0.source == .input }) { flags["hasInput"] = .number }
             if pictures.contains(where: { $0.source == .against }) { flags["hasAgainst"] = .number }
             names.merge(flags) { own, _ in own }
+            // A repeated kernel's passes, and the copy or band each draws.
+            var repeats: EffectPackage.Repeat?
+            if let entry = json["repeat"] as? [String: Any] {
+                guard kernelType == .general else {
+                    throw JSONShapeError(message: "Only a general kernel draws over what it drew before", path: "repeat")
+                }
+                names["pass"] = .number
+                names["passes"] = .number
+                names["index"] = .number
+                let counts = try ["count", "countWhilePlaying"].map { key in try (entry[key] as? String).map { try number($0, "repeat.\(key)") } }
+                let indices = try ["index", "indexWhilePlaying"].map { key in try (entry[key] as? String).map { try number($0, "repeat.\(key)") } }
+                repeats = EffectPackage.Repeat(
+                    count: counts[0]!, index: indices[0], countWhilePlaying: counts[1], indexWhilePlaying: indices[1],
+                    startsClear: entry["start"] as? String == "clear"
+                )
+            }
+            for (index, entry) in (json["pictures"] as? [[String: Any]] ?? []).enumerated() {
+                if let text = entry["delay"] as? String { pictures[index].delay = try number(text, "pictures[\(index)].delay") }
+            }
             var drawsWhen: EffectExpression?
             if let text = json["drawsWhen"] as? String {
                 do {
@@ -335,7 +363,7 @@ enum EffectPackageStore {
                 amountIndex: amountIndex ?? (json["amount"] as? Bool == true ? controls.count : nil), arguments: arguments,
                 generates: json["generates"] as? Bool ?? false, changesEveryFrame: json["changesEveryFrame"] as? Bool ?? false,
                 dependsOnPixelSize: json["dependsOnPixelSize"] as? Bool ?? false, flashes: flashes,
-                rateControls: rates, reach: reach, pictures: pictures, drawsWhen: drawsWhen,
+                rateControls: rates, reach: reach, pictures: pictures, drawsWhen: drawsWhen, repeats: repeats,
                 edges: (json["input"] as? String).flatMap(EffectPackage.Edges.init(rawValue:)) ?? .clear, after: after
             )
         }

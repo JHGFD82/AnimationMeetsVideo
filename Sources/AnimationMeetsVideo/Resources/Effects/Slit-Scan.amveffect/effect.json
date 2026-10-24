@@ -1,0 +1,24 @@
+{
+  "formatVersion": 1,
+  "id": "slitScan",
+  "version": 1,
+  "name": "Slit-Scan",
+  "category": "distortion",
+  "symbol": "line.3.horizontal",
+  "kernel": {"file": "kernel.metal", "function": "amvSlitScan", "type": "general"},
+  "controls": [
+    {"id": "slitDirection", "name": "Direction", "type": "choice", "default": "rows", "options": [{"id": "rows", "name": "Rows"}, {"id": "columns", "name": "Columns"}, {"id": "rings", "name": "Rings"}]},
+    {"id": "bands", "name": "Bands", "type": "number", "default": 16, "range": [2, 64], "whole": true},
+    {"id": "timeSpread", "name": "Time Spread", "type": "number", "default": 0.5, "range": [0, 10], "unit": "s", "step": 1},
+    {"id": "distortCenter", "name": "Center", "type": "point"}
+  ],
+  "repeat": {
+    "count": "bands", "start": "clear",
+    "countWhilePlaying": "min(4, bands)", "indexWhilePlaying": "round(pass * (bands - 1) / max(passes - 1, 1))"
+  },
+  "pictures": [
+    {"id": "band", "from": "moment", "delay": "round(index / max(bands - 1, 1) * timeSpread / frameDuration) * frameDuration", "missing": "picture"}
+  ],
+  "arguments": ["pass", "passes", "index(slitDirection)", "frameCenter", "frameWidth", "frameHeight", "center(distortCenter)"],
+  "changesEveryFrame": true
+}

@@ -1,5 +1,6 @@
 import CoreGraphics
 import CoreImage
+import CoreMedia
 import Foundation
 import Synchronization
 
@@ -112,19 +113,68 @@ enum PackageKernels {
 /// Draws a look whose kind comes from an effect package: its arguments
 /// evaluated from the step, then its kernel, then its filters.
 enum PackageLookRenderer {
+    /// Where a look reading other moments of the footage gets them.
+    struct Moments {
+        /// The picture reaching the step this long before; nil where the
+        /// composition has none.
+        var earlier: (CMTime) -> CIImage?
+        var frameDuration: CMTime
+        /// Whether the viewer is playing, when a repeated look draws less.
+        var isPlaying: Bool
+    }
+
     /// `picture` with `step` drawn on it, as `LookRenderer.apply` draws a
     /// built-in look: a color kernel over `region` (a generator, with
     /// nothing there, over `canvas`); a general kernel over `region` with
     /// its edges repeating, or over `canvas` transparent past them; a warp
     /// over `canvas`. The picture as it is if the kernel didn't compile.
-    /// `pictures` are the package's others, in its order (transparent for
-    /// one it doesn't have), and `flags` say which it has (`hasInput`).
+    /// `pictures` are its input and Against picture by ID (one it doesn't
+    /// have transparent), `flags` say which it has (`hasInput`), and
+    /// `moments` give the footage at other times. A repeated look draws
+    /// once per pass, each over what the last made.
     static func apply(
         _ package: EffectPackage, _ step: LookStep, to picture: CIImage, over region: CGRect, canvas: CGRect,
-        frame: CGRect, scale: CGFloat, space: ProjectColorSpace, pictures: [CIImage] = [], flags: [String: Double] = [:]
+        frame: CGRect, scale: CGFloat, space: ProjectColorSpace, pictures: [String: CIImage] = [:], flags: [String: Double] = [:],
+        moments: Moments? = nil
     ) -> CIImage {
         guard let kernel = PackageKernels.kernel(for: package) else { return picture }
-        let values = Values(package: package, step: step, frame: frame, canvas: canvas, scale: scale, flags: flags)
+        let frameDuration = moments.map { $0.frameDuration.seconds > 0 ? $0.frameDuration : CMTime(value: 1, timescale: 24) }
+            ?? CMTime(value: 1, timescale: 24)
+        var values = Values(
+            package: package, step: step, frame: frame, canvas: canvas, scale: scale, frameDuration: frameDuration.seconds, extra: flags
+        )
+        func pass(over drawn: CIImage) -> CIImage {
+            // Each moment as of this pass; the picture reaching the step for
+            // no delay, or for one the composition hasn't where it says so.
+            let others: [CIImage] = package.pictures.map { wanted in
+                guard wanted.source == .moment, let delay = wanted.delay else { return pictures[wanted.id] ?? CIImage(color: .clear) }
+                let frames = (delay.number(values) / frameDuration.seconds).rounded()
+                guard frames > 0 else { return picture }
+                let earlier = moments?.earlier(CMTimeMultiply(frameDuration, multiplier: Int32(frames)))
+                return earlier ?? (wanted.missingIsPicture ? picture : CIImage(color: .clear))
+            }
+            return draw(kernel, package, step, values, drawn, others, region: region, canvas: canvas, space: space)
+        }
+        guard let repeats = package.repeats else { return pass(over: picture) }
+        let playing = moments?.isPlaying ?? false
+        let countExpression = playing ? repeats.countWhilePlaying ?? repeats.count : repeats.count
+        let indexExpression = playing ? repeats.indexWhilePlaying ?? repeats.index : repeats.index
+        let count = max(0, Int(countExpression.number(values)))
+        var result = repeats.startsClear ? CIImage(color: .clear).cropped(to: canvas) : picture
+        for n in 0..<count {
+            values.extra["pass"] = Double(n)
+            values.extra["passes"] = Double(count)
+            values.extra["index"] = indexExpression?.number(values) ?? Double(n)
+            result = pass(over: result)
+        }
+        return result
+    }
+
+    /// One drawing of the kernel over `picture`, with its other pictures.
+    private static func draw(
+        _ kernel: CIKernel, _ package: EffectPackage, _ step: LookStep, _ values: Values, _ picture: CIImage, _ pictures: [CIImage],
+        region: CGRect, canvas: CGRect, space: ProjectColorSpace
+    ) -> CIImage {
         var arguments = package.arguments.map { kernelArgument($0.evaluate(values)) }
         if package.hasAmount { arguments.append(Float(step.amount)) }
         let spaceIndex = Float(space.gradingSpaceIndex)
@@ -200,8 +250,11 @@ enum PackageLookRenderer {
         let frame: CGRect
         let canvas: CGRect
         let scale: CGFloat
-        /// Whether it has its pictures: `hasInput`, `hasAgainst`.
-        let flags: [String: Double]
+        /// The timeline's frame, in seconds.
+        let frameDuration: Double
+        /// Whether it has its pictures (`hasInput`, `hasAgainst`), and a
+        /// repeated look's `pass`, `passes` and `index`.
+        var extra: [String: Double]
 
         private func definition(_ name: String) -> ControlDefinition? {
             let kind = ControlKind(package: package.id, control: name)
@@ -221,7 +274,8 @@ enum PackageLookRenderer {
             case "canvasWidth": return [Double(canvas.width)]
             case "canvasHeight": return [Double(canvas.height)]
             case "pi": return [.pi]
-            case _ where flags[name] != nil: return [flags[name]!]
+            case "frameDuration": return [frameDuration]
+            case _ where extra[name] != nil: return [extra[name]!]
             default:
                 guard let definition = definition(name) else { return [0] }
                 return step.numbers[definition.kind] ?? definition.defaultValues

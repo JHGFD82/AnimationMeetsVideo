@@ -76,7 +76,7 @@ enum LookRecipes {
     private static var infiniteTunnel: [Effect] {
         [
             look(.kaleidoscope, ["segments": [8]]),
-            effect(.feedback, [.copies: [12], .copyScale: [103], .copyRotation: [4], .hueStep: [15]]),
+            look(.feedback, ["copies": [12], "copyScale": [103], "copyRotation": [4], "hueStep": [15]]),
             effect(.chromaticAberration), effect(.grain),
         ]
     }
@@ -111,7 +111,7 @@ enum LookRecipes {
     private static var meltingRainbow: [Effect] {
         [
             effect(.flowSmear), look(.solarize, ["folds": [3]]), effect(.hueCycle),
-            effect(.feedback, [.copies: [6], .copyScale: [100], .copyRotation: [0], .hueStep: [30]]),
+            look(.feedback, ["copies": [6], "copyScale": [100], "copyRotation": [0], "hueStep": [30]]),
         ]
     }
 
@@ -126,7 +126,7 @@ enum LookRecipes {
     private static var thermalDream: [Effect] {
         [
             look(.falseColor, choices: ["falseColorLook": "thermal"]),
-            effect(.slitScan, choices: [.slitDirection: SlitDirection.rows.rawValue]), look(.posterize, ["levels": [5]]),
+            look(.slitScan, choices: ["slitDirection": "rows"]), look(.posterize, ["levels": [5]]),
             effect(.grain),
         ]
     }
