@@ -11,7 +11,7 @@ extension EffectsPanel {
             effect: effect, time: time, isDimmed: dimmed,
             onEdit: { kind, change in
                 editEffect(effect.id, in: clip) { effect in
-                    if let index = effect.controls.firstIndex(where: { $0.kind == kind }) { change(&effect.controls[index]) }
+                    effect.changeControl(kind, change)
                 }
             },
             onExpand: onExpand,
@@ -44,7 +44,7 @@ extension EffectsPanel {
                     .frame(minWidth: 640, minHeight: 320)
                 EqualizerBandStrip(effect: effect, time: source) { kind, change in
                     editEffect(effect.id, in: clip) { effect in
-                        if let index = effect.controls.firstIndex(where: { $0.kind == kind }) { change(&effect.controls[index]) }
+                        effect.changeControl(kind, change)
                     }
                 }
             } else {

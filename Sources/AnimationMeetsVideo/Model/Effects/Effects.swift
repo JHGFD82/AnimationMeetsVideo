@@ -465,6 +465,11 @@ struct Effect: Identifiable, Equatable, Sendable {
 
     var displayName: String { missing?.name ?? name ?? kind.name }
 
+    /// Makes `change` to this effect's control of `kind`, if it has one.
+    mutating func changeControl(_ kind: ControlKind, _ change: (inout EffectControl) -> Void) {
+        if let index = controls.firstIndex(where: { $0.kind == kind }) { change(&controls[index]) }
+    }
+
     /// An effect whose package isn't installed, or is older than the one it
     /// was saved with, held as it was saved.
     static func missing(_ missing: MissingEffect, id: UUID, enabled: Bool) -> Effect {

@@ -522,7 +522,7 @@ extension Effect {
     /// The effect with `change` made to its control of `kind`, if it has one.
     func changing(_ kind: ControlKind, _ change: (inout EffectControl) -> Void) -> Effect {
         var copy = self
-        if let index = copy.controls.firstIndex(where: { $0.kind == kind }) { change(&copy.controls[index]) }
+        copy.changeControl(kind, change)
         return copy
     }
 }

@@ -94,7 +94,7 @@ struct LayerSoundEffectsList: View {
     private func settings(of effect: Effect) -> some View {
         let onEdit: (ControlKind, (inout EffectControl) -> Void) -> Void = { kind, change in
             edit(effect) { effect in
-                if let index = effect.controls.firstIndex(where: { $0.kind == kind }) { change(&effect.controls[index]) }
+                effect.changeControl(kind, change)
             }
         }
         if effect.kind == .equalizer {

@@ -9,8 +9,7 @@ extension Effect {
     mutating func sizeShape(to frame: CGSize) {
         let side = Double(frame.height / 2).rounded()
         func set(_ kind: ControlKind, _ values: [Double]) {
-            guard let index = controls.firstIndex(where: { $0.kind == kind }) else { return }
-            controls[index].number = AnimatedValue(ComponentValue(values: values))
+            changeControl(kind) { $0.number = AnimatedValue(ComponentValue(values: values)) }
         }
         switch kind {
         case .rectangle: set(.shapeSize, [Double(frame.width / 2).rounded(), side])

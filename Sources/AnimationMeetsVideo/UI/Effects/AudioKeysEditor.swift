@@ -161,7 +161,7 @@ struct AudioKeysEditor: View {
         let key = key
         hud.onEdit { project in
             project.editEffect(key.effectID, ofClip: key.clipID, in: key.timelineID) { effect in
-                if let index = effect.controls.firstIndex(where: { $0.kind == kind }) { change(&effect.controls[index]) }
+                effect.changeControl(kind, change)
             }
         }
     }
