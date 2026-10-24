@@ -4,7 +4,9 @@ import CoreGraphics
 /// and Beat Match's waveform are: scrolled and zoomed with rubber-band
 /// edges (`RubberBandZoom`, `RubberBandScroll`), and zoomed in about a
 /// focus. The conforming session keeps the state, since it is observed,
-/// and says what it shows and how a resize changes the zoom.
+/// and says what it shows and how a resize changes the zoom. The effects
+/// panel's lanes (`LaneViewport`) count in their own unzoomed points,
+/// which stand for the clip's time.
 @MainActor
 protocol SecondsViewport: AnyObject {
     /// The left edge, in seconds, and the zoom.

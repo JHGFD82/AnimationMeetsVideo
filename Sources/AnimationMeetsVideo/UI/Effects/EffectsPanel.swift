@@ -299,7 +299,7 @@ struct EffectsPanel: View {
                         return true
                     }
                     // Also without movement, so a lift lets go of the edge.
-                    lanes.scroll(by: deltaX, phase: phase)
+                    lanes.scroll(byPoints: deltaX, phase: phase)
                     return false
                 },
                 onMagnifyEnded: { lanes.endPinch() }
