@@ -12,11 +12,12 @@ file when it is empty.
   increased" (Settings > Billing & plans). `main` fails the same way.
   Every commit was built and tested locally; run CI once billing is
   fixed.
-- [ ] **Accessibility review.** Run the `accessibility-reviewer` agent
-  over the new and changed views (see [accessibility.md](accessibility.md),
-  "Rules for new UI"): the empty Clips list, the media problems bar, the
-  Timelines tree, the start sheet's recent projects, Settings > Projects,
-  the Keyboard Shortcuts window and the toolbar warnings.
+- [x] **Accessibility review.** The `accessibility-reviewer` agent went
+  over the new and changed views against [accessibility.md](accessibility.md),
+  "Rules for new UI". Fixed: the media problems bar's button is its own
+  element again (its stand-in action ignored the button's dimming), the
+  Keyboard Shortcuts window reads keys by name, and the backup folder's
+  buttons say what they act on. The rest passed.
 
 ## To try in the app
 
@@ -44,6 +45,9 @@ Built and tested in code, never run on screen.
   original's folder away first and check it asks where to restore;
   File > Open Backup… starts in the project's backups and opens one the
   same way.
+- [ ] **VoiceOver** over the views reviewed above (the review was made
+  from the code): the media problems bar's count and button, a row of
+  the Keyboard Shortcuts window, the start sheet's recent projects.
 - [ ] **Earlier in the PR**: the title bar's name, proxy icon and edited
   dot; File > Import Media and Export; Open Recent and the start sheet;
   Locate… and Check Sync…; Export Finished with Show in Finder.
@@ -53,7 +57,9 @@ Built and tested in code, never run on screen.
 - **Pasted media is analyzed again.** Scene detection runs anew in the
   project it is pasted into instead of taking the results the other
   window already has in memory. Its saved reference data does come along
-  at the next save.
+  at the next save. Taking them would mean seeding `AssetAnalysis` with
+  each result's source file, unsaved state and held pictures, which its
+  race tests guard closely; left until it is worth that care.
 - **Reference data of media referenced in place** comes along with a
   paste only while the project it came from is open in a window: the
   app finds that project through its window. Media inside the other
