@@ -243,7 +243,11 @@ final class ProjectSession {
             // Imports are copied as they come in, so only Save As copies,
             // carrying along what the previous package holds.
             let isNewLocation = projectURL.map { !Self.isSamePackage($0, url) } ?? true
-            guard let copying = isNewLocation ? chooseMediaToCopy(for: project, into: url) : [] else { return false }
+            guard var copying = isNewLocation ? chooseMediaToCopy(for: project, into: url) : [] else { return false }
+            // Media pasted from another project comes into this one's
+            // package, so this project doesn't depend on the other's.
+            let pasted = isNewLocation ? [] : pastedMedia()
+            copying.formUnion(pasted.filter(\.copiesFile).map(\.id))
             // Results finished while saving somewhere new would go into
             // the old package after its reference data was copied, so
             // they are held until the save is done.
@@ -268,6 +272,7 @@ final class ProjectSession {
             )
             analysis.markSaved(unsavedResults)
             analysis.dropForgottenReferences(in: saved)
+            await copyReferenceData(of: pasted, into: url)
             // Edits made while saving stay; only the media locations change.
             history.adoptMediaLocations(of: snapshot, from: saved)
             project.applyMediaLocations(from: saved)
@@ -398,6 +403,56 @@ final class ProjectSession {
         projectLock = nil
         DetectedBeats.shared.remove(owner: ObjectIdentifier(analysis))
         ProjectWindows.shared.unregister(self)
+    }
+
+    // MARK: - Pasted media
+
+    /// Media pasted in from another project since the last save.
+    struct PastedMedia {
+        var id: UUID
+        /// The package of the project it came from.
+        var origin: URL
+        /// Whether its file is in that package, and so is copied into this
+        /// one; a file the other project referenced in place stays put.
+        var copiesFile: Bool
+    }
+
+    /// Media this project didn't have at the last save that came from
+    /// another project: one open in a window, or whose package holds the
+    /// file.
+    private func pastedMedia() -> [PastedMedia] {
+        project.clips.compactMap { media in
+            guard savedProject.mediaClip(id: media.id) == nil else { return nil }
+            let other = ProjectWindows.shared.sessions.first { $0 !== self && $0.project.mediaClip(id: media.id) != nil }
+            guard let origin = other?.projectURL ?? media.url.flatMap(Self.enclosingPackage(of:)),
+                  !(projectURL.map { Self.isSamePackage($0, origin) } ?? false)
+            else { return nil }
+            let copiesFile = media.url.map { ProjectStore.isInside($0, package: origin) } ?? false
+            return PastedMedia(id: media.id, origin: origin, copiesFile: copiesFile)
+        }
+    }
+
+    /// The project package a file is inside, if any.
+    static func enclosingPackage(of url: URL) -> URL? {
+        var folder = url.deletingLastPathComponent()
+        while folder.pathComponents.count > 1 {
+            if folder.pathExtension == ProjectStore.packageExtension { return folder }
+            folder = folder.deletingLastPathComponent()
+        }
+        return nil
+    }
+
+    /// Brings pasted media's reference data (the original's pictures,
+    /// sound and scores) from the projects it came from, so replacing its
+    /// file later can still be checked. A project that has gone just
+    /// leaves it to be analyzed again.
+    private func copyReferenceData(of pasted: [PastedMedia], into url: URL) async {
+        for (origin, items) in Dictionary(grouping: pasted, by: \.origin) {
+            let ids = items.map(\.id)
+            _ = try? await PackageCoordinator.shared.run(on: [url, origin]) {
+                try ProjectStore.copyReferenceData(for: ids, from: origin, to: url)
+            }
+        }
     }
 
     // MARK: - Helpers

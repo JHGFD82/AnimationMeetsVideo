@@ -729,6 +729,17 @@ clip.
   The copy gets new IDs for itself, its effects and their controls, and
   what pointed between its effects (Against, a Keyframing effect's target
   and the keyframes it wrote) points at the copies.
+- **Between projects**: what was copied is the app's, not one window's
+  (`EditorClipboard`), so a clip or clips copied in one project's window
+  paste into another's. A copy carries what it needs from its project
+  (`PasteSources`): the media it plays, the timelines it embeds with
+  everything they play, and its effects' inputs. Pasting adds what the
+  other project lacks, by ID, so pasting in the same project adds
+  nothing. At the next save, pasted media whose file is inside the other
+  project's package is copied into this one's `Media/` (an instant clone
+  on the same APFS volume), and its reference data is copied from that
+  package, so this project doesn't depend on the other; media the other
+  project referenced in place stays where it is.
 - **Paste** puts the clip at the playhead, landing as a clip moved there
   would: inside a clip it goes to the nearer edge, and later clips on the
   layer move right to make room. It goes onto the selected clip's layer or

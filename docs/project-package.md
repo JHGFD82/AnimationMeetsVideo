@@ -117,7 +117,8 @@ Status: **implemented**.
 There is always a package to write into. Each project has a window of
 its own (`ProjectWindow`, with a `ProjectSession` holding the project, its
 history, lock, analysis and file watching), so several can be open at
-once. At launch the app
+once, and clips copied in one paste into another (see "Copy, paste and
+duplicate" in [timeline.md](timeline.md)). At launch the app
 reopens the projects that were open when it quit, the first in the
 first window and each other in its own (`ProjectWindows`); the system's
 own window restoration is off for the app, so the two don't race. A

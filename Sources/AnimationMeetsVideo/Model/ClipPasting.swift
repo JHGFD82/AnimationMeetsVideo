@@ -14,6 +14,8 @@ struct ClipBundle: Equatable {
     /// onto its layer.
     var timelineID: UUID
     var layerID: UUID
+    /// What the clip needs from its project, for a paste into another.
+    var sources = PasteSources()
 }
 
 extension TimelineClip {
@@ -75,15 +77,24 @@ extension EditingProject {
     /// A clip to copy; nil for an unknown clip.
     func clipBundle(_ clipID: UUID, in timelineID: UUID) -> ClipBundle? {
         guard let (clip, layer) = clipAndLayer(clipID, in: timelineID) else { return nil }
-        return ClipBundle(clip: clip, layerKind: layer.kind, timelineID: timelineID, layerID: layer.id)
+        return ClipBundle(
+            clip: clip, layerKind: layer.kind, timelineID: timelineID, layerID: layer.id,
+            sources: pasteSources(for: [clip])
+        )
     }
 
     /// Whether `bundle` can go into a timeline: anything can, except a
-    /// nested timeline into itself or into one it contains.
+    /// nested timeline into itself or into one it contains. Media and
+    /// timelines this project lacks come with the bundle when it was
+    /// copied in another project (`PasteSources`).
     func canPaste(_ bundle: ClipBundle, into timelineID: UUID) -> Bool {
         guard timeline(id: timelineID) != nil else { return false }
-        if case .timeline(let nestedID) = bundle.clip.source { return canEmbed(nestedID, into: timelineID) }
-        if case .media(let assetID) = bundle.clip.source { return mediaClip(id: assetID) != nil }
+        if case .timeline(let nestedID) = bundle.clip.source {
+            return timeline(id: nestedID) != nil ? canEmbed(nestedID, into: timelineID) : bundle.sources.hasTimeline(nestedID)
+        }
+        if case .media(let assetID) = bundle.clip.source {
+            return mediaClip(id: assetID) != nil || bundle.sources.hasMedia(assetID)
+        }
         return true
     }
 
@@ -95,7 +106,9 @@ extension EditingProject {
     /// Returns where it went; nil when it can't go into this timeline.
     @discardableResult
     mutating func paste(_ bundle: ClipBundle, in timelineID: UUID, onto layerID: UUID?, at start: CMTime) -> (layerID: UUID, clipID: UUID)? {
-        guard canPaste(bundle, into: timelineID), let tIndex = timelines.firstIndex(id: timelineID) else { return nil }
+        guard canPaste(bundle, into: timelineID) else { return nil }
+        adopt(bundle.sources)
+        guard let tIndex = timelines.firstIndex(id: timelineID) else { return nil }
         let timeline = timelines[tIndex]
         var clip = coveringWholeFrames(bundle.clip.duplicated(), in: timeline)
         // An adjustment clip reaching a layer of another timeline reaches
@@ -122,7 +135,9 @@ extension EditingProject {
     /// Option-drag of a clip over the layer names.
     @discardableResult
     mutating func paste(_ bundle: ClipBundle, in timelineID: UUID, newLayer kind: LayerKind, at start: CMTime) -> (layerID: UUID, clipID: UUID)? {
-        guard canPaste(bundle, into: timelineID), let tIndex = timelines.firstIndex(id: timelineID) else { return nil }
+        guard canPaste(bundle, into: timelineID) else { return nil }
+        adopt(bundle.sources)
+        guard let tIndex = timelines.firstIndex(id: timelineID) else { return nil }
         var clip = coveringWholeFrames(bundle.clip.duplicated(), in: timelines[tIndex])
         if let reach = clip.reach, timelines[tIndex].layer(id: reach) == nil { clip.reach = nil }
         return insertOnNewLayer(clip, kind: kind, in: tIndex, at: start)

@@ -24,7 +24,10 @@ extension EditingProject {
         var found: [(layer: Int, bundle: ClipBundle)] = []
         for (index, layer) in timeline.layers.enumerated() {
             for clip in layer.clips where ids.contains(clip.id) {
-                found.append((index, ClipBundle(clip: clip, layerKind: layer.kind, timelineID: timelineID, layerID: layer.id)))
+                found.append((index, ClipBundle(
+                    clip: clip, layerKind: layer.kind, timelineID: timelineID, layerID: layer.id,
+                    sources: pasteSources(for: [clip])
+                )))
             }
         }
         guard let first = found.first else { return nil }
