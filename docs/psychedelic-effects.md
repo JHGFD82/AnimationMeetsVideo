@@ -1,7 +1,9 @@
 # Noise, Color and Distortion effects
 
 Status: **built** (see [Building it](#building-it) for what each step
-does and where it differs from the tables). 25 effect kinds in three new
+does and where it differs from the tables). Each look now ships as an
+effect package rather than Swift (see
+[effect-packages.md](effect-packages.md)). 25 effect kinds in three new
 categories of the effects panel, chosen so that stacking them gives
 psychedelic pictures from footage or from nothing at all. Everything here
 fits the stack rules in [effects.md](effects.md) (gravity, the list is the
@@ -170,10 +172,12 @@ Rules every kind follows:
   offsets are stored as fractions of the frame's width (shown in pixels),
   so a look is the same at quarter-size preview and full-size export.
 - **Compiled once.** Kernels are Metal source compiled by
-  `CIKernel.kernels(withMetalString:)` at first use and kept, with the
-  older kernel language as a fallback where Metal can't compile, as
-  `MorphFlow` does. SwiftPM can't build Core Image metallibs, which would
-  only save the first compile.
+  `CIKernel.kernels(withMetalString:)` and kept: in the background just
+  after launch, now that they are packages (see
+  [effect-packages.md](effect-packages.md#where-packages-come-from)).
+  There is no fallback to the older kernel language (see step 1 of
+  [Building it](#building-it)). SwiftPM can't build Core Image
+  metallibs, which would only save the first compile.
 - **Not used:** GameplayKit's `GKNoise` (CPU, too slow per frame), Metal
   Performance Shaders through `CIImageProcessorKernel` (it breaks Core
   Image's pass fusion, and every kind here fits a cheaper rung), and
@@ -201,13 +205,13 @@ dangerous flashing is listed under [Not yet](#not-yet).
 
 ## Not yet
 
-- Driving any setting from a beat map ([beat-matching.md](beat-matching.md)),
-  so pulses land on the beat without keyframing each one.
-- Driving a setting from the music's level or frequency bands, from the
-  mix meter's analysis.
 - A flash check of a timeline or export against the three-flashes rule.
 - A pixel sort kind: sorting runs of pixels needs a GPU sort per row,
   which doesn't fit Core Image's per-pixel model.
+
+Driving a setting from a beat map or from a sound's frequency bands, once
+listed here, is done by the Beat Keys and Audio Keys effects (see
+[keyframing-effects.md](keyframing-effects.md)).
 
 ## Building it
 
@@ -257,7 +261,8 @@ In order, each step usable on its own:
      each function marked `[[stitchable]]`; a kernel that doesn't compile
      leaves the picture as it is, and the error is logged.
    - **Each kernel is compiled from a source of its own**, the shared
-     functions before it (`LookKernels.split`). Compiled together from one
+     functions (`LookKernels.prelude`) before it, as each package's is
+     now (`PackageKernels`). Compiled together from one
      source, Core Image mistook them for each other within a `CIContext`
      and drew one look's cached picture for another's, which only shows
      when several are drawn in one context, as the app always does
@@ -335,10 +340,10 @@ In order, each step usable on its own:
    Distortion category. They draw the steps above them again at other
    moments, as Trails draws the finished clip: the composition gives the
    clip's footage again on tracks of its own, `delay` later for each
-   earlier moment the effects ask for (`Effect.momentDelays`, on the
-   timeline's frames by `MomentDelays`, shared between effects asking for
-   the same, at the most any keyframe asks) and some frames ahead in the
-   file for Flow Smear (`MediaDraw.moments`, `.ahead`). The compositor
+   earlier moment the effects ask for (`Effect.momentDelays`, from each
+   package's `pictures` and rounded to the timeline's frames, shared
+   between effects asking for the same, at the most any keyframe asks)
+   and some frames ahead in the file for Flow Smear (`MediaDraw.moments`, `.ahead`). The compositor
    gives `runStack` a way to draw the steps above a look from one of those
    copies, resolved at that moment (`stepsAbove`); a shape clip's are its
    shapes then and a still's its picture, while a nested timeline has no
