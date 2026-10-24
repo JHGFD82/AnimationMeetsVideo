@@ -1,17 +1,20 @@
+import CoreMedia
 import Foundation
 
 /// Names an edit for the Edit menu by comparing the project before and
 /// after it, as `ProjectHistory` finds edits: what was done and to what,
-/// such as "Undo Trim End of “Interview”" or "Undo Change Blur Radius on
-/// “Interview”". No call site has to say what it did, so a new kind of
-/// edit still gets a name, if only a general one ("Edit “Interview”").
+/// such as "Undo Trim End of Scene 23 of video.mp4" or "Undo Change Blur
+/// Radius on Scene 4 of interview.mov". A clip is named by the scene of
+/// its video it plays, once the video's scenes are found, and by its file
+/// otherwise. No call site has to say what it did, so a new kind of edit
+/// still gets a name, if only a general one ("Edit Scene 4 of …").
 ///
 /// Each step also has an identity that is never shown: a hash of what was
 /// done and the IDs of what it was done to. Quick changes merge into one
 /// undo step only when their identities match, so the same control
 /// stepped by the arrow keys is one step, while the same edit to two
 /// clips, or two edits to one clip, are always two, even when their names
-/// read the same (two clips from one file).
+/// read the same (two clips of one scene).
 enum ProjectChange {
     struct Step: Equatable {
         /// For the Edit menu: "Undo" and "Redo" go before it.
@@ -21,25 +24,75 @@ enum ProjectChange {
         let identity: Int
     }
 
+    /// The scenes of a video asset in a project, in order, or nil while
+    /// they aren't known (see `EditingProject.scenes(ofAsset:track:)`).
+    typealias SceneLookup = (EditingProject, UUID) -> [SceneRange]?
+
+    /// File names longer than this are shortened in the middle, keeping
+    /// the extension: "A very long name of…take 3.mp4".
+    static let longestFileName = 32
+
     /// What the change from `before` to `after` did, or nil when nothing
-    /// changed.
-    static func step(from before: EditingProject, to after: EditingProject) -> Step? {
-        guard let found = describe(before, after) else { return nil }
+    /// changed. `scenes` finds the scenes clips are named by.
+    static func step(from before: EditingProject, to after: EditingProject, scenes: SceneLookup? = nil) -> Step? {
+        guard let found = Describer(scenes: scenes).describe(before, after) else { return nil }
         var hasher = Hasher()
         hasher.combine(found.what)
         for id in found.ids { hasher.combine(id) }
         return Step(name: found.name, identity: hasher.finalize())
     }
 
-    /// A step before it is hashed: its name, a token for the kind of edit,
-    /// and the IDs of what it changed, in a stable order.
-    private struct Found {
-        let name: String
-        let what: String
-        let ids: [UUID]
+    /// `name` no longer than `longestFileName`, cut in the middle of the
+    /// part before the extension.
+    static func shortened(fileName name: String) -> String {
+        guard name.count > longestFileName else { return name }
+        let ext = (name as NSString).pathExtension
+        let suffix = ext.isEmpty ? "" : "." + ext
+        let base = ext.isEmpty ? name : String(name.dropLast(suffix.count))
+        let room = max(longestFileName - suffix.count - 1, 2)
+        let head = (room * 2) / 3
+        return base.prefix(head) + "…" + base.suffix(room - head) + suffix
     }
 
-    private static func describe(_ before: EditingProject, _ after: EditingProject) -> Found? {
+    static func quoted(_ name: String) -> String {
+        "\u{201C}\(name)\u{201D}"
+    }
+}
+
+// MARK: - Describing
+
+/// A step before it is hashed: its name, a token for the kind of edit,
+/// and the IDs of what it changed, in a stable order.
+private struct Found {
+    let name: String
+    let what: String
+    let ids: [UUID]
+}
+
+/// An edit to one clip, named with a place for which clip ("%@"), so the
+/// same edit to several clips can be named together.
+private struct ClipEdit {
+    let template: String
+    let what: String
+    /// What inside the clip it changed, such as an effect and control.
+    var ids: [UUID] = []
+
+    func name(for label: String) -> String {
+        template.replacingOccurrences(of: "%@", with: label)
+    }
+}
+
+private struct PlacedClip {
+    let clip: TimelineClip
+    let layerID: UUID
+}
+
+private struct Describer {
+    let scenes: ProjectChange.SceneLookup?
+
+    private func quoted(_ name: String) -> String { ProjectChange.quoted(name) }
+
+    func describe(_ before: EditingProject, _ after: EditingProject) -> Found? {
         if before.timelines != after.timelines {
             return timelinesChange(before, after)
         }
@@ -53,9 +106,38 @@ enum ProjectChange {
         return nil
     }
 
-    // MARK: - Timelines
+    // MARK: Labels
 
-    private static func timelinesChange(_ before: EditingProject, _ after: EditingProject) -> Found {
+    /// A media file as named in steps: its file name, shortened when long.
+    private func fileLabel(_ media: MediaClip) -> String {
+        ProjectChange.shortened(fileName: media.url?.lastPathComponent ?? media.name)
+    }
+
+    /// A clip as named in steps: the scene or scenes of its video it plays
+    /// ("Scene 23 of video.mp4", "Scenes 3–5 of video.mp4"), its file
+    /// while the scenes aren't known, or what else it plays.
+    private func clipLabel(_ clip: TimelineClip, in project: EditingProject) -> String {
+        guard case .media(let assetID) = clip.source, let media = project.mediaClip(id: assetID) else {
+            return quoted(project.resolvedInfo(for: clip.source)?.name ?? "Clip")
+        }
+        let file = fileLabel(media)
+        guard let ranges = scenes?(project, assetID), ranges.count > 1 else { return file }
+        let start = CMTimeMinimum(clip.trimStart, clip.trimEnd)
+        let end = CMTimeMaximum(clip.trimStart, clip.trimEnd)
+        // The scenes it overlaps; touching a scene at an edge isn't playing it.
+        let played = ranges.indices.filter { ranges[$0].end > start && ranges[$0].start < end }
+        guard let first = played.first, let last = played.last else { return file }
+        return first == last ? "Scene \(first + 1) of \(file)" : "Scenes \(first + 1)–\(last + 1) of \(file)"
+    }
+
+    /// One clip, or how many: "Scene 4 of video.mp4", "3 Clips".
+    private func clipsLabel(_ clips: [PlacedClip], in project: EditingProject) -> String {
+        clips.count == 1 ? clipLabel(clips[0].clip, in: project) : "\(clips.count) Clips"
+    }
+
+    // MARK: Timelines
+
+    private func timelinesChange(_ before: EditingProject, _ after: EditingProject) -> Found {
         let beforeIDs = before.timelines.map(\.id)
         let afterIDs = after.timelines.map(\.id)
         if let added = after.timelines.first(where: { !beforeIDs.contains($0.id) }) {
@@ -73,7 +155,7 @@ enum ProjectChange {
         return Found(name: "Reorder Timelines", what: "reorder-timelines", ids: [])
     }
 
-    private static func timelineChange(_ old: Timeline, _ new: Timeline, before: EditingProject, after: EditingProject) -> Found {
+    private func timelineChange(_ old: Timeline, _ new: Timeline, before: EditingProject, after: EditingProject) -> Found {
         if old.name != new.name {
             return Found(name: "Rename Timeline to \(quoted(new.name))", what: "rename-timeline", ids: [new.id])
         }
@@ -105,7 +187,8 @@ enum ProjectChange {
             let edits = changed.map { clipEdit($0.old, $0.new, in: new, project: after) }
             let ids = changed.map(\.new.clip.id)
             if edits.count == 1, let edit = edits.first {
-                return Found(name: edit.name(for: clipLabel(changed[0].new.clip, in: after)), what: edit.what, ids: ids + edit.ids)
+                // Named as it was: a trim can move a clip into another scene.
+                return Found(name: edit.name(for: clipLabel(changed[0].old.clip, in: before)), what: edit.what, ids: ids + edit.ids)
             }
             // The same edit to several clips reads as one; different edits
             // as a general one.
@@ -121,14 +204,9 @@ enum ProjectChange {
         return Found(name: "Edit \(quoted(new.name))", what: "edit-timeline", ids: [new.id])
     }
 
-    // MARK: - Clips
+    // MARK: Clips
 
-    private struct PlacedClip {
-        let clip: TimelineClip
-        let layerID: UUID
-    }
-
-    private static func clipsByID(_ timeline: Timeline) -> [UUID: PlacedClip] {
+    private func clipsByID(_ timeline: Timeline) -> [UUID: PlacedClip] {
         var found: [UUID: PlacedClip] = [:]
         for layer in timeline.layers {
             for clip in layer.clips { found[clip.id] = PlacedClip(clip: clip, layerID: layer.id) }
@@ -136,17 +214,7 @@ enum ProjectChange {
         return found
     }
 
-    /// A clip as the timeline names it, in quotes: what it plays.
-    private static func clipLabel(_ clip: TimelineClip, in project: EditingProject) -> String {
-        quoted(project.resolvedInfo(for: clip.source)?.name ?? "Clip")
-    }
-
-    /// One clip, or how many: "“Interview”", "3 Clips".
-    private static func clipsLabel(_ clips: [PlacedClip], in project: EditingProject) -> String {
-        clips.count == 1 ? clipLabel(clips[0].clip, in: project) : "\(clips.count) Clips"
-    }
-
-    private static func clipsAddedOrRemoved(
+    private func clipsAddedOrRemoved(
         added: [PlacedClip], removed: [PlacedClip], in timeline: Timeline, before: EditingProject, after: EditingProject
     ) -> Found {
         if removed.isEmpty {
@@ -175,20 +243,7 @@ enum ProjectChange {
         return Found(name: "Replace \(clipsLabel(removed, in: before))", what: "replace-clips", ids: removedIDs + added.map(\.clip.id))
     }
 
-    /// An edit to one clip, named with a place for which clip ("%@"), so
-    /// the same edit to several clips can be named together.
-    private struct ClipEdit {
-        let template: String
-        let what: String
-        /// What inside the clip it changed, such as an effect and control.
-        var ids: [UUID] = []
-
-        func name(for label: String) -> String {
-            template.replacingOccurrences(of: "%@", with: label)
-        }
-    }
-
-    private static func clipEdit(_ old: PlacedClip, _ new: PlacedClip, in timeline: Timeline, project: EditingProject) -> ClipEdit {
+    private func clipEdit(_ old: PlacedClip, _ new: PlacedClip, in timeline: Timeline, project: EditingProject) -> ClipEdit {
         if old.layerID != new.layerID {
             let layer = timeline.layer(id: new.layerID).map { quoted(project.displayName(of: $0, in: timeline)) } ?? "Another Layer"
             return ClipEdit(template: "Move %@ to \(layer)", what: "move-to-layer", ids: [new.layerID])
@@ -235,7 +290,7 @@ enum ProjectChange {
         return ClipEdit(template: "Edit %@", what: "edit-clip")
     }
 
-    private static func transitionEdit(_ old: ClipTransition?, _ new: ClipTransition?, end: String, what: String) -> ClipEdit {
+    private func transitionEdit(_ old: ClipTransition?, _ new: ClipTransition?, end: String, what: String) -> ClipEdit {
         switch (old, new) {
         case (nil, let new?):
             return ClipEdit(template: "Add \(new.kind.name) to \(end) of %@", what: "add-" + what)
@@ -252,11 +307,11 @@ enum ProjectChange {
         }
     }
 
-    // MARK: - Effects
+    // MARK: Effects
 
     /// An edit to a clip's or layer's effect stack, naming the effect and,
     /// for a value, its control.
-    private static func effectsEdit(_ old: [Effect], _ new: [Effect], stack: String) -> ClipEdit {
+    private func effectsEdit(_ old: [Effect], _ new: [Effect], stack: String) -> ClipEdit {
         let oldIDs = old.map(\.id)
         let newIDs = new.map(\.id)
         if let added = new.first(where: { !oldIDs.contains($0.id) }) {
@@ -283,9 +338,9 @@ enum ProjectChange {
         return ClipEdit(template: "Change Effects on %@", what: stack)
     }
 
-    // MARK: - Layers
+    // MARK: Layers
 
-    private static func layersChange(_ old: Timeline, _ new: Timeline, project: EditingProject, after: EditingProject) -> Found {
+    private func layersChange(_ old: Timeline, _ new: Timeline, project: EditingProject, after: EditingProject) -> Found {
         let oldIDs = old.layers.map(\.id)
         let newIDs = new.layers.map(\.id)
         if let added = new.layers.first(where: { !oldIDs.contains($0.id) }) {
@@ -305,7 +360,7 @@ enum ProjectChange {
         return Found(name: "Reorder Layers of \(quoted(new.name))", what: "reorder-layers", ids: [new.id])
     }
 
-    private static func layerChange(_ old: TimelineLayer, _ new: TimelineLayer, label: String) -> Found {
+    private func layerChange(_ old: TimelineLayer, _ new: TimelineLayer, label: String) -> Found {
         let edit: ClipEdit
         if old.customName != new.customName {
             edit = ClipEdit(template: "Rename Layer to %@", what: "rename-layer")
@@ -321,24 +376,24 @@ enum ProjectChange {
         return Found(name: edit.name(for: label), what: edit.what, ids: [new.id] + edit.ids)
     }
 
-    // MARK: - Media
+    // MARK: Media
 
-    private static func mediaChange(_ before: [MediaClip], _ after: [MediaClip]) -> Found {
+    private func mediaChange(_ before: [MediaClip], _ after: [MediaClip]) -> Found {
         let beforeIDs = before.map(\.id)
         let afterIDs = after.map(\.id)
         let added = after.filter { !beforeIDs.contains($0.id) }
         if !added.isEmpty {
-            let name = added.count == 1 ? "Import \(quoted(added[0].name))" : "Import \(added.count) Files"
+            let name = added.count == 1 ? "Import \(fileLabel(added[0]))" : "Import \(added.count) Files"
             return Found(name: name, what: "import", ids: added.map(\.id))
         }
         let removed = before.filter { !afterIDs.contains($0.id) }
         if !removed.isEmpty {
-            let name = removed.count == 1 ? "Remove \(quoted(removed[0].name))" : "Remove \(removed.count) Files"
+            let name = removed.count == 1 ? "Remove \(fileLabel(removed[0]))" : "Remove \(removed.count) Files"
             return Found(name: name, what: "remove-media", ids: removed.map(\.id))
         }
         for new in after {
             guard let old = before.first(where: { $0.id == new.id }), old != new else { continue }
-            let label = quoted(old.name)
+            let label = fileLabel(old)
             if old.name != new.name {
                 return Found(name: "Rename \(label) to \(quoted(new.name))", what: "rename-media", ids: [new.id])
             }
@@ -348,10 +403,6 @@ enum ProjectChange {
             return Found(name: "Change \(label)", what: "media", ids: [new.id])
         }
         return Found(name: "Reorder Media", what: "reorder-media", ids: [])
-    }
-
-    private static func quoted(_ name: String) -> String {
-        "\u{201C}\(name)\u{201D}"
     }
 }
 

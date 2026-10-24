@@ -33,6 +33,9 @@ final class ProjectHistory {
     var restore: ((EditingProject) -> Void)?
     /// Reads the app's project state as it is now.
     var current: (() -> EditingProject)?
+    /// The scenes of a video in a project, once found, so a step's name
+    /// can say which scene a clip plays (see `ProjectChange`).
+    var scenes: ProjectChange.SceneLookup?
 
     init(project: EditingProject) {
         baseline = project
@@ -116,7 +119,7 @@ final class ProjectHistory {
         guard project != baseline else { return }
         let before = baseline
         baseline = project
-        let step = ProjectChange.step(from: before, to: project)
+        let step = ProjectChange.step(from: before, to: project, scenes: scenes)
 
         if let last = lastRecordedAt,
            now.timeIntervalSince(last) < Self.coalescingInterval,

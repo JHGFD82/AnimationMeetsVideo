@@ -235,6 +235,10 @@ struct EditorView: View {
         history.undoManager = undoManager
         history.restore = { project = $0 }
         history.current = { project }
+        // Undo names say which scene of a video a clip plays.
+        history.scenes = { [analysis] project, assetID in
+            analysis.tracks[assetID].map { project.scenes(ofAsset: assetID, track: $0) }
+        }
     }
 
     /// Undo and redo can remove the timeline or clip the view was pointing at.
