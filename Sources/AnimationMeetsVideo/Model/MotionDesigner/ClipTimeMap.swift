@@ -87,7 +87,7 @@ struct ClipTimeMap: Equatable {
         self.restingSpeed = restingSpeed
     }
 
-    func index(of id: UUID) -> Int? { points.firstIndex { $0.id == id } }
+    func index(of id: UUID) -> Int? { points.firstIndex(id: id) }
 
     // MARK: Speeds
 

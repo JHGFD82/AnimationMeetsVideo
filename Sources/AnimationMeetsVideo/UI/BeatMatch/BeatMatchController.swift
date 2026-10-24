@@ -74,7 +74,7 @@ final class BeatMatchController {
         let map = session.map.isEmpty ? BeatMap() : session.map
         if session.isChanged {
             onEdit { project in
-                guard let index = project.clips.firstIndex(where: { $0.id == assetID }) else { return }
+                guard let index = project.clips.firstIndex(id: assetID) else { return }
                 project.clips[index].beatMap = map
             }
         }
@@ -89,7 +89,7 @@ final class BeatMatchController {
     /// beats.
     func removeBeats(assetID: UUID) {
         onEdit { project in
-            guard let index = project.clips.firstIndex(where: { $0.id == assetID }) else { return }
+            guard let index = project.clips.firstIndex(id: assetID) else { return }
             project.clips[index].beatMap = BeatMap()
         }
     }

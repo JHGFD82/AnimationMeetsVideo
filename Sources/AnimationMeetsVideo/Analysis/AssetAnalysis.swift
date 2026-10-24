@@ -286,7 +286,7 @@ final class AssetAnalysis {
     private func stillValid(_ lease: Lease) -> Bool {
         guard isCurrent(lease) else { return false }
         guard let project = projectSource?() ?? latestProject, let owner = owners[lease.id] else { return true }
-        let now = project.clips.first { $0.id == lease.id }.map { Self.input(of: $0, musicAssets: project.assetsOnMusicLayers) }
+        let now = project.clips.first(id: lease.id).map { Self.input(of: $0, musicAssets: project.assetsOnMusicLayers) }
         if now == owner.input { return true }
         update(with: project)
         return false
@@ -596,7 +596,7 @@ final class AssetAnalysis {
     private func retryRead(of id: UUID) {
         readRetries[id] = nil
         guard let package = packageURL, loading[id] == nil, !checkedPackage.contains(id),
-              let clip = (projectSource?() ?? latestProject)?.clips.first(where: { $0.id == id }), clip.url != nil
+              let clip = (projectSource?() ?? latestProject)?.clips.first(id: id), clip.url != nil
         else { return }
         beginLoad(for: clip, from: package)
     }
@@ -617,7 +617,7 @@ final class AssetAnalysis {
             beatSources[id] = ResultSource(path: nil, stamp: source)
         }
         // Read before a later Forget Original, so it is checked again here.
-        let forgotten = (projectSource?() ?? latestProject)?.clips.first { $0.id == id }?.referenceForgotten ?? false
+        let forgotten = (projectSource?() ?? latestProject)?.clips.first(id: id)?.referenceForgotten ?? false
         guard !forgotten else { return }
         if references[id] == nil, let reference = saved.reference { references[id] = reference }
         noteRejection(saved.originalScores, .originalScores, of: id)
@@ -849,7 +849,7 @@ final class AssetAnalysis {
     /// Clears what keeps `stages` from being tried again, as `retry`
     /// describes. Returns whether any of them may be.
     private func prepareRetry(of stages: [Stage], for id: UUID, in project: EditingProject) -> Bool {
-        guard let clip = project.clips.first(where: { $0.id == id }) else { return false }
+        guard let clip = project.clips.first(id: id) else { return false }
         let canCapture = Self.canCaptureReference(from: clip)
         let allowed = stages.filter { canCapture || ($0 != .reference && $0 != .pictures) }
         guard !allowed.isEmpty else { return false }

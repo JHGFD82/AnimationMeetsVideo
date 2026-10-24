@@ -32,7 +32,7 @@ extension EditingProject {
         mutingSound: Bool = false
     ) -> (layerID: UUID, clipIDs: [UUID])? {
         guard !pieces.isEmpty, pieces.allSatisfy({ mediaClip(id: $0.assetID) != nil }),
-              let index = timelines.firstIndex(where: { $0.id == timelineID })
+              let index = timelines.firstIndex(id: timelineID)
         else { return nil }
 
         let timeline = timelines[index]
@@ -77,8 +77,8 @@ extension EditingProject {
         at start: CMTime,
         mutingSound: Bool = false
     ) -> [UUID]? {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID),
               let (clips, move) = pieceInsertion(pieces, onLayer: layerID, in: timelineID, at: start, mutingSound: mutingSound)
         else { return nil }
 

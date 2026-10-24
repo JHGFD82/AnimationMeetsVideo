@@ -133,7 +133,7 @@ struct PresetsList: View {
         .overlayPreferenceValue(PresetRowFrames.self) { frames in
             GeometryReader { proxy in
                 if let shownID, let anchor = frames[shownID],
-                   let preset = model.library.presets.first(where: { $0.id == shownID }) {
+                   let preset = model.library.presets.first(id: shownID) {
                     contents(of: preset, row: proxy[anchor], in: proxy.size)
                 }
             }

@@ -52,7 +52,7 @@ extension Timeline {
     /// The song clip with this ID on a Music layer.
     func songClip(id: UUID) -> TimelineClip? {
         for layer in layers where layer.kind == .music {
-            if let clip = layer.clips.first(where: { $0.id == id }) { return clip }
+            if let clip = layer.clips.first(id: id) { return clip }
         }
         return nil
     }
@@ -175,7 +175,7 @@ extension EditingProject {
     /// the music from then on, if it didn't. Nothing happens outside the clip.
     mutating func attachToMusic(_ clipID: UUID, in timelineID: UUID, at time: CMTime) {
         guard let timeline = timeline(id: timelineID),
-              let clip = timeline.layers.flatMap(\.clips).first(where: { $0.id == clipID }),
+              let clip = timeline.layers.flatMap(\.clips).first(id: clipID),
               clip.startOffset <= time, time <= clip.endOffset
         else { return }
         let frame = clip.sourceTime(atTimelineTime: time)

@@ -91,7 +91,7 @@ struct RecordPopover: View {
             return .input(uid: uid.isEmpty ? nil : uid)
         }
         let path = String(sourceKey.dropFirst("app:".count))
-        return apps.first { $0.id == path }.map(RecordingSource.app)
+        return apps.first(id: path).map(RecordingSource.app)
     }
 
     /// "0:07" or "1:02:07".

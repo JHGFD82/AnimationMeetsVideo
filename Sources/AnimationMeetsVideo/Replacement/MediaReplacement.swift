@@ -21,7 +21,7 @@ extension EditingProject {
     /// falls in the new file. The old path is remembered, but no file is
     /// copied or deleted.
     mutating func replaceMedia(id assetID: UUID, with replacement: MediaClip, offset: CMTime) {
-        guard let index = clips.firstIndex(where: { $0.id == assetID }), let newURL = replacement.url else { return }
+        guard let index = clips.firstIndex(id: assetID), let newURL = replacement.url else { return }
         // The first replacement keeps how long the original was; later ones
         // must not mistake an earlier replacement's length for it.
         if clips[index].originalDuration == nil, !clips[index].wasReplaced {
@@ -49,14 +49,14 @@ extension EditingProject {
     /// Records that the original was forgotten. The reference data itself is
     /// deleted when the project is next saved, so this can be undone until then.
     mutating func markReferenceForgotten(forAsset assetID: UUID) {
-        guard let index = clips.firstIndex(where: { $0.id == assetID }) else { return }
+        guard let index = clips.firstIndex(id: assetID) else { return }
         clips[index].referenceForgotten = true
     }
 
     /// Changes only the alignment, for when the person re-syncs the file
     /// already in place.
     mutating func setAlignmentOffset(_ offset: CMTime, forAsset assetID: UUID) {
-        guard let index = clips.firstIndex(where: { $0.id == assetID }) else { return }
+        guard let index = clips.firstIndex(id: assetID) else { return }
         clips[index].alignmentOffset = offset
     }
 }

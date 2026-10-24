@@ -185,7 +185,7 @@ extension EffectsPanel {
         switch target {
         case .volume: ["Level"]
         case .control(let effectID, let controlID):
-            clip.effect(id: effectID)?.controls.first { $0.id == controlID }?.kind.componentNames
+            clip.effect(id: effectID)?.controls.first(id: controlID)?.kind.componentNames
         }
     }
 

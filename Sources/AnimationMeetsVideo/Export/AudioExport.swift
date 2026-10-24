@@ -107,7 +107,7 @@ enum AudioExport {
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> [URL] {
         guard let timeline = project.timeline(id: timelineID),
-              let index = project.timelines.firstIndex(where: { $0.id == timelineID })
+              let index = project.timelines.firstIndex(id: timelineID)
         else { return [] }
         let layers = timeline.layers.filter { project.layerPlaysAudio($0) }
         guard !layers.isEmpty else { throw CompositionError.exportFailed("The timeline has no sound.") }

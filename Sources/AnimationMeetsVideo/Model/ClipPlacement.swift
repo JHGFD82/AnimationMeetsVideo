@@ -107,7 +107,7 @@ extension EditingProject {
     /// stays clear of the one before. Keyframes that land on one frame
     /// merge, keeping the later. Audio clips stay where they are.
     mutating func alignToFrames(timeline id: UUID) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == id }) else { return }
+        guard let tIndex = timelines.firstIndex(id: id) else { return }
         let project = self
         let timeline = timelines[tIndex]
         let frame = timeline.frameDuration
@@ -162,7 +162,7 @@ extension EditingProject {
     {
         guard let timeline = timeline(id: timelineID),
               let layer = timeline.layer(id: layerID),
-              let clip = layer.clips.first(where: { $0.id == id })
+              let clip = layer.clips.first(id: id)
         else {
             return nil
         }

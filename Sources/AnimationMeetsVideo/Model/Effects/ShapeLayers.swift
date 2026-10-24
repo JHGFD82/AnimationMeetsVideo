@@ -35,7 +35,7 @@ extension EditingProject {
         from start: CMTime = .zero,
         duration: CMTime = MediaClip.stillLength
     ) -> (layerID: UUID, clipID: UUID)? {
-        guard kind.drawsShape, let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return nil }
+        guard kind.drawsShape, let tIndex = timelines.firstIndex(id: timelineID) else { return nil }
         let timeline = timelines[tIndex]
         let length = CMTimeMaximum(timeline.frameDuration, timeline.frameAligned(duration, .down))
         var shape = Effect(kind: kind)
@@ -46,7 +46,7 @@ extension EditingProject {
         )
         clip.effects = [shape]
         let layer = TimelineLayer(customName: nil, kind: .video, clips: [clip])
-        timelines[tIndex].layers.insert(layer, at: index.clamped(between: 0, and: timelines[tIndex].layers.count))
+        timelines[tIndex].layers.insert(layer, clampedAt: index)
         return (layer.id, clip.id)
     }
 }

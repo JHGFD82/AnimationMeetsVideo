@@ -193,7 +193,7 @@ final class MotionDesignSession: SecondsViewport {
     /// nearer something to snap to lands on it (`snapped`), to the nearest
     /// frame, as a moved clip does.
     func dragPiece(_ id: UUID, by delta: CMTime, snapTolerance: Double? = nil) {
-        guard let start = dragStart, let piece = start.pieces.first(where: { $0.id == id }) else { return }
+        guard let start = dragStart, let piece = start.pieces.first(id: id) else { return }
         var seconds = delta.seconds
         dragSnapTime = nil
         if let snapTolerance {
@@ -226,7 +226,7 @@ final class MotionDesignSession: SecondsViewport {
     /// Trims the selected clip's edge by whole frames: later reveals footage
     /// at the end and hides it at the start.
     func trimSelectedPiece(_ edge: MotionRun.Edge, byFrames frames: Int) {
-        guard let id = selectedPieceID, let piece = run.pieces.first(where: { $0.id == id }) else { return }
+        guard let id = selectedPieceID, let piece = run.pieces.first(id: id) else { return }
         let at = edge == .start ? piece.span.start : piece.span.end
         let delta = CMTimeMultiply(run.frameDuration, multiplier: Int32(frames))
         perform("Trim Clip") { $0.trim(id, edge: edge, to: CMTimeAdd(at, delta)) }

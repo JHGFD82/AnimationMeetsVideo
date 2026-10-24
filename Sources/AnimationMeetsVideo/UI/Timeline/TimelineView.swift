@@ -915,7 +915,7 @@ struct TimelineView: View {
                 if layer.isAdjustment {
                     ForEach(layer.clips) { clip in
                         let reached = project.reachedLayers(of: clip, on: layer, in: timeline)
-                        let bottom = reached.compactMap { target in layers.firstIndex { $0.id == target.id } }.max() ?? index
+                        let bottom = reached.compactMap { target in layers.firstIndex(id: target.id) }.max() ?? index
                         let isSelected = selection?.timelineClipID == clip.id
                         let tone = Design.ClipTone.adjustment.color
                         let shape = RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
@@ -994,7 +994,7 @@ struct TimelineView: View {
                         onDropScenes: { payloads, time in onDropScenes(payloads, layer.id, time, nil) },
                         onEditJoint: { clipID in
                             expandedJoint = clipID
-                            if let clip = layer.clips.first(where: { $0.id == clipID }) {
+                            if let clip = layer.clips.first(id: clipID) {
                                 onSelectTransition(layer.id, clip, .leading)
                             }
                         },

@@ -95,7 +95,7 @@ extension EditingProject {
     /// Returns where it went; nil when it can't go into this timeline.
     @discardableResult
     mutating func paste(_ bundle: ClipBundle, in timelineID: UUID, onto layerID: UUID?, at start: CMTime) -> (layerID: UUID, clipID: UUID)? {
-        guard canPaste(bundle, into: timelineID), let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return nil }
+        guard canPaste(bundle, into: timelineID), let tIndex = timelines.firstIndex(id: timelineID) else { return nil }
         let timeline = timelines[tIndex]
         var clip = coveringWholeFrames(bundle.clip.duplicated(), in: timeline)
         // An adjustment clip reaching a layer of another timeline reaches
@@ -103,7 +103,7 @@ extension EditingProject {
         if let reach = clip.reach, timeline.layer(id: reach) == nil { clip.reach = nil }
 
         let candidates = [layerID, bundle.timelineID == timelineID ? bundle.layerID : nil].compactMap { $0 }
-        if let target = candidates.compactMap({ id in timeline.layers.firstIndex { $0.id == id } })
+        if let target = candidates.compactMap({ id in timeline.layers.firstIndex(id: id) })
             .first(where: { layer(timeline.layers[$0], accepts: clip) }) {
             var others = timeline.layers[target].clips
             let move = insertion(lasting: clip.placedDuration, frameLocked: isFrameLocked(clip), among: others, in: timeline, at: start)
@@ -126,7 +126,7 @@ extension EditingProject {
     /// Option-drag of a clip over the layer names.
     @discardableResult
     mutating func paste(_ bundle: ClipBundle, in timelineID: UUID, newLayer kind: LayerKind, at start: CMTime) -> (layerID: UUID, clipID: UUID)? {
-        guard canPaste(bundle, into: timelineID), let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return nil }
+        guard canPaste(bundle, into: timelineID), let tIndex = timelines.firstIndex(id: timelineID) else { return nil }
         var clip = coveringWholeFrames(bundle.clip.duplicated(), in: timelines[tIndex])
         if let reach = clip.reach, timelines[tIndex].layer(id: reach) == nil { clip.reach = nil }
         return insertOnNewLayer(clip, kind: kind, in: tIndex, at: start)
@@ -149,8 +149,8 @@ extension EditingProject {
     /// the Finder names a copy. Returns the copy's ID.
     @discardableResult
     mutating func duplicateLayer(_ layerID: UUID, in timelineID: UUID, toPositionInKind position: Int? = nil) -> UUID? {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let from = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let from = timelines[tIndex].layers.firstIndex(id: layerID)
         else { return nil }
         var copy = timelines[tIndex].layers[from]
         copy.id = UUID()

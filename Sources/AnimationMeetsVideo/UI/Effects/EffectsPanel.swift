@@ -768,7 +768,7 @@ struct EffectsPanel: View {
     /// and not every row.
     private func heldControl(_ control: EffectControl, of effect: Effect, in clip: TimelineClip) -> EffectControl? {
         guard (control.kind.isLinkable && control.linked) || control.isAnimated, let held = projectState?.held else { return nil }
-        return held.clipAndLayer(clip.id, in: timelineID)?.clip.effect(id: effect.id)?.controls.first { $0.id == control.id }
+        return held.clipAndLayer(clip.id, in: timelineID)?.clip.effect(id: effect.id)?.controls.first(id: control.id)
     }
 
     @ViewBuilder
@@ -949,7 +949,7 @@ struct EffectsPanel: View {
         let clipID = c.clip.id
         let (controlID, effectID, timelineID) = (control.id, effect.id, timelineID)
         return { [state = projectState] in
-            let held = state?.held?.clipAndLayer(clipID, in: timelineID)?.clip.effect(id: effectID)?.controls.first { $0.id == controlID }
+            let held = state?.held?.clipAndLayer(clipID, in: timelineID)?.clip.effect(id: effectID)?.controls.first(id: controlID)
             return !(held ?? control).isAtDefault(like: fresh)
         }
     }

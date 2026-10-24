@@ -84,7 +84,7 @@ extension BeatMap {
     /// `shortestSection` to its other edge. Within `snap` of a neighbour's
     /// edge (or the song's start or end) it clicks in against it.
     mutating func moveEdge(_ edge: Edge, of id: UUID, to time: CMTime, duration: CMTime, snap: CMTime) {
-        guard let index = sections.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = sections.firstIndex(id: id) else { return }
         let section = sections[index]
         switch edge {
         case .start:

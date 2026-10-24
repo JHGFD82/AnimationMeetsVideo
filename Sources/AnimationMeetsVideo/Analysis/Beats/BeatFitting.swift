@@ -105,7 +105,7 @@ enum BeatFitting {
     static func fill(
         _ map: BeatMap, section id: UUID, curve: OnsetCurve, sampleRate: Double, duration: CMTime, tempo: Double? = nil
     ) throws -> BeatMap {
-        guard let index = map.sections.firstIndex(where: { $0.id == id }) else { return map }
+        guard let index = map.sections.firstIndex(id: id) else { return map }
         var map = map
         let section = map.sections[index]
         switch section.kind {

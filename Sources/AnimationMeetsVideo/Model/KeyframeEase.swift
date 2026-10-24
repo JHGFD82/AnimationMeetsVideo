@@ -303,16 +303,16 @@ extension EditingProject {
             return clipAndLayer(clipID, in: key.timelineID)?.clip.time.speed.asComponents
         case .control(_, let clipID, let effectID, let controlID):
             let control = clipAndLayer(clipID, in: key.timelineID)?.clip.effect(id: effectID)?
-                .controls.first { $0.id == controlID }
+                .controls.first(id: controlID)
             return control.flatMap { $0.kind.isChoice ? nil : $0.number }
         }
     }
 
     mutating func editComponents(of key: ParameterKey, _ change: (inout AnimatedValue<ComponentValue>) -> Void) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == key.timelineID }) else { return }
+        guard let tIndex = timelines.firstIndex(id: key.timelineID) else { return }
         switch key.parameter {
         case .layerVolume(let layerID):
-            guard let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }) else { return }
+            guard let lIndex = timelines[tIndex].layers.firstIndex(id: layerID) else { return }
             var components = timelines[tIndex].layers[lIndex].volume.asComponents
             change(&components)
             timelines[tIndex].layers[lIndex].volume = AnimatedValue(components: components)
@@ -323,7 +323,7 @@ extension EditingProject {
                 clip.volume = AnimatedValue(components: components)
             }
         case .layerPan(let layerID):
-            guard let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }) else { return }
+            guard let lIndex = timelines[tIndex].layers.firstIndex(id: layerID) else { return }
             var components = timelines[tIndex].layers[lIndex].pan.asComponents
             change(&components)
             timelines[tIndex].layers[lIndex].pan = AnimatedValue(components: components)
@@ -348,7 +348,7 @@ extension EditingProject {
             }
         case .control(_, let clipID, let effectID, let controlID):
             editEffect(effectID, ofClip: clipID, in: key.timelineID) { effect in
-                guard let c = effect.controls.firstIndex(where: { $0.id == controlID }) else { return }
+                guard let c = effect.controls.firstIndex(id: controlID) else { return }
                 change(&effect.controls[c].number)
             }
         }

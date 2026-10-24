@@ -43,8 +43,8 @@ extension EditingProject {
     /// a sound layer. Returns it, or nil when there was nothing to detach.
     @discardableResult
     mutating func detachAudio(of clipIDs: Set<UUID>? = nil, in timelineID: UUID, layer layerID: UUID) -> UUID? {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID)
         else {
             return nil
         }

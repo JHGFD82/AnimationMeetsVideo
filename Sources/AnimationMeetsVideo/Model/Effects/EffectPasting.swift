@@ -189,7 +189,7 @@ extension EditingProject {
             if case .control(let effectID, let controlID)? = setup.target,
                let original = items.first(where: { $0.effect.id == effectID })?.effect,
                let c = original.controlIndex(controlID), let newEffectID = newIDs[effectID],
-               let t = pasted.firstIndex(where: { $0.id == newEffectID }), pasted[t].controls.indices.contains(c) {
+               let t = pasted.firstIndex(id: newEffectID), pasted[t].controls.indices.contains(c) {
                 moved.target = .control(effectID: newEffectID, controlID: pasted[t].controls[c].id)
                 moved.base = setup.base?.shifted(by: delta)
                 let oldID = items[p].effect.id, newID = pasted[p].id

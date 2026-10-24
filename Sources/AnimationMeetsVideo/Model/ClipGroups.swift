@@ -68,7 +68,7 @@ extension EditingProject {
 
     /// Removes the clips from their layers, which stay.
     mutating func deleteClips(_ ids: Set<UUID>, in timelineID: UUID) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return }
+        guard let tIndex = timelines.firstIndex(id: timelineID) else { return }
         for l in timelines[tIndex].layers.indices {
             timelines[tIndex].layers[l].clips.removeAll { ids.contains($0.id) }
         }
@@ -83,11 +83,11 @@ extension EditingProject {
     @discardableResult
     mutating func nestClips(_ ids: Set<UUID>, in timelineID: UUID, named name: String) -> (timelineID: UUID, layerID: UUID, clipID: UUID)? {
         guard let group = clipGroup(ids, in: timelineID),
-              let tIndex = timelines.firstIndex(where: { $0.id == timelineID })
+              let tIndex = timelines.firstIndex(id: timelineID)
         else { return nil }
         let source = timelines[tIndex]
         let nestedID = addTimeline(name: name, frameSize: source.frameSize, frameRate: source.frameRate, colorSpace: source.colorSpace)
-        guard let nIndex = timelines.firstIndex(where: { $0.id == nestedID }) else { return nil }
+        guard let nIndex = timelines.firstIndex(id: nestedID) else { return nil }
 
         // Their layers, topmost first, holding only the picked clips and
         // starting at zero; an adjustment's reach down to a layer left
@@ -129,7 +129,7 @@ extension EditingProject {
     /// all of them are off already, as V does. False when none is there.
     @discardableResult
     mutating func toggleEnabled(ofClips ids: Set<UUID>, in timelineID: UUID) -> Bool {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return false }
+        guard let tIndex = timelines.firstIndex(id: timelineID) else { return false }
         let clips = timelines[tIndex].layers.flatMap(\.clips).filter { ids.contains($0.id) }
         guard !clips.isEmpty else { return false }
         let enabled = clips.allSatisfy { !$0.enabled }

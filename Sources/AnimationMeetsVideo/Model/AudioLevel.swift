@@ -71,8 +71,8 @@ extension EditingProject {
     /// Applies `change` to a layer's volume (decibels). Times passed in
     /// should already be snapped to the timeline's frames.
     mutating func editVolume(of layerID: UUID, in timelineID: UUID, _ change: (inout AnimatedValue<Double>) -> Void) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID)
         else {
             return
         }
@@ -81,8 +81,8 @@ extension EditingProject {
 
     /// Applies `change` to a layer's pan, as `editVolume` does its volume.
     mutating func editPan(of layerID: UUID, in timelineID: UUID, _ change: (inout AnimatedValue<Double>) -> Void) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID)
         else {
             return
         }

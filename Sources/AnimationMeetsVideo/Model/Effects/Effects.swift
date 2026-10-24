@@ -485,7 +485,7 @@ struct Effect: Identifiable, Equatable, Sendable {
     }
 
     func controlIndex(_ id: UUID) -> Int? {
-        controls.firstIndex { $0.id == id }
+        controls.firstIndex(id: id)
     }
 
     /// True when nothing in the effect changes the picture, or for a
@@ -568,7 +568,7 @@ struct Effect: Identifiable, Equatable, Sendable {
     mutating func moveControl(_ id: UUID, toIndex index: Int) {
         guard let from = controlIndex(id) else { return }
         let control = controls.remove(at: from)
-        controls.insert(control, at: index.clamped(between: 0, and: controls.count))
+        controls.insert(control, clampedAt: index)
     }
 
     /// Puts back a control that was deleted, at the end.
@@ -666,7 +666,7 @@ extension TimelineClip {
 
     /// The effect with ID `id`, in either list.
     func effect(id: UUID) -> Effect? {
-        stack(holding: id).flatMap { self[keyPath: $0].first { $0.id == id } }
+        stack(holding: id).flatMap { self[keyPath: $0].first(id: id) }
     }
 
     /// The span of time in which something in the clip's stack, or its
@@ -682,9 +682,9 @@ extension EditingProject {
     /// Applies `change` to the clip with ID `clipID` in the timeline,
     /// wherever it sits.
     mutating func editClip(_ clipID: UUID, in timelineID: UUID, _ change: (inout TimelineClip) -> Void) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return }
+        guard let tIndex = timelines.firstIndex(id: timelineID) else { return }
         for lIndex in timelines[tIndex].layers.indices {
-            if let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == clipID }) {
+            if let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(id: clipID) {
                 change(&timelines[tIndex].layers[lIndex].clips[cIndex])
                 return
             }
@@ -695,7 +695,7 @@ extension EditingProject {
     func clipAndLayer(_ clipID: UUID, in timelineID: UUID) -> (clip: TimelineClip, layer: TimelineLayer)? {
         guard let timeline = timeline(id: timelineID) else { return nil }
         for layer in timeline.layers {
-            if let clip = layer.clips.first(where: { $0.id == clipID }) { return (clip, layer) }
+            if let clip = layer.clips.first(id: clipID) { return (clip, layer) }
         }
         return nil
     }
@@ -801,7 +801,7 @@ extension EditingProject {
         editClip(clipID, in: timelineID) { clip in
             guard let stack = clip.stack(holding: effectID), let from = clip[keyPath: stack].index(of: effectID) else { return }
             let effect = clip[keyPath: stack].remove(at: from)
-            clip[keyPath: stack].insert(effect, at: index.clamped(between: 0, and: clip[keyPath: stack].count))
+            clip[keyPath: stack].insert(effect, clampedAt: index)
         }
     }
 

@@ -466,7 +466,7 @@ extension EditingProject {
         _ change: (inout ClipTime) -> Void
     ) {
         guard let timeline = timeline(id: timelineID),
-              var clip = timeline.layer(id: layerID)?.clips.first(where: { $0.id == clipID })
+              var clip = timeline.layer(id: layerID)?.clips.first(id: clipID)
         else {
             return
         }

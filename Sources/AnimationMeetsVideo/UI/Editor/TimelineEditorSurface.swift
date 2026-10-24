@@ -160,7 +160,7 @@ struct TimelineEditorSurface<Library: View>: View {
     /// What the viewer's banner says while Show Up to Here is on.
     private var partialBanner: String? {
         guard let showing = partialView,
-              let effect = project.clipAndLayer(showing.clipID, in: timelineID)?.clip.effects.first(where: { $0.id == showing.effectID })
+              let effect = project.clipAndLayer(showing.clipID, in: timelineID)?.clip.effects.first(id: showing.effectID)
         else {
             return nil
         }
@@ -173,7 +173,7 @@ struct TimelineEditorSurface<Library: View>: View {
         else {
             return nil
         }
-        return layer.clips.first { $0.id == selection.timelineClipID }
+        return layer.clips.first(id: selection.timelineClipID)
     }
 
     /// Says which of the files this timeline plays are offline, if any.

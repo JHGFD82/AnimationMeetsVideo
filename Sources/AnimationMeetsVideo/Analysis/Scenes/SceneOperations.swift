@@ -113,7 +113,7 @@ extension EditingProject {
     }
 
     mutating func editScenes(ofAsset assetID: UUID, _ change: (inout SceneEdits) -> Void) {
-        guard let index = clips.firstIndex(where: { $0.id == assetID }) else { return }
+        guard let index = clips.firstIndex(id: assetID) else { return }
         change(&clips[index].sceneEdits)
     }
 

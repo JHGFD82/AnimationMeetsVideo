@@ -8,8 +8,8 @@ import Foundation
 extension EditingProject {
     /// Applies `change` to a layer's sound effects.
     mutating func editLayerEffects(of layerID: UUID, in timelineID: UUID, _ change: (inout [Effect]) -> Void) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID)
         else { return }
         change(&timelines[tIndex].layers[lIndex].audioEffects)
     }
@@ -42,7 +42,7 @@ extension EditingProject {
         editLayerEffects(of: layerID, in: timelineID) { effects in
             guard let from = effects.index(of: effectID) else { return }
             let effect = effects.remove(at: from)
-            effects.insert(effect, at: index.clamped(between: 0, and: effects.count))
+            effects.insert(effect, clampedAt: index)
         }
     }
 }
