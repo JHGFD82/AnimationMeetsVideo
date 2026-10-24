@@ -74,4 +74,74 @@ import Testing
         let again = try EffectPackageStore.read(try EffectPackageStore.copyPackage(twirl, in: folder))
         #expect(again.id == "user.twirlCopy2" && again.name == "Twirl Copy 2")
     }
+
+    /// A package elsewhere, as one downloaded, made under `name`.
+    private func downloaded(_ name: String, renamedTo id: String? = nil) throws -> URL {
+        let url = try EffectPackageStore.makePackage(named: name, in: folder.appending(path: "Downloads"))
+        if let id {
+            let manifest = url.appending(path: "effect.json")
+            let text = try String(contentsOf: manifest, encoding: .utf8)
+            try text.replacingOccurrences(of: "\"user.\(name.lowercased())\"", with: "\"\(id)\"").write(to: manifest, atomically: true, encoding: .utf8)
+        }
+        return url
+    }
+
+    @Test func openingAPackageInstallsItOrSaysWhatItWouldReplace() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let effects = folder.appending(path: "Effects")
+        let glow = try downloaded("Glow")
+
+        // New: copied in and installed.
+        let (package, opening) = try EffectPackageStore.opening(glow, into: effects)
+        #expect(package.id == "user.glow")
+        #expect(opening == .install(destination: effects.appending(path: "Glow.amveffect", directoryHint: .isDirectory)))
+        let copied = try EffectPackageStore.copyIn(glow, into: effects)
+        #expect(try EffectPackageStore.read(copied).id == "user.glow")
+
+        // Opened again: its folder name is taken.
+        #expect(try EffectPackageStore.opening(glow, into: effects).1 == .replace(existing: [copied]))
+
+        // Installed, and opened from the Effects folder itself.
+        let installed = EffectRegistry.withBuiltIns([try EffectPackageStore.read(copied)])
+        try EffectRegistry.$override.withValue(installed) {
+            #expect(try EffectPackageStore.opening(copied, into: effects).1 == .alreadyInstalled)
+            // Another folder with the same ID replaces the installed one.
+            let renamed = try downloaded("Shine", renamedTo: "user.glow")
+            #expect(try EffectPackageStore.opening(renamed, into: effects).1 == .replace(existing: [copied]))
+        }
+
+        // Replacing removes the old folder and copies the new one.
+        try EffectPackageStore.copyIn(glow, into: effects, replacing: [copied])
+        #expect(FileManager.default.fileExists(atPath: copied.appending(path: "effect.json").path))
+    }
+
+    @Test func aPackageCantTakeTheIDOfOneThatShips() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        // The app's own IDs have no dot, which every other package's needs.
+        let twirl = try downloaded("Twirl", renamedTo: "twirl")
+        #expect {
+            try EffectPackageStore.opening(twirl, into: folder.appending(path: "Effects"))
+        } throws: { error in
+            error.localizedDescription.contains("needs a dot")
+        }
+    }
+
+    @Test func theAppBundleDeclaresThePackageType() throws {
+        var root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while !FileManager.default.fileExists(atPath: root.appending(path: "Package.swift").path), root.pathComponents.count > 1 {
+            root = root.deletingLastPathComponent()
+        }
+        let plist = try #require(
+            PropertyListSerialization.propertyList(from: Data(contentsOf: root.appending(path: "Packaging/Info.plist")), format: nil)
+                as? [String: Any]
+        )
+        let declared = try #require((plist["UTExportedTypeDeclarations"] as? [[String: Any]])?.first {
+            $0["UTTypeIdentifier"] as? String == EffectPackageStore.packageTypeIdentifier
+        })
+        #expect((declared["UTTypeConformsTo"] as? [String])?.contains("com.apple.package") == true)
+        let tags = declared["UTTypeTagSpecification"] as? [String: Any]
+        #expect(tags?["public.filename-extension"] as? [String] == [EffectPackage.fileExtension])
+        let documents = plist["CFBundleDocumentTypes"] as? [[String: Any]] ?? []
+        #expect(documents.contains { $0["LSItemContentTypes"] as? [String] == [EffectPackageStore.packageTypeIdentifier] })
+    }
 }

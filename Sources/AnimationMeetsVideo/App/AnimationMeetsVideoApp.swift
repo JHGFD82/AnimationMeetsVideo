@@ -120,6 +120,11 @@ struct AnimationMeetsVideoApp: App {
                 .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
                 .onOpenURL { url in
                     guard url.isFileURL else { return }
+                    // An effect package is installed, not opened as a project.
+                    if url.pathExtension == EffectPackage.fileExtension {
+                        NewEffectPackagePrompt.shared.open(url)
+                        return
+                    }
                     if launchChecked {
                         Task { await openRequestedProject(url) }
                     } else {

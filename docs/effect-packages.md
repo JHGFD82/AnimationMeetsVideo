@@ -1,10 +1,11 @@
 # Effect packages
 
-Status: **built** through step 13 of [Building it](#building-it): every
-look is a package, reading [pictures besides the
+Status: **built** (see [Building it](#building-it)): every look is a
+package, reading [pictures besides the
 clip's](#pictures-besides-the-clips) where it needs them; there is a
 guide to [writing a package](#making-a-package), and the app makes one
-new or from a look. Opening one from Finder is planned. `EffectKind` and `ControlKind`
+new or from a look, and installs one opened from Finder. What remains is
+under [Not yet](#not-yet). `EffectKind` and `ControlKind`
 are names looked up in an `EffectRegistry` of the effects written in
 Swift (BuiltInEffects.swift), the 25 looks that ship as packages
 (Resources/Effects) and the person's packages, which
@@ -304,8 +305,7 @@ What to know:
 
 ### Starting one from the app
 
-Status: **New Effect Package and Make a Package from This built**;
-opening a package planned.
+Status: **built**.
 
 - **New Effect Package…**, in the File menu and the effects library's
   context menu (beside **Show Effects Folder**), asks for a name and
@@ -327,9 +327,15 @@ opening a package planned.
   a package type (`com.jhgfd.animationmeetsvideo.effect`, kept in sync
   with `EffectPackageStore.packageTypeIdentifier`), so Finder shows one
   as a single item. Double-clicking one, or dropping it on the app's icon,
-  reads it; a package that can be used is copied into the Effects folder,
-  and one that can't says why. One whose folder name or ID is already
-  installed asks whether to replace it.
+  reads it (`EffectPackageStore.opening`):
+  - one that can't be used says why;
+  - a new one is copied into the Effects folder and installed, and the app
+    says where it is in the library;
+  - one already in the Effects folder and installed says so;
+  - one whose folder name or ID another package there has asks whether to
+    replace it. Replacing removes the other's folder and takes effect at
+    the next launch. A look of the app's can't be replaced: their IDs
+    have no dot, and every other package's needs one.
 
 A package made or opened this way is installed at once, beside the others
 in the registry (`EffectRegistry.adding`), without opening the app again:
@@ -588,4 +594,4 @@ In order, each step usable on its own:
 12. Installing a package while the app runs, and New Effect Package.
     **Built.**
 13. Make a Package from This. **Built.**
-14. `.amveffect` as a Finder package type, opened by the app.
+14. `.amveffect` as a Finder package type, opened by the app. **Built.**

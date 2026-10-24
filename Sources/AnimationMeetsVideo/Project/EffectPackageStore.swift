@@ -72,6 +72,10 @@ enum EffectPackageStore {
 
     static let manifestName = "effect.json"
 
+    /// The package type `Packaging/Info.plist` declares for `.amveffect`,
+    /// so Finder shows one as a single item and opens it in the app.
+    static let packageTypeIdentifier = "com.jhgfd.animationmeetsvideo.effect"
+
     /// The packages that ship with the app, in its resource bundle. In the
     /// app that is in Contents/Resources (scripts/build-app.sh puts it
     /// there); built by SwiftPM, beside the executable.
@@ -252,6 +256,51 @@ enum EffectPackageStore {
         json["version"] = 1
         try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]).write(to: manifest)
         return url
+    }
+
+    // MARK: Opening one
+
+    /// What opening the package at `url` from Finder does.
+    enum Opening: Equatable {
+        /// Copied into the Effects folder at `destination` and installed.
+        case install(destination: URL)
+        /// It is the one installed, in the Effects folder.
+        case alreadyInstalled
+        /// Another package has its folder name or ID: these folders, which
+        /// replacing it removes.
+        case replace(existing: [URL])
+    }
+
+    /// Reads the package at `url` and says what opening it does, against
+    /// the registry in use and the packages in `folder`. Throws why it
+    /// can't be used; one can't replace a look of the app's, whose IDs have
+    /// no dot, as every other package's must.
+    static func opening(_ url: URL, into folder: URL = defaultFolder) throws -> (EffectPackage, Opening) {
+        let package = try read(url)
+        let destination = folder.appending(path: url.lastPathComponent, directoryHint: .isDirectory)
+        let installed = EffectRegistry.current.effect(named: package.id)?.package
+        if url.standardizedFileURL == destination.standardizedFileURL {
+            return (package, installed?.url.standardizedFileURL == destination.standardizedFileURL ? .alreadyInstalled : .install(destination: destination))
+        }
+        var existing: [URL] = []
+        if FileManager.default.fileExists(atPath: destination.path) { existing.append(destination) }
+        if let installed, !existing.contains(where: { $0.standardizedFileURL == installed.url.standardizedFileURL }) {
+            existing.append(installed.url)
+        }
+        return (package, existing.isEmpty ? .install(destination: destination) : .replace(existing: existing))
+    }
+
+    /// Copies the package at `url` into `folder`, first removing
+    /// `replacing`. Returns where it is.
+    @discardableResult
+    static func copyIn(_ url: URL, into folder: URL = defaultFolder, replacing: [URL] = []) throws -> URL {
+        let destination = folder.appending(path: url.lastPathComponent, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for old in replacing { try FileManager.default.removeItem(at: old) }
+        if url.standardizedFileURL != destination.standardizedFileURL {
+            try FileManager.default.copyItem(at: url, to: destination)
+        }
+        return destination
     }
 
     // MARK: Shape

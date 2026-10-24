@@ -45,7 +45,10 @@ Follow Google's change-description conventions for every commit.
 - CI (`.github/workflows/build.yml`) builds and tests every push on a
   macOS runner; check it when a change couldn't be built locally.
 - `scripts/build-app.sh` wraps the executable into `AnimationMeetsVideo.app`
-  with `Packaging/Info.plist`, which declares the `.amv` project type; keep
-  its type identifier in sync with `ProjectStore.packageTypeIdentifier`.
+  with `Packaging/Info.plist`, which declares the `.amv` project type and
+  the `.amveffect` effect package type; keep their type identifiers in
+  sync with `ProjectStore.packageTypeIdentifier` and
+  `EffectPackageStore.packageTypeIdentifier`. It also copies the resource
+  bundle, which holds the effect packages that ship with the app.
 - Building requires full Xcode (SwiftUI macro plugins are missing from the
   standalone Command Line Tools).
