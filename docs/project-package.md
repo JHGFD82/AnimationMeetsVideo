@@ -124,7 +124,10 @@ where to save before the editor opens and writes the package and an empty
 `project.json`, which only Save writes. Quitting (including closing the last
 window), New Project and Open Project ask to Save, Don't Save or Cancel
 when there are unsaved changes; cancelling a quit brings the window back.
-Every minute with unsaved changes an autosave goes into `Backups/`. When a
+Every minute with unsaved changes an autosave goes into `Backups/`. When
+one can't be written, the toolbar says **Not backed up** until a backup or
+save succeeds; clicking it explains why, with Save Now (`AutosaveStatus`,
+`AutosaveWarning`). When a
 project opens and its newest autosave is newer than `project.json` and
 differs from it, as after a crash or a quit that skipped saving, the app
 offers to restore it. Restoring is an ordinary, undoable edit on top of

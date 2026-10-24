@@ -85,6 +85,8 @@ struct EditorToolbar: View {
             .accessibilityLabel("External display")
             .accessibilityValue(externalDisplay.isActive ? "On" : "Off")
 
+            AutosaveWarning()
+
             if !pasteChanges.isEmpty {
                 Button {
                     exportAfterAccepting = false

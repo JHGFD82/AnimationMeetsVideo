@@ -53,6 +53,8 @@ struct AnimationMeetsVideoApp: App {
     /// The project as last saved or opened, to tell whether there are unsaved changes.
     @State private var savedProject: EditingProject
     @State private var lastAutosaved: EditingProject?
+    /// Whether autosave is writing backups, shown in the toolbar when not.
+    @State private var autosaveStatus = AutosaveStatus()
     @State private var analysis = AssetAnalysis()
     @State private var replacement = MediaReplacementController()
     @State private var fileMonitor = ProjectFileMonitor()
@@ -99,6 +101,7 @@ struct AnimationMeetsVideoApp: App {
                 // the project on its own (see `EditorView.==`).
                 .equatable()
                 .environment(projectState)
+                .environment(autosaveStatus)
                 .mediaReplacementDialogs(project: $projectState.value, controller: replacement, analysis: analysis, packageURL: projectURL)
                 .newEffectPackagePrompt()
                 .onExternalProjectChange { checkForExternalProjectChange() }
@@ -134,6 +137,7 @@ struct AnimationMeetsVideoApp: App {
                 }
                 .task {
                     TerminationGuard.shared.shouldTerminate = { confirmQuit() }
+                    autosaveStatus.save = { Task { await saveProject() } }
                     if !launchChecked {
                         if openedAtLaunch == nil {
                             await reopenLastProject()
@@ -247,6 +251,7 @@ struct AnimationMeetsVideoApp: App {
             history.reset(to: saved)
             savedProject = saved
             lastAutosaved = nil
+            autosaveStatus.succeeded()
             projectURL = url
             projectLock = lock
             fileMonitor.track(package: url)
@@ -332,6 +337,7 @@ struct AnimationMeetsVideoApp: App {
             // it shows as unsaved and can be undone.
             project = result.project
             lastAutosaved = restored?.project
+            autosaveStatus.succeeded()
             projectURL = url
             projectLock = lock
             fileMonitor.track(package: url)
@@ -436,6 +442,7 @@ struct AnimationMeetsVideoApp: App {
                 project.applyMediaLocations(from: saved)
                 savedProject = saved
                 lastAutosaved = nil
+                autosaveStatus.succeeded()
                 projectURL = url
                 projectLock = lock
                 fileMonitor.track(package: url)
@@ -559,8 +566,10 @@ struct AnimationMeetsVideoApp: App {
                 try ProjectStore.writeBackup(of: snapshot, in: url)
             }
             lastAutosaved = snapshot
+            autosaveStatus.succeeded()
         } catch {
             NSLog("Autosave failed: \(error.localizedDescription)")
+            autosaveStatus.failed(error.localizedDescription)
         }
     }
 

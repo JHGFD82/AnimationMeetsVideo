@@ -227,6 +227,20 @@ struct UISnapshots {
         )
     }
 
+    /// The toolbar's warning while automatic backups fail.
+    @Test func autosaveWarning() throws {
+        let status = AutosaveStatus()
+        status.failed("The disk is full.")
+        try SnapshotSupport.render(
+            AutosaveWarning()
+                .environment(status)
+                .padding(10)
+                .background(Design.Surface.raised.color)
+                .preferredColorScheme(.dark),
+            "autosave-warning", size: CGSize(width: 220, height: 44)
+        )
+    }
+
     /// Help > Keyboard Shortcuts: every key the editor answers, grouped.
     @Test func keyboardShortcuts() throws {
         try SnapshotSupport.render(KeyboardShortcutsView(), "keyboard-shortcuts", size: CGSize(width: 720, height: 620))
