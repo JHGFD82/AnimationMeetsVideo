@@ -200,9 +200,9 @@ private final class Harness {
     @Test func stepsAreNamedForTheEditMenu() {
         let h = Harness()
         h.edit { $0.name = "Renamed" }
-        #expect(h.undoManager.undoActionName == "Rename Project")
+        #expect(h.undoManager.undoActionName == "Rename Project to \u{201C}Renamed\u{201D}")
         h.undo()
-        #expect(h.undoManager.redoActionName == "Rename Project")
+        #expect(h.undoManager.redoActionName == "Rename Project to \u{201C}Renamed\u{201D}")
     }
 
     @Test func quickEditsOfDifferentKindsStaySeparate() {

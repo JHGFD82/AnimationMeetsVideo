@@ -5,18 +5,19 @@ import Foundation
 ///
 /// Edits are detected by comparing the project to a baseline rather than at
 /// each call site, so every change is undoable, including ones added later.
-/// Changes of the same kind that arrive in quick succession (stepping a
-/// value with the arrow keys) merge into one undo step. Each step is named
-/// for the Edit menu by `ProjectChange`.
+/// Each step is named for the Edit menu by `ProjectChange` (what was done
+/// to which clip). Changes in quick succession merge into one undo step
+/// only when they are the same edit to the same things (stepping one
+/// control with the arrow keys), told by the step's hidden identity.
 @MainActor
 final class ProjectHistory {
     static let coalescingInterval: TimeInterval = 0.5
 
     private(set) var baseline: EditingProject
     private var lastRecordedAt: Date?
-    /// The name of the last step recorded, which a quick change merges
-    /// into only when it is the same kind of edit.
-    private var lastRecordedName: String?
+    /// The identity of the last step recorded, which a quick change
+    /// merges into only when it is the same edit to the same things.
+    private var lastRecordedIdentity: Int?
     /// Where saves moved each asset's file, in order. Undo snapshots taken
     /// before a move still hold the old place; restoring one applies these.
     private var mediaMoves: [UUID: [MediaMove]] = [:]
@@ -41,7 +42,7 @@ final class ProjectHistory {
     func reset(to project: EditingProject) {
         baseline = project
         lastRecordedAt = nil
-        lastRecordedName = nil
+        lastRecordedIdentity = nil
         mediaMoves = [:]
         undoManager?.removeAllActions()
     }
@@ -77,7 +78,7 @@ final class ProjectHistory {
         guard isInGesture else { return }
         isInGesture = false
         lastRecordedAt = nil
-        lastRecordedName = nil
+        lastRecordedIdentity = nil
         if let project = project ?? current?() { projectDidChange(project) }
         if gestureNotified { NotificationCenter.default.post(name: .valueGestureDidEnd, object: self) }
         gestureNotified = false
@@ -115,18 +116,18 @@ final class ProjectHistory {
         guard project != baseline else { return }
         let before = baseline
         baseline = project
-        let name = ProjectChange.name(from: before, to: project)
+        let step = ProjectChange.step(from: before, to: project)
 
         if let last = lastRecordedAt,
            now.timeIntervalSince(last) < Self.coalescingInterval,
-           name == lastRecordedName,
+           step?.identity == lastRecordedIdentity,
            undoManager?.canUndo == true {
             lastRecordedAt = now
             return
         }
         lastRecordedAt = now
-        lastRecordedName = name
-        registerUndo(restoring: before, name: name)
+        lastRecordedIdentity = step?.identity
+        registerUndo(restoring: before, name: step?.name)
     }
 
     private func registerUndo(restoring snapshot: EditingProject, name: String?) {
@@ -141,7 +142,7 @@ final class ProjectHistory {
         let current = baseline
         baseline = snapshot
         lastRecordedAt = nil
-        lastRecordedName = nil
+        lastRecordedIdentity = nil
         restore?(snapshot)
         // Registered while undoing this becomes the redo step, and vice
         // versa, under the same name.

@@ -4,13 +4,15 @@ import Testing
 @testable import AnimationMeetsVideo
 
 @Suite struct ProjectChangeTests {
-    private static func media() -> MediaClip {
+    private static func media(_ name: String = "Interview") -> MediaClip {
         MediaClip(
-            name: "Clip", kind: .video, url: nil,
+            name: name, kind: .video, url: nil,
             duration: CMTime(seconds: 5, preferredTimescale: 600),
             frameRate: 24, colorSpace: .rec709, codecName: "Stub"
         )
     }
+
+    private static let second = CMTime(seconds: 1, preferredTimescale: 600)
 
     /// A project with one clip on one layer of its main timeline.
     private static func oneClip() -> (project: EditingProject, layerID: UUID, clipID: UUID) {
@@ -19,46 +21,106 @@ import Testing
         return (project, placed.layerID, placed.clipID)
     }
 
-    private func name(_ before: EditingProject, _ change: (inout EditingProject) -> Void) -> String? {
+    private func step(_ before: EditingProject, _ change: (inout EditingProject) -> Void) -> ProjectChange.Step? {
         var after = before
         change(&after)
-        return ProjectChange.name(from: before, to: after)
+        return ProjectChange.step(from: before, to: after)
     }
 
-    @Test func nothingChangedHasNoName() {
+    private func name(_ before: EditingProject, _ change: (inout EditingProject) -> Void) -> String? {
+        step(before, change)?.name
+    }
+
+    @Test func nothingChangedHasNoStep() {
         let project = EditingProject.empty
-        #expect(ProjectChange.name(from: project, to: project) == nil)
+        #expect(ProjectChange.step(from: project, to: project) == nil)
     }
 
-    @Test func namesProjectAndMediaChanges() {
-        #expect(name(.empty) { $0.name = "Other" } == "Rename Project")
-        #expect(name(.empty) { $0.clips.append(Self.media()) } == "Import Media")
+    @Test func namesWhatWasDoneToWhichMedia() {
+        let project = EditingProject.empty
+        #expect(name(project) { $0.name = "Trailer" } == "Rename Project to \u{201C}Trailer\u{201D}")
+        #expect(name(project) { $0.clips.append(Self.media()) } == "Import \u{201C}Interview\u{201D}")
+        #expect(name(project) { $0.clips += [Self.media(), Self.media("B-roll")] } == "Import 2 Files")
     }
 
-    @Test func placingMediaOnATimelineAddsAClip() {
-        #expect(name(.empty) { _ = $0.importClip(Self.media(), intoTimeline: $0.rootTimelineID) } == "Add Clip")
+    @Test func placingMediaNamesTheClipAndLayer() {
+        let project = EditingProject.empty
+        #expect(name(project) { _ = $0.importClip(Self.media(), intoTimeline: $0.rootTimelineID) }
+                == "Add \u{201C}Interview\u{201D} to \u{201C}Video 1\u{201D}")
     }
 
-    @Test func namesClipEdits() {
+    @Test func namesWhatWasDoneToWhichClip() {
         let (project, layerID, clipID) = Self.oneClip()
         let timelineID = project.rootTimelineID
-        let second = CMTime(seconds: 1, preferredTimescale: 600)
-        #expect(name(project) { $0.split(clipID, in: timelineID, layer: layerID, atTimelineTime: second) } == "Split Clip")
-        #expect(name(project) { $0.deleteClip(clipID, in: timelineID, layer: layerID) } == "Delete Clip")
-        #expect(name(project) { $0.moveClip(clipID, in: timelineID, layer: layerID, to: second) } == "Move Clip")
+        let clip = "\u{201C}Interview\u{201D}"
+        #expect(name(project) { $0.split(clipID, in: timelineID, layer: layerID, atTimelineTime: Self.second) } == "Split \(clip)")
+        #expect(name(project) { $0.deleteClip(clipID, in: timelineID, layer: layerID) } == "Delete \(clip)")
+        #expect(name(project) { $0.moveClip(clipID, in: timelineID, layer: layerID, to: Self.second) } == "Move \(clip)")
         #expect(name(project) { project in
-            project.updateLayer(layerID, in: timelineID) { $0.clips[0].trimEnd = second }
-        } == "Trim Clip")
+            project.updateLayer(layerID, in: timelineID) { $0.clips[0].trimEnd = Self.second }
+        } == "Trim End of \(clip)")
         #expect(name(project) { project in
             project.updateLayer(layerID, in: timelineID) { $0.clips[0].enabled = false }
-        } == "Turn Clip Off")
+        } == "Turn Off \(clip)")
+        #expect(name(project) { project in
+            project.updateLayer(layerID, in: timelineID) { $0.clips[0].soundMuted = true }
+        } == "Mute \(clip)")
+    }
+
+    @Test func namesTheEffectAndControlChanged() throws {
+        var (project, layerID, clipID) = Self.oneClip()
+        let timelineID = project.rootTimelineID
+        let added = step(project) { $0.addEffect(.transform, toClip: clipID, in: timelineID) }
+        #expect(added?.name == "Add Transform to \u{201C}Interview\u{201D}")
+
+        project.addEffect(.transform, toClip: clipID, in: timelineID)
+        let effect = try #require(project.clipAndLayer(clipID, in: timelineID)?.clip.effects.first)
+        let control = try #require(effect.controls.first)
+        let changed = name(project) { project in
+            project.updateLayer(layerID, in: timelineID) { layer in
+                layer.clips[0].effects[0].controls[0].enabled.toggle()
+            }
+        }
+        #expect(changed == "Change Transform \(control.kind.name) on \u{201C}Interview\u{201D}")
     }
 
     @Test func namesTimelineEdits() {
         let (project, _, _) = Self.oneClip()
         #expect(name(project) {
             _ = $0.addTimeline(name: "B", frameSize: CGSize(width: 1920, height: 1080), frameRate: 24, colorSpace: .rec709)
-        } == "New Timeline")
-        #expect(name(project) { $0.timelines[0].name = "Renamed" } == "Rename Timeline")
+        } == "New Timeline \u{201C}B\u{201D}")
+        #expect(name(project) { $0.timelines[0].name = "Cut" } == "Rename Timeline to \u{201C}Cut\u{201D}")
+    }
+
+    /// Two clips cut from one file read the same, but moving one is not
+    /// moving the other, so their steps must not merge.
+    @Test func theSameEditToDifferentClipsHasADifferentIdentity() throws {
+        var project = EditingProject.empty
+        let media = Self.media()
+        let placed = project.importClip(media, intoTimeline: project.rootTimelineID)
+        let first = try #require(placed)
+        let timelineID = project.rootTimelineID
+        project.split(first.clipID, in: timelineID, layer: first.layerID, atTimelineTime: Self.second)
+        let clips = try #require(project.timeline(id: timelineID)?.layer(id: first.layerID)?.clips)
+        let later = CMTime(seconds: 10, preferredTimescale: 600)
+
+        let moveA = step(project) { $0.moveClip(clips[1].id, in: timelineID, layer: first.layerID, to: later) }
+        let moveB = step(project) { $0.moveClip(clips[0].id, in: timelineID, layer: first.layerID, to: later) }
+        #expect(moveA?.name == moveB?.name)
+        #expect(moveA?.identity != moveB?.identity)
+    }
+
+    @Test func theSameEditToTheSameClipKeepsItsIdentity() {
+        let (project, layerID, clipID) = Self.oneClip()
+        let timelineID = project.rootTimelineID
+        var moved = project
+        moved.moveClip(clipID, in: timelineID, layer: layerID, to: Self.second)
+        let first = ProjectChange.step(from: project, to: moved)
+        let again = step(moved) { $0.moveClip(clipID, in: timelineID, layer: layerID, to: CMTime(seconds: 2, preferredTimescale: 600)) }
+        #expect(first?.identity == again?.identity)
+        let trimmed = step(moved) { project in
+            project.updateLayer(layerID, in: timelineID) { $0.clips[0].trimEnd = Self.second }
+        }
+        #expect(trimmed?.identity != first?.identity)
     }
 }
