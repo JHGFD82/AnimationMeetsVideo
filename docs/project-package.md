@@ -305,7 +305,7 @@ result whose retirement was already asked for. A read that fails is not
 taken to mean the package holds nothing: the asset is not analyzed over what
 may be there, but read again after a wait of 1, 2 and 4 seconds for the
 first three failures, then only when asked; changes to the project don't
-read it again sooner. The library shows "Couldn't
+read it again sooner. The browser shows "Couldn't
 read saved results" for it, with a Retry Reading Results command. The scorer, reference
 capture, picture capture and beat detector do their decoding and arithmetic
 on background tasks or the sample-reading queue, not on the main actor.
@@ -357,7 +357,7 @@ it; the length always covers its clips, so their trims stay valid.
 
 While a file is offline:
 
-- The library says **File missing**, and opening warns once with the
+- The browser says **File missing**, and opening warns once with the
   names. The file check keeps watching for it.
 - The viewer plays its clips as gaps and says which files are offline, so
   the rest of the timeline can still be watched.

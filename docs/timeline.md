@@ -7,7 +7,7 @@ itself has been checked in offscreen renders, not yet driven on screen
 with a trackpad. What is not built is listed under
 [Not implemented yet](#not-implemented-yet).
 
-The timeline sits under the library, viewer and inspector and spans the
+The timeline sits under the browser, viewer and inspector and spans the
 full width of the window: a label column on the left (layer number and
 name, and its volume row when shown), and the track area on the
 right with the ruler across its top. The Effects Library (effects and
@@ -63,7 +63,7 @@ run across two layers (`addPieces(_:intoTimeline:at:kind:)`). New layers
 always go at the top of the stack, which is the top of their area. **Add
 to Timeline** always makes a new layer.
 
-Dragged over the layer names, media from the library or a clip already on
+Dragged over the layer names, media from the browser or a clip already on
 the timeline lights up a translucent zone in the area's hue saying what a
 drop there makes: **New Video Layer** for pictures, or for sound the column
 split into **New Sound Layer** above **New Music Layer**, the half under
@@ -303,7 +303,7 @@ skimming off takes the viewer back to the playhead.
   ten. A nudge follows the same rules as dragging.
 
 These keys are left to a list or other control that has the keyboard (the
-library's list uses the arrows), and to text being typed. All of them, and
+browser's Clips list uses the arrows), and to text being typed. All of them, and
 the timeline's other keys (tools, snapping, zoom, Delete), are listed in
 the **Timeline** menu (`TimelineCommands`) and in
 [accessibility.md](accessibility.md). Keys without a modifier are

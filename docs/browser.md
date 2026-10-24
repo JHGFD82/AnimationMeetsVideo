@@ -106,7 +106,7 @@ shows the clip's name and the time skimmed to (in the asset's original
 time, as the browser's ranges are).
 
 Skimming in the browser's view options (and the Settings window's
-Library tab) turns following the pointer off. A click then shows the
+Browser tab) turns following the pointer off. A click then shows the
 frame clicked, and the arrow keys step from it; it stays shown when the
 pointer leaves the browser, so it can be looked at, until the browser
 loses the keyboard.
@@ -174,7 +174,7 @@ loses the keyboard.
 - **Add to Timeline** (context menu, or Return) does the same for the
   selection without dragging.
 - **Mute added video sound** (in the view options, and the Settings
-  window's Library tab; off by default) puts video clips that have sound
+  window's Browser tab; off by default) puts video clips that have sound
   on the timeline with it muted (`TimelineClip.soundMuted`). The sound
   stays linked, not removed: Unmute Sound in the clip's menu plays it
   again, and detaching it unmutes it on its new sound layer
@@ -187,8 +187,8 @@ Movies, sound and still images dragged in from the Finder are imported
 as **Import…** imports them (`MediaImportFlow`), copied into the project
 when it copies imports (File > Project Settings), with the same question
 before copying files that would use real disk space. Dropped on the
-browser they go into the library. Dropped on the timeline they go into
-the library and onto the timeline whole: on a clip, onto that clip's
+browser they go into the Clips list. Dropped on the timeline they go into
+the Clips list and onto the timeline whole: on a clip, onto that clip's
 layer at the drop time, landing as media from the browser would; in an
 area, onto a new layer of the area's kind, or of each file's own kind
 when the area's doesn't suit them all. Files of other kinds are refused.

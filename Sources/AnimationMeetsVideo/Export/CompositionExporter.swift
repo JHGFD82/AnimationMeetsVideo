@@ -38,7 +38,7 @@ enum CompositionError: LocalizedError {
         switch self {
         case .emptyTimeline: "The timeline has no clips to export."
         case .cyclicTimeline: "This timeline embeds itself, directly or indirectly."
-        case .missingMedia(let name): "\u{201C}\(name)\u{201D} is missing, so the timeline can't be exported. Put the file back, or replace it from the library."
+        case .missingMedia(let name): "\u{201C}\(name)\u{201D} is missing, so the timeline can't be exported. Put the file back, or replace it from the Clips list in the browser."
         case .incompatiblePreset: "The selected ProRes preset can't export this timeline."
         case .noExportSession: "Could not create an export session."
         case .exportFailed(let reason): reason

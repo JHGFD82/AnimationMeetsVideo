@@ -158,7 +158,7 @@ context menu then offers **File Changed — Check Sync…**, which runs the same
 analysis on the file already in place and stores the result as the new
 accepted state. A file that matches again is unflagged.
 
-A file that goes missing or can't be read is reported once, the library
+A file that goes missing or can't be read is reported once, the browser
 says **File missing**, and its clip's context menu says **File Is
 Missing**. Its clips play as gaps in the viewer, and export stops with its
 name, until it is back (see "Offline media" in

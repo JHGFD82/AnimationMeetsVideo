@@ -223,7 +223,7 @@ offset)`, and a clip's trim is one more intersection (`SceneCoverage.scenes(with
 A longer replacement is not allowed to extend the domain: its extra
 footage is ignored. A shorter one, or one that starts later or earlier,
 leaves part of the original's time **uncovered**: no scene, frozen frame
-or other stand-in is made, existing edits are not changed, and the library
+or other stand-in is made, existing edits are not changed, and the browser
 says which time has no footage (or that the file doesn't overlap the
 original at all, in which case there are no scenes). Cuts outside the
 usable stretch are dropped, never clamped into cuts at its ends.

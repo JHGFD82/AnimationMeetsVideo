@@ -29,7 +29,7 @@ struct SettingsView: View {
                 .tabItem { Label("Sound", systemImage: "speaker.wave.2") }
                 .tag(Tab.sound)
             LibrarySettings()
-                .tabItem { Label("Library", systemImage: "photo.on.rectangle") }
+                .tabItem { Label("Browser", systemImage: "photo.on.rectangle") }
                 .tag(Tab.library)
             ProjectsSettings()
                 .tabItem { Label("Projects", systemImage: "externaldrive") }
@@ -170,7 +170,7 @@ private struct SoundSettings: View {
                     Toggle("Play a clip's sound as it is skimmed", isOn: $browserSkimAudio)
                         .disabled(!browserSkimming)
                 }
-                SheetNote("Skimming a filmstrip plays a moment of the clip's own sound at each frame, while skimming is on (Library tab). Also in the browser's view options.")
+                SheetNote("Skimming a filmstrip plays a moment of the clip's own sound at each frame, while skimming is on (Browser tab). Also in the browser's view options.")
             }
         }
     }
@@ -342,7 +342,7 @@ private struct LayoutSettings: View {
                     }
                     .disabled(!isCustom)
                 }
-                SheetNote("Puts every panel back to its first-launch size and place: the library, inspector, effects and timeline, which are open, and the timeline's areas and layer heights. Projects are untouched. Also in the Window menu.")
+                SheetNote("Puts every panel back to its first-launch size and place: the browser, inspector, effects and timeline, which are open, and the timeline's areas and layer heights. Projects are untouched. Also in the Window menu.")
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
