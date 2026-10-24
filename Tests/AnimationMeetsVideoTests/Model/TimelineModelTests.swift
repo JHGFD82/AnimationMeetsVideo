@@ -331,6 +331,19 @@ private struct Fixture {
     }
 }
 
+@Suite struct SliverTests {
+    @Test func closesSliversWithoutTrappingOnDuplicateIDs() {
+        let first = TimelineClip(source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: seconds(1))
+        var second = TimelineClip(source: .adjustment, startOffset: CMTime(value: 1_000_100, timescale: 1_000_000), trimStart: .zero, trimEnd: seconds(1))
+        second.id = first.id
+        let timeline = Timeline(
+            name: "T", layers: [TimelineLayer(clips: [first, second])],
+            frameSize: CGSize(width: 16, height: 9), frameRate: 24, colorSpace: .rec709
+        )
+        #expect(timeline.closingSlivers().layers[0].clips.count == 2)
+    }
+}
+
 @Suite struct TimeFormattingTests {
     @Test func timecodeUsesFrameRate() {
         #expect(seconds(1.5).timecode(frameRate: 24) == "00:00:01:12")

@@ -125,8 +125,8 @@ struct EditingProject: Identifiable, Equatable {
 
     /// A timeline can't be embedded into itself or into any timeline it
     /// already contains (directly or transitively) — that would be a cycle.
+    /// Nor can an empty one, which would make a clip with no length.
     func canEmbed(_ timelineID: UUID, into targetTimelineID: UUID) -> Bool {
-        if timelineID == targetTimelineID { return false }
         guard let nested = timeline(id: timelineID), nested.duration > .zero else { return false }
         var visited: Set<UUID> = []
         collectNestedTimelineIDs(startingFrom: timelineID, visited: &visited)
@@ -154,7 +154,6 @@ struct EditingProject: Identifiable, Equatable {
     mutating func embedTimeline(_ timelineID: UUID, intoTimeline targetTimelineID: UUID) -> (layerID: UUID, clipID: UUID)? {
         guard canEmbed(timelineID, into: targetTimelineID),
               let nested = timeline(id: timelineID),
-              nested.duration > .zero,
               let index = timelines.firstIndex(id: targetTimelineID)
         else {
             return nil
@@ -180,16 +179,13 @@ struct EditingProject: Identifiable, Equatable {
         guard let move = resolvedMove(ofMoving: id, in: timelineID, layer: layerID, onto: targetLayerID, to: newStart),
               let tIndex = timelines.firstIndex(id: timelineID),
               let lIndex = timelines[tIndex].layers.firstIndex(id: layerID),
-              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(id: id)
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(id: id),
+              let targetIndex = targetLayerID.map({ timelines[tIndex].layers.firstIndex(id: $0) }) ?? lIndex
         else {
             return
         }
         var clip = timelines[tIndex].layers[lIndex].clips.remove(at: cIndex)
         clip.startOffset = move.start
-        var targetIndex = lIndex
-        if let targetLayerID, let index = timelines[tIndex].layers.firstIndex(id: targetLayerID) {
-            targetIndex = index
-        }
         if move.push > .zero {
             for c in timelines[tIndex].layers[targetIndex].clips.indices
             where timelines[tIndex].layers[targetIndex].clips[c].startOffset >= move.pushFrom {
@@ -276,9 +272,15 @@ struct EditingProject: Identifiable, Equatable {
             return
         }
         let kind = timelines[tIndex].layers[index].kind
-        let sameKind = timelines[tIndex].layers.indices.filter { timelines[tIndex].layers[$0].kind == kind }
-        guard let position = sameKind.firstIndex(of: index), sameKind.indices.contains(position + offset) else { return }
-        timelines[tIndex].layers.swapAt(index, sameKind[position + offset])
+        let slots = timelines[tIndex].layers.indices.filter { timelines[tIndex].layers[$0].kind == kind }
+        guard let position = slots.firstIndex(of: index), slots.indices.contains(position + offset) else { return }
+        // The layers of this kind move through their own slots, so the
+        // ones between shift by one and other kinds stay where they are.
+        var sameKind = slots.map { timelines[tIndex].layers[$0] }
+        sameKind.insert(sameKind.remove(at: position), at: position + offset)
+        for (slot, layer) in zip(slots, sameKind) {
+            timelines[tIndex].layers[slot] = layer
+        }
     }
 
     /// Moves a layer to `position` among the layers of its own kind (0 is
@@ -385,6 +387,9 @@ struct EditingProject: Identifiable, Equatable {
         // first half now ends — no gap introduced by splitting, even though
         // either half can be dragged apart afterward.
         let secondStart = secondStartTime ?? clip.timelineTime(forSourceTime: time)
+        // Both halves get new IDs, so nothing goes on pointing at the whole
+        // clip as if it were one of them. A song's followers find their
+        // piece again by time (see `MusicAttachment.songClipID`).
         // The first half keeps the way in, the second the way out.
         // (A backwards clip plays the later footage first.)
         var first = clip
@@ -440,7 +445,8 @@ extension Timeline {
                 result.append(clip)
             }
             // Keep the layer's own order of clips.
-            let moved = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0.startOffset) })
+            // Loaded projects aren't guaranteed unique IDs; keep the first.
+            let moved = Dictionary(result.map { ($0.id, $0.startOffset) }, uniquingKeysWith: { first, _ in first })
             for index in copy.layers[layer].clips.indices {
                 copy.layers[layer].clips[index].startOffset = moved[copy.layers[layer].clips[index].id] ?? copy.layers[layer].clips[index].startOffset
             }
@@ -474,7 +480,7 @@ struct Timeline: Identifiable, Equatable {
 
     /// Up to the end of the last clip or section, whichever is later.
     var duration: CMTime {
-        (layers.map(\.duration) + sections.map(\.end)).max(by: { $0.seconds < $1.seconds }) ?? .zero
+        (layers.map(\.duration) + sections.map(\.end)).max() ?? .zero
     }
 
     var timebaseSummary: String {
@@ -520,7 +526,7 @@ struct TimelineLayer: Identifiable, Equatable {
     var isAdjustment = false
 
     var duration: CMTime {
-        clips.map(\.endOffset).max(by: { $0.seconds < $1.seconds }) ?? .zero
+        clips.map(\.endOffset).max() ?? .zero
     }
 }
 
@@ -655,14 +661,6 @@ enum ResolvedClipInfo {
         }
     }
 
-    var isVideo: Bool {
-        switch self {
-        case .media(let clip): clip.kind.hasPictures
-        case .timeline(let timeline): !timeline.layers.isEmpty
-        case .adjustment, .graphic: true
-        }
-    }
-
     var isHDR: Bool {
         switch self {
         case .media(let clip): clip.colorSpace.isHDR
@@ -772,6 +770,8 @@ extension CMTime {
     }
 
     /// hh:mm:ss:ff timecode using the given frame rate for the frames field.
+    /// It counts frames non-drop-frame, at the rate rounded to whole frames,
+    /// so at 29.97 fps it runs about 3.6 s behind the clock per hour.
     func timecode(frameRate: Double) -> String {
         guard isNumeric, frameRate > 0 else { return "00:00:00:00" }
         let totalSeconds = max(0, seconds)
