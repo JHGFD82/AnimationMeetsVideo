@@ -140,7 +140,7 @@ extension ProjectStore {
             clips: orderedIDs.compactMap { importedClips[$0] },
             timelines: timelines,
             rootTimelineID: rootID,
-            defaultSensitivity: file.defaultSensitivity ?? SceneDetector.balancedSensitivity,
+            defaultSensitivity: file.defaultSensitivity ?? EditingProject.balancedSensitivity,
             copiesMediaOnImport: file.copiesMediaOnImport ?? true,
             canvasMargin: file.canvasMargin ?? EditingProject.defaultCanvasMargin
         )

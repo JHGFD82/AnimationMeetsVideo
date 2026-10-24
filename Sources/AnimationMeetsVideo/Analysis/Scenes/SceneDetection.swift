@@ -231,7 +231,7 @@ struct SceneRange: Identifiable, Equatable, Sendable {
 
 enum SceneDetector {
     /// The default for a new project: a balanced setting.
-    static let balancedSensitivity = 0.5
+    static let balancedSensitivity = EditingProject.balancedSensitivity
     /// Cuts closer together than this are treated as one; the stronger wins.
     static let minimumSceneSeconds = 0.4
 

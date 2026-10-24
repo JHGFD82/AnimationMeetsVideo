@@ -7,10 +7,13 @@ struct EditingProject: Identifiable, Equatable {
     var name: String
     var clips: [MediaClip]
     var timelines: [Timeline]
+    /// The project's Main timeline: the one the editor opens on and falls
+    /// back to when the timeline it shows goes away, and the only one the
+    /// tape scrubber plays.
     var rootTimelineID: UUID
     /// Cut sensitivity for assets that don't override it, from 0 (only
     /// obvious cuts) to 1 (small changes count).
-    var defaultSensitivity = SceneDetector.balancedSensitivity
+    var defaultSensitivity = EditingProject.balancedSensitivity
     /// Whether imported media is copied into the package's `Media/` folder
     /// (the default) or referenced where it is.
     var copiesMediaOnImport = true
@@ -21,6 +24,9 @@ struct EditingProject: Identifiable, Equatable {
 
     /// Half a frame on each side: twice the frame's area.
     static let defaultCanvasMargin = 0.5
+
+    /// The default sensitivity for a new project: a balanced setting.
+    static let balancedSensitivity = 0.5
 
     static var empty: EditingProject {
         let main = Timeline(
