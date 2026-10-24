@@ -12,13 +12,19 @@ struct ProjectWindowTitle: View {
     let projectState: ProjectState
     let savedProject: EditingProject
     let packageURL: URL?
+    let autosaveStatus: AutosaveStatus
+    @AppStorage(Preferences.savesAutomatically) private var savesAutomatically = true
 
     var body: some View {
         let project = projectState.value
+        // Saving after every change, an edit is unsaved only for a moment;
+        // the dot would flicker at each one, so it shows only when those
+        // saves are failing.
+        let savingFails = autosaveStatus.failure != nil && autosaveStatus.kind == .save
         WindowDocumentState(
             title: packageURL == nil ? "Animation Meets Video" : project.name,
             url: packageURL,
-            isEdited: packageURL != nil && project != savedProject
+            isEdited: packageURL != nil && project != savedProject && (!savesAutomatically || savingFails)
         )
     }
 }

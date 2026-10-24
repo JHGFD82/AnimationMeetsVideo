@@ -197,6 +197,26 @@ private final class Harness {
         #expect(h.project.clips.first?.url == new)
     }
 
+    /// Saving after every change listens for edits landing: each edit, a
+    /// gesture once when it ends (never during it), and undo.
+    @Test func tellsWhenAnEditLands() {
+        let h = Harness()
+        var landed = 0
+        h.history.changeLanded = { landed += 1 }
+        h.edit { $0.name = "A" }
+        #expect(landed == 1)
+
+        h.history.beginGesture(quietly: true)
+        h.edit(after: 5) { $0.name = "B" }
+        h.edit(after: 5) { $0.name = "C" }
+        #expect(landed == 1)
+        h.history.endGesture(h.project)
+        #expect(landed == 2)
+
+        h.undo()
+        #expect(landed == 3)
+    }
+
     @Test func stepsAreNamedForTheEditMenu() {
         let h = Harness()
         h.edit { $0.name = "Renamed" }

@@ -136,10 +136,21 @@ of those still on disk on the start sheet, each with its folder. A recent
 project that has moved or gone is explained and taken off the list. They
 also go to the system's recent documents, for the Dock icon's menu.
 
-**Saving is still explicit.** Imports, edits and the clip list live in
-`project.json`, which only Save writes. Closing a window asks to Save,
-Don't Save or Cancel when its project has unsaved changes, and quitting
-asks for each such project in turn; cancelling keeps it open.
+**Saving after every change** (Settings > Projects, on unless turned
+off; `Preferences.savesAutomatically`). Imports, edits and the clip list
+live in `project.json`. With this on, as Final Cut Pro does, each edit
+is written half a second after it lands (`ProjectHistory.changeLanded`:
+a step recorded or merged, the end of a drag, an undo or redo), so a
+burst of edits is one write and a drag is saved when it ends. There is
+nothing to remember to save, closing a window or quitting saves without
+asking, and the title bar shows no edited dot. A save that fails shows
+**Not saved** in the toolbar (`AutosaveStatus`) instead of an alert at
+every edit, the dot comes back, and closing or quitting then asks.
+
+With it off, `project.json` is written only by Save. Closing a window
+asks to Save, Don't Save or Cancel when its project has unsaved changes,
+and quitting asks for each such project in turn; cancelling keeps it
+open.
 Every minute with unsaved changes an autosave goes into `Backups/`. When
 one can't be written, the toolbar says **Not backed up** until a backup or
 save succeeds; clicking it explains why, with Save Now (`AutosaveStatus`,

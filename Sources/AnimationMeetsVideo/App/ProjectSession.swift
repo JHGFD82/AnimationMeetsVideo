@@ -50,6 +50,7 @@ final class ProjectSession {
         savedProject = initial
         history = ProjectHistory(project: initial)
         ProjectWindows.shared.register(self)
+        history.changeLanded = { [weak self] in self?.changeLanded() }
     }
 
     var project: EditingProject {
@@ -183,15 +184,34 @@ final class ProjectSession {
 
     // MARK: - Saving
 
+    /// How long after an edit lands it is saved, with saving after every
+    /// change on: a burst of edits (nudges, typing a value) is one write.
+    static let automaticSaveDelay: Duration = .milliseconds(500)
+    @ObservationIgnored private var pendingAutomaticSave: Task<Void, Never>?
+
+    /// An edit has landed (see `ProjectHistory.changeLanded`): with saving
+    /// after every change on, it is saved shortly, as Final Cut Pro saves.
+    /// Never during a drag, which lands only when it ends.
+    private func changeLanded() {
+        guard Preferences.isSavingAutomatically, projectURL != nil else { return }
+        pendingAutomaticSave?.cancel()
+        pendingAutomaticSave = Task { [weak self] in
+            try? await Task.sleep(for: Self.automaticSaveDelay)
+            guard !Task.isCancelled, let self, self.hasUnsavedChanges else { return }
+            await self.save(quietly: true)
+        }
+    }
+
     /// Returns whether the project was saved. A save asked for while
     /// another runs (pressing Save twice, or quitting during a save) starts
-    /// once that one is done.
+    /// once that one is done. A `quietly` save (one the app makes on its
+    /// own) reports failing in the toolbar rather than with an alert.
     @discardableResult
-    func save(forcePanel: Bool = false) async -> Bool {
+    func save(forcePanel: Bool = false, quietly: Bool = false) async -> Bool {
         let previous = saveInProgress
         let save = Task {
             _ = await previous?.value
-            return await performSave(forcePanel: forcePanel)
+            return await performSave(forcePanel: forcePanel, quietly: quietly)
         }
         saveInProgress = save
         let saved = await save.value
@@ -199,7 +219,7 @@ final class ProjectSession {
         return saved
     }
 
-    private func performSave(forcePanel: Bool) async -> Bool {
+    private func performSave(forcePanel: Bool, quietly: Bool) async -> Bool {
         var destination = forcePanel ? nil : projectURL
         if destination == nil {
             let panel = NSSavePanel()
@@ -286,7 +306,12 @@ final class ProjectSession {
             ProjectWindows.shared.remember(url)
             return true
         } catch {
-            Self.showAlert(title: "Couldn't Save Project", message: ErrorAdvice.sentence(for: error))
+            if quietly {
+                NSLog("Saving automatically failed: \(error.localizedDescription)")
+                autosaveStatus.failed(ErrorAdvice.sentence(for: error), kind: .save)
+            } else {
+                Self.showAlert(title: "Couldn't Save Project", message: ErrorAdvice.sentence(for: error))
+            }
             return false
         }
     }
@@ -384,8 +409,13 @@ final class ProjectSession {
 
     /// Whether this project may go: unsaved changes are saved, discarded
     /// (its autosaves marked seen) or keep it open. `question` is what the
-    /// person is asked.
+    /// person is asked. With saving after every change on, they are saved
+    /// without asking, and the question comes only if that fails.
     func settleUnsavedChanges(asking question: String) async -> Bool {
+        if Preferences.isSavingAutomatically, hasUnsavedChanges, projectURL != nil {
+            pendingAutomaticSave?.cancel()
+            if await save(quietly: true) { return true }
+        }
         switch askAboutUnsavedChanges(question) {
         case nil: return true
         case .save?: return await save()

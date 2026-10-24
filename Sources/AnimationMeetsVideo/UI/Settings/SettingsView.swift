@@ -12,7 +12,7 @@ import SwiftUI
 /// the other at once.
 struct SettingsView: View {
     enum Tab: String, Hashable {
-        case viewer, timeline, sound, library, layout
+        case viewer, timeline, sound, library, projects, layout
     }
 
     @AppStorage("settingsTab") private var tab = Tab.viewer
@@ -31,6 +31,9 @@ struct SettingsView: View {
             LibrarySettings()
                 .tabItem { Label("Library", systemImage: "photo.on.rectangle") }
                 .tag(Tab.library)
+            ProjectsSettings()
+                .tabItem { Label("Projects", systemImage: "externaldrive") }
+                .tag(Tab.projects)
             LayoutSettings()
                 .tabItem { Label("Layout", systemImage: "rectangle.3.group") }
                 .tag(Tab.layout)
@@ -235,6 +238,26 @@ private struct LibrarySettings: View {
                     Toggle("Mute a video's sound when it is added", isOn: $mutesAddedSound)
                 }
                 SheetNote("The clip keeps its sound, muted: unmute it from the clip's menu, or detach it and it plays on a sound layer of its own. Also in the browser's view options.")
+            }
+        }
+    }
+}
+
+// MARK: - Projects
+
+private struct ProjectsSettings: View {
+    @AppStorage(Preferences.savesAutomatically) private var savesAutomatically = true
+
+    var body: some View {
+        SettingsPane {
+            SheetSection("Saving") {
+                SheetRow("Projects", alignment: .center) {
+                    Toggle("Save after every change", isOn: $savesAutomatically)
+                        .accessibilityHint("Each edit is written to the project as soon as it is made")
+                }
+                SheetNote(savesAutomatically
+                    ? "Each edit is written to the project a moment after it is made, as Final Cut Pro saves, so there is nothing to remember to save. A drag is saved when it ends. Undo still steps back through every edit."
+                    : "The project is written only when you choose Save. Closing a window or quitting asks about unsaved changes, and an autosave in the project's Backups folder is offered back after a crash.")
             }
         }
     }

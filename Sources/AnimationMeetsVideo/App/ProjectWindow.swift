@@ -63,7 +63,7 @@ struct ProjectWindow: View {
                 )
             }
             .background(WindowCloseGuard(shouldClose: shouldClose))
-            .background(ProjectWindowTitle(projectState: session.projectState, savedProject: session.savedProject, packageURL: session.projectURL))
+            .background(ProjectWindowTitle(projectState: session.projectState, savedProject: session.savedProject, packageURL: session.projectURL, autosaveStatus: session.autosaveStatus))
             .background(
                 Color.clear.sheet(isPresented: Bindable(session).showsProjectSettings) {
                     // Read in the sheet's own view, so the window doesn't

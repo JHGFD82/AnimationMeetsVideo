@@ -36,6 +36,10 @@ final class ProjectHistory {
     /// The scenes of a video in a project, once found, so a step's name
     /// can say which scene a clip plays (see `ProjectChange`).
     var scenes: ProjectChange.SceneLookup?
+    /// Called when an edit has landed: recorded as a step or merged into
+    /// the last one, at the end of a gesture (never during one), or undone
+    /// or redone. Saving after every change listens here.
+    var changeLanded: (() -> Void)?
 
     init(project: EditingProject) {
         baseline = project
@@ -119,6 +123,7 @@ final class ProjectHistory {
         guard project != baseline else { return }
         let before = baseline
         baseline = project
+        defer { changeLanded?() }
         let step = ProjectChange.step(from: before, to: project, scenes: scenes)
 
         if let last = lastRecordedAt,
@@ -150,6 +155,7 @@ final class ProjectHistory {
         // Registered while undoing this becomes the redo step, and vice
         // versa, under the same name.
         registerUndo(restoring: current, name: name)
+        changeLanded?()
     }
 }
 

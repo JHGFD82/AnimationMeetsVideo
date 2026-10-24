@@ -95,6 +95,14 @@ enum Preferences {
     /// The projects open in windows, stored as `RecentProjects.stored`
     /// writes paths, for the next launch to open again.
     static let openProjects = "openProjects"
+    /// Whether each edit is saved as soon as it lands, as Final Cut Pro
+    /// does, rather than when Save is chosen. On unless turned off.
+    static let savesAutomatically = "savesAutomatically"
+
+    /// `savesAutomatically` as it is set, for code outside a view.
+    static var isSavingAutomatically: Bool {
+        UserDefaults.standard.object(forKey: savesAutomatically) as? Bool ?? true
+    }
 
     /// Everything about where the panels are and how big: their sizes,
     /// which are open and on which tab, and the timeline's areas.
