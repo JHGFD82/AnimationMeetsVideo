@@ -163,6 +163,7 @@ struct EditorToolbar: View {
         .onChange(of: pasteChanges.isEmpty) { _, empty in
             if empty { showsPasteChanges = false }
         }
+        .focusedSceneValue(\.exportTimeline, isExporting ? nil : FileMenuAction { exportProject() })
         .messageAlert("Export Failed", message: $exportError)
         .alert("Export Finished", isPresented: $finishedExport.isPresent, presenting: finishedExport) { done in
             Button("Show in Finder") {

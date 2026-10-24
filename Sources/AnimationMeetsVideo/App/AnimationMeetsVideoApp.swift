@@ -189,6 +189,7 @@ struct AnimationMeetsVideoApp: App {
                     NewEffectPackagePrompt.shared.ask()
                 }
             }
+            FileCommands()
             EditCommands()
             TimelineCommands()
             WindowCommands()

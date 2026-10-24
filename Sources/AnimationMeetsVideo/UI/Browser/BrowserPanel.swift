@@ -99,6 +99,7 @@ struct BrowserPanel: View {
         // never file URLs.
         .dropDestination(for: URL.self) { urls, _ in importDropped(urls) }
         .messageAlert("Import Failed", message: $importError)
+        .focusedSceneValue(\.importMedia, FileMenuAction(run: importMedia))
     }
 
     /// Time per thumbnail and thumbnail size, for every browser tab.
