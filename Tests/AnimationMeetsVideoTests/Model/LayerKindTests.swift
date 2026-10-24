@@ -155,6 +155,22 @@ private func layers(_ project: EditingProject) -> [TimelineLayer] {
         #expect(layers(project).map(\.id) == [music, videoA, videoC])
     }
 
+    @Test func movingSeveralPlacesShiftsTheLayersBetween() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        // Top to bottom: video C, music, video B, video A.
+        for asset in [video(), video(), song(), video()] { _ = project.importClip(asset, intoTimeline: t) }
+        let ids = layers(project).map(\.id)
+        let (videoC, music, videoB, videoA) = (ids[0], ids[1], ids[2], ids[3])
+
+        project.moveLayer(videoC, in: t, by: 2)
+        #expect(layers(project).map(\.id) == [videoB, music, videoA, videoC])
+        project.moveLayer(videoC, in: t, by: -2)
+        #expect(layers(project).map(\.id) == [videoC, music, videoB, videoA])
+        project.moveLayer(videoC, in: t, by: 3)
+        #expect(layers(project).map(\.id) == [videoC, music, videoB, videoA])
+    }
+
     @Test func theNewLayerZoneSplitsSoundAboveMusic() {
         let column = CGRect(x: 0, y: 100, width: 150, height: 200)
         #expect(NewLayerHover(audio: false, pointerY: 120, in: column) == NewLayerHover(hovering: .video))

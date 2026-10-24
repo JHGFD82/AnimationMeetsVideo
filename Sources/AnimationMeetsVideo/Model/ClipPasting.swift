@@ -107,11 +107,7 @@ extension EditingProject {
             .first(where: { layer(timeline.layers[$0], accepts: clip) }) {
             var others = timeline.layers[target].clips
             let move = insertion(lasting: clip.placedDuration, frameLocked: isFrameLocked(clip), among: others, in: timeline, at: start)
-            if move.push > .zero {
-                for index in others.indices where others[index].startOffset >= move.pushFrom {
-                    others[index].startOffset = CMTimeAdd(others[index].startOffset, move.push)
-                }
-            }
+            others.makeRoom(for: move)
             clip.startOffset = move.start
             others.append(clip)
             timelines[tIndex].layers[target].clips = others.sorted { $0.startOffset < $1.startOffset }

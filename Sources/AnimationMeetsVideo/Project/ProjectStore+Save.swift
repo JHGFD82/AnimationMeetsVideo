@@ -205,7 +205,7 @@ extension ProjectStore {
             id: project.id,
             name: project.name,
             rootTimelineID: project.rootTimelineID,
-            defaultSensitivity: project.defaultSensitivity == SceneDetector.balancedSensitivity ? nil : project.defaultSensitivity,
+            defaultSensitivity: project.defaultSensitivity == EditingProject.balancedSensitivity ? nil : project.defaultSensitivity,
             copiesMediaOnImport: project.copiesMediaOnImport ? nil : false,
             canvasMargin: project.canvasMargin == EditingProject.defaultCanvasMargin ? nil : project.canvasMargin,
             assets: urlClips.map { clip in

@@ -348,7 +348,7 @@ extension TimelineClip {
         var pieces = [self]
         for cut in cuts.sorted(by: { CMTimeCompare($0, $1) < 0 }) {
             guard let piece = pieces.first(where: { $0.plays(cut) }) else { continue }
-            EditingProject.split(&pieces, id: piece.id, at: cut)
+            pieces.splitClip(piece.id, at: cut)
         }
         return pieces
     }

@@ -84,11 +84,7 @@ extension EditingProject {
 
         let timeline = timelines[tIndex]
         var layerClips = timeline.layers[lIndex].clips
-        if move.push > .zero {
-            for index in layerClips.indices where layerClips[index].startOffset >= move.pushFrom {
-                layerClips[index].startOffset = CMTimeAdd(layerClips[index].startOffset, move.push)
-            }
-        }
+        layerClips.makeRoom(for: move)
         var cursor = move.start
         for var clip in clips {
             clip.startOffset = timeline.placementTime(cursor, .nearest, frameLocked: isFrameLocked(clip))
