@@ -49,7 +49,10 @@ struct MediaProblemsBar: View {
                 .controlSize(.small)
                 .disabled(controller.session != nil)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityAction(named: action.title) { controller.perform(action, context: context) }
+        // The button stays an element of its own, read after the count, so
+        // VoiceOver presses it as a button and finds it dimmed while a
+        // replacement is under way; folded into the row, its action would
+        // have run regardless.
+        .accessibilityElement(children: .contain)
     }
 }
