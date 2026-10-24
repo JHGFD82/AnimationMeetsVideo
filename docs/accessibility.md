@@ -48,7 +48,9 @@ keyboard (the library's list uses the arrows).
 | A / B / Y | Arrow, blade and slip tools |
 | N | Snapping on or off |
 | = / − / \\ | Zoom in, zoom out, fit the timeline to the window |
-| P / S / R / T, L | Show position, scale, rotation, opacity, or volume rows |
+| L | Show or hide volume rows (position, scale, rotation and opacity are in the effects panel) |
+| V | Turn the selected clips off, or on again |
+| ⇧E | Show the selected clip's effects |
 | F9 | Easy ease the keyframes at the playhead; Shift for ease in, ⌘⇧ for ease out |
 | ⌃⌥H | Hold the keyframes at the playhead |
 

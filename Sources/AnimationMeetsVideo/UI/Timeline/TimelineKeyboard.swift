@@ -32,10 +32,9 @@ extension TimelineView {
         return true
     }
 
-    /// P, S, R and T show only position, scale, rotation or opacity (pressing
-    /// the key again hides it); with Shift they add or remove that property
-    /// and keep the others. They act on the selected clip's layer, or on
-    /// every visual layer when nothing is selected.
+    /// The timeline's keys, listed in docs/accessibility.md. L shows or
+    /// hides volume rows, on the selected clip's layer or on every layer
+    /// with sound when nothing is selected.
     func handleKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if let handled = handleNavigationKey(event, flags: flags) { return handled }
