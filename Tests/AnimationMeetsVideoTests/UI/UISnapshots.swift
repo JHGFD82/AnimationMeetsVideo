@@ -835,9 +835,9 @@ struct UISnapshots {
         let key = "settingsTab"
         let remembered = UserDefaults.standard.object(forKey: key)
         defer { UserDefaults.standard.set(remembered, forKey: key) }
-        for tab in ["viewer", "timeline", "sound", "library", "layout"] {
+        for tab in ["viewer", "timeline", "sound", "library", "projects", "layout"] {
             UserDefaults.standard.set(tab, forKey: key)
-            try SnapshotSupport.render(SettingsView(), "settings-\(tab)", size: CGSize(width: 460, height: 420))
+            try SnapshotSupport.render(SettingsView(), "settings-\(tab)", size: CGSize(width: 460, height: tab == "projects" ? 560 : 420))
         }
     }
 

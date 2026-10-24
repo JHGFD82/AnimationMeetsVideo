@@ -104,6 +104,27 @@ enum Preferences {
         UserDefaults.standard.object(forKey: savesAutomatically) as? Bool ?? true
     }
 
+    /// Whether projects are backed up to `backupLocation` (`ProjectBackups`).
+    /// On unless turned off.
+    static let backsUpProjects = "backsUpProjects"
+    /// The folder backups go to, as a path; empty for
+    /// `ProjectBackups.defaultLocation`.
+    static let backupLocation = "backupLocation"
+    /// Minutes between a project's backups, while it changes.
+    static let backupInterval = "backupIntervalMinutes"
+    static let backupIntervals = [5, 15, 30, 60]
+
+    /// The backup settings as they are set, for code outside a view; nil
+    /// when backups are off.
+    static var backups: (location: URL, interval: Duration)? {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: backsUpProjects) as? Bool ?? true else { return nil }
+        let path = defaults.string(forKey: backupLocation) ?? ""
+        let location = path.isEmpty ? ProjectBackups.defaultLocation : URL(fileURLWithPath: path, isDirectory: true)
+        let minutes = defaults.object(forKey: backupInterval) as? Int ?? 15
+        return (location, .seconds(max(minutes, 1) * 60))
+    }
+
     /// Everything about where the panels are and how big: their sizes,
     /// which are open and on which tab, and the timeline's areas.
     static let layoutKeys = [

@@ -123,11 +123,11 @@ final class ProjectSession {
         let panel = NSOpenPanel()
         // Folders too: a project copied somewhere that dropped its package
         // flag shows as a folder until it's opened again.
-        panel.allowedContentTypes = [ProjectStore.packageType, .folder, .json]
+        panel.allowedContentTypes = [ProjectStore.packageType, ProjectBackups.type, .folder, .json]
         panel.allowsMultipleSelection = false
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
-        panel.message = "Choose a project (.\(ProjectStore.packageExtension)) to open."
+        panel.message = "Choose a project (.\(ProjectStore.packageExtension)), or a backup (.\(ProjectBackups.fileExtension)) to make a project from."
         guard panel.runModal() == .OK, let selection = panel.url else { return nil }
         return ProjectStore.packageURL(forSelection: selection)
     }
@@ -159,6 +159,8 @@ final class ProjectSession {
             // it shows as unsaved and can be undone.
             project = result.project
             lastAutosaved = restored?.project
+            lastBackedUp = result.project
+            lastBackupAt = .now
             autosaveStatus.succeeded()
             projectLock = lock
             fileMonitor.track(package: url)
@@ -327,9 +329,42 @@ final class ProjectSession {
                 try ProjectStore.writeBackup(of: snapshot, in: url)
             }
             lastAutosaved = snapshot
-            autosaveStatus.succeeded()
+            autosaveStatus.succeeded(.backup)
         } catch {
             NSLog("Autosave failed: \(error.localizedDescription)")
+            autosaveStatus.failed(ErrorAdvice.sentence(for: error))
+        }
+    }
+
+    /// The project as last backed up to the backup folder, and when; set
+    /// on opening, so the first backup comes an interval after the first
+    /// change.
+    @ObservationIgnored private var lastBackedUp: EditingProject?
+    @ObservationIgnored private var lastBackupAt = ContinuousClock.now
+    @ObservationIgnored private var isBackingUp = false
+
+    /// Writes a backup to the backup folder (`ProjectBackups`) when backups
+    /// are on, the project changed since the last one, and the interval
+    /// has passed. The copying runs off the main thread, queued with the
+    /// package's other writes, so the editor doesn't wait for it.
+    func backUpIfDue() async {
+        guard let settings = Preferences.backups, let url = projectURL, !isBackingUp,
+              project != lastBackedUp, ContinuousClock.now - lastBackupAt >= settings.interval
+        else { return }
+        let snapshot = project
+        isBackingUp = true
+        defer { isBackingUp = false }
+        do {
+            _ = try await PackageCoordinator.shared.run(on: [url]) {
+                try ProjectBackups.write(snapshot, packageURL: url, to: settings.location)
+            }
+            lastBackedUp = snapshot
+            lastBackupAt = .now
+            autosaveStatus.succeeded(.backup)
+        } catch {
+            NSLog("Backup failed: \(error.localizedDescription)")
+            // Tried again at the next interval, not at every tick.
+            lastBackupAt = .now
             autosaveStatus.failed(ErrorAdvice.sentence(for: error))
         }
     }

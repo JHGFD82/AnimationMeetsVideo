@@ -31,9 +31,11 @@ final class AutosaveStatus {
         if failingSince == nil { failingSince = date }
     }
 
-    /// A backup or a save was written: nothing is at risk any more.
-    func succeeded() {
-        guard failure != nil else { return }
+    /// A write succeeded: nothing is at risk any more. A save clears any
+    /// failure, since the work is on disk; a backup clears only a backup's,
+    /// so it can't hide that saves are failing.
+    func succeeded(_ written: Kind = .save) {
+        guard failure != nil, written == .save || kind == .backup else { return }
         failure = nil
         failingSince = nil
     }

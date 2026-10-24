@@ -46,6 +46,11 @@ final class ProjectWindows {
     /// or opens it in `session` when that is empty (its start sheet is
     /// up), or in a new window.
     func open(_ url: URL, from session: ProjectSession?, openWindow: OpenWindowAction) {
+        // A backup opens as a new project made from it, never as itself.
+        if url.pathExtension == ProjectBackups.fileExtension {
+            guard let restored = restore(url) else { return }
+            return open(restored, from: session, openWindow: openWindow)
+        }
         if self.session(showing: url) != nil {
             // The window group shows one window per project, and brings
             // that one forward.
@@ -72,6 +77,31 @@ final class ProjectWindows {
             return
         }
         open(url, from: session, openWindow: openWindow)
+    }
+
+    /// Makes a backup a new project beside the one it was taken of
+    /// ("Name from backup 2026-10-24 14.30"), so opening it never touches
+    /// the original; where that folder is gone, asks where. Returns the
+    /// new project's package, or nil when cancelled or it failed.
+    private func restore(_ backup: URL) -> URL? {
+        do {
+            let info = try ProjectBackups.readInfo(of: backup)
+            guard let folder = ProjectBackups.defaultRestoreFolder(for: info) ?? askWhereToRestore(info) else { return nil }
+            return try ProjectBackups.restore(backup, into: folder)
+        } catch {
+            ProjectSession.showAlert(title: "Couldn't Open Backup", message: ErrorAdvice.sentence(for: error))
+            return nil
+        }
+    }
+
+    private func askWhereToRestore(_ info: ProjectBackups.Info) -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.prompt = "Restore Here"
+        panel.message = "The folder \u{201C}\(info.projectName)\u{201D} was in isn't there any more. Choose where to put \u{201C}\(ProjectBackups.restoredName(for: info))\u{201D}."
+        return panel.runModal() == .OK ? panel.url : nil
     }
 
     // MARK: - Remembering

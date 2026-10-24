@@ -162,6 +162,38 @@ the saved version and isn't written until saved. Declining, or choosing
 Don't Save, marks the autosaves as seen (their dates are set back to just
 before the save's) so they aren't offered again; the files stay.
 
+**Backups outside the project** (Settings > Projects > Backups, on
+unless turned off; `ProjectBackups`). While a project changes, every 15
+minutes (or 5, 30, 60) a backup of it goes to a folder of the person's
+choosing, by default `~/Movies/Animation Meets Video Backups/`, in a
+folder per project; the newest 10 are kept. A backup is an
+`.amvbackup` package:
+
+```
+Name 2026-10-24 14.30.05.amvbackup/
+  project.json   the project, media paths as in its package
+  backup.json    the package it was taken of, its name, and when
+  Media/         the media copied into the project
+  Reference/     what was learned about each original file
+```
+
+so it opens on its own even if the project's package is gone. Media the
+project refers to in place isn't copied, and the cache and the package's
+own autosaves are left out. Each file is copied from the previous backup
+when it is the same file (size and modification date), which on APFS is
+a clone taking no space, so only the first backup on a disk copies the
+media for real. A backup on the project's own disk costs nothing but
+doesn't survive that disk failing. A backup is written half-way under a
+hidden name and renamed when whole, off the main thread through the
+`PackageCoordinator`. One that fails shows **Not backed up** in the
+toolbar and is tried again at the next interval.
+
+Opening a backup (double-clicking it, or choosing it in File > Open)
+never touches the project it came from: it is copied beside that project
+as a new one, "Name from backup 2026-10-24 14.30.amv" (with " 2" if
+taken), its `backup.json` dropped and its name set to match, and opened.
+Where that folder is gone, the app asks where to put it.
+
 Because of that, analysis results (change scores, reference data, pictures
 and beats) are written into `Reference/` as soon as each is computed, and
 pictures are then dropped from memory. They are keyed by asset ID and

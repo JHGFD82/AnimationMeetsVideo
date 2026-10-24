@@ -102,6 +102,7 @@ struct ProjectWindow: View {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: ProjectSession.autosaveInterval)
                     await session.autosave()
+                    await session.backUpIfDue()
                 }
             }
             .onDisappear { session.close() }
@@ -124,7 +125,7 @@ struct ProjectWindow: View {
         windows.launchHandled = true
         if let requested = windows.openedAtLaunch {
             windows.openedAtLaunch = nil
-            await session.open(requested)
+            windows.open(requested, from: session, openWindow: openWindow)
             return
         }
         let reopen = windows.projectsToReopen()
