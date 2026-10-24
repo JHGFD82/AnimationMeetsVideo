@@ -11,20 +11,24 @@ import SwiftUI
 /// It is a class the lanes read as they draw (`LaneWindow`), so a scroll
 /// redraws only them, not the rows' controls, which are kept between
 /// redraws (`StackRow`).
+///
+/// It zooms and scrolls as a `SecondsViewport`, in the lanes' points at
+/// the whole clip's zoom, which stand for the clip's time: the lanes span
+/// `0...viewWidth` of them, and a zoom of 2 shows a point of the window
+/// for every half of one.
 @MainActor @Observable
-final class LaneViewport {
+final class LaneViewport: SecondsViewport {
     /// The control column's width: at least `EffectsPanelMetrics.labelWidth`,
     /// and the widest it has needed since the clip was selected, so it
     /// doesn't resize back as a value shortens.
     var labelWidth = EffectsPanelMetrics.labelWidth
     /// The width of the lanes' window, and of the lanes themselves when
     /// not zoomed in.
-    private(set) var visibleWidth: CGFloat = 0
-    /// How many times wider than the window the lanes are: 1 shows the
-    /// whole clip.
-    private(set) var zoom: CGFloat = 1
-    /// How far the lanes are scrolled, within `0...maxScrollX`.
-    private(set) var scrollX: CGFloat = 0
+    private(set) var viewWidth: CGFloat = 0
+    /// The left edge and the zoom, in the lanes' points at the whole
+    /// clip's zoom.
+    var visibleStart: Double = 0
+    var secondsPerPoint: Double = 1
     /// The closest zoom: one frame `TimelineViewport.maximumFrameWidth` wide.
     private(set) var maxZoom: CGFloat = 1
     /// What a zoom past either limit stretches, and a scroll past either
@@ -32,62 +36,47 @@ final class LaneViewport {
     var zoomBand = RubberBandZoom()
     var scrollBand = RubberBandScroll()
 
-    var maxScrollX: CGFloat { max(0, visibleWidth * zoom - visibleWidth) }
+    var viewBounds: (start: Double, end: Double) { (0, Double(viewWidth)) }
+    var closestZoom: Double { 1 / Double(maxZoom) }
+    var farthestZoom: Double { 1 }
+    var zoomFocus: Double { seconds(atX: viewWidth / 2) }
+
+    /// How many times wider than the window the lanes are: 1 shows the
+    /// whole clip.
+    var zoom: CGFloat { CGFloat(1 / secondsPerPoint) }
+    /// How far the lanes are scrolled, within `0...maxScrollX`.
+    var scrollX: CGFloat { CGFloat(visibleStart / secondsPerPoint) }
+    var maxScrollX: CGFloat { max(0, viewWidth * zoom - viewWidth) }
 
     /// Takes the window's width and the closest zoom, as the panel is
-    /// resized or the clip changes.
+    /// resized or the clip changes. The zoom and the scroll, in points,
+    /// stay as they were as far as they still fit.
     func fit(width: CGFloat, maxZoom: CGFloat) {
-        visibleWidth = width
+        let scroll = scrollX
+        viewWidth = width
         self.maxZoom = max(1, maxZoom)
-        zoom = min(zoom, self.maxZoom)
-        scrollX = min(max(0, scrollX), maxScrollX)
+        secondsPerPoint = max(secondsPerPoint, closestZoom)
+        visibleStart = Double(scroll) * secondsPerPoint
+        clampView()
     }
 
     /// Shows the whole clip again.
     func reset() {
         labelWidth = EffectsPanelMetrics.labelWidth
-        zoom = 1
-        scrollX = 0
+        secondsPerPoint = 1
+        visibleStart = 0
         zoomBand = RubberBandZoom()
         scrollBand = RubberBandScroll()
-    }
-
-    /// Zooms by `factor` (above 1 zooms in) about `x` in the window. Past
-    /// the whole clip or the closest zoom the lanes stretch instead.
-    func zoom(by factor: Double, aboutX x: CGFloat, pinching: Bool) {
-        var band = zoomBand
-        band.zoom(by: factor, about: visibleWidth > 0 ? x / visibleWidth : 0.5, pinching: pinching) { factor in
-            let before = zoom
-            zoom = min(max(zoom * CGFloat(factor), 1), maxZoom)
-            scrollX = min(max(0, (scrollX + x) * zoom / before - x), maxScrollX)
-            return Double(zoom / before)
-        }
-        zoomBand = band
-    }
-
-    /// The pinch's fingers lifted: a stretch springs back.
-    func endPinch() { zoomBand.endPinch() }
-
-    /// Scrolls sideways by `points`, as a trackpad or a wheel does. Past
-    /// either end the lanes slide on and spring back.
-    func scroll(by points: CGFloat, phase: ScrollInputPhase) {
-        var band = scrollBand
-        band.scroll(by: points, phase: phase) { points in
-            let before = scrollX
-            scrollX = min(max(0, before + points), maxScrollX)
-            return scrollX - before
-        }
-        scrollBand = band
     }
 
     /// A step of zoom or scroll for VoiceOver and the keyboard, which
     /// can't pinch or swipe.
     func zoomStep(in zoomingIn: Bool) {
-        zoom(by: zoomingIn ? 2 : 0.5, aboutX: visibleWidth / 2, pinching: false)
+        zoomingIn ? zoomIn() : zoomOut()
     }
 
     func scrollStep(later: Bool) {
-        scroll(by: (later ? 1 : -1) * visibleWidth / 2, phase: .wheel)
+        scroll(byPoints: (later ? 1 : -1) * viewWidth / 2)
     }
 }
 
@@ -110,7 +99,7 @@ struct LaneWindow<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        let width = viewport.visibleWidth
+        let width = viewport.viewWidth
         content()
             .offset(x: -viewport.scrollX)
             .frame(width: width, alignment: .leading)

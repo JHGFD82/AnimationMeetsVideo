@@ -33,7 +33,7 @@ extension EditingProject {
     /// Whether any layer below `layer` in `timeline` has pictures, so a
     /// clip on `layer` has something under it to blend with.
     func hasPicturesBelow(_ layer: UUID, in timeline: Timeline) -> Bool {
-        guard let index = timeline.layers.firstIndex(where: { $0.id == layer }) else { return false }
+        guard let index = timeline.layers.firstIndex(id: layer) else { return false }
         return timeline.layers[(index + 1)...].contains { below in below.clips.contains { playsVideo($0) } }
     }
 

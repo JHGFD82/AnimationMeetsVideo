@@ -44,7 +44,7 @@ struct TimelineAreaLayout: Equatable, Codable {
     }
 
     private static func clamped(_ height: CGFloat) -> CGFloat {
-        min(max(height, layerHeightRange.lowerBound), layerHeightRange.upperBound)
+        height.clamped(between: layerHeightRange.lowerBound, and: layerHeightRange.upperBound)
     }
 
     /// One layer's height: its area's, times its own scale if it has one.
@@ -74,14 +74,16 @@ struct TimelineAreaLayout: Equatable, Codable {
     /// A layer height on a 0...1 scale that is even in ratio, so each step
     /// of a slider multiplies the height by the same amount.
     static func fraction(ofLayerHeight height: CGFloat) -> Double {
-        let range = layerHeightRange
-        let clamped = min(max(height, range.lowerBound), range.upperBound)
-        return Double(log(clamped / range.lowerBound) / log(range.upperBound / range.lowerBound))
+        ZoomScale.fraction(of: Double(height), in: heightScale)
     }
 
     static func layerHeight(atFraction fraction: Double) -> CGFloat {
-        let range = layerHeightRange
-        return range.lowerBound * pow(range.upperBound / range.lowerBound, CGFloat(min(max(fraction, 0), 1)))
+        CGFloat(ZoomScale.zoom(atFraction: fraction, in: heightScale))
+    }
+
+    /// The heights the slider spans, as `ZoomScale` takes them.
+    private static var heightScale: ClosedRange<Double> {
+        Double(layerHeightRange.lowerBound)...Double(layerHeightRange.upperBound)
     }
 
     /// The shown areas' layer heights together, on the scale of
@@ -101,7 +103,7 @@ struct TimelineAreaLayout: Equatable, Codable {
     /// always exactly `fraction` (the slider never jumps under the pointer).
     mutating func setShownLayerHeightFraction(_ fraction: Double) {
         let shown = shown
-        let target = min(max(fraction, 0), 1)
+        let target = fraction.clamped(between: 0, and: 1)
         let mean = shownLayerHeightFraction
         let offsets = shown.map { Self.fraction(ofLayerHeight: layerHeight($0)) - mean }
         var spread = 1.0
@@ -136,7 +138,7 @@ struct TimelineAreaLayout: Equatable, Codable {
             return
         }
         let minimum = min(Self.minimumAreaHeight, (above + below) / 2)
-        let clamped = min(max(dy, minimum - above), below - minimum)
+        let clamped = dy.clamped(between: minimum - above, and: below - minimum)
         var heights = start
         heights[shown[index - 1]] = above + clamped
         heights[kind] = below - clamped

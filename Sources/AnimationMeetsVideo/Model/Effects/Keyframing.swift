@@ -250,7 +250,7 @@ extension TimelineClip {
         switch target {
         case .volume: return volume.asComponents
         case .control(let effectID, let controlID):
-            return effect(id: effectID)?.controls.first { $0.id == controlID }.map(\.number)
+            return effect(id: effectID)?.controls.first(id: controlID).map(\.number)
         }
     }
 
@@ -271,7 +271,7 @@ extension TimelineClip {
         switch target {
         case .volume: return AudioLevel.clamped(component)
         case .control(let effectID, let controlID):
-            guard let control = effect(id: effectID)?.controls.first(where: { $0.id == controlID }) else { return component }
+            guard let control = effect(id: effectID)?.controls.first(id: controlID) else { return component }
             return control.kind.clamped(component, index: index)
         }
     }
@@ -309,7 +309,7 @@ extension EditingProject {
         switch target {
         case .volume: return "Volume"
         case .control(let effectID, let controlID):
-            guard let effect = clip.effect(id: effectID), let control = effect.controls.first(where: { $0.id == controlID })
+            guard let effect = clip.effect(id: effectID), let control = effect.controls.first(id: controlID)
             else { return "Unavailable" }
             return "\(effect.displayName) · \(control.kind.name)"
         }
@@ -463,7 +463,7 @@ extension EditingProject {
     /// is off or its target can't be reached, leaving what it wrote.
     mutating func regenerateKeyframes(ofEffect effectID: UUID, onClip clipID: UUID, in timelineID: UUID) {
         guard let (clip, _) = clipAndLayer(clipID, in: timelineID), let timeline = timeline(id: timelineID),
-              let effect = clip.effects.first(where: { $0.id == effectID }), effect.enabled,
+              let effect = clip.effects.first(id: effectID), effect.enabled,
               var setup = effect.keyframing, let target = setup.target,
               keyframingTargetIsReachable(effect, in: clip), let current = clip.number(of: target)
         else { return }

@@ -9,7 +9,7 @@ import SwiftUI
 /// an undo history of its own; nothing reaches the project until the
 /// person confirms. See docs/beat-matching.md.
 @MainActor @Observable
-final class BeatMatchSession {
+final class BeatMatchSession: SecondsViewport {
     let assetID: UUID
     let assetName: String
     /// The song's editing time, in original time.
@@ -65,7 +65,7 @@ final class BeatMatchSession {
         didSet {
             guard viewWidth > 0, viewWidth != oldValue else { return }
             guard hasFitted, oldValue > 0 else { return fit() }
-            secondsPerPoint = min(max(secondsPerPoint * Double(oldValue / viewWidth), closestZoom), farthestZoom)
+            secondsPerPoint = (secondsPerPoint * Double(oldValue / viewWidth)).clamped(between: closestZoom, and: farthestZoom)
             clampView()
         }
     }
@@ -697,7 +697,7 @@ final class BeatMatchSession {
     }
 
     func seek(to seconds: Double) {
-        let clamped = min(max(seconds, 0), duration.seconds)
+        let clamped = seconds.clamped(between: 0, and: duration.seconds)
         playhead = clamped
         tapRun = nil
         let fileTime = CMTimeAdd(CMTime(seconds: clamped, preferredTimescale: 48_000), alignment)
@@ -725,7 +725,7 @@ final class BeatMatchSession {
     /// then: the player's time now, carried on to the frame's time.
     func playhead(at date: Date) -> Double {
         guard isPlaying else { return playhead }
-        let ahead = min(max(date.timeIntervalSinceNow, 0), 0.05)
+        let ahead = date.timeIntervalSinceNow.clamped(between: 0, and: 0.05)
         return min(playerSeconds() + ahead * Double(player.rate), duration.seconds)
     }
 
@@ -762,61 +762,11 @@ final class BeatMatchSession {
         visibleStart = 0
     }
 
-    /// Zooms by `factor` (above 1 zooms in) about a point `x` in the view.
-    /// Zooming past the whole song or the closest zoom stretches the
-    /// waveform instead (`zoomBand`), until the pinch lifts, or at once
-    /// for any other zoom.
-    func zoom(by factor: Double, aboutX x: CGFloat, pinching: Bool = false) {
-        var band = zoomBand
-        band.zoom(by: factor, about: viewWidth > 0 ? x / viewWidth : 0.5, pinching: pinching) { factor in
-            let anchor = visibleStart + Double(x) * secondsPerPoint
-            let before = secondsPerPoint
-            secondsPerPoint = min(max(secondsPerPoint / factor, closestZoom), farthestZoom)
-            visibleStart = anchor - Double(x) * secondsPerPoint
-            clampView()
-            return before / secondsPerPoint
-        }
-        zoomBand = band
-    }
-
-    /// The pinch's fingers lifted: the stretch springs back.
-    func endPinch() { zoomBand.endPinch() }
-
-    /// Scrolls the view sideways; past the song's ends the waveform slides
-    /// on and springs back (`scrollBand`).
-    func scroll(byPoints points: CGFloat, phase: ScrollInputPhase = .wheel) {
-        var band = scrollBand
-        band.scroll(by: points, phase: phase) { points in
-            let before = visibleStart
-            visibleStart += Double(points) * secondsPerPoint
-            clampView()
-            return CGFloat((visibleStart - before) / secondsPerPoint)
-        }
-        scrollBand = band
-    }
-
-    /// Zooms in on the selected beat, or the playhead, far enough to place
-    /// a beat by eye.
-    func zoomIn() { zoom(by: 2, aboutX: x(of: selectedBeat?.seconds ?? livePlayhead)) }
-    func zoomOut() { zoom(by: 0.5, aboutX: x(of: selectedBeat?.seconds ?? livePlayhead)) }
-
-    /// The zoom as its slider shows it (`ZoomSlider`): 0 the whole song, 1
-    /// the closest. Moving it zooms about where zooming in does.
-    var zoomFraction: Double {
-        get { ZoomScale.fraction(of: 1 / secondsPerPoint, in: zoomRange) }
-        set {
-            let factor = ZoomScale.factor(from: 1 / secondsPerPoint, toFraction: newValue, in: zoomRange)
-            zoom(by: factor, aboutX: x(of: selectedBeat?.seconds ?? livePlayhead))
-        }
-    }
-
-    /// The zooms the slider spans, as points per second.
-    private var zoomRange: ClosedRange<Double> {
-        (1 / farthestZoom)...max(1 / closestZoom, 1 / farthestZoom)
-    }
-
-    func x(of seconds: Double) -> CGFloat { CGFloat((seconds - visibleStart) / secondsPerPoint) }
-    func seconds(atX x: CGFloat) -> Double { visibleStart + Double(x) * secondsPerPoint }
+    /// The waveform shows the song: nothing past either end.
+    var viewBounds: (start: Double, end: Double) { (0, duration.seconds) }
+    /// Zooming in zooms about the selected beat, or the playhead, far
+    /// enough to place a beat by eye.
+    var zoomFocus: Double { selectedBeat?.seconds ?? livePlayhead }
 
     private func reveal(_ seconds: Double) {
         let span = Double(viewWidth) * secondsPerPoint
@@ -826,8 +776,6 @@ final class BeatMatchSession {
         }
     }
 
-    /// The song's start sits at the left edge at most, and its end at the
-    /// right edge at least: nothing past either end is shown.
     /// Scrolls a section into view, centred if it fits and from its start
     /// if not; one already in view stays where it is.
     private func reveal(section id: UUID) {
@@ -837,11 +785,6 @@ final class BeatMatchSession {
         guard start < visibleStart || start + length > visibleStart + span else { return }
         visibleStart = length <= span * 0.9 ? start - (span - length) / 2 : start - span * 0.05
         clampView()
-    }
-
-    private func clampView() {
-        let span = Double(viewWidth) * secondsPerPoint
-        visibleStart = min(max(visibleStart, 0), max(0, duration.seconds - span))
     }
 
     // MARK: Times

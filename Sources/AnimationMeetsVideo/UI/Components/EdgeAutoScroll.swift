@@ -79,7 +79,7 @@ final class EdgeAutoScroll {
         let limit = max(0, document.frame.height - clip.bounds.height)
         var origin = clip.bounds.origin
         let before = origin.y
-        origin.y = min(max(origin.y + distance * sign, 0), limit)
+        origin.y = (origin.y + distance * sign).clamped(between: 0, and: limit)
         guard origin.y != before else { return 0 }
         clip.scroll(to: origin)
         scrollView.reflectScrolledClipView(clip)

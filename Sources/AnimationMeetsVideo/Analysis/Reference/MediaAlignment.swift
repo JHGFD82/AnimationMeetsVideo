@@ -80,7 +80,7 @@ enum AudioAlignment {
         return AlignmentSuggestion(
             offset: CMTime(value: offsetWindows, timescale: Int32(AudioEnvelope.windowsPerSecond)),
             method: .audio,
-            confidence: min(max(best - runnerUp, 0), 1)
+            confidence: (best - runnerUp).clamped(between: 0, and: 1)
         )
     }
 
@@ -239,6 +239,6 @@ enum CutAlignment {
         let window = pairs[bestStart...bestEnd]
         let middle = window.sorted { $0.seconds < $1.seconds }[window.count / 2].offset
         let share = Double(bestCount) / Double(min(referenceCuts.count, candidateCuts.count))
-        return AlignmentSuggestion(offset: middle, method: .cuts, confidence: min(max(share, 0), 1))
+        return AlignmentSuggestion(offset: middle, method: .cuts, confidence: share.clamped(between: 0, and: 1))
     }
 }

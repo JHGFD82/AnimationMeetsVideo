@@ -98,9 +98,9 @@ extension EditingProject {
     /// can't go on that kind.
     @discardableResult
     mutating func moveClipToNewLayer(_ id: UUID, in timelineID: UUID, layer layerID: UUID, kind: LayerKind, at start: CMTime? = nil) -> UUID? {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
-              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id }),
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID),
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(id: id),
               layerKind(kind, accepts: timelines[tIndex].layers[lIndex].clips[cIndex])
         else {
             return nil

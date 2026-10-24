@@ -189,7 +189,7 @@ extension EditingProject {
             if case .control(let effectID, let controlID)? = setup.target,
                let original = items.first(where: { $0.effect.id == effectID })?.effect,
                let c = original.controlIndex(controlID), let newEffectID = newIDs[effectID],
-               let t = pasted.firstIndex(where: { $0.id == newEffectID }), pasted[t].controls.indices.contains(c) {
+               let t = pasted.firstIndex(id: newEffectID), pasted[t].controls.indices.contains(c) {
                 moved.target = .control(effectID: newEffectID, controlID: pasted[t].controls[c].id)
                 moved.base = setup.base?.shifted(by: delta)
                 let oldID = items[p].effect.id, newID = pasted[p].id
@@ -203,7 +203,7 @@ extension EditingProject {
             moved.range = setup.range.map { CMTimeRange(start: CMTimeAdd($0.start, delta), duration: $0.duration) }
             pasted[p].keyframing = moved
         }
-        let at = min(max(index ?? kept.count, 0), kept.count)
+        let at = (index ?? kept.count).clamped(between: 0, and: kept.count)
         stack.insert(contentsOf: pasted, at: at)
         pastedIDs += pasted.map(\.id)
         return stack

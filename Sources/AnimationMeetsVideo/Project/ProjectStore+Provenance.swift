@@ -28,10 +28,8 @@ extension ProjectStore {
     private static func writeProvenance(_ records: [AnalysisKind: AnalysisProvenance], for assetID: UUID, in packageURL: URL) throws {
         let folder = referenceFolder(for: assetID, in: packageURL)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let raw = Dictionary(uniqueKeysWithValues: records.map { ($0.key.rawValue, $0.value) })
-        try encoder.encode(raw).write(to: folder.appending(path: provenanceFileName), options: .atomic)
+        try JSONFile.encode(raw).write(to: folder.appending(path: provenanceFileName), options: .atomic)
     }
 
     /// Records what the result file now in the folder was computed from. The

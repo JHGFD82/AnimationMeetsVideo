@@ -13,7 +13,7 @@ enum TransitionRenderer {
     static func draw(_ frame: TransitionFrame, from before: CIImage, to after: CIImage, in bounds: CGRect) -> CIImage {
         let a = before.cropped(to: bounds)
         let b = after.cropped(to: bounds)
-        let p = min(max(frame.progress, 0), 1)
+        let p = frame.progress.clamped(between: 0, and: 1)
         let options = frame.options
         switch frame.kind {
         case .dipToColor:
@@ -340,12 +340,12 @@ enum TransitionRenderer {
     /// 0 up to `from`, 1 from `to`, a straight line between.
     static func ramp(_ value: Double, from: Double, to: Double) -> Double {
         guard to > from else { return value >= to ? 1 : 0 }
-        return min(max((value - from) / (to - from), 0), 1)
+        return ((value - from) / (to - from)).clamped(between: 0, and: 1)
     }
 
     /// An S-shaped 0 to 1, flat at both ends.
     static func smoothstep(_ t: Double) -> Double {
-        let x = min(max(t, 0), 1)
+        let x = t.clamped(between: 0, and: 1)
         return x * x * (3 - 2 * x)
     }
 }

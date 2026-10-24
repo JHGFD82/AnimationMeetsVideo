@@ -119,11 +119,11 @@ struct TransitionOptions: Equatable, Sendable {
     var clamped: TransitionOptions {
         var options = self
         options.color = TransitionColor(
-            red: min(max(color.red, 0), 1), green: min(max(color.green, 0), 1), blue: min(max(color.blue, 0), 1)
+            red: color.red.clamped(between: 0, and: 1), green: color.green.clamped(between: 0, and: 1), blue: color.blue.clamped(between: 0, and: 1)
         )
-        options.center = CGPoint(x: min(max(center.x, 0), 1), y: min(max(center.y, 0), 1))
-        options.count = min(max(count, Self.countRange.lowerBound), Self.countRange.upperBound)
-        options.amount = min(max(amount, 0), 1)
+        options.center = CGPoint(x: center.x.clamped(between: 0, and: 1), y: center.y.clamped(between: 0, and: 1))
+        options.count = count.clamped(between: Self.countRange.lowerBound, and: Self.countRange.upperBound)
+        options.amount = amount.clamped(between: 0, and: 1)
         return options
     }
 }

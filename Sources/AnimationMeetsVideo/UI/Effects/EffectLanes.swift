@@ -44,7 +44,7 @@ struct ClipLaneGeometry {
     /// The timeline time at a lane's x, on the timeline's frames and within
     /// the clip.
     func timelineTime(atX x: CGFloat) -> CMTime {
-        let seconds = min(max(Double(x / pixelsPerSecond), 0), duration)
+        let seconds = Double(x / pixelsPerSecond).clamped(between: 0, and: duration)
         let raw = timeline(fromLane: CMTime(seconds: seconds, preferredTimescale: 48_000))
         return CMTimeMinimum(CMTimeMaximum(timeline.snappedToFrame(raw), clip.startOffset), clip.endOffset)
     }

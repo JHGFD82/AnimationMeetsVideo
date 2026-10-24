@@ -17,7 +17,7 @@ extension EditingProject {
         from start: CMTime = .zero,
         duration: CMTime? = nil
     ) -> (layerID: UUID, clipID: UUID)? {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return nil }
+        guard let tIndex = timelines.firstIndex(id: timelineID) else { return nil }
         let timeline = timelines[tIndex]
         let wanted = duration ?? (timeline.duration > start ? CMTimeSubtract(timeline.duration, start) : CMTime(value: 5, timescale: 1))
         let length = CMTimeMaximum(timeline.frameDuration, timeline.frameAligned(wanted, .down))
@@ -27,7 +27,7 @@ extension EditingProject {
         )
         var layer = TimelineLayer(customName: nil, kind: .video, clips: [clip])
         layer.isAdjustment = true
-        timelines[tIndex].layers.insert(layer, at: min(max(index, 0), timelines[tIndex].layers.count))
+        timelines[tIndex].layers.insert(layer, clampedAt: index)
         return (layer.id, clip.id)
     }
 
@@ -47,7 +47,7 @@ extension EditingProject {
     /// to: the video layers below it. Sound and Music layers have no
     /// picture to adjust, so they aren't offered.
     func reachOptions(below layer: TimelineLayer, in timeline: Timeline) -> [TimelineLayer] {
-        guard let index = timeline.layers.firstIndex(where: { $0.id == layer.id }) else { return [] }
+        guard let index = timeline.layers.firstIndex(id: layer.id) else { return [] }
         return timeline.layers[(index + 1)...].filter { $0.kind == .video }
     }
 
@@ -55,9 +55,9 @@ extension EditingProject {
     /// whether that is every layer below it: those below its layer down to
     /// the one it reaches to. None when that layer has been moved above it.
     func reach(of clip: TimelineClip, on layer: TimelineLayer, in timeline: Timeline) -> (layers: [TimelineLayer], all: Bool) {
-        guard clip.source == .adjustment, let index = timeline.layers.firstIndex(where: { $0.id == layer.id }) else { return ([], false) }
+        guard clip.source == .adjustment, let index = timeline.layers.firstIndex(id: layer.id) else { return ([], false) }
         let below = Array(timeline.layers[(index + 1)...])
-        guard let bottom = clip.reach, let bottomIndex = timeline.layers.firstIndex(where: { $0.id == bottom }) else {
+        guard let bottom = clip.reach, let bottomIndex = timeline.layers.firstIndex(id: bottom) else {
             return (below, true)
         }
         guard bottomIndex > index else { return ([], false) }

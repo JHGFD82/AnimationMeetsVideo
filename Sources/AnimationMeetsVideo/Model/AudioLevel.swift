@@ -13,7 +13,7 @@ enum AudioLevel {
 
     static func clamped(_ decibels: Double) -> Double {
         guard decibels.isFinite else { return decibels > 0 ? maximum : silence }
-        return min(max(decibels, silence), maximum)
+        return decibels.clamped(between: silence, and: maximum)
     }
 
     /// The amplitude factor for a level: 1 at 0 dB, 0 when muted.
@@ -43,7 +43,7 @@ enum AudioPan {
 
     static func clamped(_ pan: Double) -> Double {
         guard pan.isFinite else { return pan > 0 ? range.upperBound : range.lowerBound }
-        return min(max(pan, range.lowerBound), range.upperBound)
+        return pan.clamped(between: range.lowerBound, and: range.upperBound)
     }
 
     /// The left and right channels' gain factors.
@@ -71,8 +71,8 @@ extension EditingProject {
     /// Applies `change` to a layer's volume (decibels). Times passed in
     /// should already be snapped to the timeline's frames.
     mutating func editVolume(of layerID: UUID, in timelineID: UUID, _ change: (inout AnimatedValue<Double>) -> Void) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID)
         else {
             return
         }
@@ -81,8 +81,8 @@ extension EditingProject {
 
     /// Applies `change` to a layer's pan, as `editVolume` does its volume.
     mutating func editPan(of layerID: UUID, in timelineID: UUID, _ change: (inout AnimatedValue<Double>) -> Void) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID)
         else {
             return
         }

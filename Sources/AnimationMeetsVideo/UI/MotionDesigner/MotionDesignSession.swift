@@ -11,7 +11,7 @@ import SwiftUI
 /// are made, and the editor's own player plays them. See
 /// docs/motion-designer.md.
 @MainActor @Observable
-final class MotionDesignSession {
+final class MotionDesignSession: SecondsViewport {
     /// The run being edited.
     private(set) var run: MotionRun {
         didSet { if run != oldValue { onDraftChange(draftProject) } }
@@ -83,7 +83,7 @@ final class MotionDesignSession {
         didSet {
             guard viewWidth > 0, viewWidth != oldValue else { return }
             if !hasFitted { return fit() }
-            secondsPerPoint = min(max(secondsPerPoint, closestZoom), farthestZoom)
+            secondsPerPoint = secondsPerPoint.clamped(between: closestZoom, and: farthestZoom)
             clampView()
         }
     }
@@ -193,7 +193,7 @@ final class MotionDesignSession {
     /// nearer something to snap to lands on it (`snapped`), to the nearest
     /// frame, as a moved clip does.
     func dragPiece(_ id: UUID, by delta: CMTime, snapTolerance: Double? = nil) {
-        guard let start = dragStart, let piece = start.pieces.first(where: { $0.id == id }) else { return }
+        guard let start = dragStart, let piece = start.pieces.first(id: id) else { return }
         var seconds = delta.seconds
         dragSnapTime = nil
         if let snapTolerance {
@@ -226,7 +226,7 @@ final class MotionDesignSession {
     /// Trims the selected clip's edge by whole frames: later reveals footage
     /// at the end and hides it at the start.
     func trimSelectedPiece(_ edge: MotionRun.Edge, byFrames frames: Int) {
-        guard let id = selectedPieceID, let piece = run.pieces.first(where: { $0.id == id }) else { return }
+        guard let id = selectedPieceID, let piece = run.pieces.first(id: id) else { return }
         let at = edge == .start ? piece.span.start : piece.span.end
         let delta = CMTimeMultiply(run.frameDuration, multiplier: Int32(frames))
         perform("Trim Clip") { $0.trim(id, edge: edge, to: CMTimeAdd(at, delta)) }
@@ -408,7 +408,7 @@ final class MotionDesignSession {
     /// Moves the playhead to `seconds`, within the window.
     func seek(to seconds: Double) {
         let window = window
-        playback.seek(to: CMTime(seconds: min(max(seconds, window.start), window.end), preferredTimescale: 48_000))
+        playback.seek(to: CMTime(seconds: seconds.clamped(between: window.start, and: window.end), preferredTimescale: 48_000))
     }
 
     /// Where the playhead is at `date`: the player's time while it plays.
@@ -422,7 +422,7 @@ final class MotionDesignSession {
     func fit() {
         let span = run.span
         let length = span.duration.seconds + 2 * windowRoom
-        secondsPerPoint = min(max(length / Double(max(viewWidth, 100)), closestZoom), farthestZoom)
+        secondsPerPoint = (length / Double(max(viewWidth, 100))).clamped(between: closestZoom, and: farthestZoom)
         visibleStart = span.start.seconds - windowRoom
         clampView()
         hasFitted = true
@@ -444,65 +444,8 @@ final class MotionDesignSession {
         return max((window.end - window.start) / Double(max(viewWidth, 100)), closestZoom)
     }
 
-    /// Zooms by `factor` (above 1 zooms in) about a point `x` in the lanes.
-    /// Zooming past the whole window or the closest zoom stretches the
-    /// lanes instead (`zoomBand`), until the pinch lifts, or at once for
-    /// any other zoom.
-    func zoom(by factor: Double, aboutX x: CGFloat, pinching: Bool = false) {
-        var band = zoomBand
-        band.zoom(by: factor, about: viewWidth > 0 ? x / viewWidth : 0.5, pinching: pinching) { factor in
-            let anchor = seconds(atX: x)
-            let before = secondsPerPoint
-            secondsPerPoint = min(max(secondsPerPoint / factor, closestZoom), farthestZoom)
-            visibleStart = anchor - Double(x) * secondsPerPoint
-            clampView()
-            return before / secondsPerPoint
-        }
-        zoomBand = band
-    }
-
-    /// The pinch's fingers lifted: the stretch springs back.
-    func endPinch() { zoomBand.endPinch() }
-
-    /// Scrolls the lanes sideways; past the window's ends they slide on
-    /// and spring back (`scrollBand`).
-    func scroll(byPoints points: CGFloat, phase: ScrollInputPhase = .wheel) {
-        var band = scrollBand
-        band.scroll(by: points, phase: phase) { points in
-            let before = visibleStart
-            visibleStart += Double(points) * secondsPerPoint
-            clampView()
-            return CGFloat((visibleStart - before) / secondsPerPoint)
-        }
-        scrollBand = band
-    }
-
-    /// The window's start sits at the left edge at most, and its end at the
-    /// right edge at least, while the whole fits.
-    private func clampView() {
-        let span = Double(viewWidth) * secondsPerPoint
-        let window = window
-        visibleStart = min(max(visibleStart, window.start), max(window.start, window.end - span))
-    }
-
-    func zoomIn() { zoom(by: 2, aboutX: x(of: selectedPoint?.time.seconds ?? playhead)) }
-    func zoomOut() { zoom(by: 0.5, aboutX: x(of: selectedPoint?.time.seconds ?? playhead)) }
-
-    /// The zoom as its slider shows it (`ZoomSlider`): 0 the whole window, 1
-    /// the closest. Moving it zooms about where zooming in does.
-    var zoomFraction: Double {
-        get { ZoomScale.fraction(of: 1 / secondsPerPoint, in: zoomRange) }
-        set {
-            let factor = ZoomScale.factor(from: 1 / secondsPerPoint, toFraction: newValue, in: zoomRange)
-            zoom(by: factor, aboutX: x(of: selectedPoint?.time.seconds ?? playhead))
-        }
-    }
-
-    /// The zooms the slider spans, as points per second.
-    private var zoomRange: ClosedRange<Double> {
-        (1 / farthestZoom)...max(1 / closestZoom, 1 / farthestZoom)
-    }
-
-    func x(of seconds: Double) -> CGFloat { CGFloat((seconds - visibleStart) / secondsPerPoint) }
-    func seconds(atX x: CGFloat) -> Double { visibleStart + Double(x) * secondsPerPoint }
+    /// The lanes show the window.
+    var viewBounds: (start: Double, end: Double) { window }
+    /// Zooming in zooms about the selected point, or the playhead.
+    var zoomFocus: Double { selectedPoint?.time.seconds ?? playhead }
 }

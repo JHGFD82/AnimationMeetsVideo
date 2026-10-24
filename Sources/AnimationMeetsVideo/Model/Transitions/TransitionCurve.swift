@@ -100,14 +100,14 @@ struct TransitionCurve: Equatable, Sendable {
     }
 
     func segment(containingTime time: Double) -> Int {
-        let clamped = min(max(time, 0), 1)
-        return (points.lastIndex { $0.time <= clamped } ?? 0).clamped(to: 0...(segmentCount - 1))
+        let clamped = time.clamped(between: 0, and: 1)
+        return (points.lastIndex { $0.time <= clamped } ?? 0).clamped(between: 0, and: segmentCount - 1)
     }
 
     /// How far the transition has got after `time` (0...1) of its length.
     /// Handles may push this a little outside 0...1.
     func value(at time: Double) -> Double {
-        let t = min(max(time, 0), 1)
+        let t = time.clamped(between: 0, and: 1)
         let index = segment(containingTime: t)
         let controls = controlPoints(ofSegment: index)
         // Exact at the points themselves, which the halving only nears.
@@ -152,8 +152,8 @@ struct TransitionCurve: Equatable, Sendable {
     mutating func movePoint(_ index: Int, to location: CGPoint) {
         guard index > 0, index < points.count - 1 else { return }
         let gap = 0.01
-        points[index].time = min(max(Double(location.x), points[index - 1].time + gap), points[index + 1].time - gap)
-        points[index].value = min(max(Double(location.y), 0), 1)
+        points[index].time = Double(location.x).clamped(between: points[index - 1].time + gap, and: points[index + 1].time - gap)
+        points[index].value = Double(location.y).clamped(between: 0, and: 1)
         clampHandles(of: index - 1)
         clampHandles(of: index)
         clampHandles(of: index + 1)
@@ -219,7 +219,7 @@ struct TransitionCurve: Equatable, Sendable {
         guard points.indices.contains(index) else { return }
         if index > 0, var handle = points[index].inHandle {
             let reach = points[index].time - points[index - 1].time
-            handle.dx = min(max(handle.dx, -reach), 0)
+            handle.dx = handle.dx.clamped(between: -reach, and: 0)
             points[index].inHandle = handle.nonZero
         }
         if index < points.count - 1, var handle = points[index].outHandle {
@@ -273,11 +273,5 @@ private extension CGVector {
     /// Nil for a handle with no length, which is the same as no handle.
     var nonZero: CGVector? {
         abs(dx) < 1e-9 && abs(dy) < 1e-9 ? nil : self
-    }
-}
-
-private extension Comparable {
-    func clamped(to range: ClosedRange<Self>) -> Self {
-        min(max(self, range.lowerBound), range.upperBound)
     }
 }

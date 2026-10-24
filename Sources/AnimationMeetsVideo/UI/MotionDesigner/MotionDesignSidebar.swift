@@ -20,7 +20,7 @@ struct MotionDesignSidebar: View {
                     MotionDesignMonitor(session: session)
                     if let point = session.selectedPoint {
                         pointControls(point)
-                    } else if let id = session.selectedPieceID, let piece = session.run.pieces.first(where: { $0.id == id }) {
+                    } else if let id = session.selectedPieceID, let piece = session.run.pieces.first(id: id) {
                         pieceControls(piece)
                     } else {
                         guidance

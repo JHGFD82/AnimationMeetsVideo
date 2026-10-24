@@ -9,7 +9,7 @@ extension TimelineView {
         guard let kind = timeline.layer(id: id)?.kind else { return nil }
         let layers = areaLayers(kind)
         let tops = tops(of: layers)
-        guard let from = layers.firstIndex(where: { $0.id == id }) else { return nil }
+        guard let from = layers.firstIndex(id: id) else { return nil }
         let middle = tops[from] + blockHeight(of: layers[from]) / 2 + dy
         return layers.indices.filter { index in
             index != from && tops[index] + blockHeight(of: layers[index]) / 2 < middle
@@ -58,7 +58,7 @@ extension TimelineView {
                 // The place counts the layers left in, the original among
                 // them, which is above the line when dragged down.
                 onEditProject { $0.duplicateLayer(id, in: timelineID, toPositionInKind: position + (dy > 0 ? 1 : 0)) }
-            } else if position != areaLayers(kind).firstIndex(where: { $0.id == id }) {
+            } else if position != areaLayers(kind).firstIndex(id: id) {
                 onMoveLayerTo(id, position)
             }
         }

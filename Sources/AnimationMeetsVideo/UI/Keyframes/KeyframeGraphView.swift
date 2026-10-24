@@ -186,7 +186,7 @@ struct KeyframeGraphView: View {
                 lastMagnification = pinch.magnification
                 if NSEvent.modifierFlags.contains(.option) {
                     let fraction = Double((layout.plot.maxY - pinch.startLocation.y) / layout.plot.height)
-                    zoomValues(by: factor, around: min(max(fraction, 0), 1), pinching: true)
+                    zoomValues(by: factor, around: fraction.clamped(between: 0, and: 1), pinching: true)
                 } else {
                     zoomTimes(by: factor, around: layout.seconds(atX: pinch.startLocation.x), c, layout: layout, pinching: true)
                 }

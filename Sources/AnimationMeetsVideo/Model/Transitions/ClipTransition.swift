@@ -312,7 +312,7 @@ extension EditingProject {
     mutating func setTransition(_ kind: TransitionKind, at edge: TransitionEdge, of clipID: UUID, in timelineID: UUID, layer layerID: UUID) {
         guard let timeline = timeline(id: timelineID),
               let layer = timeline.layer(id: layerID),
-              var clip = layer.clips.first(where: { $0.id == clipID }),
+              var clip = layer.clips.first(id: clipID),
               playsVideo(clip)
         else {
             return
@@ -355,7 +355,7 @@ extension EditingProject {
     mutating func setTransitionDuration(_ duration: CMTime, at edge: TransitionEdge, of clipID: UUID, in timelineID: UUID, layer layerID: UUID) {
         guard let timeline = timeline(id: timelineID),
               let layer = timeline.layer(id: layerID),
-              let clip = layer.clips.first(where: { $0.id == clipID }),
+              let clip = layer.clips.first(id: clipID),
               var transition = clip.transition(at: edge)
         else {
             return
@@ -400,9 +400,9 @@ extension EditingProject {
     }
 
     fileprivate mutating func updateClip(_ clipID: UUID, in timelineID: UUID, layer layerID: UUID, _ change: (inout TimelineClip) -> Void) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
-              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == clipID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID),
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(id: clipID)
         else {
             return
         }
@@ -524,7 +524,7 @@ extension EditingProject {
     /// the clip before.
     func joint(at incomingID: UUID, in timelineID: UUID, layer layerID: UUID) -> TransitionJoint? {
         guard let layer = timeline(id: timelineID)?.layer(id: layerID),
-              let incoming = layer.clips.first(where: { $0.id == incomingID }),
+              let incoming = layer.clips.first(id: incomingID),
               let transition = incoming.transitionIn,
               let outgoing = predecessor(joining: incoming, among: layer.clips),
               let lead = joinedLead(of: incoming, among: layer.clips)
@@ -600,8 +600,8 @@ extension EditingProject {
             transition.lead = fit.lead
             incoming.transitionIn = transition
         }
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timeline.id }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == joint.layerID })
+        guard let tIndex = timelines.firstIndex(id: timeline.id),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: joint.layerID)
         else {
             return
         }
@@ -737,7 +737,7 @@ struct EdgeTransitions: Sendable {
     /// edge downward, so the motion keeps its direction: a slide to the right
     /// comes in from the left and leaves to the right.
     private func apply(_ transition: Placed, visibility: Double, edge: TransitionEdge, to effect: inout Effect) {
-        let v = min(max(visibility, 0), 1)
+        let v = visibility.clamped(between: 0, and: 1)
         let width = frameSize.width, height = frameSize.height
         let entering = edge == .leading
         let direction = transition.options.direction
@@ -816,7 +816,7 @@ struct LumaReveal: Equatable, Sendable {
     /// everything at 1, even for pure white and pure black.
     var gainAndBias: (gain: Double, bias: Double) {
         let s = Self.softness
-        let threshold = (1 + s) - min(max(progress, 0), 1) * (1 + 2 * s)
+        let threshold = (1 + s) - progress.clamped(between: 0, and: 1) * (1 + 2 * s)
         return (1 / (2 * s), (s - threshold) / (2 * s))
     }
 }

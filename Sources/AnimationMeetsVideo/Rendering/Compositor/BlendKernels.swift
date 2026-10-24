@@ -213,7 +213,7 @@ final class BlendProcessor: CIImageProcessorKernel {
             throw NSError(domain: "BlendProcessor", code: 1)
         }
         var parameters = BlendKernels.Parameters(
-            amount: Float(min(max(amount, 0), 1)),
+            amount: Float(amount.clamped(between: 0, and: 1)),
             keepsBackdrop: (arguments?["keepsBackdrop"] as? Bool) == true ? 1 : 0
         )
         encoder.setComputePipelineState(pipeline)

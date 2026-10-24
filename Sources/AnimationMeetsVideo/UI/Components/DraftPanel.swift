@@ -59,3 +59,71 @@ final class DraftPanelHostingView<Content: View>: NSHostingView<Content> {
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
+
+/// A draft editor's panel while it is open over the editor window. The
+/// editor takes no input meanwhile, not even hovering, so a click on it,
+/// or the editor becoming key, means the person is looking for the panel
+/// and brings it back. The close button calls `onClose` and leaves the
+/// panel open, for the editor to ask first or end it. Ending it closes
+/// the panel and gives the editor back.
+@MainActor
+final class DraftPanelPresentation {
+    let panel: DraftPanel
+    private let delegate = DraftPanelDelegate()
+    private var observers: [NSObjectProtocol] = []
+    private weak var editorWindow: NSWindow?
+    /// Keeps the pointer out of the editor while the panel is open.
+    private var inputBlock: WindowInputBlock?
+
+    init<Content: View>(
+        title: String, size: NSSize, minimum: NSSize, undo: UndoManager,
+        over editorWindow: NSWindow?, content: Content, onClose: @escaping () -> Void
+    ) {
+        self.editorWindow = editorWindow
+        panel = DraftPanel.make(title: title, size: size, minimum: minimum, undo: undo, over: editorWindow)
+        let host = DraftPanelHostingView(rootView: content)
+        // The panel's size is the person's; the view fills whatever it is.
+        host.sizingOptions = [.minSize]
+        panel.contentView = host
+        delegate.shouldClose = {
+            onClose()
+            return false
+        }
+        panel.delegate = delegate
+        inputBlock = WindowInputBlock(window: editorWindow) { [weak self] in self?.bringToFront() }
+        observers = [
+            NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: editorWindow, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.bringToFront() }
+            },
+        ]
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    func bringToFront() {
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    /// Asks on the panel whether to throw away the draft's changes, and
+    /// calls `discard` if so.
+    func askToDiscard(_ question: String, detail: String, then discard: @escaping () -> Void) {
+        let alert = NSAlert()
+        alert.messageText = question
+        alert.informativeText = detail
+        alert.addButton(withTitle: "Keep Editing")
+        alert.addButton(withTitle: "Discard Changes").hasDestructiveAction = true
+        alert.beginSheetModal(for: panel) { response in
+            if response == .alertSecondButtonReturn { MainActor.assumeIsolated { discard() } }
+        }
+    }
+
+    /// Closes the panel and gives the editor its input back.
+    func end() {
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
+        observers = []
+        inputBlock?.end()
+        inputBlock = nil
+        panel.delegate = nil
+        panel.close()
+        editorWindow?.makeKeyAndOrderFront(nil)
+    }
+}

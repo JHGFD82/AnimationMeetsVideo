@@ -171,9 +171,9 @@ struct ClipBlockView: View {
     /// How far a slip drag in progress moves the footage.
     @State private var slipDelta: CMTime?
     /// Where the music point is being dragged to, until the edit lands.
-    @State private var musicPointDraft: CMTime?
+    @State var musicPointDraft: CMTime?
     /// A transition's length while its inner side is dragged.
-    @State private var transitionDraft: (edge: TransitionEdge, duration: CMTime)?
+    @State var transitionDraft: (edge: TransitionEdge, duration: CMTime)?
     /// Counts edits that have come back down from the project, which is
     /// what the block flashes to acknowledge. See `ConfirmFlash`.
     @State private var landedCount = 0
@@ -184,10 +184,10 @@ struct ClipBlockView: View {
     private let handleWidth: CGFloat = 8
     /// The band along the top of a clip showing pictures that holds its name.
     private static let labelBand: CGFloat = 18
-    private let space = "clipBlock"
+    let space = "clipBlock"
     /// How wide a transition must be drawn before its curve can be edited
     /// on the clip; zoom in to get there.
-    private let curveEditingWidth: CGFloat = 80
+    let curveEditingWidth: CGFloat = 80
 
     /// The clip as drawn: the drag preview, with any transition being resized.
     private var shownClip: TimelineClip {
@@ -531,96 +531,6 @@ struct ClipBlockView: View {
         }
     }
 
-    // MARK: VoiceOver
-
-    /// What the clip is: its name and kind.
-    private var accessibilityName: String {
-        let kind = switch info {
-        case .timeline: "nested timeline"
-        case .adjustment: "adjustment clip"
-        case .graphic: "shape clip"
-        case .media(let media) where media.kind == .audio || clip.streams == .audio: "audio clip"
-        case .media(let media) where media.kind == .image: "still"
-        case .media: "video clip"
-        case nil: "missing clip"
-        }
-        return "\(info?.name ?? "Unknown"), \(kind)"
-    }
-
-    /// Where it is and what it carries, read after its name.
-    private var accessibilityDescription: String {
-        var parts = [
-            "starts at \(clip.startOffset.timecode(frameRate: frameRate))",
-            "\(clip.placedDuration.timecode(frameRate: frameRate)) long",
-        ]
-        if let transition = clip.transitionIn { parts.append("\(transition.kind.name) at the start") }
-        if let transition = clip.transitionOut { parts.append("\(transition.kind.name) at the end") }
-        if !clip.enabled { parts.append("turned off") }
-        if hasLinkedAudio { parts.append("with its own sound") }
-        if playsSound, clip.soundMuted { parts.append("sound muted") }
-        if let reach { parts.append("reaches \(reach.summary)") }
-        if let time = musicPointTime(of: clip) { parts.append("tied to the music at \(time.timecode(frameRate: frameRate))") }
-        return parts.joined(separator: ", ")
-    }
-
-    /// Moves and trims a frame at a time, and the clip's menu, for VoiceOver.
-    /// They go through the same placement rules as dragging.
-    @ViewBuilder
-    private var accessibilityEditActions: some View {
-        let frame = Timeline.frameDuration(for: frameRate)
-        Button("Move one frame earlier") {
-            onMove(CMTimeMaximum(.zero, CMTimeSubtract(clip.startOffset, frame)), nil)
-        }
-        Button("Move one frame later") { onMove(CMTimeAdd(clip.startOffset, frame), nil) }
-        if let onOpenNested { Button("Open timeline", action: onOpenNested) }
-        Button(isInGroup ? "Remove from selection" : "Add to selection", action: onToggleInGroup)
-        Button(clip.enabled ? "Turn off" : "Turn on") { onEditClip { $0.enabled.toggle() } }
-        if playsSound {
-            Button(clip.soundMuted ? "Unmute sound" : "Mute sound") { onEditClip { $0.soundMuted.toggle() } }
-        }
-        Button(isInGroup ? "Cut selection" : "Cut") { onClipboard(.cut) }
-        Button(isInGroup ? "Copy selection" : "Copy") { onClipboard(.copy) }
-        Button(isInGroup ? "Duplicate selection" : "Duplicate") { onClipboard(.duplicate) }
-        Button(isInGroup ? "Put selection in new timeline" : "Put in new timeline") { onClipboard(.nest) }
-        Button("Trim start one frame earlier") { onTrimStart(CMTimeSubtract(clip.trimStart, frame)) }
-        Button("Trim start one frame later") { onTrimStart(CMTimeAdd(clip.trimStart, frame)) }
-        Button("Trim end one frame earlier") { onTrimEnd(CMTimeSubtract(clip.trimEnd, frame)) }
-        Button("Trim end one frame later") { onTrimEnd(CMTimeAdd(clip.trimEnd, frame)) }
-        if let transition = clip.transitionIn, joinedLead == nil {
-            Button("Remove \(transition.kind.name) at start") { onRemoveTransition(.leading) }
-        }
-        if let transition = clip.transitionOut {
-            Button("Remove \(transition.kind.name) at end") { onRemoveTransition(.trailing) }
-        }
-        if hasLinkedAudio {
-            Button("Detach audio", action: onDetachAudio)
-        }
-        if let onBeatMatch {
-            Button("Beat match", action: onBeatMatch)
-        }
-        if let onRemoveBeats {
-            Button("Remove beats", action: onRemoveBeats)
-        }
-        if let onAttachToMusic {
-            Button(clip.followsMusic ? "Stop following music" : "Follow music") { onEditClip { $0.followsMusic.toggle() } }
-            Button("Attach to music at playhead", action: onAttachToMusic)
-        }
-        if let onSetMusicPoint, let time = musicPointTime(of: clip) {
-            let frame = Timeline.frameDuration(for: frameRate)
-            Button("Music point one frame earlier") { onSetMusicPoint(clampedMusicPoint(CMTimeSubtract(time, frame))) }
-            Button("Music point one frame later") { onSetMusicPoint(clampedMusicPoint(CMTimeAdd(time, frame))) }
-        }
-        if let onMotionDesign {
-            Button(isInGroup ? "Open selection in motion designer" : "Open in motion designer", action: onMotionDesign)
-        }
-        if let reach {
-            Button("Reach all layers below") { reach.onChoose(nil) }
-            ForEach(reach.options, id: \.id) { option in
-                Button("Reach down to \(option.name)") { reach.onChoose(option.id) }
-            }
-        }
-    }
-
     /// The sound of the drawn part of the clip, faded, once the layer is
     /// tall enough to read it.
     @ViewBuilder
@@ -719,125 +629,13 @@ struct ClipBlockView: View {
         )
     }
 
-    // MARK: Music point
-
-    /// Where the clip is tied to the music, in timeline time: the frame
-    /// that plays on the song's moment (see `MusicAttachment`). Nil while
-    /// it isn't attached, and for songs.
-    private func musicPointTime(of clip: TimelineClip) -> CMTime? {
-        guard onSetMusicPoint != nil, let music = clip.music else { return nil }
-        return clip.timelineTime(forSourceTime: clip.musicFrame(music.frame))
-    }
-
-    /// A time held to the clip's frames: from its first to its last.
-    private func clampedMusicPoint(_ time: CMTime) -> CMTime {
-        let last = CMTimeSubtract(clip.endOffset, Timeline.frameDuration(for: frameRate))
-        return CMTimeMaximum(clip.startOffset, CMTimeMinimum(snap(time), CMTimeMaximum(clip.startOffset, last)))
-    }
-
-    /// The music point, as a line through the clip at the frame tied to
-    /// the music with a point at its foot, toward the Music area below; the
-    /// selected clip's point is a knob that drags it to another frame,
-    /// snapping to beats and edges as the blade does. On a song, the
-    /// selected clips' points are marked where they hold on, with the
-    /// point at the top, toward the footage.
-    @ViewBuilder
-    private func musicLinkMarks(of shown: TimelineClip) -> some View {
-        if let time = musicPointDraft ?? musicPointTime(of: shown) {
-            let x = time.seconds * pixelsPerSecond
-            if x >= visibleX.lowerBound - 8, x <= visibleX.upperBound + 8 {
-                MusicLinkMark(height: height, pointAtTop: false, emphasized: isSelected)
-                    .offset(x: x - MusicLinkMark.width / 2)
-                if isSelected, !isInGroup, tool == .arrow {
-                    Color.clear
-                        .frame(width: 14, height: 14)
-                        .contentShape(Rectangle())
-                        .offset(x: x - 7, y: height - 14)
-                        .gesture(
-                            DragGesture(minimumDistance: 1, coordinateSpace: .named(space))
-                                .onChanged { value in
-                                    let time = CMTime(seconds: Double(max(0, value.location.x) / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
-                                    musicPointDraft = clampedMusicPoint(snapTime(time) ?? time)
-                                }
-                                .onEnded { _ in
-                                    guard let draft = musicPointDraft else { return }
-                                    if draft == musicPointTime(of: clip) {
-                                        musicPointDraft = nil
-                                    } else {
-                                        onSetMusicPoint?(draft)
-                                    }
-                                }
-                        )
-                        .help("Music point: drag to tie another frame to the music")
-                }
-            }
-        }
-        ForEach(Array(musicMarks.enumerated()), id: \.offset) { _, time in
-            MusicLinkMark(height: height, pointAtTop: true, emphasized: true)
-                .offset(x: time.seconds * pixelsPerSecond - MusicLinkMark.width / 2)
-        }
-    }
-
     /// The timeline time the blade cuts at for `x` in the row: on a frame.
     private func bladeTime(atX x: CGFloat) -> CMTime {
         let time = CMTime(seconds: Double(max(0, x) / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
         return snap(snapTime(time) ?? time)
     }
 
-    /// The end whose transition covers `x` (in the clip's row), if any.
-    private func transitionEdge(atX x: CGFloat, liveX: CGFloat) -> TransitionEdge? {
-        let durations = clip.effectiveTransitionDurations(lead: joinedLead ?? .zero)
-        let end = liveX + clip.placedDuration.seconds * pixelsPerSecond
-        if clip.transitionIn != nil, joinedLead == nil, x >= liveX, x <= liveX + durations.leading.seconds * pixelsPerSecond {
-            return .leading
-        }
-        if clip.transitionOut != nil, x <= end, x >= end - durations.trailing.seconds * pixelsPerSecond {
-            return .trailing
-        }
-        return nil
-    }
-
     private enum Edge { case leading, trailing }
-
-    /// Shaded wedges over the part of the clip each transition plays in,
-    /// shaped by their curves, in the block's drawn coordinates. A selected
-    /// one wide enough on screen shows its curve's points to edit.
-    private func transitionMarks(of shown: TimelineClip, liveX: CGFloat, drawnX: CGFloat, drawnWidth: CGFloat) -> some View {
-        let durations = shown.effectiveTransitionDurations(lead: joinedLead ?? .zero)
-        let liveEnd = liveX + shown.placedDuration.seconds * pixelsPerSecond
-        let leadingWidth = durations.leading.seconds * pixelsPerSecond
-        let trailingWidth = durations.trailing.seconds * pixelsPerSecond
-        return ZStack(alignment: .topLeading) {
-            if let transition = shown.transitionIn, joinedLead == nil, leadingWidth > 0 {
-                transitionMark(transition, edge: .leading, width: leadingWidth)
-                    .offset(x: liveX - drawnX)
-            }
-            if let transition = shown.transitionOut, trailingWidth > 0 {
-                transitionMark(transition, edge: .trailing, width: trailingWidth)
-                    .offset(x: liveEnd - trailingWidth - drawnX)
-            }
-        }
-        .frame(width: drawnWidth, height: height, alignment: .topLeading)
-        .clipped()
-    }
-
-    private func transitionMark(_ transition: ClipTransition, edge: TransitionEdge, width: CGFloat) -> some View {
-        let isSelected = selectedTransition == edge
-        return ZStack(alignment: .topLeading) {
-            TransitionMark(kind: transition.kind, curve: transition.curve, edge: edge, isSelected: isSelected)
-                .frame(width: width, height: height)
-                .contextMenu { transitionMenu(transition, edge: edge) }
-            if isSelected, width >= curveEditingWidth, height >= 30 {
-                TransitionCurveEditor(
-                    curve: transition.curve,
-                    edge: edge,
-                    size: CGSize(width: width, height: height),
-                    onChange: { onSetTransitionCurve(edge, $0) }
-                )
-            }
-        }
-        .frame(width: width, height: height, alignment: .topLeading)
-    }
 
     /// Sets the preview for a drag in progress.
     private func showPreview(_ clip: TimelineClip) {
@@ -866,46 +664,8 @@ struct ClipBlockView: View {
         onMovePreview(nil)
     }
 
-    private func timeDelta(_ translation: CGFloat) -> CMTime {
+    func timeDelta(_ translation: CGFloat) -> CMTime {
         CMTime(seconds: Double(translation / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
-    }
-
-    /// The inner side of each transition on the clip's own ends (not one
-    /// joining the clip before): dragging it changes the length, the outer
-    /// side staying at the clip's end.
-    @ViewBuilder
-    private func transitionSideHandles(of shown: TimelineClip, liveX: CGFloat) -> some View {
-        let durations = shown.effectiveTransitionDurations(lead: joinedLead ?? .zero)
-        let liveEnd = liveX + shown.placedDuration.seconds * pixelsPerSecond
-        if let transition = clip.transitionIn, joinedLead == nil, durations.leading > .zero {
-            transitionSideHandle(.leading, transition: transition, atX: liveX + durations.leading.seconds * pixelsPerSecond)
-        }
-        if let transition = clip.transitionOut, durations.trailing > .zero {
-            transitionSideHandle(.trailing, transition: transition, atX: liveEnd - durations.trailing.seconds * pixelsPerSecond)
-        }
-    }
-
-    private func transitionSideHandle(_ edge: TransitionEdge, transition: ClipTransition, atX x: CGFloat) -> some View {
-        Rectangle()
-            .fill(Color.clear)
-            .frame(width: 6, height: height)
-            .contentShape(Rectangle())
-            .offset(x: x - 3)
-            .gesture(
-                DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                    .onChanged { value in
-                        // Inward is longer for a way in, shorter for a way out.
-                        let delta = timeDelta(edge == .leading ? value.translation.width : -value.translation.width)
-                        let duration = snap(CMTimeAdd(transition.duration, delta))
-                        if duration > .zero { transitionDraft = (edge, duration) }
-                    }
-                    .onEnded { _ in
-                        if let transitionDraft { onSetTransitionDuration(edge, transitionDraft.duration) }
-                        transitionDraft = nil
-                    }
-            )
-            .pointerStyle(.columnResize)
-            .help("Drag to change the transition's length")
     }
 
     /// A trim drag of `edge` moved by `translation` points: previews it.
@@ -964,74 +724,5 @@ struct ClipBlockView: View {
                     }
             )
             .pointerStyle(.columnResize)
-    }
-}
-
-/// Marks where a transition plays on a clip: a wedge whose top edge is the
-/// transition's curve, rising over a way in and falling over a way out,
-/// with the transition's symbol.
-private struct TransitionMark: View {
-    let kind: TransitionKind
-    let curve: TransitionCurve
-    let edge: TransitionEdge
-    let isSelected: Bool
-
-    var body: some View {
-        ZStack {
-            TransitionWedge(curve: curve, edge: edge)
-                .fill(Color.white.opacity(isSelected ? 0.34 : 0.22))
-            if isSelected {
-                TransitionWedge(curve: curve, edge: edge)
-                    .stroke(Design.accent, lineWidth: 1)
-            }
-            Image(systemName: kind.systemImage)
-                .font(Design.Typeface.micro)
-                .foregroundStyle(Design.textOnColor.opacity(0.85))
-        }
-        .contentShape(Rectangle())
-        .help("\(kind.name): click to select, right-click for curves")
-    }
-}
-
-/// The area under a transition's curve.
-struct TransitionWedge: Shape {
-    let curve: TransitionCurve
-    let edge: TransitionEdge
-
-    func path(in rect: CGRect) -> Path {
-        var path = TransitionCurveFrame(size: rect.size, edge: edge, inset: 0).path(of: curve)
-        path.addLine(to: CGPoint(x: edge == .leading ? rect.width : 0, y: rect.height))
-        path.closeSubpath()
-        return path.offsetBy(dx: rect.minX, dy: rect.minY)
-    }
-}
-
-/// A line through a clip where it is tied to the music, with a point at
-/// one end: drawn only, the knob that drags it is the block's.
-struct MusicLinkMark: View {
-    static let width: CGFloat = 9
-    let height: CGFloat
-    /// At the top on a song, toward the footage tied to it; at the foot on
-    /// footage, toward its song.
-    let pointAtTop: Bool
-    /// Brighter and with a larger point on the selected clip.
-    let emphasized: Bool
-
-    var body: some View {
-        let point: CGFloat = emphasized ? 9 : 6
-        ZStack(alignment: pointAtTop ? .top : .bottom) {
-            Rectangle()
-                .fill(Design.musicLink.opacity(emphasized ? 1 : 0.75))
-                .frame(width: emphasized ? 1.5 : 1, height: height)
-            Circle()
-                .fill(Design.musicLink)
-                .overlay { Circle().strokeBorder(.black.opacity(0.55), lineWidth: 1) }
-                .frame(width: point, height: point)
-                .padding(pointAtTop ? .top : .bottom, 1)
-        }
-        .frame(width: Self.width, height: height)
-        .shadow(color: .black.opacity(0.5), radius: 1)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 }

@@ -31,9 +31,9 @@ struct TimelineViewport: Equatable {
         self.width = max(1, width)
         fitPixelsPerSecond = self.width / CGFloat(contentSeconds)
         maxPixelsPerSecond = max(fitPixelsPerSecond, CGFloat(max(frameRate, 1)) * Self.maximumFrameWidth)
-        pixelsPerSecond = min(max(requestedPixelsPerSecond ?? fitPixelsPerSecond, fitPixelsPerSecond), maxPixelsPerSecond)
+        pixelsPerSecond = (requestedPixelsPerSecond ?? fitPixelsPerSecond).clamped(between: fitPixelsPerSecond, and: maxPixelsPerSecond)
         let maxScroll = max(0, CGFloat(contentSeconds) * pixelsPerSecond - self.width)
-        scrollX = min(max(0, requestedScrollX), maxScroll)
+        scrollX = requestedScrollX.clamped(between: 0, and: maxScroll)
     }
 
     var contentWidth: CGFloat { CGFloat(contentSeconds) * pixelsPerSecond }
@@ -60,7 +60,7 @@ struct TimelineViewport: Equatable {
     /// (clamped to the allowed range) with the moment at `seconds` held at
     /// visible x `anchorX`. A nil scale means the zoom reached the fit.
     func zoomed(to pixelsPerSecond: CGFloat, keeping seconds: Double, atX anchorX: CGFloat) -> (pixelsPerSecond: CGFloat?, scrollX: CGFloat) {
-        let scale = min(max(pixelsPerSecond, fitPixelsPerSecond), maxPixelsPerSecond)
+        let scale = pixelsPerSecond.clamped(between: fitPixelsPerSecond, and: maxPixelsPerSecond)
         let scroll = CGFloat(seconds) * scale - anchorX
         return (scale <= fitPixelsPerSecond * 1.0001 ? nil : scale, scroll)
     }
@@ -68,11 +68,15 @@ struct TimelineViewport: Equatable {
     /// Zoom position on a 0...1 scale that is even in ratio, so each step of
     /// a slider multiplies the scale by the same amount.
     var zoomFraction: Double {
-        guard maxPixelsPerSecond > fitPixelsPerSecond else { return 0 }
-        return Double(log(pixelsPerSecond / fitPixelsPerSecond) / log(maxPixelsPerSecond / fitPixelsPerSecond))
+        ZoomScale.fraction(of: Double(pixelsPerSecond), in: zoomScale)
     }
 
     func pixelsPerSecond(atZoomFraction fraction: Double) -> CGFloat {
-        fitPixelsPerSecond * pow(maxPixelsPerSecond / fitPixelsPerSecond, CGFloat(min(max(fraction, 0), 1)))
+        CGFloat(ZoomScale.zoom(atFraction: fraction, in: zoomScale))
+    }
+
+    /// The zooms the slider spans, from the fit to the closest.
+    private var zoomScale: ClosedRange<Double> {
+        Double(fitPixelsPerSecond)...Double(maxPixelsPerSecond)
     }
 }

@@ -30,8 +30,8 @@ final class MediaImports {
     /// thread and may arrive out of order or after the import ends, and
     /// steps under a half percent aren't worth redrawing for.
     func update(_ id: Item.ID, fraction: Double) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        let fraction = min(max(fraction, 0), 1)
+        guard let index = items.firstIndex(id: id) else { return }
+        let fraction = fraction.clamped(between: 0, and: 1)
         if let current = items[index].fraction, fraction < current + 0.005 { return }
         items[index].fraction = fraction
     }

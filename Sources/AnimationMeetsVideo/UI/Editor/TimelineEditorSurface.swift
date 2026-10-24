@@ -160,7 +160,7 @@ struct TimelineEditorSurface<Library: View>: View {
     /// What the viewer's banner says while Show Up to Here is on.
     private var partialBanner: String? {
         guard let showing = partialView,
-              let effect = project.clipAndLayer(showing.clipID, in: timelineID)?.clip.effects.first(where: { $0.id == showing.effectID })
+              let effect = project.clipAndLayer(showing.clipID, in: timelineID)?.clip.effects.first(id: showing.effectID)
         else {
             return nil
         }
@@ -173,7 +173,7 @@ struct TimelineEditorSurface<Library: View>: View {
         else {
             return nil
         }
-        return layer.clips.first { $0.id == selection.timelineClipID }
+        return layer.clips.first(id: selection.timelineClipID)
     }
 
     /// Says which of the files this timeline plays are offline, if any.
@@ -198,7 +198,7 @@ struct TimelineEditorSurface<Library: View>: View {
     var body: some View {
         GeometryReader { geometry in
             let maxTimelineHeight = max(minTimelineHeight, geometry.size.height - minTopAreaHeight)
-            let resolvedTimelineHeight = min(max(CGFloat(timelineHeight), minTimelineHeight), maxTimelineHeight)
+            let resolvedTimelineHeight = CGFloat(timelineHeight).clamped(between: minTimelineHeight, and: maxTimelineHeight)
 
             VStack(spacing: 0) {
                 TimelineHeaderBar(
@@ -461,11 +461,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 rebuildPlayerItem()
             }
         }
-        .alert("Import Failed", isPresented: $dropError.isPresent) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(dropError ?? "")
-        }
+        .messageAlert("Import Failed", message: $dropError)
         .onChange(of: renderer?.packageURL) { _, _ in
             rebuildPlayerItem()
         }

@@ -59,7 +59,7 @@ struct BrowserSelection<ID: Hashable>: Equatable {
     /// Picks part of one item, from Option-drag or its handles; the ends may
     /// come in either order. Anything else picked is dropped.
     mutating func setRange(of id: ID, from a: Double, to b: Double, duration: Double) {
-        let start = min(max(min(a, b), 0), duration), end = min(max(max(a, b), 0), duration)
+        let start = min(a, b).clamped(between: 0, and: duration), end = max(a, b).clamped(between: 0, and: duration)
         revision += 1
         items = [id]
         anchor = id

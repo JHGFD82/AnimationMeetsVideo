@@ -92,27 +92,13 @@ struct BrowserPanel: View {
             Button("Rename") { presets.commitRename() }
             Button("Cancel", role: .cancel) {}
         }
-        .alert(
-            "Preset Problem",
-            isPresented: $presets.errorMessage.isPresent
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(presets.errorMessage ?? "")
-        }
+        .messageAlert("Preset Problem", message: $presets.errorMessage)
         .onReceive(NotificationCenter.default.publisher(for: .presetsChanged)) { _ in presets.reload() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in presets.reload() }
         // Files from the Finder. The app's own drags are URLs too, but
         // never file URLs.
         .dropDestination(for: URL.self) { urls, _ in importDropped(urls) }
-        .alert(
-            "Import Failed",
-            isPresented: $importError.isPresent
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(importError ?? "")
-        }
+        .messageAlert("Import Failed", message: $importError)
     }
 
     /// Time per thumbnail and thumbnail size, for every browser tab.

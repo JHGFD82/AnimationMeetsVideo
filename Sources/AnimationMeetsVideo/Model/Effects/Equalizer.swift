@@ -283,7 +283,7 @@ struct Biquad: Equatable, Sendable {
 
     /// The angle a frequency turns per sample, kept below Nyquist.
     private static func omega(_ frequency: Double, _ sampleRate: Double) -> Double {
-        2 * Double.pi * min(max(frequency, 1), 0.49 * sampleRate) / sampleRate
+        2 * Double.pi * frequency.clamped(between: 1, and: 0.49 * sampleRate) / sampleRate
     }
 
     static func bell(frequency: Double, gain: Double, q: Double, sampleRate: Double) -> Biquad {

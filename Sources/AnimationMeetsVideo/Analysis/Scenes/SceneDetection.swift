@@ -239,7 +239,7 @@ enum SceneDetector {
     /// Sensitivity 0 needs an almost total change; 1 reacts to small ones.
     /// Exponential so each step of the slider feels even.
     static func threshold(forSensitivity sensitivity: Double) -> Double {
-        let s = min(max(sensitivity, 0), 1)
+        let s = sensitivity.clamped(between: 0, and: 1)
         let strict = 0.4, loose = 0.03
         return strict * exp(log(loose / strict) * s)
     }

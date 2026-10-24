@@ -146,7 +146,7 @@ final class ScrubAudio: @unchecked Sendable {
     /// A raised cosine from 0 to 1 over 0...1: it starts and ends flat, so
     /// it doesn't click, and with its mirror image it sums to 1.
     static func fadeIn(_ x: Float) -> Float {
-        0.5 - 0.5 * cos(.pi * min(max(x, 0), 1))
+        0.5 - 0.5 * cos(.pi * x.clamped(between: 0, and: 1))
     }
 
     /// Now on the host clock, in seconds.

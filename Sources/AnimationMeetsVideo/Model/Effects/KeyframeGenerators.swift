@@ -81,7 +81,7 @@ enum KeyframeGenerators {
     /// eased.
     static func fadeEnvelope(elapsed: Double, total: Double, fade: Double) -> Double {
         guard fade > 0 else { return 1 }
-        let x = min(max(min(elapsed, total - elapsed) / fade, 0), 1)
+        let x = (min(elapsed, total - elapsed) / fade).clamped(between: 0, and: 1)
         return x * x * (3 - 2 * x)
     }
 
@@ -141,7 +141,7 @@ enum KeyframeGenerators {
         return samples.indices.map { index in
             var sum = [Double](repeating: 0, count: count)
             for offset in -before...after {
-                let row = samples[min(max(index + offset, 0), samples.count - 1)]
+                let row = samples[(index + offset).clamped(between: 0, and: samples.count - 1)]
                 for c in 0..<min(count, row.count) { sum[c] += row[c] }
             }
             return sum.map { $0 / Double(width) }

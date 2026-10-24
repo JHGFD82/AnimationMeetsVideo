@@ -154,7 +154,7 @@ enum BeatDetector {
         let analyzer = OnsetAnalyzer()
         let seconds = duration.isFinite && duration > 0 ? duration : 0
         var timed = TimedSamples(
-            longestGap: Int64(min(max(seconds, 60), 24 * 3600) * sampleRate),
+            longestGap: Int64(seconds.clamped(between: 60, and: 24 * 3600) * sampleRate),
             feed: { samples in
                 try checkCancellation()
                 analyzer.append(samples)
@@ -164,7 +164,7 @@ enum BeatDetector {
         /// Passes `value` on when it has grown by a hundredth; 1 only once.
         func report(_ value: Double) {
             guard value.isFinite else { return }
-            let clamped = min(max(value, 0), 1)
+            let clamped = value.clamped(between: 0, and: 1)
             guard clamped == 1 ? reported < 1 : clamped - reported >= 0.01 else { return }
             reported = clamped
             progress(clamped)
@@ -177,7 +177,7 @@ enum BeatDetector {
             try timed.append(pcmSamples(of: sample), at: presentation)
 
             if seconds > 0 {
-                report(min(max(presentation.seconds / seconds, 0), 1) * readingShare)
+                report((presentation.seconds / seconds).clamped(between: 0, and: 1) * readingShare)
             }
         }
         // A read cancelled at the end must not count as completed.
@@ -191,7 +191,7 @@ enum BeatDetector {
         let beats = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) { done in
             try checkCancellation()
             // Short of 1, which is for the finished result.
-            report(readingShare + (1 - readingShare) * min(max(done, 0), 0.99))
+            report(readingShare + (1 - readingShare) * done.clamped(between: 0, and: 0.99))
         }
         try checkCancellation()
         guard let beats else {

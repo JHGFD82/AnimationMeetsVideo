@@ -31,7 +31,7 @@ struct BeatMap: Equatable, Sendable {
     }
 
     func section(id: UUID) -> BeatSection? {
-        sections.first { $0.id == id }
+        sections.first(id: id)
     }
 
     /// Numbers the beats of every section. A section with a pinned beat
@@ -49,7 +49,7 @@ struct BeatMap: Equatable, Sendable {
 
     /// Changes one section in place; does nothing if it is gone.
     mutating func updateSection(_ id: UUID, _ change: (inout BeatSection) -> Void) {
-        guard let index = sections.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = sections.firstIndex(id: id) else { return }
         change(&sections[index])
         sections[index].normalize()
     }
@@ -117,7 +117,7 @@ struct BeatSection: Identifiable, Equatable, Sendable {
     /// Keeps the beats in time order with no two at the same time, and the
     /// beat count and positions in range.
     mutating func normalize() {
-        beatsPerMeasure = min(max(beatsPerMeasure, Self.beatsPerMeasureRange.lowerBound), Self.beatsPerMeasureRange.upperBound)
+        beatsPerMeasure = beatsPerMeasure.clamped(between: Self.beatsPerMeasureRange.lowerBound, and: Self.beatsPerMeasureRange.upperBound)
         beats.sort { CMTimeCompare($0.time, $1.time) < 0 }
         var kept: [MappedBeat] = []
         for beat in beats {

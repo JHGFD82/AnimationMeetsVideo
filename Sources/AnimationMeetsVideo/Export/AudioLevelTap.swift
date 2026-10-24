@@ -281,7 +281,7 @@ enum AudioLevelTap {
             for (index, unit) in units where index == stage {
                 // An effect switched off or deleted since the mix was made
                 // is left out until the player is rebuilt.
-                guard let effect = current.effects[owner.id]?.first(where: { $0.id == unit.effectID }) else { continue }
+                guard let effect = current.effects[owner.id]?.first(id: unit.effectID) else { continue }
                 unit.apply(effect, from: owner.local(heard), to: owner.local(end))
                 unit.process(bufferList, frames: frames)
             }

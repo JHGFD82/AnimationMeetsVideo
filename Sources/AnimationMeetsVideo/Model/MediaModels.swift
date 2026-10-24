@@ -38,7 +38,7 @@ struct EditingProject: Identifiable, Equatable {
     /// while the save was running are kept.
     mutating func applyMediaLocations(from other: EditingProject) {
         for clip in other.clips {
-            if let index = clips.firstIndex(where: { $0.id == clip.id }) {
+            if let index = clips.firstIndex(id: clip.id) {
                 clips[index].url = clip.url
                 clips[index].acceptedStamp = clip.acceptedStamp
             }
@@ -46,11 +46,11 @@ struct EditingProject: Identifiable, Equatable {
     }
 
     func timeline(id: UUID) -> Timeline? {
-        timelines.first { $0.id == id }
+        timelines.first(id: id)
     }
 
     func mediaClip(id: UUID) -> MediaClip? {
-        clips.first { $0.id == id }
+        clips.first(id: id)
     }
 
     func resolvedInfo(for source: ClipSource) -> ResolvedClipInfo? {
@@ -80,7 +80,7 @@ struct EditingProject: Identifiable, Equatable {
     @discardableResult
     mutating func placeAsset(_ assetID: UUID, intoTimeline timelineID: UUID) -> (layerID: UUID, clipID: UUID)? {
         guard let clip = mediaClip(id: assetID),
-              let index = timelines.firstIndex(where: { $0.id == timelineID })
+              let index = timelines.firstIndex(id: timelineID)
         else {
             return nil
         }
@@ -112,7 +112,7 @@ struct EditingProject: Identifiable, Equatable {
     /// Changes a timeline's settings. A new frame rate also moves what is
     /// on the timeline onto its frames; see `alignToFrames(timeline:)`.
     mutating func updateTimelineSettings(_ id: UUID, name: String, frameSize: CGSize, frameRate: Double, colorSpace: ProjectColorSpace) {
-        guard let index = timelines.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = timelines.firstIndex(id: id) else { return }
         let oldFrame = timelines[index].frameDuration
         timelines[index].name = name
         timelines[index].frameSize = frameSize
@@ -155,7 +155,7 @@ struct EditingProject: Identifiable, Equatable {
         guard canEmbed(timelineID, into: targetTimelineID),
               let nested = timeline(id: timelineID),
               nested.duration > .zero,
-              let index = timelines.firstIndex(where: { $0.id == targetTimelineID })
+              let index = timelines.firstIndex(id: targetTimelineID)
         else {
             return nil
         }
@@ -178,16 +178,16 @@ struct EditingProject: Identifiable, Equatable {
     /// moved back into it; `deleteLayer` removes it.
     mutating func moveClip(_ id: UUID, in timelineID: UUID, layer layerID: UUID, onto targetLayerID: UUID? = nil, to newStart: CMTime) {
         guard let move = resolvedMove(ofMoving: id, in: timelineID, layer: layerID, onto: targetLayerID, to: newStart),
-              let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
-              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id })
+              let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID),
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(id: id)
         else {
             return
         }
         var clip = timelines[tIndex].layers[lIndex].clips.remove(at: cIndex)
         clip.startOffset = move.start
         var targetIndex = lIndex
-        if let targetLayerID, let index = timelines[tIndex].layers.firstIndex(where: { $0.id == targetLayerID }) {
+        if let targetLayerID, let index = timelines[tIndex].layers.firstIndex(id: targetLayerID) {
             targetIndex = index
         }
         if move.push > .zero {
@@ -205,9 +205,9 @@ struct EditingProject: Identifiable, Equatable {
     /// Splits the clip at a timeline-space time (e.g. the playhead). The time
     /// must fall strictly inside the clip's placed range.
     mutating func split(_ id: UUID, in timelineID: UUID, layer layerID: UUID, atTimelineTime time: CMTime) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
-              let clip = timelines[tIndex].layers[lIndex].clips.first(where: { $0.id == id })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID),
+              let clip = timelines[tIndex].layers[lIndex].clips.first(id: id)
         else {
             return
         }
@@ -216,8 +216,8 @@ struct EditingProject: Identifiable, Equatable {
 
     /// Removes a clip from its layer. The layer stays, even when empty.
     mutating func deleteClip(_ id: UUID, in timelineID: UUID, layer layerID: UUID) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID)
         else {
             return
         }
@@ -227,7 +227,7 @@ struct EditingProject: Identifiable, Equatable {
     /// Removes a layer and every clip on it. An adjustment clip that
     /// reached down to it goes back to reaching every layer below.
     mutating func deleteLayer(_ layerID: UUID, in timelineID: UUID) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return }
+        guard let tIndex = timelines.firstIndex(id: timelineID) else { return }
         timelines[tIndex].layers.removeAll { $0.id == layerID }
         for l in timelines[tIndex].layers.indices {
             for c in timelines[tIndex].layers[l].clips.indices where timelines[tIndex].layers[l].clips[c].reach == layerID {
@@ -237,8 +237,8 @@ struct EditingProject: Identifiable, Equatable {
     }
 
     mutating func split(_ id: UUID, in timelineID: UUID, layer layerID: UUID, at time: CMTime) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID)
         else {
             return
         }
@@ -246,8 +246,8 @@ struct EditingProject: Identifiable, Equatable {
     }
 
     mutating func renameLayer(_ layerID: UUID, in timelineID: UUID, to name: String?) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID)
         else {
             return
         }
@@ -257,21 +257,21 @@ struct EditingProject: Identifiable, Equatable {
     /// Moves a layer to `index` in the stack (0 is the top), as when its
     /// header is dragged.
     mutating func moveLayer(_ layerID: UUID, in timelineID: UUID, toIndex index: Int) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let from = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let from = timelines[tIndex].layers.firstIndex(id: layerID)
         else {
             return
         }
         let layer = timelines[tIndex].layers.remove(at: from)
-        timelines[tIndex].layers.insert(layer, at: min(max(index, 0), timelines[tIndex].layers.count))
+        timelines[tIndex].layers.insert(layer, clampedAt: index)
     }
 
     /// Moves a layer `offset` places up (negative) or down among the layers
     /// of its own kind, which are all its area of the timeline shows.
     /// Layers of other kinds keep their places.
     mutating func moveLayer(_ layerID: UUID, in timelineID: UUID, by offset: Int) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let index = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let index = timelines[tIndex].layers.firstIndex(id: layerID)
         else {
             return
         }
@@ -285,8 +285,8 @@ struct EditingProject: Identifiable, Equatable {
     /// the top of its area), as when its header is dragged. Layers of other
     /// kinds keep their places.
     mutating func moveLayer(_ layerID: UUID, in timelineID: UUID, toPositionInKind position: Int) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let from = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let from = timelines[tIndex].layers.firstIndex(id: layerID)
         else {
             return
         }
@@ -304,9 +304,9 @@ struct EditingProject: Identifiable, Equatable {
     }
 
     mutating func setAutoMatteEnabled(_ enabled: Bool, for id: UUID, in timelineID: UUID, layer layerID: UUID) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
-              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == id })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID),
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(id: id)
         else {
             return
         }
@@ -339,9 +339,9 @@ struct EditingProject: Identifiable, Equatable {
     /// Replaces a clip and moves every clip after it on the layer by as
     /// much as its end moved.
     mutating func applyRipple(_ trimmed: TimelineClip, in timelineID: UUID, layer layerID: UUID) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
-              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == trimmed.id })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID),
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(id: trimmed.id)
         else {
             return
         }
@@ -365,9 +365,9 @@ struct EditingProject: Identifiable, Equatable {
     }
 
     private mutating func replaceClip(_ clip: TimelineClip, in timelineID: UUID, layer layerID: UUID) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }),
-              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(where: { $0.id == clip.id })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID),
+              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(id: clip.id)
         else {
             return
         }
@@ -377,7 +377,7 @@ struct EditingProject: Identifiable, Equatable {
     /// Splits at source time `time`. The second half starts at
     /// `startingSecondAt` in the timeline, or where that source time plays.
     static func split(_ clips: inout [TimelineClip], id: UUID, at time: CMTime, startingSecondAt secondStartTime: CMTime? = nil) {
-        guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = clips.firstIndex(id: id) else { return }
         let clip = clips[index]
         guard time > clip.trimStart, time < clip.trimEnd else { return }
         // The split point is in source time; convert it to where that point
@@ -482,7 +482,7 @@ struct Timeline: Identifiable, Equatable {
     }
 
     func layer(id: UUID) -> TimelineLayer? {
-        layers.first { $0.id == id }
+        layers.first(id: id)
     }
 
     /// The clip in the given layer whose [startOffset, endOffset) range

@@ -43,7 +43,7 @@ struct OnsetCurve: Sendable, Equatable {
         let left = Double(value(at: frame - 1)), middle = Double(value(at: frame)), right = Double(value(at: frame + 1))
         let curve = left - 2 * middle + right
         guard middle >= left, middle >= right, curve < 0 else { return 0 }
-        return min(max(0.5 * (left - right) / curve, -0.5), 0.5)
+        return (0.5 * (left - right) / curve).clamped(between: -0.5, and: 0.5)
     }
 }
 
@@ -105,7 +105,7 @@ enum BeatFitting {
     static func fill(
         _ map: BeatMap, section id: UUID, curve: OnsetCurve, sampleRate: Double, duration: CMTime, tempo: Double? = nil
     ) throws -> BeatMap {
-        guard let index = map.sections.firstIndex(where: { $0.id == id }) else { return map }
+        guard let index = map.sections.firstIndex(id: id) else { return map }
         var map = map
         let section = map.sections[index]
         switch section.kind {
@@ -283,7 +283,7 @@ enum BeatFitting {
         if best > 0, best + 1 < scores.count {
             let left = scores[best - 1], middle = scores[best], right = scores[best + 1]
             let bend = left - 2 * middle + right
-            if bend < 0 { lag += min(max(0.5 * (left - right) / bend, -0.5), 0.5) }
+            if bend < 0 { lag += (0.5 * (left - right) / bend).clamped(between: -0.5, and: 0.5) }
         }
         return lag / rate
     }
@@ -359,7 +359,7 @@ enum BeatFitting {
     static func fittedPeriod(near period: Double, pins: [Double], from start: Double, to end: Double, curve: OnsetCurve) -> Double {
         guard let first = pins.first, let last = pins.last, period > 0 else { return period }
         let span = max(last - first, period)
-        let reach = period * min(max(2 * anchorUncertainty / span, 0.0005), 0.03)
+        let reach = period * (2 * anchorUncertainty / span).clamped(between: 0.0005, and: 0.03)
         // Fine enough that the farthest beat moves under a millisecond a step.
         let farthest = max((first - start) / period, (end - last) / period, 1)
         let step = 0.001 / farthest
@@ -411,7 +411,7 @@ enum BeatFitting {
         fit(from: first, direction: -1) { $0 >= start }
         fit(from: last, direction: 1) { $0 < end }
         guard denominator > 0 else { return rough }
-        return min(max(numerator / denominator, period - reach), period + reach)
+        return (numerator / denominator).clamped(between: period - reach, and: period + reach)
     }
 
     // MARK: Doubling and halving
@@ -721,7 +721,7 @@ enum BeatFitting {
         let middle = leads.count / 2
         let lead = leads.isEmpty ? onsetLead
             : leads.count.isMultiple(of: 2) ? (leads[middle - 1] + leads[middle]) / 2 : leads[middle]
-        moved.start += min(max(lead, -0.05), 0.05)
+        moved.start += lead.clamped(between: -0.05, and: 0.05)
         return moved
     }
 

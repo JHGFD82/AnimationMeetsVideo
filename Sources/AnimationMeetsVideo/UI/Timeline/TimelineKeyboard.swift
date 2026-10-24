@@ -195,7 +195,7 @@ extension TimelineView {
     @discardableResult
     func nudgeSelection(byFrames frames: Int) -> Bool {
         guard let selection, selection.timelineID == timelineID,
-              let clip = timeline.layer(id: selection.layerID)?.clips.first(where: { $0.id == selection.timelineClipID })
+              let clip = timeline.layer(id: selection.layerID)?.clips.first(id: selection.timelineClipID)
         else {
             return false
         }

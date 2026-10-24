@@ -113,19 +113,13 @@ enum PresetStore {
     static func read(_ url: URL) throws -> EffectPreset {
         let data = try Data(contentsOf: url)
         let id = url.deletingPathExtension().lastPathComponent
-        do {
-            let header = (try? JSONDecoder().decode(ProjectFileHeader.self, from: data))?.formatVersion
-            guard header == PresetFile.currentVersion else {
-                throw PresetError("The preset has format version \(header.map(String.init) ?? "none"); this app reads version \(PresetFile.currentVersion).")
-            }
-            try StrictJSON.validate(data, against: PresetFile.shape)
-            let file = try JSONDecoder().decode(PresetFile.self, from: data)
-            return EffectPreset(id: id, name: file.name, bundle: file.bundle, url: url)
-        } catch let problem as JSONShapeError {
-            throw PresetError("The preset can't be used. \(problem.sentence)")
-        } catch let problem as DecodingError {
-            throw PresetError("The preset can't be used. \(problem.sentenceForProject)")
+        if let problem = JSONFile.versionMismatch(in: data, expecting: PresetFile.currentVersion, noun: "preset") {
+            throw PresetError(problem)
         }
+        let file = try JSONFile.decode(PresetFile.self, from: data, shape: PresetFile.shape) {
+            PresetError("The preset can't be used. \($0)")
+        }
+        return EffectPreset(id: id, name: file.name, bundle: file.bundle, url: url)
     }
 
     /// Gives a preset a new name, and its file the matching name.
@@ -166,11 +160,7 @@ enum PresetStore {
     }
 
     private static func write(_ file: PresetFile, to url: URL) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        var data = try encoder.encode(file)
-        data.append(0x0A)
-        try data.write(to: url, options: .atomic)
+        try JSONFile.encode(file).write(to: url, options: .atomic)
     }
 }
 

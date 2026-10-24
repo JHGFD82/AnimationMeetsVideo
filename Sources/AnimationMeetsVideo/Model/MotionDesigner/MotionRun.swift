@@ -111,7 +111,7 @@ struct MotionRun: Equatable {
         ))
     }
 
-    func index(of id: UUID) -> Int? { pieces.firstIndex { $0.id == id } }
+    func index(of id: UUID) -> Int? { pieces.firstIndex(id: id) }
 
     /// The piece holding a point, and where.
     func piece(holdingPoint id: UUID) -> (piece: Int, point: Int)? {
@@ -345,8 +345,8 @@ struct MotionRun: Equatable {
             }
             project.editClip(piece.id, in: timelineID) { $0 = clip }
         }
-        if let t = project.timelines.firstIndex(where: { $0.id == timelineID }),
-           let l = project.timelines[t].layers.firstIndex(where: { $0.id == layerID }) {
+        if let t = project.timelines.firstIndex(id: timelineID),
+           let l = project.timelines[t].layers.firstIndex(id: layerID) {
             project.timelines[t].layers[l].clips.sort { $0.startOffset < $1.startOffset }
         }
     }

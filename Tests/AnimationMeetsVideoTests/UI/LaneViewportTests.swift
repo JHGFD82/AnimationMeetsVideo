@@ -37,18 +37,18 @@ struct LaneViewportTests {
     @Test func scrollingStaysWithinTheLanesAndBouncesPastTheEnds() {
         let viewport = viewport()
         viewport.zoom(by: 2, aboutX: 0, pinching: false)
-        viewport.scroll(by: 5000, phase: .wheel)
+        viewport.scroll(byPoints: 5000, phase: .wheel)
         #expect(viewport.scrollX == viewport.maxScrollX)
         #expect(viewport.maxScrollX == 400)
         #expect(viewport.scrollBand.overscroll > 0)
-        viewport.scroll(by: -5000, phase: .wheel)
+        viewport.scroll(byPoints: -5000, phase: .wheel)
         #expect(viewport.scrollX == 0)
     }
 
     @Test func aNarrowerWindowKeepsTheScrollInRange() {
         let viewport = viewport()
         viewport.zoom(by: 4, aboutX: 0, pinching: false)
-        viewport.scroll(by: 1200, phase: .wheel)
+        viewport.scroll(byPoints: 1200, phase: .wheel)
         viewport.fit(width: 200, maxZoom: 2)
         #expect(viewport.zoom == 2)
         #expect(viewport.scrollX <= viewport.maxScrollX)

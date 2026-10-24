@@ -133,11 +133,7 @@ private struct NewEffectPackageAlerts: ViewModifier {
             } message: {
                 Text(prompt.problem?.message ?? "")
             }
-            .alert("Effect Package", isPresented: $prompt.notice.isPresent) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(prompt.notice ?? "")
-            }
+            .messageAlert("Effect Package", message: $prompt.notice)
             .alert(
                 "Replace the Installed Package?",
                 isPresented: $prompt.replacement.isPresent

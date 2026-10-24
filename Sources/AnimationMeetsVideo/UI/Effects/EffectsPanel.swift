@@ -54,13 +54,13 @@ struct EffectsPanel: View {
 
     /// The project's state, read for a linked row's other axis during a
     /// drag held to one side of it (see `heldControl`).
-    @Environment(ProjectState.self) private var projectState: ProjectState?
+    @Environment(ProjectState.self) var projectState: ProjectState?
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) var graphs: KeyframeGraphHUDs?
     /// Whether each row shows its keyframe lane, with the ruler and
     /// playhead over them. Kept between launches.
     @AppStorage(Preferences.effectsPanelShowsKeyframeLanes) var showsKeyframeLanes = true
-    @State private var renamingEffectID: UUID?
+    @State var renamingEffectID: UUID?
     /// The clip whose speed was last refused for crossing zero, until its
     /// speed is next edited.
     @State var speedBlockedClipID: UUID?
@@ -69,7 +69,7 @@ struct EffectsPanel: View {
     @State private var presetSave: PresetSave?
     /// Where the stack's rows are, for drops on it, and the line showing
     /// where a drag over it would go.
-    @State private var stackLayout = EffectStackLayout()
+    @State var stackLayout = EffectStackLayout()
     @State private var stackScroller = EdgeAutoScroll()
     /// The control column's width and the lanes' zoom and scroll.
     @State private var lanes = LaneViewport()
@@ -80,11 +80,11 @@ struct EffectsPanel: View {
     @State private var presetName = ""
     @State private var presetError: String?
     /// The clip after each of its effects, at the playhead.
-    @State private var thumbnails: [UUID: CGImage] = [:]
+    @State var thumbnails: [UUID: CGImage] = [:]
     /// The EQ shown larger in a sheet.
-    @State private var expandedEqualizer: ExpandedEqualizer?
+    @State var expandedEqualizer: ExpandedEqualizer?
 
-    private struct ExpandedEqualizer: Identifiable {
+    struct ExpandedEqualizer: Identifiable {
         var clipID: UUID
         var effectID: UUID
         var id: UUID { effectID }
@@ -151,11 +151,7 @@ struct EffectsPanel: View {
         } message: {
             Text("Presets are shared by every project and appear in the browser.")
         }
-        .alert("The Preset Wasn't Saved", isPresented: $presetError.isPresent) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(presetError ?? "")
-        }
+        .messageAlert("The Preset Wasn't Saved", message: $presetError)
         .sheet(item: $expandedEqualizer) { item in
             expandedEqualizerSheet(item)
         }
@@ -303,7 +299,7 @@ struct EffectsPanel: View {
                         return true
                     }
                     // Also without movement, so a lift lets go of the edge.
-                    lanes.scroll(by: deltaX, phase: phase)
+                    lanes.scroll(byPoints: deltaX, phase: phase)
                     return false
                 },
                 onMagnifyEnded: { lanes.endPinch() }
@@ -461,589 +457,17 @@ struct EffectsPanel: View {
         }
     }
 
-    // MARK: Anchor point
-
-    private func anchorRow(_ c: RowContext) -> some View {
-        let clip = c.clip
-        let animated = clip.anchorPoint.isAnimated
-        let value = clip.anchorPoint.value(at: c.sourceNow(animated: animated))
-        let key = ParameterKey(timelineID: timelineID, parameter: .anchorPoint(clipID: clip.id))
-        return labelled(
-            ParameterRow(
-                name: "Anchor",
-                components: [value.x, value.y],
-                unit: " px",
-                isAnimated: clip.anchorPoint.isAnimated,
-                isSelected: false,
-                keyframeTimes: clip.anchorPoint.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
-                playhead: c.frameTime(animated: animated),
-                onReset: {
-                    editClip(clip.id) { $0.anchorPoint = AnimatedValue(Vector2.zero) }
-                },
-                showsReset: { [state = projectState, timelineID] in
-                    let current = state?.held?.clipAndLayer(clip.id, in: timelineID)?.clip.anchorPoint ?? clip.anchorPoint
-                    return current != AnimatedValue(Vector2.zero)
-                },
-                onSelect: {},
-                onSetComponent: { index, newValue in
-                    editClip(clip.id) { clip in
-                        var vector = clip.anchorPoint.value(at: c.now.sourceNow)
-                        if index == 0 { vector.x = newValue } else { vector.y = newValue }
-                        clip.anchorPoint.set(vector, at: c.now.sourceNow)
-                    }
-                },
-                onToggleAnimated: { editClip(clip.id) { $0.anchorPoint.setAnimated(!$0.anchorPoint.isAnimated, at: c.now.sourceNow) } },
-                onToggleKeyframe: { editClip(clip.id) { $0.anchorPoint.toggleKeyframe(at: c.now.sourceNow) } },
-                onSeek: onSeek,
-                onShowGraph: graphs.map { graphs in { graphs.show(key) } }
-            ) {
-                Button("Reset") { editClip(clip.id) { $0.anchorPoint = AnimatedValue(Vector2.zero) } }
-                    .disabled(clip.anchorPoint == AnimatedValue(Vector2.zero))
-            },
-            lane: ParameterLane(
-                marks: clip.anchorPoint.marks, geometry: c.geometry, playhead: c.frameTime(animated: animated), height: EffectsPanelMetrics.rowHeight,
-                onSeek: onSeek,
-                onMove: { from, to, copy in editClip(clip.id) { $0.anchorPoint.moveKeyframe(at: from, to: to, copying: copy) } },
-                onDelete: { time in editClip(clip.id) { $0.anchorPoint.removeKeyframe(at: time) } },
-                onEase: { time, preset in editClip(clip.id) { $0.anchorPoint.applyEase(preset, at: time) } }
-            )
-        )
-        .help("Where scale and rotation turn about, from the center of the picture. It is the top of the stack, so it applies to every step.")
-    }
-
-    // MARK: Effects
-
-    @ViewBuilder
-    private func effectRows(_ effect: Effect, _ c: RowContext) -> some View {
-        let clip = c.clip
-        let collapsed = state.isCollapsed(effect.id)
-        // Sound effects are in a stack of their own, and have no notes
-        // about what the picture effects around them do.
-        let stack = clip.stack(holding: effect.id) ?? \.effects
-        let index = clip[keyPath: stack].index(of: effect.id) ?? 0
-        let note = effect.kind.isAudio ? nil : project.note(forEffectAt: index, in: clip, on: c.layer, of: c.timeline)
-        // Faded only when it is off or can't apply; one at its defaults is
-        // as ready to adjust as any.
-        let dimmed = !effect.enabled || note?.dims == true
-        // The whole effect, its controls included, is outlined while it is
-        // selected: it is what Delete and Copy take. A selected control is
-        // outlined on its own instead, as Delete takes only the control.
-        let summary = effect.kind.isKeyframing ? project.keyframingSummary(of: effect, in: clip) : nil
-        let headerKey = EffectHeaderKey(
-            timelineID: timelineID, clip: clip, effect: effect, note: note, collapsed: collapsed, dimmed: dimmed,
-            thumbnail: thumbnails[effect.id].map(ObjectIdentifier.init), summary: summary,
-            isRenaming: renamingEffectID == effect.id, showUpTo: state.showUpTo,
-            canPaste: EditorClipboard.shared.hasEffects,
-            showsLanes: showsKeyframeLanes, lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize
-        )
-        VStack(alignment: .leading, spacing: 0) {
-            StackRow(key: headerKey) {
-                labelled(
-                    EffectHeaderRow(
-                        effect: effect,
-                        isCollapsed: collapsed,
-                        isSelected: false,
-                        clipID: clip.id,
-                        thumbnail: thumbnails[effect.id],
-                        showsCurve: effect.kind.isKeyframing,
-                        accessibilitySummary: summary,
-                        isDimmed: dimmed,
-                        isFlagged: !effect.pasteChanges.isEmpty,
-                        onToggleCollapsed: { state.toggleCollapsed(effect.id) },
-                        onSetEnabled: { value in editEffect(effect.id, in: clip) { $0.enabled = value } },
-                        onSelect: { state.select(effect: effect.id) },
-                        onRename: { name in editEffect(effect.id, in: clip) { $0.name = name } },
-                        isRenaming: Binding(
-                            get: { renamingEffectID == effect.id },
-                            // A missing effect keeps the name it was saved with.
-                            set: { renamingEffectID = $0 && effect.missing == nil ? effect.id : nil }
-                        )
-                    ) {
-                        effectMenu(effect, in: clip)
-                    },
-                    lane: emptyLane(c)
-                )
-            }
-            .equatable()
-            if let note {
-                besideLane(EffectNoteRow(note: note))
-            }
-            ForEach(effect.pasteChanges) { change in
-                pasteChangeRow(change, of: effect, in: clip)
-            }
-            if !collapsed {
-                if effect.kind == .equalizer {
-                    PlayheadReader(playhead: playhead) { _ in
-                        besideLane(
-                            equalizerGraph(effect, of: clip, at: c.sourceNow(animated: true), dimmed: dimmed) {
-                                expandedEqualizer = ExpandedEqualizer(clipID: clip.id, effectID: effect.id)
-                            }
-                            .frame(height: EqualizerGraph.panelHeight)
-                        )
-                    }
-                }
-                if effect.kind.isKeyframing {
-                    keyframingRows(effect, c, effectDimmed: dimmed)
-                }
-                ForEach(effect.controls) { control in
-                    controlRow(control, of: effect, c, effectDimmed: dimmed)
-                }
-                if effect.kind.readsAgainst {
-                    againstRow(effect, c, effectDimmed: dimmed)
-                }
-                if effect.kind.takesInput {
-                    inputRow(effect, c, effectDimmed: dimmed)
-                }
-            }
-        }
-        .selectedRow(state.selectedEffectID == effect.id && state.selectedControlID == nil)
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(EffectStackLayout.space)) } action: { frame in
-            stackLayout.effects[effect.id] = frame
-        }
-    }
-
-    /// What a Blending step blends with, or a package's look reads: the
-    /// backdrop, or for a look its input or nothing; or the clip's own
-    /// picture as it was before one of the effects above it.
-    private func againstRow(_ effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
-        let clip = c.clip
-        let index = clip.effects.index(of: effect.id) ?? 0
-        let above = clip.effects.effectsAbove(index)
-        // Blending reads the backdrop by default; a look its input, if it
-        // takes one (Displace's map).
-        let blends = effect.kind == .blending
-        let unset = blends ? "Backdrop" : effect.kind.takesInput ? "Its Input" : "None"
-        var options: [(id: String, name: String)] = [("backdrop", unset)]
-        options += above.map { ($0.id.uuidString, "Before \($0.displayName)") }
-        // An effect that is gone, or has been moved below the step, can't be
-        // read; the step does nothing until it points somewhere else.
-        if let against = effect.against, !above.contains(where: { $0.id == against }) {
-            options.append((against.uuidString, "Unavailable"))
-        }
-        return labelled(
-            ChoiceRow(
-                name: "Against",
-                indent: EffectsPanelMetrics.controlIndent - 12,
-                options: options,
-                selected: effect.against?.uuidString ?? "backdrop",
-                isSelected: false,
-                dragHandle: nil,
-                showsMenu: false,
-                isDimmed: effectDimmed,
-                onSelect: {},
-                onChoose: { choice in editEffect(effect.id, in: clip) { $0.against = UUID(uuidString: choice) } },
-                menu: { EmptyView() }
-            ),
-            lane: emptyLane(c)
-        )
-        .help(blends
-              ? "What the clip is blended with: the backdrop, or its own picture before an earlier effect"
-              : "What it reads besides the picture reaching it: its input, or the clip's own picture before an earlier effect")
-    }
-
-    @ViewBuilder
-    private func effectMenu(_ effect: Effect, in clip: TimelineClip) -> some View {
-        Button("Duplicate") { duplicate(effect, in: clip) }
-            .keyboardShortcut("d", modifiers: .command)
-        // A missing effect can be turned off, moved, copied and deleted,
-        // but what it holds can't be read, so not changed.
-        if effect.missing == nil {
-            Button("Reset") { editEffect(effect.id, in: clip) { $0.reset(in: timeline?.frameSize) } }
-                .disabled(effect.controls.allSatisfy { $0.isNoOp && !$0.isAnimated } && effect.controls.count == effect.kind.controlKinds.count)
-            Button("Rename") { renamingEffectID = effect.id }
-        }
-        Button(effect.enabled ? "Disable" : "Enable") { editEffect(effect.id, in: clip) { $0.enabled.toggle() } }
-        if effect.kind.isKeyframing {
-            keyframingMenu(effect, clip)
-        } else if !effect.kind.isAudio, effect.missing == nil {
-            Toggle("Show Up to Here", isOn: Binding(
-                get: { state.showUpTo == EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) },
-                set: { state.showUpTo = $0 ? EffectsPanelState.ShowUpTo(clipID: clip.id, effectID: effect.id) : nil }
-            ))
-        }
-        if effect.kind == .transform {
-            Toggle("Moves Anchor", isOn: Binding(
-                get: { effect.movesAnchor },
-                set: { value in editEffect(effect.id, in: clip) { $0.movesAnchor = value } }
-            ))
-        }
-        if !effect.missingControlKinds.isEmpty {
-            Menu("Add Control") {
-                ForEach(effect.missingControlKinds) { kind in
-                    Button(kind.name) { editEffect(effect.id, in: clip) { $0.addControl(kind) } }
-                }
-            }
-        }
-        Divider()
-        Button("Copy") { copy(effect, from: clip) }
-            .keyboardShortcut("c", modifiers: .command)
-        Button("Paste") { paste(in: clip, below: effect) }
-            .keyboardShortcut("v", modifiers: .command)
-            .disabled(!EditorClipboard.shared.hasEffects)
-        Button("Save as Preset…") { askPresetName(for: [effect.id], in: clip, suggesting: effect.displayName) }
-        Button("Save Whole Stack as Preset…") { askPresetName(for: nil, in: clip, suggesting: "\(project.clipName(clip.id, in: timelineID)) look") }
-        Divider()
-        Button("Delete", role: .destructive) { delete(effect, from: clip) }
-    }
-
-    // MARK: Effect headers
-
-    /// What an effect's header row and its ⋯ menu show, so they are redrawn
-    /// only when that changes (see `StackRow`). The Keyframing range items
-    /// read the playhead themselves (`keyframingMenu`).
-    private struct EffectHeaderKey: Equatable {
-        var timelineID: UUID
-        var clip: TimelineClip
-        var effect: Effect
-        var note: EffectNote?
-        var collapsed: Bool
-        var dimmed: Bool
-        var thumbnail: ObjectIdentifier?
-        var summary: String?
-        var isRenaming: Bool
-        var showUpTo: EffectsPanelState.ShowUpTo?
-        var canPaste: Bool
-        var showsLanes: Bool
-        var lane: LaneKey
-        var frameSize: CGSize
-    }
-
-    // MARK: Clip rows
-
-    /// What the rows of the clip's own (time, anchor, shutter, sound) show,
-    /// so they are redrawn only when that changes (see `StackRow`): the
-    /// clip, where its lane is, and the playhead only while the value the
-    /// row shows is animated.
-    private struct ClipRowsKey: Equatable {
-        var timelineID: UUID
-        var clip: TimelineClip
-        var layerID: UUID
-        var showsLanes: Bool
-        var lane: LaneKey
-        var frameSize: CGSize
-        var playsVideo: Bool
-        var playsAudio: Bool
-        var speedBlocked: Bool
-    }
-
-    private func clipRows<Content: View>(_ c: RowContext, @ViewBuilder content: @escaping () -> Content) -> some View {
-        let key = ClipRowsKey(
-            timelineID: timelineID, clip: c.clip, layerID: c.layer.id, showsLanes: showsKeyframeLanes,
-            lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize,
-            playsVideo: project.playsVideo(c.clip), playsAudio: project.playsAudio(c.clip),
-            speedBlocked: speedBlockedClipID == c.clip.id
-        )
-        return StackRow(key: key, content: content).equatable()
-    }
-
-    // MARK: Controls
-
-    /// What a control's row shows, so it is redrawn only when that changes
-    /// (see `StackRow`). The whole effect, since a row reads its siblings
-    /// (an EQ cut's slope is off with its band) and its default can depend
-    /// on them; the playhead only while the control has keyframes, which
-    /// its values and lane follow.
-    private struct ControlRowKey: Equatable {
-        var timelineID: UUID
-        var clipID: UUID
-        var effect: Effect
-        var effectDimmed: Bool
-        var isSelected: Bool
-        var showsLanes: Bool
-        var lane: LaneKey
-        var frameSize: CGSize
-    }
-
-    private func controlRow(_ control: EffectControl, of effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
-        let key = ControlRowKey(
-            timelineID: timelineID, clipID: c.clip.id, effect: effect, effectDimmed: effectDimmed,
-            isSelected: state.selectedControlID == control.id, showsLanes: showsKeyframeLanes,
-            lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize
-        )
-        return StackRow(key: key) { controlRowContent(control, of: effect, c, effectDimmed: effectDimmed) }
-            .equatable()
-    }
-
-    /// A control as a held drag has it, for the row to show. A linked size
-    /// dragged by its width changes the height too, and an animated value
-    /// dragged where it has no keyframe gets one, which its diamond and its
-    /// lane show at once; the row reads the project, still as it was. Only
-    /// those rows read the held project, so a step of a drag redraws them
-    /// and not every row.
-    private func heldControl(_ control: EffectControl, of effect: Effect, in clip: TimelineClip) -> EffectControl? {
-        guard (control.kind.isLinkable && control.linked) || control.isAnimated, let held = projectState?.held else { return nil }
-        return held.clipAndLayer(clip.id, in: timelineID)?.clip.effect(id: effect.id)?.controls.first { $0.id == control.id }
-    }
-
-    @ViewBuilder
-    private func controlRowContent(_ control: EffectControl, of effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
-        let clip = c.clip
-        let handle = AnyView(
-            Image(systemName: "line.3.horizontal")
-                .font(Design.Typeface.glyphTiny)
-                .foregroundStyle(Design.textTertiary)
-                .frame(width: 12)
-                .contentShape(Rectangle())
-                .onDrag {
-                    ControlMovePayload(clipID: clip.id, effectID: effect.id, controlID: control.id).itemProvider()
-                } preview: {
-                    Text(control.kind.name).padding(4)
-                }
-                .help("Drag to move the control within the effect")
-        )
-        let isSelected = state.selectedControlID == control.id
-        let select = { state.select(effect: effect.id, control: control.id) }
-        let menu = { controlMenu(control, of: effect, in: clip) }
-        let placed = { (frame: CGRect) in stackLayout.controls[control.id] = frame }
-
-        if control.kind.isChoice {
-            labelled(
-                ChoiceRow(
-                    name: control.kind.name,
-                    indent: EffectsPanelMetrics.controlIndent - 12,
-                    options: control.kind.choiceOptions,
-                    selected: control.choice ?? control.kind.defaultChoice ?? "",
-                    isSelected: isSelected,
-                    dragHandle: handle,
-                    isDimmed: effectDimmed || choiceIsOff(control, of: effect),
-                    onReset: reset(control, of: effect, in: c),
-                    onSelect: select,
-                    onChoose: { choice in editControl(control.id, of: effect, in: clip) { $0.choice = choice } },
-                    menu: menu
-                ),
-                lane: emptyLane(c)
-            )
-            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(EffectStackLayout.space)) }, action: placed)
-        } else {
-            let key = ParameterKey(
-                timelineID: timelineID,
-                parameter: .control(control.kind, clipID: clip.id, effectID: effect.id, controlID: control.id)
-            )
-            let shown = heldControl(control, of: effect, in: clip) ?? control
-            labelled(
-                ParameterRow(
-                    name: control.kind.name,
-                    indent: EffectsPanelMetrics.controlIndent - 12,
-                    components: shown.values(at: c.sourceNow(animated: control.isAnimated)),
-                    unit: control.kind.unit,
-                    dragStep: control.kind.dragStep,
-                    dragRange: { control.kind.range(ofComponent: $0) },
-                    componentUnit: EqualizerBand(controlKind: control.kind) == nil ? nil : { control.kind.unit(ofComponent: $0) },
-                    componentDragStep: EqualizerBand(controlKind: control.kind) == nil ? nil : { control.kind.dragStep(ofComponent: $0) },
-                    isAnimated: control.isAnimated,
-                    isSelected: isSelected,
-                    keyframeTimes: shown.number.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
-                    playhead: c.frameTime(animated: control.isAnimated),
-                    linked: control.kind.isLinkable ? control.linked : nil,
-                    onToggleLink: { editControl(control.id, of: effect, in: clip) { $0.linked.toggle() } },
-                    dragHandle: handle,
-                    isDimmed: effectDimmed || !control.enabled,
-                    onReset: resetAction(control, of: effect, in: c),
-                    showsReset: resetIsOffered(control, of: effect, in: c),
-                    onSelect: select,
-                    onSetComponent: { index, value in
-                        editControl(control.id, of: effect, in: clip) { $0.setComponent(index, to: value, at: c.now.sourceNow) }
-                    },
-                    onToggleAnimated: {
-                        editControl(control.id, of: effect, in: clip) { $0.number.setAnimated(!$0.number.isAnimated, at: c.now.sourceNow) }
-                    },
-                    onToggleKeyframe: {
-                        editControl(control.id, of: effect, in: clip) { $0.number.toggleKeyframe(at: c.now.sourceNow) }
-                    },
-                    onSeek: onSeek,
-                    onShowGraph: graphs.map { graphs in { graphs.show(key) } },
-                    color: control.kind.isColor ? colorBinding(control, of: effect, c) : nil,
-                    menu: menu
-                ),
-                lane: ParameterLane(
-                    marks: shown.number.marks, geometry: c.geometry, playhead: c.frameTime(animated: control.isAnimated), height: EffectsPanelMetrics.rowHeight,
-                    onSeek: onSeek,
-                    onMove: { from, to, copy in
-                        editControl(control.id, of: effect, in: clip) { $0.number.moveKeyframe(at: from, to: to, copying: copy) }
-                    },
-                    onDelete: { time in editControl(control.id, of: effect, in: clip) { $0.number.removeKeyframe(at: time) } },
-                    onEase: { time, preset in editControl(control.id, of: effect, in: clip) { $0.number.applyEase(preset, at: time) } }
-                )
-            )
-            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(EffectStackLayout.space)) }, action: placed)
-        }
-    }
-
-    // MARK: EQ
-
-    private func equalizerGraph(_ effect: Effect, of clip: TimelineClip, at time: CMTime, dimmed: Bool, onExpand: (() -> Void)?) -> EqualizerGraph {
-        EqualizerGraph(
-            effect: effect, time: time, isDimmed: dimmed,
-            onEdit: { kind, change in
-                editEffect(effect.id, in: clip) { effect in
-                    if let index = effect.controls.firstIndex(where: { $0.kind == kind }) { change(&effect.controls[index]) }
-                }
-            },
-            onExpand: onExpand,
-            readPaused: pausedSpectrumReader(for: clip)
-        )
-    }
-
-    /// Reads an EQ's spectrum from the clip's own file while paused: only
-    /// a media clip has one. Its source time is the file's, less any shift
-    /// from replacing the file.
-    private func pausedSpectrumReader(for clip: TimelineClip) -> EqualizerGraph.PausedReader? {
-        guard case .media(let mediaID) = clip.source, let media = project.mediaClip(id: mediaID), let url = media.url else { return nil }
-        let offset = media.alignmentOffset
-        return { pre, effect, time in
-            await EqualizerSpectrum.levels(ofFile: url, endingAt: CMTimeAdd(time, offset), through: effect, at: time, pre: pre)
-        }
-    }
-
-    /// The EQ at a size for fine work, editing the same controls.
-    @ViewBuilder
-    private func expandedEqualizerSheet(_ item: ExpandedEqualizer) -> some View {
-        VStack(alignment: .leading, spacing: Design.Space.step) {
-            if let clip = project.clipAndLayer(item.clipID, in: timelineID)?.clip, let effect = clip.effect(id: item.effectID), let timeline {
-                Text("\(project.clipName(clip.id, in: timelineID)) · \(effect.displayName)")
-                    .font(Design.Typeface.panelTitle)
-                    .foregroundStyle(Design.textPrimary)
-                let source = ClipLaneGeometry(clip: clip, timeline: timeline, width: 100)
-                    .clampedSource(atTimeline: timeline.snappedToFrame(playheadTime))
-                equalizerGraph(effect, of: clip, at: source, dimmed: !effect.enabled, onExpand: nil)
-                    .frame(minWidth: 640, minHeight: 320)
-                EqualizerBandStrip(effect: effect, time: source) { kind, change in
-                    editEffect(effect.id, in: clip) { effect in
-                        if let index = effect.controls.firstIndex(where: { $0.kind == kind }) { change(&effect.controls[index]) }
-                    }
-                }
-            } else {
-                Text("The EQ is no longer there.").foregroundStyle(Design.textSecondary)
-            }
-            HStack {
-                Text("Drag a band to move it, ⌥-drag or scroll over it to change its Q, double-click to switch it on or off.")
-                    .font(Design.Typeface.micro)
-                    .foregroundStyle(Design.textTertiary)
-                Spacer()
-                Button("Done") { expandedEqualizer = nil }
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(Design.Space.group)
-    }
-
-    /// Whether a choice changes nothing: an EQ cut's slope does nothing
-    /// while its band is off.
-    /// What a row's reset button does, nil while the control holds what a
-    /// new one would: a shape's size fitted to the frame, as when added.
-    private func reset(_ control: EffectControl, of effect: Effect, in c: RowContext) -> (() -> Void)? {
-        let fresh = effect.freshControl(control.kind, in: c.timeline.frameSize)
-        guard !control.isAtDefault(like: fresh) else { return nil }
-        return { editControl(control.id, of: effect, in: c.clip) { $0.reset(to: fresh) } }
-    }
-
-    /// What a row's reset button does, which is always there to do; whether
-    /// to show it is `resetIsOffered`.
-    private func resetAction(_ control: EffectControl, of effect: Effect, in c: RowContext) -> () -> Void {
-        let fresh = effect.freshControl(control.kind, in: c.timeline.frameSize)
-        return { editControl(control.id, of: effect, in: c.clip) { $0.reset(to: fresh) } }
-    }
-
-    /// Whether a row's reset button shows: the control isn't at what a new
-    /// one holds. Read as the button draws, from the control as a drag held
-    /// to one side of the project has it, so the button appears with the
-    /// first step of a drag.
-    private func resetIsOffered(_ control: EffectControl, of effect: Effect, in c: RowContext) -> () -> Bool {
-        let fresh = effect.freshControl(control.kind, in: c.timeline.frameSize)
-        let clipID = c.clip.id
-        let (controlID, effectID, timelineID) = (control.id, effect.id, timelineID)
-        return { [state = projectState] in
-            let held = state?.held?.clipAndLayer(clipID, in: timelineID)?.clip.effect(id: effectID)?.controls.first { $0.id == controlID }
-            return !(held ?? control).isAtDefault(like: fresh)
-        }
-    }
-
-    /// Whether a choice is off: it is, or for a cut's slope, its band is.
-    private func choiceIsOff(_ control: EffectControl, of effect: Effect) -> Bool {
-        guard let band = EqualizerBand.allCases.first(where: { $0.slopeKind == control.kind }) else { return !control.enabled }
-        return !control.enabled || !(effect.control(band.controlKind)?.enabled ?? false)
-    }
-
-    /// A color control's value at the playhead as a color (its components
-    /// read as sRGB, which is how they are drawn), setting all four at once.
-    private func colorBinding(_ control: EffectControl, of effect: Effect, _ c: RowContext) -> Binding<CGColor> {
-        Binding(
-            get: {
-                let rgba = control.values(at: c.sourceNow(animated: control.isAnimated)).map { CGFloat($0) }
-                guard rgba.count == 4 else { return CGColor(gray: 1, alpha: 1) }
-                return CGColor(srgbRed: rgba[0], green: rgba[1], blue: rgba[2], alpha: rgba[3])
-            },
-            set: { picked in
-                guard let space = CGColorSpace(name: CGColorSpace.sRGB),
-                      let srgb = picked.converted(to: space, intent: .defaultIntent, options: nil),
-                      let parts = srgb.components, parts.count >= 4
-                else { return }
-                let values = parts.prefix(4).map { control.kind.clamped(Double($0)) }
-                editControl(control.id, of: effect, in: c.clip) { $0.number.set(ComponentValue(values: values), at: c.now.sourceNow) }
-            }
-        )
-    }
-
-    @ViewBuilder
-    private func controlMenu(_ control: EffectControl, of effect: Effect, in clip: TimelineClip) -> some View {
-        let fresh = effect.freshControl(control.kind, in: timeline?.frameSize)
-        Button("Reset") { editControl(control.id, of: effect, in: clip) { $0.reset(to: fresh) } }
-            .disabled(control.isAtDefault(like: fresh))
-        if control.kind == .cornerRadius, effect.kind == .rectangle {
-            Toggle("Squircle", isOn: Binding(
-                get: { control.squircle },
-                set: { value in editControl(control.id, of: effect, in: clip) { $0.squircle = value } }
-            ))
-        }
-        Button(control.enabled ? "Disable" : "Enable") { editControl(control.id, of: effect, in: clip) { $0.enabled.toggle() } }
-        Divider()
-        Button("Delete", role: .destructive) {
-            editEffect(effect.id, in: clip) { $0.removeControl(control.id) }
-            if state.selectedControlID == control.id { state.select(effect: effect.id) }
-        }
-    }
-
-    // MARK: Sound
-
-    private func audioRow(_ property: AudioProperty, _ c: RowContext) -> some View {
-        let clip = c.clip
-        let value = property == .volume ? clip.volume : clip.pan
-        let keyPath: WritableKeyPath<TimelineClip, AnimatedValue<Double>> = property == .volume ? \.volume : \.pan
-        let parameter: AnimatedParameter = property == .volume ? .clipVolume(clipID: clip.id) : .clipPan(clipID: clip.id)
-        let key = ParameterKey(timelineID: timelineID, parameter: parameter)
-        return labelled(
-            AudioPropertyRow(
-                property: property,
-                value: value,
-                playhead: PlayheadTime(c.playhead) { c.geometry.clampedSource(atTimeline: c.timeline.snappedToFrame($0)) },
-                onEdit: { change in editClip(clip.id) { change(&$0[keyPath: keyPath]) } },
-                onSeek: { onSeek(clip.timelineTime(forSourceTime: $0)) },
-                onShowGraph: graphs.map { graphs in { graphs.show(key) } },
-                held: { projectState?.held?.clipAndLayer(clip.id, in: timelineID)?.clip[keyPath: keyPath] }
-            )
-            .padding(.horizontal, 8),
-            lane: ParameterLane(
-                marks: (projectState?.held?.clipAndLayer(clip.id, in: timelineID)?.clip[keyPath: keyPath] ?? value).marks,
-                geometry: c.geometry, playhead: c.frameTime(animated: value.isAnimated), height: EffectsPanelMetrics.rowHeight,
-                onSeek: onSeek,
-                onMove: { from, to, copy in editClip(clip.id) { $0[keyPath: keyPath].moveKeyframe(at: from, to: to, copying: copy) } },
-                onDelete: { time in editClip(clip.id) { $0[keyPath: keyPath].removeKeyframe(at: time) } },
-                onEase: { time, preset in editClip(clip.id) { $0[keyPath: keyPath].applyEase(preset, at: time) } }
-            )
-        )
-    }
-
     // MARK: Editing
 
     func editClip(_ id: UUID, _ change: (inout TimelineClip) -> Void) {
         project.editClip(id, in: timelineID, change)
     }
 
-    private func editEffect(_ id: UUID, in clip: TimelineClip, _ change: (inout Effect) -> Void) {
+    func editEffect(_ id: UUID, in clip: TimelineClip, _ change: (inout Effect) -> Void) {
         project.editEffect(id, ofClip: clip.id, in: timelineID, change)
     }
 
-    private func editControl(_ id: UUID, of effect: Effect, in clip: TimelineClip, _ change: (inout EffectControl) -> Void) {
+    func editControl(_ id: UUID, of effect: Effect, in clip: TimelineClip, _ change: (inout EffectControl) -> Void) {
         editEffect(effect.id, in: clip) { effect in
             if let index = effect.controlIndex(id) { change(&effect.controls[index]) }
         }
@@ -1055,18 +479,18 @@ struct EffectsPanel: View {
         }
     }
 
-    private func duplicate(_ effect: Effect, in clip: TimelineClip) {
+    func duplicate(_ effect: Effect, in clip: TimelineClip) {
         if let id = project.duplicateEffect(effect.id, ofClip: clip.id, in: timelineID) {
             state.select(effect: id)
         }
     }
 
-    private func copy(_ effect: Effect, from clip: TimelineClip) {
+    func copy(_ effect: Effect, from clip: TimelineClip) {
         EditorClipboard.shared.copy(effects: project.bundle(ofEffects: [effect.id], fromClip: clip.id, in: timelineID))
     }
 
     /// Pastes the copied effects below `effect`, or at the end of the stack.
-    private func paste(in clip: TimelineClip, below effect: Effect?) {
+    func paste(in clip: TimelineClip, below effect: Effect?) {
         guard let bundle = EditorClipboard.shared.effects else { return }
         // Below the effect when the first copied one goes in its stack.
         let index = effect.flatMap { effect -> Int? in
@@ -1126,7 +550,7 @@ struct EffectsPanel: View {
         return true
     }
 
-    private func askPresetName(for ids: Set<UUID>?, in clip: TimelineClip, suggesting name: String) {
+    func askPresetName(for ids: Set<UUID>?, in clip: TimelineClip, suggesting name: String) {
         presetName = name
         presetSave = PresetSave(clipID: clip.id, effectIDs: ids, suggestedName: name)
     }
@@ -1144,7 +568,7 @@ struct EffectsPanel: View {
         }
     }
 
-    private func delete(_ effect: Effect, from clip: TimelineClip) {
+    func delete(_ effect: Effect, from clip: TimelineClip) {
         project.removeEffect(effect.id, fromClip: clip.id, in: timelineID)
         if state.selectedEffectID == effect.id { state.clear() }
     }

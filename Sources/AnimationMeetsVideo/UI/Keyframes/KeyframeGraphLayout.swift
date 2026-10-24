@@ -36,7 +36,7 @@ struct KeyframeGraphViewport: Equatable {
         let shown = shownTimes(fit: fit, span: span)
         let length = shown.upperBound - shown.lowerBound
         let shortest = min(Self.fewestFrames * frame, span.upperBound - span.lowerBound)
-        let newLength = min(max(length / factor, shortest), span.upperBound - span.lowerBound)
+        let newLength = (length / factor).clamped(between: shortest, and: span.upperBound - span.lowerBound)
         let fraction = length > 0 ? (anchor - shown.lowerBound) / length : 0.5
         let start = anchor - fraction * newLength
         times = Self.clamped(start...(start + newLength), to: span)
@@ -65,7 +65,7 @@ struct KeyframeGraphViewport: Equatable {
     /// Zooms values in by `factor`, keeping the value `fraction` up the
     /// plot (0 the bottom, 1 the top) where it is.
     mutating func zoomValues(by factor: Double, around fraction: Double) {
-        let zoom = min(max(valueZoom * factor, Self.valueZooms.lowerBound), Self.valueZooms.upperBound)
+        let zoom = (valueZoom * factor).clamped(between: Self.valueZooms.lowerBound, and: Self.valueZooms.upperBound)
         valuePan += (fraction - 0.5) * (1 / valueZoom - 1 / zoom)
         valueZoom = zoom
     }
@@ -82,7 +82,7 @@ struct KeyframeGraphViewport: Equatable {
     /// `span`.
     static func clamped(_ range: ClosedRange<Double>, to span: ClosedRange<Double>) -> ClosedRange<Double> {
         let length = min(range.upperBound - range.lowerBound, span.upperBound - span.lowerBound)
-        let start = min(max(range.lowerBound, span.lowerBound), span.upperBound - length)
+        let start = range.lowerBound.clamped(between: span.lowerBound, and: span.upperBound - length)
         return start...(start + length)
     }
 }

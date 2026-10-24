@@ -50,7 +50,7 @@ final class MatteMaps: @unchecked Sendable {
             }
         }
         for id in wanted {
-            guard let url = project.clips.first(where: { $0.id == id })?.url else { continue }
+            guard let url = project.clips.first(id: id)?.url else { continue }
             let stamp = FileStamp(url: url).map { "\(url.path) \($0.byteCount) \($0.modified ?? 0)" } ?? url.path
             if entries.withLockUnchecked({ $0[id]?.stamp == stamp }) { continue }
             let generator = AVAssetImageGenerator(asset: MediaFile.asset(at: url))

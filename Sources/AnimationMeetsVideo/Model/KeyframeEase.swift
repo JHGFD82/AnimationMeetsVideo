@@ -22,8 +22,8 @@ struct KeyframeEase: Equatable, Sendable {
     static let speedRange = -10.0...10.0
 
     init(influence: Double, speed: Double) {
-        self.influence = min(max(influence, Self.influenceRange.lowerBound), Self.influenceRange.upperBound)
-        self.speed = min(max(speed, Self.speedRange.lowerBound), Self.speedRange.upperBound)
+        self.influence = influence.clamped(between: Self.influenceRange.lowerBound, and: Self.influenceRange.upperBound)
+        self.speed = speed.clamped(between: Self.speedRange.lowerBound, and: Self.speedRange.upperBound)
     }
 
     /// After Effects' Easy Ease: stops at the keyframe, 33% influence.
@@ -86,12 +86,12 @@ struct KeyframeEase: Equatable, Sendable {
     /// The ease an outgoing handle dragged to `point` in the unit square
     /// makes. Its time is kept inside the segment.
     static func outgoing(handleAt point: CGPoint) -> KeyframeEase {
-        let influence = min(max(Double(point.x), influenceRange.lowerBound), influenceRange.upperBound)
+        let influence = Double(point.x).clamped(between: influenceRange.lowerBound, and: influenceRange.upperBound)
         return KeyframeEase(influence: influence, speed: Double(point.y) / influence)
     }
 
     static func incoming(handleAt point: CGPoint) -> KeyframeEase {
-        let influence = min(max(1 - Double(point.x), influenceRange.lowerBound), influenceRange.upperBound)
+        let influence = (1 - Double(point.x)).clamped(between: influenceRange.lowerBound, and: influenceRange.upperBound)
         return KeyframeEase(influence: influence, speed: (1 - Double(point.y)) / influence)
     }
 
@@ -102,7 +102,7 @@ struct KeyframeEase: Equatable, Sendable {
         let controls = (CGPoint.zero, outgoingHandle(out), incomingHandle(into), CGPoint(x: 1, y: 1))
         // Both handles stay within the square's width, so time only grows
         // along the curve and it can be searched by time.
-        let s = TransitionCurve.parameter(forTime: min(max(fraction, 0), 1), on: controls)
+        let s = TransitionCurve.parameter(forTime: fraction.clamped(between: 0, and: 1), on: controls)
         return Double(TransitionCurve.point(on: controls, at: s).y)
     }
 }
@@ -303,16 +303,16 @@ extension EditingProject {
             return clipAndLayer(clipID, in: key.timelineID)?.clip.time.speed.asComponents
         case .control(_, let clipID, let effectID, let controlID):
             let control = clipAndLayer(clipID, in: key.timelineID)?.clip.effect(id: effectID)?
-                .controls.first { $0.id == controlID }
+                .controls.first(id: controlID)
             return control.flatMap { $0.kind.isChoice ? nil : $0.number }
         }
     }
 
     mutating func editComponents(of key: ParameterKey, _ change: (inout AnimatedValue<ComponentValue>) -> Void) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == key.timelineID }) else { return }
+        guard let tIndex = timelines.firstIndex(id: key.timelineID) else { return }
         switch key.parameter {
         case .layerVolume(let layerID):
-            guard let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }) else { return }
+            guard let lIndex = timelines[tIndex].layers.firstIndex(id: layerID) else { return }
             var components = timelines[tIndex].layers[lIndex].volume.asComponents
             change(&components)
             timelines[tIndex].layers[lIndex].volume = AnimatedValue(components: components)
@@ -323,7 +323,7 @@ extension EditingProject {
                 clip.volume = AnimatedValue(components: components)
             }
         case .layerPan(let layerID):
-            guard let lIndex = timelines[tIndex].layers.firstIndex(where: { $0.id == layerID }) else { return }
+            guard let lIndex = timelines[tIndex].layers.firstIndex(id: layerID) else { return }
             var components = timelines[tIndex].layers[lIndex].pan.asComponents
             change(&components)
             timelines[tIndex].layers[lIndex].pan = AnimatedValue(components: components)
@@ -348,7 +348,7 @@ extension EditingProject {
             }
         case .control(_, let clipID, let effectID, let controlID):
             editEffect(effectID, ofClip: clipID, in: key.timelineID) { effect in
-                guard let c = effect.controls.firstIndex(where: { $0.id == controlID }) else { return }
+                guard let c = effect.controls.firstIndex(id: controlID) else { return }
                 change(&effect.controls[c].number)
             }
         }

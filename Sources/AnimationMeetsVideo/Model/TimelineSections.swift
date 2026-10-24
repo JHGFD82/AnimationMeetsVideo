@@ -29,7 +29,7 @@ extension EditingProject {
     /// is less than a frame of room.
     @discardableResult
     mutating func addSection(named name: String? = nil, in timelineID: UUID, from start: CMTime, to end: CMTime) -> UUID? {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return nil }
+        guard let tIndex = timelines.firstIndex(id: timelineID) else { return nil }
         let timeline = timelines[tIndex]
         let frame = timeline.frameDuration
         let anchor = timeline.frameAligned(CMTimeMaximum(.zero, CMTimeMinimum(start, end)), .down)
@@ -52,7 +52,7 @@ extension EditingProject {
     }
 
     mutating func deleteSection(_ id: UUID, in timelineID: UUID) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }) else { return }
+        guard let tIndex = timelines.firstIndex(id: timelineID) else { return }
         timelines[tIndex].sections.removeAll { $0.id == id }
     }
 
@@ -103,7 +103,7 @@ extension EditingProject {
     /// nil where no stretch holds a frame.
     func resolvedSectionCopy(_ id: UUID, in timelineID: UUID, to proposedStart: CMTime) -> TimelineSection? {
         guard let timeline = timeline(id: timelineID),
-              let section = timeline.sections.first(where: { $0.id == id })
+              let section = timeline.sections.first(id: id)
         else { return nil }
         let frame = timeline.frameDuration
         let length = section.duration
@@ -141,7 +141,7 @@ extension EditingProject {
     @discardableResult
     mutating func copySection(_ id: UUID, in timelineID: UUID, to start: CMTime) -> UUID? {
         guard let copy = resolvedSectionCopy(id, in: timelineID, to: start),
-              let tIndex = timelines.firstIndex(where: { $0.id == timelineID })
+              let tIndex = timelines.firstIndex(id: timelineID)
         else { return nil }
         timelines[tIndex].sections.append(copy)
         timelines[tIndex].sections.sort { $0.start < $1.start }
@@ -152,7 +152,7 @@ extension EditingProject {
         -> (timeline: Timeline, section: TimelineSection, previousEnd: CMTime, nextStart: CMTime)?
     {
         guard let timeline = timeline(id: timelineID),
-              let section = timeline.sections.first(where: { $0.id == id })
+              let section = timeline.sections.first(id: id)
         else {
             return nil
         }
@@ -163,8 +163,8 @@ extension EditingProject {
     }
 
     private mutating func updateSection(_ id: UUID, in timelineID: UUID, _ change: (inout TimelineSection) -> Void) {
-        guard let tIndex = timelines.firstIndex(where: { $0.id == timelineID }),
-              let sIndex = timelines[tIndex].sections.firstIndex(where: { $0.id == id })
+        guard let tIndex = timelines.firstIndex(id: timelineID),
+              let sIndex = timelines[tIndex].sections.firstIndex(id: id)
         else {
             return
         }

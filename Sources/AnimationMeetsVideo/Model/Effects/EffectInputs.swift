@@ -25,7 +25,7 @@ extension EditingProject {
     /// Returns whether it was accepted.
     @discardableResult
     mutating func setInput(_ input: EffectInput?, ofEffect effectID: UUID, onClip clipID: UUID, in timelineID: UUID) -> Bool {
-        guard let existing = clipAndLayer(clipID, in: timelineID)?.clip.effects.first(where: { $0.id == effectID }),
+        guard let existing = clipAndLayer(clipID, in: timelineID)?.clip.effects.first(id: effectID),
               existing.kind.takesInput
         else {
             return false

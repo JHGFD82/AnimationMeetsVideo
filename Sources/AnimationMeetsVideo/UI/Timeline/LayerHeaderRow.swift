@@ -11,10 +11,10 @@ extension EditingProject {
         if let customName = layer.customName, !customName.isEmpty { return customName }
         if layer.isAdjustment {
             let adjustments = timeline.layers.filter(\.isAdjustment)
-            return "Adjustment \((adjustments.firstIndex { $0.id == layer.id } ?? 0) + 1)"
+            return "Adjustment \((adjustments.firstIndex(id: layer.id) ?? 0) + 1)"
         }
         let sameKind = timeline.layers.filter { $0.kind == layer.kind && !$0.isAdjustment }
-        let number = (sameKind.firstIndex { $0.id == layer.id } ?? 0) + 1
+        let number = (sameKind.firstIndex(id: layer.id) ?? 0) + 1
         return "\(layer.kind.name) \(number)"
     }
 }

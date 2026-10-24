@@ -39,7 +39,7 @@ enum BlockMatchFlow {
         var moves: Moves?
         for (index, level) in levels.enumerated().reversed() {
             let coarsest = index == levels.count - 1
-            moves = match(level.0, level.1, progress: Float(min(max(progress, 0), 1)), guess: moves,
+            moves = match(level.0, level.1, progress: Float(progress.clamped(between: 0, and: 1)), guess: moves,
                           reach: coarsest ? max(Int(Double(level.0.width) * reach), 2) : 2)
         }
         guard let moves else { return nil }
@@ -73,7 +73,7 @@ enum BlockMatchFlow {
         var values: [Float]
 
         subscript(x: Int, y: Int) -> Float {
-            values[min(max(y, 0), height - 1) * width + min(max(x, 0), width - 1)]
+            values[y.clamped(between: 0, and: height - 1) * width + x.clamped(between: 0, and: width - 1)]
         }
 
         /// Half the size, each value the mean of four.
@@ -112,7 +112,7 @@ enum BlockMatchFlow {
         var values: [(dx: Int, dy: Int)]
 
         subscript(col: Int, row: Int) -> (dx: Int, dy: Int) {
-            values[min(max(row, 0), rows - 1) * columns + min(max(col, 0), columns - 1)]
+            values[row.clamped(between: 0, and: rows - 1) * columns + col.clamped(between: 0, and: columns - 1)]
         }
     }
 

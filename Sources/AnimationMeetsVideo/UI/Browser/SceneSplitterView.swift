@@ -268,7 +268,7 @@ private struct StripGeometry {
 
     func seconds(atX x: CGFloat) -> Double {
         guard contentWidth > 0 else { return 0 }
-        return min(max(Double(x / contentWidth), 0), 1) * length
+        return Double(x / contentWidth).clamped(between: 0, and: 1) * length
     }
 
     /// What is on screen, in content points, with a little to spare.
@@ -358,7 +358,7 @@ private struct ScrubArea: View {
 
     private func scrollTo(_ x: CGFloat, width: CGFloat? = nil) {
         let limit = max((width ?? geometry.contentWidth) - viewport, 0)
-        scroll.scrollTo(x: min(max(x, 0), limit))
+        scroll.scrollTo(x: x.clamped(between: 0, and: limit))
     }
 
     // MARK: Ruler
