@@ -39,7 +39,7 @@ enum BlockMatchFlow {
         var moves: Moves?
         for (index, level) in levels.enumerated().reversed() {
             let coarsest = index == levels.count - 1
-            moves = match(level.0, level.1, progress: Float(min(max(progress, 0), 1)), guess: moves,
+            moves = match(level.0, level.1, progress: Float(progress.clamped(to: 0...1)), guess: moves,
                           reach: coarsest ? max(Int(Double(level.0.width) * reach), 2) : 2)
         }
         guard let moves else { return nil }

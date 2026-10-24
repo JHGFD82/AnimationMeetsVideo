@@ -102,7 +102,7 @@ struct KeyframeEase: Equatable, Sendable {
         let controls = (CGPoint.zero, outgoingHandle(out), incomingHandle(into), CGPoint(x: 1, y: 1))
         // Both handles stay within the square's width, so time only grows
         // along the curve and it can be searched by time.
-        let s = TransitionCurve.parameter(forTime: min(max(fraction, 0), 1), on: controls)
+        let s = TransitionCurve.parameter(forTime: fraction.clamped(to: 0...1), on: controls)
         return Double(TransitionCurve.point(on: controls, at: s).y)
     }
 }

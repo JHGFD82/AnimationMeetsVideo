@@ -31,7 +31,7 @@ struct FoldedPlacement: Equatable {
             matrix = aboutAnchor(CGAffineTransform(rotationAngle: degrees * .pi / 180))
         case .opacity:
             guard let percent = values.first else { return }
-            opacity *= min(max(percent / 100, 0), 1)
+            opacity *= (percent / 100).clamped(to: 0...1)
         default:
             break
         }
@@ -107,7 +107,7 @@ struct LookStep: Equatable, Sendable {
                 numbers[control.kind] = control.values(at: time).enumerated().map { control.kind.clamped($1, index: $0) }
             }
         }
-        if let percent = numbers[.amount]?.first { amount = min(max(percent / 100, 0), 1) }
+        if let percent = numbers[.amount]?.first { amount = (percent / 100).clamped(to: 0...1) }
         guard amount > 0 else { return nil }
     }
 
@@ -198,7 +198,7 @@ enum StackFolding {
                 guard effect.input != nil, let take = effect.control(.matteMode), take.enabled else { continue }
                 var amount = 1.0
                 if let control = effect.control(.amount), control.enabled, let percent = control.values(at: time).first {
-                    amount = min(max(percent / 100, 0), 1)
+                    amount = (percent / 100).clamped(to: 0...1)
                 }
                 guard amount > 0 else { continue }
                 flush()
@@ -217,7 +217,7 @@ enum StackFolding {
                 guard let mode = effect.control(.mode), mode.enabled, mode.blendMode != .normal else { continue }
                 var amount = 1.0
                 if let control = effect.control(.amount), control.enabled, let percent = control.values(at: time).first {
-                    amount = min(max(percent / 100, 0), 1)
+                    amount = (percent / 100).clamped(to: 0...1)
                 }
                 guard amount > 0 else { continue }
                 flush()

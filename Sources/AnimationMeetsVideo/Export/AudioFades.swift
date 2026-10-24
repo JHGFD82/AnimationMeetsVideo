@@ -18,7 +18,7 @@ struct AudioFade: Equatable, Sendable {
     /// after a falling one, and full on the other side.
     func gain(at seconds: Double) -> Float {
         guard end > start else { return 1 }
-        let progress = min(max(curve.value(at: (seconds - start) / (end - start)), 0), 1)
+        let progress = curve.value(at: (seconds - start) / (end - start)).clamped(to: 0...1)
         let angle = progress * .pi / 2
         return Float(rising ? sin(angle) : cos(angle))
     }

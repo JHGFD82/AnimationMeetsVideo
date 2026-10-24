@@ -320,7 +320,7 @@ enum BeatTracker {
             let left = row[state - 1], middle = row[state], right = row[state + 1]
             let curve = left - 2 * middle + right
             guard curve < 0 else { return Double(lags[state]) }
-            return Double(lags[state]) + min(max(0.5 * (left - right) / curve, -0.5), 0.5)
+            return Double(lags[state]) + (0.5 * (left - right) / curve).clamped(to: -0.5...0.5)
         }
 
         let centers = starts.map { Double($0) + Double(length) / 2 }

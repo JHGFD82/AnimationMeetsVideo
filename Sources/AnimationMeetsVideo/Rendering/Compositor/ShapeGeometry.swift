@@ -56,7 +56,7 @@ struct ShapeStep: Equatable, Sendable {
             return nil
         }
         if let control = effect.control(.fill), control.enabled {
-            let rgba = control.values(at: time).map { min(max($0, 0), 1) }
+            let rgba = control.values(at: time).map { $0.clamped(to: 0...1) }
             fill = rgba.count == 4 && rgba[3] > 0 ? rgba : nil
         }
         stroke = ShapeStroke(effect, at: time)
@@ -185,7 +185,7 @@ struct ShapeStep: Equatable, Sendable {
             let a = distance(corner, previous), b = distance(corner, next)
             guard a > 0, b > 0 else { continue }
             let cosine = (Double(previous.x - corner.x) * Double(next.x - corner.x) + Double(previous.y - corner.y) * Double(next.y - corner.y)) / (a * b)
-            let angle = acos(min(max(cosine, -1), 1))
+            let angle = acos(cosine.clamped(to: -1...1))
             // The arc meets each edge radius / tan(angle / 2) from the corner.
             let radius = min(cornerRadius, min(a, b) / 2 * tan(angle / 2))
             path.addArc(tangent1End: corner, tangent2End: next, radius: radius)
@@ -214,7 +214,7 @@ struct ShapeStroke: Equatable, Sendable {
     /// color is off or clear, or there is no width.
     init?(_ effect: Effect, at time: CMTime) {
         guard let colorControl = effect.control(.stroke), colorControl.enabled else { return nil }
-        let rgba = colorControl.values(at: time).map { min(max($0, 0), 1) }
+        let rgba = colorControl.values(at: time).map { $0.clamped(to: 0...1) }
         guard rgba.count == 4, rgba[3] > 0 else { return nil }
         let widthControl = effect.control(.strokeWidth).flatMap { $0.enabled ? $0 : nil }
         let width = widthControl?.values(at: time).first ?? 0

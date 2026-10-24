@@ -73,6 +73,6 @@ struct TimelineViewport: Equatable {
     }
 
     func pixelsPerSecond(atZoomFraction fraction: Double) -> CGFloat {
-        fitPixelsPerSecond * pow(maxPixelsPerSecond / fitPixelsPerSecond, CGFloat(min(max(fraction, 0), 1)))
+        fitPixelsPerSecond * pow(maxPixelsPerSecond / fitPixelsPerSecond, CGFloat(fraction.clamped(to: 0...1)))
     }
 }

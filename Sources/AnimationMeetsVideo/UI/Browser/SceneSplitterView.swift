@@ -268,7 +268,7 @@ private struct StripGeometry {
 
     func seconds(atX x: CGFloat) -> Double {
         guard contentWidth > 0 else { return 0 }
-        return min(max(Double(x / contentWidth), 0), 1) * length
+        return Double(x / contentWidth).clamped(to: 0...1) * length
     }
 
     /// What is on screen, in content points, with a little to spare.

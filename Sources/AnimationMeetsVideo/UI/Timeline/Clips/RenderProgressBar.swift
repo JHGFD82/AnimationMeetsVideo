@@ -10,7 +10,7 @@ struct RenderProgressBar: View {
             ZStack(alignment: .leading) {
                 Rectangle().fill(Design.statusPending)
                 Rectangle().fill(Design.statusDone)
-                    .frame(width: geometry.size.width * min(max(progress, 0), 1))
+                    .frame(width: geometry.size.width * progress.clamped(to: 0...1))
             }
         }
         .frame(height: 3)

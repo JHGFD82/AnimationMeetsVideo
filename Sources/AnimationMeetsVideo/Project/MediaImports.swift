@@ -31,7 +31,7 @@ final class MediaImports {
     /// steps under a half percent aren't worth redrawing for.
     func update(_ id: Item.ID, fraction: Double) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        let fraction = min(max(fraction, 0), 1)
+        let fraction = fraction.clamped(to: 0...1)
         if let current = items[index].fraction, fraction < current + 0.005 { return }
         items[index].fraction = fraction
     }

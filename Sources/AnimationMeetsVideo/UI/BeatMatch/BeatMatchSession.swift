@@ -725,7 +725,7 @@ final class BeatMatchSession: SecondsViewport {
     /// then: the player's time now, carried on to the frame's time.
     func playhead(at date: Date) -> Double {
         guard isPlaying else { return playhead }
-        let ahead = min(max(date.timeIntervalSinceNow, 0), 0.05)
+        let ahead = date.timeIntervalSinceNow.clamped(to: 0...0.05)
         return min(playerSeconds() + ahead * Double(player.rate), duration.seconds)
     }
 

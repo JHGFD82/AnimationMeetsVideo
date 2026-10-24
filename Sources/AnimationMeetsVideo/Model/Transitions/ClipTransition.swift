@@ -737,7 +737,7 @@ struct EdgeTransitions: Sendable {
     /// edge downward, so the motion keeps its direction: a slide to the right
     /// comes in from the left and leaves to the right.
     private func apply(_ transition: Placed, visibility: Double, edge: TransitionEdge, to effect: inout Effect) {
-        let v = min(max(visibility, 0), 1)
+        let v = visibility.clamped(to: 0...1)
         let width = frameSize.width, height = frameSize.height
         let entering = edge == .leading
         let direction = transition.options.direction
@@ -816,7 +816,7 @@ struct LumaReveal: Equatable, Sendable {
     /// everything at 1, even for pure white and pure black.
     var gainAndBias: (gain: Double, bias: Double) {
         let s = Self.softness
-        let threshold = (1 + s) - min(max(progress, 0), 1) * (1 + 2 * s)
+        let threshold = (1 + s) - progress.clamped(to: 0...1) * (1 + 2 * s)
         return (1 / (2 * s), (s - threshold) / (2 * s))
     }
 }

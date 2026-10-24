@@ -44,13 +44,13 @@ enum ZoomScale {
     static func fraction(of zoom: Double, in range: ClosedRange<Double>) -> Double {
         guard range.lowerBound > 0, range.upperBound > range.lowerBound else { return 0 }
         let fraction = log(zoom / range.lowerBound) / log(range.upperBound / range.lowerBound)
-        return min(max(fraction, 0), 1)
+        return fraction.clamped(to: 0...1)
     }
 
     /// The zoom at the slider's place `fraction`.
     static func zoom(atFraction fraction: Double, in range: ClosedRange<Double>) -> Double {
         guard range.lowerBound > 0, range.upperBound > range.lowerBound else { return range.lowerBound }
-        return range.lowerBound * pow(range.upperBound / range.lowerBound, min(max(fraction, 0), 1))
+        return range.lowerBound * pow(range.upperBound / range.lowerBound, fraction.clamped(to: 0...1))
     }
 
     /// The factor that takes `zoom` to the slider's place `fraction`

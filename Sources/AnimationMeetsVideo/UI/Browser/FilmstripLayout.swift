@@ -144,7 +144,7 @@ struct FilmstripLayout: Equatable {
     /// Where `seconds` falls: the x in its thumbnail's row, and that row.
     func position(atSeconds seconds: Double) -> (x: CGFloat, row: Int) {
         guard let cell = cells.last(where: { $0.start <= seconds }) ?? cells.first else { return (0, 0) }
-        let fraction = cell.duration > 0 ? CGFloat(min(max((seconds - cell.start) / cell.duration, 0), 1)) : 0
+        let fraction = cell.duration > 0 ? CGFloat(((seconds - cell.start) / cell.duration).clamped(to: 0...1)) : 0
         return (cell.frame.minX + fraction * cell.frame.width, cell.row)
     }
 

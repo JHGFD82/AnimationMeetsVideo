@@ -23,7 +23,7 @@ struct ClipWaveform: View {
 
     /// How strongly a layer `height` tall shows its waveform, 0 to 1.
     static func strength(atHeight height: CGFloat) -> Double {
-        Double(min(max((height - minimumHeight) / fadeRange, 0), 1))
+        Double(((height - minimumHeight) / fadeRange).clamped(to: 0...1))
     }
 
     /// Names for the bands of a split waveform.
