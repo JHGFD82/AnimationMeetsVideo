@@ -9,19 +9,21 @@ from an editor shell into a high-performance media tool:
 
 - **SwiftUI** for the native editor interface and non-destructive controls.
 - **AVFoundation/CoreMedia** for media assets, timelines, timebases, and export.
-- **Metal/MetalKit** for the preview and future vector, compositing, and effects
-  pipelines.
-- **Core Image, Vision, and Accelerate** are planned integration points for
-  auto-matting, image processing, and color workflows.
+- **Metal/MetalKit** for the preview, and Metal kernels for compositing,
+  effects and transitions; the vector engine is still to come.
+- **Core Image** for the compositor and effects, **Vision** for optical
+  flow, and **Accelerate** for audio analysis (beats, spectra). Vision is
+  also the planned route to auto-matting.
 
 macOS-only is a deliberate constraint: the UI can assume a resizable, chrome-rich
 single-window editor (no touch-first compromises), and it can lean on
 `NSScreen`/multi-window APIs to treat a second display as a dedicated,
 full-screen viewport rather than squeezing everything onto one panel.
 
-The initial project includes a runnable editor shell with a library, viewer,
-inspector, and timeline. The media items are demo data until import and project
-persistence are implemented.
+The editor imports real media into projects saved as `.amv` packages, with
+a browser, viewer, inspector, effects panel and timeline, and exports
+ProRes. Design notes for each area, and what each still lacks, are in
+[docs/](docs/README.md).
 
 ## Requirements
 
@@ -38,8 +40,9 @@ swift run
 ```
 
 That runs the app without a bundle, so macOS doesn't know the `.amv`
-project type: double-clicking a project won't open it. To build the app
-as a bundle that declares the type, run:
+project type or the `.amveffect` effect package type: double-clicking
+one won't open it. To build the app as a bundle that declares both,
+run:
 
 ```sh
 scripts/build-app.sh
@@ -49,29 +52,33 @@ It writes `build/AnimationMeetsVideo.app`, ad-hoc signed for the Mac that
 built it. CI builds the same bundle on every push and keeps it as a
 downloadable artifact for 14 days.
 
-## Planned milestones
+## Milestones
 
 0. **Foundation (done).** Editor shell, demo project model, placeholder Metal
    preview view.
 
-1. **Real media I/O.** Replace demo data with actual import via
+1. **Real media I/O (done).** Replace demo data with actual import via
    `AVAsset`/`AVAssetReader`; drive the viewer and timeline from real clip
    metadata (duration, frame rate, codec, color space). Persist projects to
-   disk (Codable project file referencing media by security-scoped bookmark).
+   disk. Built as a package folder whose JSON project file references
+   media copied into its `Media/` folder (the default) or kept elsewhere,
+   by paths relative to the package where possible, rather than by
+   security-scoped bookmark (see
+   [docs/project-package.md](docs/project-package.md)).
 
-2. **Assembly + ProRes export.** Multi-track timeline backed by
+2. **Assembly + ProRes export (done).** Multi-track timeline backed by
    `AVMutableComposition` (video/audio tracks, trim, reorder, split). Export
    via `AVAssetExportSession`/`AVAssetWriter` with ProRes 422/4444 presets,
    relying on M2 Max's hardware ProRes encode/decode. This is the first
    milestone that produces a usable edit-and-export loop.
 
-3. **Dual-display viewer.** `NSScreen`-aware full-screen output window for an
+3. **Dual-display viewer (done).** `NSScreen`-aware full-screen output window for an
    external display, playhead-synced with the main editor, plus a lightweight
    freehand draw-over/annotation layer for review and directing. This is
    scoped as simple markup ink, not the full vector engine from milestone 8 —
    it exists so the editor is useful on a two-monitor desk early.
 
-4. **HDR color pipeline.** Metal preview path driven by `rgba16Float`
+4. **HDR color pipeline (done).** Metal preview path driven by `rgba16Float`
    textures, EDR-aware `MTKView` configuration, and CoreVideo/ColorSync tagging
    so Rec. 2020 PQ/HLG sources preview and export without clipping. Applies to
    both the main viewer and the milestone-3 external display.
@@ -86,7 +93,8 @@ downloadable artifact for 14 days.
    shaders/layer filters — text stays editable and re-flowable, never
    converted to outlines.
 
-7. **Foundational polish & integration.** Deliberately placed *before* the two
+7. **Foundational polish & integration (in progress; undo and redo
+   cover every project change).** Deliberately placed *before* the two
    highest-risk R&D milestones: undo/redo across milestones 1–6, project
    templates, performance tuning for 4K/HDR/ProRes timelines, window/display
    management hardening, and editor UX passes (multi-select, snapping,
