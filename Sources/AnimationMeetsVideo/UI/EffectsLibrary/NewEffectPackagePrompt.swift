@@ -2,9 +2,10 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// Asking for a new effect package's name, from the File menu or the
-/// effects library, then making it, installing it and showing its kernel
-/// in Finder (see docs/effect-packages.md, "Starting one from the app").
+/// Making effect packages from the app (see docs/effect-packages.md,
+/// "Starting one from the app"): asking for a new one's name, from the File
+/// menu or the effects library, or copying a look's; then installing it and
+/// showing its kernel in Finder.
 @MainActor
 @Observable
 final class NewEffectPackagePrompt {
@@ -27,6 +28,20 @@ final class NewEffectPackagePrompt {
                 let url = try EffectPackageStore.makePackage(named: name)
                 _ = try await EffectPackageStatus.shared.install(url)
                 NSWorkspace.shared.activateFileViewerSelecting([url.appending(path: "kernel.metal")])
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    /// Copies `package` as a new one in the Effects folder, installs it,
+    /// and shows its kernel in Finder.
+    func copy(_ package: EffectPackage) {
+        Task {
+            do {
+                let url = try EffectPackageStore.copyPackage(package)
+                _ = try await EffectPackageStatus.shared.install(url)
+                NSWorkspace.shared.activateFileViewerSelecting([url.appending(path: package.kernelFile)])
             } catch {
                 self.error = error.localizedDescription
             }

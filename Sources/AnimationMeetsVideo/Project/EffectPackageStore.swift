@@ -221,6 +221,39 @@ enum EffectPackageStore {
         return url
     }
 
+    /// Copies `package` into `folder` as a new one to change: "Twirl Copy"
+    /// (or "Twirl Copy 2", and so on, for a name already taken), its ID from
+    /// that name as a made one's, version 1, its controls and kernel as they
+    /// were. Returns its folder.
+    static func copyPackage(_ package: EffectPackage, in folder: URL = defaultFolder) throws -> URL {
+        let taken = { (name: String) in
+            FileManager.default.fileExists(atPath: folder.appending(path: "\(name).\(EffectPackage.fileExtension)").path)
+                || userID(for: name).map { EffectRegistry.current.effect(named: $0) != nil } ?? true
+        }
+        var name = "\(package.name) Copy"
+        var number = 2
+        while taken(name) {
+            name = "\(package.name) Copy \(number)"
+            number += 1
+        }
+        guard let id = userID(for: name) else { throw EffectPackageError("\(package.name) can't be copied: its name has no letter to start an ID.") }
+        let url = folder.appending(path: "\(name).\(EffectPackage.fileExtension)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: package.url, to: url)
+        let manifest = url.appending(path: manifestName)
+        try String(contentsOf: manifest, encoding: .utf8).renamed(id: (package.id, id), name: (package.name, name)).write(
+            to: manifest, atomically: true, encoding: .utf8
+        )
+        // Read back, so a manifest the text edit missed is written whole.
+        if let copy = try? read(url), copy.id == id, copy.name == name, copy.version == 1 { return url }
+        var json = try JSONSerialization.jsonObject(with: Data(contentsOf: manifest)) as? [String: Any] ?? [:]
+        json["id"] = id
+        json["name"] = name
+        json["version"] = 1
+        try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]).write(to: manifest)
+        return url
+    }
+
     // MARK: Shape
 
     /// The units a control may have, as written in a package and as shown.
@@ -571,6 +604,24 @@ enum EffectPackageStore {
             default: 1
             }
         }
+    }
+}
+
+private extension String {
+    /// The manifest with its ID, name and version those of a copy: each the
+    /// first of its key, as the top level's come before the controls'.
+    func renamed(id: (old: String, new: String), name: (old: String, new: String)) -> String {
+        func quoted(_ text: String) -> String { String(data: try! JSONEncoder().encode(text), encoding: .utf8)! }
+        var text = self
+        for (key, old, new) in [("id", quoted(id.old), quoted(id.new)), ("name", quoted(name.old), quoted(name.new))] {
+            if let range = text.range(of: "\"\(key)\"\\s*:\\s*" + NSRegularExpression.escapedPattern(for: old), options: .regularExpression) {
+                text.replaceSubrange(range, with: "\"\(key)\": \(new)")
+            }
+        }
+        if let range = text.range(of: #""version"\s*:\s*\d+"#, options: .regularExpression) {
+            text.replaceSubrange(range, with: #""version": 1"#)
+        }
+        return text
     }
 }
 

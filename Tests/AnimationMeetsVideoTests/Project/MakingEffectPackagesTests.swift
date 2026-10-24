@@ -51,4 +51,27 @@ import Testing
         // An ID that is taken isn't added again.
         #expect(throws: (any Error).self) { try added.adding(second) }
     }
+
+    @Test func aLookIsCopiedAsANewPackage() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let twirl = try #require(EffectKind.twirl.definition.package)
+        let url = try EffectPackageStore.copyPackage(twirl, in: folder)
+        #expect(url.lastPathComponent == "Twirl Copy.amveffect")
+        let copy = try EffectPackageStore.read(url)
+        #expect(copy.id == "user.twirlCopy" && copy.name == "Twirl Copy" && copy.version == 1)
+        // Its controls and kernel as they were.
+        #expect(copy.controls.map(\.kind.savedName) == twirl.controls.map(\.kind.savedName))
+        #expect(copy.controls.map(\.defaultValues) == twirl.controls.map(\.defaultValues))
+        #expect(copy.kernelSource == twirl.kernelSource && copy.arguments.map(\.text) == twirl.arguments.map(\.text))
+        #expect(PackageKernels.problem(for: copy) == nil)
+        // The manifest is edited, not rewritten: the controls' IDs, and its
+        // layout, stay.
+        let manifest = try String(contentsOf: url.appending(path: "effect.json"), encoding: .utf8)
+        let original = try String(contentsOf: twirl.url.appending(path: "effect.json"), encoding: .utf8)
+        #expect(manifest.components(separatedBy: "\n").count == original.components(separatedBy: "\n").count)
+
+        // A second copy takes the next name.
+        let again = try EffectPackageStore.read(try EffectPackageStore.copyPackage(twirl, in: folder))
+        #expect(again.id == "user.twirlCopy2" && again.name == "Twirl Copy 2")
+    }
 }

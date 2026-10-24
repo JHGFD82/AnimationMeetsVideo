@@ -36,7 +36,15 @@ struct EffectsListPanel: View {
                                 EffectLibraryChip(kind: kind, problem: packageStatus.kernelProblems[kind.rawValue])
                                     .onTapGesture(count: 2) { addToSelectedClip(kind) }
                                     .draggable(EffectDragPayload(kind: kind)) { EffectLibraryChip(kind: kind) }
+                                    .contextMenu {
+                                        if let package = kind.definition.package {
+                                            Button("Make a Package from This") { NewEffectPackagePrompt.shared.copy(package) }
+                                        }
+                                    }
                                     .accessibilityAction(named: "Add to the selected clip") { addToSelectedClip(kind) }
+                                    .accessibilityAction(named: "Make a Package from This") {
+                                        if let package = kind.definition.package { NewEffectPackagePrompt.shared.copy(package) }
+                                    }
                             }
                         }
                     }

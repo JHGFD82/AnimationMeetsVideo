@@ -1,11 +1,10 @@
 # Effect packages
 
-Status: **built** through step 12 of [Building it](#building-it): every
+Status: **built** through step 13 of [Building it](#building-it): every
 look is a package, reading [pictures besides the
 clip's](#pictures-besides-the-clips) where it needs them; there is a
-guide to [writing a package](#making-a-package), and New Effect Package
-makes one from the app. Copying a look as a package, and opening one
-from Finder, are planned. `EffectKind` and `ControlKind`
+guide to [writing a package](#making-a-package), and the app makes one
+new or from a look. Opening one from Finder is planned. `EffectKind` and `ControlKind`
 are names looked up in an `EffectRegistry` of the effects written in
 Swift (BuiltInEffects.swift), the 25 looks that ship as packages
 (Resources/Effects) and the person's packages, which
@@ -305,7 +304,8 @@ What to know:
 
 ### Starting one from the app
 
-Status: **New Effect Package built**; the other two planned.
+Status: **New Effect Package and Make a Package from This built**;
+opening a package planned.
 
 - **New Effect Package…**, in the File menu and the effects library's
   context menu (beside **Show Effects Folder**), asks for a name and
@@ -315,10 +315,14 @@ Status: **New Effect Package built**; the other two planned.
   never a Metal word). It is installed at once and its `kernel.metal`
   shown in Finder. A name without a letter to start it, or one whose
   folder or ID is taken, says so instead (`EffectPackageStore.makePackage`).
-- **Make a Package from This…**, in the menu of a package look's chip in
-  the library, copies that package into the Effects folder as a new one,
-  "Twirl Copy" with the ID `user.twirlCopy` and version 1, its controls
-  and kernel as they were.
+- **Make a Package from This**, in the context menu of a look's chip in
+  the library (every look is a package), copies its folder into the
+  Effects folder as a new one, "Twirl Copy" with the ID `user.twirlCopy`
+  and version 1 ("Twirl Copy 2" for a second), its controls and kernel as
+  they were, then installs it and shows its kernel in Finder. Only the
+  manifest's first `id`, `name` and `version` change, the top level's,
+  so its layout stays; a copy that doesn't then read as intended is
+  written whole instead (`EffectPackageStore.copyPackage`).
 - **Opening a package**: `Packaging/Info.plist` declares `.amveffect` as
   a package type (`com.jhgfd.animationmeetsvideo.effect`, kept in sync
   with `EffectPackageStore.packageTypeIdentifier`), so Finder shows one
@@ -583,5 +587,5 @@ In order, each step usable on its own:
 11. Writing a package by hand, described above. **Built.**
 12. Installing a package while the app runs, and New Effect Package.
     **Built.**
-13. Make a Package from This.
+13. Make a Package from This. **Built.**
 14. `.amveffect` as a Finder package type, opened by the app.
