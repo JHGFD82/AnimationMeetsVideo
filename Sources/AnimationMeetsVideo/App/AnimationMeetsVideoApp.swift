@@ -195,6 +195,12 @@ struct AnimationMeetsVideoApp: App {
             WindowCommands()
         }
 
+        // Help > Keyboard Shortcuts (⌘/).
+        Window("Keyboard Shortcuts", id: KeyboardShortcutsView.windowID) {
+            KeyboardShortcutsView()
+        }
+        .windowResizability(.contentMinSize)
+
         // App > Settings… (⌘,): how the editor behaves for every project.
         Settings {
             SettingsView()

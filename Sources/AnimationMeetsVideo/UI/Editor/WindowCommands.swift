@@ -25,11 +25,16 @@ extension FocusedValues {
     }
 }
 
-/// The app's own items in the Window menu.
+/// The app's own items in the Window and Help menus.
 struct WindowCommands: Commands {
     @FocusedValue(\.showTapeScrubber) private var showTapeScrubber
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(after: .help) {
+            Button("Keyboard Shortcuts") { openWindow(id: KeyboardShortcutsView.windowID) }
+                .keyboardShortcut("/", modifiers: .command)
+        }
         CommandGroup(after: .windowArrangement) {
             Button("Reset Panel Layout") {
                 Preferences.resetLayout()

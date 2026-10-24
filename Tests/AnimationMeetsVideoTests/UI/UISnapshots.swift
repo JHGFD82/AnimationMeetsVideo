@@ -211,6 +211,11 @@ struct UISnapshots {
         try SnapshotSupport.render(editor, "empty-editor", size: CGSize(width: 1500, height: 900))
     }
 
+    /// Help > Keyboard Shortcuts: every key the editor answers, grouped.
+    @Test func keyboardShortcuts() throws {
+        try SnapshotSupport.render(KeyboardShortcutsView(), "keyboard-shortcuts", size: CGSize(width: 720, height: 620))
+    }
+
     /// The editor with an adjustment layer over three shape layers: its
     /// first clip reaches every layer below, its second only the one under
     /// it, each drawn as a box down over the layers it reaches.
