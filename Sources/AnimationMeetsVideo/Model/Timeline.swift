@@ -118,6 +118,61 @@ extension Timeline {
 }
 
 extension Timeline {
+    /// Removes a layer and every clip on it. An adjustment clip that
+    /// reached down to it goes back to reaching every layer below.
+    mutating func deleteLayer(_ id: UUID) {
+        layers.removeAll { $0.id == id }
+        for l in layers.indices {
+            for c in layers[l].clips.indices where layers[l].clips[c].reach == id {
+                layers[l].clips[c].reach = nil
+            }
+        }
+    }
+
+    /// Moves a layer to `index` in the stack (0 is the top), as when its
+    /// header is dragged.
+    mutating func moveLayer(_ id: UUID, toIndex index: Int) {
+        guard let from = layers.firstIndex(id: id) else { return }
+        layers.insert(layers.remove(at: from), clampedAt: index)
+    }
+
+    /// Moves a layer `offset` places up (negative) or down among the layers
+    /// of its own kind, which are all its area of the timeline shows.
+    /// Layers of other kinds keep their places.
+    mutating func moveLayer(_ id: UUID, by offset: Int) {
+        guard let index = layers.firstIndex(id: id) else { return }
+        let kind = layers[index].kind
+        let slots = layers.indices.filter { layers[$0].kind == kind }
+        guard let position = slots.firstIndex(of: index), slots.indices.contains(position + offset) else { return }
+        // The layers of this kind move through their own slots, so the
+        // ones between shift by one and other kinds stay where they are.
+        var sameKind = slots.map { layers[$0] }
+        sameKind.insert(sameKind.remove(at: position), at: position + offset)
+        for (slot, layer) in zip(slots, sameKind) {
+            layers[slot] = layer
+        }
+    }
+
+    /// Moves a layer to `position` among the layers of its own kind (0 is
+    /// the top of its area), as when its header is dragged. Layers of other
+    /// kinds keep their places.
+    mutating func moveLayer(_ id: UUID, toPositionInKind position: Int) {
+        guard let from = layers.firstIndex(id: id) else { return }
+        let layer = layers.remove(at: from)
+        let sameKind = layers.indices.filter { layers[$0].kind == layer.kind }
+        let index: Int
+        if sameKind.indices.contains(position) {
+            index = sameKind[position]
+        } else if let last = sameKind.last {
+            index = last + 1
+        } else {
+            index = from
+        }
+        layers.insert(layer, clampedAt: index)
+    }
+}
+
+extension Timeline {
     /// The same timeline without its disabled clips, which play as gaps.
     func withoutDisabledClips() -> Timeline {
         var copy = self

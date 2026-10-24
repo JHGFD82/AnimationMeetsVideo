@@ -388,3 +388,14 @@ struct ClipMove: Equatable {
     var pushFrom: CMTime
     var push: CMTime
 }
+
+extension [TimelineClip] {
+    /// Moves every clip that starts at or after `move.pushFrom` right by
+    /// `move.push`, to make room for what `move` places.
+    mutating func makeRoom(for move: ClipMove) {
+        guard move.push > .zero else { return }
+        for index in indices where self[index].startOffset >= move.pushFrom {
+            self[index].startOffset = CMTimeAdd(self[index].startOffset, move.push)
+        }
+    }
+}

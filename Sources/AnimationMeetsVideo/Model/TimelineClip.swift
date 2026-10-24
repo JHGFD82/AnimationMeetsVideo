@@ -89,6 +89,37 @@ struct TimelineClip: Identifiable, Equatable {
     }
 }
 
+extension [TimelineClip] {
+    /// Splits at source time `time`. The second half starts at
+    /// `startingSecondAt` in the timeline, or where that source time plays.
+    mutating func splitClip(_ id: UUID, at time: CMTime, startingSecondAt secondStartTime: CMTime? = nil) {
+        guard let index = firstIndex(id: id) else { return }
+        let clip = self[index]
+        guard time > clip.trimStart, time < clip.trimEnd else { return }
+        // The split point is in source time; convert it to where that point
+        // plays in the timeline, so the second half starts exactly where the
+        // first half now ends — no gap introduced by splitting, even though
+        // either half can be dragged apart afterward.
+        let secondStart = secondStartTime ?? clip.timelineTime(forSourceTime: time)
+        // Both halves get new IDs, so nothing goes on pointing at the whole
+        // clip as if it were one of them. A song's followers find their
+        // piece again by time (see `MusicAttachment.songClipID`).
+        //
+        // The first half keeps the way in, the second the way out.
+        // (A backwards clip plays the later footage first.)
+        var first = clip
+        first.id = UUID()
+        if clip.isReversed { first.trimStart = time } else { first.trimEnd = time }
+        first.transitionOut = nil
+        var second = clip
+        second.id = UUID()
+        second.startOffset = secondStart
+        if clip.isReversed { second.trimEnd = time } else { second.trimStart = time }
+        second.transitionIn = nil
+        replaceSubrange(index...index, with: [first, second])
+    }
+}
+
 /// Which streams of a media file a clip plays. A video with sound plays
 /// both, linked, until its audio is detached: then the picture stays as a
 /// `.video` clip and the sound moves to an `.audio` clip on its own layer.

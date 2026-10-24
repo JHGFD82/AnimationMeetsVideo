@@ -398,16 +398,6 @@ extension EditingProject {
     mutating func removeTransition(at edge: TransitionEdge, of clipID: UUID, in timelineID: UUID, layer layerID: UUID) {
         updateClip(clipID, in: timelineID, layer: layerID) { $0.setTransition(nil, at: edge) }
     }
-
-    fileprivate mutating func updateClip(_ clipID: UUID, in timelineID: UUID, layer layerID: UUID, _ change: (inout TimelineClip) -> Void) {
-        guard let tIndex = timelines.firstIndex(id: timelineID),
-              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID),
-              let cIndex = timelines[tIndex].layers[lIndex].clips.firstIndex(id: clipID)
-        else {
-            return
-        }
-        change(&timelines[tIndex].layers[lIndex].clips[cIndex])
-    }
 }
 
 // MARK: - Joining clips
