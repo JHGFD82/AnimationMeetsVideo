@@ -289,11 +289,15 @@ private struct ProjectsSettings: View {
                             .help(backupLocation.path)
                             .accessibilityLabel("Backup folder, \(backupLocationText)")
                         HStack(spacing: Design.Space.step) {
+                            // Named in full for VoiceOver, which reads them
+                            // without the row's label.
                             Button("Choose…", action: chooseBackupLocation)
+                                .accessibilityLabel("Choose backup folder")
                             Button("Show in Finder") {
                                 try? FileManager.default.createDirectory(at: backupLocation, withIntermediateDirectories: true)
                                 NSWorkspace.shared.activateFileViewerSelecting([backupLocation])
                             }
+                            .accessibilityLabel("Show backup folder in Finder")
                         }
                     }
                 }
