@@ -151,11 +151,7 @@ struct EffectsPanel: View {
         } message: {
             Text("Presets are shared by every project and appear in the browser.")
         }
-        .alert("The Preset Wasn't Saved", isPresented: $presetError.isPresent) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(presetError ?? "")
-        }
+        .messageAlert("The Preset Wasn't Saved", message: $presetError)
         .sheet(item: $expandedEqualizer) { item in
             expandedEqualizerSheet(item)
         }

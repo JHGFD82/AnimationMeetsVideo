@@ -163,22 +163,8 @@ struct EditorToolbar: View {
         .onChange(of: pasteChanges.isEmpty) { _, empty in
             if empty { showsPasteChanges = false }
         }
-        .alert(
-            "Export Failed",
-            isPresented: $exportError.isPresent
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(exportError ?? "")
-        }
-        .alert(
-            "Export Finished",
-            isPresented: $masteringReport.isPresent
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(masteringReport ?? "")
-        }
+        .messageAlert("Export Failed", message: $exportError)
+        .messageAlert("Export Finished", message: $masteringReport)
     }
 
     /// Selects the clip an entry is on, with the effects panel open at it.

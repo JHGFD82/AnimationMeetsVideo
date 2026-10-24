@@ -461,11 +461,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 rebuildPlayerItem()
             }
         }
-        .alert("Import Failed", isPresented: $dropError.isPresent) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(dropError ?? "")
-        }
+        .messageAlert("Import Failed", message: $dropError)
         .onChange(of: renderer?.packageURL) { _, _ in
             rebuildPlayerItem()
         }
