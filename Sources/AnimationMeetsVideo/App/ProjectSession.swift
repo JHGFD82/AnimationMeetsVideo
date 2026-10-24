@@ -190,6 +190,9 @@ final class ProjectSession {
     /// change on: a burst of edits (nudges, typing a value) is one write.
     static let automaticSaveDelay: Duration = .milliseconds(500)
     @ObservationIgnored private var pendingAutomaticSave: Task<Void, Never>?
+    /// Whether the latest save the app made on its own failed, so the
+    /// edits since are only on disk if an autosave writes them.
+    @ObservationIgnored private var automaticSaveFailed = false
 
     /// An edit has landed (see `ProjectHistory.changeLanded`): with saving
     /// after every change on, it is saved shortly, as Final Cut Pro saves.
@@ -300,6 +303,7 @@ final class ProjectSession {
             project.applyMediaLocations(from: saved)
             savedProject = saved
             lastAutosaved = nil
+            automaticSaveFailed = false
             autosaveStatus.succeeded()
             projectLock = lock
             fileMonitor.track(package: url)
@@ -310,6 +314,7 @@ final class ProjectSession {
         } catch {
             if quietly {
                 NSLog("Saving automatically failed: \(error.localizedDescription)")
+                automaticSaveFailed = true
                 autosaveStatus.failed(ErrorAdvice.sentence(for: error), kind: .save)
             } else {
                 Self.showAlert(title: "Couldn't Save Project", message: ErrorAdvice.sentence(for: error))
@@ -320,9 +325,17 @@ final class ProjectSession {
 
     /// Writes a recovery copy into the package's `Backups/` folder. Only for
     /// projects that have been saved once (there is no package before that),
-    /// and only when something changed since the last save or autosave.
+    /// only when something changed since the last save or autosave, and
+    /// only when saving after every change won't write it anyway
+    /// (`autosaveIsNeeded`).
     func autosave() async {
-        guard let url = projectURL, hasUnsavedChanges, project != lastAutosaved else { return }
+        guard let url = projectURL, hasUnsavedChanges, project != lastAutosaved,
+              Self.autosaveIsNeeded(
+                  savingAutomatically: Preferences.isSavingAutomatically,
+                  inGesture: history.isInGesture,
+                  automaticSaveFailed: automaticSaveFailed
+              )
+        else { return }
         let snapshot = project
         do {
             _ = try await PackageCoordinator.shared.run(on: [url]) {
@@ -334,6 +347,18 @@ final class ProjectSession {
             NSLog("Autosave failed: \(error.localizedDescription)")
             autosaveStatus.failed(ErrorAdvice.sentence(for: error))
         }
+    }
+
+    /// Whether an autosave is worth writing. With saving after every
+    /// change on, edits are saved half a second after they land, so an
+    /// autosave would only repeat `project.json`. It still covers what
+    /// those saves can't: edits held back by a gesture, such as a whole
+    /// motion designer session, which lands only when it ends, and edits
+    /// made while saving fails.
+    nonisolated static func autosaveIsNeeded(
+        savingAutomatically: Bool, inGesture: Bool, automaticSaveFailed: Bool
+    ) -> Bool {
+        !savingAutomatically || inGesture || automaticSaveFailed
     }
 
     /// The project as last backed up to the backup folder, and when; set

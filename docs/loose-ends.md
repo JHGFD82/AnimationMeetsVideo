@@ -63,8 +63,5 @@ Built and tested in code, never run on screen.
 - **A restored project keeps the original's project ID.** It has its own
   package and opens and saves on its own, but nothing tells the two apart
   by ID if both are open; nothing relies on that yet.
-- **The package's own autosave still runs** every minute with saving
-  after every change on. It rarely finds anything unsaved then, so it is
-  harmless, but it could be skipped while that setting is on.
 - **Closing the last window quits the app.** Kept on purpose; with
   recent projects and reopening at launch, getting back is quick.

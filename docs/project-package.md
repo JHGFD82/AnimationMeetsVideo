@@ -151,7 +151,11 @@ With it off, `project.json` is written only by Save. Closing a window
 asks to Save, Don't Save or Cancel when its project has unsaved changes,
 and quitting asks for each such project in turn; cancelling keeps it
 open.
-Every minute with unsaved changes an autosave goes into `Backups/`. When
+Every minute with unsaved changes an autosave goes into `Backups/`. With
+saving after every change on it is skipped, since that save writes the
+same edits, except while a gesture holds edits back (a motion designer
+session lands only when it closes) or after an automatic save failed
+(`ProjectSession.autosaveIsNeeded`). When
 one can't be written, the toolbar says **Not backed up** until a backup or
 save succeeds; clicking it explains why, with Save Now (`AutosaveStatus`,
 `AutosaveWarning`). When a
