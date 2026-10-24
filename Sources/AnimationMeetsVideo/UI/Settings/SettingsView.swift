@@ -12,7 +12,7 @@ import SwiftUI
 /// the other at once.
 struct SettingsView: View {
     enum Tab: String, Hashable {
-        case viewer, timeline, sound, library, layout
+        case viewer, timeline, sound, library, projects, layout
     }
 
     @AppStorage("settingsTab") private var tab = Tab.viewer
@@ -29,8 +29,11 @@ struct SettingsView: View {
                 .tabItem { Label("Sound", systemImage: "speaker.wave.2") }
                 .tag(Tab.sound)
             LibrarySettings()
-                .tabItem { Label("Library", systemImage: "photo.on.rectangle") }
+                .tabItem { Label("Browser", systemImage: "photo.on.rectangle") }
                 .tag(Tab.library)
+            ProjectsSettings()
+                .tabItem { Label("Projects", systemImage: "externaldrive") }
+                .tag(Tab.projects)
             LayoutSettings()
                 .tabItem { Label("Layout", systemImage: "rectangle.3.group") }
                 .tag(Tab.layout)
@@ -167,7 +170,7 @@ private struct SoundSettings: View {
                     Toggle("Play a clip's sound as it is skimmed", isOn: $browserSkimAudio)
                         .disabled(!browserSkimming)
                 }
-                SheetNote("Skimming a filmstrip plays a moment of the clip's own sound at each frame, while skimming is on (Library tab). Also in the browser's view options.")
+                SheetNote("Skimming a filmstrip plays a moment of the clip's own sound at each frame, while skimming is on (Browser tab). Also in the browser's view options.")
             }
         }
     }
@@ -240,6 +243,94 @@ private struct LibrarySettings: View {
     }
 }
 
+// MARK: - Projects
+
+private struct ProjectsSettings: View {
+    @AppStorage(Preferences.savesAutomatically) private var savesAutomatically = true
+    @AppStorage(Preferences.backsUpProjects) private var backsUp = true
+    @AppStorage(Preferences.backupLocation) private var backupPath = ""
+    @AppStorage(Preferences.backupInterval) private var backupMinutes = 15
+
+    private var backupLocation: URL {
+        backupPath.isEmpty ? ProjectBackups.defaultLocation : URL(fileURLWithPath: backupPath, isDirectory: true)
+    }
+
+    /// The folder as people read paths: the home folder as ~.
+    private var backupLocationText: String {
+        let path = backupLocation.path
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
+    }
+
+    var body: some View {
+        SettingsPane {
+            SheetSection("Saving") {
+                SheetRow("Projects", alignment: .center) {
+                    Toggle("Save after every change", isOn: $savesAutomatically)
+                        .accessibilityHint("Each edit is written to the project as soon as it is made")
+                }
+                SheetNote(savesAutomatically
+                    ? "Each edit is written to the project a moment after it is made, as Final Cut Pro saves, so there is nothing to remember to save. A drag is saved when it ends. Undo still steps back through every edit."
+                    : "The project is written only when you choose Save. Closing a window or quitting asks about unsaved changes, and an autosave in the project's Backups folder is offered back after a crash.")
+            }
+            Groove()
+            SheetSection("Backups") {
+                SheetRow("Backups", alignment: .center) {
+                    Toggle("Back up projects", isOn: $backsUp)
+                        .accessibilityHint("Keeps copies of each open project in the backup folder")
+                }
+                SheetRow("Folder", alignment: .top) {
+                    VStack(alignment: .leading, spacing: Design.Space.close) {
+                        Text(backupLocationText)
+                            .font(Design.Typeface.body)
+                            .foregroundStyle(Design.textPrimary)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                            .help(backupLocation.path)
+                            .accessibilityLabel("Backup folder, \(backupLocationText)")
+                        HStack(spacing: Design.Space.step) {
+                            // Named in full for VoiceOver, which reads them
+                            // without the row's label.
+                            Button("Choose…", action: chooseBackupLocation)
+                                .accessibilityLabel("Choose backup folder")
+                            Button("Show in Finder") {
+                                try? FileManager.default.createDirectory(at: backupLocation, withIntermediateDirectories: true)
+                                NSWorkspace.shared.activateFileViewerSelecting([backupLocation])
+                            }
+                            .accessibilityLabel("Show backup folder in Finder")
+                        }
+                    }
+                }
+                .disabled(!backsUp)
+                SheetRow("Every", alignment: .center) {
+                    Picker("Back up every", selection: $backupMinutes) {
+                        ForEach(Preferences.backupIntervals, id: \.self) { minutes in
+                            Text(minutes < 60 ? "\(minutes) minutes" : "hour").tag(minutes)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .accessibilityLabel("Back up every")
+                }
+                .disabled(!backsUp)
+                SheetNote("While a project changes, a backup of it (its edits, the media copied into it and what was learned about each file) goes to its own folder here, and the newest \(ProjectBackups.kept) are kept. Unchanged files are cloned from the backup before, so after the first one each costs only what changed. A folder on another disk survives that disk failing; one on the project's disk costs nothing. Double-click a backup to make a new project from it, beside the original, which is left as it is.")
+            }
+        }
+    }
+
+    private func chooseBackupLocation() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.directoryURL = backupLocation
+        panel.prompt = "Choose"
+        panel.message = "Choose where project backups go."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        backupPath = url.path
+    }
+}
+
 // MARK: - Layout
 
 private struct LayoutSettings: View {
@@ -255,7 +346,7 @@ private struct LayoutSettings: View {
                     }
                     .disabled(!isCustom)
                 }
-                SheetNote("Puts every panel back to its first-launch size and place: the library, inspector, effects and timeline, which are open, and the timeline's areas and layer heights. Projects are untouched. Also in the Window menu.")
+                SheetNote("Puts every panel back to its first-launch size and place: the browser, inspector, effects and timeline, which are open, and the timeline's areas and layer heights. Projects are untouched. Also in the Window menu.")
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in

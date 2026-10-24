@@ -158,13 +158,21 @@ context menu then offers **File Changed — Check Sync…**, which runs the same
 analysis on the file already in place and stores the result as the new
 accepted state. A file that matches again is unflagged.
 
-A file that goes missing or can't be read is reported once, the library
+A file that goes missing or can't be read is reported once, the browser
 says **File missing**, and its clip's context menu says **File Is
 Missing**. Its clips play as gaps in the viewer, and export stops with its
 name, until it is back (see "Offline media" in
 [project-package.md](project-package.md)). It is not flagged as changed, since
 there is nothing to check sync against; when it comes back it is compared
 as usual. **Replace Media…** points the asset at another file.
+
+The message that reports changed or missing files (on opening, or while
+the app runs) offers **Check Sync…**, which checks every changed file in
+turn, and **Locate…**, which asks for the one missing file or, with several,
+for a folder to match them in by name (as **Replace Media from Folder…**
+does, for the missing ones only); **Later** puts it off. Until they are
+dealt with, a bar over the Clips list (`MediaProblemsBar`) says how many
+files are missing or changed, with the same two buttons.
 
 The file reads run off the main thread, so a slow or sleeping network volume
 does not stall the editor. Their result is applied to the project as it is

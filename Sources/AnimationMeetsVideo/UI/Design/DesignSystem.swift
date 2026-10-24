@@ -198,7 +198,7 @@ enum Design {
     enum Typeface {
         /// A sheet's title.
         static let title = Font.system(size: 15, weight: .semibold)
-        /// A panel's name on its rail: "Library", "Timeline".
+        /// A panel's name on its rail: "Browser", "Timeline".
         static let panelTitle = Font.system(size: 12, weight: .semibold)
         /// A group heading inside a panel or sheet.
         static let groupTitle = Font.system(size: 11, weight: .semibold)

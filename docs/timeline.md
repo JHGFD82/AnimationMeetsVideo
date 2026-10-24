@@ -7,7 +7,7 @@ itself has been checked in offscreen renders, not yet driven on screen
 with a trackpad. What is not built is listed under
 [Not implemented yet](#not-implemented-yet).
 
-The timeline sits under the library, viewer and inspector and spans the
+The timeline sits under the browser, viewer and inspector and spans the
 full width of the window: a label column on the left (layer number and
 name, and its volume row when shown), and the track area on the
 right with the ruler across its top. The Effects Library (effects and
@@ -63,7 +63,7 @@ run across two layers (`addPieces(_:intoTimeline:at:kind:)`). New layers
 always go at the top of the stack, which is the top of their area. **Add
 to Timeline** always makes a new layer.
 
-Dragged over the layer names, media from the library or a clip already on
+Dragged over the layer names, media from the browser or a clip already on
 the timeline lights up a translucent zone in the area's hue saying what a
 drop there makes: **New Video Layer** for pictures, or for sound the column
 split into **New Sound Layer** above **New Music Layer**, the half under
@@ -303,7 +303,7 @@ skimming off takes the viewer back to the playhead.
   ten. A nudge follows the same rules as dragging.
 
 These keys are left to a list or other control that has the keyboard (the
-library's list uses the arrows), and to text being typed. All of them, and
+browser's Clips list uses the arrows), and to text being typed. All of them, and
 the timeline's other keys (tools, snapping, zoom, Delete), are listed in
 the **Timeline** menu (`TimelineCommands`) and in
 [accessibility.md](accessibility.md). Keys without a modifier are
@@ -729,6 +729,17 @@ clip.
   The copy gets new IDs for itself, its effects and their controls, and
   what pointed between its effects (Against, a Keyframing effect's target
   and the keyframes it wrote) points at the copies.
+- **Between projects**: what was copied is the app's, not one window's
+  (`EditorClipboard`), so a clip or clips copied in one project's window
+  paste into another's. A copy carries what it needs from its project
+  (`PasteSources`): the media it plays, the timelines it embeds with
+  everything they play, and its effects' inputs. Pasting adds what the
+  other project lacks, by ID, so pasting in the same project adds
+  nothing. At the next save, pasted media whose file is inside the other
+  project's package is copied into this one's `Media/` (an instant clone
+  on the same APFS volume), and its reference data is copied from that
+  package, so this project doesn't depend on the other; media the other
+  project referenced in place stays where it is.
 - **Paste** puts the clip at the playhead, landing as a clip moved there
   would: inside a clip it goes to the nearer edge, and later clips on the
   layer move right to make room. It goes onto the selected clip's layer or

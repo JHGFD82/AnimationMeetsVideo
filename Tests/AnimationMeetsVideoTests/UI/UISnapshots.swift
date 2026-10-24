@@ -200,6 +200,92 @@ struct UISnapshots {
         try SnapshotSupport.render(editor, "editor", size: CGSize(width: 1500, height: 900))
     }
 
+    /// The editor of a new project with no media: the Clips tab offers
+    /// Import Media… and the viewer says how to begin.
+    @Test func emptyEditor() throws {
+        let project = EditingProject.empty
+        let editor = EditorView(
+            project: .constant(project), history: ProjectHistory(project: project), analysis: AssetAnalysis(),
+            replacement: MediaReplacementController(), packageURL: nil
+        )
+        try SnapshotSupport.render(editor, "empty-editor", size: CGSize(width: 1500, height: 900))
+    }
+
+    /// Over the Clips list: one file missing and two changed on disk, each
+    /// with the button that deals with them.
+    @Test func mediaProblemsBar() throws {
+        let controller = MediaReplacementController()
+        controller.markMissing([UUID()])
+        controller.markChanged([UUID(), UUID()])
+        let context = MediaReplacementController.Context(project: .constant(.empty), analysis: AssetAnalysis(), packageURL: nil)
+        try SnapshotSupport.render(
+            MediaProblemsBar(controller: controller, context: context)
+                .frame(width: 300)
+                .background(Design.Surface.base.color)
+                .preferredColorScheme(.dark),
+            "media-problems-bar", size: CGSize(width: 300, height: 70)
+        )
+    }
+
+    /// The start sheet with three recent projects, two of one name in
+    /// different folders.
+    @Test func projectStart() throws {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let recents = [
+            home.appendingPathComponent("Movies/Music Video.amv"),
+            home.appendingPathComponent("Movies/Tests/Music Video.amv"),
+            URL(fileURLWithPath: "/Volumes/Projects/Trailer.amv"),
+        ]
+        try SnapshotSupport.render(
+            ProjectStartView(recents: recents, onNew: {}, onOpen: {}),
+            "project-start", size: CGSize(width: 560, height: 470)
+        )
+    }
+
+    /// The Timelines tab: Main embeds Chorus, which embeds Logo; Outtakes
+    /// is embedded nowhere. Main is the one open.
+    @Test func timelinesList() throws {
+        var project = EditingProject.empty
+        let size = CGSize(width: 1920, height: 1080)
+        let chorus = project.addTimeline(name: "Chorus", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        let logo = project.addTimeline(name: "Logo", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        _ = project.addTimeline(name: "Outtakes", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        let still = MediaClip(
+            name: "Clip", kind: .video, url: nil, duration: CMTime(seconds: 5, preferredTimescale: 600),
+            frameRate: 24, colorSpace: .rec709, codecName: "Stub"
+        )
+        _ = project.importClip(still, intoTimeline: logo)
+        _ = project.importClip(still, intoTimeline: chorus)
+        _ = project.embedTimeline(logo, intoTimeline: chorus)
+        _ = project.embedTimeline(chorus, intoTimeline: project.rootTimelineID)
+        try SnapshotSupport.render(
+            TimelinesList(project: project, activeTimelineID: project.rootTimelineID, onEmbed: { _ in }, onDuplicate: { _ in })
+                .frame(width: 260, height: 260)
+                .background(Design.Surface.base.color)
+                .preferredColorScheme(.dark),
+            "timelines-list", size: CGSize(width: 260, height: 260)
+        )
+    }
+
+    /// The toolbar's warning while automatic backups fail.
+    @Test func autosaveWarning() throws {
+        let status = AutosaveStatus()
+        status.failed("The disk is full.")
+        try SnapshotSupport.render(
+            AutosaveWarning()
+                .environment(status)
+                .padding(10)
+                .background(Design.Surface.raised.color)
+                .preferredColorScheme(.dark),
+            "autosave-warning", size: CGSize(width: 220, height: 44)
+        )
+    }
+
+    /// Help > Keyboard Shortcuts: every key the editor answers, grouped.
+    @Test func keyboardShortcuts() throws {
+        try SnapshotSupport.render(KeyboardShortcutsView(), "keyboard-shortcuts", size: CGSize(width: 720, height: 620))
+    }
+
     /// The editor with an adjustment layer over three shape layers: its
     /// first clip reaches every layer below, its second only the one under
     /// it, each drawn as a box down over the layers it reaches.
@@ -749,9 +835,9 @@ struct UISnapshots {
         let key = "settingsTab"
         let remembered = UserDefaults.standard.object(forKey: key)
         defer { UserDefaults.standard.set(remembered, forKey: key) }
-        for tab in ["viewer", "timeline", "sound", "library", "layout"] {
+        for tab in ["viewer", "timeline", "sound", "library", "projects", "layout"] {
             UserDefaults.standard.set(tab, forKey: key)
-            try SnapshotSupport.render(SettingsView(), "settings-\(tab)", size: CGSize(width: 460, height: 420))
+            try SnapshotSupport.render(SettingsView(), "settings-\(tab)", size: CGSize(width: 460, height: tab == "projects" ? 560 : 420))
         }
     }
 

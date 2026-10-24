@@ -5,14 +5,19 @@ import Foundation
 ///
 /// Edits are detected by comparing the project to a baseline rather than at
 /// each call site, so every change is undoable, including ones added later.
-/// Changes that arrive in quick succession (dragging a slider) merge into one
-/// undo step.
+/// Each step is named for the Edit menu by `ProjectChange` (what was done
+/// to which clip). Changes in quick succession merge into one undo step
+/// only when they are the same edit to the same things (stepping one
+/// control with the arrow keys), told by the step's hidden identity.
 @MainActor
 final class ProjectHistory {
     static let coalescingInterval: TimeInterval = 0.5
 
     private(set) var baseline: EditingProject
     private var lastRecordedAt: Date?
+    /// The identity of the last step recorded, which a quick change
+    /// merges into only when it is the same edit to the same things.
+    private var lastRecordedIdentity: Int?
     /// Where saves moved each asset's file, in order. Undo snapshots taken
     /// before a move still hold the old place; restoring one applies these.
     private var mediaMoves: [UUID: [MediaMove]] = [:]
@@ -28,6 +33,13 @@ final class ProjectHistory {
     var restore: ((EditingProject) -> Void)?
     /// Reads the app's project state as it is now.
     var current: (() -> EditingProject)?
+    /// The scenes of a video in a project, once found, so a step's name
+    /// can say which scene a clip plays (see `ProjectChange`).
+    var scenes: ProjectChange.SceneLookup?
+    /// Called when an edit has landed: recorded as a step or merged into
+    /// the last one, at the end of a gesture (never during one), or undone
+    /// or redone. Saving after every change listens here.
+    var changeLanded: (() -> Void)?
 
     init(project: EditingProject) {
         baseline = project
@@ -37,6 +49,7 @@ final class ProjectHistory {
     func reset(to project: EditingProject) {
         baseline = project
         lastRecordedAt = nil
+        lastRecordedIdentity = nil
         mediaMoves = [:]
         undoManager?.removeAllActions()
     }
@@ -72,6 +85,7 @@ final class ProjectHistory {
         guard isInGesture else { return }
         isInGesture = false
         lastRecordedAt = nil
+        lastRecordedIdentity = nil
         if let project = project ?? current?() { projectDidChange(project) }
         if gestureNotified { NotificationCenter.default.post(name: .valueGestureDidEnd, object: self) }
         gestureNotified = false
@@ -109,31 +123,39 @@ final class ProjectHistory {
         guard project != baseline else { return }
         let before = baseline
         baseline = project
+        defer { changeLanded?() }
+        let step = ProjectChange.step(from: before, to: project, scenes: scenes)
 
         if let last = lastRecordedAt,
            now.timeIntervalSince(last) < Self.coalescingInterval,
+           step?.identity == lastRecordedIdentity,
            undoManager?.canUndo == true {
             lastRecordedAt = now
             return
         }
         lastRecordedAt = now
-        registerUndo(restoring: before)
+        lastRecordedIdentity = step?.identity
+        registerUndo(restoring: before, name: step?.name)
     }
 
-    private func registerUndo(restoring snapshot: EditingProject) {
+    private func registerUndo(restoring snapshot: EditingProject, name: String?) {
         undoManager?.registerUndo(withTarget: self) { history in
-            MainActor.assumeIsolated { history.apply(snapshot) }
+            MainActor.assumeIsolated { history.apply(snapshot, name: name) }
         }
+        if let name { undoManager?.setActionName(name) }
     }
 
-    private func apply(_ snapshot: EditingProject) {
+    private func apply(_ snapshot: EditingProject, name: String?) {
         let snapshot = relocated(snapshot)
         let current = baseline
         baseline = snapshot
         lastRecordedAt = nil
+        lastRecordedIdentity = nil
         restore?(snapshot)
-        // Registered while undoing this becomes the redo step, and vice versa.
-        registerUndo(restoring: current)
+        // Registered while undoing this becomes the redo step, and vice
+        // versa, under the same name.
+        registerUndo(restoring: current, name: name)
+        changeLanded?()
     }
 }
 

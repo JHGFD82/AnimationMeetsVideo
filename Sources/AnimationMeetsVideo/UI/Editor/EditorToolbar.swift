@@ -19,8 +19,8 @@ struct EditorToolbar: View {
     @State private var exportTask: Task<Void, Never>?
     @State private var exportProgress: Double = 0
     @State private var exportError: String?
-    /// What mastering did to the last export's sound, shown when it is done.
-    @State private var masteringReport: String?
+    /// The export just finished, shown until the person dismisses it.
+    @State private var finishedExport: FinishedExport?
     @State private var showsPasteChanges = false
     /// Whether the Paste Changes list was opened by trying to export.
     @State private var exportAfterAccepting = false
@@ -84,6 +84,8 @@ struct EditorToolbar: View {
                   : externalScreens.isEmpty ? "Connect a second display to show the viewer on it" : "Show the viewer on an external display")
             .accessibilityLabel("External display")
             .accessibilityValue(externalDisplay.isActive ? "On" : "Off")
+
+            AutosaveWarning()
 
             if !pasteChanges.isEmpty {
                 Button {
@@ -163,8 +165,16 @@ struct EditorToolbar: View {
         .onChange(of: pasteChanges.isEmpty) { _, empty in
             if empty { showsPasteChanges = false }
         }
+        .focusedSceneValue(\.exportTimeline, isExporting ? nil : FileMenuAction { exportProject() })
         .messageAlert("Export Failed", message: $exportError)
-        .messageAlert("Export Finished", message: $masteringReport)
+        .alert("Export Finished", isPresented: $finishedExport.isPresent, presenting: finishedExport) { done in
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([done.url])
+            }
+            Button("OK", role: .cancel) {}
+        } message: { done in
+            Text(done.message)
+        }
     }
 
     /// Selects the clip an entry is on, with the effects panel open at it.
@@ -248,13 +258,28 @@ struct EditorToolbar: View {
                         project: snapshot, timelineID: timelineID, named: snapshot.name, in: url, progress: progress
                     )
                 }
-                masteringReport = report.value?.summary
+                finishedExport = FinishedExport(url: url, report: report.value?.summary)
+                // A long export may finish with the app behind another.
+                NSApp.requestUserAttention(.informationalRequest)
             } catch is CancellationError {
                 // The user cancelled; nothing to report.
             } catch {
-                exportError = error.localizedDescription
+                exportError = ErrorAdvice.sentence(for: error)
             }
         }
+    }
+}
+
+/// An export that has finished: where it went, and what mastering did to
+/// its sound, when it did anything.
+private struct FinishedExport {
+    let url: URL
+    let report: String?
+
+    var message: String {
+        let saved = "\u{201C}\(url.lastPathComponent)\u{201D} was saved."
+        guard let report else { return saved }
+        return "\(saved)\n\n\(report)"
     }
 }
 

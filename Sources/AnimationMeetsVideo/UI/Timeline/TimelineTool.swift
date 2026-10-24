@@ -28,7 +28,7 @@ enum TimelineTool: String, CaseIterable, Identifiable {
         }
     }
 
-    /// P, S, R and T show transform properties, so slip is Y, as in Premiere.
+    /// Slip is Y, as in Premiere.
     var shortcutKey: Character {
         switch self {
         case .arrow: "a"

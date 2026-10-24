@@ -11,8 +11,9 @@ and `project.json` holds scene edits (see [scene-cuts.md](scene-cuts.md)).
 [beat-detection.md](beat-detection.md)); the beats the person confirmed
 are the person's work, so they are in `project.json`, as an asset's
 `beatMap`, written only once it has a section (see
-[beat-matching.md](beat-matching.md#saving)). The render cache is implemented (see [rendering.md](rendering.md)). Not yet implemented: dense reference frames, a list of backups to restore from (copy one over
-`project.json` by hand for now).
+[beat-matching.md](beat-matching.md#saving)). The render cache is implemented (see [rendering.md](rendering.md)). Not yet implemented: dense reference frames, a list of the package's own
+autosaves to restore from (only the newest unsaved one is offered on
+opening; copy an older one over `project.json` by hand).
 Step 4 is implemented (see [media-replacement.md](media-replacement.md)):
 `project.json` stores each asset's alignment offset, earlier file paths, the
 file stamp accepted at the last save, and whether its original was forgotten.
@@ -114,23 +115,91 @@ the plain folder.
 
 Status: **implemented**.
 
-There is always a package to write into. At launch the app reopens the
-project used last; when there is none, or it has gone, a start sheet offers
-New Project and Open Project and stays until one exists. New Project asks
-where to save before the editor opens and writes the package and an empty
-`project.json` right away.
+There is always a package to write into. Each project has a window of
+its own (`ProjectWindow`, with a `ProjectSession` holding the project, its
+history, lock, analysis and file watching), so several can be open at
+once, and clips copied in one paste into another (see "Copy, paste and
+duplicate" in [timeline.md](timeline.md)). At launch the app
+reopens the projects that were open when it quit, the first in the
+first window and each other in its own (`ProjectWindows`); the system's
+own window restoration is off for the app, so the two don't race. A
+window with no project shows a start sheet offering New Project and Open
+Project until one exists. New Project asks where to save before the
+editor opens and writes the package and an empty `project.json` right
+away. New Project, Open Project and Open Recent use the window in front
+while its start sheet is up, and a new window otherwise; a project
+already open brings its window forward, since the window group keeps one
+window per package.
 
-**Saving is still explicit.** Imports, edits and the clip list live in
-`project.json`, which only Save writes. Quitting (including closing the last
-window), New Project and Open Project ask to Save, Don't Save or Cancel
-when there are unsaved changes; cancelling a quit brings the window back.
-Every minute with unsaved changes an autosave goes into `Backups/`. When a
+The ten projects opened or saved last (`RecentProjects`, in the app's
+defaults) are listed in File > Open Recent, with Clear Menu, and up to six
+of those still on disk on the start sheet, each with its folder. A recent
+project that has moved or gone is explained and taken off the list. They
+also go to the system's recent documents, for the Dock icon's menu.
+
+**Saving after every change** (Settings > Projects, on unless turned
+off; `Preferences.savesAutomatically`). Imports, edits and the clip list
+live in `project.json`. With this on, as Final Cut Pro does, each edit
+is written half a second after it lands (`ProjectHistory.changeLanded`:
+a step recorded or merged, the end of a drag, an undo or redo), so a
+burst of edits is one write and a drag is saved when it ends. There is
+nothing to remember to save, closing a window or quitting saves without
+asking, and the title bar shows no edited dot. A save that fails shows
+**Not saved** in the toolbar (`AutosaveStatus`) instead of an alert at
+every edit, the dot comes back, and closing or quitting then asks.
+
+With it off, `project.json` is written only by Save. Closing a window
+asks to Save, Don't Save or Cancel when its project has unsaved changes,
+and quitting asks for each such project in turn; cancelling keeps it
+open.
+Every minute with unsaved changes an autosave goes into `Backups/`. With
+saving after every change on it is skipped, since that save writes the
+same edits, except while a gesture holds edits back (a motion designer
+session lands only when it closes) or after an automatic save failed
+(`ProjectSession.autosaveIsNeeded`). When
+one can't be written, the toolbar says **Not backed up** until a backup or
+save succeeds; clicking it explains why, with Save Now (`AutosaveStatus`,
+`AutosaveWarning`). When a
 project opens and its newest autosave is newer than `project.json` and
 differs from it, as after a crash or a quit that skipped saving, the app
 offers to restore it. Restoring is an ordinary, undoable edit on top of
 the saved version and isn't written until saved. Declining, or choosing
 Don't Save, marks the autosaves as seen (their dates are set back to just
 before the save's) so they aren't offered again; the files stay.
+
+**Backups outside the project** (Settings > Projects > Backups, on
+unless turned off; `ProjectBackups`). While a project changes, every 15
+minutes (or 5, 30, 60) a backup of it goes to a folder of the person's
+choosing, by default `~/Movies/Animation Meets Video Backups/`, in a
+folder per project; the newest 10 are kept. A backup is an
+`.amvbackup` package:
+
+```
+Name 2026-10-24 14.30.05.amvbackup/
+  project.json   the project, media paths as in its package
+  backup.json    the package it was taken of, its name, and when
+  Media/         the media copied into the project
+  Reference/     what was learned about each original file
+```
+
+so it opens on its own even if the project's package is gone. Media the
+project refers to in place isn't copied, and the cache and the package's
+own autosaves are left out. Each file is copied from the previous backup
+when it is the same file (size and modification date), which on APFS is
+a clone taking no space, so only the first backup on a disk copies the
+media for real. A backup on the project's own disk costs nothing but
+doesn't survive that disk failing. A backup is written half-way under a
+hidden name and renamed when whole, off the main thread through the
+`PackageCoordinator`. One that fails shows **Not backed up** in the
+toolbar and is tried again at the next interval.
+
+Opening a backup (double-clicking it, choosing it in File > Open, or
+File > Open Backup…, which starts in the front project's folder of
+backups, listed by date) never touches the project it came from: it is copied beside that project
+as a new one, "Name from backup 2026-10-24 14.30.amv" (with " 2" if
+taken), its `backup.json` dropped, its name set to match and a project
+ID of its own given, so it is never taken for the original, and opened.
+Where that folder is gone, the app asks where to put it.
 
 Because of that, analysis results (change scores, reference data, pictures
 and beats) are written into `Reference/` as soon as each is computed, and
@@ -243,7 +312,7 @@ result whose retirement was already asked for. A read that fails is not
 taken to mean the package holds nothing: the asset is not analyzed over what
 may be there, but read again after a wait of 1, 2 and 4 seconds for the
 first three failures, then only when asked; changes to the project don't
-read it again sooner. The library shows "Couldn't
+read it again sooner. The browser shows "Couldn't
 read saved results" for it, with a Retry Reading Results command. The scorer, reference
 capture, picture capture and beat detector do their decoding and arithmetic
 on background tasks or the sample-reading queue, not on the main actor.
@@ -295,7 +364,7 @@ it; the length always covers its clips, so their trims stay valid.
 
 While a file is offline:
 
-- The library says **File missing**, and opening warns once with the
+- The browser says **File missing**, and opening warns once with the
   names. The file check keeps watching for it.
 - The viewer plays its clips as gaps and says which files are offline, so
   the rest of the timeline can still be watched.

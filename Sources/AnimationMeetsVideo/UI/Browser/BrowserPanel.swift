@@ -77,10 +77,18 @@ struct BrowserPanel: View {
             }
             switch tab {
             case .clips:
-                ClipsTab(
-                    access: access, activeTimelineID: activeTimelineID, selection: $selection,
-                    analysis: analysis, replacement: replacement, packageURL: packageURL
-                )
+                if project.clips.isEmpty && imports?.items.isEmpty != false {
+                    noMedia
+                } else {
+                    MediaProblemsBar(
+                        controller: replacement,
+                        context: .init(project: access.binding, analysis: analysis, packageURL: packageURL)
+                    )
+                    ClipsTab(
+                        access: access, activeTimelineID: activeTimelineID, selection: $selection,
+                        analysis: analysis, replacement: replacement, packageURL: packageURL
+                    )
+                }
             case .timelines: timelinesList
             case .presets: presetsList
             }
@@ -99,6 +107,23 @@ struct BrowserPanel: View {
         // never file URLs.
         .dropDestination(for: URL.self) { urls, _ in importDropped(urls) }
         .messageAlert("Import Failed", message: $importError)
+        .focusedSceneValue(\.importMedia, FileMenuAction(run: importMedia))
+    }
+
+    /// The Clips tab of a project with no media yet: where everything
+    /// starts, so it says how to begin rather than showing nothing. Files
+    /// dropped on it land as on the list.
+    private var noMedia: some View {
+        ContentUnavailableView {
+            Label("No media yet", systemImage: "film.stack")
+        } description: {
+            Text("Import footage and music, or drag files here from the Finder. Their scenes then show here, ready to drag onto the timeline.")
+        } actions: {
+            Button("Import Media…", action: importMedia)
+                .buttonStyle(.borderedProminent)
+                .tint(Design.accentFill)
+        }
+        .frame(maxHeight: .infinity)
     }
 
     /// Time per thumbnail and thumbnail size, for every browser tab.
@@ -155,32 +180,11 @@ struct BrowserPanel: View {
     }
 
     private var timelinesList: some View {
-        List {
-            ForEach(project.timelines) { timeline in
-                if timeline.id != activeTimelineID {
-                    Button {
-                        embed(timeline)
-                    } label: {
-                        Label {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(timeline.name)
-                                Text(timeline.timebaseSummary)
-                                    .font(Design.Typeface.numericMicro)
-                                    .foregroundStyle(Design.textTertiary)
-                            }
-                        } icon: {
-                            Image(systemName: "rectangle.stack")
-                                .foregroundStyle(Design.ClipTone.nested.color)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!project.canEmbed(timeline.id, into: activeTimelineID))
-                    .help("Embed into the active timeline, or drag onto an effect that takes an input")
-                    .draggable(TimelineDragPayload(timelineID: timeline.id))
-                }
-            }
-        }
-        .browserListStyle()
+        TimelinesList(
+            project: project, activeTimelineID: activeTimelineID,
+            onEmbed: { id in project.timeline(id: id).map(embed) },
+            onDuplicate: { id in project.duplicateTimeline(id) }
+        )
     }
 
     private var presetsList: some View {
@@ -248,7 +252,8 @@ struct BrowserPanel: View {
     }
 }
 
-private extension View {
+extension View {
+    /// A list in a browser tab: the sidebar's rows over the sunken well.
     func browserListStyle() -> some View {
         listStyle(.sidebar)
             .scrollContentBackground(.hidden)

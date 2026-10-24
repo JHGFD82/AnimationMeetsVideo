@@ -1,7 +1,7 @@
 # Accessibility
 
 Status: **implemented (core)**: VoiceOver across the timeline, inspector,
-viewer and library; keyboard access to the playhead and clips; text
+viewer and browser; keyboard access to the playhead and clips; text
 contrast to WCAG AA; reduced motion. What remains is listed at the end.
 
 The editor is mostly custom drawing and drag gestures, which VoiceOver and
@@ -30,7 +30,13 @@ written after the item's name rather than set as menu shortcuts, since a
 menu shortcut would take the key from a text field; ⌘B and ⇧⌘B are real
 shortcuts. The keys are left alone while text is being typed, and the
 arrow, Home and End keys also while a list or other control has the
-keyboard (the library's list uses the arrows).
+keyboard (the browser's Clips list uses the arrows).
+
+**Help > Keyboard Shortcuts** (⌘/, `KeyboardShortcutsView`) lists these
+with the Clips list's keys and the File menu's shortcuts in one window;
+keep it in step with this table. VoiceOver reads each row's keys by
+name ("Shift Command B", "Equals, Minus"; `spokenKeys`), since it reads
+the glyphs badly or not at all; a new glyph needs a name there.
 
 | Keys | Does |
 | --- | --- |
@@ -48,7 +54,9 @@ keyboard (the library's list uses the arrows).
 | A / B / Y | Arrow, blade and slip tools |
 | N | Snapping on or off |
 | = / − / \\ | Zoom in, zoom out, fit the timeline to the window |
-| P / S / R / T, L | Show position, scale, rotation, opacity, or volume rows |
+| L | Show or hide volume rows (position, scale, rotation and opacity are in the effects panel) |
+| V | Turn the selected clips off, or on again |
+| ⇧E | Show the selected clip's effects |
 | F9 | Easy ease the keyframes at the playhead; Shift for ease in, ⌘⇧ for ease out |
 | ⌃⌥H | Hold the keyframes at the playhead |
 
@@ -96,7 +104,7 @@ playhead to the middle of the view when it lands out of view.
 - The **viewer** reads as an image whose value is the playhead's timecode.
 - The **audio meter** reads each channel's level in decibels, and its clip
   lamps as a button that clears them.
-- **Library scenes** read as one line each (number, whether a hand-set
+- **Browser scenes** read as one line each (number, whether a hand-set
   boundary starts it, start and length), without their thumbnails.
 - **Group titles** in the inspector and in sheets are headings.
 - **Icon-only buttons** have labels, and toggles say whether they are on.

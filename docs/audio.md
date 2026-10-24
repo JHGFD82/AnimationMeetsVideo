@@ -296,7 +296,8 @@ twice, in stereo float at 48 kHz, off the cooperative pool
 
 The file's sound then replaces the composition's audio tracks and the
 export runs without an audio mix. The render measures what it writes, and
-when the export is done a note says what mastering did: what the mix
+the Export Finished note (shown after every export, with Show in
+Finder) also says what mastering did: what the mix
 measured, how far it was raised or lowered and to what, how far the
 limiter held peaks down (with a warning past 6 dB, where it can be
 heard), and the loudest peak (`LoudnessMastering.Report`). WAV Mix

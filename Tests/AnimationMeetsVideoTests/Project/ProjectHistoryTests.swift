@@ -197,6 +197,47 @@ private final class Harness {
         #expect(h.project.clips.first?.url == new)
     }
 
+    /// Saving after every change listens for edits landing: each edit, a
+    /// gesture once when it ends (never during it), and undo.
+    @Test func tellsWhenAnEditLands() {
+        let h = Harness()
+        var landed = 0
+        h.history.changeLanded = { landed += 1 }
+        h.edit { $0.name = "A" }
+        #expect(landed == 1)
+
+        h.history.beginGesture(quietly: true)
+        h.edit(after: 5) { $0.name = "B" }
+        h.edit(after: 5) { $0.name = "C" }
+        #expect(landed == 1)
+        h.history.endGesture(h.project)
+        #expect(landed == 2)
+
+        h.undo()
+        #expect(landed == 3)
+    }
+
+    @Test func stepsAreNamedForTheEditMenu() {
+        let h = Harness()
+        h.edit { $0.name = "Renamed" }
+        #expect(h.undoManager.undoActionName == "Rename Project to \u{201C}Renamed\u{201D}")
+        h.undo()
+        #expect(h.undoManager.redoActionName == "Rename Project to \u{201C}Renamed\u{201D}")
+    }
+
+    @Test func quickEditsOfDifferentKindsStaySeparate() {
+        let h = Harness()
+        h.edit { $0.name = "Renamed" }
+        h.edit(after: 0.1) { $0.clips.append(MediaClip(
+            name: "Clip", kind: .video, url: nil,
+            duration: .init(seconds: 5, preferredTimescale: 600),
+            frameRate: 24, colorSpace: .rec709, codecName: "Stub"
+        )) }
+        h.undo()
+        #expect(h.project.clips.isEmpty)
+        #expect(h.project.name == "Renamed")
+    }
+
     @Test func undoingTimelineEditsRestoresClips() {
         let h = Harness()
         let media = MediaClip(

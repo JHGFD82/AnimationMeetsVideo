@@ -80,7 +80,7 @@ enum MediaImportFlow {
                 imported.append(clip)
             } catch {
                 if let madeCopy { try? FileManager.default.removeItem(at: madeCopy) }
-                onError("\(url.lastPathComponent): \(error.localizedDescription)")
+                onError("\(url.lastPathComponent): \(ErrorAdvice.sentence(for: error))")
             }
         }
         return imported

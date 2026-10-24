@@ -28,7 +28,10 @@ The tabs sit at the top of the browser in the same tab bar as the side
 panel's Inspector and Effects tabs (`PanelTabBar`). The chosen tab is
 remembered.
 
-- **Clips**: the project's media, in import order. Until its scenes are
+- **Clips**: the project's media, in import order. With none yet, the
+  tab says how to begin (import, or drag files from the Finder) and has
+  an **Import Media…** button, as the + button and File > Import Media…
+  (⌘I) do; the viewer's empty message points there too. Until its scenes are
   found, a video is **one clip**, usable as any other, with **Detecting
   scenes** and a progress bar across the top of its filmstrip while they
   are being found (shortened to "Detecting", then the bar alone, when a
@@ -40,10 +43,16 @@ remembered.
   [scene-cuts.md](scene-cuts.md)) under it, in source order. Finding
   scenes again shows the whole clip until they are found. Audio files are
   clips with a waveform in place of thumbnails.
-- **Timelines**: the project's timelines other than the active one, as
-  clips whose thumbnails are drawn from the timeline itself. Dropping one
-  nests it, as today. One that can't be embedded (it would contain itself)
-  is shown dimmed and can't be dragged.
+- **Timelines**: the project's timelines as a tree (`TimelinesList`): the
+  main timeline first, then those no timeline embeds, each with the
+  timelines it embeds under a disclosure triangle, open to start with (one
+  embedded in two shows under both). The active one is marked **Open**.
+  Clicking one embeds it into the active timeline; one that can't be (it
+  is empty, or would contain itself) beeps, with its tooltip saying why.
+  Its menu has **Embed in Active Timeline** and **Duplicate Timeline**,
+  which puts a copy below it ("Main copy", "Main copy 2") with new IDs
+  for its layers and clips, sharing the timelines it embeds. Planned:
+  thumbnails drawn from the timeline itself.
 - **Presets**: saved effect presets (see [effects.md](effects.md),
   "Presets"). They have no duration; see "Previewing presets". Resting
   the pointer on one shows a card of what it holds, top of the stack
@@ -97,7 +106,7 @@ shows the clip's name and the time skimmed to (in the asset's original
 time, as the browser's ranges are).
 
 Skimming in the browser's view options (and the Settings window's
-Library tab) turns following the pointer off. A click then shows the
+Browser tab) turns following the pointer off. A click then shows the
 frame clicked, and the arrow keys step from it; it stays shown when the
 pointer leaves the browser, so it can be looked at, until the browser
 loses the keyboard.
@@ -165,7 +174,7 @@ loses the keyboard.
 - **Add to Timeline** (context menu, or Return) does the same for the
   selection without dragging.
 - **Mute added video sound** (in the view options, and the Settings
-  window's Library tab; off by default) puts video clips that have sound
+  window's Browser tab; off by default) puts video clips that have sound
   on the timeline with it muted (`TimelineClip.soundMuted`). The sound
   stays linked, not removed: Unmute Sound in the clip's menu plays it
   again, and detaching it unmutes it on its new sound layer
@@ -178,8 +187,8 @@ Movies, sound and still images dragged in from the Finder are imported
 as **Import…** imports them (`MediaImportFlow`), copied into the project
 when it copies imports (File > Project Settings), with the same question
 before copying files that would use real disk space. Dropped on the
-browser they go into the library. Dropped on the timeline they go into
-the library and onto the timeline whole: on a clip, onto that clip's
+browser they go into the Clips list. Dropped on the timeline they go into
+the Clips list and onto the timeline whole: on a clip, onto that clip's
 layer at the drop time, landing as media from the browser would; in an
 area, onto a new layer of the area's kind, or of each file's own kind
 when the area's doesn't suit them all. Files of other kinds are refused.

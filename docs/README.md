@@ -25,10 +25,11 @@ Matroska import, effect packages and accessibility are implemented (each documen
 | [scene-detection-review.md](scene-detection-review.md) | Review notes. Measured behavior of scene detection and splitting on real decoded fixtures, the defects found, and the tests that pin them. |
 | [media-replacement.md](media-replacement.md) | Implemented (core). Replacing a file with a different version ("bait and switch"), the reference data that makes it safe, and how mismatches are handled. |
 | [rendering.md](rendering.md) | Implemented. Drawing the viewer at reduced size (Auto, Full, Half, Quarter), rendering full-size frames in the background when idle, and reusing them in ProRes 422 exports. |
-| [accessibility.md](accessibility.md) | Implemented (core). Keyboard access to the playhead and clips, VoiceOver across the timeline, inspector, viewer and library, text contrast and reduced motion, the rules new UI follows, and what remains. |
+| [accessibility.md](accessibility.md) | Implemented (core). Keyboard access to the playhead and clips, VoiceOver across the timeline, inspector, viewer and browser, text contrast and reduced motion, the rules new UI follows, and what remains. |
 | [browser.md](browser.md) | Being built. The browser left of the viewer: Clips, Timelines and Presets tabs, filmstrips, skimming in the viewer, whole-clip and range drags, used-media underlines, and preset previews over generated footage. |
 | [graphic-layers.md](graphic-layers.md) | Stills, shapes and strokes (stroke a stroke, inside or outside an edge) built; gradients, free paths and text planned. Still images imported from files, and shapes and text made in the app and drawn as vectors: their model, how the compositor draws them without a track, keeping them sharp, and saving. |
 | [matroska.md](matroska.md) | Implemented. Importing MKV files through reference movies in the package's cache that point at their frames in place, so H.264 and HEVC in Matroska play and edit without a copy; the timing and AAC priming details that keep sound in sync. |
+| [loose-ends.md](loose-ends.md) | Temporary. What is left over from the UX pass (PR #24): checks to make before merging, what to try in the app, and small gaps left on purpose. Delete when empty. |
 | [project-package.md](project-package.md) | The on-disk project format: a package folder with a JSON project file, assets, reference data, and a render cache. |
 
 ## Shared principles

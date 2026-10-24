@@ -87,6 +87,49 @@ enum Preferences {
     static let timelineAreaLayout = "timelineAreaLayout"
     static let effectsPanelShowsKeyframeLanes = "effectsPanelShowsKeyframeLanes"
 
+    // MARK: Projects
+
+    /// `RecentProjects.stored`: the projects opened last, newest first,
+    /// for File > Open Recent and the start sheet.
+    static let recentProjects = "recentProjects"
+    /// The projects open in windows, stored as `RecentProjects.stored`
+    /// writes paths, for the next launch to open again.
+    static let openProjects = "openProjects"
+    /// Whether each edit is saved as soon as it lands, as Final Cut Pro
+    /// does, rather than when Save is chosen. On unless turned off.
+    static let savesAutomatically = "savesAutomatically"
+
+    /// `savesAutomatically` as it is set, for code outside a view.
+    static var isSavingAutomatically: Bool {
+        UserDefaults.standard.object(forKey: savesAutomatically) as? Bool ?? true
+    }
+
+    /// Whether projects are backed up to `backupLocation` (`ProjectBackups`).
+    /// On unless turned off.
+    static let backsUpProjects = "backsUpProjects"
+    /// The folder backups go to, as a path; empty for
+    /// `ProjectBackups.defaultLocation`.
+    static let backupLocation = "backupLocation"
+    /// Minutes between a project's backups, while it changes.
+    static let backupInterval = "backupIntervalMinutes"
+    static let backupIntervals = [5, 15, 30, 60]
+
+    /// The backup settings as they are set, for code outside a view; nil
+    /// when backups are off.
+    static var backups: (location: URL, interval: Duration)? {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: backsUpProjects) as? Bool ?? true else { return nil }
+        let minutes = defaults.object(forKey: backupInterval) as? Int ?? 15
+        return (backupFolder, .seconds(max(minutes, 1) * 60))
+    }
+
+    /// The folder backups go to as it is set, whether or not they are on,
+    /// for finding the backups already there.
+    static var backupFolder: URL {
+        let path = UserDefaults.standard.string(forKey: backupLocation) ?? ""
+        return path.isEmpty ? ProjectBackups.defaultLocation : URL(fileURLWithPath: path, isDirectory: true)
+    }
+
     /// Everything about where the panels are and how big: their sizes,
     /// which are open and on which tab, and the timeline's areas.
     static let layoutKeys = [
