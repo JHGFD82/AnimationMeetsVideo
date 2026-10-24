@@ -29,6 +29,7 @@ Matroska import, effect packages and accessibility are implemented (each documen
 | [browser.md](browser.md) | Being built. The browser left of the viewer: Clips, Timelines and Presets tabs, filmstrips, skimming in the viewer, whole-clip and range drags, used-media underlines, and preset previews over generated footage. |
 | [graphic-layers.md](graphic-layers.md) | Stills, shapes and strokes (stroke a stroke, inside or outside an edge) built; gradients, free paths and text planned. Still images imported from files, and shapes and text made in the app and drawn as vectors: their model, how the compositor draws them without a track, keeping them sharp, and saving. |
 | [matroska.md](matroska.md) | Implemented. Importing MKV files through reference movies in the package's cache that point at their frames in place, so H.264 and HEVC in Matroska play and edit without a copy; the timing and AAC priming details that keep sound in sync. |
+| [loose-ends.md](loose-ends.md) | Temporary. What is left over from the UX pass (PR #24): checks to make before merging, what to try in the app, and small gaps left on purpose. Delete when empty. |
 | [project-package.md](project-package.md) | The on-disk project format: a package folder with a JSON project file, assets, reference data, and a render cache. |
 
 ## Shared principles
