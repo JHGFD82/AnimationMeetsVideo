@@ -31,6 +31,23 @@ final class NewEffectPackagePrompt {
     /// What opening one did.
     var notice: String?
     var replacement: Replacement?
+    /// The window whose alerts these are: the editor window last in
+    /// front, so with several windows open they show once, where the
+    /// person is (see `claimHost`).
+    private(set) var hostWindow: UUID?
+
+    /// Whether one of the prompt's alerts is up, during which the host
+    /// stays put.
+    private var isShowing: Bool {
+        isAsking || problem != nil || notice != nil || replacement != nil
+    }
+
+    /// Makes `window` the one to show the alerts, unless one is up on
+    /// another.
+    func claimHost(_ window: UUID) {
+        guard !isShowing else { return }
+        hostWindow = window
+    }
 
     private func failed(_ title: String, _ error: Error) {
         problem = Problem(title: title, message: error.localizedDescription)
@@ -115,28 +132,40 @@ final class NewEffectPackagePrompt {
     }
 }
 
-/// The prompt's alerts, on the editor window.
+/// The prompt's alerts, on the editor window that hosts them.
 private struct NewEffectPackageAlerts: ViewModifier {
     @Bindable var prompt = NewEffectPackagePrompt.shared
+    /// Every window attaches the alerts, so switching windows doesn't
+    /// change what the editor is built of; only the host presents them.
+    let isHost: Bool
+
+    /// `binding`, shown only on the host window.
+    private func hosted(_ binding: Binding<Bool>) -> Binding<Bool> {
+        Binding(get: { isHost && binding.wrappedValue }, set: { binding.wrappedValue = $0 })
+    }
 
     func body(content: Content) -> some View {
         content
-            .alert("New Effect Package", isPresented: $prompt.isAsking) {
+            .alert("New Effect Package", isPresented: hosted($prompt.isAsking)) {
                 TextField("Name", text: $prompt.name)
                 Button("Make") { prompt.make() }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("A starting package is made in the Effects folder and added to the library. Edit its effect.json and kernel.metal, then open the app again to see the changes.")
             }
-            .alert(prompt.problem?.title ?? "", isPresented: $prompt.problem.isPresent) {
+            .alert(prompt.problem?.title ?? "", isPresented: hosted($prompt.problem.isPresent)) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(prompt.problem?.message ?? "")
             }
-            .messageAlert("Effect Package", message: $prompt.notice)
+            .alert("Effect Package", isPresented: hosted($prompt.notice.isPresent)) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(prompt.notice ?? "")
+            }
             .alert(
                 "Replace the Installed Package?",
-                isPresented: $prompt.replacement.isPresent
+                isPresented: hosted($prompt.replacement.isPresent)
             ) {
                 Button("Replace", role: .destructive) { prompt.replace() }
                 Button("Cancel", role: .cancel) {}
@@ -147,8 +176,9 @@ private struct NewEffectPackageAlerts: ViewModifier {
 }
 
 extension View {
-    /// Where New Effect Package asks for its name.
-    func newEffectPackagePrompt() -> some View {
-        modifier(NewEffectPackageAlerts())
+    /// Where New Effect Package asks for its name: on the window that
+    /// `isHost`, of those that attach it.
+    func newEffectPackagePrompt(isHost: Bool = true) -> some View {
+        modifier(NewEffectPackageAlerts(isHost: isHost))
     }
 }

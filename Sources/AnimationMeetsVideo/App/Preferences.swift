@@ -92,6 +92,9 @@ enum Preferences {
     /// `RecentProjects.stored`: the projects opened last, newest first,
     /// for File > Open Recent and the start sheet.
     static let recentProjects = "recentProjects"
+    /// The projects open in windows, stored as `RecentProjects.stored`
+    /// writes paths, for the next launch to open again.
+    static let openProjects = "openProjects"
 
     /// Everything about where the panels are and how big: their sizes,
     /// which are open and on which tab, and the timeline's areas.

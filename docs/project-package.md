@@ -114,11 +114,20 @@ the plain folder.
 
 Status: **implemented**.
 
-There is always a package to write into. At launch the app reopens the
-project used last; when there is none, or it has gone, a start sheet offers
-New Project and Open Project and stays until one exists. New Project asks
-where to save before the editor opens and writes the package and an empty
-`project.json` right away.
+There is always a package to write into. Each project has a window of
+its own (`ProjectWindow`, with a `ProjectSession` holding the project, its
+history, lock, analysis and file watching), so several can be open at
+once. At launch the app
+reopens the projects that were open when it quit, the first in the
+first window and each other in its own (`ProjectWindows`); the system's
+own window restoration is off for the app, so the two don't race. A
+window with no project shows a start sheet offering New Project and Open
+Project until one exists. New Project asks where to save before the
+editor opens and writes the package and an empty `project.json` right
+away. New Project, Open Project and Open Recent use the window in front
+while its start sheet is up, and a new window otherwise; a project
+already open brings its window forward, since the window group keeps one
+window per package.
 
 The ten projects opened or saved last (`RecentProjects`, in the app's
 defaults) are listed in File > Open Recent, with Clear Menu, and up to six
@@ -127,9 +136,9 @@ project that has moved or gone is explained and taken off the list. They
 also go to the system's recent documents, for the Dock icon's menu.
 
 **Saving is still explicit.** Imports, edits and the clip list live in
-`project.json`, which only Save writes. Quitting (including closing the last
-window), New Project and Open Project ask to Save, Don't Save or Cancel
-when there are unsaved changes; cancelling a quit brings the window back.
+`project.json`, which only Save writes. Closing a window asks to Save,
+Don't Save or Cancel when its project has unsaved changes, and quitting
+asks for each such project in turn; cancelling keeps it open.
 Every minute with unsaved changes an autosave goes into `Backups/`. When
 one can't be written, the toolbar says **Not backed up** until a backup or
 save succeeds; clicking it explains why, with Save Now (`AutosaveStatus`,

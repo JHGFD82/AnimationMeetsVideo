@@ -158,7 +158,7 @@ struct EditorView: View {
         .onChange(of: project) { oldValue, newValue in projectDidChange(newValue, from: oldValue) }
         .onReceive(NotificationCenter.default.publisher(for: .spectrogramsChanged)) { _ in analysisArrived() }
         .onChange(of: analysis.beats, initial: true) { _, beats in
-            if DetectedBeats.shared.update(beats) { analysisArrived() }
+            if DetectedBeats.shared.update(beats, owner: ObjectIdentifier(analysis)) { analysisArrived() }
         }
         .onChange(of: AssetAnalysis.inputs(of: project)) { _, _ in analysis.update(with: project) }
         .onChange(of: packageURL, initial: true) { _, url in renderer.packageURL = url }

@@ -507,9 +507,10 @@ private struct KeyframingFixture {
         // No beats yet: a note, and nothing written.
         #expect(f.project.keyframingNote(for: f.effect(id), in: f.clip)?.dims == true)
 
-        // Detected beats every half second, merged with any other test's.
+        // Detected beats every half second, as one open project's, beside
+        // any other test's.
         let track = try BeatTrack(timescale: 600, times: (1...30).map { Int64($0) * 300 }, beatsPerMinute: 120)
-        DetectedBeats.shared.update(DetectedBeats.shared.tracks.merging([song.id: track]) { $1 })
+        DetectedBeats.shared.update([song.id: track], owner: ObjectIdentifier(Self.self))
         #expect(f.project.keyframingNote(for: f.effect(id), in: f.clip) == nil)
         let refreshed = f.project.refreshKeyframing()
         #expect(refreshed)

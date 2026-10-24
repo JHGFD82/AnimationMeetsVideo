@@ -6,7 +6,8 @@ import SwiftUI
 /// after it is gone. SwiftUI owns the window's delegate, so the guard sits
 /// in front of it and passes every other delegate call through.
 struct WindowCloseGuard: NSViewRepresentable {
-    let shouldClose: () -> Bool
+    /// Given the window, so an answer of no can close it later itself.
+    let shouldClose: (NSWindow) -> Bool
 
     func makeNSView(context: Context) -> GuardView {
         let view = GuardView()
@@ -19,7 +20,7 @@ struct WindowCloseGuard: NSViewRepresentable {
     }
 
     final class GuardView: NSView {
-        var shouldClose: (() -> Bool)?
+        var shouldClose: ((NSWindow) -> Bool)?
         private var proxy: DelegateProxy?
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -27,8 +28,8 @@ struct WindowCloseGuard: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window, !(window.delegate is DelegateProxy) else { return }
-            let proxy = DelegateProxy(original: window.delegate) { [weak self] in
-                self?.shouldClose?() ?? true
+            let proxy = DelegateProxy(original: window.delegate) { [weak self] window in
+                self?.shouldClose?(window) ?? true
             }
             self.proxy = proxy
             window.delegate = proxy
@@ -39,15 +40,15 @@ struct WindowCloseGuard: NSViewRepresentable {
     /// delegate it replaced.
     final class DelegateProxy: NSObject, NSWindowDelegate {
         private weak var original: NSWindowDelegate?
-        private let shouldClose: () -> Bool
+        private let shouldClose: (NSWindow) -> Bool
 
-        init(original: NSWindowDelegate?, shouldClose: @escaping () -> Bool) {
+        init(original: NSWindowDelegate?, shouldClose: @escaping (NSWindow) -> Bool) {
             self.original = original
             self.shouldClose = shouldClose
         }
 
         func windowShouldClose(_ sender: NSWindow) -> Bool {
-            guard shouldClose() else { return false }
+            guard shouldClose(sender) else { return false }
             return original?.windowShouldClose?(sender) ?? true
         }
 
