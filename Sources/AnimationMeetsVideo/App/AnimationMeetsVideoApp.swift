@@ -108,6 +108,7 @@ struct AnimationMeetsVideoApp: App {
                 }
                 .background(WindowReopenerRegistration())
                 .background(WindowCloseGuard(shouldClose: shouldCloseWindow))
+                .background(ProjectWindowTitle(projectState: projectState, savedProject: savedProject, packageURL: projectURL))
                 .background(
                     Color.clear.sheet(isPresented: $showsProjectSettings) {
                         // Read in the sheet's own view, so the scene doesn't
