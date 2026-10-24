@@ -43,10 +43,16 @@ remembered.
   [scene-cuts.md](scene-cuts.md)) under it, in source order. Finding
   scenes again shows the whole clip until they are found. Audio files are
   clips with a waveform in place of thumbnails.
-- **Timelines**: the project's timelines other than the active one, as
-  clips whose thumbnails are drawn from the timeline itself. Dropping one
-  nests it, as today. One that can't be embedded (it would contain itself)
-  is shown dimmed and can't be dragged.
+- **Timelines**: the project's timelines as a tree (`TimelinesList`): the
+  main timeline first, then those no timeline embeds, each with the
+  timelines it embeds under a disclosure triangle, open to start with (one
+  embedded in two shows under both). The active one is marked **Open**.
+  Clicking one embeds it into the active timeline; one that can't be (it
+  is empty, or would contain itself) beeps, with its tooltip saying why.
+  Its menu has **Embed in Active Timeline** and **Duplicate Timeline**,
+  which puts a copy below it ("Main copy", "Main copy 2") with new IDs
+  for its layers and clips, sharing the timelines it embeds. Planned:
+  thumbnails drawn from the timeline itself.
 - **Presets**: saved effect presets (see [effects.md](effects.md),
   "Presets"). They have no duration; see "Previewing presets". Resting
   the pointer on one shows a card of what it holds, top of the stack

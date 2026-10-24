@@ -242,6 +242,31 @@ struct UISnapshots {
         )
     }
 
+    /// The Timelines tab: Main embeds Chorus, which embeds Logo; Outtakes
+    /// is embedded nowhere. Main is the one open.
+    @Test func timelinesList() throws {
+        var project = EditingProject.empty
+        let size = CGSize(width: 1920, height: 1080)
+        let chorus = project.addTimeline(name: "Chorus", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        let logo = project.addTimeline(name: "Logo", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        _ = project.addTimeline(name: "Outtakes", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        let still = MediaClip(
+            name: "Clip", kind: .video, url: nil, duration: CMTime(seconds: 5, preferredTimescale: 600),
+            frameRate: 24, colorSpace: .rec709, codecName: "Stub"
+        )
+        _ = project.importClip(still, intoTimeline: logo)
+        _ = project.importClip(still, intoTimeline: chorus)
+        _ = project.embedTimeline(logo, intoTimeline: chorus)
+        _ = project.embedTimeline(chorus, intoTimeline: project.rootTimelineID)
+        try SnapshotSupport.render(
+            TimelinesList(project: project, activeTimelineID: project.rootTimelineID, onEmbed: { _ in }, onDuplicate: { _ in })
+                .frame(width: 260, height: 260)
+                .background(Design.Surface.base.color)
+                .preferredColorScheme(.dark),
+            "timelines-list", size: CGSize(width: 260, height: 260)
+        )
+    }
+
     /// The toolbar's warning while automatic backups fail.
     @Test func autosaveWarning() throws {
         let status = AutosaveStatus()

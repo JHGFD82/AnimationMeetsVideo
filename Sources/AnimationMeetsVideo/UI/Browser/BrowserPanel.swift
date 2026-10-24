@@ -180,32 +180,11 @@ struct BrowserPanel: View {
     }
 
     private var timelinesList: some View {
-        List {
-            ForEach(project.timelines) { timeline in
-                if timeline.id != activeTimelineID {
-                    Button {
-                        embed(timeline)
-                    } label: {
-                        Label {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(timeline.name)
-                                Text(timeline.timebaseSummary)
-                                    .font(Design.Typeface.numericMicro)
-                                    .foregroundStyle(Design.textTertiary)
-                            }
-                        } icon: {
-                            Image(systemName: "rectangle.stack")
-                                .foregroundStyle(Design.ClipTone.nested.color)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!project.canEmbed(timeline.id, into: activeTimelineID))
-                    .help("Embed into the active timeline, or drag onto an effect that takes an input")
-                    .draggable(TimelineDragPayload(timelineID: timeline.id))
-                }
-            }
-        }
-        .browserListStyle()
+        TimelinesList(
+            project: project, activeTimelineID: activeTimelineID,
+            onEmbed: { id in project.timeline(id: id).map(embed) },
+            onDuplicate: { id in project.duplicateTimeline(id) }
+        )
     }
 
     private var presetsList: some View {
@@ -273,7 +252,8 @@ struct BrowserPanel: View {
     }
 }
 
-private extension View {
+extension View {
+    /// A list in a browser tab: the sidebar's rows over the sunken well.
     func browserListStyle() -> some View {
         listStyle(.sidebar)
             .scrollContentBackground(.hidden)
