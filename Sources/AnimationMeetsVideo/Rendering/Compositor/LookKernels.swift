@@ -149,10 +149,8 @@ enum LookKernels {
 enum LookRenderer {
     /// `picture` with `step` drawn on it over `region`, in output pixels
     /// at `scale` of the timeline's, in a timeline of `space`. Every look
-    /// drawn one step at a time comes from an effect package (see
-    /// `PackageLookRenderer`); Displace and the looks drawn from other
-    /// moments draw their own way (`displace`, `moments`). The picture as
-    /// it is for any other.
+    /// comes from an effect package (see `PackageLookRenderer`); the
+    /// picture as it is for any other kind.
     static func apply(
         _ step: LookStep, to picture: CIImage, over region: CGRect, canvas: CGRect, frame: CGRect, scale: CGFloat,
         space: ProjectColorSpace, pictures: [String: CIImage] = [:], flags: [String: Double] = [:],
@@ -163,28 +161,5 @@ enum LookRenderer {
             package, step, to: picture, over: region, canvas: canvas, frame: frame, scale: scale, space: space,
             pictures: pictures, flags: flags, moments: moments
         )
-    }
-
-    /// The looks drawn from the picture at other moments: `earlier` gives
-    /// the picture just before the look from a moment `delay` back, and
-    /// `ahead` from frames ahead in the footage; either is nil where there
-    /// is none. While the viewer plays they draw less: Feedback every other
-    /// copy, Slit-Scan four bands, Flow Smear nothing.
-    static func moments(
-        _ step: LookStep, current: CIImage, earlier: (CMTime) -> CIImage?, ahead: () -> CIImage?,
-        canvas: CGRect, frame: CGRect, scale: CGFloat, space: ProjectColorSpace, frameDuration: CMTime, isPlaying: Bool
-    ) -> CIImage {
-        switch step.kind {
-        case .flowSmear:
-            guard !isPlaying, let later = ahead() else { return current }
-            let bounds = frame.integral
-            let amount = step.value(.smear) / 100
-            guard let field = BlockMatchFlow.field(from: current, to: later, progress: 0, in: bounds, reach: 1.0 / 6),
-                  let smeared = MorphFlow.warped(current, along: field, by: -amount, in: bounds)
-            else { return current }
-            return smeared.cropped(to: bounds).composited(over: current)
-        default:
-            return current
-        }
     }
 }

@@ -8,9 +8,6 @@ extension EffectKind {
     static let blending = EffectKind(builtIn: "blending")
     static let color = EffectKind(builtIn: "color")
     static let matte = EffectKind(builtIn: "matte")
-    /// Distortions drawn from the picture at several moments. Flow
-    /// Smear's motion is measured between neighboring pixels.
-    static let flowSmear = EffectKind(builtIn: "flowSmear")
     /// Shapes draw over the picture handed down to them (see
     /// docs/graphic-layers.md, "Shapes").
     static let rectangle = EffectKind(builtIn: "rectangle")
@@ -41,6 +38,7 @@ extension EffectKind {
 
     // From the packages in Resources/Effects, which ship with the app.
     static let posterize = EffectKind(package: "posterize")
+    static let flowSmear = EffectKind(package: "flowSmear")
     static let feedback = EffectKind(package: "feedback")
     static let slitScan = EffectKind(package: "slitScan")
     static let displace = EffectKind(package: "displace")
@@ -89,9 +87,6 @@ extension ControlKind {
     static let gain = ControlKind(builtIn: "gain")
     // Matte
     static let matteMode = ControlKind(builtIn: "matteMode")
-    // Flow Smear
-    static let smear = ControlKind(builtIn: "smear")
-    static let framesAhead = ControlKind(builtIn: "framesAhead")
     // Rectangle
     static let shapeSize = ControlKind(builtIn: "shapeSize")
     static let cornerRadius = ControlKind(builtIn: "cornerRadius")
@@ -206,11 +201,6 @@ enum BuiltInEffects {
         EffectDefinition(
             .matte, "Matte", .mattes, "circle.dashed.inset.filled", controls: [.matteMode, .amount], takesInput: true
         ),
-        // Distortions drawn from the picture at several moments. Flow
-        // Smear's motion is measured between neighboring pixels.
-        EffectDefinition(
-            .flowSmear, "Flow Smear", .distortion, "wind", controls: [.smear, .framesAhead], dependsOnPixelSize: true
-        ),
         // Shapes draw over the picture handed down to them (see
         // docs/graphic-layers.md, "Shapes").
         EffectDefinition(
@@ -306,9 +296,6 @@ enum BuiltInEffects {
         ),
         // Matte
         ControlDefinition(.matteMode, "Take", .matte, choice: MatteMode.alpha),
-        // Flow Smear
-        ControlDefinition(.smear, "Amount", .flowSmear, defaults: [100], unit: "%", range: 0...400),
-        ControlDefinition(.framesAhead, "Frames Ahead", .flowSmear, defaults: [1], unit: " frames", range: 1...8, isWhole: true),
         // Rectangle
         ControlDefinition(
             .shapeSize, "Size", .rectangle, defaults: [640, 360], unit: " px", range: 0...100_000,

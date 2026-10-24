@@ -30,6 +30,10 @@ struct EffectPackage: Sendable {
             case against
             /// The picture reaching the step `delay` earlier.
             case moment
+            /// The motion from this frame to the footage's frame `ahead`
+            /// frames later, as a picture: red across, green up, in output
+            /// pixels.
+            case motion
         }
 
         var id: String
@@ -39,6 +43,8 @@ struct EffectPackage: Sendable {
         /// For a moment: whether one the composition doesn't have is the
         /// picture reaching the step, rather than transparent.
         var missingIsPicture = false
+        /// For the motion: how many frames ahead it is measured to.
+        var ahead: EffectExpression?
     }
 
     /// Running the kernel once per copy or band (see
@@ -108,6 +114,16 @@ struct EffectPackage: Sendable {
 
     /// Whether it draws from moments of the footage besides this one.
     var readsMoments: Bool { pictures.contains { $0.source == .moment } }
+
+    /// How many frames ahead in the footage `effect`, of this kind, reads
+    /// the motion to, for the composition to have that frame; nil for one
+    /// that doesn't read motion. With each control at its largest, as
+    /// moments are planned; it is counted in frames, so no frame's length
+    /// is needed.
+    func framesAhead(of effect: Effect) -> Int? {
+        guard let ahead = pictures.first(where: { $0.source == .motion })?.ahead else { return nil }
+        return max(1, Int(ahead.number(LargestValues(effect: effect, package: self, frameDuration: 0))))
+    }
     let edges: Edges
     let after: [Filter]
 
@@ -215,11 +231,13 @@ struct LargestValues: EffectExpression.Values {
 struct PictureFlags: EffectExpression.Values {
     var hasInput: Bool
     var hasAgainst: Bool
+    var hasMotion = false
 
     func value(_ name: String) -> [Double] {
         switch name {
         case "hasInput": [hasInput ? 1 : 0]
         case "hasAgainst": [hasAgainst ? 1 : 0]
+        case "hasMotion": [hasMotion ? 1 : 0]
         default: [0]
         }
     }

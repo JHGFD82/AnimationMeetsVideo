@@ -1,13 +1,12 @@
 # Effect packages
 
-Status: **built** through step 9 of [Building it](#building-it), with a
-guide to [writing a package](#making-a-package); of
-[pictures besides the clip's](#pictures-besides-the-clips), inputs,
-Against, moments and repeating are built, and Displace, Feedback and
-Slit-Scan are packages, while motion, which moves Flow Smear, and making
-packages from the app are planned. `EffectKind` and `ControlKind`
+Status: **built** through step 11 of [Building it](#building-it): every
+look is a package, reading [pictures besides the
+clip's](#pictures-besides-the-clips) where it needs them, and there is a
+guide to [writing a package](#making-a-package). Making packages from
+the app is planned. `EffectKind` and `ControlKind`
 are names looked up in an `EffectRegistry` of the effects written in
-Swift (BuiltInEffects.swift), the 24 looks that ship as packages
+Swift (BuiltInEffects.swift), the 25 looks that ship as packages
 (Resources/Effects) and the person's packages, which
 `EffectPackageStore` reads from the Effects folder at launch. A
 package's look is listed, saved and drawn like any other
@@ -332,8 +331,8 @@ as editing one does, since effects in the open project use its controls.
 
 ## Pictures besides the clip's
 
-Status: **`input`, `against`, `moment` and [repeating](#repeating)
-built**, and Displace, Feedback and Slit-Scan packages; `motion` planned. The four looks
+Status: **built**, and Displace, Feedback, Slit-Scan and Flow Smear
+packages. The four looks
 that were left in Swift each draw from a
 picture besides the one reaching them: Displace from a dropped picture
 or an earlier step's, Feedback and Slit-Scan from the footage at other
@@ -354,7 +353,7 @@ space, in the order listed:
 | `input` | One dropped from the browser onto the effect, as Matte's (see [Inputs](effects.md#inputs)). | `hasInput`: 1 while it has one |
 | `against` | The clip's picture as it was before an earlier step, picked in the effect's Against row (see [Against](effects.md#against)). | `hasAgainst` |
 | `moment` | The picture reaching this step `delay` seconds earlier, an expression rounded to a frame; at each [pass](#repeating), that pass's. No delay is the picture reaching the step before any pass. One the composition hasn't is transparent, or with `"missing": "picture"` the picture reaching the step, as Slit-Scan's bands are. | |
-| `motion` | The motion from this frame to the footage's frame `ahead` frames later, an expression, as a picture: red across and green up, in output pixels, as Flow Smear measures it now (`BlockMatchFlow`). Not measured while the viewer plays. | `hasMotion` |
+| `motion` | The motion from this frame to the footage's frame `ahead` frames later, an expression, as a picture: red across and green up, in output pixels, measured by `BlockMatchFlow`, the block matcher morphs use, over the frame. Not measured while the viewer plays. The composition loads the frame ahead with each control at its largest, as it plans moments. | `hasMotion` |
 
 A picture that isn't there (no input dropped, no earlier frame yet, no
 motion while playing) is transparent. One that is set but can't be had,
@@ -484,15 +483,14 @@ kernel:
 - The shapes and Stroke: vector drawing, sized to the frame.
 - The sound effects: biquad filters and Audio Units.
 - The Keyframing effects: they write keyframes, not pictures.
-- Flow Smear, until [motion](#pictures-besides-the-clips) is built: it
-  draws along the motion to a frame ahead (from `BlockMatchFlow`, the
-  block matcher morphs use).
 
-The other 24 looks are built-in packages: the eight Color looks, the
-seven Noise looks, Displace, Liquid, Twirl, Wave, Kaleidoscope, Mirror
-Tile, Chromatic Aberration, Slit-Scan and Feedback. Each was generated from the Swift it replaced
-and checked against it: its controls one by one, its pictures against
-the reference frames, and the recipes using it.
+No look stays: all 25 are built-in packages, the eight Color looks, the
+seven Noise looks and the ten Distortion looks. Each was checked against
+the Swift it replaced: its controls one by one, its pictures against
+reference frames recorded from the Swift, and the recipes using it.
+Most were generated from that Swift; Feedback, Slit-Scan and Flow
+Smear, which the Swift drew by chaining Core Image filters, have
+kernels of their own.
 
 ## Inside the app
 
@@ -574,7 +572,7 @@ In order, each step usable on its own:
 8. Pictures from inputs and Against, and Displace moved into a package.
    **Built.**
 9. Moments and repeating, and Feedback and Slit-Scan moved. **Built.**
-10. Motion, and Flow Smear moved.
+10. Motion, and Flow Smear moved. **Built.**
 11. Writing a package by hand, described above. **Built.**
 12. Installing a package while the app runs, and New Effect Package.
 13. Make a Package from This.

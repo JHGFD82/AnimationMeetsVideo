@@ -723,19 +723,6 @@ struct Drawing {
                 } else {
                     drawShapes()
                 }
-                if look.kind == .flowSmear {
-                    // Drawn from the steps above at other moments; those
-                    // drawn again from a copy can't reach further back.
-                    picture = LookRenderer.moments(
-                        look, current: picture,
-                        earlier: { delay in earlier?(delay, look.effectID) },
-                        ahead: { ahead?(look.effectID) },
-                        canvas: canvas, frame: frame, scale: scale.width, space: clip.stack.colorSpace,
-                        frameDuration: clip.stack.frameDuration > .zero ? clip.stack.frameDuration : CMTime(value: 1, timescale: 24),
-                        isPlaying: options?.isPlaying ?? false
-                    )
-                    continue
-                }
                 // A package's other pictures: its input, and the picture
                 // before the step Against names. One not set is transparent;
                 // one set but not to be had (a missing file, a step not above
@@ -763,9 +750,22 @@ struct Drawing {
                     case .moment:
                         // Fetched for each pass as it is drawn.
                         break
+                    case .motion:
+                        // To the frame ahead in the footage, as the morph
+                        // measures it; not while playing, as it is costly.
+                        guard !(options?.isPlaying ?? false), let later = ahead?(look.effectID),
+                              let field = BlockMatchFlow.field(from: picture, to: later, progress: 0, in: frame.integral, reach: 1.0 / 6)
+                        else {
+                            flags["hasMotion"] = 0
+                            continue
+                        }
+                        pictures[wanted.id] = field
+                        flags["hasMotion"] = 1
                     }
                 }
-                let flagValues = PictureFlags(hasInput: flags["hasInput"] == 1, hasAgainst: flags["hasAgainst"] == 1)
+                let flagValues = PictureFlags(
+                    hasInput: flags["hasInput"] == 1, hasAgainst: flags["hasAgainst"] == 1, hasMotion: flags["hasMotion"] == 1
+                )
                 if unavailable || package?.drawsWhen.map({ $0.number(flagValues) == 0 }) == true { continue }
                 // Other moments, from the steps above at other times; those
                 // drawn again from a copy can't reach further back.

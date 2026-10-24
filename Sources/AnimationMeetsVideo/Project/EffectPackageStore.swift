@@ -190,6 +190,7 @@ enum EffectPackageStore {
                 .required("id", .string),
                 .required("from", .choice(EffectPackage.Picture.Source.allCases.map(\.rawValue), noun: "picture source")),
                 .optional("delay", .string), .optional("missing", .choice(["transparent", "picture"], noun: "missing picture")),
+                .optional("ahead", .string),
             ])))),
             .optional("drawsWhen", .string),
             .optional("repeat", .object(object([
@@ -273,6 +274,9 @@ enum EffectPackageStore {
                     throw JSONShapeError(message: "\"\(pictureID)\" isn't a name a picture can take: use letters and digits, not a control's", path: path + ".id")
                 }
                 let source = EffectPackage.Picture.Source(rawValue: entry["from"] as! String)!
+                guard (entry["ahead"] != nil) == (source == .motion) else {
+                    throw JSONShapeError(message: "The motion, and only the motion, says how many frames ahead it is", path: path)
+                }
                 guard source == .moment || !pictures.contains(where: { $0.source == source }) else {
                     throw JSONShapeError(message: "It already reads a picture from \(source.rawValue)", path: path + ".from")
                 }
@@ -284,6 +288,7 @@ enum EffectPackageStore {
             var flags: [String: EffectExpression.ValueType] = [:]
             if pictures.contains(where: { $0.source == .input }) { flags["hasInput"] = .number }
             if pictures.contains(where: { $0.source == .against }) { flags["hasAgainst"] = .number }
+            if pictures.contains(where: { $0.source == .motion }) { flags["hasMotion"] = .number }
             names.merge(flags) { own, _ in own }
             // A repeated kernel's passes, and the copy or band each draws.
             var repeats: EffectPackage.Repeat?
@@ -303,6 +308,7 @@ enum EffectPackageStore {
             }
             for (index, entry) in (json["pictures"] as? [[String: Any]] ?? []).enumerated() {
                 if let text = entry["delay"] as? String { pictures[index].delay = try number(text, "pictures[\(index)].delay") }
+                if let text = entry["ahead"] as? String { pictures[index].ahead = try number(text, "pictures[\(index)].ahead") }
             }
             var drawsWhen: EffectExpression?
             if let text = json["drawsWhen"] as? String {

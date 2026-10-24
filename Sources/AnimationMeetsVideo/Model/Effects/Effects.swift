@@ -595,19 +595,9 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// Cycle that turns, a palette that cycles. Its clip is drawn afresh
     /// at every frame then.
     var changesOnItsOwn: Bool {
-        guard enabled, !isNoOp else { return false }
-        if let package = kind.definition.package {
-            return package.changesEveryFrame || package.rateControls.contains { moves(control($0)) }
-        }
-        // A picture drawn from the motion ahead is new every frame.
-        switch kind {
-        case .flowSmear: return true
-        default: break
-        }
-        let moving: ControlKind? = switch kind {
-        default: nil
-        }
-        return moves(moving.flatMap(control))
+        // Only looks change by themselves, and every look is a package's.
+        guard enabled, !isNoOp, let package = kind.definition.package else { return false }
+        return package.changesEveryFrame || package.rateControls.contains { moves(control($0)) }
     }
 
     /// Whether a speed is on and isn't 0 throughout.
@@ -625,11 +615,11 @@ struct Effect: Identifiable, Equatable, Sendable {
         return package.momentDelays(of: self, frame: frame)
     }
 
-    /// For Flow Smear: how many frames ahead in the footage it measures the
-    /// motion to.
+    /// For a look reading the motion (Flow Smear): how many frames ahead
+    /// in the footage it measures it to.
     var framesAhead: Int? {
-        guard enabled, kind == .flowSmear else { return nil }
-        return Int(control(.framesAhead)?.values(at: .zero).first ?? 1)
+        guard enabled, let package = kind.definition.package else { return nil }
+        return package.framesAhead(of: self)
     }
 
     /// The span of time in which any enabled control is between keyframes.

@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "id": "flowSmear",
+  "version": 1,
+  "name": "Flow Smear",
+  "category": "distortion",
+  "symbol": "wind",
+  "kernel": {"file": "kernel.metal", "function": "amvFlowSmear", "type": "general"},
+  "controls": [
+    {"id": "smear", "name": "Amount", "type": "number", "default": 100, "range": [0, 400], "unit": "%"},
+    {"id": "framesAhead", "name": "Frames Ahead", "type": "number", "default": 1, "range": [1, 8], "unit": "frames", "whole": true}
+  ],
+  "pictures": [{"id": "motion", "from": "motion", "ahead": "framesAhead"}],
+  "drawsWhen": "hasMotion > 0",
+  "arguments": ["-smear / 100", "frameCenter", "frameWidth", "frameHeight"],
+  "changesEveryFrame": true,
+  "dependsOnPixelSize": true
+}

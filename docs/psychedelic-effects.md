@@ -219,7 +219,7 @@ In order, each step usable on its own:
    moment, Amount, and the clip's time for one that moves), which
    `LookRenderer` draws with the kernels in `LookKernels`: one Metal
    source of Core Image kernels, compiled once at first use. Since then
-   every look but Flow Smear has moved
+   every look has moved
    into an effect package of its own (see
    [effect-packages.md](effect-packages.md)), kernel and all, drawing the
    same pictures. Where it
