@@ -144,14 +144,14 @@ struct EffectsPanel: View {
         .panelSurface(.base)
         .background(KeyPressMonitor(handler: handleKey))
         .focusedSceneValue(\.effectsEditActions, editActions)
-        .alert("Save as Preset", isPresented: Binding(get: { presetSave != nil }, set: { if !$0 { presetSave = nil } })) {
+        .alert("Save as Preset", isPresented: $presetSave.isPresent) {
             TextField("Name", text: $presetName)
             Button("Save", action: savePreset)
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Presets are shared by every project and appear in the browser.")
         }
-        .alert("The Preset Wasn't Saved", isPresented: Binding(get: { presetError != nil }, set: { if !$0 { presetError = nil } })) {
+        .alert("The Preset Wasn't Saved", isPresented: $presetError.isPresent) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(presetError ?? "")

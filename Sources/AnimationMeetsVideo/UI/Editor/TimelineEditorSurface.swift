@@ -461,7 +461,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 rebuildPlayerItem()
             }
         }
-        .alert("Import Failed", isPresented: Binding(get: { dropError != nil }, set: { if !$0 { dropError = nil } })) {
+        .alert("Import Failed", isPresented: $dropError.isPresent) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(dropError ?? "")

@@ -86,7 +86,7 @@ struct BrowserPanel: View {
             }
         }
         .panelSurface(.base)
-        .alert("Rename Preset", isPresented: Binding(get: { presets.renaming != nil }, set: { if !$0 { presets.renaming = nil } })) {
+        .alert("Rename Preset", isPresented: $presets.renaming.isPresent) {
             @Bindable var presets = presets
             TextField("Name", text: $presets.draftName)
             Button("Rename") { presets.commitRename() }
@@ -94,7 +94,7 @@ struct BrowserPanel: View {
         }
         .alert(
             "Preset Problem",
-            isPresented: Binding(get: { presets.errorMessage != nil }, set: { if !$0 { presets.errorMessage = nil } })
+            isPresented: $presets.errorMessage.isPresent
         ) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -107,7 +107,7 @@ struct BrowserPanel: View {
         .dropDestination(for: URL.self) { urls, _ in importDropped(urls) }
         .alert(
             "Import Failed",
-            isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })
+            isPresented: $importError.isPresent
         ) {
             Button("OK", role: .cancel) {}
         } message: {

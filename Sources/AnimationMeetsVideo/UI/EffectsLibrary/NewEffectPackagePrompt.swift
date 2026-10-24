@@ -130,19 +130,19 @@ private struct NewEffectPackageAlerts: ViewModifier {
             } message: {
                 Text("A starting package is made in the Effects folder and added to the library. Edit its effect.json and kernel.metal, then open the app again to see the changes.")
             }
-            .alert(prompt.problem?.title ?? "", isPresented: Binding(get: { prompt.problem != nil }, set: { if !$0 { prompt.problem = nil } })) {
+            .alert(prompt.problem?.title ?? "", isPresented: $prompt.problem.isPresent) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(prompt.problem?.message ?? "")
             }
-            .alert("Effect Package", isPresented: Binding(get: { prompt.notice != nil }, set: { if !$0 { prompt.notice = nil } })) {
+            .alert("Effect Package", isPresented: $prompt.notice.isPresent) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(prompt.notice ?? "")
             }
             .alert(
                 "Replace the Installed Package?",
-                isPresented: Binding(get: { prompt.replacement != nil }, set: { if !$0 { prompt.replacement = nil } })
+                isPresented: $prompt.replacement.isPresent
             ) {
                 Button("Replace", role: .destructive) { prompt.replace() }
                 Button("Cancel", role: .cancel) {}

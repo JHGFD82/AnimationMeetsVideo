@@ -30,7 +30,7 @@ struct MotionDesignView: View {
         .background(KeyPressMonitor(handler: handleKey))
         .confirmationDialog(
             conflictTitle,
-            isPresented: Binding(get: { session.pendingConflict != nil }, set: { if !$0 { session.pendingConflict = nil } }),
+            isPresented: $session.pendingConflict.isPresent,
             titleVisibility: .visible,
             presenting: session.pendingConflict
         ) { pending in

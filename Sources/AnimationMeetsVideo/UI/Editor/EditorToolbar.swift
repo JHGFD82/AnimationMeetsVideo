@@ -165,7 +165,7 @@ struct EditorToolbar: View {
         }
         .alert(
             "Export Failed",
-            isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })
+            isPresented: $exportError.isPresent
         ) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -173,7 +173,7 @@ struct EditorToolbar: View {
         }
         .alert(
             "Export Finished",
-            isPresented: Binding(get: { masteringReport != nil }, set: { if !$0 { masteringReport = nil } })
+            isPresented: $masteringReport.isPresent
         ) {
             Button("OK", role: .cancel) {}
         } message: {
