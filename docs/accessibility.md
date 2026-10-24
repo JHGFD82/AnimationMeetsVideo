@@ -34,7 +34,9 @@ keyboard (the browser's Clips list uses the arrows).
 
 **Help > Keyboard Shortcuts** (⌘/, `KeyboardShortcutsView`) lists these
 with the Clips list's keys and the File menu's shortcuts in one window;
-keep it in step with this table.
+keep it in step with this table. VoiceOver reads each row's keys by
+name ("Shift Command B", "Equals, Minus"; `spokenKeys`), since it reads
+the glyphs badly or not at all; a new glyph needs a name there.
 
 | Keys | Does |
 | --- | --- |

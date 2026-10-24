@@ -87,6 +87,29 @@ struct KeyboardShortcutsView: View {
         .preferredColorScheme(.dark)
     }
 
+    /// A row's keys with their glyphs named in words, for VoiceOver, which
+    /// reads "⇧⌘B" or "= −" badly or not at all: "Shift Command B",
+    /// "Equals, Minus". The keys of a row are separated by commas.
+    nonisolated static func spokenKeys(_ keys: String) -> String {
+        let modifiers: [Character: String] = ["⌘": "Command", "⇧": "Shift", "⌥": "Option", "⌃": "Control"]
+        let names = [
+            "←": "Left Arrow", "→": "Right Arrow", "↑": "Up Arrow", "↓": "Down Arrow",
+            "⌫": "Delete", "Esc": "Escape", ",": "Comma", ".": "Period",
+            "=": "Equals", "−": "Minus", "\\": "Backslash",
+        ]
+        return keys.split(separator: " ").map { key in
+            var words: [String] = []
+            var rest = Substring(key)
+            while let first = rest.first, let modifier = modifiers[first] {
+                words.append(modifier)
+                rest = rest.dropFirst()
+            }
+            if !rest.isEmpty { words.append(names[String(rest)] ?? String(rest)) }
+            return words.joined(separator: " ")
+        }
+        .joined(separator: ", ")
+    }
+
     private func section(_ group: Group) -> some View {
         VStack(alignment: .leading, spacing: Design.Space.close) {
             Text(group.title)
@@ -104,7 +127,8 @@ struct KeyboardShortcutsView: View {
                         .foregroundStyle(Design.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Self.spokenKeys(shortcut.keys) + ", " + shortcut.does.replacingOccurrences(of: "⇧", with: "Shift"))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
