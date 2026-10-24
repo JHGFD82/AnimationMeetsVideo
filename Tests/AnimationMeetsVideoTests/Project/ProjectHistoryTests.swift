@@ -197,6 +197,27 @@ private final class Harness {
         #expect(h.project.clips.first?.url == new)
     }
 
+    @Test func stepsAreNamedForTheEditMenu() {
+        let h = Harness()
+        h.edit { $0.name = "Renamed" }
+        #expect(h.undoManager.undoActionName == "Rename Project")
+        h.undo()
+        #expect(h.undoManager.redoActionName == "Rename Project")
+    }
+
+    @Test func quickEditsOfDifferentKindsStaySeparate() {
+        let h = Harness()
+        h.edit { $0.name = "Renamed" }
+        h.edit(after: 0.1) { $0.clips.append(MediaClip(
+            name: "Clip", kind: .video, url: nil,
+            duration: .init(seconds: 5, preferredTimescale: 600),
+            frameRate: 24, colorSpace: .rec709, codecName: "Stub"
+        )) }
+        h.undo()
+        #expect(h.project.clips.isEmpty)
+        #expect(h.project.name == "Renamed")
+    }
+
     @Test func undoingTimelineEditsRestoresClips() {
         let h = Harness()
         let media = MediaClip(
