@@ -13,9 +13,6 @@ struct ReplaceMediaMenuItems: View {
     /// Where the project is saved, or nil before its first save.
     let packageURL: URL?
 
-    private var allClips: [MediaClip] { project.clips }
-    private var references: [UUID: AssetReference] { analysis.references }
-
     private func makeContext() -> MediaReplacementController.Context {
         .init(project: $project, analysis: analysis, packageURL: packageURL)
     }
@@ -58,52 +55,11 @@ struct ReplaceMediaMenuItems: View {
     }
 
     private func replaceOne() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.message = "Choose the file to use for \u{201C}\(clip.name)\u{201D}."
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        controller.start([.init(assetID: clip.id, url: url)], context: makeContext())
+        controller.replaceOne(clip, context: makeContext())
     }
 
     private func replaceFromFolder() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.message = "Choose a folder. Files are matched to the project's media by name."
-        guard panel.runModal() == .OK, let folder = panel.url else { return }
-
-        var found: [URL] = []
-        let keys: [URLResourceKey] = [.isRegularFileKey]
-        if let walker = FileManager.default.enumerator(
-            at: folder, includingPropertiesForKeys: keys,
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) {
-            for case let url as URL in walker where (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true {
-                found.append(url)
-            }
-        }
-
-        let assets = allClips.compactMap { asset -> (id: UUID, fileNames: [String])? in
-            var names: [String] = []
-            if let current = asset.url?.lastPathComponent { names.append(current) }
-            if !asset.referenceForgotten, let original = references[asset.id]?.metadata.fileName, !names.contains(original) {
-                names.append(original)
-            }
-            return names.isEmpty ? nil : (asset.id, names)
-        }
-        let currentPaths = Set(allClips.compactMap { $0.url?.path })
-        let matches = BulkReplacementMatcher.matches(for: assets, among: found)
-            .filter { !currentPaths.contains($0.url.path) }
-        guard !matches.isEmpty else {
-            controller.notice = .init(
-                title: "No Matching Files",
-                message: "No file in that folder matches the name of any media in the project."
-            )
-            return
-        }
-        controller.start(matches.map { .init(assetID: $0.assetID, url: $0.url) }, context: makeContext())
+        controller.replaceFromFolder(context: makeContext())
     }
 }
 
@@ -406,18 +362,24 @@ extension ReferenceThumbnails {
 // MARK: - Window attachments
 
 extension View {
-    /// Presents the replacement dialog and the batch summary.
+    /// Presents the replacement dialog, the batch summary, and notices
+    /// about files that changed or went missing, with buttons to deal
+    /// with them.
     func mediaReplacementDialogs(
         project: Binding<EditingProject>,
-        controller: MediaReplacementController
+        controller: MediaReplacementController,
+        analysis: AssetAnalysis,
+        packageURL: URL?
     ) -> some View {
-        modifier(MediaReplacementDialogs(controller: controller, project: project))
+        modifier(MediaReplacementDialogs(controller: controller, project: project, analysis: analysis, packageURL: packageURL))
     }
 }
 
 private struct MediaReplacementDialogs: ViewModifier {
     let controller: MediaReplacementController
     @Binding var project: EditingProject
+    let analysis: AssetAnalysis
+    let packageURL: URL?
 
     func body(content: Content) -> some View {
         content
@@ -444,7 +406,17 @@ private struct MediaReplacementDialogs: ViewModifier {
                     set: { if !$0 { controller.notice = nil } }
                 )
             ) {
-                Button("OK") { controller.notice = nil }
+                let actions = controller.notice?.actions ?? []
+                ForEach(actions, id: \.self) { action in
+                    Button(action.title) {
+                        controller.notice = nil
+                        let context = MediaReplacementController.Context(project: $project, analysis: analysis, packageURL: packageURL)
+                        // After the alert has gone: a panel or sheet opened
+                        // while it is still closing can be dropped.
+                        DispatchQueue.main.async { controller.perform(action, context: context) }
+                    }
+                }
+                Button(actions.isEmpty ? "OK" : "Later", role: actions.isEmpty ? nil : .cancel) { controller.notice = nil }
             } message: {
                 Text(controller.notice?.message ?? "")
             }

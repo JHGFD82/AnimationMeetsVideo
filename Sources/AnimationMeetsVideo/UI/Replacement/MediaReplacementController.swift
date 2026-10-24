@@ -1,3 +1,4 @@
+import AppKit
 import CoreMedia
 import Observation
 import SwiftUI
@@ -57,11 +58,31 @@ final class MediaReplacementController {
     struct Request: Equatable {
         var assetID: UUID
         var url: URL
+        /// True to check sync for the file already in place, which changed
+        /// on disk, rather than to replace it.
+        var isReview = false
+    }
+
+    /// What a notice offers to do about what it reports, as a button
+    /// beside Later.
+    enum NoticeAction: Hashable {
+        /// Checks sync for every changed file (`checkSyncOfChanged`).
+        case checkSync
+        /// Finds the missing files (`locateMissing`).
+        case locateMissing
+
+        var title: String {
+            switch self {
+            case .checkSync: "Check Sync…"
+            case .locateMissing: "Locate…"
+            }
+        }
     }
 
     struct Notice {
         var title: String
         var message: String
+        var actions: [NoticeAction] = []
     }
 
     private(set) var session: ReplacementSession?
@@ -155,19 +176,26 @@ final class MediaReplacementController {
             }
         }
         guard !newlyChanged.isEmpty || !newlyMissing.isEmpty, notice == nil, pendingNotice == nil, session == nil else { return }
+        post(Self.problemsNotice(changed: newlyChanged.map(\.name), missing: newlyMissing.map(\.name)))
+    }
+
+    /// Reports files that changed on disk or went missing, offering to
+    /// check the changed ones' sync and to locate the missing ones. Both
+    /// stay listed at the top of the Clips list until they are dealt with
+    /// (`MediaProblemsBar`).
+    static func problemsNotice(changed: [String], missing: [String]) -> Notice {
         var parts: [String] = []
-        if !newlyChanged.isEmpty {
-            let names = newlyChanged.map(\.name).joined(separator: "\n")
-            parts.append("These files changed outside the app:\n\n\(names)\n\nControl-click one in the Clips list and choose \u{201C}File Changed — Check Sync…\u{201D} to line it up.")
+        var actions: [NoticeAction] = []
+        if !changed.isEmpty {
+            parts.append("These files changed outside the app, so their clips may no longer line up:\n\n\(changed.joined(separator: "\n"))")
+            actions.append(.checkSync)
         }
-        if !newlyMissing.isEmpty {
-            let names = newlyMissing.map(\.name).joined(separator: "\n")
-            parts.append("These files are missing or can't be read:\n\n\(names)\n\nPut them back, or Control-click one in the Clips list and choose \u{201C}Replace Media…\u{201D}.")
+        if !missing.isEmpty {
+            parts.append("These files are missing or can't be read. Their clips stay in the project and play as gaps until the files are back:\n\n\(missing.joined(separator: "\n"))")
+            actions.append(.locateMissing)
         }
-        post(Notice(
-            title: newlyChanged.isEmpty ? "Media Missing" : (newlyMissing.isEmpty ? "Media Changed on Disk" : "Media Changed or Missing"),
-            message: parts.joined(separator: "\n\n")
-        ))
+        let title = missing.isEmpty ? "Media Changed on Disk" : (changed.isEmpty ? "Media Missing" : "Media Changed or Missing")
+        return Notice(title: title, message: parts.joined(separator: "\n\n"), actions: actions)
     }
 
     /// Forgets everything, for a different project.
@@ -220,11 +248,98 @@ final class MediaReplacementController {
     func review(assetID: UUID, context: Context) {
         guard session == nil, let url = context.project.wrappedValue.mediaClip(id: assetID)?.url else { return }
         self.context = context
-        queue = [Request(assetID: assetID, url: url)]
+        queue = [Request(assetID: assetID, url: url, isReview: true)]
         requested = 1
         replaced = 0
         skipped = []
-        processNext(isReview: true)
+        processNext()
+    }
+
+    /// Checks sync for every file that changed on disk, one at a time, in
+    /// the order of the Clips list.
+    func checkSyncOfChanged(context: Context) {
+        let requests = context.project.wrappedValue.clips.compactMap { clip -> Request? in
+            guard changedMedia.contains(clip.id), let url = clip.url else { return nil }
+            return Request(assetID: clip.id, url: url, isReview: true)
+        }
+        start(requests, context: context)
+    }
+
+    /// Asks where the missing files are: the one file, when one is
+    /// missing, or a folder to match them in by name.
+    func locateMissing(context: Context) {
+        let missing = context.project.wrappedValue.clips.filter { missingMedia.contains($0.id) }
+        if missing.count == 1, let clip = missing.first {
+            replaceOne(clip, context: context)
+        } else if !missing.isEmpty {
+            replaceFromFolder(context: context, among: Set(missing.map(\.id)))
+        }
+    }
+
+    /// Asks for the file to use for `clip`, then compares it with the
+    /// original as any replacement is.
+    func replaceOne(_ clip: MediaClip, context: Context) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = "Choose the file to use for \u{201C}\(clip.name)\u{201D}."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        start([.init(assetID: clip.id, url: url)], context: context)
+    }
+
+    /// Asks for a folder and replaces the media whose file names match
+    /// files in it: of `assets` only, or of every asset when nil.
+    func replaceFromFolder(context: Context, among assets: Set<UUID>? = nil) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.message = "Choose a folder. Files are matched to the project's media by name."
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+
+        var found: [URL] = []
+        let keys: [URLResourceKey] = [.isRegularFileKey]
+        if let walker = FileManager.default.enumerator(
+            at: folder, includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) {
+            for case let url as URL in walker where (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true {
+                found.append(url)
+            }
+        }
+
+        let allClips = context.project.wrappedValue.clips
+        let references = context.analysis.references
+        let candidates = allClips.compactMap { asset -> (id: UUID, fileNames: [String])? in
+            guard assets?.contains(asset.id) ?? true else { return nil }
+            var names: [String] = []
+            if let current = asset.url?.lastPathComponent { names.append(current) }
+            if !asset.referenceForgotten, let original = references[asset.id]?.metadata.fileName, !names.contains(original) {
+                names.append(original)
+            }
+            return names.isEmpty ? nil : (asset.id, names)
+        }
+        let currentPaths = Set(allClips.compactMap { $0.url?.path })
+        let matches = BulkReplacementMatcher.matches(for: candidates, among: found)
+            .filter { !currentPaths.contains($0.url.path) }
+        guard !matches.isEmpty else {
+            notice = .init(
+                title: "No Matching Files",
+                message: assets == nil
+                    ? "No file in that folder matches the name of any media in the project."
+                    : "No file in that folder matches the name of a missing file."
+            )
+            return
+        }
+        start(matches.map { .init(assetID: $0.assetID, url: $0.url) }, context: context)
+    }
+
+    /// Does what a notice's button offers.
+    func perform(_ action: NoticeAction, context: Context) {
+        switch action {
+        case .checkSync: checkSyncOfChanged(context: context)
+        case .locateMissing: locateMissing(context: context)
+        }
     }
 
     func confirm(_ session: ReplacementSession) {
@@ -259,7 +374,7 @@ final class MediaReplacementController {
         start([Request(assetID: assetID, url: URL(fileURLWithPath: path))], context: context)
     }
 
-    private func processNext(isReview: Bool = false) {
+    private func processNext() {
         guard let context else { return }
         guard !queue.isEmpty else {
             finish()
@@ -271,7 +386,7 @@ final class MediaReplacementController {
             return
         }
 
-        let session = ReplacementSession(asset: asset, candidate: request.url, isReview: isReview)
+        let session = ReplacementSession(asset: asset, candidate: request.url, isReview: request.isReview)
         self.session = session
         let packageURL = context.packageURL
         // A forgotten original's data stays until the next save, but is no longer used.

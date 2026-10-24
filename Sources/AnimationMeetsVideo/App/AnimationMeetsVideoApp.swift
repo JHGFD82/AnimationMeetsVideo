@@ -99,7 +99,7 @@ struct AnimationMeetsVideoApp: App {
                 // the project on its own (see `EditorView.==`).
                 .equatable()
                 .environment(projectState)
-                .mediaReplacementDialogs(project: $projectState.value, controller: replacement)
+                .mediaReplacementDialogs(project: $projectState.value, controller: replacement, analysis: analysis, packageURL: projectURL)
                 .newEffectPackagePrompt()
                 .onExternalProjectChange { checkForExternalProjectChange() }
                 .frame(minWidth: 1_100, minHeight: 700)
@@ -346,19 +346,7 @@ struct AnimationMeetsVideoApp: App {
             replacement.reset()
             replacement.markChanged(result.changedMedia)
             replacement.markMissing(result.offlineMedia)
-            if !result.changedMedia.isEmpty {
-                replacement.notice = .init(
-                    title: "Media Changed Since Last Saved",
-                    message: "\(result.changedMedia.count) media file(s) were changed outside the app. Control-click each one in the Clips list and choose \u{201C}File Changed — Check Sync…\u{201D}."
-                )
-            }
-            if !result.missingMedia.isEmpty {
-                let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
-                showAlert(
-                    title: "Some Media Couldn't Be Opened",
-                    message: "These files are missing or unreadable:\n\n\(names)\n\nTheir clips stay in the project and play as gaps until the files are back. Put them back, or Control-click one in the Clips list and choose \u{201C}Replace Media…\u{201D}."
-                )
-            }
+            reportMediaProblems(in: result)
         } catch {
             showAlert(title: "Couldn't Open Project", message: error.localizedDescription)
         }
@@ -500,13 +488,7 @@ struct AnimationMeetsVideoApp: App {
                 replacement.reset()
                 replacement.markChanged(result.changedMedia)
                 replacement.markMissing(result.offlineMedia)
-                if !result.missingMedia.isEmpty {
-                    let names = result.missingMedia.map(\.lastPathComponent).joined(separator: "\n")
-                    showAlert(
-                        title: "Some Media Couldn't Be Opened",
-                        message: "These files are missing or unreadable:\n\n\(names)\n\nTheir clips stay in the project and play as gaps until the files are back. Put them back, or Control-click one in the Clips list and choose \u{201C}Replace Media…\u{201D}."
-                    )
-                }
+                reportMediaProblems(in: result)
             } catch {
                 fileMonitor.acknowledge(change)
                 showAlert(
@@ -659,6 +641,16 @@ struct AnimationMeetsVideoApp: App {
         alert.addButton(withTitle: "Restore")
         alert.addButton(withTitle: "Don't Restore")
         return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Tells of media that changed since the project was saved or can't be
+    /// found, with buttons to check the sync or locate the files; the
+    /// Clips list keeps offering both until they are dealt with.
+    private func reportMediaProblems(in result: ProjectLoadResult) {
+        let changed = result.changedMedia.compactMap { result.project.mediaClip(id: $0)?.name }
+        let missing = result.missingMedia.map(\.lastPathComponent)
+        guard !changed.isEmpty || !missing.isEmpty else { return }
+        replacement.notice = MediaReplacementController.problemsNotice(changed: changed, missing: missing)
     }
 
     private func showAlert(title: String, message: String) {

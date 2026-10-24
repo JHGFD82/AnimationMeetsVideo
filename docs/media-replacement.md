@@ -166,6 +166,14 @@ name, until it is back (see "Offline media" in
 there is nothing to check sync against; when it comes back it is compared
 as usual. **Replace Media…** points the asset at another file.
 
+The message that reports changed or missing files (on opening, or while
+the app runs) offers **Check Sync…**, which checks every changed file in
+turn, and **Locate…**, which asks for the one missing file or, with several,
+for a folder to match them in by name (as **Replace Media from Folder…**
+does, for the missing ones only); **Later** puts it off. Until they are
+dealt with, a bar over the Clips list (`MediaProblemsBar`) says how many
+files are missing or changed, with the same two buttons.
+
 The file reads run off the main thread, so a slow or sleeping network volume
 does not stall the editor. Their result is applied to the project as it is
 when they finish, and a reading of a path the asset no longer uses is

@@ -211,6 +211,22 @@ struct UISnapshots {
         try SnapshotSupport.render(editor, "empty-editor", size: CGSize(width: 1500, height: 900))
     }
 
+    /// Over the Clips list: one file missing and two changed on disk, each
+    /// with the button that deals with them.
+    @Test func mediaProblemsBar() throws {
+        let controller = MediaReplacementController()
+        controller.markMissing([UUID()])
+        controller.markChanged([UUID(), UUID()])
+        let context = MediaReplacementController.Context(project: .constant(.empty), analysis: AssetAnalysis(), packageURL: nil)
+        try SnapshotSupport.render(
+            MediaProblemsBar(controller: controller, context: context)
+                .frame(width: 300)
+                .background(Design.Surface.base.color)
+                .preferredColorScheme(.dark),
+            "media-problems-bar", size: CGSize(width: 300, height: 70)
+        )
+    }
+
     /// Help > Keyboard Shortcuts: every key the editor answers, grouped.
     @Test func keyboardShortcuts() throws {
         try SnapshotSupport.render(KeyboardShortcutsView(), "keyboard-shortcuts", size: CGSize(width: 720, height: 620))

@@ -80,6 +80,10 @@ struct BrowserPanel: View {
                 if project.clips.isEmpty && imports?.items.isEmpty != false {
                     noMedia
                 } else {
+                    MediaProblemsBar(
+                        controller: replacement,
+                        context: .init(project: access.binding, analysis: analysis, packageURL: packageURL)
+                    )
                     ClipsTab(
                         access: access, activeTimelineID: activeTimelineID, selection: $selection,
                         analysis: analysis, replacement: replacement, packageURL: packageURL
