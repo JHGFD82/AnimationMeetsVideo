@@ -68,11 +68,15 @@ struct TimelineViewport: Equatable {
     /// Zoom position on a 0...1 scale that is even in ratio, so each step of
     /// a slider multiplies the scale by the same amount.
     var zoomFraction: Double {
-        guard maxPixelsPerSecond > fitPixelsPerSecond else { return 0 }
-        return Double(log(pixelsPerSecond / fitPixelsPerSecond) / log(maxPixelsPerSecond / fitPixelsPerSecond))
+        ZoomScale.fraction(of: Double(pixelsPerSecond), in: zoomScale)
     }
 
     func pixelsPerSecond(atZoomFraction fraction: Double) -> CGFloat {
-        fitPixelsPerSecond * pow(maxPixelsPerSecond / fitPixelsPerSecond, CGFloat(fraction.clamped(between: 0, and: 1)))
+        CGFloat(ZoomScale.zoom(atFraction: fraction, in: zoomScale))
+    }
+
+    /// The zooms the slider spans, from the fit to the closest.
+    private var zoomScale: ClosedRange<Double> {
+        Double(fitPixelsPerSecond)...Double(maxPixelsPerSecond)
     }
 }

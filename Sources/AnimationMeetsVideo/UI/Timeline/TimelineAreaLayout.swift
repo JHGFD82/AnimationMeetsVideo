@@ -74,14 +74,16 @@ struct TimelineAreaLayout: Equatable, Codable {
     /// A layer height on a 0...1 scale that is even in ratio, so each step
     /// of a slider multiplies the height by the same amount.
     static func fraction(ofLayerHeight height: CGFloat) -> Double {
-        let range = layerHeightRange
-        let clamped = height.clamped(between: range.lowerBound, and: range.upperBound)
-        return Double(log(clamped / range.lowerBound) / log(range.upperBound / range.lowerBound))
+        ZoomScale.fraction(of: Double(height), in: heightScale)
     }
 
     static func layerHeight(atFraction fraction: Double) -> CGFloat {
-        let range = layerHeightRange
-        return range.lowerBound * pow(range.upperBound / range.lowerBound, CGFloat(fraction.clamped(between: 0, and: 1)))
+        CGFloat(ZoomScale.zoom(atFraction: fraction, in: heightScale))
+    }
+
+    /// The heights the slider spans, as `ZoomScale` takes them.
+    private static var heightScale: ClosedRange<Double> {
+        Double(layerHeightRange.lowerBound)...Double(layerHeightRange.upperBound)
     }
 
     /// The shown areas' layer heights together, on the scale of
