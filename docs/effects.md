@@ -91,10 +91,10 @@ half keeps exactly the animation it showed before; nothing is lost, so no
 
 ## Volume
 
-Planned changes to [audio.md](audio.md):
+How volume fits the stack, as built (details in [audio.md](audio.md)):
 
 - **Every clip with sound has a volume**: media clips with sound, audio
-  clips and nested timelines. It works as layer volume does today
+  clips and nested timelines. It works as layer volume does
   (decibels, −60 to +6, keyframed in source time, blending in decibels).
 - **Sound and Music layers keep a layer volume** as well, applied after
   the clip's: the clip sets its own level, the layer acts as a fader over
@@ -105,8 +105,9 @@ Planned changes to [audio.md](audio.md):
   volume.
 - A clip's volume is a pinned row at the bottom of the effects panel, below
   Shutter, since sound comes after pictures, with its pan (see
-  [audio.md](audio.md#pan)) under it. An audio clip, which has no stack,
-  shows only these rows. The **L** key's row in the timeline stays
+  [audio.md](audio.md#pan)) under it. An audio clip, which has no picture
+  stack, shows only its sound effects and these rows. The **L** key's row
+  in the timeline stays
   the layer volume on Sound and Music layers; clip volume is drawn as a
   line across each clip block while L is on.
 
@@ -932,8 +933,8 @@ In order, each step usable on its own:
     (`asset` or `timeline`, `offset`, `loops`), allowed only on effects that
     take one. Missing footage leaves the effect dimmed and is reported
     with the asset, and inputs count as uses of the media when it is
-    replaced. Not yet: stills are not a media kind, so an input is video
-    footage or a timeline
+    replaced. Not yet: a still as an input ([graphic-layers.md](graphic-layers.md#building-it),
+    step 5), so an input is video footage or a timeline
 11. **Speed ramps and Optical Flow** (done). Ramps came with step 9 (keyframed
     speed, with its eases and graph, integrated into the clip's length and
     drawn as a piece every four frames); this step checks them against

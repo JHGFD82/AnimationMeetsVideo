@@ -12,23 +12,23 @@ Swift (BuiltInEffects.swift), the 25 looks that ship as packages
 `EffectPackageStore` reads from the Effects folder at launch. A
 package's look is listed, saved and drawn like any other
 (`PackageLookRenderer`), and one whose package is missing is kept.
-This plan moved the looks of
-[psychedelic-effects.md](psychedelic-effects.md) out of Swift into
-**effect packages**: folders the app reads at launch, which can be
-written, shared and installed without building the app. Effects that need
+The looks of [psychedelic-effects.md](psychedelic-effects.md) moved out
+of Swift into these **effect packages**: folders the app reads at
+launch, which can be written, shared and installed without building the
+app. Effects that need
 more than a Core Image kernel stay in Swift (see
 [What stays in Swift](#what-stays-in-swift)).
 
 ## Why it is possible
 
 A look is already data plus Metal source. Its kernel is Metal text that
-`LookKernels` compiles at run time with
+`PackageKernels` compiles at run time with
 `CIKernel.kernels(withMetalString:)`, and Core Image's built-in filters
-are named by string (`CIBloom`). What is Swift today is the glue: the
-effect's name, icon and controls, and the line in `LookRenderer.apply`
-that turns control values into kernel arguments (degrees to radians, a
-speed times the clip's seconds, a choice to 0, 1 or 2). A package
-describes that glue as data.
+are named by string (`CIBloom`). What was Swift before packages was the
+glue: the effect's name, icon and controls, and a case per look in
+`LookRenderer.apply` that turned control values into kernel arguments
+(degrees to radians, a speed times the clip's seconds, a choice to 0, 1
+or 2). A package describes that glue as data.
 
 ## A package
 
@@ -102,12 +102,11 @@ expression calls the control, and what a project saves as the control's
 | `choice` | One of a list | `options` (`[{ "id": "bayer4", "name": "Bayer 4×4" }, …]`), `default` |
 
 `unit` is one of `%`, `°`, `px`, `s`, `×`, `/s`, `turns/s`, `frames` or
-none, and decides how a value is shown and dragged, as `ControlKind.unit`
-does now.
+none, and decides how a value is shown and dragged (`ControlKind.unit`).
 `step` is the drag step: by default 1, a hundredth for speeds and `×`, a
 tenth for `s`. A number with `"rate": true` is a speed:
-the effect changes on its own while it isn't 0, as Hue Cycle's Speed does,
-which `Effect.changesOnItsOwn` decides today.
+the effect changes on its own while it isn't 0, as Hue Cycle's Speed does
+(`Effect.changesOnItsOwn`).
 
 Every control can be keyframed, turned off, reset and deleted like a
 built-in one. A control turned off or deleted gives the kernel its
@@ -154,16 +153,16 @@ calls but those listed. Anything more belongs in the kernel.
 
 `kernel.metal` holds the function named in `kernel.function`, marked
 `extern "C" [[stitchable]]`, and any helpers it needs. The app compiles
-it with a **prelude** of its own in front, the shared functions in
-`LookKernels.source` today, among them `toLinear`, `fromLinear`,
+it with a **prelude** of its own in front (`LookKernels.prelude`),
+among them `toLinear`, `fromLinear`,
 `toTones`, `fromTones`, `straight`, `mixed`, `luma`, `hsv`,
 `hueRotated`, `rand`, `hash3`, `noise3` and `bayer`. The prelude is part of
 the format: its functions keep their names and behavior within a
 `formatVersion`, and new ones may be added.
 
-Each package's kernel is compiled from its own source, as each look's is
-now, because Core Image within one `CIContext` mistook kernels compiled
-from one source for each other. A kernel that compiles as another type
+Each package's kernel is compiled from its own source, because Core
+Image within one `CIContext` mistook kernels compiled from one source for
+each other. A kernel that compiles as another type
 than `kernel.type` says (a warp declared as a color kernel) is refused
 with that mistake.
 
@@ -231,8 +230,9 @@ finds once by compiling an error on a kernel's first line.
 
 ## Making a package
 
-[Writing one by hand](#writing-one-by-hand) describes what works now;
-[starting one from the app](#starting-one-from-the-app) is planned.
+A package can be [written by hand](#writing-one-by-hand), or
+[started from the app](#starting-one-from-the-app), new or as a copy of a
+look, and then edited by hand.
 
 ### Writing one by hand
 
@@ -348,10 +348,9 @@ as editing one does, since effects in the open project use its controls.
 
 ## Pictures besides the clip's
 
-Status: **built**, and Displace, Feedback, Slit-Scan and Flow Smear
-packages. The four looks
-that were left in Swift each draw from a
-picture besides the one reaching them: Displace from a dropped picture
+Status: **built**; Displace, Feedback, Slit-Scan and Flow Smear are
+packages that use it. These four looks, the last to leave Swift, each
+draw from a picture besides the one reaching them: Displace from a dropped picture
 or an earlier step's, Feedback and Slit-Scan from the footage at other
 moments, Flow Smear from its motion. The app fetches these before the
 kernel runs, so a package says which it needs, and its kernel receives
@@ -428,15 +427,16 @@ past white stays white, and copies are screened as `CIScreenBlendMode`
 does. Slit-Scan's bands are cut at the pixels' centers as cropping cut
 them.
 
-### What it moves
+### What moved
 
-With these, the four leave Swift: Displace with an input and Against,
+With these, the four left Swift: Displace with an input and Against,
 Feedback and Slit-Scan with moments and repeating (Feedback's hue turn,
 scale and rotation per copy done in its kernel with the prelude's
 `hueRotated`), Flow Smear with its motion. Their pictures are checked
-against reference frames recorded before they move, as the other looks'
-were. What stays in Swift is then the stack's foundations, the shapes,
-the sound effects and the Keyframing effects.
+against reference frames recorded before they moved, as the other looks'
+were. What stays in Swift is the stack's foundations, the shapes, the
+sound effects and the Keyframing effects (see
+[What stays in Swift](#what-stays-in-swift)).
 
 ## Missing effects
 
