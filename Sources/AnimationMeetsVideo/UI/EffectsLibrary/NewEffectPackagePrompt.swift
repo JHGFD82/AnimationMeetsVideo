@@ -43,24 +43,22 @@ final class NewEffectPackagePrompt {
 
     func make() {
         let name = name
-        Task {
-            do {
-                let url = try EffectPackageStore.makePackage(named: name)
-                _ = try await EffectPackageStatus.shared.install(url)
-                NSWorkspace.shared.activateFileViewerSelecting([url.appending(path: "kernel.metal")])
-            } catch {
-                failed("The Effect Package Wasn't Made", error)
-            }
-        }
+        installNew { try EffectPackageStore.makePackage(named: name) }
     }
 
     /// Copies `package` as a new one in the Effects folder, installs it,
     /// and shows its kernel in Finder.
     func copy(_ package: EffectPackage) {
+        installNew { try EffectPackageStore.copyPackage(package) }
+    }
+
+    /// Installs the package `write` makes in the Effects folder and shows
+    /// its kernel in Finder.
+    private func installNew(_ write: @escaping () throws -> URL) {
         Task {
             do {
-                let url = try EffectPackageStore.copyPackage(package)
-                _ = try await EffectPackageStatus.shared.install(url)
+                let url = try write()
+                let package = try await EffectPackageStatus.shared.install(url)
                 NSWorkspace.shared.activateFileViewerSelecting([url.appending(path: package.kernelFile)])
             } catch {
                 failed("The Effect Package Wasn't Made", error)
