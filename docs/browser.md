@@ -11,8 +11,9 @@ timeline. It and the panel right of the viewer can each be resized by
 their inner edge whatever tab is open, down to a minimum width; the
 right panel keeps a width per tab. It works like Final Cut Pro's browser: every clip is a filmstrip
 of thumbnails, skimming one shows it in the viewer, and a range of it can
-be picked and dragged in. The main difference is what a plain drag does:
-here it always grabs the whole clip.
+be picked and dragged in. The main difference is that a drag's job is
+set by the selection: a drag on what is selected moves it, and a drag
+anywhere else picks a range.
 
 ## Names
 
@@ -121,7 +122,7 @@ loses the keyboard.
   options turns it off; it is set under Skimming, and with skimming off
   it is greyed out and frames clicked or stepped to are silent. A sound clip skims with a waveform symbol in the
   viewer.
-- Option-dragging a range shows its moving end in the viewer, as skimming
+- Dragging out a range shows its moving end in the viewer, as skimming
   does. Dragging clips out of the browser returns the viewer to the
   timeline they're dropped on.
 - Stills aren't skimmed: they have no time to move through.
@@ -129,22 +130,31 @@ loses the keyboard.
 ## Selecting
 
 - **Click** selects the whole clip.
+- **Clicking off the clips** (between or below them) selects nothing.
 - **Command-click** adds a clip to the selection or takes it out.
 - **Shift-click** selects every clip from the last one clicked to this one,
   in browser order.
-- **Option-drag** across a filmstrip selects a **range** of that clip: an
-  outlined span with a handle at each end. The handles can be dragged to
-  set the range more exactly, snapping to frames; the pointer becomes the
-  resize cursor over them. A range belongs to one
-  clip; making one clears any other selection.
+- **Dragging across a clip that isn't selected** selects a **range** of
+  it: an outlined span with a handle at each end. So does dragging across
+  a clip that has a range, outside the range, and Option-dragging across
+  any clip, selected or not. Once the mouse is let go, the handles can be
+  dragged to change the range's length, snapping to frames; the pointer
+  becomes the resize cursor over them. A range belongs to one clip;
+  making one clears any other selection. A press must move a few points
+  before it picks a range, so a slightly unsteady click is still a click.
 - **Clicking** a clip outside its range selects the whole clip again,
   dropping the range. Clicking inside the range keeps it.
+- **Command- or Shift-clicking** another clip while one has a range
+  selects whole clips: the one with the range and the one clicked (or the
+  run between them), dropping the range.
 
 ## Dragging
 
-- **Dragging** a clip drags the **whole clip**, wherever on it the drag
-  starts, or every selected clip if it is part of the selection. Only the
-  timeline takes it: a drag let go anywhere else adds nothing.
+- **Dragging** a selected clip drags the **whole clip**, wherever on it
+  the drag starts, along with every other selected clip. A clip that
+  isn't selected has to be clicked first; dragging it picks a range (see
+  "Selecting"). Only the timeline takes a drag: one let go anywhere else
+  adds nothing.
 - **Dragging from inside a range** (its middle, not its handles) drags only
   that range.
 - What follows the pointer is **one thumbnail**: the first clip's picture
@@ -245,7 +255,8 @@ Following [accessibility.md](accessibility.md):
    boxes, scenes as clips. Rendered offscreen to check layout only.
 3. **Selecting and dragging** (built, Clips tab; not yet tried on screen).
    Click, Command-click and Shift-click; whole-clip drags of several
-   assets in browser order; option-drag ranges with handles; arrows,
+   assets in browser order; ranges dragged across unselected clips, with
+   handles; arrows,
    Shift-arrows and Return. Built together with stage 2, since both
    needed the clips drawn by hand rather than in a list.
 4. **Skimming** (built, Clips tab; not yet tried on screen) in the viewer,
