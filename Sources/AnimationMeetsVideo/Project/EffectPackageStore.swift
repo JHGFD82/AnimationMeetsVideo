@@ -140,11 +140,8 @@ enum EffectPackageStore {
         guard let data = try? Data(contentsOf: manifest) else {
             throw EffectPackageError("The package has no \(manifestName).")
         }
-        let header = (try? JSONDecoder().decode(ProjectFileHeader.self, from: data))?.formatVersion
-        guard header == EffectPackage.formatVersion else {
-            throw EffectPackageError(
-                "The package has format version \(header.map(String.init) ?? "none"); this app reads version \(EffectPackage.formatVersion)."
-            )
+        if let problem = JSONFile.versionMismatch(in: data, expecting: EffectPackage.formatVersion, noun: "package") {
+            throw EffectPackageError(problem)
         }
         do {
             try StrictJSON.validate(data, against: shape)

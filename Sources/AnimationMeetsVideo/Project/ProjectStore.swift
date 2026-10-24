@@ -147,9 +147,7 @@ enum ProjectStore {
     static func writeReference(_ reference: AssetReference, for assetID: UUID, in packageURL: URL) throws {
         let folder = referenceFolder(for: assetID, in: packageURL)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        try encoder.encode(reference.metadata).write(to: folder.appending(path: referenceMetadataFileName), options: .atomic)
+        try JSONFile.encode(reference.metadata).write(to: folder.appending(path: referenceMetadataFileName), options: .atomic)
         if let envelope = reference.audioEnvelope {
             try envelope.encoded().write(to: folder.appending(path: audioEnvelopeFileName), options: .atomic)
         }
@@ -498,11 +496,7 @@ enum ProjectStore {
     }
 
     private static func encode(_ project: EditingProject, packageURL: URL) throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        var data = try encoder.encode(makeFile(from: project, packageURL: packageURL))
-        data.append(0x0A)
-        return data
+        try JSONFile.encode(makeFile(from: project, packageURL: packageURL))
     }
 
     // MARK: Backups
@@ -734,23 +728,14 @@ enum ProjectStore {
         let fileURL = projectFile ?? packageURL.appending(path: projectFileName)
         let data = try Data(contentsOf: fileURL)
 
-        let version = (try? JSONDecoder().decode(ProjectFileHeader.self, from: data))?.formatVersion
-        guard let version, version >= 1 else {
+        guard let version = JSONFile.formatVersion(of: data), version >= 1 else {
             throw ProjectStoreError.unsupportedVersion(nil)
         }
         // Older files aren't migrated, and newer ones can't be read.
         guard version == ProjectFile.currentVersion else {
             throw ProjectStoreError.unsupportedVersion(version)
         }
-        let file: ProjectFile
-        do {
-            try StrictJSON.validate(data, against: ProjectFile.shape)
-            file = try JSONDecoder().decode(ProjectFile.self, from: data)
-        } catch let problem as JSONShapeError {
-            throw ProjectStoreError.invalidFile(problem.sentence)
-        } catch let problem as DecodingError {
-            throw ProjectStoreError.invalidFile(problem.sentenceForProject)
-        }
+        let file = try JSONFile.decode(ProjectFile.self, from: data, shape: ProjectFile.shape, failure: ProjectStoreError.invalidFile)
 
         var importedClips: [UUID: MediaClip] = [:]
         var orderedIDs: [UUID] = []
