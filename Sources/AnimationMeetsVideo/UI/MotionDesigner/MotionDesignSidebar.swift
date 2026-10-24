@@ -79,8 +79,8 @@ struct MotionDesignSidebar: View {
     private func pointControls(_ point: TimePoint) -> some View {
         VStack(alignment: .leading, spacing: Design.Space.step) {
             heading(point.isHit ? "Hit" : point.pace != nil ? "Pace marker" : "Marker")
-            reading("Plays at", timecode(point.time))
-            reading("Frame", timecode(point.source))
+            reading("Plays at", session.timecode(point.time))
+            reading("Frame", session.timecode(point.source))
             Picker("Kind", selection: Binding(get: { kind(of: point) }, set: { choose($0, for: point) })) {
                 Text("Hit").tag(Kind.hit)
                 Text("Marker").tag(Kind.marker)
@@ -193,8 +193,8 @@ struct MotionDesignSidebar: View {
         let drafted = session.drafted(piece)
         return VStack(alignment: .leading, spacing: Design.Space.step) {
             heading(session.project.resolvedInfo(for: piece.clip.source)?.name ?? "Clip")
-            reading("Starts", timecode(drafted.startOffset))
-            reading("Ends", timecode(drafted.endOffset))
+            reading("Starts", session.timecode(drafted.startOffset))
+            reading("Ends", session.timecode(drafted.endOffset))
             trimRow("Start", piece: piece, edge: .start)
             trimRow("End", piece: piece, edge: .end)
             footageNote(piece)
@@ -269,10 +269,6 @@ struct MotionDesignSidebar: View {
                 .foregroundStyle(Design.textPrimary)
         }
         .accessibilityElement(children: .combine)
-    }
-
-    private func timecode(_ time: CMTime) -> String {
-        CMTimeMaximum(time, .zero).timecode(frameRate: session.timeline.frameRate)
     }
 }
 

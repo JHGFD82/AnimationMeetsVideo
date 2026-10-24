@@ -96,6 +96,16 @@ final class MotionDesignSession: SecondsViewport {
     @ObservationIgnored let playback: PlaybackModel
     /// Where the playhead is, in timeline seconds.
     var playhead: Double { playback.currentTime.seconds }
+
+    /// `time` as hh:mm:ss:ff at the timeline's frame rate (negative times
+    /// read as zero).
+    func timecode(_ time: CMTime) -> String {
+        time.timecode(frameRate: timeline.frameRate)
+    }
+
+    func timecode(seconds: Double) -> String {
+        timecode(CMTime(seconds: seconds, preferredTimescale: 600))
+    }
     var isPlaying: Bool { playback.isPlaying }
     /// The run before a drag began, which its one undo step goes back to.
     @ObservationIgnored private var dragStart: MotionRun?

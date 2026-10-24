@@ -85,7 +85,7 @@ struct RetimedFilmstrip: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(info?.name ?? "Clip"), clip")
-            .accessibilityValue("From \(Self.timecode(drafted.startOffset, session)) to \(Self.timecode(drafted.endOffset, session))")
+            .accessibilityValue("From \(session.timecode(drafted.startOffset)) to \(session.timecode(drafted.endOffset))")
             .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
             .accessibilityAction { session.selectedPieceID = piece.id }
             .accessibilityActions {
@@ -97,10 +97,6 @@ struct RetimedFilmstrip: View {
                 Button("End a frame later") { session.selectedPieceID = piece.id; session.trimSelectedPiece(.end, byFrames: 1) }
             }
         }
-    }
-
-    static func timecode(_ time: CMTime, _ session: MotionDesignSession) -> String {
-        CMTimeMaximum(time, .zero).timecode(frameRate: session.timeline.frameRate)
     }
 
     private struct Tile {

@@ -116,7 +116,7 @@ struct MotionDesignLanes: View {
                 let x = session.x(of: seconds)
                 context.fill(Path(CGRect(x: x, y: size.height - 6, width: 1, height: 6)), with: .color(Design.textTertiary.opacity(0.6)))
                 context.draw(
-                    Text(CMTime(seconds: max(0, seconds), preferredTimescale: 600).timecode(frameRate: session.timeline.frameRate))
+                    Text(session.timecode(seconds: seconds))
                         .font(Design.Typeface.numericScale).foregroundStyle(Design.textTertiary),
                     at: CGPoint(x: x + 3, y: 2), anchor: .topLeading
                 )
@@ -129,7 +129,7 @@ struct MotionDesignLanes: View {
         .gesture(scrubGesture)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Playhead")
-        .accessibilityValue(timecode(session.playhead))
+        .accessibilityValue(session.timecode(seconds: session.playhead))
         .accessibilityAdjustableAction { direction in
             let frame = session.timeline.frameDuration.seconds
             session.seek(to: session.playhead + (direction == .increment ? frame : -frame))
@@ -511,8 +511,8 @@ struct MotionDesignLanes: View {
         let kind = point.isHit ? "Hit" : point.pace.map { "Pace marker, \(Self.speedText($0))" } ?? "Marker"
         let speed = session.run.pieces[index].map.index(of: point.id).map { session.run.pieces[index].map.speed(after: $0) }
         return Rectangle()
-            .accessibilityLabel("\(kind) at \(timecode(point.time.seconds))")
-            .accessibilityValue("Frame \(timecode(point.source.seconds))\(speed.map { ", then \(Self.speedText($0))" } ?? "")\(point.ease.map { ", eased, ramps in over \(Int(($0.before * 100).rounded())) percent and out over \(Int(($0.after * 100).rounded())) percent" } ?? "")")
+            .accessibilityLabel("\(kind) at \(session.timecode(point.time))")
+            .accessibilityValue("Frame \(session.timecode(point.source))\(speed.map { ", then \(Self.speedText($0))" } ?? "")\(point.ease.map { ", eased, ramps in over \(Int(($0.before * 100).rounded())) percent and out over \(Int(($0.after * 100).rounded())) percent" } ?? "")")
             .accessibilityAddTraits(point.id == session.selectedPointID ? [.isButton, .isSelected] : .isButton)
             .accessibilityAction { session.select(point: point.id) }
             .accessibilityAdjustableAction { direction in
@@ -700,9 +700,5 @@ struct MotionDesignLanes: View {
         .frame(width: width, height: height, alignment: .topLeading)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-    }
-
-    private func timecode(_ seconds: Double) -> String {
-        CMTime(seconds: max(0, seconds), preferredTimescale: 600).timecode(frameRate: session.timeline.frameRate)
     }
 }

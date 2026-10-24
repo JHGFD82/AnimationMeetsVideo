@@ -57,8 +57,7 @@ struct MotionDesignView: View {
                 .help(session.isPlaying ? "Pause (Space)" : "Play the draft (Space)")
                 .accessibilityLabel(session.isPlaying ? "Pause" : "Play")
                 SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !session.isPlaying)) { context in
-                    let time = CMTime(seconds: max(0, session.playhead(at: context.date)), preferredTimescale: 600)
-                        .timecode(frameRate: session.timeline.frameRate)
+                    let time = session.timecode(seconds: session.playhead(at: context.date))
                     Text(time)
                         .font(Design.Typeface.timecode)
                         .foregroundStyle(Design.textPrimary)
