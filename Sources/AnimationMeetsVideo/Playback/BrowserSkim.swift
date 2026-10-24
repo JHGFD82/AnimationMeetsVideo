@@ -216,6 +216,6 @@ final class BrowserSkim {
     }
 
     static func clamped(_ seconds: Double, to target: Target) -> Double {
-        min(max(seconds, 0), max(target.seconds, 0))
+        seconds.clamped(between: 0, and: max(target.seconds, 0))
     }
 }

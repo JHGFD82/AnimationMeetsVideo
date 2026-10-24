@@ -125,7 +125,7 @@ private enum MeterLayout {
     }
 
     static func y(ofDecibels decibels: Double, height: CGFloat) -> CGFloat {
-        let fraction = (min(max(decibels, MeterBallistics.floor), 0) - MeterBallistics.floor) / -MeterBallistics.floor
+        let fraction = (decibels.clamped(between: MeterBallistics.floor, and: 0) - MeterBallistics.floor) / -MeterBallistics.floor
         return height * CGFloat(1 - fraction)
     }
 }
@@ -152,7 +152,7 @@ private struct MeterScale: View {
                 let y = MeterLayout.y(ofDecibels: mark, height: size.height)
                 context.draw(
                     Text(mark == 0 ? "0" : "\(Int(-mark))").font(Design.Typeface.numericScale).foregroundStyle(Design.textTertiary),
-                    at: CGPoint(x: MeterLayout.scaleWidth - 3, y: min(max(y, 5), size.height - 5)), anchor: .trailing
+                    at: CGPoint(x: MeterLayout.scaleWidth - 3, y: y.clamped(between: 5, and: size.height - 5)), anchor: .trailing
                 )
             }
             for channel in 0..<2 {

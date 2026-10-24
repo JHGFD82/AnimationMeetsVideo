@@ -154,7 +154,7 @@ enum BeatDetector {
         let analyzer = OnsetAnalyzer()
         let seconds = duration.isFinite && duration > 0 ? duration : 0
         var timed = TimedSamples(
-            longestGap: Int64(min(max(seconds, 60), 24 * 3600) * sampleRate),
+            longestGap: Int64(seconds.clamped(between: 60, and: 24 * 3600) * sampleRate),
             feed: { samples in
                 try checkCancellation()
                 analyzer.append(samples)

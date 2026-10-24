@@ -117,7 +117,7 @@ struct BeatSection: Identifiable, Equatable, Sendable {
     /// Keeps the beats in time order with no two at the same time, and the
     /// beat count and positions in range.
     mutating func normalize() {
-        beatsPerMeasure = min(max(beatsPerMeasure, Self.beatsPerMeasureRange.lowerBound), Self.beatsPerMeasureRange.upperBound)
+        beatsPerMeasure = beatsPerMeasure.clamped(between: Self.beatsPerMeasureRange.lowerBound, and: Self.beatsPerMeasureRange.upperBound)
         beats.sort { CMTimeCompare($0.time, $1.time) < 0 }
         var kept: [MappedBeat] = []
         for beat in beats {

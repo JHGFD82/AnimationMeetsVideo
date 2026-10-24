@@ -52,8 +52,8 @@ struct TimeEase: Equatable {
     static let limit = 0.9
 
     init(before: Double = 1.0 / 3, after: Double = 1.0 / 3) {
-        self.before = min(max(before, Self.reach.lowerBound), Self.reach.upperBound)
-        self.after = min(max(after, Self.reach.lowerBound), Self.reach.upperBound)
+        self.before = before.clamped(between: Self.reach.lowerBound, and: Self.reach.upperBound)
+        self.after = after.clamped(between: Self.reach.lowerBound, and: Self.reach.upperBound)
     }
 }
 
@@ -181,7 +181,7 @@ struct ClipTimeMap: Equatable {
         if index > 0, let old = points[index - 1].pace {
             let source = CMTimeSubtract(points[index].source, points[index - 1].source).seconds
             let span = CMTimeSubtract(time, points[index - 1].time).seconds
-            let wanted = span > 0 ? min(max(source / span * 100, Self.speedRange.lowerBound), Self.speedRange.upperBound) : Self.speedRange.upperBound
+            let wanted = span > 0 ? (source / span * 100).clamped(between: Self.speedRange.lowerBound, and: Self.speedRange.upperBound) : Self.speedRange.upperBound
             self = Self.furthest { fraction in
                 var copy = original
                 copy.points[index - 1].kind = .pace(old + (wanted - old) * fraction)
@@ -226,7 +226,7 @@ struct ClipTimeMap: Equatable {
                 guard confirmed else { return .hitWouldMove(points[index + 1].id) }
                 copy.points[index + 1].kind = .marker
             }
-            copy.points[index].kind = .pace(min(max(speed, Self.speedRange.lowerBound), Self.speedRange.upperBound))
+            copy.points[index].kind = .pace(speed.clamped(between: Self.speedRange.lowerBound, and: Self.speedRange.upperBound))
         case .hit:
             if index > 0, points[index - 1].pace != nil {
                 guard confirmed else { return .paceWouldEnd(points[index - 1].id) }

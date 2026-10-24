@@ -203,7 +203,7 @@ extension EditingProject {
             moved.range = setup.range.map { CMTimeRange(start: CMTimeAdd($0.start, delta), duration: $0.duration) }
             pasted[p].keyframing = moved
         }
-        let at = min(max(index ?? kept.count, 0), kept.count)
+        let at = (index ?? kept.count).clamped(between: 0, and: kept.count)
         stack.insert(contentsOf: pasted, at: at)
         pastedIDs += pasted.map(\.id)
         return stack

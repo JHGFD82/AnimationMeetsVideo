@@ -28,7 +28,7 @@ enum ValueDrag {
     static func value(from start: Double, distance: Double, step: Double, flags: NSEvent.ModifierFlags, range: ClosedRange<Double>?) -> Double {
         let moved = start + distance * step * multiplier(for: flags)
         guard let range else { return moved }
-        return min(max(moved, range.lowerBound), range.upperBound)
+        return moved.clamped(between: range.lowerBound, and: range.upperBound)
     }
 }
 

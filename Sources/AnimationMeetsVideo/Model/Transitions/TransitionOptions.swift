@@ -122,7 +122,7 @@ struct TransitionOptions: Equatable, Sendable {
             red: color.red.clamped(between: 0, and: 1), green: color.green.clamped(between: 0, and: 1), blue: color.blue.clamped(between: 0, and: 1)
         )
         options.center = CGPoint(x: center.x.clamped(between: 0, and: 1), y: center.y.clamped(between: 0, and: 1))
-        options.count = min(max(count, Self.countRange.lowerBound), Self.countRange.upperBound)
+        options.count = count.clamped(between: Self.countRange.lowerBound, and: Self.countRange.upperBound)
         options.amount = amount.clamped(between: 0, and: 1)
         return options
     }

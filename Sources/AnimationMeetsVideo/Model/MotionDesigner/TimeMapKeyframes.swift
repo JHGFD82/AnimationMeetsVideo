@@ -195,6 +195,6 @@ extension ClipTimeMap {
     }
 
     private static func clamped(_ speed: Double) -> Double {
-        min(max(abs(speed), speedRange.lowerBound), speedRange.upperBound)
+        abs(speed).clamped(between: speedRange.lowerBound, and: speedRange.upperBound)
     }
 }

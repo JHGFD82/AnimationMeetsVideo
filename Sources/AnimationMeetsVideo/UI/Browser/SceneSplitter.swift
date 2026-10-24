@@ -300,7 +300,7 @@ final class SceneSplitter {
     /// when it leaves. Play isn't interrupted.
     func hover(atSeconds seconds: Double?) {
         guard !isPlaying, let target = skimTarget else { return }
-        skimming = seconds.map { min(max($0, 0), length) }
+        skimming = seconds.map { $0.clamped(between: 0, and: length) }
         if let skimming {
             skim.skim(target, at: skimming)
         } else if let markerSeconds {
@@ -321,7 +321,7 @@ final class SceneSplitter {
     func placeMarker(atSeconds seconds: Double) {
         stopPlaying()
         skimming = nil
-        marker = snapped(time(atSeconds: min(max(seconds, 0), length)))
+        marker = snapped(time(atSeconds: seconds.clamped(between: 0, and: length)))
         showMarker(audible: true)
     }
 
@@ -415,7 +415,7 @@ final class SceneSplitter {
     }
 
     func setZoom(_ value: Double) {
-        zoom = min(max(value, 1), maximumZoom)
+        zoom = value.clamped(between: 1, and: maximumZoom)
     }
 
     func zoom(by factor: Double) { setZoom(zoom * factor) }

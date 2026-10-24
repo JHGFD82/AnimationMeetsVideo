@@ -138,7 +138,7 @@ struct FilmstripLayout: Equatable {
         if point.x >= last.frame.maxX { return last.end }
         let cell = rowCells.first { point.x < $0.frame.maxX } ?? last
         let fraction = Double((point.x - cell.frame.minX) / cell.frame.width)
-        return min(max(cell.start + fraction * cell.duration, 0), duration)
+        return (cell.start + fraction * cell.duration).clamped(between: 0, and: duration)
     }
 
     /// Where `seconds` falls: the x in its thumbnail's row, and that row.

@@ -352,7 +352,7 @@ struct TimelineView: View {
             playback.endSkim()
             return
         }
-        let seconds = min(max(viewport.seconds(atX: x - labelColumnWidth), 0), timeline.duration.seconds)
+        let seconds = viewport.seconds(atX: x - labelColumnWidth).clamped(between: 0, and: timeline.duration.seconds)
         playback.skim(to: timeline.snappedToFrame(CMTime(seconds: seconds, preferredTimescale: 600_000)))
     }
 

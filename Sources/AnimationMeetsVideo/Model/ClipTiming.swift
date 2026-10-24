@@ -60,9 +60,9 @@ struct Echo: Equatable, Sendable {
 
     var clamped: Echo {
         Echo(
-            count: min(max(count, Self.countRange.lowerBound), Self.countRange.upperBound),
+            count: count.clamped(between: Self.countRange.lowerBound, and: Self.countRange.upperBound),
             delay: CMTimeMaximum(delay, CMTime(value: 1, timescale: 1000)),
-            decay: min(max(decay, Self.decayRange.lowerBound), Self.decayRange.upperBound)
+            decay: decay.clamped(between: Self.decayRange.lowerBound, and: Self.decayRange.upperBound)
         )
     }
 }
@@ -87,7 +87,7 @@ struct ClipTime: Equatable, Sendable {
     /// `speed` held to `speedRange` in size, keeping its sign (zero counts
     /// as forwards).
     static func clampedSpeed(_ speed: Double) -> Double {
-        let size = min(max(abs(speed), speedRange.lowerBound), speedRange.upperBound)
+        let size = abs(speed).clamped(between: speedRange.lowerBound, and: speedRange.upperBound)
         return speed < 0 ? -size : size
     }
 
@@ -106,7 +106,7 @@ struct ClipTime: Equatable, Sendable {
     /// instead would play a dip to -50% as 50% forwards.
     static func playedSize(_ value: Double, reversed: Bool) -> Double {
         let along = reversed ? -value : value
-        return min(max(along, speedRange.lowerBound), speedRange.upperBound)
+        return along.clamped(between: speedRange.lowerBound, and: speedRange.upperBound)
     }
 
     /// The speed turned to play forwards or backwards, with its sizes,
@@ -134,8 +134,8 @@ struct MotionBlur: Equatable, Sendable {
 
     var clamped: MotionBlur {
         MotionBlur(
-            angle: min(max(angle, Self.angleRange.lowerBound), Self.angleRange.upperBound),
-            samples: min(max(samples, Self.sampleRange.lowerBound), Self.sampleRange.upperBound)
+            angle: angle.clamped(between: Self.angleRange.lowerBound, and: Self.angleRange.upperBound),
+            samples: samples.clamped(between: Self.sampleRange.lowerBound, and: Self.sampleRange.upperBound)
         )
     }
 }

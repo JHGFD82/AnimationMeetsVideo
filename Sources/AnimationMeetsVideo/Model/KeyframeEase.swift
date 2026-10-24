@@ -22,8 +22,8 @@ struct KeyframeEase: Equatable, Sendable {
     static let speedRange = -10.0...10.0
 
     init(influence: Double, speed: Double) {
-        self.influence = min(max(influence, Self.influenceRange.lowerBound), Self.influenceRange.upperBound)
-        self.speed = min(max(speed, Self.speedRange.lowerBound), Self.speedRange.upperBound)
+        self.influence = influence.clamped(between: Self.influenceRange.lowerBound, and: Self.influenceRange.upperBound)
+        self.speed = speed.clamped(between: Self.speedRange.lowerBound, and: Self.speedRange.upperBound)
     }
 
     /// After Effects' Easy Ease: stops at the keyframe, 33% influence.
@@ -86,12 +86,12 @@ struct KeyframeEase: Equatable, Sendable {
     /// The ease an outgoing handle dragged to `point` in the unit square
     /// makes. Its time is kept inside the segment.
     static func outgoing(handleAt point: CGPoint) -> KeyframeEase {
-        let influence = min(max(Double(point.x), influenceRange.lowerBound), influenceRange.upperBound)
+        let influence = Double(point.x).clamped(between: influenceRange.lowerBound, and: influenceRange.upperBound)
         return KeyframeEase(influence: influence, speed: Double(point.y) / influence)
     }
 
     static func incoming(handleAt point: CGPoint) -> KeyframeEase {
-        let influence = min(max(1 - Double(point.x), influenceRange.lowerBound), influenceRange.upperBound)
+        let influence = (1 - Double(point.x)).clamped(between: influenceRange.lowerBound, and: influenceRange.upperBound)
         return KeyframeEase(influence: influence, speed: (1 - Double(point.y)) / influence)
     }
 

@@ -13,7 +13,7 @@ enum AudioLevel {
 
     static func clamped(_ decibels: Double) -> Double {
         guard decibels.isFinite else { return decibels > 0 ? maximum : silence }
-        return min(max(decibels, silence), maximum)
+        return decibels.clamped(between: silence, and: maximum)
     }
 
     /// The amplitude factor for a level: 1 at 0 dB, 0 when muted.
@@ -43,7 +43,7 @@ enum AudioPan {
 
     static func clamped(_ pan: Double) -> Double {
         guard pan.isFinite else { return pan > 0 ? range.upperBound : range.lowerBound }
-        return min(max(pan, range.lowerBound), range.upperBound)
+        return pan.clamped(between: range.lowerBound, and: range.upperBound)
     }
 
     /// The left and right channels' gain factors.

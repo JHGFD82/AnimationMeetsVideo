@@ -44,7 +44,7 @@ struct TimelineAreaLayout: Equatable, Codable {
     }
 
     private static func clamped(_ height: CGFloat) -> CGFloat {
-        min(max(height, layerHeightRange.lowerBound), layerHeightRange.upperBound)
+        height.clamped(between: layerHeightRange.lowerBound, and: layerHeightRange.upperBound)
     }
 
     /// One layer's height: its area's, times its own scale if it has one.
@@ -75,7 +75,7 @@ struct TimelineAreaLayout: Equatable, Codable {
     /// of a slider multiplies the height by the same amount.
     static func fraction(ofLayerHeight height: CGFloat) -> Double {
         let range = layerHeightRange
-        let clamped = min(max(height, range.lowerBound), range.upperBound)
+        let clamped = height.clamped(between: range.lowerBound, and: range.upperBound)
         return Double(log(clamped / range.lowerBound) / log(range.upperBound / range.lowerBound))
     }
 
@@ -136,7 +136,7 @@ struct TimelineAreaLayout: Equatable, Codable {
             return
         }
         let minimum = min(Self.minimumAreaHeight, (above + below) / 2)
-        let clamped = min(max(dy, minimum - above), below - minimum)
+        let clamped = dy.clamped(between: minimum - above, and: below - minimum)
         var heights = start
         heights[shown[index - 1]] = above + clamped
         heights[kind] = below - clamped

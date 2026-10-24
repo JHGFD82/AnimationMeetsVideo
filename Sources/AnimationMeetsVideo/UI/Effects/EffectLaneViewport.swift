@@ -40,7 +40,7 @@ final class LaneViewport {
         visibleWidth = width
         self.maxZoom = max(1, maxZoom)
         zoom = min(zoom, self.maxZoom)
-        scrollX = min(max(0, scrollX), maxScrollX)
+        scrollX = scrollX.clamped(between: 0, and: maxScrollX)
     }
 
     /// Shows the whole clip again.
@@ -58,8 +58,8 @@ final class LaneViewport {
         var band = zoomBand
         band.zoom(by: factor, about: visibleWidth > 0 ? x / visibleWidth : 0.5, pinching: pinching) { factor in
             let before = zoom
-            zoom = min(max(zoom * CGFloat(factor), 1), maxZoom)
-            scrollX = min(max(0, (scrollX + x) * zoom / before - x), maxScrollX)
+            zoom = (zoom * CGFloat(factor)).clamped(between: 1, and: maxZoom)
+            scrollX = ((scrollX + x) * zoom / before - x).clamped(between: 0, and: maxScrollX)
             return Double(zoom / before)
         }
         zoomBand = band
@@ -74,7 +74,7 @@ final class LaneViewport {
         var band = scrollBand
         band.scroll(by: points, phase: phase) { points in
             let before = scrollX
-            scrollX = min(max(0, before + points), maxScrollX)
+            scrollX = (before + points).clamped(between: 0, and: maxScrollX)
             return scrollX - before
         }
         scrollBand = band

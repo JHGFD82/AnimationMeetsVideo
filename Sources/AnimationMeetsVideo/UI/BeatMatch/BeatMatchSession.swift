@@ -65,7 +65,7 @@ final class BeatMatchSession: SecondsViewport {
         didSet {
             guard viewWidth > 0, viewWidth != oldValue else { return }
             guard hasFitted, oldValue > 0 else { return fit() }
-            secondsPerPoint = min(max(secondsPerPoint * Double(oldValue / viewWidth), closestZoom), farthestZoom)
+            secondsPerPoint = (secondsPerPoint * Double(oldValue / viewWidth)).clamped(between: closestZoom, and: farthestZoom)
             clampView()
         }
     }
@@ -697,7 +697,7 @@ final class BeatMatchSession: SecondsViewport {
     }
 
     func seek(to seconds: Double) {
-        let clamped = min(max(seconds, 0), duration.seconds)
+        let clamped = seconds.clamped(between: 0, and: duration.seconds)
         playhead = clamped
         tapRun = nil
         let fileTime = CMTimeAdd(CMTime(seconds: clamped, preferredTimescale: 48_000), alignment)

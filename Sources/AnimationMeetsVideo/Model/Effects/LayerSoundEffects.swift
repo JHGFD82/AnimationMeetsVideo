@@ -42,7 +42,7 @@ extension EditingProject {
         editLayerEffects(of: layerID, in: timelineID) { effects in
             guard let from = effects.index(of: effectID) else { return }
             let effect = effects.remove(at: from)
-            effects.insert(effect, at: min(max(index, 0), effects.count))
+            effects.insert(effect, at: index.clamped(between: 0, and: effects.count))
         }
     }
 }

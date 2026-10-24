@@ -263,7 +263,7 @@ struct EditingProject: Identifiable, Equatable {
             return
         }
         let layer = timelines[tIndex].layers.remove(at: from)
-        timelines[tIndex].layers.insert(layer, at: min(max(index, 0), timelines[tIndex].layers.count))
+        timelines[tIndex].layers.insert(layer, at: index.clamped(between: 0, and: timelines[tIndex].layers.count))
     }
 
     /// Moves a layer `offset` places up (negative) or down among the layers

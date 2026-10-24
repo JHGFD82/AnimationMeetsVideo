@@ -411,7 +411,7 @@ enum BeatFitting {
         fit(from: first, direction: -1) { $0 >= start }
         fit(from: last, direction: 1) { $0 < end }
         guard denominator > 0 else { return rough }
-        return min(max(numerator / denominator, period - reach), period + reach)
+        return (numerator / denominator).clamped(between: period - reach, and: period + reach)
     }
 
     // MARK: Doubling and halving

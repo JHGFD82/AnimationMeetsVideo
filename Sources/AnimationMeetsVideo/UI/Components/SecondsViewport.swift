@@ -32,7 +32,7 @@ extension SecondsViewport {
         band.zoom(by: factor, about: viewWidth > 0 ? x / viewWidth : 0.5, pinching: pinching) { factor in
             let anchor = seconds(atX: x)
             let before = secondsPerPoint
-            secondsPerPoint = min(max(secondsPerPoint / factor, closestZoom), farthestZoom)
+            secondsPerPoint = (secondsPerPoint / factor).clamped(between: closestZoom, and: farthestZoom)
             visibleStart = anchor - Double(x) * secondsPerPoint
             clampView()
             return before / secondsPerPoint
@@ -61,7 +61,7 @@ extension SecondsViewport {
     func clampView() {
         let span = Double(viewWidth) * secondsPerPoint
         let bounds = viewBounds
-        visibleStart = min(max(visibleStart, bounds.start), max(bounds.start, bounds.end - span))
+        visibleStart = visibleStart.clamped(between: bounds.start, and: max(bounds.start, bounds.end - span))
     }
 
     func zoomIn() { zoom(by: 2, aboutX: x(of: zoomFocus)) }

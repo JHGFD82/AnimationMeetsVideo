@@ -135,7 +135,7 @@ struct BeatMatchAudio: Sendable {
         }
         var source = ReaderSource(reader: reader, output: output)
         let seconds = duration.isFinite && duration > 0 ? duration : 0
-        var timed = TimedSamples(longestGap: Int64(min(max(seconds, 60), 24 * 3600) * rate), sampleRate: rate) { feed($0) }
+        var timed = TimedSamples(longestGap: Int64(seconds.clamped(between: 60, and: 24 * 3600) * rate), sampleRate: rate) { feed($0) }
         do {
             while true {
                 if isCancelled() { throw CancellationError() }

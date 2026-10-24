@@ -83,7 +83,7 @@ final class MotionDesignSession: SecondsViewport {
         didSet {
             guard viewWidth > 0, viewWidth != oldValue else { return }
             if !hasFitted { return fit() }
-            secondsPerPoint = min(max(secondsPerPoint, closestZoom), farthestZoom)
+            secondsPerPoint = secondsPerPoint.clamped(between: closestZoom, and: farthestZoom)
             clampView()
         }
     }
@@ -408,7 +408,7 @@ final class MotionDesignSession: SecondsViewport {
     /// Moves the playhead to `seconds`, within the window.
     func seek(to seconds: Double) {
         let window = window
-        playback.seek(to: CMTime(seconds: min(max(seconds, window.start), window.end), preferredTimescale: 48_000))
+        playback.seek(to: CMTime(seconds: seconds.clamped(between: window.start, and: window.end), preferredTimescale: 48_000))
     }
 
     /// Where the playhead is at `date`: the player's time while it plays.
@@ -422,7 +422,7 @@ final class MotionDesignSession: SecondsViewport {
     func fit() {
         let span = run.span
         let length = span.duration.seconds + 2 * windowRoom
-        secondsPerPoint = min(max(length / Double(max(viewWidth, 100)), closestZoom), farthestZoom)
+        secondsPerPoint = (length / Double(max(viewWidth, 100))).clamped(between: closestZoom, and: farthestZoom)
         visibleStart = span.start.seconds - windowRoom
         clampView()
         hasFitted = true

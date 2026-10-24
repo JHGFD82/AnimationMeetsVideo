@@ -27,7 +27,7 @@ extension EditingProject {
         )
         var layer = TimelineLayer(customName: nil, kind: .video, clips: [clip])
         layer.isAdjustment = true
-        timelines[tIndex].layers.insert(layer, at: min(max(index, 0), timelines[tIndex].layers.count))
+        timelines[tIndex].layers.insert(layer, at: index.clamped(between: 0, and: timelines[tIndex].layers.count))
         return (layer.id, clip.id)
     }
 

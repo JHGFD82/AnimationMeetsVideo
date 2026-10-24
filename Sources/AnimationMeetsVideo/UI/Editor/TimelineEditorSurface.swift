@@ -198,7 +198,7 @@ struct TimelineEditorSurface<Library: View>: View {
     var body: some View {
         GeometryReader { geometry in
             let maxTimelineHeight = max(minTimelineHeight, geometry.size.height - minTopAreaHeight)
-            let resolvedTimelineHeight = min(max(CGFloat(timelineHeight), minTimelineHeight), maxTimelineHeight)
+            let resolvedTimelineHeight = CGFloat(timelineHeight).clamped(between: minTimelineHeight, and: maxTimelineHeight)
 
             VStack(spacing: 0) {
                 TimelineHeaderBar(

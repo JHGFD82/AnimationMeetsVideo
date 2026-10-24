@@ -46,7 +46,7 @@ extension EditingProject {
         )
         clip.effects = [shape]
         let layer = TimelineLayer(customName: nil, kind: .video, clips: [clip])
-        timelines[tIndex].layers.insert(layer, at: min(max(index, 0), timelines[tIndex].layers.count))
+        timelines[tIndex].layers.insert(layer, at: index.clamped(between: 0, and: timelines[tIndex].layers.count))
         return (layer.id, clip.id)
     }
 }

@@ -358,7 +358,7 @@ private struct ScrubArea: View {
 
     private func scrollTo(_ x: CGFloat, width: CGFloat? = nil) {
         let limit = max((width ?? geometry.contentWidth) - viewport, 0)
-        scroll.scrollTo(x: min(max(x, 0), limit))
+        scroll.scrollTo(x: x.clamped(between: 0, and: limit))
     }
 
     // MARK: Ruler

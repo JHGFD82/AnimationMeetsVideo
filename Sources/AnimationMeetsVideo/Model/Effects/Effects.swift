@@ -281,7 +281,7 @@ struct ControlKind: RawRepresentable, Hashable, Identifiable, Sendable {
     func clamped(_ component: Double) -> Double {
         let whole = isWhole ? component.rounded() : component
         guard let range else { return whole }
-        return min(max(whole, range.lowerBound), range.upperBound)
+        return whole.clamped(between: range.lowerBound, and: range.upperBound)
     }
 
     /// A shown value with its unit.
@@ -314,7 +314,7 @@ struct ControlKind: RawRepresentable, Hashable, Identifiable, Sendable {
     /// One component limited to what the control allows there.
     func clamped(_ component: Double, index: Int) -> Double {
         guard EqualizerBand(controlKind: self) != nil, let range = range(ofComponent: index) else { return clamped(component) }
-        return min(max(component, range.lowerBound), range.upperBound)
+        return component.clamped(between: range.lowerBound, and: range.upperBound)
     }
 
     /// One component's shown value with its unit.
@@ -568,7 +568,7 @@ struct Effect: Identifiable, Equatable, Sendable {
     mutating func moveControl(_ id: UUID, toIndex index: Int) {
         guard let from = controlIndex(id) else { return }
         let control = controls.remove(at: from)
-        controls.insert(control, at: min(max(index, 0), controls.count))
+        controls.insert(control, at: index.clamped(between: 0, and: controls.count))
     }
 
     /// Puts back a control that was deleted, at the end.
@@ -749,7 +749,7 @@ extension EditingProject {
         var effect = Effect.make(kind, among: clip[keyPath: stack])
         if let frame = timeline(id: timelineID)?.frameSize { effect.sizeShape(to: frame) }
         let count = clip[keyPath: stack].count
-        let at = min(max(index ?? (kind.isKeyframing ? 0 : count), 0), count)
+        let at = (index ?? (kind.isKeyframing ? 0 : count)).clamped(between: 0, and: count)
         var placed = clip
         placed[keyPath: stack].insert(effect, at: at)
         if kind.isKeyframing {
@@ -801,7 +801,7 @@ extension EditingProject {
         editClip(clipID, in: timelineID) { clip in
             guard let stack = clip.stack(holding: effectID), let from = clip[keyPath: stack].index(of: effectID) else { return }
             let effect = clip[keyPath: stack].remove(at: from)
-            clip[keyPath: stack].insert(effect, at: min(max(index, 0), clip[keyPath: stack].count))
+            clip[keyPath: stack].insert(effect, at: index.clamped(between: 0, and: clip[keyPath: stack].count))
         }
     }
 

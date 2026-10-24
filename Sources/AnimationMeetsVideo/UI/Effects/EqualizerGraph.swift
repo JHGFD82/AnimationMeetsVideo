@@ -441,7 +441,7 @@ struct EqualizerGraph: View {
         var x = plot.minX
         while x <= plot.maxX {
             let last = levels.count - 1
-            let low = min(max(1, Int(layout.frequency(atX: x) / width)), last)
+            let low = Int(layout.frequency(atX: x) / width).clamped(between: 1, and: last)
             let high = max(low, min(Int(layout.frequency(atX: x + step) / width), last))
             let loudest = levels[low...high].max() ?? floor
             path.addLine(to: CGPoint(x: x, y: y(loudest)))

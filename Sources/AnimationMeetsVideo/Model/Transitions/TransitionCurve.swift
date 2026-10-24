@@ -152,7 +152,7 @@ struct TransitionCurve: Equatable, Sendable {
     mutating func movePoint(_ index: Int, to location: CGPoint) {
         guard index > 0, index < points.count - 1 else { return }
         let gap = 0.01
-        points[index].time = min(max(Double(location.x), points[index - 1].time + gap), points[index + 1].time - gap)
+        points[index].time = Double(location.x).clamped(between: points[index - 1].time + gap, and: points[index + 1].time - gap)
         points[index].value = Double(location.y).clamped(between: 0, and: 1)
         clampHandles(of: index - 1)
         clampHandles(of: index)
@@ -219,7 +219,7 @@ struct TransitionCurve: Equatable, Sendable {
         guard points.indices.contains(index) else { return }
         if index > 0, var handle = points[index].inHandle {
             let reach = points[index].time - points[index - 1].time
-            handle.dx = min(max(handle.dx, -reach), 0)
+            handle.dx = handle.dx.clamped(between: -reach, and: 0)
             points[index].inHandle = handle.nonZero
         }
         if index < points.count - 1, var handle = points[index].outHandle {
