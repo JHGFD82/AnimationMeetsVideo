@@ -1,10 +1,11 @@
 # Effect packages
 
-Status: **built** through step 11 of [Building it](#building-it): every
+Status: **built** through step 12 of [Building it](#building-it): every
 look is a package, reading [pictures besides the
-clip's](#pictures-besides-the-clips) where it needs them, and there is a
-guide to [writing a package](#making-a-package). Making packages from
-the app is planned. `EffectKind` and `ControlKind`
+clip's](#pictures-besides-the-clips) where it needs them; there is a
+guide to [writing a package](#making-a-package), and New Effect Package
+makes one from the app. Copying a look as a package, and opening one
+from Finder, are planned. `EffectKind` and `ControlKind`
 are names looked up in an `EffectRegistry` of the effects written in
 Swift (BuiltInEffects.swift), the 25 looks that ship as packages
 (Resources/Effects) and the person's packages, which
@@ -304,12 +305,16 @@ What to know:
 
 ### Starting one from the app
 
-Status: **planned, not implemented**.
+Status: **New Effect Package built**; the other two planned.
 
 - **New Effect Package…**, in the File menu and the effects library's
-  menu, asks for a name and writes a package like Tint above into the
-  Effects folder, under the ID `user.` and the name in camel case, then
-  shows it in Finder.
+  context menu (beside **Show Effects Folder**), asks for a name and
+  writes a package like Tint above into the Effects folder, under the ID
+  `user.` and the name's letters and digits in camel case ("My Glow" is
+  `user.myGlow`), its kernel function `user` and the same (`userMyGlow`,
+  never a Metal word). It is installed at once and its `kernel.metal`
+  shown in Finder. A name without a letter to start it, or one whose
+  folder or ID is taken, says so instead (`EffectPackageStore.makePackage`).
 - **Make a Package from This…**, in the menu of a package look's chip in
   the library, copies that package into the Effects folder as a new one,
   "Twirl Copy" with the ID `user.twirlCopy` and version 1, its controls
@@ -323,8 +328,10 @@ Status: **planned, not implemented**.
   installed asks whether to replace it.
 
 A package made or opened this way is installed at once, beside the others
-in the registry, without opening the app again: adding an effect kind
-changes no effect already in a project. An effect of its kind in the open
+in the registry (`EffectRegistry.adding`), without opening the app again:
+adding an effect kind changes no effect already in a project. The
+library lists it as `EffectPackageStatus`, which it watches, says one
+was installed, and its kernel is compiled then. An effect of its kind in the open
 project that loaded as missing comes back when the project is opened
 again. Replacing an installed package takes effect at the next launch,
 as editing one does, since effects in the open project use its controls.
@@ -575,5 +582,6 @@ In order, each step usable on its own:
 10. Motion, and Flow Smear moved. **Built.**
 11. Writing a package by hand, described above. **Built.**
 12. Installing a package while the app runs, and New Effect Package.
+    **Built.**
 13. Make a Package from This.
 14. `.amveffect` as a Finder package type, opened by the app.

@@ -67,6 +67,21 @@ struct EffectRegistry: Sendable {
     /// person's packages, at launch.
     static var current: EffectRegistry { override ?? installed.withLock { $0 } }
 
+    /// This registry with `package` added beside the person's others, for
+    /// one made or opened while the app runs. Throws if its ID is taken.
+    func adding(_ package: EffectPackage) throws -> EffectRegistry {
+        guard effect(named: package.id) == nil else { throw EffectRegistryError.taken(package.id) }
+        let builtIn = Set(Self.builtInPackages.packages.map(\.id))
+        let shipped = Set(Self.builtInPackages.problems.map(\.url))
+        let theirs = effects.compactMap(\.package).filter { !builtIn.contains($0.id) }
+        return Self.withBuiltIns(theirs + [package], problems: problems.filter { !shipped.contains($0.url) })
+    }
+
+    /// Adds `package` to the registry in use (see `adding`).
+    static func add(_ package: EffectPackage) throws {
+        try installed.withLock { registry in registry = try registry.adding(package) }
+    }
+
     /// Puts `packages` beside the built-in effects, replacing any installed
     /// before, with `problems` the packages that couldn't be read.
     static func install(_ packages: [EffectPackage], problems: [EffectPackageProblem] = []) {
@@ -88,6 +103,16 @@ struct EffectRegistry: Sendable {
     func definition(of kind: ControlKind) -> ControlDefinition {
         guard let definition = controlsByName[kind.rawValue] else { preconditionFailure("No control kind \"\(kind.rawValue)\"") }
         return definition
+    }
+}
+
+enum EffectRegistryError: LocalizedError {
+    case taken(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .taken(let id): "An effect called \"\(id)\" is already installed."
+        }
     }
 }
 

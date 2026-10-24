@@ -100,6 +100,7 @@ struct AnimationMeetsVideoApp: App {
                 .equatable()
                 .environment(projectState)
                 .mediaReplacementDialogs(project: $projectState.value, controller: replacement)
+                .newEffectPackagePrompt()
                 .onExternalProjectChange { checkForExternalProjectChange() }
                 .frame(minWidth: 1_100, minHeight: 700)
                 .sheet(isPresented: Binding(get: { launchChecked && projectURL == nil }, set: { _ in })) {
@@ -175,6 +176,12 @@ struct AnimationMeetsVideoApp: App {
                 }
                 .keyboardShortcut("j", modifiers: [.command])
                 .disabled(projectURL == nil)
+
+                Divider()
+
+                Button("New Effect Package…") {
+                    NewEffectPackagePrompt.shared.ask()
+                }
             }
             EditCommands()
             TimelineCommands()

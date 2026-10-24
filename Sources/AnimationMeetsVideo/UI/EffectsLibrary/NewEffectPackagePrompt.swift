@@ -1,0 +1,70 @@
+import AppKit
+import Observation
+import SwiftUI
+
+/// Asking for a new effect package's name, from the File menu or the
+/// effects library, then making it, installing it and showing its kernel
+/// in Finder (see docs/effect-packages.md, "Starting one from the app").
+@MainActor
+@Observable
+final class NewEffectPackagePrompt {
+    static let shared = NewEffectPackagePrompt()
+
+    var isAsking = false
+    var name = ""
+    /// Why the last one couldn't be made or installed.
+    var error: String?
+
+    func ask() {
+        name = "My Look"
+        isAsking = true
+    }
+
+    func make() {
+        let name = name
+        Task {
+            do {
+                let url = try EffectPackageStore.makePackage(named: name)
+                _ = try await EffectPackageStatus.shared.install(url)
+                NSWorkspace.shared.activateFileViewerSelecting([url.appending(path: "kernel.metal")])
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    /// The Effects folder in Finder, made first if there is none yet.
+    static func showEffectsFolder() {
+        let folder = EffectPackageStore.defaultFolder
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([folder])
+    }
+}
+
+/// The prompt's alerts, on the editor window.
+private struct NewEffectPackageAlerts: ViewModifier {
+    @Bindable var prompt = NewEffectPackagePrompt.shared
+
+    func body(content: Content) -> some View {
+        content
+            .alert("New Effect Package", isPresented: $prompt.isAsking) {
+                TextField("Name", text: $prompt.name)
+                Button("Make") { prompt.make() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("A starting package is made in the Effects folder and added to the library. Edit its effect.json and kernel.metal, then open the app again to see the changes.")
+            }
+            .alert("The Effect Package Wasn't Made", isPresented: Binding(get: { prompt.error != nil }, set: { if !$0 { prompt.error = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(prompt.error ?? "")
+            }
+    }
+}
+
+extension View {
+    /// Where New Effect Package asks for its name.
+    func newEffectPackagePrompt() -> some View {
+        modifier(NewEffectPackageAlerts())
+    }
+}

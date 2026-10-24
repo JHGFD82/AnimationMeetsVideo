@@ -19,6 +19,8 @@ struct EffectsListPanel: View {
     var packageStatus = EffectPackageStatus.shared
 
     var body: some View {
+        // Read so a package installed while the app runs is listed.
+        let _ = packageStatus.revision
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Design.Space.close) {
@@ -44,6 +46,12 @@ struct EffectsListPanel: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .sunken(.sunken)
+            .contextMenu {
+                Button("New Effect Package…") { NewEffectPackagePrompt.shared.ask() }
+                Button("Show Effects Folder") { NewEffectPackagePrompt.showEffectsFolder() }
+            }
+            .accessibilityAction(named: "New Effect Package") { NewEffectPackagePrompt.shared.ask() }
+            .accessibilityAction(named: "Show Effects Folder") { NewEffectPackagePrompt.showEffectsFolder() }
 
             Text("Drag an effect onto a clip or into the stack, or double-click it to add it to the selected clip. A shape dragged onto empty timeline, or double-clicked with no shape clip selected, makes a shape layer.")
                 .font(Design.Typeface.micro)

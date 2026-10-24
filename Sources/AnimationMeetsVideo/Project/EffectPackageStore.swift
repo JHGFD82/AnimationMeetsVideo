@@ -21,9 +21,23 @@ final class EffectPackageStatus {
 
     /// Why each package's kernel doesn't compile, by package ID.
     private(set) var kernelProblems: [String: String]
+    /// Bumped as a package is installed while the app runs, so what lists
+    /// the effects (read from the registry, which isn't observed) does again.
+    private(set) var revision = 0
 
     init(kernelProblems: [String: String] = [:]) {
         self.kernelProblems = kernelProblems
+    }
+
+    /// Reads the package at `url`, adds it to the registry beside those
+    /// installed, and compiles its kernel. Throws why it can't be used.
+    func install(_ url: URL) async throws -> EffectPackage {
+        let package = try EffectPackageStore.read(url)
+        try EffectRegistry.add(package)
+        revision += 1
+        let problem = await Task.detached(priority: .userInitiated) { PackageKernels.problem(for: package) }.value
+        kernelProblems[package.id] = problem
+        return package
     }
 
     /// Compiles each package's kernel away from the main thread, then
@@ -137,6 +151,74 @@ enum EffectPackageStore {
         } catch let problem as JSONShapeError {
             throw EffectPackageError("The package can't be used. \(problem.sentence)")
         }
+    }
+
+    // MARK: Making one
+
+    /// The ID a package made from the app takes: `user.` and its name in
+    /// camel case, of its letters and digits ("My Glow" is `user.myGlow`).
+    /// Nil for a name with no letter to start it.
+    static func userID(for name: String) -> String? {
+        camelCase(name).map { "user.\($0)" }
+    }
+
+    private static func camelCase(_ name: String) -> String? {
+        let words = name.split { !($0.isASCII && ($0.isLetter || $0.isNumber)) }
+        guard let first = words.first, first.first?.isLetter == true else { return nil }
+        return first.prefix(1).lowercased() + first.dropFirst() + words.dropFirst().map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined()
+    }
+
+    /// Writes a new package called `name` into `folder`: a Tint, as in the
+    /// guide (docs/effect-packages.md, "Writing one by hand"), to change
+    /// into something else. Returns its folder.
+    static func makePackage(named name: String, in folder: URL = defaultFolder) throws -> URL {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let id = userID(for: name), let camel = camelCase(name) else {
+            throw EffectPackageError("Give it a name that starts with a letter.")
+        }
+        guard EffectRegistry.current.effect(named: id) == nil else {
+            throw EffectPackageError("An effect called \"\(id)\" is already installed.")
+        }
+        let url = folder.appending(path: "\(name).\(EffectPackage.fileExtension)", directoryHint: .isDirectory)
+        guard !FileManager.default.fileExists(atPath: url.path) else {
+            throw EffectPackageError("The Effects folder already has a package called \"\(name)\".")
+        }
+        // Kernel functions are Metal names, so this one can't be a Metal
+        // word such as `half`.
+        let function = "user" + camel.prefix(1).uppercased() + camel.dropFirst()
+        let manifest = """
+        {
+          "formatVersion": 1,
+          "id": "\(id)",
+          "version": 1,
+          "name": \(String(data: try JSONEncoder().encode(name), encoding: .utf8)!),
+          "category": "recolor",
+          "symbol": "wand.and.stars",
+          "kernel": { "file": "kernel.metal", "function": "\(function)", "type": "color" },
+          "controls": [
+            { "id": "tint", "name": "Tint", "type": "color", "default": [1, 0.6, 0.2] },
+            { "id": "strength", "name": "Strength", "type": "number", "default": 100, "range": [0, 200], "unit": "%" }
+          ],
+          "amount": true,
+          "arguments": ["tint", "strength / 100"]
+        }
+
+        """
+        let kernel = """
+        // Each pixel's tones multiplied by a color, `strength` of the way: a
+        // starting point. See docs/effect-packages.md for what a package can
+        // say, and the looks that ship for kernels of every kind.
+        extern "C" [[stitchable]] float4 \(function)(coreimage::sample_t s, float space, float4 tint, float strength, float amount) {
+            float3 t = toTones(straight(s), space);
+            float3 tinted = t * mix(float3(1.0), tint.rgb, strength);
+            return mixed(s, fromTones(tinted, space), amount);
+        }
+
+        """
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try manifest.write(to: url.appending(path: manifestName), atomically: true, encoding: .utf8)
+        try kernel.write(to: url.appending(path: "kernel.metal"), atomically: true, encoding: .utf8)
+        return url
     }
 
     // MARK: Shape
