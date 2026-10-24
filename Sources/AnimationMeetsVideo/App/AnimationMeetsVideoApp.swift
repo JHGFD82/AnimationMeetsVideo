@@ -282,7 +282,7 @@ struct AnimationMeetsVideoApp: App {
             replacement.reset()
             rememberLastProject(url)
         } catch {
-            showAlert(title: "Couldn't Create Project", message: error.localizedDescription)
+            showAlert(title: "Couldn't Create Project", message: ErrorAdvice.sentence(for: error))
         }
     }
 
@@ -400,7 +400,7 @@ struct AnimationMeetsVideoApp: App {
             replacement.markMissing(result.offlineMedia)
             reportMediaProblems(in: result)
         } catch {
-            showAlert(title: "Couldn't Open Project", message: error.localizedDescription)
+            showAlert(title: "Couldn't Open Project", message: ErrorAdvice.sentence(for: error))
         }
     }
 
@@ -496,7 +496,7 @@ struct AnimationMeetsVideoApp: App {
                 rememberLastProject(url)
                 return true
             } catch {
-                showAlert(title: "Couldn't Save Project", message: error.localizedDescription)
+                showAlert(title: "Couldn't Save Project", message: ErrorAdvice.sentence(for: error))
                 return false
             }
         }
@@ -546,7 +546,7 @@ struct AnimationMeetsVideoApp: App {
                 fileMonitor.acknowledge(change)
                 showAlert(
                     title: "The Project File Changed but Couldn't Be Read",
-                    message: "\(error.localizedDescription)\n\nThe open project is unchanged. Saving will overwrite the file."
+                    message: "\(ErrorAdvice.sentence(for: error))\n\nThe open project is unchanged. Saving will overwrite the file."
                 )
             }
         }
@@ -615,7 +615,7 @@ struct AnimationMeetsVideoApp: App {
             autosaveStatus.succeeded()
         } catch {
             NSLog("Autosave failed: \(error.localizedDescription)")
-            autosaveStatus.failed(error.localizedDescription)
+            autosaveStatus.failed(ErrorAdvice.sentence(for: error))
         }
     }
 

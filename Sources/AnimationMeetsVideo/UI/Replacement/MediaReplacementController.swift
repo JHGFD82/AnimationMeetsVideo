@@ -430,7 +430,7 @@ final class MediaReplacementController {
                 return
             } catch {
                 guard self.session?.id == session.id else { return }
-                session.phase = .failed(error.localizedDescription)
+                session.phase = .failed(ErrorAdvice.sentence(for: error))
             }
         }
     }

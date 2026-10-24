@@ -264,7 +264,7 @@ struct EditorToolbar: View {
             } catch is CancellationError {
                 // The user cancelled; nothing to report.
             } catch {
-                exportError = error.localizedDescription
+                exportError = ErrorAdvice.sentence(for: error)
             }
         }
     }
