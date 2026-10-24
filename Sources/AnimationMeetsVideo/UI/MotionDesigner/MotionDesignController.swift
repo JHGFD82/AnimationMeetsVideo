@@ -30,17 +30,12 @@ final class MotionDesignController {
     /// reach: its scene.
     @ObservationIgnored var sceneTracks: () -> [UUID: ChangeScoreTrack] = { [:] }
 
-    @ObservationIgnored private var panel: DraftPanel?
-    @ObservationIgnored private var panelDelegate: DraftPanelDelegate?
-    @ObservationIgnored private var observers: [NSObjectProtocol] = []
-    @ObservationIgnored private weak var editorWindow: NSWindow?
-    /// Keeps the pointer out of the editor while the panel is open.
-    @ObservationIgnored private var inputBlock: WindowInputBlock?
+    @ObservationIgnored private var presentation: DraftPanelPresentation?
 
     /// Opens the panel on the clips with these IDs, or says why it can't.
     func open(clips ids: Set<UUID>, in timelineID: UUID, of project: EditingProject) {
         if session != nil { bringToFront(); return }
-        editorWindow = NSApp.mainWindow ?? NSApp.keyWindow
+        let editorWindow = NSApp.mainWindow ?? NSApp.keyWindow
         let run: MotionRun
         let tracks = sceneTracks()
         let footage = { (clip: TimelineClip) -> CMTimeRange? in
@@ -49,7 +44,7 @@ final class MotionDesignController {
         }
         switch MotionRun.opening(ids, in: timelineID, of: project, footage: footage) {
         case .success(let opened): run = opened
-        case .failure(let error): return explain(error, ids: ids, in: timelineID)
+        case .failure(let error): return explain(error, ids: ids, in: timelineID, over: editorWindow)
         }
         onOpen()
         let session = MotionDesignSession(run: run, project: project, playback: playback ?? PlaybackModel())
@@ -59,40 +54,21 @@ final class MotionDesignController {
 
         let names = run.pieces.compactMap { project.resolvedInfo(for: $0.clip.source)?.name }
         let title = names.count == 1 ? "Motion Designer: \(names[0])" : "Motion Designer: \(names.count) Clips"
-        let panel = DraftPanel.make(
+        presentation = DraftPanelPresentation(
             title: title, size: NSSize(width: 1120, height: 560),
-            minimum: NSSize(width: 860, height: 420), undo: session.undoManager, over: editorWindow
+            minimum: NSSize(width: 860, height: 420), undo: session.undoManager, over: editorWindow,
+            content: MotionDesignView(
+                session: session,
+                onDone: { [weak self] in self?.done() },
+                onCancel: { [weak self] in self?.requestClose() }
+            ),
+            onClose: { [weak self] in self?.requestClose() }
         )
-        let host = DraftPanelHostingView(rootView: MotionDesignView(
-            session: session,
-            onDone: { [weak self] in self?.done() },
-            onCancel: { [weak self] in self?.requestClose() }
-        ))
-        // The panel's size is the person's; the view fills whatever it is.
-        host.sizingOptions = [.minSize]
-        panel.contentView = host
-        let delegate = DraftPanelDelegate()
-        delegate.shouldClose = { [weak self] in
-            self?.requestClose()
-            return false
-        }
-        panel.delegate = delegate
-        panelDelegate = delegate
-        // The editor takes no input meanwhile, not even hovering, so a
-        // click on it means the person is looking for the panel.
-        inputBlock = WindowInputBlock(window: editorWindow) { [weak self] in self?.bringToFront() }
-        observers = [
-            NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: editorWindow, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.bringToFront() }
-            },
-        ]
-        self.panel = panel
-        panel.makeKeyAndOrderFront(nil)
     }
 
     /// Why a selection can't open, on the editor window; a selection across
     /// layers can be nested into one and opened.
-    private func explain(_ error: MotionRun.OpenError, ids: Set<UUID>, in timelineID: UUID) {
+    private func explain(_ error: MotionRun.OpenError, ids: Set<UUID>, in timelineID: UUID, over editorWindow: NSWindow?) {
         let alert = NSAlert()
         switch error {
         case .nothingSelected:
@@ -133,7 +109,7 @@ final class MotionDesignController {
     }
 
     func bringToFront() {
-        panel?.makeKeyAndOrderFront(nil)
+        presentation?.bringToFront()
     }
 
     /// Keeps the changes, already in the project, and closes.
@@ -144,18 +120,12 @@ final class MotionDesignController {
     /// Cancel and the close button: closes, asking first when the draft
     /// differs from the project.
     func requestClose() {
-        guard let session, let panel else { return }
+        guard let session, let presentation else { return }
         guard session.isChanged else { return tearDown() }
-        let alert = NSAlert()
-        alert.messageText = "Discard your retiming?"
-        alert.informativeText = "The clips go back to how they were before the motion designer opened."
-        alert.addButton(withTitle: "Keep Editing")
-        alert.addButton(withTitle: "Discard Changes").hasDestructiveAction = true
-        alert.beginSheetModal(for: panel) { [weak self] response in
-            if response == .alertSecondButtonReturn {
-                MainActor.assumeIsolated { self?.revertAndClose() }
-            }
-        }
+        presentation.askToDiscard(
+            "Discard your retiming?",
+            detail: "The clips go back to how they were before the motion designer opened."
+        ) { [weak self] in self?.revertAndClose() }
     }
 
     /// Puts the project back as it was when the panel opened, and closes.
@@ -172,16 +142,9 @@ final class MotionDesignController {
     /// Closes, recording what the session changed as one step, if anything.
     private func tearDown() {
         history?.endGesture()
-        for observer in observers { NotificationCenter.default.removeObserver(observer) }
-        observers = []
-        inputBlock?.end()
-        inputBlock = nil
         session?.end()
         session = nil
-        panel?.delegate = nil
-        panel?.close()
-        panel = nil
-        panelDelegate = nil
-        editorWindow?.makeKeyAndOrderFront(nil)
+        presentation?.end()
+        presentation = nil
     }
 }
