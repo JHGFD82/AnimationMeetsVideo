@@ -58,6 +58,20 @@ private struct BackupSandbox {
         #expect(info.originalProject == sandbox.packageURL.path)
     }
 
+    @Test func browsingStartsInTheProjectsFolderOnceItHasOne() async throws {
+        let sandbox = try await BackupSandbox()
+        defer { sandbox.cleanUp() }
+        let before = ProjectBackups.folderToBrowse(forProjectNamed: "Test", in: sandbox.location)
+        #expect(before == sandbox.location)
+
+        let backup = try ProjectBackups.write(sandbox.project, packageURL: sandbox.packageURL, to: sandbox.location)
+        let after = ProjectBackups.folderToBrowse(forProjectNamed: "Test", in: sandbox.location)
+        #expect(after.standardizedFileURL == backup.deletingLastPathComponent().standardizedFileURL)
+        // Another project's backups aren't where this one's are looked for.
+        let other = ProjectBackups.folderToBrowse(forProjectNamed: "Other", in: sandbox.location)
+        #expect(other == sandbox.location)
+    }
+
     @Test func onlyTheNewestAreKept() async throws {
         let sandbox = try await BackupSandbox()
         defer { sandbox.cleanUp() }

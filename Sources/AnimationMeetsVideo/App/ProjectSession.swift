@@ -132,6 +132,23 @@ final class ProjectSession {
         return ProjectStore.packageURL(forSelection: selection)
     }
 
+    /// Asks for one of this project's backups, starting in its folder in
+    /// the backup location, so they are a step away and listed by date
+    /// (their names end in it). Returns the backup, which opening makes a
+    /// new project of (`ProjectWindows.open`).
+    func chooseBackupToOpen() -> URL? {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [ProjectBackups.type]
+        panel.allowsMultipleSelection = false
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.directoryURL = ProjectBackups.folderToBrowse(forProjectNamed: project.name, in: Preferences.backupFolder)
+        panel.prompt = "Open Backup"
+        panel.message = "Choose a backup of \u{201C}\(project.name)\u{201D} to make a new project from, beside the original, which is left as it is."
+        guard panel.runModal() == .OK else { return nil }
+        return panel.url
+    }
+
     /// Opens the project at `url` in this session, which must be empty.
     /// Returns whether it opened.
     @discardableResult

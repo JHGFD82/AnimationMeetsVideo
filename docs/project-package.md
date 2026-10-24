@@ -11,8 +11,9 @@ and `project.json` holds scene edits (see [scene-cuts.md](scene-cuts.md)).
 [beat-detection.md](beat-detection.md)); the beats the person confirmed
 are the person's work, so they are in `project.json`, as an asset's
 `beatMap`, written only once it has a section (see
-[beat-matching.md](beat-matching.md#saving)). The render cache is implemented (see [rendering.md](rendering.md)). Not yet implemented: dense reference frames, a list of backups to restore from (copy one over
-`project.json` by hand for now).
+[beat-matching.md](beat-matching.md#saving)). The render cache is implemented (see [rendering.md](rendering.md)). Not yet implemented: dense reference frames, a list of the package's own
+autosaves to restore from (only the newest unsaved one is offered on
+opening; copy an older one over `project.json` by hand).
 Step 4 is implemented (see [media-replacement.md](media-replacement.md)):
 `project.json` stores each asset's alignment offset, earlier file paths, the
 file stamp accepted at the last save, and whether its original was forgotten.
@@ -192,8 +193,9 @@ hidden name and renamed when whole, off the main thread through the
 `PackageCoordinator`. One that fails shows **Not backed up** in the
 toolbar and is tried again at the next interval.
 
-Opening a backup (double-clicking it, or choosing it in File > Open)
-never touches the project it came from: it is copied beside that project
+Opening a backup (double-clicking it, choosing it in File > Open, or
+File > Open Backup…, which starts in the front project's folder of
+backups, listed by date) never touches the project it came from: it is copied beside that project
 as a new one, "Name from backup 2026-10-24 14.30.amv" (with " 2" if
 taken), its `backup.json` dropped, its name set to match and a project
 ID of its own given, so it is never taken for the original, and opened.

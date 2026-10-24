@@ -119,10 +119,15 @@ enum Preferences {
     static var backups: (location: URL, interval: Duration)? {
         let defaults = UserDefaults.standard
         guard defaults.object(forKey: backsUpProjects) as? Bool ?? true else { return nil }
-        let path = defaults.string(forKey: backupLocation) ?? ""
-        let location = path.isEmpty ? ProjectBackups.defaultLocation : URL(fileURLWithPath: path, isDirectory: true)
         let minutes = defaults.object(forKey: backupInterval) as? Int ?? 15
-        return (location, .seconds(max(minutes, 1) * 60))
+        return (backupFolder, .seconds(max(minutes, 1) * 60))
+    }
+
+    /// The folder backups go to as it is set, whether or not they are on,
+    /// for finding the backups already there.
+    static var backupFolder: URL {
+        let path = UserDefaults.standard.string(forKey: backupLocation) ?? ""
+        return path.isEmpty ? ProjectBackups.defaultLocation : URL(fileURLWithPath: path, isDirectory: true)
     }
 
     /// Everything about where the panels are and how big: their sizes,

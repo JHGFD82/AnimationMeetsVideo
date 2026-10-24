@@ -41,7 +41,9 @@ Built and tested in code, never run on screen.
   check its contents and the clone (no extra space on the same volume);
   double-click it (after `scripts/build-app.sh`, so Finder knows
   `.amvbackup`) and check the new project beside the original; move the
-  original's folder away first and check it asks where to restore.
+  original's folder away first and check it asks where to restore;
+  File > Open Backup… starts in the project's backups and opens one the
+  same way.
 - [ ] **Earlier in the PR**: the title bar's name, proxy icon and edited
   dot; File > Import Media and Export; Open Recent and the start sheet;
   Locate… and Check Sync…; Export Finished with Show in Finder.
@@ -56,9 +58,5 @@ Built and tested in code, never run on screen.
   paste only while the project it came from is open in a window: the
   app finds that project through its window. Media inside the other
   project's package is found by its path and doesn't need that.
-- **No list of backups in the app.** A backup is opened from Finder or
-  File > Open; Settings > Projects can show the folder. A window
-  listing a project's backups with their dates, to open one, would save
-  the trip.
 - **Closing the last window quits the app.** Kept on purpose; with
   recent projects and reopening at launch, getting back is quick.

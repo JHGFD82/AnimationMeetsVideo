@@ -44,6 +44,12 @@ struct ProjectCommands: Commands {
                 .disabled(recents.paths.isEmpty)
             }
 
+            Button("Open Backup…") {
+                guard let url = session?.chooseBackupToOpen() else { return }
+                ProjectWindows.shared.open(url, from: session, openWindow: openWindow)
+            }
+            .disabled(session?.isEmpty ?? true)
+
             Divider()
 
             Button("Save Project") {

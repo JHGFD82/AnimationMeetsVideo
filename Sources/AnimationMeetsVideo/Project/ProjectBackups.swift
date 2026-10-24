@@ -65,6 +65,15 @@ enum ProjectBackups {
         location.appending(path: name.isEmpty ? "Untitled" : name, directoryHint: .isDirectory)
     }
 
+    /// Where to look for a project's backups: its folder in `location`,
+    /// or `location` itself before the project has one (or after it was
+    /// renamed, when its backups are under the old name).
+    static func folderToBrowse(forProjectNamed name: String, in location: URL) -> URL {
+        let folder = folder(forProjectNamed: name, in: location)
+        var isFolder: ObjCBool = false
+        return FileManager.default.fileExists(atPath: folder.path, isDirectory: &isFolder) && isFolder.boolValue ? folder : location
+    }
+
     // MARK: - Writing
 
     /// Writes a backup of `project`, saved in `packageURL`, into its folder
