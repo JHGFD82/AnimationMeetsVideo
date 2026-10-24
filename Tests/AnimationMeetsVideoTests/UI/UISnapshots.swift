@@ -227,6 +227,21 @@ struct UISnapshots {
         )
     }
 
+    /// The start sheet with three recent projects, two of one name in
+    /// different folders.
+    @Test func projectStart() throws {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let recents = [
+            home.appendingPathComponent("Movies/Music Video.amv"),
+            home.appendingPathComponent("Movies/Tests/Music Video.amv"),
+            URL(fileURLWithPath: "/Volumes/Projects/Trailer.amv"),
+        ]
+        try SnapshotSupport.render(
+            ProjectStartView(recents: recents, onNew: {}, onOpen: {}),
+            "project-start", size: CGSize(width: 560, height: 470)
+        )
+    }
+
     /// The toolbar's warning while automatic backups fail.
     @Test func autosaveWarning() throws {
         let status = AutosaveStatus()

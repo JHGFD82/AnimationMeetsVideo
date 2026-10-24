@@ -120,6 +120,12 @@ New Project and Open Project and stays until one exists. New Project asks
 where to save before the editor opens and writes the package and an empty
 `project.json` right away.
 
+The ten projects opened or saved last (`RecentProjects`, in the app's
+defaults) are listed in File > Open Recent, with Clear Menu, and up to six
+of those still on disk on the start sheet, each with its folder. A recent
+project that has moved or gone is explained and taken off the list. They
+also go to the system's recent documents, for the Dock icon's menu.
+
 **Saving is still explicit.** Imports, edits and the clip list live in
 `project.json`, which only Save writes. Quitting (including closing the last
 window), New Project and Open Project ask to Save, Don't Save or Cancel

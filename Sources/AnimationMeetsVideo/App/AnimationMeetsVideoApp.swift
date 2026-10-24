@@ -55,6 +55,10 @@ struct AnimationMeetsVideoApp: App {
     @State private var lastAutosaved: EditingProject?
     /// Whether autosave is writing backups, shown in the toolbar when not.
     @State private var autosaveStatus = AutosaveStatus()
+    /// `RecentProjects.stored`, for File > Open Recent and the start sheet.
+    @AppStorage(Preferences.recentProjects) private var recentProjectsStored = "[]"
+
+    private var recentProjects: RecentProjects { RecentProjects(stored: recentProjectsStored) }
     @State private var analysis = AssetAnalysis()
     @State private var replacement = MediaReplacementController()
     @State private var fileMonitor = ProjectFileMonitor()
@@ -107,7 +111,11 @@ struct AnimationMeetsVideoApp: App {
                 .onExternalProjectChange { checkForExternalProjectChange() }
                 .frame(minWidth: 1_100, minHeight: 700)
                 .sheet(isPresented: Binding(get: { launchChecked && projectURL == nil }, set: { _ in })) {
-                    ProjectStartView(onNew: newProject, onOpen: openProject)
+                    ProjectStartView(
+                        recents: recentProjects.urls.filter { FileManager.default.fileExists(atPath: $0.path) },
+                        onNew: newProject, onOpen: openProject,
+                        onOpenRecent: { url in Task { await openRecentProject(url) } }
+                    )
                 }
                 .background(WindowReopenerRegistration())
                 .background(WindowCloseGuard(shouldClose: shouldCloseWindow))
@@ -166,6 +174,21 @@ struct AnimationMeetsVideoApp: App {
                     openProject()
                 }
                 .keyboardShortcut("o", modifiers: [.command])
+
+                Menu("Open Recent") {
+                    ForEach(recentProjects.urls, id: \.self) { url in
+                        Button(RecentProjects.name(of: url)) {
+                            Task { await openRecentProject(url) }
+                        }
+                        .help(RecentProjects.location(of: url))
+                    }
+                    Divider()
+                    Button("Clear Menu") {
+                        recentProjectsStored = RecentProjects().stored
+                        NSDocumentController.shared.clearRecentDocuments(nil)
+                    }
+                    .disabled(recentProjects.paths.isEmpty)
+                }
 
                 Divider()
 
@@ -310,8 +333,31 @@ struct AnimationMeetsVideoApp: App {
         await openProject(at: url)
     }
 
+    /// Reopened at the next launch, and first in Open Recent (and the Dock
+    /// icon's menu).
     private func rememberLastProject(_ url: URL) {
         UserDefaults.standard.set(url.path, forKey: Self.lastProjectKey)
+        var recents = recentProjects
+        recents.add(url)
+        recentProjectsStored = recents.stored
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+    }
+
+    /// Opens a project from Open Recent or the start sheet. One that has
+    /// moved or gone is explained and taken off the list, rather than
+    /// failing as a damaged project would.
+    private func openRecentProject(_ url: URL) async {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            var recents = recentProjects
+            recents.remove(url)
+            recentProjectsStored = recents.stored
+            showAlert(
+                title: "\u{201C}\(RecentProjects.name(of: url))\u{201D} Can't Be Found",
+                message: "It was in \(RecentProjects.location(of: url)), but it may have been moved, renamed or deleted. It has been taken off the list of recent projects. Use Open Project… to find it."
+            )
+            return
+        }
+        await openRequestedProject(url)
     }
 
     private func openProject(at url: URL) async {

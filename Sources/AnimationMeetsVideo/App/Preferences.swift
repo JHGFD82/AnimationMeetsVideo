@@ -87,6 +87,12 @@ enum Preferences {
     static let timelineAreaLayout = "timelineAreaLayout"
     static let effectsPanelShowsKeyframeLanes = "effectsPanelShowsKeyframeLanes"
 
+    // MARK: Projects
+
+    /// `RecentProjects.stored`: the projects opened last, newest first,
+    /// for File > Open Recent and the start sheet.
+    static let recentProjects = "recentProjects"
+
     /// Everything about where the panels are and how big: their sizes,
     /// which are open and on which tab, and the timeline's areas.
     static let layoutKeys = [

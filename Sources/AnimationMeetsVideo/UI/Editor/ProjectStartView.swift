@@ -4,8 +4,15 @@ import SwiftUI
 /// Shown while no project is open. The editor always works inside a saved
 /// package, so imported media and analysis results go straight to disk.
 struct ProjectStartView: View {
+    /// Projects opened lately that are still there, newest first.
+    var recents: [URL] = []
     let onNew: () -> Void
     let onOpen: () -> Void
+    var onOpenRecent: (URL) -> Void = { _ in }
+
+    /// As many as fit without the sheet growing tall; the rest are in
+    /// File > Open Recent.
+    private static let recentsShown = 6
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -23,6 +30,21 @@ struct ProjectStartView: View {
             }
             .padding(Design.Space.sheet + 4)
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !recents.isEmpty {
+                VStack(alignment: .leading, spacing: Design.Space.tight) {
+                    Text("Recent")
+                        .font(Design.Typeface.bodyEmphasis)
+                        .foregroundStyle(Design.textSecondary)
+                        .accessibilityAddTraits(.isHeader)
+                        .padding(.horizontal, Design.Space.step)
+                    ForEach(recents.prefix(Self.recentsShown), id: \.self) { url in
+                        RecentProjectRow(url: url) { onOpenRecent(url) }
+                    }
+                }
+                .padding(.horizontal, Design.Space.sheet + 4 - Design.Space.step)
+                .padding(.bottom, Design.Space.sheet)
+            }
 
             HStack(spacing: Design.Space.step) {
                 Button("Quit") { NSApp.terminate(nil) }
@@ -42,6 +64,47 @@ struct ProjectStartView: View {
         .background(Design.Surface.floating.color)
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled()
+    }
+}
+
+/// A recent project on the start sheet: its name, and the folder it is in
+/// to tell two of one name apart. Clicking it opens it.
+private struct RecentProjectRow: View {
+    let url: URL
+    let open: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: Design.Space.step) {
+                Image(systemName: "film.stack")
+                    .foregroundStyle(Design.textSecondary)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(RecentProjects.name(of: url))
+                        .font(Design.Typeface.bodyEmphasis)
+                        .foregroundStyle(Design.textPrimary)
+                    Text(RecentProjects.location(of: url))
+                        .font(Design.Typeface.label)
+                        .foregroundStyle(Design.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Design.Space.step)
+            .padding(.vertical, Design.Space.tight + 1)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isHovered ? Design.Surface.raised.color : .clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(url.path)
+        .accessibilityLabel("Open \(RecentProjects.name(of: url))")
+        .accessibilityHint(RecentProjects.location(of: url))
     }
 }
 
