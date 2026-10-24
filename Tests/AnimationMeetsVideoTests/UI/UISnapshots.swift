@@ -200,6 +200,17 @@ struct UISnapshots {
         try SnapshotSupport.render(editor, "editor", size: CGSize(width: 1500, height: 900))
     }
 
+    /// The editor of a new project with no media: the Clips tab offers
+    /// Import Media… and the viewer says how to begin.
+    @Test func emptyEditor() throws {
+        let project = EditingProject.empty
+        let editor = EditorView(
+            project: .constant(project), history: ProjectHistory(project: project), analysis: AssetAnalysis(),
+            replacement: MediaReplacementController(), packageURL: nil
+        )
+        try SnapshotSupport.render(editor, "empty-editor", size: CGSize(width: 1500, height: 900))
+    }
+
     /// The editor with an adjustment layer over three shape layers: its
     /// first clip reaches every layer below, its second only the one under
     /// it, each drawn as a box down over the layers it reaches.

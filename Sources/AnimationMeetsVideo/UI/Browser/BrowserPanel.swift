@@ -77,10 +77,14 @@ struct BrowserPanel: View {
             }
             switch tab {
             case .clips:
-                ClipsTab(
-                    access: access, activeTimelineID: activeTimelineID, selection: $selection,
-                    analysis: analysis, replacement: replacement, packageURL: packageURL
-                )
+                if project.clips.isEmpty && imports?.items.isEmpty != false {
+                    noMedia
+                } else {
+                    ClipsTab(
+                        access: access, activeTimelineID: activeTimelineID, selection: $selection,
+                        analysis: analysis, replacement: replacement, packageURL: packageURL
+                    )
+                }
             case .timelines: timelinesList
             case .presets: presetsList
             }
@@ -100,6 +104,22 @@ struct BrowserPanel: View {
         .dropDestination(for: URL.self) { urls, _ in importDropped(urls) }
         .messageAlert("Import Failed", message: $importError)
         .focusedSceneValue(\.importMedia, FileMenuAction(run: importMedia))
+    }
+
+    /// The Clips tab of a project with no media yet: where everything
+    /// starts, so it says how to begin rather than showing nothing. Files
+    /// dropped on it land as on the list.
+    private var noMedia: some View {
+        ContentUnavailableView {
+            Label("No media yet", systemImage: "film.stack")
+        } description: {
+            Text("Import footage and music, or drag files here from the Finder. Their scenes then show here, ready to drag onto the timeline.")
+        } actions: {
+            Button("Import Media…", action: importMedia)
+                .buttonStyle(.borderedProminent)
+                .tint(Design.accentFill)
+        }
+        .frame(maxHeight: .infinity)
     }
 
     /// Time per thumbnail and thumbnail size, for every browser tab.

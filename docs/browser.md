@@ -28,7 +28,10 @@ The tabs sit at the top of the browser in the same tab bar as the side
 panel's Inspector and Effects tabs (`PanelTabBar`). The chosen tab is
 remembered.
 
-- **Clips**: the project's media, in import order. Until its scenes are
+- **Clips**: the project's media, in import order. With none yet, the
+  tab says how to begin (import, or drag files from the Finder) and has
+  an **Import Media…** button, as the + button and File > Import Media…
+  (⌘I) do; the viewer's empty message points there too. Until its scenes are
   found, a video is **one clip**, usable as any other, with **Detecting
   scenes** and a progress bar across the top of its filmstrip while they
   are being found (shortened to "Detecting", then the bar alone, when a

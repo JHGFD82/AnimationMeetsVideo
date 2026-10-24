@@ -44,7 +44,7 @@ struct ViewerPanel: View {
                 } else {
                     picture { MetalPreviewView() }
                     ContentUnavailableView("No clips yet", systemImage: "film",
-                                           description: Text("Drag a scene from the library onto the timeline."))
+                                           description: Text("Import media into the Clips list (⌘I), then drag a scene onto the timeline."))
                 }
                 if let skim, skim.isActive {
                     SkimPicture(skim: skim)
