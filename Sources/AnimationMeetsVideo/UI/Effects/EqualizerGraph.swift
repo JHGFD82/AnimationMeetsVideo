@@ -483,7 +483,7 @@ struct EqualizerGraph: View {
             Path { path in
                 for step in 0...steps {
                     let x = plot.minX + plot.width * CGFloat(step) / CGFloat(steps)
-                    let decibels = response(layout.frequency(atX: x)).clamped(to: -60...60)
+                    let decibels = response(layout.frequency(atX: x)).clamped(between: -60, and: 60)
                     let point = CGPoint(x: x, y: layout.y(decibels))
                     if step == 0 { path.move(to: point) } else { path.addLine(to: point) }
                 }

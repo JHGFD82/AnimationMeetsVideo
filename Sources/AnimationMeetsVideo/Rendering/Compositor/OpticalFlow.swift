@@ -91,7 +91,7 @@ enum OpticalFlow {
             withExtent: extent,
             inputs: [first, second.transformed(by: CGAffineTransform(translationX: extent.minX - second.extent.minX, y: extent.minY - second.extent.minY))],
             arguments: [
-                "fraction": fraction.clamped(to: 0...1),
+                "fraction": fraction.clamped(between: 0, and: 1),
                 "flow": data,
                 "flowWidth": field.width,
                 "flowHeight": field.height,
@@ -119,7 +119,7 @@ enum OpticalFlow {
     static func matched(_ first: CIImage, _ second: CIImage, fraction: Double) -> CIImage? {
         let bounds = first.extent.integral
         guard !bounds.isEmpty, !bounds.isInfinite, bounds.size == second.extent.integral.size else { return nil }
-        let p = fraction.clamped(to: 0...1)
+        let p = fraction.clamped(between: 0, and: 1)
         guard p > 0, p < 1 else { return p <= 0 ? first : second }
         let aligned = second.transformed(by: CGAffineTransform(translationX: bounds.minX - second.extent.minX, y: bounds.minY - second.extent.minY))
         guard let field = BlockMatchFlow.field(from: first, to: aligned, progress: p, in: bounds, reach: 1.0 / 12),

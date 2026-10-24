@@ -260,7 +260,7 @@ extension Timeline {
     /// as 12.5, are kept to a thousandth of a frame a second rather than
     /// rounded to a whole number.
     static func frameDuration(for frameRate: Double) -> CMTime {
-        let clamped = frameRate.clamped(to: 1...1000)
+        let clamped = frameRate.clamped(between: 1, and: 1000)
         let rounded = clamped.rounded()
         if abs(clamped - rounded * 1000 / 1001) < 0.01 {
             return CMTime(value: 1001, timescale: Int32(rounded) * 1000)

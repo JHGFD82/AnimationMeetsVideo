@@ -100,14 +100,14 @@ struct TransitionCurve: Equatable, Sendable {
     }
 
     func segment(containingTime time: Double) -> Int {
-        let clamped = time.clamped(to: 0...1)
-        return (points.lastIndex { $0.time <= clamped } ?? 0).clamped(to: 0...(segmentCount - 1))
+        let clamped = time.clamped(between: 0, and: 1)
+        return (points.lastIndex { $0.time <= clamped } ?? 0).clamped(between: 0, and: segmentCount - 1)
     }
 
     /// How far the transition has got after `time` (0...1) of its length.
     /// Handles may push this a little outside 0...1.
     func value(at time: Double) -> Double {
-        let t = time.clamped(to: 0...1)
+        let t = time.clamped(between: 0, and: 1)
         let index = segment(containingTime: t)
         let controls = controlPoints(ofSegment: index)
         // Exact at the points themselves, which the halving only nears.
@@ -153,7 +153,7 @@ struct TransitionCurve: Equatable, Sendable {
         guard index > 0, index < points.count - 1 else { return }
         let gap = 0.01
         points[index].time = min(max(Double(location.x), points[index - 1].time + gap), points[index + 1].time - gap)
-        points[index].value = Double(location.y).clamped(to: 0...1)
+        points[index].value = Double(location.y).clamped(between: 0, and: 1)
         clampHandles(of: index - 1)
         clampHandles(of: index)
         clampHandles(of: index + 1)

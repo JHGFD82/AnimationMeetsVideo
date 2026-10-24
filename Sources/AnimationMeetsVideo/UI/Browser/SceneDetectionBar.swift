@@ -46,7 +46,7 @@ struct SceneDetectionBar: View {
                     GeometryReader { proxy in
                         Capsule()
                             .fill(Design.accent)
-                            .frame(width: proxy.size.width * CGFloat(fraction.clamped(to: 0...1)))
+                            .frame(width: proxy.size.width * CGFloat(fraction.clamped(between: 0, and: 1)))
                     }
                 }
                 .frame(minWidth: 24, maxWidth: .infinity)

@@ -164,7 +164,7 @@ enum BeatDetector {
         /// Passes `value` on when it has grown by a hundredth; 1 only once.
         func report(_ value: Double) {
             guard value.isFinite else { return }
-            let clamped = value.clamped(to: 0...1)
+            let clamped = value.clamped(between: 0, and: 1)
             guard clamped == 1 ? reported < 1 : clamped - reported >= 0.01 else { return }
             reported = clamped
             progress(clamped)
@@ -177,7 +177,7 @@ enum BeatDetector {
             try timed.append(pcmSamples(of: sample), at: presentation)
 
             if seconds > 0 {
-                report((presentation.seconds / seconds).clamped(to: 0...1) * readingShare)
+                report((presentation.seconds / seconds).clamped(between: 0, and: 1) * readingShare)
             }
         }
         // A read cancelled at the end must not count as completed.
@@ -191,7 +191,7 @@ enum BeatDetector {
         let beats = try BeatTracker.track(envelope: analyzer.envelope, framesPerSecond: OnsetAnalyzer.framesPerSecond) { done in
             try checkCancellation()
             // Short of 1, which is for the finished result.
-            report(readingShare + (1 - readingShare) * done.clamped(to: 0...0.99))
+            report(readingShare + (1 - readingShare) * done.clamped(between: 0, and: 0.99))
         }
         try checkCancellation()
         guard let beats else {

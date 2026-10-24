@@ -59,7 +59,7 @@ struct Spectrogram: Sendable, Equatable {
     }
 
     static func byte(decibels: Double) -> UInt8 {
-        UInt8(((decibels - floor) * 2).rounded().clamped(to: 0...255))
+        UInt8(((decibels - floor) * 2).rounded().clamped(between: 0, and: 255))
     }
 
     /// The spectrogram of mono samples at `sampleRate`.

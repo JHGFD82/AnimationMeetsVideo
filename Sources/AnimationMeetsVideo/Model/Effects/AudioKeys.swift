@@ -165,7 +165,7 @@ enum AudioKeysMath {
     /// 0 below `floor`, 1 above `ceiling`, linear in decibels between.
     static func normalized(_ level: Double, floor: Double, ceiling: Double) -> Double {
         guard ceiling > floor else { return level >= ceiling ? 1 : 0 }
-        return ((level - floor) / (ceiling - floor)).clamped(to: 0...1)
+        return ((level - floor) / (ceiling - floor)).clamped(between: 0, and: 1)
     }
 
     /// `values` followed with a rise and a fall time constant (seconds),

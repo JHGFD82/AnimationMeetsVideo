@@ -78,7 +78,7 @@ extension SceneEdits {
         regions.removeAll { region in
             CMTimeCompare(region.start, start) >= 0 && CMTimeCompare(region.end, end) <= 0
         }
-        regions.append(SensitivityRegion(start: start, end: end, value: value.clamped(to: 0...1)))
+        regions.append(SensitivityRegion(start: start, end: end, value: value.clamped(between: 0, and: 1)))
         ignoredCuts.removeAll { CMTimeCompare($0, start) > 0 && CMTimeCompare($0, end) < 0 }
     }
 }

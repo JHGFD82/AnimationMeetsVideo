@@ -43,7 +43,7 @@ struct OnsetCurve: Sendable, Equatable {
         let left = Double(value(at: frame - 1)), middle = Double(value(at: frame)), right = Double(value(at: frame + 1))
         let curve = left - 2 * middle + right
         guard middle >= left, middle >= right, curve < 0 else { return 0 }
-        return (0.5 * (left - right) / curve).clamped(to: -0.5...0.5)
+        return (0.5 * (left - right) / curve).clamped(between: -0.5, and: 0.5)
     }
 }
 
@@ -283,7 +283,7 @@ enum BeatFitting {
         if best > 0, best + 1 < scores.count {
             let left = scores[best - 1], middle = scores[best], right = scores[best + 1]
             let bend = left - 2 * middle + right
-            if bend < 0 { lag += (0.5 * (left - right) / bend).clamped(to: -0.5...0.5) }
+            if bend < 0 { lag += (0.5 * (left - right) / bend).clamped(between: -0.5, and: 0.5) }
         }
         return lag / rate
     }
@@ -359,7 +359,7 @@ enum BeatFitting {
     static func fittedPeriod(near period: Double, pins: [Double], from start: Double, to end: Double, curve: OnsetCurve) -> Double {
         guard let first = pins.first, let last = pins.last, period > 0 else { return period }
         let span = max(last - first, period)
-        let reach = period * (2 * anchorUncertainty / span).clamped(to: 0.0005...0.03)
+        let reach = period * (2 * anchorUncertainty / span).clamped(between: 0.0005, and: 0.03)
         // Fine enough that the farthest beat moves under a millisecond a step.
         let farthest = max((first - start) / period, (end - last) / period, 1)
         let step = 0.001 / farthest
@@ -721,7 +721,7 @@ enum BeatFitting {
         let middle = leads.count / 2
         let lead = leads.isEmpty ? onsetLead
             : leads.count.isMultiple(of: 2) ? (leads[middle - 1] + leads[middle]) / 2 : leads[middle]
-        moved.start += lead.clamped(to: -0.05...0.05)
+        moved.start += lead.clamped(between: -0.05, and: 0.05)
         return moved
     }
 

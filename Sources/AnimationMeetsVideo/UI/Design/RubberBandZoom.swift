@@ -61,7 +61,7 @@ struct RubberBandZoom: RubberBand {
             }
         }
         if abs(stretch) < 1e-6 { stretch = 0 }
-        if stretch != 0 { self.anchor = anchor.clamped(to: 0...1) }
+        if stretch != 0 { self.anchor = anchor.clamped(between: 0, and: 1) }
         settle = stretch == 0 ? .resting : (pinching ? .held : .nudged)
     }
 

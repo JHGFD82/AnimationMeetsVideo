@@ -81,7 +81,7 @@ struct TimelineAreaLayout: Equatable, Codable {
 
     static func layerHeight(atFraction fraction: Double) -> CGFloat {
         let range = layerHeightRange
-        return range.lowerBound * pow(range.upperBound / range.lowerBound, CGFloat(fraction.clamped(to: 0...1)))
+        return range.lowerBound * pow(range.upperBound / range.lowerBound, CGFloat(fraction.clamped(between: 0, and: 1)))
     }
 
     /// The shown areas' layer heights together, on the scale of
@@ -101,7 +101,7 @@ struct TimelineAreaLayout: Equatable, Codable {
     /// always exactly `fraction` (the slider never jumps under the pointer).
     mutating func setShownLayerHeightFraction(_ fraction: Double) {
         let shown = shown
-        let target = fraction.clamped(to: 0...1)
+        let target = fraction.clamped(between: 0, and: 1)
         let mean = shownLayerHeightFraction
         let offsets = shown.map { Self.fraction(ofLayerHeight: layerHeight($0)) - mean }
         var spread = 1.0

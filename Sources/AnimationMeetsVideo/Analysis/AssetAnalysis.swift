@@ -1238,7 +1238,7 @@ final class AssetAnalysis {
     /// is running now; later reports from anything else are dropped.
     private func apply(_ fraction: Double, stage: Stage, lease: Lease) {
         guard fraction.isFinite, isCurrent(lease), stages[lease.id] == stage else { return }
-        progress[lease.id] = max(progress[lease.id] ?? 0, fraction.clamped(to: 0...1))
+        progress[lease.id] = max(progress[lease.id] ?? 0, fraction.clamped(between: 0, and: 1))
     }
 
     // MARK: Package I/O

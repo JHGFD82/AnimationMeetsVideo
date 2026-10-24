@@ -81,7 +81,7 @@ enum KeyframeGenerators {
     /// eased.
     static func fadeEnvelope(elapsed: Double, total: Double, fade: Double) -> Double {
         guard fade > 0 else { return 1 }
-        let x = (min(elapsed, total - elapsed) / fade).clamped(to: 0...1)
+        let x = (min(elapsed, total - elapsed) / fade).clamped(between: 0, and: 1)
         return x * x * (3 - 2 * x)
     }
 

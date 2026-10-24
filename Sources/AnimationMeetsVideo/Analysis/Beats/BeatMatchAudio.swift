@@ -142,7 +142,7 @@ struct BeatMatchAudio: Sendable {
                 guard let buffer = source.next() else { break }
                 let presentation = CMSampleBufferGetPresentationTimeStamp(buffer)
                 try timed.append(BeatDetector.pcmSamples(of: buffer, sampleRate: rate), at: presentation)
-                if seconds > 0 { progress((presentation.seconds / seconds).clamped(to: 0...1)) }
+                if seconds > 0 { progress((presentation.seconds / seconds).clamped(between: 0, and: 1)) }
             }
             if isCancelled() { throw CancellationError() }
             try source.checkCompleted()
