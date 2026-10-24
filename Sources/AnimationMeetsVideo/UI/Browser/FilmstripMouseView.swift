@@ -3,22 +3,24 @@ import SwiftUI
 
 /// What a press on a filmstrip turned out to be.
 enum FilmstripPress {
-    /// Released without moving: a click, with the keys held at the press.
+    /// Released without moving: a click, with the keys held at the press,
+    /// whether or not the press would have tracked a range.
     case click(CGPoint, NSEvent.ModifierFlags)
-    /// Moved while tracking a range (Option-drag, or a range's handle).
+    /// Moved while tracking a range (a drag across the clip, or a range's
+    /// handle).
     case track(CGPoint)
     /// The tracked range was let go.
     case endTrack(CGPoint)
 }
 
-/// Catches the mouse over one row of a filmstrip. A press either tracks a
-/// range (when `onDown` says so: Option was held, or it landed on a
-/// handle) or becomes a click when released in place, or a drag of media
-/// once it moves: the drag carries the text `dragText` gives for the point
+/// Catches the mouse over one row of a filmstrip. A press released in
+/// place is a click. Once it moves it either tracks a range (when
+/// `onDown` says so: it landed off the selection, or on a handle) or drags
+/// media: the drag carries the text `dragText` gives for the point
 /// pressed, as `MediaDragPayload` reads it. AppKit rather than SwiftUI
-/// gestures, so the keys held at the press decide between a range and a
-/// drag before any drag begins. Points are in the filmstrip's layout,
-/// `rowOffset` below the row's own top.
+/// gestures, so what is pressed decides between a range and a drag before
+/// any drag begins. Points are in the filmstrip's layout, `rowOffset`
+/// below the row's own top.
 struct FilmstripMouseView: NSViewRepresentable {
     var rowOffset: CGFloat
     /// The press at a point, with the keys held: true to track a range.
@@ -48,6 +50,8 @@ struct FilmstripMouseView: NSViewRepresentable {
         private var downPoint: CGPoint?
         private var downFlags: NSEvent.ModifierFlags = []
         private var tracking = false
+        /// Whether a tracked press has moved far enough to be a drag.
+        private var tracked = false
         private var dragging = false
         /// How far the pointer moves before a press becomes a drag.
         private let dragThreshold: CGFloat = 3
@@ -98,19 +102,22 @@ struct FilmstripMouseView: NSViewRepresentable {
             downPoint = point
             downFlags = flags
             dragging = false
+            tracked = false
             tracking = configuration?.onDown(point, flags) ?? false
         }
 
         override func mouseDragged(with event: NSEvent) {
             let point = layoutPoint(event)
+            guard let downPoint else { return }
+            let moved = hypot(point.x - downPoint.x, point.y - downPoint.y) >= dragThreshold
             if tracking {
+                guard tracked || moved else { return }
+                tracked = true
                 NSCursor.resizeLeftRight.set()
                 configuration?.onPress(.track(point))
                 return
             }
-            guard !dragging, let downPoint, hypot(point.x - downPoint.x, point.y - downPoint.y) >= dragThreshold,
-                  let drag = configuration?.dragText(downPoint)
-            else { return }
+            guard !dragging, moved, let drag = configuration?.dragText(downPoint) else { return }
             dragging = true
             let item = NSPasteboardItem()
             item.setString(drag.text, forType: .string)
@@ -128,7 +135,7 @@ struct FilmstripMouseView: NSViewRepresentable {
 
         override func mouseUp(with event: NSEvent) {
             let point = layoutPoint(event)
-            if tracking {
+            if tracking, tracked {
                 configuration?.onPress(.endTrack(point))
                 showCursor(over: point)
             } else if !dragging, let downPoint {
@@ -136,6 +143,7 @@ struct FilmstripMouseView: NSViewRepresentable {
             }
             downPoint = nil
             tracking = false
+            tracked = false
             dragging = false
         }
 

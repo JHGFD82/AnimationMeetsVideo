@@ -75,6 +75,7 @@ struct ClipsTab: View {
     @AppStorage(Preferences.browserMutesAddedSound) private var mutesAddedSound = false
     @State private var picked = BrowserSelection<BrowserItemID>()
     @State private var width: CGFloat = 240
+    @State private var height: CGFloat = 0
     @State private var sensitivityTarget: SensitivityTarget?
     /// The end of the range being dragged out, and its fixed end.
     @State private var rangeDrag: (item: BrowserItemID, anchor: Double)?
@@ -221,8 +222,18 @@ struct ClipsTab: View {
             }
             .padding(.horizontal, Self.padding)
             .padding(.bottom, Design.Space.group)
+            // Clicking off the clips, below them included, picks nothing.
+            .frame(maxWidth: .infinity, minHeight: height, alignment: .topLeading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                focused = true
+                picked.clear()
+            }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: {
+            width = $0.width
+            height = $0.height
+        }
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
@@ -388,28 +399,33 @@ struct ClipsTab: View {
         return nil
     }
 
+    /// Whether a press tracks a range once it moves: on a handle, or off
+    /// what is selected (with Option, anywhere). Nothing is picked until it
+    /// moves, so a press let go in place is still a click.
     private func pressBegan(_ entry: BrowserEntry, layout: FilmstripLayout, at point: CGPoint, flags: NSEvent.ModifierFlags) -> Bool {
         focused = true
-        let seconds = snapped(layout.seconds(at: point), entry)
         if let fixed = handle(of: entry, layout: layout, at: point) {
             rangeDrag = (entry.id, fixed)
             return true
         }
-        guard flags.contains(.option) else { return false }
-        rangeDrag = (entry.id, seconds)
-        picked.setRange(of: entry.id, from: seconds, to: seconds, duration: entry.seconds)
+        // Command and Shift add to the selection, which ranges never do.
+        guard flags.isDisjoint(with: [.command, .shift]) else { return false }
+        let seconds = layout.seconds(at: point)
+        guard flags.contains(.option) || !picked.pressDrags(entry.id, at: seconds) else { return false }
+        rangeDrag = (entry.id, snapped(seconds, entry))
         return true
     }
 
     private func pressed(_ press: FilmstripPress, entry: BrowserEntry, layout: FilmstripLayout, order: [BrowserItemID]) {
         switch press {
         case .click(let point, let flags):
+            rangeDrag = nil
             cursor = entry.id
             if flags.contains(.command) {
                 picked.commandClick(entry.id)
             } else if flags.contains(.shift) {
                 picked.shiftClick(entry.id, in: order)
-            } else {
+            } else if handle(of: entry, layout: layout, at: point) == nil {
                 picked.click(entry.id, at: layout.seconds(at: point))
                 if !skimming { skim(entry, at: layout.seconds(at: point)) }
             }
@@ -420,7 +436,7 @@ struct ClipsTab: View {
             skim(entry, at: layout.seconds(at: point))
         case .endTrack:
             rangeDrag = nil
-            // A press with Option that never moved picks nothing.
+            // A drag too short to span a frame picks the whole clip.
             if let range = picked.range, range.item == entry.id, range.end - range.start < frameSeconds(entry) {
                 picked.click(entry.id)
             }

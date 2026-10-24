@@ -56,7 +56,15 @@ struct BrowserSelection<ID: Hashable>: Equatable {
         items = Set(order[min(from, to)...max(from, to)])
     }
 
-    /// Picks part of one item, from Option-drag or its handles; the ends may
+    /// Whether a plain press on `id`, at `seconds` into it, drags media
+    /// once it moves: on an item selected whole, or inside its range. A
+    /// press anywhere else picks a range of the item instead.
+    func pressDrags(_ id: ID, at seconds: Double) -> Bool {
+        if let range, range.item == id { return range.contains(seconds) }
+        return items.contains(id)
+    }
+
+    /// Picks part of one item, from dragging across it or its handles; the ends may
     /// come in either order. Anything else picked is dropped.
     mutating func setRange(of id: ID, from a: Double, to b: Double, duration: Double) {
         let start = min(a, b).clamped(between: 0, and: duration), end = max(a, b).clamped(between: 0, and: duration)
