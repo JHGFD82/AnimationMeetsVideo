@@ -591,10 +591,19 @@ spare footage allows (`fittedJoint`). Its `lead` is how much plays before
 the cut. With no spare footage at all it plays inside the incoming clip as
 above, over the layers below.
 
-Double-clicking the box (or **Edit Footage…** in its menu) opens the
-**transition footage** lane under the layer: the outgoing clip on top and
-the incoming one below, each with its spare footage drawn faintly, the
-transition across both and the cut as a white line.
+Double-clicking the box (or **Expand Transition** in its menu) expands
+it under the layer. The **Transition video** lane shows the outgoing clip
+on top and the incoming one below, each with its spare footage drawn
+faintly, the transition across both and the cut as a white line. While
+either clip's sound is attached to its picture, a **Transition audio**
+lane follows (`TransitionSoundLane`): the outgoing sound falling and the
+incoming one rising across the same span, in the shape they crossfade
+with (see [audio.md](audio.md#under-transitions)). The shape is chosen in
+the lane's header or its menu: the project's, or S-Curve, Equal Power or
+Linear for this transition alone (`JointEdit.soundCrossfade`). Its timing
+can't be changed there: it is the transition's, so lengthening, moving or
+rolling it in the video lane moves the sound's crossfade too. Detach the
+sound to fade it on its own.
 
 - Drag the transition to move it across the cut, and either edge to change
   its length about its center (the other edge moves as much the other

@@ -292,6 +292,50 @@ struct UISnapshots {
         )
     }
 
+    /// An expanded transition joining two clips with sound: its footage
+    /// lane, then its sound lane in each crossfade shape (S-curve, the
+    /// project's, then equal power and linear).
+    @Test func expandedTransition() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let media = MediaClip(
+            name: "Interview", kind: .video, url: nil, duration: CMTime(seconds: 10, preferredTimescale: 600),
+            frameRate: 24, colorSpace: .rec709, codecName: "Stub", hasAudio: true
+        )
+        let imported = project.importClip(media, intoTimeline: t)
+        let placed = try #require(imported)
+        project.trimClipEnd(placed.clipID, in: t, layer: placed.layerID, to: CMTime(seconds: 4, preferredTimescale: 600))
+        let b = TimelineClip(
+            source: .media(media.id), startOffset: CMTime(seconds: 4, preferredTimescale: 600),
+            trimStart: CMTime(seconds: 6, preferredTimescale: 600), trimEnd: CMTime(seconds: 9, preferredTimescale: 600)
+        )
+        let tIndex = try #require(project.timelines.firstIndex { $0.id == t })
+        project.timelines[tIndex].layers[0].clips.append(b)
+        project.setTransition(.crossDissolve, at: .leading, of: b.id, in: t, layer: placed.layerID)
+        project.applyJointEdit(.place(duration: CMTime(seconds: 2, preferredTimescale: 600), lead: CMTime(seconds: 1, preferredTimescale: 600)), at: b.id, in: t, layer: placed.layerID)
+        let joint = try #require(project.joint(at: b.id, in: t, layer: placed.layerID))
+        func sound(_ shape: AudioCrossfade?) -> some View {
+            var shaped = joint
+            shaped.transition.audioCrossfade = shape
+            return TransitionSoundLane(joint: shaped, projectCrossfade: .sCurve, pixelsPerSecond: 60, width: 480, onSetCrossfade: { _ in })
+        }
+        try SnapshotSupport.render(
+            VStack(spacing: 2) {
+                TransitionFootageLane(
+                    joint: joint, frameRate: 24, outgoingName: "Interview", incomingName: "Interview",
+                    pixelsPerSecond: 60, width: 480, visibleX: 0...480,
+                    preview: { _ in nil }, onCommit: { _ in }, tool: .arrow, onTrimPreview: { _, _ in }
+                )
+                sound(nil)
+                sound(.equalPower)
+                sound(.linear)
+            }
+            .background(Design.Surface.sunken.color)
+            .preferredColorScheme(.dark),
+            "expanded-transition", size: CGSize(width: 480, height: TransitionFootageLane.height + 3 * TransitionSoundLane.height + 6)
+        )
+    }
+
     /// A name beside its icon, shown and being renamed: the field is
     /// bordered, and neither the icon nor the name moves.
     @Test func inlineNameField() throws {

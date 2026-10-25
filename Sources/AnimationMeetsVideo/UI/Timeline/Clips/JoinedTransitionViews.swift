@@ -3,7 +3,8 @@ import SwiftUI
 
 /// A transition joining two clips, drawn over the cut on top of both: the
 /// shaded area is its curve, the line the cut. Click to select (and, zoomed
-/// in, edit the curve), double-click to open its footage below the layer,
+/// in, edit the curve), double-click to expand it below the layer (its
+/// footage, and its sound when attached; `TransitionSoundLane`),
 /// right-click for curves, and drop another transition on it to swap kinds.
 struct JoinedTransitionBridge: View {
     let joint: TransitionJoint
@@ -74,7 +75,7 @@ struct JoinedTransitionBridge: View {
                 }
             }
             Divider()
-            Button("Edit Footage…", action: onEdit)
+            Button("Expand Transition", action: onEdit)
             Button("Remove \(transition.kind.name)", action: onRemove)
         }
         .dropDestination(for: TransitionDragPayload.self) { payloads, _ in
@@ -82,14 +83,14 @@ struct JoinedTransitionBridge: View {
             onSetKind(payload.kind)
             return true
         } isTargeted: { isDropTarget = $0 }
-        .help("\(transition.kind.name) joining two clips: drag a side to resize it about its center, double-click to adjust its footage")
+        .help("\(transition.kind.name) joining two clips: drag a side to resize it about its center, double-click to expand its video and audio")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(transition.kind.name) joining two clips")
         .accessibilityValue("\(transition.duration.formatted) long, \(transition.curve.preset?.name ?? "custom curve")")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { onSelect() }
         .accessibilityActions {
-            Button("Edit footage", action: onEdit)
+            Button("Expand transition", action: onEdit)
             ForEach(TransitionCurve.Preset.allCases) { preset in
                 Button("Use \(preset.name) curve") { onSetCurve(TransitionCurve(preset: preset)) }
             }
@@ -278,7 +279,7 @@ struct TransitionFootageLane: View {
                 switch change {
                 case .slipOut: onTrimPreview(joint.outgoing, .both)
                 case .slipIn: onTrimPreview(joint.incoming, .both)
-                case .roll, .place, .widen: break
+                case .roll, .place, .widen, .soundCrossfade: break
                 }
             }
             .onEnded { _ in

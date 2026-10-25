@@ -118,6 +118,20 @@ private func video(url: URL? = nil, duration: Double = 10) -> MediaClip {
         #expect(CMTimeAdd(narrower.start, seconds(0.25)) == center)
     }
 
+    /// The sound's shape is set on its own; its timing stays the
+    /// transition's.
+    @Test func settingTheSoundsShapeLeavesTheTiming() throws {
+        var f = Fixture()
+        f.project.setTransition(.crossDissolve, at: .leading, of: f.b, in: f.t, layer: f.layer)
+        let before = try #require(f.joint)
+        f.project.applyJointEdit(.soundCrossfade(.equalPower), at: f.b, in: f.t, layer: f.layer)
+        let after = try #require(f.joint)
+        #expect(after.transition.audioCrossfade == .equalPower)
+        #expect(after.start == before.start && after.end == before.end && after.lead == before.lead)
+        f.project.applyJointEdit(.soundCrossfade(nil), at: f.b, in: f.t, layer: f.layer)
+        #expect(f.joint?.transition.audioCrossfade == nil)
+    }
+
     @Test func slippingEitherClipAtACutKeepsTheCut() throws {
         var f = Fixture()
         f.project.setTransition(.crossDissolve, at: .leading, of: f.b, in: f.t, layer: f.layer)

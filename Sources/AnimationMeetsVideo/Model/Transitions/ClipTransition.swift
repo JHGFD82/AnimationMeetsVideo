@@ -446,6 +446,10 @@ enum JointEdit: Equatable {
     /// Slips the incoming clip's footage, which changes what the transition
     /// has before the cut.
     case slipIn(CMTime)
+    /// Sets the shape the two clips' attached sound crossfades with, or nil
+    /// to follow the project's. Its timing is the transition's and can't
+    /// change on its own.
+    case soundCrossfade(AudioCrossfade?)
 }
 
 extension EditingProject {
@@ -583,6 +587,10 @@ extension EditingProject {
             slipClip(joint.outgoing.id, in: timelineID, layer: layerID, by: delta)
         case .slipIn(let delta):
             slipClip(joint.incoming.id, in: timelineID, layer: layerID, by: delta)
+        case .soundCrossfade(let shape):
+            var transition = joint.transition
+            transition.audioCrossfade = shape
+            updateClip(incomingID, in: timelineID, layer: layerID) { $0.setTransition(transition, at: .leading) }
         }
     }
 
