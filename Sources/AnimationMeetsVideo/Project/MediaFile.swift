@@ -20,4 +20,14 @@ enum MediaFile {
     static func asset(at url: URL) -> AVURLAsset {
         AVURLAsset(url: readableURL(for: url), options: options)
     }
+
+    /// The size of an asset's pictures as shown, rotation applied, read
+    /// from its file; nil for sound, and for a file that can't be read.
+    static func pictureSize(of media: MediaClip) async -> CGSize? {
+        guard media.kind.hasPictures, let url = media.url else { return nil }
+        if media.kind == .image { return MediaImporter.stillSize(at: url) }
+        guard let info = try? await MediaTrackCache.shared.info(for: readableURL(for: url)), info.video != nil else { return nil }
+        let size = info.orientedSize
+        return size.width > 0 && size.height > 0 ? size : nil
+    }
 }

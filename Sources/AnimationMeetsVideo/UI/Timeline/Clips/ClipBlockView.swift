@@ -60,6 +60,9 @@ struct ClipBlockView: View {
     let onMovePreview: (ClipMovePreview?) -> Void
     let onTrimStart: (CMTime) -> Void
     let onTrimEnd: (CMTime) -> Void
+    /// Hears each trim draft with the edge being dragged, for the viewer
+    /// to show the frame there, then nil when the drag ends.
+    let onTrimPreview: (TimelineClip?, TrimPreviewFrames) -> Void
     let onSetTransition: (TransitionKind, TransitionEdge) -> Void
     let onRemoveTransition: (TransitionEdge) -> Void
     let onSelectTransition: (TransitionEdge) -> Void
@@ -133,6 +136,9 @@ struct ClipBlockView: View {
     var onMotionDesign: (() -> Void)? = nil
     /// For an adjustment clip: what it reaches, and the choices.
     var reach: ReachMenu? = nil
+    /// Gives the timeline the clip's frame size, frame rate and colour
+    /// space; nil for clips without pictures of their own.
+    var onConformTimeline: (() -> Void)? = nil
 
     /// The clip as it will be if the current drag ends now. After a drop
     /// it stays up until the edited clip comes back down from the project:
@@ -153,8 +159,9 @@ struct ClipBlockView: View {
     @State private var isLifted = false
     /// Whether Option is held during the move, which copies the clip.
     @State private var isCopying = false
-    /// While moving, how far the block is drawn from where it will land, so
-    /// it stays under the pointer; an outline marks the landing place. On
+    /// While moving over the place a new layer would go, how far up or down
+    /// the block is drawn from its row, so it stays under the pointer;
+    /// anywhere else it is drawn where it will land and this is zero. On
     /// release it goes to zero, and the block settles into its place.
     @State private var carry: CGSize = .zero
     /// The block's laid-out frame in window coordinates (the row's, without
@@ -265,7 +272,6 @@ struct ClipBlockView: View {
                 InsertionLine(axis: .vertical)
                     .frame(height: height + 6)
                     .offset(x: liveX - 3.5, y: -3)
-                    .editorAnimation(Design.Motion.glide, value: liveX)
                     .zIndex(1)
             }
 
@@ -404,9 +410,10 @@ struct ClipBlockView: View {
                     }
                     .onEnded { _ in
                         autoScroll?.end()
-                        // From under the pointer into the place it lands. Into
-                        // another layer it is a new block that arrives, from
-                        // where this one was let go (`ClipFlights`).
+                        // Already where it lands, except over the new layer
+                        // place, from where it settles. Into another layer
+                        // it is a new block that arrives, from where this
+                        // one was let go (`ClipFlights`).
                         if previewTarget?.layerID != nil || previewTarget?.newLayer != nil {
                             ClipFlights.shared.depart(clip.id, from: drawnStart(liveX: liveX))
                         }
@@ -613,12 +620,13 @@ struct ClipBlockView: View {
         showPreview(moved)
         previewTarget = target?.layerID == nil && target?.newLayer == nil ? nil : target
         onMovePreview(target)
-        // The block stays under the pointer, however the landing place
-        // snaps or the clips around it make room, and goes there when it
-        // is put down; the landing mark shows where that will be.
+        // The block is drawn where it will land, on a frame and on the
+        // layer's row, stepping from frame to frame rather than floating
+        // with the pointer. Only over the place a new layer would go,
+        // which has no row yet, does it follow the pointer up or down.
         carry = CGSize(
-            width: CMTimeSubtract(clip.startOffset, moved.startOffset).seconds * pixelsPerSecond + across,
-            height: translation.height - (previewTarget?.offsetY ?? 0)
+            width: 0,
+            height: target?.newLayer == nil ? 0 : translation.height - (previewTarget?.offsetY ?? 0)
         )
     }
 
@@ -686,11 +694,13 @@ struct ClipBlockView: View {
         case .trailing: resolveTrimEnd(clip.sourceTime(atTimelineTime: CMTimeAdd(clip.endOffset, delta))) ?? clip
         }
         showPreview(trimmed)
+        onTrimPreview(trimmed, edge == .leading ? .first : .last)
     }
 
     /// A trim drag ended: commits it, or selects the clip when it was a click.
     private func trimEnded(_ edge: Edge) {
         onSnapIndicator(nil)
+        onTrimPreview(nil, .both)
         if let preview, preview != clip {
             commitDrop {
                 switch edge {

@@ -142,7 +142,7 @@ struct TransitionFootageLane: View {
     /// half the outgoing clip's footage, its bottom half the incoming clip's.
     let tool: TimelineTool
     /// The clip a slip drag is changing, for the viewer; nil when it ends.
-    let onTrimPreview: (TimelineClip?) -> Void
+    let onTrimPreview: (TimelineClip?, TrimPreviewFrames) -> Void
 
     static let height: CGFloat = 68
 
@@ -276,13 +276,13 @@ struct TransitionFootageLane: View {
                 guard let joint = preview(change) else { return }
                 draft = (change, joint)
                 switch change {
-                case .slipOut: onTrimPreview(joint.outgoing)
-                case .slipIn: onTrimPreview(joint.incoming)
+                case .slipOut: onTrimPreview(joint.outgoing, .both)
+                case .slipIn: onTrimPreview(joint.incoming, .both)
                 case .roll, .place, .widen: break
                 }
             }
             .onEnded { _ in
-                onTrimPreview(nil)
+                onTrimPreview(nil, .both)
                 if let draft { onCommit(draft.edit) }
                 draft = nil
             }

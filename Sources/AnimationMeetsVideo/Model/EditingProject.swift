@@ -105,6 +105,14 @@ struct EditingProject: Identifiable, Equatable {
         return timeline.id
     }
 
+    /// Renames a timeline; an empty name is ignored, since every timeline
+    /// is listed and chosen by its name.
+    mutating func renameTimeline(_ id: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        updateTimeline(id) { $0.name = trimmed }
+    }
+
     /// Changes a timeline's settings. A new frame rate also moves what is
     /// on the timeline onto its frames; see `alignToFrames(timeline:)`.
     mutating func updateTimelineSettings(_ id: UUID, name: String, frameSize: CGSize, frameRate: Double, colorSpace: ProjectColorSpace) {
@@ -119,6 +127,18 @@ struct EditingProject: Identifiable, Equatable {
         if frameChanged == true {
             alignToFrames(timeline: id)
         }
+    }
+
+    /// Gives a timeline an asset's frame size (when known), frame rate and
+    /// colour space, so it plays the asset as shot. A still has no frame
+    /// rate, so the timeline keeps its own; so does anything left unknown.
+    mutating func conformTimeline(_ id: UUID, to media: MediaClip, frameSize: CGSize?) {
+        guard let timeline = timeline(id: id), media.kind.hasPictures else { return }
+        let size = frameSize.map { CGSize(width: $0.width.rounded(), height: $0.height.rounded()) } ?? timeline.frameSize
+        updateTimelineSettings(
+            id, name: timeline.name, frameSize: size,
+            frameRate: media.frameRate > 0 ? media.frameRate : timeline.frameRate, colorSpace: media.colorSpace
+        )
     }
 
     /// A timeline can't be embedded into itself or into any timeline it

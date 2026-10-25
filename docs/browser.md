@@ -50,8 +50,10 @@ remembered.
   embedded in two shows under both). The active one is marked **Open**.
   Clicking one embeds it into the active timeline; one that can't be (it
   is empty, or would contain itself) beeps, with its tooltip saying why.
-  Its menu has **Embed in Active Timeline** and **Duplicate Timeline**,
-  which puts a copy below it ("Main copy", "Main copy 2") with new IDs
+  Its menu has **Embed in Active Timeline**, **Rename Timeline** (the
+  name becomes a field in its row: Return or clicking away keeps the new
+  name, Escape puts the old one back) and **Duplicate Timeline**, which
+  puts a copy below it ("Main copy", "Main copy 2") with new IDs
   for its layers and clips, sharing the timelines it embeds. Planned:
   thumbnails drawn from the timeline itself.
 - **Presets**: saved effect presets (see [effects.md](effects.md),
@@ -140,6 +142,8 @@ loses the keyboard.
 
 - **Click** selects the whole clip.
 - **Clicking off the clips** (between or below them) selects nothing.
+  **Double-clicking** there, or on the empty tab of a project with no
+  media, opens the import dialog.
 - **Command-click** adds a clip to the selection or takes it out.
 - **Shift-click** selects every clip from the last one clicked to this one,
   in browser order.

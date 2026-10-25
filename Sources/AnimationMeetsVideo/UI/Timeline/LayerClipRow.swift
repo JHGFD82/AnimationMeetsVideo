@@ -82,7 +82,7 @@ struct LayerClipRow: View {
     let snapTolerance: CMTime
     /// Where a drag snapped, to draw; nil when it didn't or ended.
     let onSnapIndicator: (CMTime?) -> Void
-    let onTrimPreview: (TimelineClip?) -> Void
+    let onTrimPreview: (TimelineClip?, TrimPreviewFrames) -> Void
     /// An edit of the joint at the start of a clip.
     let onApplyJointEdit: (UUID, JointEdit) -> Void
     let onSetTransitionDuration: (UUID, TransitionEdge, CMTime) -> Void
@@ -119,6 +119,8 @@ struct LayerClipRow: View {
     var musicMarks: [UUID: [CMTime]] = [:]
     /// Opens the motion designer on a clip, with the clips picked with it.
     let onMotionDesign: (UUID) -> Void
+    /// Gives the timeline a clip's frame size, frame rate and colour space.
+    let onConformTimeline: (TimelineClip) -> Void
 
     /// While a slip shortens a clip: how far the clips after it move in.
     private struct FollowerShift: Equatable {
@@ -164,11 +166,17 @@ struct LayerClipRow: View {
     private func slipDraft(of clip: TimelineClip, _ draft: TimelineClip?, committing: Bool) {
         if let draft {
             followerShift = FollowerShift(clipID: clip.id, after: clip.endOffset, shift: CMTimeSubtract(draft.endOffset, clip.endOffset))
-            onTrimPreview(draft)
+            onTrimPreview(draft, .both)
         } else {
-            onTrimPreview(nil)
+            onTrimPreview(nil, .both)
             if !committing { followerShift = nil }
         }
+    }
+
+    /// Conform Timeline to Clip, for clips showing pictures of a file.
+    private func conformAction(for clip: TimelineClip, info: ResolvedClipInfo?) -> (() -> Void)? {
+        guard case .media(let media)? = info, media.kind.hasPictures, clip.streams != .audio else { return nil }
+        return { onConformTimeline(clip) }
     }
 
     /// What opening a nested timeline's clip does; nil for any other clip.
@@ -248,6 +256,7 @@ struct LayerClipRow: View {
                     onMovePreview: onMovePreview,
                     onTrimStart: { newTrimStart in onTrimClipStart(clip.id, newTrimStart) },
                     onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) },
+                    onTrimPreview: onTrimPreview,
                     onSetTransition: { kind, edge in onSetTransition(clip.id, kind, edge) },
                     onRemoveTransition: { edge in onRemoveTransition(clip.id, edge) },
                     onSelectTransition: { edge in onSelectTransition(clip, edge) },
@@ -287,7 +296,8 @@ struct LayerClipRow: View {
                     onSetMusicPoint: layer.kind == .music ? nil : { time in onAttachToMusic(clip.id, time) },
                     musicMarks: musicMarks[clip.id] ?? [],
                     onMotionDesign: layer.kind == .music || clip.isReversed ? nil : { onMotionDesign(clip.id) },
-                    reach: reachMenu(for: clip)
+                    reach: reachMenu(for: clip),
+                    onConformTimeline: conformAction(for: clip, info: info)
                 )
                 .offset(x: shiftX(of: clip))
                 // Clips glide to where they are put, in whichever layer

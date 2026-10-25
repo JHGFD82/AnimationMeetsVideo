@@ -27,6 +27,7 @@ struct ClipMenuHost: View, Equatable {
         var hasBeats: Bool
         var canFollowMusic: Bool
         var canMotionDesign: Bool
+        var canConformTimeline: Bool
         var passesThrough: Bool
         var acceptsEffects: Bool
         var acceptsSoundEffects: Bool
@@ -54,7 +55,7 @@ extension ClipBlockView {
     var menuKey: ClipMenuHost.Key {
         ClipMenuHost.Key(
             clip: clip, hasLinkedAudio: hasLinkedAudio, hasBeatMatch: onBeatMatch != nil, hasBeats: onRemoveBeats != nil, canFollowMusic: onAttachToMusic != nil,
-            canMotionDesign: onMotionDesign != nil, passesThrough: passesThrough,
+            canMotionDesign: onMotionDesign != nil, canConformTimeline: onConformTimeline != nil, passesThrough: passesThrough,
             acceptsEffects: acceptsEffects, acceptsSoundEffects: acceptsSoundEffects, playsSound: playsSound,
             reachCurrent: reach?.current, reachSummary: reach?.summary,
             reachOptions: reach?.options.map(\.id) ?? [], reachNames: reach?.options.map(\.name) ?? [],
@@ -122,6 +123,10 @@ extension ClipBlockView {
             Divider()
             Button("Show in Clips Browser") { NotificationCenter.default.post(name: .revealInBrowser, object: piece) }
                 .keyboardShortcut("f", modifiers: .shift)
+            if let onConformTimeline {
+                Button("Conform Timeline to Clip", action: onConformTimeline)
+                    .help("Give the timeline this clip's frame size, frame rate and SDR or HDR colour space")
+            }
             Divider()
             timeMenu
             if acceptsEffects { shutterMenu }

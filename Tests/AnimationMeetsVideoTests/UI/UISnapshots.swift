@@ -564,6 +564,18 @@ struct UISnapshots {
         )
     }
 
+    /// The viewer's trim preview while a left edge is dragged: the first
+    /// frame alone, with its timecode (black here, as no file is read).
+    @Test func trimEdgePreview() throws {
+        let model = TrimPreviewModel()
+        let missing = URL(fileURLWithPath: "/nonexistent/clip.mov")
+        model.show(url: missing, first: .zero, last: .zero, labelFirst: CMTime(value: 49, timescale: 24), labelLast: .zero, frames: .first)
+        try SnapshotSupport.render(
+            TrimPreviewOverlay(model: model, frameRate: 24, aspectRatio: 16 / 9).padding(20),
+            "trim-edge-preview", size: CGSize(width: 520, height: 340)
+        )
+    }
+
     /// A selected effect outlined whole, its controls included, in the
     /// active panel (accent) and in one that isn't (grey).
     @Test func selectedEffectOutline() throws {

@@ -77,6 +77,8 @@ struct ClipsTab: View {
     /// Footage to pick and scroll to, from Show in Clips Browser; set back
     /// to nil once it is shown.
     @Binding var revealing: MediaPiece?
+    /// Opens the import dialog, from a double-click off the clips.
+    let onImport: () -> Void
 
     @AppStorage(Preferences.thumbnailInterval) private var interval = ThumbnailInterval.all
     @AppStorage(Preferences.thumbnailSize) private var thumbnailSize = ThumbnailSize.medium
@@ -236,9 +238,11 @@ struct ClipsTab: View {
                 }
                 .padding(.horizontal, Self.padding)
                 .padding(.bottom, Design.Space.group)
-                // Clicking off the clips, below them included, picks nothing.
+                // Clicking off the clips, below them included, picks nothing;
+                // a double-click there imports media.
                 .frame(maxWidth: .infinity, minHeight: height, alignment: .topLeading)
                 .contentShape(Rectangle())
+                .onTapGesture(count: 2, perform: onImport)
                 .onTapGesture {
                     focused = true
                     picked.clear()

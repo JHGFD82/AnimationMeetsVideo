@@ -417,7 +417,8 @@ extension TimelineView {
                         onMotionDesign: { clipID in
                             let ids = groupSelection.contains(clipID) ? groupSelection : [clipID]
                             motionDesign?.open(clips: ids, in: timelineID, of: project)
-                        }
+                        },
+                        onConformTimeline: { clip in conformTimeline(to: clip) }
                     )
                     // Rows that would draw the same aren't redrawn, so
                     // dragging one clip's value redraws only its layer.

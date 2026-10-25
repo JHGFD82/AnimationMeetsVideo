@@ -89,7 +89,7 @@ struct BrowserPanel: View {
                     ClipsTab(
                         access: access, activeTimelineID: activeTimelineID, selection: $selection,
                         analysis: analysis, replacement: replacement, packageURL: packageURL,
-                        revealing: $revealing
+                        revealing: $revealing, onImport: importMedia
                     )
                 }
             case .timelines: timelinesList
@@ -132,6 +132,9 @@ struct BrowserPanel: View {
                 .tint(Design.accentFill)
         }
         .frame(maxHeight: .infinity)
+        // A double-click anywhere on it imports too, as on the list.
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2, perform: importMedia)
     }
 
     /// Time per thumbnail and thumbnail size, for every browser tab.
@@ -191,7 +194,8 @@ struct BrowserPanel: View {
         TimelinesList(
             project: project, activeTimelineID: activeTimelineID,
             onEmbed: { id in project.timeline(id: id).map(embed) },
-            onDuplicate: { id in project.duplicateTimeline(id) }
+            onDuplicate: { id in project.duplicateTimeline(id) },
+            onRename: { id, name in project.renameTimeline(id, to: name) }
         )
     }
 

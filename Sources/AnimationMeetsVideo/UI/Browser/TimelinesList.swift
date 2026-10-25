@@ -5,13 +5,17 @@ import SwiftUI
 /// the timelines it is embedded in (with a disclosure triangle), the main
 /// timeline first. Clicking one embeds it into the active timeline;
 /// dragging it puts it on an effect that takes an input; its menu also
-/// duplicates it. The active timeline is listed, marked as open, but
-/// can't be embedded into itself.
+/// renames and duplicates it. The active timeline is listed, marked as
+/// open, but can't be embedded into itself.
 struct TimelinesList: View {
     let project: EditingProject
     let activeTimelineID: UUID
     let onEmbed: (UUID) -> Void
     let onDuplicate: (UUID) -> Void
+    var onRename: (UUID, String) -> Void = { _, _ in }
+
+    /// The timeline whose name is being edited in its row.
+    @State private var renamingID: UUID?
 
     /// A timeline at one place in the tree. One embedded in two timelines
     /// shows under both, so a row is told apart by its path from the top.
@@ -61,33 +65,55 @@ struct TimelinesList: View {
         })
     }
 
+    @ViewBuilder
     private func row(_ timeline: Timeline) -> some View {
+        if renamingID == timeline.id {
+            // Out of the button while its name is edited, so a click in the
+            // field doesn't embed the timeline.
+            rowLabel(timeline)
+        } else {
+            embedButton(timeline)
+        }
+    }
+
+    private func rowLabel(_ timeline: Timeline) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: Design.Space.close) {
+                    InlineNameField(
+                        name: timeline.name,
+                        isEditing: Binding(
+                            get: { renamingID == timeline.id },
+                            set: { editing in renamingID = editing ? timeline.id : nil }
+                        ),
+                        onCommit: { onRename(timeline.id, $0) }
+                    )
+                    .foregroundStyle(Design.textPrimary)
+                    if timeline.id == activeTimelineID {
+                        Text("Open")
+                            .font(Design.Typeface.label)
+                            .foregroundStyle(Design.textSecondary)
+                    }
+                }
+                Text(timeline.timebaseSummary)
+                    .font(Design.Typeface.numericMicro)
+                    .foregroundStyle(Design.textTertiary)
+            }
+        } icon: {
+            Image(systemName: "rectangle.stack")
+                .foregroundStyle(Design.ClipTone.nested.color)
+        }
+    }
+
+    private func embedButton(_ timeline: Timeline) -> some View {
         let isActive = timeline.id == activeTimelineID
         let canEmbed = project.canEmbed(timeline.id, into: activeTimelineID)
         // Not disabled when it can't be embedded: its name stays readable
-        // and its menu still duplicates it; a click just beeps.
+        // and its menu still renames and duplicates it; a click just beeps.
         return Button {
             if canEmbed { onEmbed(timeline.id) } else { NSSound.beep() }
         } label: {
-            Label {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: Design.Space.close) {
-                        Text(timeline.name)
-                            .foregroundStyle(Design.textPrimary)
-                        if isActive {
-                            Text("Open")
-                                .font(Design.Typeface.label)
-                                .foregroundStyle(Design.textSecondary)
-                        }
-                    }
-                    Text(timeline.timebaseSummary)
-                        .font(Design.Typeface.numericMicro)
-                        .foregroundStyle(Design.textTertiary)
-                }
-            } icon: {
-                Image(systemName: "rectangle.stack")
-                    .foregroundStyle(Design.ClipTone.nested.color)
-            }
+            rowLabel(timeline)
         }
         .buttonStyle(.plain)
         .help(isActive ? "The timeline open below; it can't be embedded into itself"
@@ -97,8 +123,10 @@ struct TimelinesList: View {
         .contextMenu {
             Button("Embed in Active Timeline") { onEmbed(timeline.id) }
                 .disabled(!canEmbed)
+            Button("Rename Timeline") { renamingID = timeline.id }
             Button("Duplicate Timeline") { onDuplicate(timeline.id) }
         }
+        .accessibilityAction(named: "Rename timeline") { renamingID = timeline.id }
         .accessibilityAction(named: "Duplicate timeline") { onDuplicate(timeline.id) }
     }
 }

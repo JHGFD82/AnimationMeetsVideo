@@ -261,6 +261,11 @@ lands out of view.
 
 ### Skimming
 
+While a dialog is open over the window (New Timeline, Timeline
+Settings, an alert), the window behind it takes no pointer input at all:
+no skimming, hovering, scrolling or clicks (`WindowInputBlock`), and a
+skim under way when it opens ends.
+
 With **Skimming** on (the default; it is switched in the timeline's
 view options, the Timeline menu or the Settings window's Timeline tab),
 moving the pointer over the track area or the ruler while paused shows
@@ -408,7 +413,11 @@ transitions and keyframes don't snap.
 ## Moving and trimming clips
 
 Dragging the middle of a clip moves it; dragging within a few points of
-either edge trims that edge without destroying anything. Holding the
+either edge trims that edge without destroying anything. While an edge of
+a video clip is dragged, the viewer shows the frame at that edge (its
+first frame for the left edge, its last for the right) with its source
+timecode, read straight from the file, so footage a lengthened edge
+reaches shows too (`TrimPreviewOverlay`). Holding the
 pointer near the left or right edge of the tracks during either drag
 scrolls the timeline that way, faster the closer to the edge
 (`TimelineAutoScroll`), so a clip can be taken past what is in view. Near
@@ -416,12 +425,14 @@ the top or bottom of an area, a clip moved across layers, or media dragged
 in from the browser, scrolls that area up or down the same way
 (`EdgeAutoScroll`, one per area, reached through `TimelineAutoScroll`).
 
-**Motion.** A moved clip stays under the pointer the whole way, in both
-directions, however its landing place snaps or the clips around it make
-room; the landing place is shown by the line at its start, which glides
-rather than jumping, and by the clips that slide aside. Let go, it glides
-from under the pointer into its place; into another layer, the clip's new
-block takes up the motion from where it was let go (`ClipFlights`). Clips
+**Motion.** A moved clip is drawn where it will land the whole way: on
+the frame its start snaps to and on the row of the layer it will go onto,
+stepping from frame to frame rather than floating with the pointer, so
+what is seen is exactly what the drop will do. The line at its start and
+the clips that slide aside show the rest. Only over the place a new layer
+would go, which has no row yet, does it follow the pointer up or down;
+let go there, the new layer's block takes up the motion from where it
+was let go (`ClipFlights`). Clips
 glide wherever an edit moves them, in whichever layer (`Motion.glide`),
 but not when the view is zoomed. Reduced motion makes all of it instant.
 The rules for where a clip may go are in `ClipPlacement.swift`:
@@ -440,6 +451,12 @@ The rules for where a clip may go are in `ClipPlacement.swift`:
   still meet. Keyframes that land on one frame merge, keeping the later.
   Rates other than whole numbers and the NTSC family (such as 12.5) are
   kept exact rather than rounded to a whole number.
+- **Conform Timeline to Clip**, in the right-click menu of a clip with
+  pictures, gives the timeline that clip's frame size (read from its
+  file, rotation applied), frame rate and colour space (SDR Rec. 709 or
+  one of the HDR spaces), as one undoable edit that moves everything onto
+  the new frames as above (`EditingProject.conformTimeline`). A still
+  has no frame rate, so the timeline keeps its own.
 - **Audio moves freely**, to 1/48000 of a second.
 - Clips never start before zero and never overlap on a layer. A moved
   clip lands where it is dropped. Dropped inside another clip, it goes to
@@ -473,7 +490,11 @@ band of pictures at least 22 points tall: one thumbnail per tile, each the
 frame played where the tile starts (retimed and reversed clips included),
 under an 18-point band of the clip's colour that holds its name, so the
 name keeps its contrast. Only the drawn part of a clip is tiled, and the
-pictures come from the same in-memory store as the browser's.
+pictures come from the same in-memory store as the browser's. Tiles are
+laid out from where the footage's first frame would play, not from the
+clip's start, so trimming either edge cuts into the pictures rather than
+shifting them, and the two halves of a split line up; a retimed or
+reversed clip tiles from its start.
 
 A clip being moved is drawn picked up: raised and shadowed, at its own
 size, and **where it will land** under these rules (snapped, on a frame,
@@ -806,8 +827,13 @@ timeline it plays; **Open Timeline** in its right-click menu and its
 VoiceOver action do the same. The header bar then shows a **breadcrumb**
 before the timeline's name: the timelines gone through to get here,
 outermost first, each a button that goes back out to it (`trail` in
-`TimelineEditorSurface`). Picking a timeline another way, from the name
-menu or the browser, starts the trail over. A second display's own
+`TimelineEditorSurface`). Picking a timeline another way, from the menu
+beside its name or the browser, starts the trail over.
+
+**Clicking the timeline's name** in the header bar (or **Rename
+Timeline** in its right-click menu) renames it in place: Return or
+clicking away keeps the new name, Escape puts the old one back. The
+chevron beside it lists every timeline to go to. A second display's own
 timeline, when it is independent, keeps its own trail.
 
 ## Not implemented yet

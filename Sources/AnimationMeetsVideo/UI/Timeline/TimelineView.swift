@@ -62,7 +62,7 @@ struct TimelineView: View {
     let onSlipClip: (UUID, UUID, CMTime) -> Void
     /// The clip as a slip drag would leave it, for the viewer to show its
     /// first and last frames; nil when the drag ends.
-    let onTrimPreview: (TimelineClip?) -> Void
+    let onTrimPreview: (TimelineClip?, TrimPreviewFrames) -> Void
     let onSetTransitionDuration: (UUID, UUID, TransitionEdge, CMTime) -> Void
     /// Applies a change to the project, for the section lane.
     let onEditProject: ((inout EditingProject) -> Void) -> Void
@@ -737,5 +737,16 @@ struct TimelineView: View {
     func deleteLayer(_ id: UUID) {
         if selectedLayerID == id { selectedLayerID = nil }
         onDeleteLayer(id)
+    }
+
+    /// Conform Timeline to Clip: the timeline takes the clip's frame size,
+    /// read from its file, its frame rate and its colour space, as one edit.
+    func conformTimeline(to clip: TimelineClip) {
+        guard case .media(let id) = clip.source, let media = project.mediaClip(id: id) else { return }
+        let timelineID = timelineID
+        Task { @MainActor in
+            let size = await MediaFile.pictureSize(of: media)
+            onEditProject { $0.conformTimeline(timelineID, to: media, frameSize: size) }
+        }
     }
 }
