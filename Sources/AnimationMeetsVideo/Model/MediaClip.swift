@@ -16,6 +16,10 @@ struct MediaClip: Identifiable, Equatable {
     /// Hand-made changes to this asset's scene list. Detected cuts are not
     /// stored; they are recomputed from the saved change scores.
     var sceneEdits = SceneEdits()
+    /// Set by Don't Detect Scenes: the asset's cuts aren't looked for (a
+    /// search under way stops), and any found aren't used, so it is one
+    /// clip in the browser. An edit like any other, so it can be undone.
+    var skipsSceneDetection = false
     /// The beats as the person confirmed them, in original time. Detected
     /// beats are not stored here; they are a cache in the package.
     var beatMap = BeatMap()

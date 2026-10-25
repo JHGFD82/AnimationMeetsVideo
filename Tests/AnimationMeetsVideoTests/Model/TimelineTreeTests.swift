@@ -42,6 +42,29 @@ import Testing
         #expect(nodes[1].children == nil)
     }
 
+    /// Detail is embedded in both Main and Scene, which Main embeds too: it
+    /// is listed once, under Main, the shallower of the two.
+    @Test func listsATimelineEmbeddedTwiceOnce() throws {
+        var project = EditingProject.empty
+        let main = project.rootTimelineID
+        let scene = Self.addTimeline("Scene", to: &project)
+        let detail = Self.addTimeline("Detail", to: &project)
+        _ = project.importClip(Self.media(), intoTimeline: detail)
+        _ = project.importClip(Self.media(), intoTimeline: scene)
+        _ = project.embedTimeline(detail, intoTimeline: main)
+        _ = project.embedTimeline(detail, intoTimeline: scene)
+        _ = project.embedTimeline(scene, intoTimeline: main)
+
+        func all(_ nodes: [TimelinesList.Node]) -> [UUID] {
+            nodes.flatMap { [$0.timelineID] + all($0.children ?? []) }
+        }
+        let nodes = TimelinesList.nodes(of: project)
+        #expect(all(nodes).sorted { $0.uuidString < $1.uuidString } == [main, scene, detail].sorted { $0.uuidString < $1.uuidString })
+        #expect(Set(nodes.first?.children?.map(\.timelineID) ?? []) == [detail, scene])
+        let sceneNode = nodes.first?.children?.first { $0.timelineID == scene }
+        #expect(sceneNode?.children == nil)
+    }
+
     @Test func aDuplicateHasNewIDsAndItsOwnName() throws {
         var project = EditingProject.empty
         let main = project.rootTimelineID

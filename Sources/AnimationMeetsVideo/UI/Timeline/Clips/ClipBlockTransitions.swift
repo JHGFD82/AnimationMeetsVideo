@@ -122,14 +122,19 @@ private struct TransitionMark: View {
     }
 }
 
-/// The area under a transition's curve.
+/// The area under a transition's curve, down to the clip's bottom edge.
+/// The curve is mapped as the curve editor maps it (`TransitionCurveFrame`,
+/// its inset included), so the wedge's edge is the very line the editor
+/// draws and its points sit on; drawn at the full height, it was steeper.
 struct TransitionWedge: Shape {
     let curve: TransitionCurve
     let edge: TransitionEdge
 
     func path(in rect: CGRect) -> Path {
-        var path = TransitionCurveFrame(size: rect.size, edge: edge, inset: 0).path(of: curve)
-        path.addLine(to: CGPoint(x: edge == .leading ? rect.width : 0, y: rect.height))
+        // The curve runs left to right in time; under it, the bottom edge.
+        var path = TransitionCurveFrame(size: rect.size, edge: edge).path(of: curve)
+        path.addLine(to: CGPoint(x: rect.width, y: rect.height))
+        path.addLine(to: CGPoint(x: 0, y: rect.height))
         path.closeSubpath()
         return path.offsetBy(dx: rect.minX, dy: rect.minY)
     }

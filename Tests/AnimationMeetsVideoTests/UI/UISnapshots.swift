@@ -259,11 +259,62 @@ struct UISnapshots {
         _ = project.embedTimeline(logo, intoTimeline: chorus)
         _ = project.embedTimeline(chorus, intoTimeline: project.rootTimelineID)
         try SnapshotSupport.render(
-            TimelinesList(project: project, activeTimelineID: project.rootTimelineID, onEmbed: { _ in }, onDuplicate: { _ in })
+            TimelinesList(project: project, activeTimelineID: project.rootTimelineID, onOpen: { _ in }, onEmbed: { _ in }, onDuplicate: { _ in })
                 .frame(width: 260, height: 260)
                 .background(Design.Surface.base.color)
                 .preferredColorScheme(.dark),
             "timelines-list", size: CGSize(width: 260, height: 260)
+        )
+    }
+
+    /// A transition's shaded wedge with its curve editor over it, as on a
+    /// selected clip: the wedge's edge is the editor's line, a way in
+    /// (linear) beside a way out (eased).
+    @Test func transitionWedgeAndCurve() throws {
+        func mark(_ curve: TransitionCurve, _ edge: TransitionEdge) -> some View {
+            let size = CGSize(width: 180, height: 60)
+            return ZStack(alignment: .topLeading) {
+                Design.ClipTone.video.color
+                TransitionWedge(curve: curve, edge: edge).fill(Color.white.opacity(0.34))
+                TransitionCurveEditor(curve: curve, edge: edge, size: size, onChange: { _ in })
+            }
+            .frame(width: size.width, height: size.height)
+        }
+        try SnapshotSupport.render(
+            HStack(spacing: 20) {
+                mark(TransitionCurve(preset: .linear), .leading)
+                mark(TransitionCurve(preset: .easyEase), .trailing)
+            }
+            .padding(16)
+            .background(Design.Surface.sunken.color)
+            .preferredColorScheme(.dark),
+            "transition-wedge-curve", size: CGSize(width: 412, height: 92)
+        )
+    }
+
+    /// A name beside its icon, shown and being renamed: the field is
+    /// bordered, and neither the icon nor the name moves.
+    @Test func inlineNameField() throws {
+        func row(editing: Bool) -> some View {
+            Label {
+                InlineNameField(name: "Chorus", isEditing: .constant(editing), onCommit: { _ in })
+                    .foregroundStyle(Design.textPrimary)
+            } icon: {
+                Image(systemName: "rectangle.stack").foregroundStyle(Design.ClipTone.nested.color)
+            }
+            .font(Design.Typeface.label)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        try SnapshotSupport.render(
+            VStack(alignment: .leading, spacing: 12) {
+                row(editing: false)
+                row(editing: true)
+            }
+            .padding(16)
+            .frame(width: 260, alignment: .topLeading)
+            .background(Design.Surface.base.color)
+            .preferredColorScheme(.dark),
+            "inline-name-field", size: CGSize(width: 260, height: 90)
         )
     }
 

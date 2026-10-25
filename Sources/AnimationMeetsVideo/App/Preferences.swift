@@ -84,6 +84,8 @@ enum Preferences {
     /// The `LoudnessTarget` exports are delivered at.
     static let exportLoudness = "exportLoudness"
     static let browserTab = "browserTab"
+    /// The order of the browser's clips and timelines (`BrowserSort`).
+    static let browserSort = "browserSort"
     static let timelineAreaLayout = "timelineAreaLayout"
     static let effectsPanelShowsKeyframeLanes = "effectsPanelShowsKeyframeLanes"
 

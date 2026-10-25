@@ -484,6 +484,37 @@ final class Gate: @unchecked Sendable {
         #expect(counter.value == 2)
     }
 
+    /// Don't Detect Scenes during the search stops it, and its result never
+    /// lands; turned back on (an undo), the scenes are found.
+    @Test func turningSceneDetectionOffStopsTheSearch() async throws {
+        let gate = Gate()
+        let analysis = AssetAnalysis()
+        let id = UUID()
+        var video = project(ids: [id])
+        let counter = Mutex(0)
+        scoring(analysis) {
+            let attempt = counter.increment()
+            if attempt == 1 { await gate.wait() }
+            return ChangeScoreTrack(timescale: 600, times: [0, 1], scores: [0, UInt8(attempt)])
+        }
+        analysis.update(with: video)
+        try await settle { gate.arrived == 1 }
+
+        video.setDetectsScenes(false, ofAsset: id)
+        analysis.projectSource = { video }
+        analysis.update(with: video)
+        gate.open()
+        try await settle { analysis.progress.isEmpty }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(analysis.tracks[id] == nil)
+        #expect(counter.value == 1)
+
+        video.setDetectsScenes(true, ofAsset: id)
+        analysis.update(with: video)
+        try await settle { analysis.progress.isEmpty && analysis.tracks[id] != nil }
+        #expect(analysis.tracks[id]?.scores == [0, 2])
+    }
+
     @Test func redetectingIgnoresTheScoreSavedInThePackage() async throws {
         let package = try makePackage()
         defer { try? FileManager.default.removeItem(at: package) }

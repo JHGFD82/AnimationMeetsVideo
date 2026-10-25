@@ -99,7 +99,9 @@ extension EditingProject {
     func sceneCoverage(ofAsset assetID: UUID, track: ChangeScoreTrack?) -> SceneCoverage? {
         guard let clip = mediaClip(id: assetID) else { return nil }
         let mapping = clip.timeMapping
-        let cuts = SceneDetector.cuts(in: track, defaultSensitivity: defaultSensitivity, edits: clip.sceneEdits, mapping: mapping)
+        // Detected cuts aren't used while detection is off; hand-made ones are.
+        let detected = clip.skipsSceneDetection ? nil : track
+        let cuts = SceneDetector.cuts(in: detected, defaultSensitivity: defaultSensitivity, edits: clip.sceneEdits, mapping: mapping)
         // The file's footage: its whole length except the empty stretches its
         // edit list leaves (the scores know them), which are never playable.
         let footage = SceneDomain.footage(duration: clip.duration, emptySpans: track?.emptySpans ?? [], timescale: track?.timescale ?? 1)

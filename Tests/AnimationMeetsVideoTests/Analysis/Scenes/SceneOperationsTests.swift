@@ -168,6 +168,17 @@ private func frames(_ times: [CMTime]) -> [Int64] { times.map { $0.value * 24 / 
         #expect(project.scenes(ofAsset: id, track: track).count == 3)
     }
 
+    /// With detection off, detected cuts aren't used and hand-made ones are.
+    @Test func anAssetNotDetectedKeepsOnlyItsHandMadeCuts() {
+        var (project, id) = project()
+        let track = spikeTrack(frames: 100, spikes: [70: 200])
+        #expect(project.scenes(ofAsset: id, track: track).count == 2)
+        project.setDetectsScenes(false, ofAsset: id)
+        #expect(project.scenes(ofAsset: id, track: track).count == 1)
+        project.editScenes(ofAsset: id) { $0.addCut(at: t(50)) }
+        #expect(project.scenes(ofAsset: id, track: track).map(\.start) == [.zero, t(50)])
+    }
+
     @Test func addedScenesGoBackToBackFromZeroOnOneNewLayer() throws {
         var (project, id) = project()
         let scenes = [

@@ -417,7 +417,9 @@ either edge trims that edge without destroying anything. While an edge of
 a video clip is dragged, the viewer shows the frame at that edge (its
 first frame for the left edge, its last for the right) with its source
 timecode, read straight from the file, so footage a lengthened edge
-reaches shows too (`TrimPreviewOverlay`). Holding the
+reaches shows too (`TrimPreviewOverlay`). It follows the pointer as the
+drag goes: one frame is read at a time, and when it is done the frame
+where the edge is then is read next. Holding the
 pointer near the left or right edge of the tracks during either drag
 scrolls the timeline that way, faster the closer to the edge
 (`TimelineAutoScroll`), so a clip can be taken past what is in view. Near
@@ -576,8 +578,10 @@ taking it out to) whatever is underneath: lower layers, or black.
 
 ### Transitions joining two clips
 
-Where two media clips with pictures meet on a layer, a transition dropped
-at the cut, on either clip, **joins** them: it becomes the incoming clip's
+Where two media clips with pictures meet on a layer (within
+`Timeline.abutmentTolerance`, as clips meet everywhere else, so edges a
+sliver apart from rounding still count), a transition dropped at the cut,
+on either clip, **joins** them: it becomes the incoming clip's
 way in and is drawn as one box across the cut, over both clips. It blends
 the outgoing clip into the incoming one, which needs footage beyond their
 trims: before the cut the incoming clip plays the frames before its in
@@ -823,18 +827,18 @@ The lasso's rectangle fades out when the button comes up.
 ## Going into a nested timeline
 
 **Double-click a nested timeline's clip** (Arrow tool) to go into the
-timeline it plays; **Open Timeline** in its right-click menu and its
+timeline it plays (except on one of its transitions, where the click
+selects the transition and shows its details, as on any clip); **Open Timeline** in its right-click menu and its
 VoiceOver action do the same. The header bar then shows a **breadcrumb**
 before the timeline's name: the timelines gone through to get here,
 outermost first, each a button that goes back out to it (`trail` in
-`TimelineEditorSurface`). Picking a timeline another way, from the menu
-beside its name or the browser, starts the trail over.
+`TimelineEditorSurface`). Opening a timeline another way, from the
+browser's Timelines tab, starts the trail over.
 
-**Clicking the timeline's name** in the header bar (or **Rename
-Timeline** in its right-click menu) renames it in place: Return or
-clicking away keeps the new name, Escape puts the old one back. The
-chevron beside it lists every timeline to go to. A second display's own
-timeline, when it is independent, keeps its own trail.
+The header only shows the open timeline's name: timelines are opened
+(double-click) and renamed in the Timelines tab (see docs/browser.md). A
+second display's own timeline, when it is independent, keeps its own
+trail.
 
 ## Not implemented yet
 

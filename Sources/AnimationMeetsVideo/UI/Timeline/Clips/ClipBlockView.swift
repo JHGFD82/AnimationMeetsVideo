@@ -471,9 +471,12 @@ struct ClipBlockView: View {
                     },
                 including: tool == .slip ? .all : .subviews
             )
-            // A double-click on a nested timeline goes into it.
-            .simultaneousGesture(TapGesture(count: 2).onEnded {
-                if tool == .arrow { onOpenNested?() }
+            // A double-click on a nested timeline goes into it, except on
+            // one of its transitions: the click selected that, and its
+            // details stay up, as on any other clip.
+            .simultaneousGesture(SpatialTapGesture(count: 2, coordinateSpace: .named(space)).onEnded { value in
+                guard tool == .arrow, transitionEdge(atX: value.location.x, liveX: liveX) == nil else { return }
+                onOpenNested?()
             })
             // A click selects the clip, or the transition under it.
             .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(space)).onEnded { value in

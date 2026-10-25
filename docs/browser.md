@@ -38,21 +38,29 @@ remembered.
   are being found (shortened to "Detecting", then the bar alone, when a
   single small thumbnail has no room). Once they are found the clip is
   **replaced by its scenes**: the video's name becomes a heading with its
-  scene count and its own menu (Add Whole Clip to Timeline, Split
-  Scenes, Cut Sensitivity, Find Scenes Again, replacing the file), and **each scene
+  scene count and its own menu (Add Whole Clip to Timeline, Rename, Split
+  Scenes, Cut Sensitivity, Find Scenes Again, Don't Detect Scenes,
+  replacing the file), and **each scene
   is a clip** of its own (a "virtual clip", as in
   [scene-cuts.md](scene-cuts.md)) under it, in source order. Finding
   scenes again shows the whole clip until they are found. Audio files are
   clips with a waveform in place of thumbnails.
 - **Timelines**: the project's timelines as a tree (`TimelinesList`): the
   main timeline first, then those no timeline embeds, each with the
-  timelines it embeds under a disclosure triangle, open to start with (one
-  embedded in two shows under both). The active one is marked **Open**.
-  Clicking one embeds it into the active timeline; one that can't be (it
-  is empty, or would contain itself) beeps, with its tooltip saying why.
-  Its menu has **Embed in Active Timeline**, **Rename Timeline** (the
-  name becomes a field in its row: Return or clicking away keeps the new
-  name, Escape puts the old one back) and **Duplicate Timeline**, which
+  timelines it embeds under a disclosure triangle, open to start with.
+  Each timeline is listed once: one embedded in several timelines sits
+  under the one nearest the top. The active one is marked **Open**.
+  As in the Finder, a **click selects** a timeline and a **double-click
+  opens** it in the editor; clicking doesn't embed it. A click on the name
+  of the selected timeline (after a moment, so a double-click still
+  opens), Return, or **Rename Timeline** in its menu renames it: the name
+  becomes a bordered field over it, Return or clicking away keeps the new
+  name, Escape puts the old one back. Its menu also has **Open**,
+  **Open in New Window** (a second editor on that timeline, sharing the
+  project with its window: the same undo, so ⌘Z in either undoes the last
+  edit made in either, and it closes when the project's window does;
+  `TimelineWindow`), **Embed in Active Timeline** (disabled where it can't be: it is empty,
+  or would contain the active one) and **Duplicate Timeline**, which
   puts a copy below it ("Main copy", "Main copy 2") with new IDs
   for its layers and clips, sharing the timelines it embeds. Planned:
   thumbnails drawn from the timeline itself.
@@ -62,6 +70,17 @@ remembered.
   first: each effect's name (and its kind when renamed), whether it is
   off, and the settings that differ from a new effect of its kind, with
   animated ones marked. VoiceOver reads the same as the row's hint.
+
+## Sorting
+
+**Sort by**, at the top of the browser's view options, orders the clips
+(`BrowserSort`, remembered between launches): **Date Added** (as imported,
+the default), **Name** (as the Finder sorts, so "Shot 2" before "Shot 10"),
+**Duration** (the longest first) or **Kind** (video, then stills, then
+sound, each by name). A video's scenes stay in source order under it.
+Sorted by name, the Timelines tab lists each level of its tree by name
+too, the main timeline still first; the other orders leave timelines as
+they were made.
 
 ## Filmstrips
 
@@ -141,6 +160,13 @@ loses the keyboard.
 ## Selecting
 
 - **Click** selects the whole clip.
+- **Renaming** a clip works as in the Finder: a click on the name of a
+  clip already selected (after a moment, so it isn't taken for a
+  double-click) makes it a bordered field over the name, as does
+  **Rename** in its menu or its heading's; Return or clicking away keeps
+  the new name, Escape puts the old one back. It renames the asset, not
+  its file. Scenes are numbered, so only whole clips and headings have a
+  name to change.
 - **Clicking off the clips** (between or below them) selects nothing.
   **Double-clicking** there, or on the empty tab of a project with no
   media, opens the import dialog.

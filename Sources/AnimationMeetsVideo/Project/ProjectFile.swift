@@ -852,6 +852,8 @@ struct ProjectFile: Codable {
         var fileStamp: FileStamp?
         /// Absent unless the original was forgotten.
         var referenceForgotten: Bool?
+        /// Absent unless the asset's scenes are not to be detected.
+        var skipsSceneDetection: Bool?
         /// What the file was when last saved (a `MediaKind` name, its
         /// length, rate, codec, `ProjectColorSpace` name and whether it
         /// has sound), so an asset whose file can't be opened stays in the
@@ -1099,6 +1101,7 @@ extension ProjectFile {
             .optional("previousPaths", .array(.string)),
             .optional("fileStamp", .object(object([.required("byteCount", .integer), .optional("modified", .number)]))),
             .optional("referenceForgotten", .bool),
+            .optional("skipsSceneDetection", .bool),
             .optional("kind", .choice(MediaKind.allCases.map(\.rawValue), noun: "media kind")), .optional("duration", .time),
             .optional("frameRate", .number), .optional("codec", .string),
             .optional("colorSpace", .choice(ProjectColorSpace.allCases.map(\.rawValue), noun: "color space")),

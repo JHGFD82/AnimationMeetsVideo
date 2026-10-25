@@ -1187,6 +1187,22 @@ private struct Sandbox {
     }
 }
 
+@Suite struct SceneDetectionFlagTests {
+    @Test func dontDetectScenesSurvivesSaveAndLoadAndIsOmittedWhenOff() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, assetID) = sandbox.makeProject()
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        #expect(!(try String(contentsOf: sandbox.projectJSON, encoding: .utf8)).contains("skipsSceneDetection"))
+
+        project.setDetectsScenes(false, ofAsset: assetID)
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.project.mediaClip(id: assetID)?.skipsSceneDetection == true)
+    }
+}
+
 @Suite struct ForgetOriginalTests {
     private func reference() -> AssetReference {
         AssetReference(

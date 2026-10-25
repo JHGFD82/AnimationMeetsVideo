@@ -28,6 +28,11 @@ struct BrowserPanel: View {
     let analysis: AssetAnalysis
     let replacement: MediaReplacementController
     let packageURL: URL?
+    /// Opens a timeline in the editor, from the Timelines tab (not compared
+    /// in `==`; it always sets the editor's active timeline).
+    var onOpenTimeline: (UUID) -> Void = { _ in }
+    /// Opens a timeline in a window of its own; nil where there is none.
+    var onOpenTimelineInNewWindow: ((UUID) -> Void)?
     /// What the browser shows, as the editor had it when it drew, which the
     /// comparison uses (see `==`): the bindings always read the current
     /// values.
@@ -52,6 +57,7 @@ struct BrowserPanel: View {
     /// Footage from Show in Clips Browser, for the Clips tab to pick.
     @State private var revealing: MediaPiece?
     @AppStorage(Preferences.browserTab) private var tab = BrowserTab.clips
+    @AppStorage(Preferences.browserSort) private var sort = BrowserSort.added
     @AppStorage(Preferences.thumbnailInterval) private var interval = ThumbnailInterval.all
     @AppStorage(Preferences.thumbnailSize) private var thumbnailSize = ThumbnailSize.medium
     @AppStorage(Preferences.browserSkimming) private var skimming = true
@@ -137,9 +143,16 @@ struct BrowserPanel: View {
         .onTapGesture(count: 2, perform: importMedia)
     }
 
-    /// Time per thumbnail and thumbnail size, for every browser tab.
+    /// The order, time per thumbnail and thumbnail size, for every browser tab.
     private var settings: some View {
         VStack(alignment: .leading, spacing: Design.Space.group) {
+            Picker("Sort by", selection: $sort) {
+                ForEach(BrowserSort.allCases) { order in
+                    Text(order.title).tag(order)
+                }
+            }
+            .pickerStyle(.menu)
+            .help("The order of the clips, and of the timelines when sorted by name")
             VStack(alignment: .leading, spacing: Design.Space.tight) {
                 HStack {
                     Text("Time per thumbnail")
@@ -193,9 +206,11 @@ struct BrowserPanel: View {
     private var timelinesList: some View {
         TimelinesList(
             project: project, activeTimelineID: activeTimelineID,
+            onOpen: onOpenTimeline,
             onEmbed: { id in project.timeline(id: id).map(embed) },
             onDuplicate: { id in project.duplicateTimeline(id) },
-            onRename: { id, name in project.renameTimeline(id, to: name) }
+            onRename: { id, name in project.renameTimeline(id, to: name) },
+            onOpenInNewWindow: onOpenTimelineInNewWindow
         )
     }
 
