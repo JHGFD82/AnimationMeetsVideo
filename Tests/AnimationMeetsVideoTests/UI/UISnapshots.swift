@@ -267,6 +267,31 @@ struct UISnapshots {
         )
     }
 
+    /// A transition's shaded wedge with its curve editor over it, as on a
+    /// selected clip: the wedge's edge is the editor's line, a way in
+    /// (linear) beside a way out (eased).
+    @Test func transitionWedgeAndCurve() throws {
+        func mark(_ curve: TransitionCurve, _ edge: TransitionEdge) -> some View {
+            let size = CGSize(width: 180, height: 60)
+            return ZStack(alignment: .topLeading) {
+                Design.ClipTone.video.color
+                TransitionWedge(curve: curve, edge: edge).fill(Color.white.opacity(0.34))
+                TransitionCurveEditor(curve: curve, edge: edge, size: size, onChange: { _ in })
+            }
+            .frame(width: size.width, height: size.height)
+        }
+        try SnapshotSupport.render(
+            HStack(spacing: 20) {
+                mark(TransitionCurve(preset: .linear), .leading)
+                mark(TransitionCurve(preset: .easyEase), .trailing)
+            }
+            .padding(16)
+            .background(Design.Surface.sunken.color)
+            .preferredColorScheme(.dark),
+            "transition-wedge-curve", size: CGSize(width: 412, height: 92)
+        )
+    }
+
     /// The toolbar's warning while automatic backups fail.
     @Test func autosaveWarning() throws {
         let status = AutosaveStatus()
