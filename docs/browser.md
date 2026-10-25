@@ -71,6 +71,17 @@ remembered.
   off, and the settings that differ from a new effect of its kind, with
   animated ones marked. VoiceOver reads the same as the row's hint.
 
+## Sorting
+
+**Sort by**, at the top of the browser's view options, orders the clips
+(`BrowserSort`, remembered between launches): **Date Added** (as imported,
+the default), **Name** (as the Finder sorts, so "Shot 2" before "Shot 10"),
+**Duration** (the longest first) or **Kind** (video, then stills, then
+sound, each by name). A video's scenes stay in source order under it.
+Sorted by name, the Timelines tab lists each level of its tree by name
+too, the main timeline still first; the other orders leave timelines as
+they were made.
+
 ## Filmstrips
 
 Each clip is a filmstrip: one thumbnail for each stretch of its time, the

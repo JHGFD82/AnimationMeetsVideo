@@ -18,6 +18,7 @@ struct TimelinesList: View {
     /// Opens a timeline in a window of its own; nil where there is none.
     var onOpenInNewWindow: ((UUID) -> Void)?
 
+    @AppStorage(Preferences.browserSort) private var sort = BrowserSort.added
     @State private var selectedID: UUID?
     /// The timeline whose name is being edited in its row.
     @State private var renamingID: UUID?
@@ -32,11 +33,14 @@ struct TimelinesList: View {
 
     /// The tree, each timeline once: under the timeline nearest the top
     /// that embeds it (the first of those, in order), so one embedded in two
-    /// timelines isn't listed twice.
-    nonisolated static func nodes(of project: EditingProject) -> [Node] {
+    /// timelines isn't listed twice. Sorted by name, each level is in
+    /// name order, the main timeline still first.
+    nonisolated static func nodes(of project: EditingProject, sort: BrowserSort = .added) -> [Node] {
         // Breadth first, so a timeline goes to its shallowest parent;
         // claiming each once also stops a cycle a damaged file could hold.
-        let top = project.topLevelTimelines
+        let roots = project.topLevelTimelines
+        let main = roots.filter { $0 == project.rootTimelineID }
+        let top = main + sort.ordered(roots.filter { $0 != project.rootTimelineID }, in: project)
         var claimed = Set(top)
         var children: [UUID: [UUID]] = [:]
         var queue = top[...]
@@ -48,7 +52,7 @@ struct TimelinesList: View {
             }
         }
         func node(_ timelineID: UUID) -> Node {
-            let below = (children[timelineID] ?? []).map(node)
+            let below = sort.ordered(children[timelineID] ?? [], in: project).map(node)
             return Node(timelineID: timelineID, children: below.isEmpty ? nil : below)
         }
         return top.map(node)
@@ -60,7 +64,7 @@ struct TimelinesList: View {
 
     var body: some View {
         List {
-            ForEach(Self.nodes(of: project)) { node in
+            ForEach(Self.nodes(of: project, sort: sort)) { node in
                 outline(node)
             }
         }

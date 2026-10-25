@@ -86,6 +86,7 @@ struct ClipsTab: View {
     /// click shows the frame clicked instead.
     @AppStorage(Preferences.browserSkimming) private var skimming = true
     @AppStorage(Preferences.browserMutesAddedSound) private var mutesAddedSound = false
+    @AppStorage(Preferences.browserSort) private var sort = BrowserSort.added
     @State private var picked = BrowserSelection<BrowserItemID>()
     @State private var width: CGFloat = 240
     @State private var height: CGFloat = 0
@@ -121,6 +122,8 @@ struct ClipsTab: View {
     /// Everything listed, worked out once per redraw and handed to what
     /// needs it, since scenes are costly to find.
     private struct Snapshot {
+        /// The assets in the order chosen (`BrowserSort`).
+        var clips: [MediaClip] = []
         var entries: [BrowserEntry] = []
         var order: [BrowserItemID] = []
         var byID: [BrowserItemID: BrowserEntry] = [:]
@@ -132,7 +135,8 @@ struct ClipsTab: View {
 
     private func makeSnapshot() -> Snapshot {
         var snapshot = Snapshot()
-        for clip in project.clips {
+        snapshot.clips = sort.ordered(project.clips)
+        for clip in snapshot.clips {
             guard clip.kind == .video, !clip.skipsSceneDetection, let track = analysis.tracks[clip.id],
                   let coverage = coverageCache.coverage(of: clip, in: project, track: track)
             else {
@@ -179,7 +183,7 @@ struct ClipsTab: View {
         let used = Dictionary(project.clips.map { ($0.id, project.usedRanges(ofMedia: $0.id)) }, uniquingKeysWith: { a, _ in a })
         var lines: [Line] = []
         var entries = snapshot.entries[...]
-        for clip in project.clips {
+        for clip in snapshot.clips {
             if let coverage = snapshot.coverage[clip.id] {
                 lines.append(.heading(clip, sceneCount: coverage.scenes.count))
             }
