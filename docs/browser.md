@@ -142,6 +142,8 @@ loses the keyboard.
 
 - **Click** selects the whole clip.
 - **Clicking off the clips** (between or below them) selects nothing.
+  **Double-clicking** there, or on the empty tab of a project with no
+  media, opens the import dialog.
 - **Command-click** adds a clip to the selection or takes it out.
 - **Shift-click** selects every clip from the last one clicked to this one,
   in browser order.
