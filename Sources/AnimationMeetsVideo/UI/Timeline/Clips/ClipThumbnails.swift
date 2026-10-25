@@ -5,8 +5,10 @@ import SwiftUI
 /// thumbnail per tile of the clip, each the frame played where the tile
 /// starts (so a retimed or reversed clip shows what it plays there). Only
 /// the drawn part of the clip is tiled, since a clip zoomed far in can be
-/// far wider than the window. Tiles are counted from the clip's start, so
-/// scrolling doesn't change which frames they show.
+/// far wider than the window. Tiles are counted from where the footage's
+/// first frame would play, so scrolling doesn't change which frames they
+/// show and trimming either end cuts into them rather than moving them;
+/// a retimed or reversed clip counts from its start instead.
 struct ClipThumbnails: View {
     /// The clip as drawn (a drag's preview included).
     let clip: TimelineClip
@@ -28,8 +30,8 @@ struct ClipThumbnails: View {
 
     var body: some View {
         let tile = (height * 16 / 9).rounded()
-        let into = drawnX - liveX
-        let first = max(0, Int((into / tile).rounded(.down)))
+        let into = drawnX - originX
+        let first = Int((into / tile).rounded(.down))
         let last = Int(((into + width) / tile).rounded(.up))
         ZStack(alignment: .topLeading) {
             if let url = media.url, last > first {
@@ -47,9 +49,16 @@ struct ClipThumbnails: View {
         .accessibilityHidden(true)
     }
 
+    /// Where tile 0 starts, in the row's points.
+    private var originX: CGFloat {
+        guard !clip.isRetimed, !clip.isReversed else { return liveX }
+        return clip.timelineTime(forSourceTime: .zero).seconds * pixelsPerSecond
+    }
+
     /// The file time played where tile `index` starts.
     private func time(atTile index: Int, width tile: CGFloat) -> CMTime {
-        let along = CMTime(seconds: Double(CGFloat(index) * tile / pixelsPerSecond), preferredTimescale: 600)
+        let x = originX + CGFloat(index) * tile
+        let along = CMTime(seconds: Double((x - liveX) / pixelsPerSecond), preferredTimescale: 600)
         let source = clip.sourceTime(atTimelineTime: CMTimeAdd(clip.startOffset, along))
         let seconds = (media.fileTime(forSourceTime: source).seconds * Self.grid).rounded() / Self.grid
         return CMTime(seconds: max(0, seconds), preferredTimescale: 600)

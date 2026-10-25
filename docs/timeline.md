@@ -473,7 +473,11 @@ band of pictures at least 22 points tall: one thumbnail per tile, each the
 frame played where the tile starts (retimed and reversed clips included),
 under an 18-point band of the clip's colour that holds its name, so the
 name keeps its contrast. Only the drawn part of a clip is tiled, and the
-pictures come from the same in-memory store as the browser's.
+pictures come from the same in-memory store as the browser's. Tiles are
+laid out from where the footage's first frame would play, not from the
+clip's start, so trimming either edge cuts into the pictures rather than
+shifting them, and the two halves of a split line up; a retimed or
+reversed clip tiles from its start.
 
 A clip being moved is drawn picked up: raised and shadowed, at its own
 size, and **where it will land** under these rules (snapped, on a frame,
