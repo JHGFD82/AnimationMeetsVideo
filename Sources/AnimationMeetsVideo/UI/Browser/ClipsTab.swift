@@ -39,19 +39,7 @@ struct BrowserEntry: Identifiable {
     /// clip, in seconds into it, joined where they overlap or touch.
     func seconds(within ranges: [CMTimeRange]) -> [(start: Double, end: Double)] {
         let from = start.seconds, to = from + seconds
-        let inside = ranges
-            .map { (max($0.start.seconds, from) - from, min($0.end.seconds, to) - from) }
-            .filter { $0.1 > $0.0 }
-            .sorted { $0.0 < $1.0 }
-        var joined: [(start: Double, end: Double)] = []
-        for (a, b) in inside {
-            if let last = joined.last, a <= last.end + 1e-6 {
-                joined[joined.count - 1].end = max(last.end, b)
-            } else {
-                joined.append((a, b))
-            }
-        }
-        return joined
+        return FilmstripLayout.joined(ranges.map { (max($0.start.seconds, from) - from, min($0.end.seconds, to) - from) })
     }
 
     func piece(from a: Double = 0, to b: Double? = nil) -> MediaPiece {
@@ -114,8 +102,6 @@ struct ClipsTab: View {
     }
 
     private static let padding: CGFloat = 10
-    /// How close to a range's end a press grabs its handle.
-    private static let handleReach: CGFloat = 6
 
     // MARK: - Entries
 
@@ -473,7 +459,7 @@ struct ClipsTab: View {
                 onDown: { point, flags in pressBegan(entry, layout: layout, at: point, flags: flags) },
                 onPress: { press in pressed(press, entry: entry, layout: layout, order: snapshot.order) },
                 dragText: { point in dragText(entry, layout: layout, at: point, snapshot: snapshot) },
-                isOnHandle: { point in handle(of: entry, layout: layout, at: point) != nil },
+                isOnHandle: { point in picked.handle(of: entry.id, at: point, in: layout) != nil },
                 onHover: { point in
                     if skimming, let point { skim(entry, at: layout.seconds(at: point)) }
                 }
@@ -499,23 +485,12 @@ struct ClipsTab: View {
         }
     }
 
-    /// The end of the clip's range whose handle is at `point`: the far
-    /// end, which stays put while the handle is dragged.
-    private func handle(of entry: BrowserEntry, layout: FilmstripLayout, at point: CGPoint) -> Double? {
-        guard let range = picked.range, range.item == entry.id else { return nil }
-        let start = layout.position(atSeconds: range.start), end = layout.position(atSeconds: range.end)
-        let row = Int(point.y / layout.rowPitch)
-        if row == start.row, abs(point.x - start.x) <= Self.handleReach { return range.end }
-        if row == end.row, abs(point.x - end.x) <= Self.handleReach { return range.start }
-        return nil
-    }
-
     /// Whether a press tracks a range once it moves: on a handle, or off
     /// what is selected (with Option, anywhere). Nothing is picked until it
     /// moves, so a press let go in place is still a click.
     private func pressBegan(_ entry: BrowserEntry, layout: FilmstripLayout, at point: CGPoint, flags: NSEvent.ModifierFlags) -> Bool {
         focused = true
-        if let fixed = handle(of: entry, layout: layout, at: point) {
+        if let fixed = picked.handle(of: entry.id, at: point, in: layout) {
             rangeDrag = (entry.id, fixed)
             return true
         }
@@ -533,7 +508,7 @@ struct ClipsTab: View {
             rangeDrag = nil
             if !flags.isDisjoint(with: [.command, .shift]) {
                 click(entry.id, flags: flags, order: order)
-            } else if handle(of: entry, layout: layout, at: point) == nil {
+            } else if picked.handle(of: entry.id, at: point, in: layout) == nil {
                 click(entry.id, flags: flags, order: order, at: layout.seconds(at: point))
                 if !skimming { skim(entry, at: layout.seconds(at: point)) }
             } else {
@@ -567,58 +542,18 @@ struct ClipsTab: View {
             pieces = dragPieces(for: picked.dragged(from: entry.id, in: snapshot.order), snapshot: snapshot)
         }
         guard let first = pieces.first, let clip = project.mediaClip(id: first.assetID) else { return nil }
-        let image = Self.dragImage(of: clip, at: first.start, size: cellSize, count: pieces.count)
+        let image = BrowserDragImage.make(
+            picture: Self.dragPicture(of: clip, at: first.start, height: cellSize.height), symbol: "waveform",
+            tone: NSColor(Design.ClipTone.of(.media(clip), streams: .videoAndAudio).color), size: cellSize, count: pieces.count
+        )
         return (MediaDragPayload.beginDrag(pieces).text, image)
     }
 
-    /// One thumbnail of the first thing dragged: its picture at its start,
-    /// or the nearest one made (a range seldom starts where a thumbnail
-    /// does); for sound, a tile of its colour with a waveform on it, as for
-    /// a picture not yet made. With how many things are dragged when there
-    /// are several.
-    static func dragImage(of clip: MediaClip, at start: CMTime, size: CGSize, count: Int) -> NSImage {
-        let picture = clip.kind.hasPictures ? clip.url.flatMap {
-            FrameThumbnails.nearestCached(url: $0, time: clip.fileTime(forSourceTime: start), height: size.height)
-        } : nil
-        let waveform = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: size.height * 0.4, weight: .medium))
-        let tone = NSColor(Design.ClipTone.of(.media(clip), streams: .videoAndAudio).color)
-        return NSImage(size: size, flipped: false) { rect in
-            let tile = NSBezierPath(roundedRect: rect, xRadius: Design.Radius.chip, yRadius: Design.Radius.chip)
-            (picture == nil ? tone : NSColor.black).setFill()
-            tile.fill()
-            if let picture {
-                let fitted = picture.size.width > 0 && picture.size.height > 0
-                    ? min(rect.width / picture.size.width, rect.height / picture.size.height) : 1
-                let drawn = CGSize(width: picture.size.width * fitted, height: picture.size.height * fitted)
-                picture.draw(in: CGRect(x: rect.midX - drawn.width / 2, y: rect.midY - drawn.height / 2, width: drawn.width, height: drawn.height))
-            } else if let waveform {
-                // Tinted white: a symbol image draws in its own colour.
-                let tinted = NSImage(size: waveform.size, flipped: false) { bounds in
-                    waveform.draw(in: bounds)
-                    NSColor.white.set()
-                    bounds.fill(using: .sourceAtop)
-                    return true
-                }
-                tinted.draw(in: CGRect(
-                    x: rect.midX - waveform.size.width / 2, y: rect.midY - waveform.size.height / 2,
-                    width: waveform.size.width, height: waveform.size.height
-                ))
-            }
-            NSColor(Design.accent).setStroke()
-            tile.lineWidth = 2
-            tile.stroke()
-            if count > 1 {
-                let text = NSAttributedString(string: "\(count)", attributes: [
-                    .font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.white,
-                ])
-                let badge = CGRect(x: rect.maxX - text.size().width - 14, y: rect.maxY - 20, width: text.size().width + 10, height: 16)
-                NSColor(Design.accent).setFill()
-                NSBezierPath(roundedRect: badge, xRadius: 8, yRadius: 8).fill()
-                text.draw(at: CGPoint(x: badge.minX + 5, y: badge.minY + (badge.height - text.size().height) / 2))
-            }
-            return true
-        }
+    /// The clip's picture nearest `start` already made (a range seldom
+    /// starts where a thumbnail does); nil for sound, or none made yet.
+    private static func dragPicture(of clip: MediaClip, at start: CMTime, height: CGFloat) -> NSImage? {
+        guard clip.kind.hasPictures, let url = clip.url else { return nil }
+        return FrameThumbnails.nearestCached(url: url, time: clip.fileTime(forSourceTime: start), height: height)
     }
 
     /// The pieces for `ids`, in that order. A scene whose whole asset is
@@ -689,20 +624,12 @@ struct ClipsTab: View {
         skim(entry, at: (skimmed(entry) ?? 0) + seconds)
     }
 
-    private enum RangeEnd { case start, end }
-
     /// Sets the start or end of `entry`'s range where it is skimmed, keeping
     /// the other end (or the clip's own); false when it isn't skimmed.
     @discardableResult
-    private func setRangeEnd(_ end: RangeEnd, of entry: BrowserEntry) -> Bool {
+    private func setRangeEnd(_ end: BrowserSelection<BrowserItemID>.RangeEnd, of entry: BrowserEntry) -> Bool {
         guard let at = skimmed(entry) else { return false }
-        let current = picked.range?.item == entry.id ? picked.range : nil
-        switch end {
-        case .start:
-            picked.setRange(of: entry.id, from: at, to: max(current?.end ?? entry.seconds, at), duration: entry.seconds)
-        case .end:
-            picked.setRange(of: entry.id, from: min(current?.start ?? 0, at), to: at, duration: entry.seconds)
-        }
+        picked.setRangeEnd(end, of: entry.id, at: at, duration: entry.seconds)
         cursor = entry.id
         return true
     }
@@ -743,22 +670,11 @@ struct ClipsTab: View {
             if !removeSelection(snapshot) { NSSound.beep() }
             return true
         }
-        guard !order.isEmpty else { return false }
-        let current = cursor.flatMap { order.firstIndex(of: $0) }
-        let next: Int
-        switch press.key {
-        case .upArrow: next = max((current ?? order.count) - 1, 0)
-        case .downArrow: next = min((current ?? -1) + 1, order.count - 1)
-        default: return false
-        }
-        cursor = order[next]
+        guard press.key == .upArrow || press.key == .downArrow,
+              let next = picked.step(press.key == .upArrow ? -1 : 1, from: cursor, extending: press.modifiers.contains(.shift), in: order)
+        else { return false }
+        cursor = next
         skim?.end()
-        // Shift extends from the anchor, which stays put, to the cursor.
-        if press.modifiers.contains(.shift) {
-            picked.shiftClick(order[next], in: order)
-        } else {
-            picked.click(order[next])
-        }
         return true
     }
 

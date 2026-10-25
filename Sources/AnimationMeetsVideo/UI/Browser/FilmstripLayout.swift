@@ -170,3 +170,19 @@ struct FilmstripLayout: Equatable {
         return spans
     }
 }
+
+extension FilmstripLayout {
+    /// `spans` in order, joined where they overlap or touch, leaving out
+    /// empty ones: what a strip underlines as used.
+    static func joined(_ spans: [(start: Double, end: Double)]) -> [(start: Double, end: Double)] {
+        var joined: [(start: Double, end: Double)] = []
+        for (a, b) in spans.filter({ $0.end > $0.start }).sorted(by: { $0.start < $1.start }) {
+            if let last = joined.last, a <= last.end + 1e-6 {
+                joined[joined.count - 1].end = max(last.end, b)
+            } else {
+                joined.append((a, b))
+            }
+        }
+        return joined
+    }
+}

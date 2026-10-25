@@ -38,7 +38,6 @@ struct TimelineFilmstrips: View {
     @State private var cursor: UUID?
 
     private static let padding: CGFloat = 10
-    private static let handleReach: CGFloat = 6
 
     /// One line of the tab: a timeline's title, or a row of its strip.
     /// Each has an ID of its own, so the lazy stack keeps them apart.
@@ -125,19 +124,9 @@ struct TimelineFilmstrips: View {
     /// What other timelines embed of `timeline`, in seconds into it, joined
     /// where they overlap.
     private func usedSeconds(of timeline: Timeline) -> [(start: Double, end: Double)] {
-        let sorted = project.usedRanges(ofTimeline: timeline.id)
-            .map { (max(0, $0.start.seconds), min(timeline.duration.seconds, $0.end.seconds)) }
-            .filter { $0.1 > $0.0 }
-            .sorted { $0.0 < $1.0 }
-        var joined: [(start: Double, end: Double)] = []
-        for (a, b) in sorted {
-            if let last = joined.last, a <= last.end + 1e-6 {
-                joined[joined.count - 1].end = max(last.end, b)
-            } else {
-                joined.append((a, b))
-            }
-        }
-        return joined
+        FilmstripLayout.joined(project.usedRanges(ofTimeline: timeline.id).map {
+            (max(0, $0.start.seconds), min(timeline.duration.seconds, $0.end.seconds))
+        })
     }
 
     // MARK: - Titles
@@ -243,7 +232,7 @@ struct TimelineFilmstrips: View {
                 onDown: { point, flags in pressBegan(timeline, layout: layout, at: point, flags: flags) },
                 onPress: { press in pressed(press, timeline: timeline, preview: preview, layout: layout) },
                 dragText: { point in dragText(timeline, preview: preview, layout: layout, at: point) },
-                isOnHandle: { point in handle(of: timeline, layout: layout, at: point) != nil },
+                isOnHandle: { point in picked.handle(of: timeline.id, at: point, in: layout) != nil },
                 onHover: { point in
                     if skimming, let point, let preview { skim(timeline, preview: preview, at: layout.seconds(at: point)) }
                 }
@@ -257,7 +246,8 @@ struct TimelineFilmstrips: View {
     /// What a drag from `point` carries, as in the Clips tab: the range when
     /// it starts inside the timeline's range, otherwise the timeline, or
     /// every selected timeline when it is one of them. The picture that
-    /// follows the pointer is the first one's frame there, once made.
+    /// follows the pointer is the first one's frame there once made, else a
+    /// tile of the nested clips' colour, with the count as for clips.
     private func dragText(
         _ timeline: Timeline, preview: TimelinePreview?, layout: FilmstripLayout, at point: CGPoint
     ) -> (text: String, image: NSImage)? {
@@ -273,35 +263,18 @@ struct TimelineFilmstrips: View {
             payload = TimelinesList.dragPayload(from: timeline.id, picked: picked, order: order, in: project)
         }
         guard !payload.pieces.isEmpty else { return nil }
-        let size = layout.cellSize
-        let picture = preview?.cachedImage(at: start, height: size.height)
-            ?? NSImage(systemSymbolName: "rectangle.stack", accessibilityDescription: nil)
-            ?? NSImage(size: size)
-        let image = NSImage(size: size, flipped: false) { rect in
-            NSColor.black.setFill()
-            rect.fill()
-            picture.draw(in: rect)
-            return true
-        }
+        let image = BrowserDragImage.make(
+            picture: preview?.cachedImage(at: start, height: layout.cellSize.height), symbol: "rectangle.stack",
+            tone: NSColor(Design.ClipTone.nested.color), size: layout.cellSize, count: payload.pieces.count
+        )
         return (payload.text, image)
-    }
-
-    /// The end of the range whose handle is at `point`: the far end, which
-    /// stays put while the handle is dragged.
-    private func handle(of timeline: Timeline, layout: FilmstripLayout, at point: CGPoint) -> Double? {
-        guard let range = picked.range, range.item == timeline.id else { return nil }
-        let start = layout.position(atSeconds: range.start), end = layout.position(atSeconds: range.end)
-        let row = Int(point.y / layout.rowPitch)
-        if row == start.row, abs(point.x - start.x) <= Self.handleReach { return range.end }
-        if row == end.row, abs(point.x - end.x) <= Self.handleReach { return range.start }
-        return nil
     }
 
     /// Whether a press tracks a range once it moves: on a handle, or off
     /// what is selected (with Option, anywhere), as in the Clips tab.
     private func pressBegan(_ timeline: Timeline, layout: FilmstripLayout, at point: CGPoint, flags: NSEvent.ModifierFlags) -> Bool {
         focused = true
-        if let fixed = handle(of: timeline, layout: layout, at: point) {
+        if let fixed = picked.handle(of: timeline.id, at: point, in: layout) {
             rangeDrag = (timeline.id, fixed)
             return true
         }
@@ -321,7 +294,7 @@ struct TimelineFilmstrips: View {
                 picked.commandClick(timeline.id)
             } else if flags.contains(.shift) {
                 picked.shiftClick(timeline.id, in: order)
-            } else if handle(of: timeline, layout: layout, at: point) == nil {
+            } else if picked.handle(of: timeline.id, at: point, in: layout) == nil {
                 picked.click(timeline.id, at: layout.seconds(at: point))
                 if (NSApp.currentEvent?.clickCount ?? 1) >= 2 {
                     onOpen(timeline.id)
@@ -366,20 +339,13 @@ struct TimelineFilmstrips: View {
         skim(timeline, preview: preview, at: (skimmed(timeline) ?? 0) + seconds)
     }
 
-    private enum RangeEnd { case start, end }
-
     /// Sets the start or end of the range where `timeline` is skimmed,
     /// keeping the other end (or the timeline's own); false when it isn't
     /// skimmed.
     @discardableResult
-    private func setRangeEnd(_ end: RangeEnd, of timeline: Timeline) -> Bool {
+    private func setRangeEnd(_ end: BrowserSelection<UUID>.RangeEnd, of timeline: Timeline) -> Bool {
         guard let at = skimmed(timeline) else { return false }
-        let duration = timeline.duration.seconds
-        let current = picked.range?.item == timeline.id ? picked.range : nil
-        switch end {
-        case .start: picked.setRange(of: timeline.id, from: at, to: max(current?.end ?? duration, at), duration: duration)
-        case .end: picked.setRange(of: timeline.id, from: min(current?.start ?? 0, at), to: at, duration: duration)
-        }
+        picked.setRangeEnd(end, of: timeline.id, at: at, duration: timeline.duration.seconds)
         cursor = timeline.id
         return true
     }
@@ -419,21 +385,11 @@ struct TimelineFilmstrips: View {
         default:
             break
         }
-        guard !order.isEmpty else { return false }
-        let current = cursor.flatMap { order.firstIndex(of: $0) }
-        let next: Int
-        switch press.key {
-        case .upArrow: next = max((current ?? order.count) - 1, 0)
-        case .downArrow: next = min((current ?? -1) + 1, order.count - 1)
-        default: return false
-        }
-        cursor = order[next]
+        guard press.key == .upArrow || press.key == .downArrow,
+              let next = picked.step(press.key == .upArrow ? -1 : 1, from: cursor, extending: press.modifiers.contains(.shift), in: order)
+        else { return false }
+        cursor = next
         skim?.end()
-        if press.modifiers.contains(.shift) {
-            picked.shiftClick(order[next], in: order)
-        } else {
-            picked.click(order[next])
-        }
         return true
     }
 

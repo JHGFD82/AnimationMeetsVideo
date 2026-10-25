@@ -206,15 +206,7 @@ struct TimelinesList: View {
     /// Moves the selection a row up or down from the timeline last clicked,
     /// or extends it there with Shift.
     private func step(_ by: Int, extending: Bool, in order: [UUID]) -> KeyPress.Result {
-        guard !order.isEmpty else { return .ignored }
-        let from = picked.anchor.flatMap(order.firstIndex(of:)) ?? (by > 0 ? -1 : order.count)
-        let to = order[(from + by).clamped(between: 0, and: order.count - 1)]
-        if extending {
-            picked.shiftClick(to, in: order)
-        } else {
-            picked.click(to)
-        }
-        return .handled
+        picked.step(by, from: picked.anchor, extending: extending, in: order) == nil ? .ignored : .handled
     }
 
     private func showNested(_ shown: Bool) -> KeyPress.Result {
