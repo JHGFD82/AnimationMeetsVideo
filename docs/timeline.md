@@ -822,8 +822,13 @@ timeline it plays; **Open Timeline** in its right-click menu and its
 VoiceOver action do the same. The header bar then shows a **breadcrumb**
 before the timeline's name: the timelines gone through to get here,
 outermost first, each a button that goes back out to it (`trail` in
-`TimelineEditorSurface`). Picking a timeline another way, from the name
-menu or the browser, starts the trail over. A second display's own
+`TimelineEditorSurface`). Picking a timeline another way, from the menu
+beside its name or the browser, starts the trail over.
+
+**Clicking the timeline's name** in the header bar (or **Rename
+Timeline** in its right-click menu) renames it in place: Return or
+clicking away keeps the new name, Escape puts the old one back. The
+chevron beside it lists every timeline to go to. A second display's own
 timeline, when it is independent, keeps its own trail.
 
 ## Not implemented yet

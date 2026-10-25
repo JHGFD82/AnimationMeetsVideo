@@ -191,7 +191,8 @@ struct BrowserPanel: View {
         TimelinesList(
             project: project, activeTimelineID: activeTimelineID,
             onEmbed: { id in project.timeline(id: id).map(embed) },
-            onDuplicate: { id in project.duplicateTimeline(id) }
+            onDuplicate: { id in project.duplicateTimeline(id) },
+            onRename: { id, name in project.renameTimeline(id, to: name) }
         )
     }
 
