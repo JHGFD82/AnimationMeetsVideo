@@ -63,6 +63,7 @@ struct LayerSoundEffectsList: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(Design.textSecondary)
+            .help(isOpen ? "Hide \(effect.displayName)'s settings" : "Show \(effect.displayName)'s settings")
             .accessibilityLabel(isOpen ? "Hide \(effect.displayName)'s settings" : "Show \(effect.displayName)'s settings")
             Toggle(effect.displayName, isOn: Binding(
                 get: { effect.enabled },
@@ -85,6 +86,7 @@ struct LayerSoundEffectsList: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .help("Move, reset or delete \(effect.displayName)")
             .accessibilityLabel("\(effect.displayName) options")
         }
         .font(Design.Typeface.label)

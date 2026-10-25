@@ -48,6 +48,7 @@ struct RowResetButton: View {
 
 /// The ⋯ button that opens a row's menu.
 private struct RowMenu<Content: View>: View {
+    let name: String
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -59,6 +60,8 @@ private struct RowMenu<Content: View>: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .help("Actions for \(name)")
+        .accessibilityLabel("\(name) options")
     }
 }
 
@@ -189,7 +192,7 @@ struct ParameterRow<MenuContent: View>: View {
                 .help("Open \(name.lowercased())'s graph editor to shape its eases")
             }
             if let onReset { ResetWhenChanged(name: name, isChanged: showsReset, action: onReset) }
-            RowMenu(content: menu)
+            RowMenu(name: name, content: menu)
         }
         .font(Design.Typeface.label)
         .opacity(isDimmed ? 0.45 : 1)
@@ -291,7 +294,7 @@ struct ChoiceRow<MenuContent: View>: View {
             .frame(width: 130)
             Spacer(minLength: 2)
             if let onReset { RowResetButton(name: name, action: onReset) }
-            if showsMenu { RowMenu(content: menu) }
+            if showsMenu { RowMenu(name: name, content: menu) }
         }
         .font(Design.Typeface.label)
         .opacity(isDimmed ? 0.45 : 1)
@@ -354,6 +357,8 @@ struct EffectHeaderRow<MenuContent: View>: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(Design.textSecondary)
+            .help(isCollapsed ? "Show \(effect.displayName)'s settings" : "Hide \(effect.displayName)'s settings")
+            .accessibilityLabel(isCollapsed ? "Show \(effect.displayName)'s settings" : "Hide \(effect.displayName)'s settings")
             Toggle("", isOn: Binding(get: { effect.enabled }, set: { onSetEnabled($0) }))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
@@ -398,7 +403,7 @@ struct EffectHeaderRow<MenuContent: View>: View {
                     .overlay { RoundedRectangle(cornerRadius: 2, style: .continuous).strokeBorder(Design.bevelEdge, lineWidth: 0.5) }
                     .help("The clip after \(effect.displayName), at the playhead")
             }
-            RowMenu(content: menu)
+            RowMenu(name: effect.displayName, content: menu)
         }
         .font(Design.Typeface.label)
         .opacity(isDimmed ? 0.5 : 1)
