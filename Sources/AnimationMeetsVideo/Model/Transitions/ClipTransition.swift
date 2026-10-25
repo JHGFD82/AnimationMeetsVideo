@@ -439,15 +439,19 @@ enum JointEdit: Equatable {
 }
 
 extension EditingProject {
-    /// Retimed clips don't join: their spare footage isn't a length of
-    /// timeline time.
+    /// Media with pictures and nested timelines join; adjustments and
+    /// shapes have no footage beyond their ends. Retimed clips don't join:
+    /// their spare footage isn't a length of timeline time.
     private func isJoinable(_ clip: TimelineClip) -> Bool {
-        guard case .media = clip.source, !clip.isRetimed else { return false }
-        return playsVideo(clip)
+        switch clip.source {
+        case .media, .timeline: !clip.isRetimed && playsVideo(clip)
+        case .adjustment, .graphic: false
+        }
     }
 
     /// The clip just before `clip` on its layer when they meet at a cut and
-    /// a transition can blend their pictures: both are media with pictures.
+    /// a transition can blend their pictures: both are media with pictures
+    /// or nested timelines.
     /// They meet within `Timeline.abutmentTolerance`, as the timeline takes
     /// clips to meet everywhere else: edges worked out from source times in
     /// other timescales, or rounded onto frames, can be a sliver apart, and

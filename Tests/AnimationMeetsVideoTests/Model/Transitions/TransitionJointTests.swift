@@ -166,4 +166,64 @@ private func video(url: URL? = nil, duration: Double = 10) -> MediaClip {
         #expect(abs(tail.timeMapping.source.start.seconds - 4) < 0.05)
         #expect(abs(tail.timeMapping.target.duration.seconds - 0.5) < 0.05)
     }
+
+    /// Two embedded timelines meeting at a cut join as media clips do, with
+    /// the rest of each nested timeline as their spare footage.
+    @Test func aTransitionAtACutJoinsNestedTimelines() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        func nested(_ name: String) -> ClipSource {
+            let id = project.addTimeline(name: name, frameSize: CGSize(width: 1920, height: 1080), frameRate: 24, colorSpace: .rec709)
+            _ = project.importClip(video(), intoTimeline: id)
+            return .timeline(id)
+        }
+        let first = nested("A"), second = nested("B")
+        let tIndex = project.timelines.firstIndex { $0.id == t }!
+        let a = TimelineClip(source: first, startOffset: .zero, trimStart: .zero, trimEnd: seconds(4))
+        let b = TimelineClip(source: second, startOffset: seconds(4), trimStart: seconds(6), trimEnd: seconds(9))
+        project.timelines[tIndex].layers.append(TimelineLayer(clips: [a, b]))
+        let layer = project.timelines[tIndex].layers.last!.id
+
+        project.setTransition(.crossDissolve, at: .trailing, of: a.id, in: t, layer: layer)
+        let joint = try #require(project.joint(at: b.id, in: t, layer: layer))
+        #expect(joint.lead == seconds(0.5))
+        #expect(joint.spareTail == seconds(6) && joint.spareHead == seconds(6))
+    }
+
+    /// A dissolve at a cut shows both clips halfway through, whichever of
+    /// them are nested timelines, rather than either one over black.
+    @Test(arguments: [(true, true), (false, true), (true, false)])
+    func aJointBlendsNestedTimelinesAcrossTheCut(outgoingNested: Bool, incomingNested: Bool) async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let frameSize = fixture.project.timelines[0].frameSize
+        let scratch = fixture.project.addTimeline(name: "Scratch", frameSize: frameSize, frameRate: 24, colorSpace: .rec709)
+        // Four seconds of one gray, as a nested timeline or as media.
+        func source(luma: UInt8, nested: Bool) async throws -> ClipSource {
+            let holder = nested
+                ? fixture.project.addTimeline(name: "Inner", frameSize: frameSize, frameRate: 24, colorSpace: .rec709)
+                : scratch
+            let placed = try await fixture.addClip(luma: luma, frames: 96, to: holder)
+            return nested ? .timeline(holder) : try #require(fixture.project.timeline(id: holder)?.layer(id: placed.layerID)?.clips.first?.source)
+        }
+        let dark = try await source(luma: 40, nested: outgoingNested)
+        let bright = try await source(luma: 220, nested: incomingNested)
+
+        // The first two seconds of the dark one, then the last two of the bright one.
+        let t = fixture.timelineID
+        let tIndex = fixture.project.timelines.firstIndex { $0.id == t }!
+        let a = TimelineClip(source: dark, startOffset: .zero, trimStart: .zero, trimEnd: seconds(2))
+        let b = TimelineClip(source: bright, startOffset: seconds(2), trimStart: seconds(2), trimEnd: seconds(4))
+        fixture.project.timelines[tIndex].layers.append(TimelineLayer(clips: [a, b]))
+        let layer = fixture.project.timelines[tIndex].layers.last!.id
+        fixture.project.setTransition(.crossDissolve, at: .leading, of: b.id, in: t, layer: layer)
+        #expect(fixture.project.joint(at: b.id, in: t, layer: layer)?.lead == seconds(0.5))
+
+        let composed = try await fixture.build()
+        let before = try await grayLevel(of: composed, at: seconds(1))
+        let cut = try await grayLevel(of: composed, at: seconds(2))
+        let after = try await grayLevel(of: composed, at: seconds(3))
+        #expect(before < 60 && after > 200)
+        #expect(cut > before + 40 && cut < after - 40)
+    }
 }

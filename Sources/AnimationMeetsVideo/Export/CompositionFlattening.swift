@@ -79,7 +79,17 @@ extension CompositionExporter {
                 if project.playsVideo(clip) {
                     clipStack.edges = EdgeTransitions(clip: clip, frameSize: timeline.frameSize, lead: lead)
                 }
-                let placed = CMTimeRange(start: CMTimeSubtract(clip.startOffset, lead), end: clip.endOffset)
+                // A nested timeline plays its own frames and sound past its
+                // ends at a joined cut, drawn from one flattening of it; a
+                // media clip's go on tracks of their own.
+                var reach = (head: lead, tail: CMTime.zero)
+                var underReach = (head: CMTime.zero, tail: CMTime.zero)
+                if case .timeline = clip.source, clipStack.edges != nil {
+                    underReach = jointUnderlay(of: clip, among: clips, project: project)
+                    reach.head = CMTimeMaximum(CMTimeMaximum(lead, underReach.head), audioFades.head)
+                    reach.tail = CMTimeMaximum(underReach.tail, audioFades.tail)
+                }
+                let placed = CMTimeRange(start: CMTimeSubtract(clip.startOffset, reach.head), end: CMTimeAdd(clip.endOffset, reach.tail))
                 let visible = placed.intersection(window)
                 guard visible.isValid, visible.duration > .zero else { continue }
                 let owner = rootClipID ?? clip.id
@@ -143,6 +153,30 @@ extension CompositionExporter {
                     ) else { return nil }
                     host.placements.append(placement)
                     return BuildNode(content: .media(placement, base: base, extras: PlacementExtras()), stack: stack, range: .invalid, owner: owner, layerID: layer.id)
+                }
+
+                // Where this clip meets its neighbor at a cut, the
+                // neighbor's frames beyond its trim play underneath the
+                // transition, so a dissolve blends the two clips rather
+                // than passing through what is below the layer. Without
+                // spare frames there is nothing to show, and the transition
+                // plays over the layers below. A nested neighbor draws its
+                // own (see `jointUnderlay`), so `spare` has none for it.
+                let durations = clipStack.edges == nil ? (leading: CMTime.zero, trailing: CMTime.zero) : clip.effectiveTransitionDurations(lead: lead)
+                if durations.leading > .zero, let previous = project.predecessor(joining: clip, among: clips),
+                   let node = try await spare(
+                       previous, from: previous.trimEnd, at: clip.startOffset, for: durations.leading,
+                       stack: stack(of: previous), host: underlay
+                   ) {
+                    underlayNodes.append(node)
+                }
+                if durations.trailing > .zero, let next = project.successor(joining: clip, among: clips),
+                   let node = try await spare(
+                       next, from: CMTimeSubtract(next.trimStart, durations.trailing),
+                       at: CMTimeSubtract(clip.endOffset, durations.trailing), for: durations.trailing,
+                       stack: stack(of: next), host: underlay
+                   ) {
+                    underlayNodes.append(node)
                 }
 
                 switch clip.source {
@@ -258,35 +292,14 @@ extension CompositionExporter {
                             ))
                         }
                     }
-                    // Where this clip meets its neighbor at a cut, the
-                    // neighbor's frames beyond its trim play underneath the
-                    // transition, so a dissolve blends the two clips rather
-                    // than passing through what is below the layer. A way in
-                    // that joins the clip before may also start before the
-                    // cut, playing this clip's frames before its in point.
-                    // Without spare frames there is nothing to show, and the
-                    // transition plays over the layers below.
-                    let durations = clipStack.edges == nil ? (leading: CMTime.zero, trailing: CMTime.zero) : clip.effectiveTransitionDurations(lead: lead)
+                    // A way in that joins the clip before may start before
+                    // the cut, playing this clip's frames before its in
+                    // point over the clip before.
                     if lead > .zero, let node = try await spare(
                         clip, from: CMTimeSubtract(clip.trimStart, lead), at: CMTimeSubtract(clip.startOffset, lead), for: lead,
                         stack: clipStack, host: overlay
                     ) {
                         overlayNodes.append(node)
-                    }
-                    if durations.leading > .zero, let previous = project.predecessor(joining: clip, among: clips),
-                       let node = try await spare(
-                           previous, from: previous.trimEnd, at: clip.startOffset, for: durations.leading,
-                           stack: stack(of: previous), host: underlay
-                       ) {
-                        underlayNodes.append(node)
-                    }
-                    if durations.trailing > .zero, let next = project.successor(joining: clip, among: clips),
-                       let node = try await spare(
-                           next, from: CMTimeSubtract(next.trimStart, durations.trailing),
-                           at: CMTimeSubtract(clip.endOffset, durations.trailing), for: durations.trailing,
-                           stack: stack(of: next), host: underlay
-                       ) {
-                        underlayNodes.append(node)
                     }
                 case .timeline(let nestedID):
                     guard let nested = project.timeline(id: nestedID) else { continue }
@@ -307,17 +320,41 @@ extension CompositionExporter {
                     )
                     nestedHosts += inner
                     guard !children.isEmpty else { continue }
-                    ownNodes.append(BuildNode(
-                        content: .group(
-                            frameSize: nested.frameSize, toOuter: fitTransform(from: nested.frameSize, to: timeline.frameSize),
-                            passThrough: clip.passThrough, children: children
-                        ),
-                        stack: clipStack,
-                        range: CMTimeRange(start: CMTimeAdd(visible.start, offset), duration: visible.duration),
-                        owner: owner,
-                        layerID: layer.id,
-                        inputs: inputs
-                    ))
+                    /// The nested timeline drawn over `range` of this
+                    /// timeline's time, from the children flattened above:
+                    /// a group only draws within its range.
+                    func group(over range: CMTimeRange, stack: ClipStack) -> BuildNode? {
+                        let shown = range.intersection(window)
+                        guard shown.isValid, shown.duration > .zero else { return nil }
+                        return BuildNode(
+                            content: .group(
+                                frameSize: nested.frameSize, toOuter: fitTransform(from: nested.frameSize, to: timeline.frameSize),
+                                passThrough: clip.passThrough, children: children
+                            ),
+                            stack: stack,
+                            range: CMTimeRange(start: CMTimeAdd(shown.start, offset), duration: shown.duration),
+                            owner: owner,
+                            layerID: layer.id,
+                            inputs: inputs
+                        )
+                    }
+                    if let node = group(over: CMTimeRange(start: clip.startOffset, end: clip.endOffset), stack: clipStack) {
+                        ownNodes.append(node)
+                    }
+                    // Its frames before its in point over the clip before,
+                    // and under its neighbors' transitions at its cuts, as
+                    // a media neighbor's are below.
+                    if lead > .zero, let node = group(over: CMTimeRange(start: CMTimeSubtract(clip.startOffset, lead), end: clip.startOffset), stack: clipStack) {
+                        overlayNodes.append(node)
+                    }
+                    if underReach.head > .zero,
+                       let node = group(over: CMTimeRange(start: CMTimeSubtract(clip.startOffset, underReach.head), end: clip.startOffset), stack: stack(of: clip)) {
+                        underlayNodes.append(node)
+                    }
+                    if underReach.tail > .zero,
+                       let node = group(over: CMTimeRange(start: clip.endOffset, duration: underReach.tail), stack: stack(of: clip)) {
+                        underlayNodes.append(node)
+                    }
                 case .graphic:
                     // Transparency, which its stack draws shapes on.
                     ownNodes.append(BuildNode(
@@ -347,6 +384,23 @@ extension CompositionExporter {
             hosts += nestedHosts
         }
         return result
+    }
+
+    /// How far a nested timeline's clip plays under its neighbors'
+    /// transitions at joined cuts: before its start under the way out of
+    /// the clip before, and past its end under the way in of the clip
+    /// after. These are the lengths a media neighbor's spare footage is
+    /// placed for in `flatten`; a nested timeline has as much as it is
+    /// long beyond its trims, which `fittedJoint` already kept them to.
+    static func jointUnderlay(of clip: TimelineClip, among clips: [TimelineClip], project: EditingProject) -> (head: CMTime, tail: CMTime) {
+        var head = CMTime.zero, tail = CMTime.zero
+        if let previous = project.predecessor(joining: clip, among: clips) {
+            head = previous.effectiveTransitionDurations(lead: project.joinedLead(of: previous, among: clips) ?? .zero).trailing
+        }
+        if let next = project.successor(joining: clip, among: clips) {
+            tail = next.effectiveTransitionDurations(lead: project.joinedLead(of: next, among: clips) ?? .zero).leading
+        }
+        return (head, tail)
     }
 
     /// A media clip's frames from `sourceStart` (in its asset's original
