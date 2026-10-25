@@ -284,6 +284,7 @@ struct TimelinesList: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(Design.textSecondary)
+            .help(isOpen ? "Hide the timelines in \(timeline.name)" : "Show the timelines in \(timeline.name)")
             .accessibilityLabel(isOpen ? "Hide timelines in \(timeline.name)" : "Show timelines in \(timeline.name)")
         } else {
             Color.clear.frame(width: 12, height: 12)
