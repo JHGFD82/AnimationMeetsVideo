@@ -45,7 +45,12 @@ import Testing
         let package = FileManager.default.temporaryDirectory.appending(path: "amv-package-\(UUID().uuidString).amv", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: package) }
-        let take = FileManager.default.temporaryDirectory.appending(path: "amv-take-\(UUID().uuidString).caf")
+        // In a folder of its own: keeping it renames it to a name fixed by
+        // the date, which runs sharing the temporary folder would fight over.
+        let takes = FileManager.default.temporaryDirectory.appending(path: "amv-takes-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: takes, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: takes) }
+        let take = takes.appending(path: "take.caf")
         let writer = try TakeWriter(url: take, format: format) { _ in .zero }
         try write(1, to: writer)
         writer.finish()
