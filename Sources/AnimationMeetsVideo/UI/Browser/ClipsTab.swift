@@ -362,11 +362,11 @@ struct ClipsTab: View {
                 }
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
+        // On the press, with the keys held, as a strip takes it: a tap
+        // gesture lost Command and Shift, and quick clicks.
+        .onMouseDown { _ in
             focused = true
-            picked.click(entry.id)
-            cursor = entry.id
+            click(entry.id, flags: NSApp.currentEvent?.modifierFlags ?? [], order: snapshot.order)
         }
         .contextMenu { menu(for: entry, snapshot: snapshot) }
         .accessibilityElement(children: .combine)
@@ -374,7 +374,7 @@ struct ClipsTab: View {
         .accessibilityValue(isSelected ? "selected" : "")
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
         .accessibilityAction { picked.click(entry.id) }
-        .accessibilityAction(named: "Add to Timeline") { addToTimeline(dragPieces(for: [entry.id], snapshot: snapshot)) }
+        .accessibilityAction(named: "Add to Timeline") { addToTimeline(piecesToAdd(from: entry.id, snapshot: snapshot)) }
         .accessibilityAction(named: "Skim Forward") { skimStep(entry, seconds: 1) }
         .accessibilityAction(named: "Skim Back") { skimStep(entry, seconds: -1) }
         .accessibilityAction(named: "Set Range Start") { setRangeEnd(.start, of: entry) }
@@ -473,6 +473,21 @@ struct ClipsTab: View {
         .accessibilityHidden(true)
     }
 
+    /// A click on a clip, on its title or its strip, `seconds` into it when
+    /// known: Command adds it or takes it out, Shift selects the run from
+    /// the last one clicked, and a plain click selects it alone (keeping
+    /// its range when inside it).
+    private func click(_ id: BrowserItemID, flags: NSEvent.ModifierFlags, order: [BrowserItemID], at seconds: Double? = nil) {
+        cursor = id
+        if flags.contains(.command) {
+            picked.commandClick(id)
+        } else if flags.contains(.shift) {
+            picked.shiftClick(id, in: order)
+        } else {
+            picked.click(id, at: seconds)
+        }
+    }
+
     /// The end of the clip's range whose handle is at `point`: the far
     /// end, which stays put while the handle is dragged.
     private func handle(of entry: BrowserEntry, layout: FilmstripLayout, at point: CGPoint) -> Double? {
@@ -505,14 +520,13 @@ struct ClipsTab: View {
         switch press {
         case .click(let point, let flags):
             rangeDrag = nil
-            cursor = entry.id
-            if flags.contains(.command) {
-                picked.commandClick(entry.id)
-            } else if flags.contains(.shift) {
-                picked.shiftClick(entry.id, in: order)
+            if !flags.isDisjoint(with: [.command, .shift]) {
+                click(entry.id, flags: flags, order: order)
             } else if handle(of: entry, layout: layout, at: point) == nil {
-                picked.click(entry.id, at: layout.seconds(at: point))
+                click(entry.id, flags: flags, order: order, at: layout.seconds(at: point))
                 if !skimming { skim(entry, at: layout.seconds(at: point)) }
+            } else {
+                cursor = entry.id
             }
         case .track(let point):
             guard let rangeDrag, rangeDrag.item == entry.id else { return }
@@ -708,13 +722,8 @@ struct ClipsTab: View {
             break
         }
         if press.key == .return {
-            let ids = picked.ordered(in: order)
-            guard !ids.isEmpty else { return false }
-            if let range = picked.range, let entry = snapshot.byID[range.item] {
-                addToTimeline([entry.piece(from: range.start, to: range.end)])
-            } else {
-                addToTimeline(dragPieces(for: ids, snapshot: snapshot))
-            }
+            guard let first = picked.range?.item ?? picked.ordered(in: order).first else { return false }
+            addToTimeline(piecesToAdd(from: first, snapshot: snapshot))
             return true
         }
         guard !order.isEmpty else { return false }
@@ -740,13 +749,9 @@ struct ClipsTab: View {
 
     @ViewBuilder
     private func menu(for entry: BrowserEntry, snapshot: Snapshot) -> some View {
-        let ids = picked.contains(entry.id) ? picked.ordered(in: snapshot.order) : [entry.id]
+        let ids = picked.dragged(from: entry.id, in: snapshot.order)
         Button(ids.count > 1 ? "Add \(ids.count) Clips to Timeline" : "Add to Timeline") {
-            if let range = picked.range, range.item == entry.id {
-                addToTimeline([entry.piece(from: range.start, to: range.end)])
-            } else {
-                addToTimeline(dragPieces(for: ids, snapshot: snapshot))
-            }
+            addToTimeline(piecesToAdd(from: entry.id, snapshot: snapshot))
         }
         if ids.count == 1 {
             switch entry.id {
@@ -756,10 +761,7 @@ struct ClipsTab: View {
                 sceneMenu(entry, assetID: assetID, scenes: snapshot.scenes(of: assetID))
             }
         } else {
-            let sceneIDs = ids.compactMap { id -> String? in
-                if case .scene(let asset, let scene) = id, asset == entry.clip.id { return scene }
-                return nil
-            }
+            let sceneIDs = sceneIDs(ids, of: entry.clip.id)
             let scenes = snapshot.scenes(of: entry.clip.id)
             if sceneIDs.count == ids.count {
                 Divider()
@@ -823,6 +825,16 @@ struct ClipsTab: View {
     }
 
     // MARK: - Editing
+
+    /// What Add to Timeline adds from `id`, from its menu, Return or
+    /// VoiceOver: its range when it has one, else every selected clip when
+    /// it is one of them, else it alone.
+    private func piecesToAdd(from id: BrowserItemID, snapshot: Snapshot) -> [MediaPiece] {
+        if let range = picked.range, range.item == id, let entry = snapshot.byID[id] {
+            return [entry.piece(from: range.start, to: range.end)]
+        }
+        return dragPieces(for: picked.dragged(from: id, in: snapshot.order), snapshot: snapshot)
+    }
 
     private func addToTimeline(_ pieces: [MediaPiece]) {
         guard let result = project.addPieces(pieces, intoTimeline: activeTimelineID, mutingSound: mutesAddedSound),
