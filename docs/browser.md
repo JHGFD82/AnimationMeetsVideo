@@ -84,8 +84,8 @@ remembered.
     are made. Skimming, ranges, Option-arrows, I, O and Escape work as on
     clips; a range picked of a timeline adds **Embed Range in Active
     Timeline** to its menu, which embeds only that stretch, the rest
-    kept past the clip's trims for transitions to draw on. Strips don't
-    drag; a timeline is dragged onto an effect by its name.
+    kept past the clip's trims for transitions to draw on. Timelines
+    drag as clips do (see "Dragging").
   - **Tree**: the tree described above, each row its icon, name, duration
     and settings, with no pictures.
 - **Presets**: saved effect presets (see [effects.md](effects.md),
@@ -220,6 +220,17 @@ loses the keyboard.
 
 ## Dragging
 
+Timelines drag as clips do, from either layout of the Timelines tab: a
+timeline (every selected one when it is selected), or a range picked of
+one, goes onto the timeline as an embedded clip at the drop, on the layer
+under the pointer or a new video layer, with the same preview and
+pushing aside (`MediaPiece.timeline`, through `MediaDragPayload`). A
+timeline can't go into itself or into a timeline it is drawn into, so
+such a drop does nothing. In the tree, and by a timeline's name in
+filmstrips, the drag carries whole timelines; on a strip it follows the
+rules below. Dropped on an effect that takes an input, the first timeline
+dragged becomes the input.
+
 - **Dragging** a selected clip drags the **whole clip**, wherever on it
   the drag starts, along with every other selected clip. A clip that
   isn't selected has to be clicked first; dragging it picks a range (see
@@ -339,6 +350,6 @@ Following [accessibility.md](accessibility.md):
 5. **Used media** underlines (built, Clips tab; not yet tried on screen).
    The Timelines tab's line came with stage 6.
 6. **Timelines** as filmstrips, with skimming (built; not yet tried on
-   screen), or as the tree, chosen in the view options. Still to come:
-   dragging a timeline, or a range of one, onto the timeline.
+   screen), or as the tree, chosen in the view options, and dragged onto
+   the timeline as clips are.
 7. **Presets** with generated test footage.

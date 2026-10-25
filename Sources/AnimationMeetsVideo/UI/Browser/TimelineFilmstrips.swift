@@ -183,9 +183,9 @@ struct TimelineFilmstrips: View {
                 if clicks == 2 { onOpen(timeline.id) }
             }
         }
-        // Dragged from its name, a timeline goes onto an effect that takes
-        // an input, as from the list.
-        .draggable(TimelineDragPayload(timelineID: timeline.id))
+        // Dragged by its name, as from the list: onto the timeline, or onto
+        // an effect that takes an input.
+        .draggable(TimelinesList.dragPayload(from: timeline.id, picked: picked, order: order, in: project))
         .contextMenu { menu(timeline.id) }
         .help(isActive ? "The timeline open in the editor" : "Double-click to open in the editor")
         .accessibilityElement(children: .combine)
@@ -240,8 +240,7 @@ struct TimelineFilmstrips: View {
                 rowOffset: rowTop,
                 onDown: { point, flags in pressBegan(timeline, layout: layout, at: point, flags: flags) },
                 onPress: { press in pressed(press, timeline: timeline, preview: preview, layout: layout) },
-                // Strips don't drag: a timeline goes onto an effect from its name.
-                dragText: { _ in nil },
+                dragText: { point in dragText(timeline, preview: preview, layout: layout, at: point) },
                 isOnHandle: { point in handle(of: timeline, layout: layout, at: point) != nil },
                 onHover: { point in
                     if skimming, let point, let preview { skim(timeline, preview: preview, at: layout.seconds(at: point)) }
@@ -251,6 +250,38 @@ struct TimelineFilmstrips: View {
         .contextMenu { menu(timeline.id) }
         // The title line is the timeline for VoiceOver; the pictures add nothing.
         .accessibilityHidden(true)
+    }
+
+    /// What a drag from `point` carries, as in the Clips tab: the range when
+    /// it starts inside the timeline's range, otherwise the timeline, or
+    /// every selected timeline when it is one of them. The picture that
+    /// follows the pointer is the first one's frame there, once made.
+    private func dragText(
+        _ timeline: Timeline, preview: TimelinePreview?, layout: FilmstripLayout, at point: CGPoint
+    ) -> (text: String, image: NSImage)? {
+        // Dragged to the timeline, the viewer goes back to showing it.
+        skim?.end()
+        let payload: MediaDragPayload
+        var start = CMTime.zero
+        if let range = picked.range, range.item == timeline.id, range.contains(layout.seconds(at: point)) {
+            start = CMTime(seconds: range.start, preferredTimescale: 600)
+            payload = MediaDragPayload.beginDrag([.timeline(timeline.id, from: start, to: CMTime(seconds: range.end, preferredTimescale: 600))])
+        } else {
+            if !picked.contains(timeline.id) { picked.click(timeline.id) }
+            payload = TimelinesList.dragPayload(from: timeline.id, picked: picked, order: order, in: project)
+        }
+        guard !payload.pieces.isEmpty else { return nil }
+        let size = layout.cellSize
+        let picture = preview?.cachedImage(at: start, height: size.height)
+            ?? NSImage(systemSymbolName: "rectangle.stack", accessibilityDescription: nil)
+            ?? NSImage(size: size)
+        let image = NSImage(size: size, flipped: false) { rect in
+            NSColor.black.setFill()
+            rect.fill()
+            picture.draw(in: rect)
+            return true
+        }
+        return (payload.text, image)
     }
 
     /// The end of the range whose handle is at `point`: the far end, which

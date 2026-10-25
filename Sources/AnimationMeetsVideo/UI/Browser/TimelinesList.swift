@@ -32,8 +32,9 @@ enum TimelinesLayout: String, CaseIterable, Identifiable {
 /// one in the editor, and a click on the name of the only one selected,
 /// or Return, renames it. Its menu embeds the selected timelines (or the
 /// picked range of one) in the active timeline or duplicates them, and
-/// renames or opens the one clicked; dragging one puts it on an effect
-/// that takes an input. The active timeline is marked as open.
+/// renames or opens the one clicked. Dragged, the selected timelines go
+/// onto the timeline embedded, as clips do, or onto an effect that takes
+/// an input. The active timeline is marked as open.
 struct TimelinesList: View {
     let project: EditingProject
     let activeTimelineID: UUID
@@ -187,6 +188,18 @@ struct TimelinesList: View {
         if collapsed.contains(id) { collapsed.remove(id) } else { collapsed.insert(id) }
     }
 
+    /// What a drag of `id` carries, noted as the drag begins: the whole of
+    /// every selected timeline, in browser order, when `id` is one of them,
+    /// otherwise all of `id`. Dropped on the timeline each goes down
+    /// embedded (not in itself), as clips do; dropped on an effect, the
+    /// first is its input.
+    static func dragPayload(from id: UUID, picked: BrowserSelection<UUID>, order: [UUID], in project: EditingProject) -> MediaDragPayload {
+        let pieces = picked.dragged(from: id, in: order)
+            .compactMap { project.timeline(id: $0) }
+            .map { MediaPiece.timeline($0.id, from: .zero, to: $0.duration) }
+        return MediaDragPayload.beginDrag(pieces)
+    }
+
     /// What a menu on `id` acts on: everything selected when it is, in
     /// browser order, otherwise just it.
     private func targets(of id: UUID, in order: [UUID]) -> [UUID] {
@@ -277,7 +290,7 @@ struct TimelinesList: View {
             }
         }
         .help(isActive ? "The timeline open in the editor" : "Double-click to open in the editor")
-        .draggable(TimelineDragPayload(timelineID: timeline.id))
+        .draggable(Self.dragPayload(from: timeline.id, picked: picked, order: order, in: project))
         .contextMenu { menu(timeline.id, order: order) }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)

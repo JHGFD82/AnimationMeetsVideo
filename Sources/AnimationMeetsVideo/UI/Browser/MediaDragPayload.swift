@@ -3,7 +3,8 @@ import CoreTransferable
 import Foundation
 
 /// Media being dragged from the browser: pieces of one or more assets (whole
-/// clips, scenes or a picked range) in the order they go down. It travels
+/// clips, scenes or a picked range), or of timelines, in the order they go
+/// down. It travels
 /// as plain text so it works without a registered content type (this app
 /// runs unbundled).
 struct MediaDragPayload: Transferable, Equatable {
@@ -14,6 +15,8 @@ struct MediaDragPayload: Transferable, Equatable {
             var startScale: Int32
             var endValue: Int64
             var endScale: Int32
+            /// Present, and true, for a stretch of a timeline.
+            var timeline: Bool?
         }
 
         var pieces: [Piece]
@@ -51,7 +54,8 @@ struct MediaDragPayload: Transferable, Equatable {
             MediaPiece(
                 assetID: $0.assetID,
                 start: CMTime(value: $0.startValue, timescale: $0.startScale),
-                end: CMTime(value: $0.endValue, timescale: $0.endScale)
+                end: CMTime(value: $0.endValue, timescale: $0.endScale),
+                isTimeline: $0.timeline == true
             )
         }
     }
@@ -60,7 +64,8 @@ struct MediaDragPayload: Transferable, Equatable {
         let wire = Wire(pieces: pieces.map {
             Wire.Piece(
                 assetID: $0.assetID, startValue: $0.start.value, startScale: $0.start.timescale,
-                endValue: $0.end.value, endScale: $0.end.timescale
+                endValue: $0.end.value, endScale: $0.end.timescale,
+                timeline: $0.isTimeline ? true : nil
             )
         })
         let encoder = JSONEncoder()
