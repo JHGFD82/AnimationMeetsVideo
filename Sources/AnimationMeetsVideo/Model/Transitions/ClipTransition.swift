@@ -448,15 +448,25 @@ extension EditingProject {
 
     /// The clip just before `clip` on its layer when they meet at a cut and
     /// a transition can blend their pictures: both are media with pictures.
+    /// They meet within `Timeline.abutmentTolerance`, as the timeline takes
+    /// clips to meet everywhere else: edges worked out from source times in
+    /// other timescales, or rounded onto frames, can be a sliver apart, and
+    /// a transition dropped between two clips that look butted together then
+    /// stayed on one of them instead of joining them.
     func predecessor(joining clip: TimelineClip, among clips: [TimelineClip]) -> TimelineClip? {
         guard isJoinable(clip) else { return nil }
-        return clips.first { $0.id != clip.id && $0.endOffset == clip.startOffset && isJoinable($0) }
+        return clips.first { $0.id != clip.id && Self.meet($0.endOffset, clip.startOffset) && isJoinable($0) }
     }
 
     /// The clip just after `clip` that a transition at its end would join.
     func successor(joining clip: TimelineClip, among clips: [TimelineClip]) -> TimelineClip? {
         guard isJoinable(clip) else { return nil }
-        return clips.first { $0.id != clip.id && $0.startOffset == clip.endOffset && isJoinable($0) }
+        return clips.first { $0.id != clip.id && Self.meet(clip.endOffset, $0.startOffset) && isJoinable($0) }
+    }
+
+    /// Whether an end and a start are the same cut.
+    private static func meet(_ end: CMTime, _ start: CMTime) -> Bool {
+        CMTimeAbsoluteValue(CMTimeSubtract(start, end)) < Timeline.abutmentTolerance
     }
 
     /// Footage past the outgoing clip's out point and before the incoming

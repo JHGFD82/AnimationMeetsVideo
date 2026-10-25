@@ -578,8 +578,10 @@ taking it out to) whatever is underneath: lower layers, or black.
 
 ### Transitions joining two clips
 
-Where two media clips with pictures meet on a layer, a transition dropped
-at the cut, on either clip, **joins** them: it becomes the incoming clip's
+Where two media clips with pictures meet on a layer (within
+`Timeline.abutmentTolerance`, as clips meet everywhere else, so edges a
+sliver apart from rounding still count), a transition dropped at the cut,
+on either clip, **joins** them: it becomes the incoming clip's
 way in and is drawn as one box across the cut, over both clips. It blends
 the outgoing clip into the incoming one, which needs footage beyond their
 trims: before the cut the incoming clip plays the frames before its in

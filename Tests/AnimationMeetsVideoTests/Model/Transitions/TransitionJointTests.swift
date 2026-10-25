@@ -22,14 +22,14 @@ private func video(url: URL? = nil, duration: Double = 10) -> MediaClip {
         var a: UUID
         var b: UUID
 
-        init(url: URL? = nil, bTrimStart: Double = 6) {
+        init(url: URL? = nil, bTrimStart: Double = 6, bStart: CMTime = seconds(4)) {
             t = project.rootTimelineID
             let placed = project.importClip(video(url: url), intoTimeline: t)!
             layer = placed.layerID
             a = placed.clipID
             project.trimClipEnd(a, in: t, layer: layer, to: seconds(4))
             let clipB = TimelineClip(source: project.timeline(id: t)!.layers[0].clips[0].source,
-                                     startOffset: seconds(4), trimStart: seconds(bTrimStart), trimEnd: seconds(bTrimStart + 3))
+                                     startOffset: bStart, trimStart: seconds(bTrimStart), trimEnd: seconds(bTrimStart + 3))
             b = clipB.id
             let tIndex = project.timelines.firstIndex { $0.id == t }!
             project.timelines[tIndex].layers[0].clips.append(clipB)
@@ -50,6 +50,21 @@ private func video(url: URL? = nil, duration: Double = 10) -> MediaClip {
         #expect(joint.lead == seconds(0.5))
         #expect(joint.start == seconds(3.5) && joint.end == seconds(4.5))
         #expect(joint.spareTail == seconds(6) && joint.spareHead == seconds(6))
+    }
+
+    /// Clips a sliver apart (their edges in different timescales) are a cut
+    /// as everywhere else, so a transition dropped there joins them; a
+    /// real gap doesn't.
+    @Test func aTransitionJoinsClipsASliverApart() throws {
+        var f = Fixture(bStart: CMTimeAdd(seconds(4), CMTime(value: 1, timescale: 3000)))
+        f.project.setTransition(.crossDissolve, at: .trailing, of: f.a, in: f.t, layer: f.layer)
+        #expect(f.joint != nil)
+        #expect(f.clipA.transitionOut == nil)
+
+        var gapped = Fixture(bStart: seconds(4.5))
+        gapped.project.setTransition(.crossDissolve, at: .trailing, of: gapped.a, in: gapped.t, layer: gapped.layer)
+        #expect(gapped.joint == nil)
+        #expect(gapped.clipA.transitionOut != nil)
     }
 
     @Test func aJointKeepsToTheSpareFootage() throws {
