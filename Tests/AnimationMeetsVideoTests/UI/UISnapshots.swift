@@ -496,7 +496,8 @@ struct UISnapshots {
     }
 
     /// The inspector for a text layer of two lines, right-aligned, with its
-    /// size keyframed: the words, font and style, and the numbers.
+    /// size keyframed: the words; Character, Paragraph and OpenType; and a
+    /// yellow fill with a stroke.
     @Test func textInspector() throws {
         var project = EditingProject.empty
         let t = project.rootTimelineID
@@ -505,7 +506,11 @@ struct UISnapshots {
         project.editClip(text.clipID, in: t) { clip in
             clip.effects[0].text?.string = "Animation\nmeets video"
             clip.effects[0].changeControl(.textAlign) { $0.choice = TextAlign.right.rawValue }
-            clip.effects[0].changeControl(.tracking) { $0.setComponent(0, to: 4, at: .zero) }
+            clip.effects[0].changeControl(.tracking) { $0.setComponent(0, to: 40, at: .zero) }
+            clip.effects[0].changeControl(.underline) { $0.choice = OnOff.on.rawValue }
+            clip.effects[0].changeControl(.figures) { $0.choice = TextFigures.tabularLining.rawValue }
+            clip.effects[0].changeControl(.fill) { $0.number = AnimatedValue(ComponentValue(values: [1, 0.8, 0.1, 1])) }
+            clip.effects[0].changeControl(.strokeWidth) { $0.setComponent(0, to: 6, at: .zero) }
             clip.effects[0].changeControl(.fontSize) { size in
                 size.number.setAnimated(true, at: .zero)
                 size.setComponent(0, to: 160, at: CMTime(seconds: 2, preferredTimescale: 600))
@@ -518,7 +523,33 @@ struct UISnapshots {
                 selection: TimelineSelection(timelineID: t, layerID: text.layerID, timelineClipID: text.clipID),
                 info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
             ),
-            "text-inspector", size: CGSize(width: 340, height: 620)
+            "text-inspector", size: CGSize(width: 340, height: 1700)
+        )
+    }
+
+    /// The inspector for a shape layer: a rounded rectangle's size, corners
+    /// and position, then its fill and a dashed outside stroke.
+    @Test func shapeInspector() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: t)
+        let shape = try #require(added)
+        project.editClip(shape.clipID, in: t) { clip in
+            clip.effects[0].changeControl(.cornerRadius) { $0.setComponent(0, to: 24, at: .zero) }
+            clip.effects[0].changeControl(.fill) { $0.number = AnimatedValue(ComponentValue(values: [0.2, 0.5, 0.9, 0.75])) }
+            clip.effects[0].changeControl(.stroke) { $0.number = AnimatedValue(ComponentValue(values: [1, 1, 1, 1])) }
+            clip.effects[0].changeControl(.strokeWidth) { $0.setComponent(0, to: 8, at: .zero) }
+            clip.effects[0].changeControl(.strokeEdge) { $0.choice = StrokeEdge.outside.rawValue }
+            clip.effects[0].changeControl(.dash) { $0.number = AnimatedValue(ComponentValue(values: [20, 10])) }
+        }
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: shape.layerID, timelineClipID: shape.clipID),
+                info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "shape-inspector", size: CGSize(width: 340, height: 820)
         )
     }
 

@@ -513,7 +513,7 @@ struct KeyframingEditsRow: View {
 /// dragged, are held to one side of the project (`ProjectState.hold`) and
 /// written to it when they have paused for a moment: one undo step, and
 /// the well shows the color picked meanwhile.
-private struct HeldColorWell: View {
+struct HeldColorWell: View {
     let name: String
     let selection: Binding<CGColor>
 

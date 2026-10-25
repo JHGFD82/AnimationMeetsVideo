@@ -2,16 +2,20 @@ import CoreMedia
 import SwiftUI
 
 /// A Text effect's settings in the inspector (see docs/graphic-layers.md,
-/// "Text"): its words, typed in place, its font's family and style, and
-/// its size, alignment, tracking, line height and wrap width. Those are
-/// the effect's own controls, so a number set here at the playhead is a
-/// keyframe there once it is animated, as in the effects panel; its fill
-/// and stroke stay in the effects panel with the other shapes'.
+/// "Text"), grouped as Illustrator's panels are: its words, typed in place;
+/// Character (font and style, size, leading, kerning, tracking, scale,
+/// baseline shift, rotation, case, underline and strikethrough);
+/// Paragraph (alignment, indents, space between paragraphs, wrap width);
+/// and OpenType (ligatures, alternates, figures, fractions, ordinals,
+/// swash, stylistic sets). All but the words and font are the effect's own
+/// controls, so a number set here at the playhead is a keyframe there once
+/// it is animated, as in the effects panel. Its fill and stroke follow in
+/// `PaintInspectorGroup`.
 struct TextInspectorGroup: View {
     let effect: Effect
-    /// The group's title: "Text", or the effect's name when the clip has
-    /// more than one.
-    let title: String
+    /// Put before each group's title when the clip draws more than one
+    /// shape: the effect's name.
+    let prefix: String?
     /// The playhead in the clip's source time, snapped to a frame.
     let playhead: PlayheadTime
     let onEdit: ((inout Effect) -> Void) -> Void
@@ -23,34 +27,50 @@ struct TextInspectorGroup: View {
 
     private var content: TextContent { effect.text ?? TextContent() }
 
-    var body: some View {
-        InspectorGroup(title) {
-            TextEditor(text: Binding(
-                get: { content.string },
-                set: { string in onEdit { $0.text = TextContent(string: string, fontName: $0.text?.fontName ?? TextContent.defaultFontName) } }
-            ))
-            .font(Design.Typeface.body)
-            .scrollContentBackground(.hidden)
-            .padding(4)
-            .frame(minHeight: 56, maxHeight: 120)
-            .background(Design.Surface.base.color, in: RoundedRectangle(cornerRadius: Design.Radius.control))
-            .accessibilityLabel("Text")
-            .help("The words the layer draws; Return starts a new line")
+    private func title(_ section: String) -> String {
+        prefix.map { "\($0) · \(section)" } ?? section
+    }
 
-            fontPickers
-            if !FontCatalog.isInstalled(content.fontName) {
-                Text("\u{201C}\(content.fontName)\u{201D} isn't installed on this Mac, so it draws with \(FontCatalog.familyAndStyle(of: content.fontName).family) until it is.")
+    var body: some View {
+        VStack(alignment: .leading, spacing: Design.Space.group) {
+            InspectorGroup(title("Text")) {
+                TextEditor(text: Binding(
+                    get: { content.string },
+                    set: { string in onEdit { $0.text = TextContent(string: string, fontName: $0.text?.fontName ?? TextContent.defaultFontName) } }
+                ))
+                .font(Design.Typeface.body)
+                .scrollContentBackground(.hidden)
+                .padding(4)
+                .frame(minHeight: 56, maxHeight: 120)
+                .background(Design.Surface.base.color, in: RoundedRectangle(cornerRadius: Design.Radius.control))
+                .accessibilityLabel("Text")
+                .help("The words the layer draws; Return starts a new paragraph")
+            }
+            InspectorGroup(title("Character")) {
+                fontPickers
+                if !FontCatalog.isInstalled(content.fontName) {
+                    Text("\u{201C}\(content.fontName)\u{201D} isn't installed on this Mac, so it draws with \(FontCatalog.familyAndStyle(of: content.fontName).family) until it is.")
+                        .font(Design.Typeface.label)
+                        .foregroundStyle(Design.statusWarning)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                controls(EffectKind.characterControls)
+            }
+            InspectorGroup(title("Paragraph")) {
+                controls(EffectKind.paragraphControls)
+            }
+            InspectorGroup(title("OpenType")) {
+                controls(EffectKind.openTypeControls)
+                Text("A font without one of these draws as if it were off.")
                     .font(Design.Typeface.label)
-                    .foregroundStyle(Design.statusWarning)
+                    .foregroundStyle(Design.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            numberRow(.fontSize)
-            alignmentRow
-            numberRow(.tracking)
-            numberRow(.lineHeight)
-            numberRow(.wrapWidth)
         }
+    }
+
+    private func controls(_ kinds: [ControlKind]) -> some View {
+        InspectorControls(effect: effect, kinds: kinds, playhead: playhead, onEdit: onEdit, onSeek: onSeek)
     }
 
     // MARK: Font
@@ -69,9 +89,6 @@ struct TextInspectorGroup: View {
             )) {
                 ForEach(Self.families, id: \.self) { Text($0).tag($0) }
             }
-            .labelsHidden()
-            .controlSize(.small)
-            .frame(width: 170)
         }
         labelled("Style") {
             Picker("Style", selection: Binding(get: { content.fontName }, set: setFont)) {
@@ -82,9 +99,6 @@ struct TextInspectorGroup: View {
                 }
                 ForEach(styles) { Text($0.name).tag($0.fontName) }
             }
-            .labelsHidden()
-            .controlSize(.small)
-            .frame(width: 170)
         }
     }
 
@@ -92,93 +106,19 @@ struct TextInspectorGroup: View {
         onEdit { $0.text = TextContent(string: $0.text?.string ?? "", fontName: name) }
     }
 
-    // MARK: Controls
-
-    /// The alignment choice, as four icons. Hidden once the control is
-    /// deleted in the effects panel.
-    @ViewBuilder
-    private var alignmentRow: some View {
-        if let control = effect.control(.textAlign) {
-            labelled("Alignment") {
-                Picker("Alignment", selection: Binding(
-                    get: { control.choice.flatMap(TextAlign.init(rawValue:)) ?? .center },
-                    set: { align in onEdit { $0.changeControl(.textAlign) { $0.choice = align.rawValue } } }
-                )) {
-                    ForEach(TextAlign.allCases) { align in
-                        Image(systemName: align.systemImage)
-                            .accessibilityLabel(align.name)
-                            .help(align.name)
-                            .tag(align)
-                    }
-                }
-                .pickerStyle(.segmented)
+    /// A row with `name` where the control rows have theirs, and a picker.
+    private func labelled(_ name: String, @ViewBuilder picker: () -> some View) -> some View {
+        HStack(spacing: 4) {
+            Color.clear.frame(width: 18, height: 1)
+            Text(name)
+                .foregroundStyle(Design.textSecondary)
+                .frame(width: InspectorControlRow.nameWidth, alignment: .leading)
+            picker()
                 .labelsHidden()
                 .controlSize(.small)
-                .fixedSize()
-                .disabled(!control.enabled)
-            }
+                .frame(width: 150, alignment: .leading)
+            Spacer(minLength: 0)
         }
-    }
-
-    /// One number of the effect's: a stopwatch that animates it, its value
-    /// at the playhead (click to type, drag to change), and once animated
-    /// the keyframe buttons. Hidden once the control is deleted.
-    @ViewBuilder
-    private func numberRow(_ kind: ControlKind) -> some View {
-        if let control = effect.control(kind) {
-            let name = kind.name.lowercased()
-            let time = playhead.shown(animated: control.isAnimated)
-            HStack(spacing: 4) {
-                AnimateToggle(name: name, isAnimated: control.isAnimated) {
-                    let at = playhead.current
-                    onEdit { $0.changeControl(kind) { $0.number.setAnimated(!$0.number.isAnimated, at: at) } }
-                }
-                Text(kind.name)
-                    .foregroundStyle(Design.textSecondary)
-                    .frame(width: 76, alignment: .leading)
-                NumericField(
-                    value: control.values(at: time).first ?? 0, unit: kind.unit, fractionDigits: kind.dragStep < 1 ? 1 : 0,
-                    dragStep: kind.dragStep, dragRange: kind.range, accessibilityName: kind.name
-                ) { value in
-                    let at = playhead.current
-                    onEdit { $0.changeControl(kind) { $0.setComponent(0, to: value, at: at) } }
-                }
-                .disabled(!control.enabled)
-                Spacer(minLength: 4)
-                if control.isAnimated {
-                    KeyframeNavigator(
-                        name: name, keyframeTimes: control.number.keyframes.map(\.time), time: time, onSeek: onSeek,
-                        onToggle: {
-                            let at = playhead.current
-                            onEdit { $0.changeControl(kind) { $0.number.toggleKeyframe(at: at) } }
-                        }
-                    )
-                }
-            }
-            .font(Design.Typeface.label)
-            .help(help(for: kind))
-        }
-    }
-
-    private func help(for kind: ControlKind) -> String {
-        switch kind {
-        case .fontSize: "The font's size in pixels"
-        case .tracking: "Space added after each letter, in pixels; below 0 draws them closer"
-        case .lineHeight: "The space from one line to the next, as a percentage of the font's own"
-        case .wrapWidth: "Where lines wrap, in pixels; 0 keeps each paragraph on one line"
-        default: kind.name
-        }
-    }
-
-    /// A row with `name` on the left and its control on the right, as the
-    /// inspector's other settings are laid out.
-    private func labelled(_ name: String, @ViewBuilder control: () -> some View) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: Design.Space.step) {
-            Text(name)
-                .font(Design.Typeface.label)
-                .foregroundStyle(Design.textTertiary)
-            Spacer(minLength: Design.Space.step)
-            control()
-        }
+        .font(Design.Typeface.label)
     }
 }

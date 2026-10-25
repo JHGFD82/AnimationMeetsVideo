@@ -2,7 +2,8 @@
 
 Status: stills, shapes (rectangle, ellipse, polygon and star) and strokes
 are **built** (steps 1, 2a and 2b, not yet tried in the running app), as
-is the text framework (step 3a: one font per block, set in the
+is the text framework (step 3a: Illustrator's character, paragraph and
+OpenType settings for a whole block, set in the
 inspector); gradients, free paths, path operations, styled runs,
 variable axes, animators and text on a path are **planned** (see
 [Building it](#building-it)).
@@ -203,30 +204,73 @@ Built (step 3a):
 
 - **Content.** `Effect.text` (`TextContent`) holds what isn't a control:
   the words and the font's PostScript name, one font for the whole block.
-  The rest are controls, keyframed like any other: **Size** (pixels; a new
-  layer's is a ninth of the frame's height), **Alignment** (Left, Center,
-  Right, Justified), **Tracking** (pixels after each letter), **Line
-  Height** (percent of the font's own), **Wrap Width** (pixels; 0 sets each
-  paragraph on one line), and the shapes' Position, Fill and Stroke
-  controls. The block's middle sits at the frame's middle plus Position.
+  Everything else is a control, keyframed like any other numbers are, in
+  the groups of Illustrator's and InDesign's panels. Each applies to the
+  whole block (`TextOutline.Setting`):
+  - **Character.** Size (pixels; a new layer's is a ninth of the frame's
+    height); Leading (baseline to baseline in pixels, 0 for Auto, 120% of
+    the size); Kerning (Metrics, the font's pairs, or None); Tracking
+    (thousandths of an em after each letter); Vertical and Horizontal
+    Scale; Baseline Shift (up); Character Rotation (each letter about its
+    middle, clockwise, as the app's other rotations turn); Case (Normal,
+    All Caps, Small Caps, All Small Caps); Underline and Strikethrough.
+  - **Paragraph.** Alignment (Align Left, Center or Right; Justify with
+    the last line left, centered or right; Justify All Lines); Left, Right
+    and First Line Indent (below 0 hangs the first line); Space Before and
+    After, between paragraphs; Wrap Width (0 sets each paragraph on one
+    line).
+  - **OpenType.** Ligatures (Standard, None, or Standard and
+    Discretionary); Contextual Alternates (on at first); Figures (Default,
+    Tabular or Proportional, Lining or Oldstyle); Fractions; Ordinals;
+    Swash; Stylistic Alternates; Stylistic Set (1 to 20, 0 for none).
+  - And the shapes' Position, Fill and Stroke controls. The block's middle
+    sits at the frame's middle plus Position.
 - **Layout** (`TextLayout`). Each paragraph is wrapped with
-  `CTTypesetterSuggestLineBreak` (or set whole), lines are stacked a line
-  height apart and lined up within the block (as wide as the wrap width,
-  or the widest line), and each glyph's outline comes from
-  `CTFontCreatePathForGlyph` with the run's own font, so letters a font
-  lacks fall back as Core Text picks. Justified stretches every wrapped
-  line but a paragraph's last. A glyph with no outline (an emoji's
-  picture) draws nothing. Laid-out blocks are kept by what was set, so
-  layout is redone only when the words or styling change, not for every
-  frame or move.
-- **The inspector** has a Text group for each Text effect of the selected
-  clip: the words in a text editor, Font (family) and Style pickers
-  (`FontCatalog`, keeping the style's name when the family changes), and
-  Size, Alignment, Tracking, Line Height and Wrap Width, the numbers with
-  the stopwatch and keyframe buttons the sound rows have, set at the
-  playhead. The effects panel shows the same controls, and Fill and
-  Stroke; a Text effect with no words says so there. Reset keeps the
+  `CTTypesetterSuggestLineBreak` within the wrap width less its indents
+  (allowing for horizontal scale), or set whole. Lines are stacked a
+  leading apart, with paragraph spacing between paragraphs, and lined up
+  within the block (as wide as the wrap width, or the widest line and its
+  indents). Each glyph's outline comes from `CTFontCreatePathForGlyph`
+  with its run's own font, so letters a font lacks fall back as Core Text
+  picks, and is scaled, then turned about the middle of its advance, then
+  shifted. Underline and strikethrough are rectangles added to the
+  outline, as thick as the font's underline: the underline where the
+  font puts it, the strikethrough half the x-height up. So they fill,
+  stroke and stay sharp with the letters. A glyph with no outline (an
+  emoji's picture) draws nothing. Laid-out blocks are kept by what was
+  set, so layout is redone only when the words or styling change, not
+  for every frame or move.
+- **How Core Text is asked.** Tracking is `kCTTrackingAttributeName`,
+  which leaves kerning pairs alone; Kerning None is a kern of 0 (the
+  OpenType 'kern' feature turned off does nothing); All Caps draws the
+  words uppercased. Small caps, ligatures, figures and the rest are
+  OpenType features on the font (`kCTFontFeatureSettingsAttribute`), and
+  Core Text keeps only those the font has, so a font without one draws as
+  if it were off, as the inspector says. Small caps aren't faked for a
+  font without them, as Illustrator does.
+- **The inspector** shows every shape and text of the selected clip, in
+  stack order, as Illustrator's panels do. A Text effect has a Text group
+  (its words in a text editor), Character (Font and Style pickers from
+  `FontCatalog`, keeping the style's name when the family changes, then
+  its Character controls), Paragraph and OpenType. Another shape has a
+  group of its own controls (`ShapeInspectorGroup`: a rectangle's size,
+  corners and position, a star's points and radii), and a Stroke effect
+  one of its stroke. Each drawn shape and text then has **Fill &
+  Stroke** (`PaintInspectorGroup`): Fill and Stroke, each with a checkbox
+  that leaves it out, a color well and its opacity, and while there is a
+  stroke its width, Edge, Join, Cap and Dash. With more than one shape,
+  each group is titled with its effect's name. Every row is an
+  `InspectorControlRow`: numbers with the stopwatch and keyframe buttons
+  the sound rows have, set at the playhead (Leading reads "Auto" at 0, a
+  size has its link); choices as menus, the alignments as icons, and
+  on-or-off settings as checkboxes. The effects panel shows the same
+  controls; a Text effect with no words says so there. Reset keeps the
   words and font.
+- **Not yet, needing a range of letters picked in the words:** manual
+  kerning between two letters, and any setting for some letters and not
+  others (see Styled runs). Hyphenation (Core Text's line breaking
+  doesn't hyphenate), optical kerning, superscript and subscript, and
+  the anchor's place in the box.
 - **Naming.** A shape clip with a Text effect is named by the first line
   of its words on the timeline, in the inspector and in undo steps
   (`resolvedInfo(for:)` of the clip), and VoiceOver calls it a text clip.
@@ -310,14 +354,19 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
    (d) Free paths and their keyframes. (e) Path operations and trim
    paths.
 3. **Text.** (a, done) The Text effect, `TextContent`, Core Text layout
-   and glyph paths (`TextLayout`), the inspector's Text group and
-   `FontCatalog`, missing fonts in the inspector, naming clips by their
-   text, and saving. `TextTests` checks centering, line breaks and line
-   height, wrapping, alignment against the wrap width, justification,
-   tracking, empty text, a missing font, the font catalog, a text layer
-   drawn over black, render keys, saving (a missing font and keyframed
-   size too), naming, Reset and the empty-text note; the `UISnapshots`
-   case `textInspector` shows the inspector. (b) Styled runs. (c)
+   and glyph paths (`TextLayout`) with the Character, Paragraph and
+   OpenType settings, the inspector's groups for text and for every
+   shape's settings, fill and stroke, `FontCatalog`, missing fonts in the
+   inspector, naming clips by their text, and saving. `TextTests` checks
+   centering, leading, paragraph spacing, wrapping, alignment against the
+   wrap width, each justification, indents and a hung first line,
+   tracking, kerning off, scale, baseline shift, character rotation, All
+   Caps, underline and strikethrough, the OpenType features asked for and
+   kept, reading the controls, empty text, a missing font, the font
+   catalog, a text layer drawn over black, render keys, saving, naming,
+   Reset and the empty-text note; the `UISnapshots` cases `textInspector`
+   and `shapeInspector` show the inspector. (b) Styled runs, with manual
+   kerning. (c)
    Variable axes. (d) Animators. (e) Text on a path. (f) Missing fonts
    reported before export.
 4. **Viewer handles.** Selecting a graphic clip in the viewer, handles for

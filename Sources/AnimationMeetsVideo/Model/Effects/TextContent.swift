@@ -18,21 +18,28 @@ struct TextContent: Equatable, Sendable {
     static let defaultFontName = "HelveticaNeue-Bold"
 }
 
-/// How the lines of a text block line up with each other.
+/// How the lines of a text block line up with each other, as Illustrator's
+/// Paragraph panel offers. The justified ones stretch every wrapped line of
+/// a paragraph but its last to the wrap width, and line the last up as
+/// they say (or stretch it too, for Justify All). Unwrapped, every line is
+/// a paragraph's last.
 enum TextAlign: String, CaseIterable, Identifiable, Sendable {
     case left, center, right
-    /// Every line of a wrapped paragraph but its last spans the wrap width;
-    /// the last, and unwrapped text, line up on the left.
+    /// Justified, its last line on the left.
     case justified
+    case justifyCenter, justifyRight, justifyAll
 
     var id: Self { self }
 
     var name: String {
         switch self {
-        case .left: "Left"
-        case .center: "Center"
-        case .right: "Right"
-        case .justified: "Justified"
+        case .left: "Align Left"
+        case .center: "Align Center"
+        case .right: "Align Right"
+        case .justified: "Justify, Last Line Left"
+        case .justifyCenter: "Justify, Last Line Centered"
+        case .justifyRight: "Justify, Last Line Right"
+        case .justifyAll: "Justify All Lines"
         }
     }
 
@@ -41,7 +48,109 @@ enum TextAlign: String, CaseIterable, Identifiable, Sendable {
         case .left: "text.alignleft"
         case .center: "text.aligncenter"
         case .right: "text.alignright"
-        case .justified: "text.justify"
+        case .justified: "text.justify.left"
+        case .justifyCenter: "text.justify"
+        case .justifyRight: "text.justify.right"
+        case .justifyAll: "line.3.horizontal"
+        }
+    }
+
+    var isJustified: Bool { self != .left && self != .center && self != .right }
+
+    /// How a paragraph's last line lines up, and every unwrapped line.
+    var lastLine: TextAlign {
+        switch self {
+        case .justified: .left
+        case .justifyCenter: .center
+        case .justifyRight: .right
+        default: self
+        }
+    }
+}
+
+/// Whether letters are spaced by the font's kerning pairs.
+enum TextKerning: String, CaseIterable, Identifiable, Sendable {
+    /// The pairs the font's designer set ("AV" closer than "HH").
+    case metrics
+    case none
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .metrics: "Metrics"
+        case .none: "None"
+        }
+    }
+}
+
+/// The letters' case, drawn without changing the words typed.
+enum TextCase: String, CaseIterable, Identifiable, Sendable {
+    case normal, allCaps
+    /// Lowercase letters as the font's small capitals ('smcp').
+    case smallCaps
+    /// Capitals too ('c2sc').
+    case allSmallCaps
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .normal: "Normal"
+        case .allCaps: "All Caps"
+        case .smallCaps: "Small Caps"
+        case .allSmallCaps: "All Small Caps"
+        }
+    }
+}
+
+/// Which of the font's ligatures join letters.
+enum TextLigatures: String, CaseIterable, Identifiable, Sendable {
+    /// The font's standard ones ("fi", "fl").
+    case standard
+    case none
+    /// Discretionary ones as well ("ct", "st"), where the font has them.
+    case all
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .standard: "Standard"
+        case .none: "None"
+        case .all: "Standard and Discretionary"
+        }
+    }
+}
+
+/// How the font draws numbers, as InDesign's OpenType menu offers.
+enum TextFigures: String, CaseIterable, Identifiable, Sendable {
+    case `default`
+    case tabularLining, proportionalLining, tabularOldstyle, proportionalOldstyle
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .default: "Default Figure"
+        case .tabularLining: "Tabular Lining"
+        case .proportionalLining: "Proportional Lining"
+        case .tabularOldstyle: "Tabular Oldstyle"
+        case .proportionalOldstyle: "Proportional Oldstyle"
+        }
+    }
+}
+
+/// A setting that is on or off, as a choice control.
+enum OnOff: String, CaseIterable, Identifiable, Sendable {
+    case off, on
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .off: "Off"
+        case .on: "On"
         }
     }
 }

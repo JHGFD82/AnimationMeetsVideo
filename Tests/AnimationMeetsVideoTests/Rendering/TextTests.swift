@@ -1,5 +1,6 @@
 import CoreGraphics
 import CoreMedia
+import CoreText
 import Foundation
 import Testing
 @testable import AnimationMeetsVideo
@@ -22,10 +23,7 @@ extension DrawingFixture {
     /// A setting of `string` at 100 pixels in Helvetica Neue Bold, centered
     /// and unwrapped, changed by `change`.
     private func setting(_ string: String, _ change: (inout TextOutline.Setting) -> Void = { _ in }) -> TextOutline.Setting {
-        var setting = TextOutline.Setting(
-            string: string, fontName: TextContent.defaultFontName, size: 100, tracking: 0, lineHeight: 100, wrapWidth: 0,
-            align: .center
-        )
+        var setting = TextOutline.Setting(string: string, fontName: TextContent.defaultFontName, size: 100)
         change(&setting)
         return setting
     }
@@ -45,13 +43,25 @@ extension DrawingFixture {
         #expect(box.minY < 0 && box.maxY > 0)
     }
 
-    @Test func lineBreaksStackLinesDownward() {
+    @Test func lineBreaksStackLinesALeadingApart() {
         let one = bounds(setting("Hello"))
         let two = bounds(setting("Hello\nHello"))
-        let spaced = bounds(setting("Hello\nHello") { $0.lineHeight = 200 })
-        #expect(two.height > one.height * 1.8)
-        #expect(spaced.height > two.height * 1.5)
+        let spaced = bounds(setting("Hello\nHello") { $0.leading = 300 })
+        // Auto leading is 120% of the size.
+        #expect(abs(two.height - one.height - 120) < 0.5)
+        #expect(abs(spaced.height - one.height - 300) < 0.5)
         #expect(abs(two.width - one.width) < 1)
+    }
+
+    @Test func spaceBeforeAndAfterSeparateParagraphs() {
+        let plain = bounds(setting("A\nB"))
+        let spaced = bounds(setting("A\nB") { $0.spaceAfter = 50; $0.spaceBefore = 30 })
+        #expect(abs(spaced.height - plain.height - 80) < 0.5)
+        // Lines of one wrapped paragraph aren't spaced.
+        let wrapped = setting("one two three four") { $0.wrapWidth = 250 }
+        var spacedWrap = wrapped
+        spacedWrap.spaceAfter = 50
+        #expect(bounds(wrapped) == bounds(spacedWrap))
     }
 
     @Test func wrappingSetsAParagraphOnSeveralLines() {
@@ -86,11 +96,116 @@ extension DrawingFixture {
         #expect(bounds(one) == bounds(asLeft))
     }
 
+    @Test func eachJustificationPlacesTheLastLineAsItSays() {
+        // One wrapped line, which is its paragraph's last.
+        func aligned(_ align: TextAlign) -> CGRect { bounds(setting("a b") { $0.wrapWidth = 500; $0.align = align }) }
+        #expect(abs(aligned(.justified).minX + 250) < 15)
+        #expect(abs(aligned(.justifyRight).maxX - 250) < 15)
+        #expect(abs(aligned(.justifyCenter).midX) < 6)
+        #expect(aligned(.justifyAll).width > 470)
+    }
+
+    @Test func indentsMoveLinesInFromTheEdges() {
+        let left = bounds(setting("Hi") { $0.wrapWidth = 600; $0.align = .left; $0.leftIndent = 50 })
+        let right = bounds(setting("Hi") { $0.wrapWidth = 600; $0.align = .right; $0.rightIndent = 50 })
+        #expect(abs(left.minX + 250) < 15)
+        #expect(abs(right.maxX - 250) < 15)
+        // A first line hung out past the others.
+        let hung = bounds(setting("one two three four five") {
+            $0.wrapWidth = 600; $0.align = .left; $0.leftIndent = 100; $0.firstLineIndent = -100
+        })
+        let indented = bounds(setting("one two three four five") { $0.wrapWidth = 600; $0.align = .left; $0.leftIndent = 100 })
+        #expect(abs(hung.minX + 300) < 15)
+        #expect(abs(indented.minX + 200) < 15)
+    }
+
     @Test func trackingSpreadsTheLetters() {
         let tight = bounds(setting("HHHHH"))
-        let spread = bounds(setting("HHHHH") { $0.tracking = 20 })
+        // A fifth of an em, 20 pixels at this size.
+        let spread = bounds(setting("HHHHH") { $0.tracking = 200 })
         // Four gaps between five letters.
         #expect(abs(spread.width - tight.width - 80) < 1)
+        #expect(abs(spread.midX) < 6)
+    }
+
+    @Test func turningKerningOffLeavesThePairsApart() {
+        let kerned = bounds(setting("AVAVAV"))
+        let unkerned = bounds(setting("AVAVAV") { $0.kerning = .none })
+        #expect(unkerned.width > kerned.width + 5)
+    }
+
+    @Test func scalingStretchesTheLetters() {
+        let plain = bounds(setting("Hello"))
+        let wide = bounds(setting("Hello") { $0.horizontalScale = 200 })
+        let short = bounds(setting("Hello") { $0.verticalScale = 50 })
+        #expect(abs(wide.width - plain.width * 2) < 2)
+        #expect(abs(short.height - plain.height / 2) < 1)
+        #expect(abs(short.width - plain.width) < 0.5)
+    }
+
+    @Test func baselineShiftRaisesAndRotationTurnsEachLetter() {
+        let plain = bounds(setting("I"))
+        let raised = bounds(setting("I") { $0.baselineShift = 30 })
+        #expect(abs(raised.minY - (plain.minY - 30)) < 0.5)
+        let turned = bounds(setting("I") { $0.characterRotation = 90 })
+        #expect(plain.height > plain.width * 2)
+        #expect(turned.width > turned.height * 2)
+    }
+
+    @Test func allCapsDrawsCapitalsWithoutChangingTheWords() {
+        let caps = bounds(setting("hello") { $0.textCase = .allCaps })
+        #expect(caps == bounds(setting("HELLO")))
+        #expect(caps != bounds(setting("hello")))
+    }
+
+    @Test func underlineAndStrikethroughAreRules() {
+        let plain = TextLayout.layOut(setting("H"))
+        let underlined = TextLayout.layOut(setting("H") { $0.underline = true })
+        let struck = TextLayout.layOut(setting("H") { $0.strikethrough = true })
+        // The underline sits below the baseline, under the H.
+        #expect(underlined.boundingBoxOfPath.maxY > plain.boundingBoxOfPath.maxY + 2)
+        #expect(struck != plain)
+        #expect(abs(struck.boundingBoxOfPath.maxY - plain.boundingBoxOfPath.maxY) < 0.5)
+    }
+
+    @Test func openTypeSettingsTurnTheFontsFeaturesOnAndOff() {
+        func tags(_ change: (inout TextOutline.Setting) -> Void) -> [String: Int] {
+            let features = TextLayout.openTypeFeatures(for: setting("x", change))
+            return Dictionary(features.map { ($0.tag, $0.on ? 1 : 0) }, uniquingKeysWith: { $1 })
+        }
+        #expect(tags { _ in }.isEmpty)
+        #expect(tags { $0.ligatures = .none } == ["liga": 0, "clig": 0])
+        #expect(tags { $0.ligatures = .all } == ["dlig": 1])
+        #expect(tags { $0.textCase = .allSmallCaps } == ["smcp": 1, "c2sc": 1])
+        #expect(tags { $0.figures = .tabularOldstyle } == ["tnum": 1, "onum": 1])
+        #expect(tags { $0.stylisticSet = 3; $0.fractions = true } == ["ss03": 1, "frac": 1])
+        #expect(tags { $0.contextualAlternates = false } == ["calt": 0])
+        #expect(tags { $0.ordinals = true; $0.swash = true; $0.stylisticAlternates = true } == ["ordn": 1, "swsh": 1, "salt": 1])
+
+        // Core Text keeps the ones the font has: Hoefler Text's
+        // discretionary ligatures, and no font's unknown ones.
+        let hoefler = TextLayout.font(for: setting("x") { $0.fontName = "HoeflerText-Regular"; $0.ligatures = .all })
+        let kept = CTFontCopyFeatureSettings(hoefler) as? [[CFString: Any]] ?? []
+        #expect(kept.contains { $0[kCTFontOpenTypeFeatureTag] as? String == "dlig" })
+    }
+
+    @Test func aSettingReadsTheEffectsControls() throws {
+        var effect = Effect(kind: .text)
+        effect.changeControl(.leading) { $0.setComponent(0, to: 150, at: .zero) }
+        effect.changeControl(.textCase) { $0.choice = TextCase.smallCaps.rawValue }
+        effect.changeControl(.underline) { $0.choice = OnOff.on.rawValue }
+        effect.changeControl(.textAlign) { $0.choice = TextAlign.justifyAll.rawValue }
+        effect.changeControl(.stylisticSet) { $0.setComponent(0, to: 25, at: .zero) }
+        // Off: back to its default.
+        effect.changeControl(.contextualAlternates) { $0.choice = OnOff.off.rawValue; $0.enabled = false }
+        let read = try #require(TextOutline.Setting(effect, at: .zero))
+        #expect(read.leading == 150)
+        #expect(read.textCase == .smallCaps)
+        #expect(read.underline)
+        #expect(read.align == .justifyAll)
+        #expect(read.stylisticSet == 20)
+        #expect(read.contextualAlternates)
+        #expect(read.lineAdvance == 150)
     }
 
     @Test func noWordsDrawNothing() {

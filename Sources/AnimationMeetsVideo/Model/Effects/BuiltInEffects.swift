@@ -67,6 +67,19 @@ extension EffectKind {
 
     /// How a shape is filled and stroked, after what shapes it.
     static let paintControls: [ControlKind] = [.fill, .stroke, .strokeWidth, .strokeEdge, .strokeJoin, .strokeCap, .dash]
+
+    /// A Text effect's settings, as Illustrator's Character, Paragraph and
+    /// OpenType panels group them (see `TextInspectorGroup`).
+    static let characterControls: [ControlKind] = [
+        .fontSize, .leading, .kerning, .tracking, .verticalScale, .horizontalScale, .baselineShift, .characterRotation,
+        .textCase, .underline, .strikethrough,
+    ]
+    static let paragraphControls: [ControlKind] = [
+        .textAlign, .leftIndent, .rightIndent, .firstLineIndent, .spaceBefore, .spaceAfter, .wrapWidth,
+    ]
+    static let openTypeControls: [ControlKind] = [
+        .ligatures, .contextualAlternates, .figures, .fractions, .ordinals, .swash, .stylisticAlternates, .stylisticSet,
+    ]
 }
 
 extension ControlKind {
@@ -108,10 +121,31 @@ extension ControlKind {
     static let innerRadius = ControlKind(builtIn: "innerRadius")
     // Text
     static let fontSize = ControlKind(builtIn: "fontSize")
-    static let textAlign = ControlKind(builtIn: "textAlign")
+    static let leading = ControlKind(builtIn: "leading")
+    static let kerning = ControlKind(builtIn: "kerning")
     static let tracking = ControlKind(builtIn: "tracking")
-    static let lineHeight = ControlKind(builtIn: "lineHeight")
+    static let verticalScale = ControlKind(builtIn: "verticalScale")
+    static let horizontalScale = ControlKind(builtIn: "horizontalScale")
+    static let baselineShift = ControlKind(builtIn: "baselineShift")
+    static let characterRotation = ControlKind(builtIn: "characterRotation")
+    static let textCase = ControlKind(builtIn: "textCase")
+    static let underline = ControlKind(builtIn: "underline")
+    static let strikethrough = ControlKind(builtIn: "strikethrough")
+    static let textAlign = ControlKind(builtIn: "textAlign")
+    static let leftIndent = ControlKind(builtIn: "leftIndent")
+    static let rightIndent = ControlKind(builtIn: "rightIndent")
+    static let firstLineIndent = ControlKind(builtIn: "firstLineIndent")
+    static let spaceBefore = ControlKind(builtIn: "spaceBefore")
+    static let spaceAfter = ControlKind(builtIn: "spaceAfter")
     static let wrapWidth = ControlKind(builtIn: "wrapWidth")
+    static let ligatures = ControlKind(builtIn: "ligatures")
+    static let contextualAlternates = ControlKind(builtIn: "contextualAlternates")
+    static let figures = ControlKind(builtIn: "figures")
+    static let fractions = ControlKind(builtIn: "fractions")
+    static let ordinals = ControlKind(builtIn: "ordinals")
+    static let swash = ControlKind(builtIn: "swash")
+    static let stylisticAlternates = ControlKind(builtIn: "stylisticAlternates")
+    static let stylisticSet = ControlKind(builtIn: "stylisticSet")
     // EQ
     static let eqLowCut = ControlKind(builtIn: "eqLowCut")
     static let eqLowCutSlope = ControlKind(builtIn: "eqLowCutSlope")
@@ -230,7 +264,8 @@ enum BuiltInEffects {
         // as the other shapes do.
         EffectDefinition(
             .text, "Text", .shapes, "textformat",
-            controls: [.fontSize, .textAlign, .tracking, .lineHeight, .wrapWidth, .shapePosition] + EffectKind.paintControls
+            controls: EffectKind.characterControls + EffectKind.paragraphControls + EffectKind.openTypeControls
+                + [.shapePosition] + EffectKind.paintControls
         ),
         // Strokes the outline of the shapes above it in the stack, strokes
         // and all, so a stroke can have a stroke of its own.
@@ -333,14 +368,42 @@ enum BuiltInEffects {
         // Star
         ControlDefinition(.innerRadius, "Inner Radius", .star, defaults: [90], unit: " px", range: 0...50_000),
         // Text
+        // Character
         ControlDefinition(.fontSize, "Size", .text, defaults: [120], unit: " px", range: 1...10_000),
+        // Baseline to baseline; 0 is Auto, 120% of the size.
+        ControlDefinition(.leading, "Leading", .text, defaults: [0], unit: " px", range: 0...100_000),
+        ControlDefinition(.kerning, "Kerning", .text, choice: TextKerning.metrics),
+        // In thousandths of an em, as Illustrator and InDesign count it.
+        ControlDefinition(.tracking, "Tracking", .text, defaults: [0], range: -1000...10_000),
+        ControlDefinition(.verticalScale, "Vertical Scale", .text, defaults: [100], unit: "%", range: 1...10_000),
+        ControlDefinition(.horizontalScale, "Horizontal Scale", .text, defaults: [100], unit: "%", range: 1...10_000),
+        // Up from the baseline.
+        ControlDefinition(.baselineShift, "Baseline Shift", .text, defaults: [0], unit: " px", range: -100_000...100_000),
+        // Each letter about its own middle, clockwise.
+        ControlDefinition(.characterRotation, "Character Rotation", .text, defaults: [0], unit: "°"),
+        ControlDefinition(.textCase, "Case", .text, choice: TextCase.normal),
+        ControlDefinition(.underline, "Underline", .text, choice: OnOff.off),
+        ControlDefinition(.strikethrough, "Strikethrough", .text, choice: OnOff.off),
+        // Paragraph
         ControlDefinition(.textAlign, "Alignment", .text, choice: TextAlign.center),
-        // Added after each letter.
-        ControlDefinition(.tracking, "Tracking", .text, defaults: [0], unit: " px", dragStep: 0.1, range: -1000...10_000),
-        // Of the font's own line height.
-        ControlDefinition(.lineHeight, "Line Height", .text, defaults: [100], unit: "%", range: 10...1000),
+        ControlDefinition(.leftIndent, "Left Indent", .text, defaults: [0], unit: " px", range: 0...100_000),
+        ControlDefinition(.rightIndent, "Right Indent", .text, defaults: [0], unit: " px", range: 0...100_000),
+        // Below 0 hangs the first line out to the left.
+        ControlDefinition(.firstLineIndent, "First Line Indent", .text, defaults: [0], unit: " px", range: -100_000...100_000),
+        ControlDefinition(.spaceBefore, "Space Before", .text, defaults: [0], unit: " px", range: 0...100_000),
+        ControlDefinition(.spaceAfter, "Space After", .text, defaults: [0], unit: " px", range: 0...100_000),
         // 0 sets each paragraph on one line.
         ControlDefinition(.wrapWidth, "Wrap Width", .text, defaults: [0], unit: " px", range: 0...100_000),
+        // OpenType
+        ControlDefinition(.ligatures, "Ligatures", .text, choice: TextLigatures.standard),
+        ControlDefinition(.contextualAlternates, "Contextual Alternates", .text, choice: OnOff.on),
+        ControlDefinition(.figures, "Figures", .text, choice: TextFigures.default),
+        ControlDefinition(.fractions, "Fractions", .text, choice: OnOff.off),
+        ControlDefinition(.ordinals, "Ordinals", .text, choice: OnOff.off),
+        ControlDefinition(.swash, "Swash", .text, choice: OnOff.off),
+        ControlDefinition(.stylisticAlternates, "Stylistic Alternates", .text, choice: OnOff.off),
+        // ss01 to ss20; 0 for none.
+        ControlDefinition(.stylisticSet, "Stylistic Set", .text, defaults: [0], range: 0...20, isWhole: true),
         // EQ
         ControlDefinition(.eqLowCut, band: .lowCut),
         ControlDefinition(.eqLowCutSlope, "Low Slope", .equalizer, choice: EqualizerSlope.db12),

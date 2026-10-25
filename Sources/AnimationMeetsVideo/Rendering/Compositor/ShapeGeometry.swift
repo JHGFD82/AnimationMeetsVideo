@@ -55,17 +55,8 @@ struct ShapeStep: Equatable, Sendable {
                 cornerRadius: max(0, single(.cornerRadius)), rotation: single(.shapeRotation)
             )
         case .text:
-            let size = single(.fontSize)
-            guard let content = effect.text, !content.string.isEmpty, size > 0 else { return nil }
-            let align = effect.control(.textAlign).flatMap { $0.enabled ? $0.choice : nil }.flatMap(TextAlign.init(rawValue:))
-            outline = .text(TextOutline(
-                setting: TextOutline.Setting(
-                    string: content.string, fontName: content.fontName, size: size,
-                    tracking: single(.tracking), lineHeight: max(1, single(.lineHeight)), wrapWidth: max(0, single(.wrapWidth)),
-                    align: align ?? .center
-                ),
-                center: middle
-            ))
+            guard let setting = TextOutline.Setting(effect, at: time) else { return nil }
+            outline = .text(TextOutline(setting: setting, center: middle))
         default:
             return nil
         }

@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreMedia
 import CoreText
 import Foundation
 
@@ -6,19 +7,105 @@ import Foundation
 /// out and where its middle is, in the frame's pixels (origin top left,
 /// y down). Its outline is its glyphs (see docs/graphic-layers.md, "Text").
 struct TextOutline: Equatable, Sendable {
-    /// What is laid out, which `TextLayout` keeps the glyphs of.
+    /// What is laid out, which `TextLayout` keeps the glyphs of: the words
+    /// and font, and the settings of Illustrator's Character, Paragraph and
+    /// OpenType panels, each for the whole block. Lengths are in pixels.
     struct Setting: Hashable, Sendable {
         var string: String
         var fontName: String
-        /// The font's size in pixels.
         var size: Double
-        /// Pixels added after each letter.
-        var tracking: Double
-        /// Percent of the font's own line height.
-        var lineHeight: Double
+
+        // Character
+        /// Baseline to baseline; 0 is Auto, 120% of the size.
+        var leading = 0.0
+        var kerning = TextKerning.metrics
+        /// Thousandths of an em added after each letter.
+        var tracking = 0.0
+        /// Percentages of the letters' height and width.
+        var verticalScale = 100.0
+        var horizontalScale = 100.0
+        /// Up from the baseline.
+        var baselineShift = 0.0
+        /// Degrees each letter turns about its middle, clockwise.
+        var characterRotation = 0.0
+        var textCase = TextCase.normal
+        var underline = false
+        var strikethrough = false
+
+        // Paragraph
+        var align = TextAlign.center
+        var leftIndent = 0.0
+        var rightIndent = 0.0
+        /// Added to a paragraph's first line's left indent; below 0 hangs it.
+        var firstLineIndent = 0.0
+        /// Added between paragraphs: after one, before the next.
+        var spaceBefore = 0.0
+        var spaceAfter = 0.0
         /// Where lines wrap; 0 sets each paragraph on one line.
-        var wrapWidth: Double
-        var align: TextAlign
+        var wrapWidth = 0.0
+
+        // OpenType
+        var ligatures = TextLigatures.standard
+        var contextualAlternates = true
+        var figures = TextFigures.default
+        var fractions = false
+        var ordinals = false
+        var swash = false
+        var stylisticAlternates = false
+        /// ss01 to ss20; 0 for none.
+        var stylisticSet = 0
+
+        /// What a Text effect sets at source time `time`: each control
+        /// that is on at its value there, one that is off or deleted at its
+        /// default. Nil with no words or no size.
+        init?(_ effect: Effect, at time: CMTime) {
+            func number(_ kind: ControlKind) -> Double {
+                guard let control = effect.control(kind), control.enabled else { return kind.defaultValues.first ?? 0 }
+                return control.values(at: time).first ?? 0
+            }
+            func choice<Option: RawRepresentable>(_ kind: ControlKind, _ fallback: Option) -> Option where Option.RawValue == String {
+                let picked = effect.control(kind).flatMap { $0.enabled ? $0.choice : nil } ?? kind.defaultChoice
+                return picked.flatMap(Option.init(rawValue:)) ?? fallback
+            }
+            func isOn(_ kind: ControlKind) -> Bool { choice(kind, OnOff.off) == .on }
+            let size = number(.fontSize)
+            guard let content = effect.text, !content.string.isEmpty, size > 0 else { return nil }
+            self.init(string: content.string, fontName: content.fontName, size: size)
+            leading = max(0, number(.leading))
+            kerning = choice(.kerning, .metrics)
+            tracking = number(.tracking)
+            verticalScale = max(1, number(.verticalScale))
+            horizontalScale = max(1, number(.horizontalScale))
+            baselineShift = number(.baselineShift)
+            characterRotation = number(.characterRotation)
+            textCase = choice(.textCase, .normal)
+            underline = isOn(.underline)
+            strikethrough = isOn(.strikethrough)
+            align = choice(.textAlign, .center)
+            leftIndent = max(0, number(.leftIndent))
+            rightIndent = max(0, number(.rightIndent))
+            firstLineIndent = number(.firstLineIndent)
+            spaceBefore = max(0, number(.spaceBefore))
+            spaceAfter = max(0, number(.spaceAfter))
+            wrapWidth = max(0, number(.wrapWidth))
+            ligatures = choice(.ligatures, .standard)
+            contextualAlternates = isOn(.contextualAlternates)
+            figures = choice(.figures, .default)
+            fractions = isOn(.fractions)
+            ordinals = isOn(.ordinals)
+            swash = isOn(.swash)
+            stylisticAlternates = isOn(.stylisticAlternates)
+            stylisticSet = Int(ControlKind.stylisticSet.clamped(number(.stylisticSet)))
+        }
+
+        init(string: String, fontName: String, size: Double) {
+            self.string = string
+            self.fontName = fontName
+            self.size = size
+        }
+
+        /// Baseline to baseline: as set, or Auto's 120% of the size.
+        var lineAdvance: Double { leading > 0 ? leading : size * 1.2 }
     }
 
     var setting: Setting
@@ -32,12 +119,10 @@ struct TextOutline: Equatable, Sendable {
         return laid.copy(using: &move) ?? laid
     }
 
-    /// What it draws, in words, for a render's key.
+    /// What it draws, in words, for a render's key: every setting, which
+    /// a new one joins without being listed here.
     var keyText: String {
-        func n(_ value: Double) -> String { String(format: "%.5f", value) }
-        let s = setting
-        return "h t\(n(s.size)) \(s.align.rawValue) \(n(s.tracking)) \(n(s.lineHeight)) \(n(s.wrapWidth)) \(n(center.x)),\(n(center.y))"
-            + " \(s.fontName) \(s.string.debugDescription)"
+        "h t \(String(describing: setting)) \(String(format: "%.5f,%.5f", center.x, center.y))"
     }
 }
 
@@ -71,159 +156,220 @@ final class TextLayout: @unchecked Sendable {
         return path
     }
 
-    /// One line as set: its Core Text line, how wide its letters reach, and
-    /// whether it ends a paragraph (which a justified block leaves ragged).
+    /// One line as set, before horizontal scale: its Core Text line, how
+    /// wide its letters reach, its left indent and the width it may fill
+    /// (nil when it doesn't wrap), and where it falls in its paragraph.
     private struct Line {
         var line: CTLine
         var width: Double
+        var indent: Double
+        var room: Double?
+        var startsParagraph: Bool
         var endsParagraph: Bool
     }
 
     /// Sets `setting`'s lines one under the next, each paragraph wrapped
-    /// at the wrap width (or not at all), and lines them up. The block is
-    /// as wide as its wrap width, or its widest line, and as tall as its
-    /// lines, centered on the origin.
+    /// within the wrap width less its indents (or not at all), lines them
+    /// up, and draws each glyph scaled, shifted and turned. The block is as
+    /// wide as its wrap width, or its widest line and indents, and as tall
+    /// as its lines, centered on the origin.
     static func layOut(_ setting: TextOutline.Setting) -> CGPath {
         let path = CGMutablePath()
         guard setting.size > 0, !setting.string.isEmpty else { return path }
-        let font = CTFontCreateWithName(setting.fontName as CFString, setting.size, nil)
-        let attributes: [NSAttributedString.Key: Any] = [
-            NSAttributedString.Key(kCTFontAttributeName as String): font,
-            NSAttributedString.Key(kCTKernAttributeName as String): setting.tracking,
+        let font = font(for: setting)
+        let wide = setting.horizontalScale / 100, tall = setting.verticalScale / 100
+        var attributes: [NSAttributedString.Key: Any] = [
+            key(kCTFontAttributeName): font,
+            // Tracking leaves the font's kerning pairs as they are.
+            key(kCTTrackingAttributeName): setting.tracking / 1000 * setting.size,
         ]
+        // A kern of 0 turns the font's pairs off; its OpenType 'kern'
+        // feature, off, doesn't.
+        if setting.kerning == .none { attributes[key(kCTKernAttributeName)] = 0 }
+        switch setting.ligatures {
+        // Only those a script can't be written without.
+        case .none: attributes[key(kCTLigatureAttributeName)] = 0
+        case .all: attributes[key(kCTLigatureAttributeName)] = 2
+        case .standard: break
+        }
+        let string = setting.textCase == .allCaps ? setting.string.uppercased() : setting.string
         let wraps = setting.wrapWidth > 0
         var lines: [Line] = []
-        func measured(_ line: CTLine, endsParagraph: Bool) -> Line {
-            let width = CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line)
-            // Tracking is added after the last letter too, which isn't part
-            // of the line's width.
-            let glyphs = CTLineGetGlyphCount(line)
-            return Line(line: line, width: max(0, width - (glyphs > 0 ? setting.tracking : 0)), endsParagraph: endsParagraph)
-        }
         // "\r\n", "\n" and "\u{2028}" alike start a new line.
-        for paragraph in setting.string.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
+        for paragraph in string.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
             let attributed = NSAttributedString(string: String(paragraph), attributes: attributes)
+            let firstIndent = setting.leftIndent + setting.firstLineIndent
             guard wraps, attributed.length > 0 else {
-                lines.append(measured(CTLineCreateWithAttributedString(attributed), endsParagraph: true))
+                let line = CTLineCreateWithAttributedString(attributed)
+                let room = wraps ? max(1, setting.wrapWidth - firstIndent - setting.rightIndent) : nil
+                lines.append(Line(line: line, width: width(of: line), indent: firstIndent, room: room, startsParagraph: true, endsParagraph: true))
                 continue
             }
             let typesetter = CTTypesetterCreateWithAttributedString(attributed)
             var start = 0
             while start < attributed.length {
-                // At least a letter a line, however narrow the wrap.
-                let count = max(1, CTTypesetterSuggestLineBreak(typesetter, start, setting.wrapWidth))
+                let indent = start == 0 ? firstIndent : setting.leftIndent
+                let room = max(1, setting.wrapWidth - indent - setting.rightIndent)
+                // At least a letter a line, however narrow the room.
+                let count = max(1, CTTypesetterSuggestLineBreak(typesetter, start, room / wide))
                 let line = CTTypesetterCreateLine(typesetter, CFRange(location: start, length: count))
+                lines.append(Line(
+                    line: line, width: width(of: line), indent: indent, room: room,
+                    startsParagraph: start == 0, endsParagraph: start + count >= attributed.length
+                ))
                 start += count
-                lines.append(measured(line, endsParagraph: start >= attributed.length))
             }
         }
 
-        let ascent = CTFontGetAscent(font), descent = CTFontGetDescent(font)
-        let advance = (ascent + descent + CTFontGetLeading(font)) * setting.lineHeight / 100
-        let blockWidth = wraps ? setting.wrapWidth : lines.map(\.width).max() ?? 0
-        let blockHeight = ascent + descent + advance * Double(max(0, lines.count - 1))
-        var baseline = -blockHeight / 2 + ascent
-        for var line in lines {
-            if setting.align == .justified, wraps, !line.endsParagraph,
-               let justified = CTLineCreateJustifiedLine(line.line, 1, blockWidth) {
-                line.line = justified
-                line.width = blockWidth
+        let ascent = CTFontGetAscent(font) * tall, descent = CTFontGetDescent(font) * tall
+        let blockWidth = wraps
+            ? setting.wrapWidth
+            : lines.map { $0.indent + $0.width * wide + setting.rightIndent }.max() ?? 0
+        var baseline = ascent
+        var baselines: [Double] = []
+        for (index, line) in lines.enumerated() {
+            if index > 0 {
+                baseline += setting.lineAdvance
+                if line.startsParagraph { baseline += setting.spaceAfter + setting.spaceBefore }
             }
-            let left: Double = switch setting.align {
-            case .left, .justified: -blockWidth / 2
-            case .center: -line.width / 2
-            case .right: blockWidth / 2 - line.width
+            baselines.append(baseline)
+        }
+        let top = -(baseline + descent) / 2
+        let left = -blockWidth / 2
+        for (var line, lineBaseline) in zip(lines, baselines) {
+            let room = line.room ?? (blockWidth - line.indent - setting.rightIndent)
+            var align = line.endsParagraph ? setting.align.lastLine : setting.align
+            if align.isJustified {
+                if wraps, let justified = CTLineCreateJustifiedLine(line.line, 1, room / wide) {
+                    line.line = justified
+                    line.width = room / wide
+                }
+                align = .left
             }
-            addGlyphs(of: line.line, to: path, origin: CGPoint(x: left, y: baseline))
-            baseline += advance
+            let shown = line.width * wide
+            let start: Double = switch align {
+            case .center: line.indent + (room - shown) / 2
+            case .right: line.indent + room - shown
+            default: line.indent
+            }
+            let origin = CGPoint(x: left + start, y: top + lineBaseline - setting.baselineShift)
+            addGlyphs(of: line.line, to: path, origin: origin, setting: setting, font: font)
+            addRules(under: shown, at: origin, to: path, setting: setting, font: font)
         }
         return path
     }
 
+    private static func key(_ name: CFString) -> NSAttributedString.Key { NSAttributedString.Key(name as String) }
+
+    /// How wide a line's letters reach: its typographic width less the
+    /// spaces it ends with and the tracking after its last letter.
+    private static func width(of line: CTLine) -> Double {
+        let width = CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line)
+        guard let runs = CTLineGetGlyphRuns(line) as? [CTRun], let last = runs.last,
+              let tracking = (CTRunGetAttributes(last) as NSDictionary)[kCTTrackingAttributeName as String] as? Double,
+              CTLineGetTrailingWhitespaceWidth(line) == 0
+        else { return max(0, width) }
+        return max(0, width - tracking)
+    }
+
+    /// The font named in `setting` at its size, with the OpenType features
+    /// its settings ask for. Core Text keeps only those the font has, so a
+    /// font without one draws as if it were off.
+    static func font(for setting: TextOutline.Setting) -> CTFont {
+        let features = openTypeFeatures(for: setting).map { feature -> [CFString: Any] in
+            [kCTFontOpenTypeFeatureTag: feature.tag, kCTFontOpenTypeFeatureValue: feature.on ? 1 : 0]
+        }
+        let base = CTFontCreateWithName(setting.fontName as CFString, setting.size, nil)
+        guard !features.isEmpty else { return base }
+        let descriptor = CTFontDescriptorCreateWithAttributes([kCTFontFeatureSettingsAttribute: features] as CFDictionary)
+        return CTFontCreateCopyWithAttributes(base, setting.size, nil, descriptor)
+    }
+
+    /// The OpenType features `setting`'s Case and OpenType settings turn on
+    /// or off, by tag ("smcp"), in order; none while all are as the font
+    /// has them.
+    static func openTypeFeatures(for setting: TextOutline.Setting) -> [(tag: String, on: Bool)] {
+        var features: [(tag: String, on: Bool)] = []
+        func feature(_ tag: String, _ on: Bool) { features.append((tag, on)) }
+        if setting.textCase == .smallCaps || setting.textCase == .allSmallCaps { feature("smcp", true) }
+        if setting.textCase == .allSmallCaps { feature("c2sc", true) }
+        switch setting.ligatures {
+        case .none:
+            feature("liga", false)
+            feature("clig", false)
+        case .all: feature("dlig", true)
+        case .standard: break
+        }
+        if !setting.contextualAlternates { feature("calt", false) }
+        switch setting.figures {
+        case .default: break
+        case .tabularLining: feature("tnum", true); feature("lnum", true)
+        case .proportionalLining: feature("pnum", true); feature("lnum", true)
+        case .tabularOldstyle: feature("tnum", true); feature("onum", true)
+        case .proportionalOldstyle: feature("pnum", true); feature("onum", true)
+        }
+        if setting.fractions { feature("frac", true) }
+        if setting.ordinals { feature("ordn", true) }
+        if setting.swash { feature("swsh", true) }
+        if setting.stylisticAlternates { feature("salt", true) }
+        if (1...20).contains(setting.stylisticSet) { feature(String(format: "ss%02d", setting.stylisticSet), true) }
+        return features
+    }
+
     /// Adds the outline of every glyph in `line` to `path`, with the line's
-    /// baseline starting at `origin`. Core Text's y is up and the frame's
-    /// down, so each glyph is flipped. A glyph with no outline (an emoji's
-    /// picture) adds nothing.
-    private static func addGlyphs(of line: CTLine, to path: CGMutablePath, origin: CGPoint) {
+    /// baseline starting at `origin`: each scaled as the setting says, then
+    /// turned about the middle of its advance. Core Text's y is up and the
+    /// frame's down, so each glyph is flipped. A glyph with no outline (an
+    /// emoji's picture) adds nothing.
+    private static func addGlyphs(of line: CTLine, to path: CGMutablePath, origin: CGPoint, setting: TextOutline.Setting, font: CTFont) {
         guard let runs = CTLineGetGlyphRuns(line) as? [CTRun] else { return }
+        let wide = setting.horizontalScale / 100, tall = setting.verticalScale / 100
+        let turn = -setting.characterRotation * .pi / 180
+        // Halfway up the letters, in Core Text's y.
+        let middle = (CTFontGetAscent(font) - CTFontGetDescent(font)) / 2 * tall
         for run in runs {
             let count = CTRunGetGlyphCount(run)
             // A run may fall back to another font for letters the chosen
             // one lacks.
             guard count > 0, let value = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName as String] else { continue }
-            let font = value as! CTFont
+            let runFont = value as! CTFont
             var glyphs = [CGGlyph](repeating: 0, count: count)
             var positions = [CGPoint](repeating: .zero, count: count)
+            var advances = [CGSize](repeating: .zero, count: count)
             CTRunGetGlyphs(run, CFRange(location: 0, length: 0), &glyphs)
             CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
-            for (glyph, position) in zip(glyphs, positions) {
-                guard let outline = CTFontCreatePathForGlyph(font, glyph, nil) else { continue }
-                let place = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: origin.x + position.x, ty: origin.y - position.y)
+            CTRunGetAdvances(run, CFRange(location: 0, length: 0), &advances)
+            for k in 0..<count {
+                guard let outline = CTFontCreatePathForGlyph(runFont, glyphs[k], nil) else { continue }
+                var place = CGAffineTransform(scaleX: wide, y: tall)
+                if turn != 0 {
+                    let pivot = CGPoint(x: advances[k].width * wide / 2, y: middle)
+                    place = place
+                        .concatenating(CGAffineTransform(translationX: -pivot.x, y: -pivot.y))
+                        .concatenating(CGAffineTransform(rotationAngle: turn))
+                        .concatenating(CGAffineTransform(translationX: pivot.x, y: pivot.y))
+                }
+                place = place.concatenating(CGAffineTransform(
+                    a: 1, b: 0, c: 0, d: -1, tx: origin.x + positions[k].x * wide, ty: origin.y - positions[k].y * tall
+                ))
                 path.addPath(outline, transform: place)
             }
         }
     }
-}
 
-/// The fonts installed on this Mac, by family and style, for picking a
-/// Text effect's font.
-enum FontCatalog {
-    /// One style of a family: its PostScript name, which a Text effect
-    /// keeps, and what the family calls it ("Bold Italic").
-    struct Style: Hashable, Identifiable {
-        var fontName: String
-        var name: String
-        var id: String { fontName }
-    }
-
-    /// Every family that can be picked, in alphabetical order. The
-    /// system's hidden ones (named with a leading dot) are left out.
-    static func families() -> [String] {
-        let names = CTFontManagerCopyAvailableFontFamilyNames() as? [String] ?? []
-        return names.filter { !$0.hasPrefix(".") }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-    }
-
-    /// A family's styles, lightest first, upright before italic.
-    static func styles(ofFamily family: String) -> [Style] {
-        let descriptor = CTFontDescriptorCreateWithAttributes([kCTFontFamilyNameAttribute: family] as CFDictionary)
-        let matches = CTFontDescriptorCreateMatchingFontDescriptors(descriptor, nil) as? [CTFontDescriptor] ?? []
-        let styles = matches.compactMap { match -> (style: Style, weight: Double, slanted: Bool)? in
-            guard let name = CTFontDescriptorCopyAttribute(match, kCTFontNameAttribute) as? String else { return nil }
-            let styleName = CTFontDescriptorCopyAttribute(match, kCTFontStyleNameAttribute) as? String ?? name
-            let traits = CTFontDescriptorCopyAttribute(match, kCTFontTraitsAttribute) as? [CFString: Any] ?? [:]
-            let weight = (traits[kCTFontWeightTrait] as? NSNumber)?.doubleValue ?? 0
-            let symbolic = (traits[kCTFontSymbolicTrait] as? NSNumber)?.uint32Value ?? 0
-            let slanted = symbolic & CTFontSymbolicTraits.traitItalic.rawValue != 0
-            return (Style(fontName: name, name: styleName), weight, slanted)
+    /// Adds the setting's underline and strikethrough under a line `width`
+    /// wide starting at `origin`, as thick as the font says an underline
+    /// is: the underline where the font puts it, the strikethrough half the
+    /// x-height up.
+    private static func addRules(under width: Double, at origin: CGPoint, to path: CGMutablePath, setting: TextOutline.Setting, font: CTFont) {
+        guard width > 0, setting.underline || setting.strikethrough else { return }
+        let tall = setting.verticalScale / 100
+        let given = CTFontGetUnderlineThickness(font)
+        let thickness = (given > 0 ? given : setting.size / 20) * tall
+        func rule(atHeight height: Double) {
+            path.addRect(CGRect(x: origin.x, y: origin.y - height - thickness / 2, width: width, height: thickness))
         }
-        var seen = Set<String>()
-        return styles
-            .sorted { ($0.weight, $0.slanted ? 1 : 0, $0.style.name) < ($1.weight, $1.slanted ? 1 : 0, $1.style.name) }
-            .map(\.style)
-            .filter { seen.insert($0.fontName).inserted }
-    }
-
-    /// Whether the font named `fontName` is installed. When it isn't, Core
-    /// Text draws with a substitute, whose name differs.
-    static func isInstalled(_ fontName: String) -> Bool {
-        let font = CTFontCreateWithName(fontName as CFString, 12, nil)
-        return CTFontCopyPostScriptName(font) as String == fontName
-    }
-
-    /// The family and style of the font named `fontName`, as a Text effect's
-    /// font is shown: what Core Text substitutes when it isn't installed.
-    static func familyAndStyle(of fontName: String) -> (family: String, style: String) {
-        let font = CTFontCreateWithName(fontName as CFString, 12, nil)
-        let family = CTFontCopyFamilyName(font) as String
-        let style = CTFontCopyName(font, kCTFontStyleNameKey).map { $0 as String } ?? ""
-        return (family, style)
-    }
-
-    /// The style of `family` nearest `fontName`'s: the one with the same
-    /// style name, or else the first, for when the family is changed.
-    static func fontName(inFamily family: String, like fontName: String) -> String? {
-        let styles = styles(ofFamily: family)
-        let wanted = familyAndStyle(of: fontName).style
-        return (styles.first { $0.name == wanted } ?? styles.first { $0.name == "Regular" } ?? styles.first)?.fontName
+        if setting.underline { rule(atHeight: CTFontGetUnderlinePosition(font) * tall) }
+        if setting.strikethrough { rule(atHeight: CTFontGetXHeight(font) / 2 * tall) }
     }
 }
