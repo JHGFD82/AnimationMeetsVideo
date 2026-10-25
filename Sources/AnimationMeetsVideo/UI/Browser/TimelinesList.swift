@@ -132,6 +132,7 @@ struct TimelinesList: View {
                     project: project, activeTimelineID: activeTimelineID, order: all,
                     picked: $picked, renamingID: $renamingID,
                     onOpen: open, onRename: onRename,
+                    onEmbed: embedOrBeep, onDuplicate: onDuplicate, onDelete: deleteOrBeep,
                     menu: { id in AnyView(menu(id, order: all)) }
                 )
                 .onChange(of: all) { _, order in picked.keep(only: order) }
@@ -332,12 +333,10 @@ struct TimelinesList: View {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint("Opens the timeline in the editor")
         .accessibilityAction { open(timeline.id) }
-        .accessibilityAction(named: "Embed in active timeline") {
-            if project.canEmbed(timeline.id, into: activeTimelineID) { onEmbed(timeline.id, nil) } else { NSSound.beep() }
-        }
+        .accessibilityAction(named: "Embed in active timeline") { embedOrBeep(timeline.id) }
         .accessibilityAction(named: "Rename timeline") { renamingID = timeline.id }
         .accessibilityAction(named: "Duplicate timeline") { onDuplicate(timeline.id) }
-        .accessibilityAction(named: "Delete timeline") { if !delete([timeline.id]) { NSSound.beep() } }
+        .accessibilityAction(named: "Delete timeline") { deleteOrBeep(timeline.id) }
         .accessibilityAction(named: isSelected ? "Deselect" : "Add to selection") { picked.commandClick(timeline.id) }
         .accessibilityAction(named: collapsed.contains(timeline.id) ? "Show nested timelines" : "Hide nested timelines") {
             if listed.hasChildren { toggleNested(timeline.id) } else { NSSound.beep() }
@@ -378,6 +377,16 @@ struct TimelinesList: View {
             Image(systemName: "rectangle.stack")
                 .foregroundStyle(Design.ClipTone.nested.color)
         }
+    }
+
+    /// One timeline's Embed and Delete, from VoiceOver in either layout: a
+    /// beep where it can't be done.
+    private func embedOrBeep(_ id: UUID) {
+        if project.canEmbed(id, into: activeTimelineID) { onEmbed(id, nil) } else { NSSound.beep() }
+    }
+
+    private func deleteOrBeep(_ id: UUID) {
+        if !delete([id]) { NSSound.beep() }
     }
 
     private func open(_ id: UUID) {

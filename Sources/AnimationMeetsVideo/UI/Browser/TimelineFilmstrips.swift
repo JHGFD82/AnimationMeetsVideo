@@ -23,6 +23,10 @@ struct TimelineFilmstrips: View {
     @Binding var renamingID: UUID?
     let onOpen: (UUID) -> Void
     let onRename: (UUID, String) -> Void
+    /// VoiceOver's Embed, Duplicate and Delete, as on the list's rows.
+    let onEmbed: (UUID) -> Void
+    let onDuplicate: (UUID) -> Void
+    let onDelete: (UUID) -> Void
     /// The menu of a timeline, shared with the list.
     let menu: (UUID) -> AnyView
 
@@ -184,13 +188,29 @@ struct TimelineFilmstrips: View {
         .accessibilityValue(isSelected ? "selected" : "")
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
         .accessibilityHint("Opens the timeline in the editor")
-        .accessibilityAction { onOpen(timeline.id) }
-        .accessibilityAction(named: isSelected ? "Deselect" : "Add to selection") { picked.commandClick(timeline.id) }
-        .accessibilityAction(named: "Skim Forward") { skimStep(timeline, seconds: 1) }
-        .accessibilityAction(named: "Skim Back") { skimStep(timeline, seconds: -1) }
-        .accessibilityAction(named: "Set Range Start") { setRangeEnd(.start, of: timeline) }
-        .accessibilityAction(named: "Set Range End") { setRangeEnd(.end, of: timeline) }
-        .accessibilityAction(named: "Rename timeline") { renamingID = timeline.id }
+        .modifier(TitleActions(strips: self, timeline: timeline, isSelected: isSelected))
+    }
+
+    /// The title's VoiceOver actions, apart so the title type-checks in
+    /// reasonable time.
+    private struct TitleActions: ViewModifier {
+        let strips: TimelineFilmstrips
+        let timeline: Timeline
+        let isSelected: Bool
+
+        func body(content: Content) -> some View {
+            content
+                .accessibilityAction { strips.onOpen(timeline.id) }
+                .accessibilityAction(named: isSelected ? "Deselect" : "Add to selection") { strips.picked.commandClick(timeline.id) }
+                .accessibilityAction(named: "Skim Forward") { strips.skimStep(timeline, seconds: 1) }
+                .accessibilityAction(named: "Skim Back") { strips.skimStep(timeline, seconds: -1) }
+                .accessibilityAction(named: "Set Range Start") { strips.setRangeEnd(.start, of: timeline) }
+                .accessibilityAction(named: "Set Range End") { strips.setRangeEnd(.end, of: timeline) }
+                .accessibilityAction(named: "Embed in active timeline") { strips.onEmbed(timeline.id) }
+                .accessibilityAction(named: "Rename timeline") { strips.renamingID = timeline.id }
+                .accessibilityAction(named: "Duplicate timeline") { strips.onDuplicate(timeline.id) }
+                .accessibilityAction(named: "Delete timeline") { strips.onDelete(timeline.id) }
+        }
     }
 
     private func accessibilityName(_ timeline: Timeline) -> String {

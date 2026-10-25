@@ -364,6 +364,9 @@ Following [accessibility.md](accessibility.md):
   its menu does), Skim Forward and Skim Back (a second at a time), and Set
   Range Start and Set Range End at the skim position. The viewer reads as
   skimming the clip, with the time as its value.
+- A timeline, in either layout, has actions for Embed in Active
+  Timeline, Rename, Duplicate and Delete, as its menu does; its
+  filmstrip's title adds the skimming and range actions clips have.
 
 ## Building it
 
