@@ -21,6 +21,9 @@ struct EditingProject: Identifiable, Equatable {
     /// the picture moved off the frame, as a fraction of its width and
     /// height. See `defaultCanvasMargin`.
     var canvasMargin = EditingProject.defaultCanvasMargin
+    /// How attached sound crossfades under transitions joining two clips
+    /// that don't choose their own shape (see `AudioCrossfade`).
+    var jointAudioCrossfade = AudioCrossfade.sCurve
 
     /// Half a frame on each side: twice the frame's area.
     static let defaultCanvasMargin = 0.5
@@ -183,20 +186,28 @@ struct EditingProject: Identifiable, Equatable {
         }
     }
 
+    /// Embeds a timeline on a new layer at the top of `targetTimelineID`,
+    /// all of it or, with `range`, only that stretch of it: the rest stays
+    /// beyond the clip's trims, for transitions joining it to draw on.
     @discardableResult
-    mutating func embedTimeline(_ timelineID: UUID, intoTimeline targetTimelineID: UUID) -> (layerID: UUID, clipID: UUID)? {
+    mutating func embedTimeline(
+        _ timelineID: UUID, intoTimeline targetTimelineID: UUID, range: CMTimeRange? = nil
+    ) -> (layerID: UUID, clipID: UUID)? {
         guard canEmbed(timelineID, into: targetTimelineID), let nested = timeline(id: timelineID) else { return nil }
-        return placeOnNewLayer(.timeline(timelineID), lasting: nested.duration, kind: .video, in: targetTimelineID)
+        let whole = CMTimeRange(start: .zero, duration: nested.duration)
+        let played = range.map { $0.intersection(whole) } ?? whole
+        guard played.isValid, played.duration > .zero else { return nil }
+        return placeOnNewLayer(.timeline(timelineID), from: played.start, lasting: played.duration, kind: .video, in: targetTimelineID)
     }
 
-    /// A clip playing `source` from its start for `duration`, covering
-    /// whole frames, on a new layer at the top of the stack.
+    /// A clip playing `source` from `start` for `duration`, covering whole
+    /// frames, on a new layer at the top of the stack.
     private mutating func placeOnNewLayer(
-        _ source: ClipSource, lasting duration: CMTime, kind: LayerKind, in timelineID: UUID
+        _ source: ClipSource, from start: CMTime = .zero, lasting duration: CMTime, kind: LayerKind, in timelineID: UUID
     ) -> (layerID: UUID, clipID: UUID)? {
         guard let timeline = timeline(id: timelineID) else { return nil }
         let clip = coveringWholeFrames(
-            TimelineClip(source: source, startOffset: .zero, trimStart: .zero, trimEnd: duration),
+            TimelineClip(source: source, startOffset: .zero, trimStart: start, trimEnd: CMTimeAdd(start, duration)),
             in: timeline
         )
         let layer = TimelineLayer(customName: nil, kind: kind, clips: [clip])

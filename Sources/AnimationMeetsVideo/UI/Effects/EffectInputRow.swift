@@ -14,12 +14,9 @@ extension EffectsPanel {
             }
         }
         .dropDestination(for: MediaDragPayload.self) { payloads, _ in
-            guard let assetID = payloads.first?.pieces.first?.assetID else { return false }
-            return setInput(EffectInput(source: .asset(assetID)), on: effect, in: clip)
-        }
-        .dropDestination(for: TimelineDragPayload.self) { payloads, _ in
-            guard let payload = payloads.first else { return false }
-            return setInput(EffectInput(source: .timeline(payload.timelineID)), on: effect, in: clip)
+            guard let piece = payloads.first?.pieces.first else { return false }
+            let source: EffectInput.Source = piece.isTimeline ? .timeline(piece.assetID) : .asset(piece.assetID)
+            return setInput(EffectInput(source: source), on: effect, in: clip)
         }
     }
 

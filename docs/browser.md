@@ -49,11 +49,17 @@ remembered.
   main timeline first, then those no timeline embeds, each with the
   timelines it embeds under a disclosure triangle, open to start with.
   Each timeline is listed once: one embedded in several timelines sits
-  under the one nearest the top. The active one is marked **Open**.
-  As in the Finder, a **click selects** a timeline and a **double-click
-  opens** it in the editor; clicking doesn't embed it. A click on the name
-  of the selected timeline (after a moment, so a double-click still
-  opens), Return, or **Rename Timeline** in its menu renames it: the name
+  under the one nearest the top. Each row has its name, its duration and
+  its settings (frame size, rate and colour space). The active one is
+  marked **Open**. Timelines are **selected as clips are** (see
+  "Selecting"): a click selects one, Command-click adds or takes one out,
+  Shift-click selects the run between, and Up and Down move the selection
+  (Shift extends it). A **double-click opens** a timeline in the editor;
+  clicking doesn't embed it. **Embed in Active Timeline** and **Duplicate
+  Timeline** act on everything selected when the row under the menu is.
+  A click on the name of the only timeline selected (after a moment, so a
+  double-click still opens), Return, or **Rename Timeline** in its menu
+  renames it: the name
   becomes a bordered field over it, Return or clicking away keeps the new
   name, Escape puts the old one back. Its menu also has **Open**,
   **Open in New Window** (a second editor on that timeline, sharing the
@@ -62,8 +68,31 @@ remembered.
   `TimelineWindow`), **Embed in Active Timeline** (disabled where it can't be: it is empty,
   or would contain the active one) and **Duplicate Timeline**, which
   puts a copy below it ("Main copy", "Main copy 2") with new IDs
-  for its layers and clips, sharing the timelines it embeds. Planned:
-  thumbnails drawn from the timeline itself.
+  for its layers and clips, sharing the timelines it embeds.
+
+  **Layout**, in the view options under Sort by (`TimelinesLayout`,
+  remembered between launches), shows the tab one of two ways:
+  - **Filmstrips** (the default, `TimelineFilmstrips`): each timeline is a
+    filmstrip as a clip is, in the tree's order read top to bottom, its
+    name, **Open** mark and settings above it and its duration on its
+    first thumbnail. The pictures are the timeline's own frames, made
+    from a composition built of it (`TimelinePreview`) at the time per
+    thumbnail and size the Clips tab uses. It is built again only when
+    something it draws changes (its own clips, or the timelines it nests
+    or its effects take), values included, so editing one timeline
+    leaves the others' strips alone. It waits for edits to settle (half
+    a second after the last) and builds once for a run of them, a build
+    overtaken by a newer one is cancelled, and a strip keeps its old
+    pictures until the new ones are made. Edits reach the previews from
+    the editor (`TimelinePreviews.projectChanged`), since the browser
+    isn't redrawn while only values change. With the tab out of sight
+    no preview is kept or built. Skimming, ranges, Option-arrows, I, O and Escape work as on
+    clips; a range picked of a timeline adds **Embed Range in Active
+    Timeline** to its menu, which embeds only that stretch, the rest
+    kept past the clip's trims for transitions to draw on. Timelines
+    drag as clips do (see "Dragging").
+  - **Tree**: the tree described above, each row its icon, name, duration
+    and settings, with no pictures.
 - **Presets**: saved effect presets (see [effects.md](effects.md),
   "Presets"). They have no duration; see "Previewing presets". Resting
   the pointer on one shows a card of what it holds, top of the stack
@@ -196,6 +225,17 @@ loses the keyboard.
 
 ## Dragging
 
+Timelines drag as clips do, from either layout of the Timelines tab: a
+timeline (every selected one when it is selected), or a range picked of
+one, goes onto the timeline as an embedded clip at the drop, on the layer
+under the pointer or a new video layer, with the same preview and
+pushing aside (`MediaPiece.timeline`, through `MediaDragPayload`). A
+timeline can't go into itself or into a timeline it is drawn into, so
+such a drop does nothing. In the tree, and by a timeline's name in
+filmstrips, the drag carries whole timelines; on a strip it follows the
+rules below. Dropped on an effect that takes an input, the first timeline
+dragged becomes the input.
+
 - **Dragging** a selected clip drags the **whole clip**, wherever on it
   the drag starts, along with every other selected clip. A clip that
   isn't selected has to be clicked first; dragging it picks a range (see
@@ -253,8 +293,8 @@ timelines included, is underlined in **red** along the bottom of its
 filmstrip (`usedRanges(ofMedia:)`). It follows edits as they happen:
 trimming a clip on the timeline grows or shrinks the line, and deleting the
 last use removes it. A scene shows the part of the asset inside the scene.
-A timeline in the Timelines tab is underlined where another timeline nests
-it.
+A timeline's filmstrip in the Timelines tab is underlined where another
+timeline nests it (`usedRanges(ofTimeline:)`).
 
 ## Previewing presets
 
@@ -279,6 +319,11 @@ Following [accessibility.md](accessibility.md):
 
 - The arrow keys move the selection between clips; Shift extends it;
   Return adds the selection to the timeline.
+- In the Timelines tab, Right and Left show and hide the timelines the
+  selected one embeds, as the triangle does. The tree is drawn as a flat
+  list with triangles of its own, so a click on a nested row is taken as
+  on any other: rows in an outline view's disclosure groups had their
+  clicks taken by it, and double-clicks on them often didn't open.
 - With a clip selected, **Option-Left** and **Option-Right** move a skim
   position through it a frame at a time (ten with Shift), shown in the
   viewer as skimming is; it starts at the clip's range, or its start.
@@ -308,6 +353,8 @@ Following [accessibility.md](accessibility.md):
 4. **Skimming** (built, Clips tab; not yet tried on screen) in the viewer,
    Space to play, Option-arrows, I and O.
 5. **Used media** underlines (built, Clips tab; not yet tried on screen).
-   The Timelines tab's line comes with stage 6.
-6. **Timelines** as filmstrips, with skimming.
+   The Timelines tab's line came with stage 6.
+6. **Timelines** as filmstrips, with skimming (built; not yet tried on
+   screen), or as the tree, chosen in the view options, and dragged onto
+   the timeline as clips are.
 7. **Presets** with generated test footage.

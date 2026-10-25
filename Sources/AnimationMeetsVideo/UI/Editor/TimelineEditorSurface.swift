@@ -365,6 +365,9 @@ struct TimelineEditorSurface<Library: View>: View {
             playback.mixCurves.replace(with: MixCurves.of(project))
             playback.scrubAudio.forget()
             playback.tapeScrub.forget()
+            // The browser's timeline filmstrips, values included, which the
+            // browser itself isn't redrawn for.
+            TimelinePreviews.shared.projectChanged(project)
             // Show Up to Here lets go of an effect that is gone.
             if effectsState.showUpTo != nil, partialView == nil { effectsState.showUpTo = nil }
         }

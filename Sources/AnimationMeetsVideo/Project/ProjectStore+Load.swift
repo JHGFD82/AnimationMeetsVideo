@@ -143,7 +143,8 @@ extension ProjectStore {
             rootTimelineID: rootID,
             defaultSensitivity: file.defaultSensitivity ?? EditingProject.balancedSensitivity,
             copiesMediaOnImport: file.copiesMediaOnImport ?? true,
-            canvasMargin: file.canvasMargin ?? EditingProject.defaultCanvasMargin
+            canvasMargin: file.canvasMargin ?? EditingProject.defaultCanvasMargin,
+            jointAudioCrossfade: file.jointAudioCrossfade.flatMap(AudioCrossfade.init(rawValue:)) ?? .sCurve
         )
         project.alignClipLengthsToFrames()
         var scores: [UUID: ChangeScoreTrack] = [:]

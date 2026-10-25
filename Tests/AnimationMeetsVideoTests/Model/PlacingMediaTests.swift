@@ -14,6 +14,38 @@ import Testing
         MediaClip(name: name, kind: .audio, url: nil, duration: t(240), frameRate: 0, colorSpace: .rec709, codecName: "Test", hasAudio: true)
     }
 
+    /// A timeline dragged from the browser goes down embedded, on a new
+    /// video layer or onto a layer at the drop time, as clips do; never into
+    /// itself or a timeline it is drawn into.
+    @Test func aTimelineDroppedOnAnotherIsEmbedded() throws {
+        var project = EditingProject.empty
+        let main = project.rootTimelineID
+        let scene = project.addTimeline(name: "Scene", frameSize: CGSize(width: 1920, height: 1080), frameRate: 24, colorSpace: .rec709)
+        let a = video("A")
+        project.clips = [a]
+        _ = project.addPieces([MediaPiece(assetID: a.id, start: t(0), end: t(240))], intoTimeline: scene)
+        let piece = MediaPiece.timeline(scene, from: t(24), to: t(72))
+
+        let added = project.addPieces([piece], intoTimeline: main, at: t(12))
+        let result = try #require(added)
+        let layer = try #require(project.timeline(id: main)?.layer(id: result.layerID))
+        #expect(layer.kind == .video)
+        let clip = try #require(layer.clips.first)
+        #expect(clip.source == .timeline(scene))
+        #expect(clip.trimStart == t(24) && clip.trimEnd == t(72) && clip.startOffset == t(12))
+
+        // Onto that layer, after the clip already there.
+        let more = project.addPieces([piece], intoLayer: result.layerID, in: main, at: t(60))
+        #expect(more?.count == 1)
+        #expect(project.timeline(id: main)?.layer(id: result.layerID)?.clips.count == 2)
+
+        // Not into itself, nor into Scene now that Main holds it.
+        let ownPiece = MediaPiece.timeline(main, from: .zero, to: t(24))
+        let intoItself = project.addPieces([ownPiece], intoTimeline: main)
+        let intoChild = project.addPieces([ownPiece], intoTimeline: scene)
+        #expect(intoItself == nil && intoChild == nil)
+    }
+
     @Test func piecesOfSeveralAssetsGoBackToBackOnOneLayerInTheOrderGiven() throws {
         var project = EditingProject.empty
         let a = video("A"), b = video("B")

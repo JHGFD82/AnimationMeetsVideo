@@ -1,3 +1,4 @@
+import CoreMedia
 import Foundation
 
 // Timelines inside timelines, as the browser's Timelines tab shows them,
@@ -17,6 +18,41 @@ extension EditingProject {
             }
         }
         return found
+    }
+
+    /// `timelineID` and every timeline its picture or sound is drawn from,
+    /// however deep: those it embeds as clips, and those its clips' effects
+    /// take as inputs. A preview of it changes only when one of these does.
+    func timelinesDrawn(from timelineID: UUID) -> Set<UUID> {
+        var found: Set<UUID> = []
+        var queue = [timelineID]
+        while let id = queue.popLast() {
+            guard !found.contains(id), let timeline = timeline(id: id) else { continue }
+            found.insert(id)
+            for layer in timeline.layers {
+                for clip in layer.clips {
+                    if case .timeline(let nestedID) = clip.source { queue.append(nestedID) }
+                    for effect in clip.effects {
+                        if case .timeline(let inputID) = effect.input?.source { queue.append(inputID) }
+                    }
+                }
+            }
+        }
+        return found
+    }
+
+    /// The stretches of `timelineID` (in its own time) that clips embedding
+    /// it play, in any timeline, in no particular order: what the browser
+    /// underlines, as it does the media timelines use.
+    func usedRanges(ofTimeline timelineID: UUID) -> [CMTimeRange] {
+        timelines.flatMap { timeline in
+            timeline.layers.flatMap { layer in
+                layer.clips.compactMap { clip -> CMTimeRange? in
+                    guard case .timeline(let nestedID) = clip.source, nestedID == timelineID else { return nil }
+                    return CMTimeRange(start: clip.trimStart, end: clip.trimEnd)
+                }
+            }
+        }
     }
 
     /// The timelines no other timeline embeds, the main one first: the top

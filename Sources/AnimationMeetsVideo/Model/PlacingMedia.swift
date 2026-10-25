@@ -2,11 +2,24 @@ import CoreMedia
 import Foundation
 
 /// A stretch of one asset to put on a timeline, in the asset's original
-/// time: a whole clip, a scene, or a range picked in the browser.
+/// time: a whole clip, a scene, or a range picked in the browser. Or, with
+/// `isTimeline`, a stretch of a timeline in its own time, which goes down
+/// as that timeline embedded; `assetID` is then the timeline's ID.
 struct MediaPiece: Equatable, Sendable {
     var assetID: UUID
     var start: CMTime
     var end: CMTime
+    var isTimeline = false
+
+    /// A stretch of a timeline, all of it unless `start` and `end` say.
+    static func timeline(_ id: UUID, from start: CMTime, to end: CMTime) -> MediaPiece {
+        MediaPiece(assetID: id, start: start, end: end, isTimeline: true)
+    }
+
+    /// What a clip of it plays.
+    var source: ClipSource {
+        isTimeline ? .timeline(assetID) : .media(assetID)
+    }
 }
 
 extension TimelineClip {
@@ -19,6 +32,18 @@ extension TimelineClip {
 }
 
 extension EditingProject {
+    /// Whether a piece can go into `timelineID`: its asset is there, or its
+    /// timeline can be embedded there (not in itself, nor in a timeline it
+    /// is drawn into).
+    func canPlace(_ piece: MediaPiece, in timelineID: UUID) -> Bool {
+        piece.isTimeline ? canEmbed(piece.assetID, into: timelineID) : mediaClip(id: piece.assetID) != nil
+    }
+
+    /// The kind of new layer a piece goes on by itself: a timeline's is video.
+    func defaultLayerKind(for piece: MediaPiece) -> LayerKind {
+        piece.isTimeline ? .video : defaultLayerKind(forAsset: piece.assetID)
+    }
+
     /// Puts pieces on the timeline as ordinary clips, back to back with no
     /// gaps in the order given, from `start`. The media is not touched; each
     /// clip is its asset trimmed to the piece.
@@ -40,7 +65,7 @@ extension EditingProject {
         kind: LayerKind? = nil,
         mutingSound: Bool = false
     ) -> (layerID: UUID, clipIDs: [UUID])? {
-        guard !pieces.isEmpty, pieces.allSatisfy({ mediaClip(id: $0.assetID) != nil }),
+        guard !pieces.isEmpty, pieces.allSatisfy({ canPlace($0, in: timelineID) }),
               let index = timelines.firstIndex(id: timelineID)
         else { return nil }
 
@@ -50,12 +75,12 @@ extension EditingProject {
         var clipIDs: [UUID] = []
         for piece in pieces {
             var clip = coveringWholeFrames(
-                TimelineClip(source: .media(piece.assetID), startOffset: .zero, trimStart: piece.start, trimEnd: piece.end),
+                TimelineClip(source: piece.source, startOffset: .zero, trimStart: piece.start, trimEnd: piece.end),
                 in: timeline
             )
             clip.startOffset = timeline.placementTime(CMTimeMaximum(.zero, offset), .nearest, frameLocked: isFrameLocked(clip))
             if mutingSound, hasLinkedAudio(clip) { clip.soundMuted = true }
-            let pieceKind = kind ?? defaultLayerKind(forAsset: piece.assetID)
+            let pieceKind = kind ?? defaultLayerKind(for: piece)
             guard layerKind(pieceKind, accepts: clip) else { return nil }
             if let layer = layers.firstIndex(where: { $0.kind == pieceKind }) {
                 layers[layer].clips.append(clip)
@@ -110,14 +135,14 @@ extension EditingProject {
     func pieceInsertion(
         _ pieces: [MediaPiece], onLayer layerID: UUID, in timelineID: UUID, at start: CMTime, mutingSound: Bool = false
     ) -> ([TimelineClip], ClipMove)? {
-        guard !pieces.isEmpty, pieces.allSatisfy({ mediaClip(id: $0.assetID) != nil }),
+        guard !pieces.isEmpty, pieces.allSatisfy({ canPlace($0, in: timelineID) }),
               let timeline = timeline(id: timelineID), let layer = timeline.layer(id: layerID)
         else { return nil }
         var clips: [TimelineClip] = []
         var length = CMTime.zero
         for piece in pieces {
             var clip = coveringWholeFrames(
-                TimelineClip(source: .media(piece.assetID), startOffset: .zero, trimStart: piece.start, trimEnd: piece.end),
+                TimelineClip(source: piece.source, startOffset: .zero, trimStart: piece.start, trimEnd: piece.end),
                 in: timeline
             )
             if mutingSound, hasLinkedAudio(clip) { clip.soundMuted = true }

@@ -191,11 +191,22 @@ alone, rather than 3 dB down.
   the clip before fades that clip out over the same span; a way out at a
   cut fades the clip after in under it. Where there is no spare footage
   the sound stops at the cut, partway through its fade.
+- At a joined cut the two fades have a shape of their own
+  (`AudioCrossfade`), over the transition's time rather than its
+  picture's curve: **S-Curve** (a raised cosine, the default), **Equal
+  Power** or **Linear**. The project sets it for every joined cut
+  (Project Settings > Transitions > Sound at cuts,
+  `EditingProject.jointAudioCrossfade`), and a transition can choose its
+  own (`ClipTransition.audioCrossfade`). The timing is always the
+  transition's: lengthening or moving it moves the sound's crossfade with
+  the picture's. This is for sound still attached to its picture; detached
+  sound takes no transitions, and is faded by hand.
 
 Each fade is a stage of the clip's track (`MixStage.fade`, in root time),
 so a nested timeline's clip fades all the sound inside it, and a clip with
 one has its sound on a track of its own. Fades come from the transitions,
-which are part of `CompositionKey`, so changing one rebuilds the player.
+which are part of `CompositionKey`, so changing one rebuilds the player;
+so does the project's crossfade shape, which the key also holds.
 
 ### Playback and export
 

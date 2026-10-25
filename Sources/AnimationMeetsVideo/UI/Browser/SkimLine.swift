@@ -5,12 +5,12 @@ import SwiftUI
 /// it redraws as the pointer moves.
 struct SkimLine: View {
     let skim: BrowserSkim
-    let item: BrowserItemID
+    let item: AnyHashable
     let layout: FilmstripLayout
     let row: Int
 
     var body: some View {
-        if skim.target?.item == AnyHashable(item) {
+        if skim.target?.item == item {
             let position = layout.position(atSeconds: skim.seconds)
             if position.row == row {
                 Rectangle()

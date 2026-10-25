@@ -384,8 +384,9 @@ private struct Sandbox {
         project.timelines[t].layers[0].clips[0].streams = .video
         project.timelines[t].layers[0].clips[0].transitionIn = ClipTransition(
             kind: .wipe, duration: CMTime(value: 1001, timescale: 24000), lead: CMTime(value: 1, timescale: 24000),
-            options: TransitionOptions(direction: .up)
+            options: TransitionOptions(direction: .up), audioCrossfade: .equalPower
         )
+        project.jointAudioCrossfade = .linear
         var curve = TransitionCurve(preset: .easyEase)
         curve.insertPoint(atTime: 0.4)
         curve.toggleCorner(1)
@@ -399,6 +400,8 @@ private struct Sandbox {
         #expect(clip.streams == .video)
         #expect(clip.transitionIn == saved.transitionIn)
         #expect(clip.transitionOut == saved.transitionOut)
+        #expect(clip.transitionOut?.audioCrossfade == nil)
+        #expect(loaded.project.jointAudioCrossfade == .linear)
     }
 
     @Test func transitionsSavedBeforeDirectionsWereSettingsKeepTheirDirection() async throws {

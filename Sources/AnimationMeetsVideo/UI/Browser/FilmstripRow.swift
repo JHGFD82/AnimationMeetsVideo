@@ -22,45 +22,13 @@ struct FilmstripRow: View {
     /// (`SceneDetectionBar`, which reads it, so progress redraws only that).
     var detection: AssetAnalysis?
 
-    private var rowTop: CGFloat { CGFloat(row) * layout.rowPitch }
-    private var cells: ArraySlice<FilmstripLayout.Cell> { layout.cells(inRow: row) }
-    private var rowWidth: CGFloat { cells.last?.frame.maxX ?? 0 }
-
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(cells, id: \.start) { cell in
-                cellView(cell)
-                    .frame(width: cell.frame.width, height: cell.frame.height)
-                    .clipped()
-                    .offset(x: cell.frame.minX)
-            }
-            overlays
-        }
-        .frame(width: rowWidth, height: layout.cellSize.height, alignment: .topLeading)
-        .clipShape(RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous))
-        .overlay {
-            if isSelected {
-                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                    .strokeBorder(Design.accent, lineWidth: 2)
-            } else {
-                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                    .strokeBorder(Design.bevelEdge, lineWidth: 1)
-            }
-        }
-        .overlay(alignment: .top) {
+        FilmstripStrip(
+            layout: layout, row: row, isSelected: isSelected, range: range, used: used, durationText: durationText,
+            picture: cellView
+        ) {
             if let detection {
                 SceneDetectionBar(analysis: detection, clip: entry.clip)
-            }
-        }
-        .overlay(alignment: .bottomLeading) {
-            if let durationText {
-                Text(durationText)
-                    .font(Design.Typeface.numericMicro)
-                    .foregroundStyle(Design.textOnColor)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous))
-                    .padding(3)
             }
         }
     }
@@ -80,6 +48,63 @@ struct FilmstripRow: View {
                 duration: cell.duration,
                 color: Design.ClipTone.of(.media(entry.clip), streams: .videoAndAudio).color
             )
+        }
+    }
+}
+
+/// One row of any filmstrip, a clip's or a timeline's: its pictures, one
+/// per cell, the selection, a picked range with its handles, red lines
+/// under what is used, and on the first row the duration in a shaded box.
+/// `top` lies across the top of the row.
+struct FilmstripStrip<Picture: View, Top: View>: View {
+    let layout: FilmstripLayout
+    let row: Int
+    var isSelected = false
+    /// A picked range, in seconds into the strip.
+    var range: (start: Double, end: Double)?
+    /// What is used, in seconds into the strip.
+    var used: [(start: Double, end: Double)] = []
+    /// The duration, shown on the first row only.
+    var durationText: String?
+    let picture: (FilmstripLayout.Cell) -> Picture
+    @ViewBuilder var top: () -> Top
+
+    private var rowTop: CGFloat { CGFloat(row) * layout.rowPitch }
+    private var cells: ArraySlice<FilmstripLayout.Cell> { layout.cells(inRow: row) }
+    private var rowWidth: CGFloat { cells.last?.frame.maxX ?? 0 }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(cells, id: \.start) { cell in
+                picture(cell)
+                    .frame(width: cell.frame.width, height: cell.frame.height)
+                    .clipped()
+                    .offset(x: cell.frame.minX)
+            }
+            overlays
+        }
+        .frame(width: rowWidth, height: layout.cellSize.height, alignment: .topLeading)
+        .clipShape(RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous))
+        .overlay {
+            if isSelected {
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .strokeBorder(Design.accent, lineWidth: 2)
+            } else {
+                RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
+                    .strokeBorder(Design.bevelEdge, lineWidth: 1)
+            }
+        }
+        .overlay(alignment: .top, content: top)
+        .overlay(alignment: .bottomLeading) {
+            if let durationText {
+                Text(durationText)
+                    .font(Design.Typeface.numericMicro)
+                    .foregroundStyle(Design.textOnColor)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous))
+                    .padding(3)
+            }
         }
     }
 

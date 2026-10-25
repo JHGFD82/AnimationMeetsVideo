@@ -13,12 +13,25 @@ extension TimelineView {
         return project.joint(at: id, in: timelineID, layer: layer.id)
     }
 
+    /// Whether an open joint has a sound lane: either clip's sound is still
+    /// attached to its picture. Detached sound takes no transitions.
+    private func jointHasSound(_ joint: TransitionJoint) -> Bool {
+        project.playsAudio(joint.outgoing) || project.playsAudio(joint.incoming)
+    }
+
+    /// The height of what an expanded transition opens under its layer:
+    /// its footage, and its sound when it has some.
+    private func expandedJointHeight(of layer: TimelineLayer) -> CGFloat {
+        guard let joint = shownJoint(in: layer) else { return 0 }
+        return TransitionFootageLane.height + (jointHasSound(joint) ? TransitionSoundLane.height : 0)
+    }
+
     /// Everything one layer shows, top to bottom. The header column and the
     /// track area lay out the same rows, so this is each layer's height in
     /// both.
     func blockHeight(of layer: TimelineLayer) -> CGFloat {
         clipRowHeight(of: layer)
-            + (shownJoint(in: layer) != nil ? TransitionFootageLane.height : 0)
+            + expandedJointHeight(of: layer)
             + (showsLinkedAudio(of: layer) ? audioLaneHeight(of: layer) : 0)
             + (showsVolume(of: layer) ? VolumeLane.height : 0)
             + separatorHeight
@@ -178,9 +191,9 @@ extension TimelineView {
                         onDelete: { deleteLayer(layer.id) }
                     )
                     .equatable()
-                    if shownJoint(in: layer) != nil {
+                    if let joint = shownJoint(in: layer) {
                         HStack {
-                            Label("Transition footage", systemImage: "square.on.square.dashed")
+                            Label("Transition video", systemImage: "square.on.square.dashed")
                                 .font(Design.Typeface.label)
                                 .foregroundStyle(Design.textSecondary)
                             Spacer()
@@ -190,6 +203,28 @@ extension TimelineView {
                         .padding(.leading, 30)
                         .padding(.trailing, 8)
                         .frame(height: TransitionFootageLane.height)
+                        if jointHasSound(joint) {
+                            HStack {
+                                Label("Transition audio", systemImage: "waveform")
+                                    .font(Design.Typeface.label)
+                                    .foregroundStyle(Design.textSecondary)
+                                Spacer()
+                                Menu(joint.transition.audioCrossfade?.name ?? "Project (\(project.jointAudioCrossfade.name))") {
+                                    TransitionSoundLane.choices(
+                                        selected: joint.transition.audioCrossfade, project: project.jointAudioCrossfade,
+                                        onSet: { onApplyJointEdit(layer.id, joint.incoming.id, .soundCrossfade($0)) }
+                                    )
+                                }
+                                .menuStyle(.borderlessButton)
+                                .controlSize(.small)
+                                .fixedSize()
+                                .help("The shape the two clips' sound crossfades with. Its timing follows the transition.")
+                                .accessibilityLabel("Sound crossfade shape")
+                            }
+                            .padding(.leading, 30)
+                            .padding(.trailing, 8)
+                            .frame(height: TransitionSoundLane.height)
+                        }
                     }
                     if showsLinkedAudio(of: layer) {
                         Label("Linked audio", systemImage: "waveform")
@@ -446,6 +481,15 @@ extension TimelineView {
                             tool: tool,
                             onTrimPreview: onTrimPreview
                         )
+                        if jointHasSound(joint) {
+                            TransitionSoundLane(
+                                joint: joint,
+                                projectCrossfade: project.jointAudioCrossfade,
+                                pixelsPerSecond: pixelsPerSecond,
+                                width: contentWidth,
+                                onSetCrossfade: { onApplyJointEdit(layer.id, joint.incoming.id, .soundCrossfade($0)) }
+                            )
+                        }
                     }
                     if showsLinkedAudio(of: layer) {
                         LinkedAudioLane(

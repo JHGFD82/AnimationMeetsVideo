@@ -13,12 +13,18 @@ struct AudioFade: Equatable, Sendable {
     /// Whether the sound comes in (from silence) or goes out (to it).
     var rising: Bool
     var curve: TransitionCurve = .linear
+    /// At a joined cut, the shape the two clips' sounds crossfade with,
+    /// over time rather than the picture's curve; nil at an open end,
+    /// where the sound fades with the picture.
+    var crossfade: AudioCrossfade?
 
     /// The gain at `seconds` of root time: silent before a rising fade and
     /// after a falling one, and full on the other side.
     func gain(at seconds: Double) -> Float {
         guard end > start else { return 1 }
-        let progress = curve.value(at: (seconds - start) / (end - start)).clamped(between: 0, and: 1)
+        let fraction = (seconds - start) / (end - start)
+        if let crossfade { return crossfade.gain(at: rising ? fraction : 1 - fraction) }
+        let progress = curve.value(at: fraction).clamped(between: 0, and: 1)
         let angle = progress * .pi / 2
         return Float(rising ? sin(angle) : cos(angle))
     }
@@ -46,24 +52,33 @@ extension EditingProject {
     ///   that transition, playing on past its out point after the cut.
     /// - The way out of the clip before, joined to it, makes it rise over
     ///   that transition, starting before its in point.
+    ///
+    /// Fades at a joined cut take the transition's `AudioCrossfade`, or
+    /// the project's; a fade to silence at an open end follows the
+    /// picture's curve, equal power.
     func audioFades(of clip: TimelineClip, among clips: [TimelineClip]) -> (fades: [AudioFade], head: CMTime, tail: CMTime) {
         var fades: [AudioFade] = []
         var head = CMTime.zero, tail = CMTime.zero
-        func fade(from start: CMTime, for length: CMTime, rising: Bool, curve: TransitionCurve) {
-            fades.append(AudioFade(start: start.seconds, end: CMTimeAdd(start, length).seconds, rising: rising, curve: curve))
+        func fade(from start: CMTime, for length: CMTime, rising: Bool, _ transition: ClipTransition, joined: Bool) {
+            fades.append(AudioFade(
+                start: start.seconds, end: CMTimeAdd(start, length).seconds, rising: rising, curve: transition.curve,
+                crossfade: joined ? transition.audioCrossfade ?? jointAudioCrossfade : nil
+            ))
         }
 
-        let lead = joinedLead(of: clip, among: clips) ?? .zero
+        let ownLead = joinedLead(of: clip, among: clips)
+        let lead = ownLead ?? .zero
         let durations = clip.effectiveTransitionDurations(lead: lead)
         if let transition = clip.transitionIn {
             let length = CMTimeAdd(durations.leading, lead)
             if length > .zero {
-                fade(from: CMTimeSubtract(clip.startOffset, lead), for: length, rising: true, curve: transition.curve)
+                fade(from: CMTimeSubtract(clip.startOffset, lead), for: length, rising: true, transition, joined: ownLead != nil)
                 head = lead
             }
         }
         if let transition = clip.transitionOut, durations.trailing > .zero {
-            fade(from: CMTimeSubtract(clip.endOffset, durations.trailing), for: durations.trailing, rising: false, curve: transition.curve)
+            let joined = successor(joining: clip, among: clips) != nil
+            fade(from: CMTimeSubtract(clip.endOffset, durations.trailing), for: durations.trailing, rising: false, transition, joined: joined)
         }
 
         if let next = successor(joining: clip, among: clips), let transition = next.transitionIn,
@@ -71,14 +86,14 @@ extension EditingProject {
             let after = next.effectiveTransitionDurations(lead: nextLead).leading
             let length = CMTimeAdd(after, nextLead)
             if length > .zero {
-                fade(from: CMTimeSubtract(next.startOffset, nextLead), for: length, rising: false, curve: transition.curve)
+                fade(from: CMTimeSubtract(next.startOffset, nextLead), for: length, rising: false, transition, joined: true)
                 tail = CMTimeMinimum(after, spareFootage(outgoing: clip, incoming: next).tail)
             }
         }
         if let previous = predecessor(joining: clip, among: clips), let transition = previous.transitionOut {
             let before = previous.effectiveTransitionDurations(lead: joinedLead(of: previous, among: clips) ?? .zero).trailing
             if before > .zero {
-                fade(from: CMTimeSubtract(clip.startOffset, before), for: before, rising: true, curve: transition.curve)
+                fade(from: CMTimeSubtract(clip.startOffset, before), for: before, rising: true, transition, joined: true)
                 head = CMTimeMaximum(head, CMTimeMinimum(before, spareFootage(outgoing: previous, incoming: clip).head))
             }
         }

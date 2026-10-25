@@ -258,12 +258,46 @@ struct UISnapshots {
         _ = project.importClip(still, intoTimeline: chorus)
         _ = project.embedTimeline(logo, intoTimeline: chorus)
         _ = project.embedTimeline(chorus, intoTimeline: project.rootTimelineID)
+        let defaults = try #require(UserDefaults(suiteName: "amv-snapshot-timelines-tree"))
+        defaults.set(TimelinesLayout.tree.rawValue, forKey: Preferences.timelinesLayout)
         try SnapshotSupport.render(
-            TimelinesList(project: project, activeTimelineID: project.rootTimelineID, onOpen: { _ in }, onEmbed: { _ in }, onDuplicate: { _ in })
+            TimelinesList(project: project, activeTimelineID: project.rootTimelineID, onOpen: { _ in }, onEmbed: { _, _ in }, onDuplicate: { _ in })
+                .defaultAppStorage(defaults)
                 .frame(width: 260, height: 260)
                 .background(Design.Surface.base.color)
                 .preferredColorScheme(.dark),
             "timelines-list", size: CGSize(width: 260, height: 260)
+        )
+    }
+
+    /// The Timelines tab as filmstrips: Main embeds a dark-then-bright
+    /// Chorus for its first two seconds, so Chorus is underlined there.
+    /// Each strip's frames are made from its own timeline.
+    @Test func timelineFilmstrips() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let size = fixture.project.timelines[0].frameSize
+        let chorus = fixture.project.addTimeline(name: "Chorus", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        let url = fixture.directory.appending(path: "chorus.mov")
+        try await writeMovie(to: url, segments: [(luma: 50, frames: 48), (luma: 210, frames: 48)])
+        let media = MediaClip(
+            name: "chorus", kind: .video, url: url, duration: CMTime(value: 96, timescale: 24),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        _ = fixture.project.importClip(media, intoTimeline: chorus)
+        _ = fixture.project.embedTimeline(chorus, intoTimeline: fixture.timelineID, range: CMTimeRange(start: .zero, duration: CMTime(value: 2, timescale: 1)))
+
+        let defaults = try #require(UserDefaults(suiteName: "amv-snapshot-timelines-filmstrips"))
+        defaults.set(TimelinesLayout.filmstrips.rawValue, forKey: Preferences.timelinesLayout)
+        defaults.set(ThumbnailInterval.oneSecond.rawValue, forKey: Preferences.thumbnailInterval)
+        defaults.set(ThumbnailSize.small.rawValue, forKey: Preferences.thumbnailSize)
+        try await SnapshotSupport.render(
+            TimelinesList(project: fixture.project, activeTimelineID: fixture.timelineID, onOpen: { _ in }, onEmbed: { _, _ in }, onDuplicate: { _ in })
+                .defaultAppStorage(defaults)
+                .frame(width: 320, height: 240)
+                .background(Design.Surface.base.color)
+                .preferredColorScheme(.dark),
+            "timeline-filmstrips", size: CGSize(width: 320, height: 240), settle: .seconds(3)
         )
     }
 
@@ -289,6 +323,50 @@ struct UISnapshots {
             .background(Design.Surface.sunken.color)
             .preferredColorScheme(.dark),
             "transition-wedge-curve", size: CGSize(width: 412, height: 92)
+        )
+    }
+
+    /// An expanded transition joining two clips with sound: its footage
+    /// lane, then its sound lane in each crossfade shape (S-curve, the
+    /// project's, then equal power and linear).
+    @Test func expandedTransition() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let media = MediaClip(
+            name: "Interview", kind: .video, url: nil, duration: CMTime(seconds: 10, preferredTimescale: 600),
+            frameRate: 24, colorSpace: .rec709, codecName: "Stub", hasAudio: true
+        )
+        let imported = project.importClip(media, intoTimeline: t)
+        let placed = try #require(imported)
+        project.trimClipEnd(placed.clipID, in: t, layer: placed.layerID, to: CMTime(seconds: 4, preferredTimescale: 600))
+        let b = TimelineClip(
+            source: .media(media.id), startOffset: CMTime(seconds: 4, preferredTimescale: 600),
+            trimStart: CMTime(seconds: 6, preferredTimescale: 600), trimEnd: CMTime(seconds: 9, preferredTimescale: 600)
+        )
+        let tIndex = try #require(project.timelines.firstIndex { $0.id == t })
+        project.timelines[tIndex].layers[0].clips.append(b)
+        project.setTransition(.crossDissolve, at: .leading, of: b.id, in: t, layer: placed.layerID)
+        project.applyJointEdit(.place(duration: CMTime(seconds: 2, preferredTimescale: 600), lead: CMTime(seconds: 1, preferredTimescale: 600)), at: b.id, in: t, layer: placed.layerID)
+        let joint = try #require(project.joint(at: b.id, in: t, layer: placed.layerID))
+        func sound(_ shape: AudioCrossfade?) -> some View {
+            var shaped = joint
+            shaped.transition.audioCrossfade = shape
+            return TransitionSoundLane(joint: shaped, projectCrossfade: .sCurve, pixelsPerSecond: 60, width: 480, onSetCrossfade: { _ in })
+        }
+        try SnapshotSupport.render(
+            VStack(spacing: 2) {
+                TransitionFootageLane(
+                    joint: joint, frameRate: 24, outgoingName: "Interview", incomingName: "Interview",
+                    pixelsPerSecond: 60, width: 480, visibleX: 0...480,
+                    preview: { _ in nil }, onCommit: { _ in }, tool: .arrow, onTrimPreview: { _, _ in }
+                )
+                sound(nil)
+                sound(.equalPower)
+                sound(.linear)
+            }
+            .background(Design.Surface.sunken.color)
+            .preferredColorScheme(.dark),
+            "expanded-transition", size: CGSize(width: 480, height: TransitionFootageLane.height + 3 * TransitionSoundLane.height + 6)
         )
     }
 
@@ -906,7 +984,7 @@ struct UISnapshots {
 
     @Test func projectSettings() throws {
         try SnapshotSupport.render(
-            ProjectSettingsView(project: .empty) { _, _ in }, "project-settings", size: CGSize(width: 460, height: 300)
+            ProjectSettingsView(project: .empty) { _ in }, "project-settings", size: CGSize(width: 460, height: 400)
         )
     }
 

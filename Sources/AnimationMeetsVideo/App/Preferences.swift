@@ -86,6 +86,9 @@ enum Preferences {
     static let browserTab = "browserTab"
     /// The order of the browser's clips and timelines (`BrowserSort`).
     static let browserSort = "browserSort"
+    /// A `TimelinesLayout` raw value: how the browser's Timelines tab is
+    /// laid out.
+    static let timelinesLayout = "timelinesLayout"
     static let timelineAreaLayout = "timelineAreaLayout"
     static let effectsPanelShowsKeyframeLanes = "effectsPanelShowsKeyframeLanes"
 

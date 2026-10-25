@@ -15,6 +15,16 @@ import Testing
         #expect(payload.pieces == pieces)
     }
 
+    @Test func roundTripsTimelinesWithClips() throws {
+        let pieces = [
+            MediaPiece.timeline(UUID(), from: CMTime(value: 1, timescale: 1), to: CMTime(value: 3, timescale: 1)),
+            MediaPiece(assetID: UUID(), start: .zero, end: CMTime(value: 2, timescale: 1)),
+        ]
+        let payload = try #require(MediaDragPayload(text: MediaDragPayload(pieces: pieces).text))
+        #expect(payload.pieces == pieces)
+        #expect(payload.pieces.map(\.isTimeline) == [true, false])
+    }
+
     @Test func ordinaryTextIsNotAPayload() {
         #expect(MediaDragPayload(text: "hello") == nil)
         #expect(MediaDragPayload(text: "amv-media:{}") == nil)

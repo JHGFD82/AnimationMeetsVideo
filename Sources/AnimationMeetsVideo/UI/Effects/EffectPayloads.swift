@@ -105,29 +105,6 @@ struct ControlMovePayload: Transferable {
     }
 }
 
-/// A timeline being dragged from the browser, to use as an effect's input.
-struct TimelineDragPayload: Transferable {
-    private static let scheme = "amv-timeline"
-
-    var timelineID: UUID
-
-    init(timelineID: UUID) {
-        self.timelineID = timelineID
-    }
-
-    init?(url: URL) {
-        guard let parts = payloadParts(url, scheme: Self.scheme), parts.count == 1, let id = UUID(uuidString: parts[0]) else { return nil }
-        timelineID = id
-    }
-
-    static var transferRepresentation: some TransferRepresentation {
-        ProxyRepresentation(exporting: { payloadURL(scheme, [$0.timelineID.uuidString]) }, importing: { url in
-            guard let payload = TimelineDragPayload(url: url) else { throw CocoaError(.coderInvalidValue) }
-            return payload
-        })
-    }
-}
-
 /// A preset being dragged from the browser onto a clip or into a stack. It
 /// carries the preset's ID, which is its file's name.
 struct PresetDragPayload: Transferable {
