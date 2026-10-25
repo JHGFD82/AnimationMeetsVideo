@@ -156,6 +156,13 @@ loses the keyboard.
 - **Command- or Shift-clicking** another clip while one has a range
   selects whole clips: the one with the range and the one clicked (or the
   run between them), dropping the range.
+- **Show in Clips Browser** in a timeline clip's right-click menu (or
+  **Shift-F** with the clip selected, as Final Cut's Reveal in Browser)
+  switches the browser to its Clips tab, picks the footage the clip plays
+  and scrolls to it: the whole clip or scene when the timeline clip plays
+  all of it, a range of it when only part, and every scene from first to
+  last when it plays across several (`ClipsTab.reveal`, through the
+  `revealInBrowser` notification).
 
 ## Dragging
 

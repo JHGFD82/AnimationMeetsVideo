@@ -91,7 +91,19 @@ extension TimelineView {
         }
         if key == "l" { return toggleVolumeRows() }
         if key == "v", !flags.contains(.shift) { return toggleSelectedClipsEnabled() }
+        // Shift-F, as Final Cut's Reveal in Browser.
+        if key == "f", flags == .shift { return showSelectedClipInBrowser() }
         return false
+    }
+
+    /// Picks the selected clip's footage in the browser's Clips tab. False
+    /// without a clip of media selected.
+    func showSelectedClipInBrowser() -> Bool {
+        guard let selection, selection.timelineID == timelineID,
+              let piece = timeline.layer(id: selection.layerID)?.clips.first(where: { $0.id == selection.timelineClipID })?.footagePiece
+        else { return false }
+        NotificationCenter.default.post(name: .revealInBrowser, object: piece)
+        return true
     }
 
     /// Turns the selected clips off, or on again when all of them are off:

@@ -46,6 +46,9 @@ extension ClipBlockView {
         }
         Button("Move one frame later") { onMove(CMTimeAdd(clip.startOffset, frame), nil) }
         if let onOpenNested { Button("Open timeline", action: onOpenNested) }
+        if let piece = clip.footagePiece {
+            Button("Show in clips browser") { NotificationCenter.default.post(name: .revealInBrowser, object: piece) }
+        }
         Button(isInGroup ? "Remove from selection" : "Add to selection", action: onToggleInGroup)
         Button(clip.enabled ? "Turn off" : "Turn on") { onEditClip { $0.enabled.toggle() } }
         if playsSound {

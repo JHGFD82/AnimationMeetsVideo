@@ -9,6 +9,15 @@ struct MediaPiece: Equatable, Sendable {
     var end: CMTime
 }
 
+extension TimelineClip {
+    /// The stretch of its asset the clip plays, which Show in Clips Browser
+    /// picks there; nil for clips that aren't of media.
+    var footagePiece: MediaPiece? {
+        guard case .media(let assetID) = source else { return nil }
+        return MediaPiece(assetID: assetID, start: trimStart, end: trimEnd)
+    }
+}
+
 extension EditingProject {
     /// Puts pieces on the timeline as ordinary clips, back to back with no
     /// gaps in the order given, from `start`. The media is not touched; each
