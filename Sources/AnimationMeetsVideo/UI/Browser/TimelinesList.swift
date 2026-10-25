@@ -47,7 +47,8 @@ struct TimelinesList: View {
     var onRename: (UUID, String) -> Void = { _, _ in }
     /// Opens a timeline in a window of its own; nil where there is none.
     var onOpenInNewWindow: ((UUID) -> Void)?
-    /// Deletes timelines; only ones `canDeleteTimeline` allows are passed.
+    /// Deletes timelines with their uses; only ones `canDeleteTimeline`
+    /// allows are passed.
     var onDelete: ([UUID]) -> Void = { _ in }
 
     @AppStorage(Preferences.browserSort) private var sort = BrowserSort.added
@@ -57,6 +58,10 @@ struct TimelinesList: View {
     @State private var renamingID: UUID?
     @FocusState private var focused: Bool
     @Environment(BrowserSkim.self) private var skim: BrowserSkim?
+    /// Find All's panel; absent where there is no editor (previews, tests).
+    @Environment(UsesFinder.self) private var finder: UsesFinder?
+    /// Deleting timelines others use, waiting to be agreed to.
+    @State private var pendingRemoval: RemovalRequest?
 
     /// A timeline at its place in the tree.
     struct Node: Identifiable {
@@ -133,7 +138,7 @@ struct TimelinesList: View {
                     project: project, activeTimelineID: activeTimelineID, order: all,
                     picked: $picked, renamingID: $renamingID,
                     onOpen: open, onRename: onRename,
-                    onEmbed: embedOrBeep, onDuplicate: onDuplicate, onDelete: deleteOrBeep,
+                    onEmbed: embedOrBeep, onDuplicate: onDuplicate, onDelete: deleteOrBeep, onFindAll: findAll,
                     menu: { id in AnyView(menu(id, order: all)) }
                 )
                 .onChange(of: all) { _, order in picked.keep(only: order) }
@@ -154,24 +159,51 @@ struct TimelinesList: View {
             selectAll: { picked.selectAll(in: layout == .tree ? Self.rows(of: nodes, collapsed: collapsed).map(\.timelineID) : all) },
             state: [AnyHashable(picked.revision), AnyHashable(all), AnyHashable(collapsed), AnyHashable(layout)]
         ))
+        .removalConfirmation($pendingRemoval, finder: finder)
     }
 
-    /// Deletes the selected timelines that nothing uses; false when none
-    /// of them can go.
+    /// Deletes the selected timelines; false when only the main one is.
     private func deleteSelection(order: [UUID]) -> Bool {
         delete(picked.ordered(in: order))
     }
 
-    /// Deletes those of `ids` that nothing uses, leaving the rest; false
-    /// when none can go. One being skimmed stops being skimmed first.
+    /// Deletes those of `ids` that can go (all but the main timeline), with
+    /// the clips embedding them; false when none can. When other timelines
+    /// use them, it asks first, saying how many uses go with them. Uses
+    /// inside timelines deleted with them aren't counted: they go anyway.
     @discardableResult
     private func delete(_ ids: [UUID]) -> Bool {
         let deletable = ids.filter(project.canDeleteTimeline)
         guard !deletable.isEmpty else { return false }
-        if let skimmed = skim?.target?.item.base as? TimelineStripID, deletable.contains(skimmed.timelineID) { skim?.end() }
-        renamingID = nil
-        onDelete(deletable)
+        let going = Set(deletable)
+        let uses = deletable.flatMap { project.uses(of: .timeline($0)) }.filter { !going.contains($0.timelineID) }
+        let perform = {
+            if let skimmed = skim?.target?.item.base as? TimelineStripID, going.contains(skimmed.timelineID) { skim?.end() }
+            renamingID = nil
+            onDelete(deletable)
+        }
+        guard !uses.isEmpty else {
+            perform()
+            return true
+        }
+        let used = deletable.filter { id in project.uses(of: .timeline(id)).contains { !going.contains($0.timelineID) } }
+        pendingRemoval = RemovalRequest(
+            removing: deletable.compactMap { project.timeline(id: $0)?.name }, noun: "timeline", action: "Delete",
+            uses: uses, in: project, queries: used.compactMap(findQuery(for:)), perform: perform
+        )
         return true
+    }
+
+    /// What Find All looks for from a timeline: the clips embedding it and
+    /// the effects taking it as an input.
+    private func findQuery(for id: UUID) -> UsesFinder.Query? {
+        project.timeline(id: id).map { UsesFinder.Query(item: .timeline(id), range: nil, name: $0.name) }
+    }
+
+    /// Opens Find All on one timeline; a beep where there is no panel.
+    private func findAll(_ id: UUID) {
+        guard let finder, let query = findQuery(for: id) else { return NSSound.beep() }
+        finder.show([query])
     }
 
     private func tree(_ rows: [Row]) -> some View {
@@ -294,8 +326,11 @@ struct TimelinesList: View {
         Button(targets.count > 1 ? "Duplicate \(targets.count) Timelines" : "Duplicate Timeline") {
             targets.forEach(onDuplicate)
         }
+        let queries = targets.compactMap(findQuery(for:))
+        Button("Find All") { finder?.show(queries) }
+            .disabled(finder == nil || queries.allSatisfy { !project.isUsed($0.item) })
         Divider()
-        // Not the main timeline, nor one another embeds or takes as an input.
+        // Any but the main timeline; asks first when others use it.
         let deletable = targets.filter(project.canDeleteTimeline)
         Button(deletable.count > 1 ? "Delete \(deletable.count) Timelines" : "Delete Timeline") { delete(deletable) }
             .disabled(deletable.isEmpty)
@@ -338,6 +373,7 @@ struct TimelinesList: View {
         .accessibilityAction(named: "Rename timeline") { renamingID = timeline.id }
         .accessibilityAction(named: "Duplicate timeline") { onDuplicate(timeline.id) }
         .accessibilityAction(named: "Delete timeline") { deleteOrBeep(timeline.id) }
+        .accessibilityAction(named: "Find All") { findAll(timeline.id) }
         .accessibilityAction(named: isSelected ? "Deselect" : "Add to selection") { picked.commandClick(timeline.id) }
         .accessibilityAction(named: collapsed.contains(timeline.id) ? "Show nested timelines" : "Hide nested timelines") {
             if listed.hasChildren { toggleNested(timeline.id) } else { NSSound.beep() }

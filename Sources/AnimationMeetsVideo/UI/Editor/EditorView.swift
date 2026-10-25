@@ -33,6 +33,7 @@ struct EditorView: View {
     /// The floating panel that splits and merges the scenes picked in the
     /// browser.
     @State private var sceneSplitter = SceneSplitter()
+    @State private var usesFinder = UsesFinder()
     /// A clip skimmed in the browser, which the viewer shows.
     @State private var skim = BrowserSkim()
     /// Files on their way into the library, which the browser lists.
@@ -116,6 +117,7 @@ struct EditorView: View {
             .environment(skim)
             .environment(imports)
             .environment(sceneSplitter)
+            .environment(usesFinder)
         }
         // While a song is beat matched, or clips are in the motion
         // designer, the editor is darkened and takes no input; a click on it
@@ -164,12 +166,14 @@ struct EditorView: View {
         .onDisappear {
             tapeScrubber.close()
             sceneSplitter.close()
+            usesFinder.close()
         }
         .onChange(of: project.id) { _, _ in
             activeTimelineID = project.rootTimelineID
             selection = nil
             skim.end()
             sceneSplitter.close()
+            usesFinder.close()
             beatMatch.discardAndClose()
             motionDesign.discardAndClose()
         }
@@ -192,6 +196,12 @@ struct EditorView: View {
             sceneSplitter.sceneTracks = { [analysis] in analysis.tracks }
             sceneSplitter.onEdit = { change in change(&project) }
             sceneSplitter.update(project: project)
+            // A use picked in Find All opens its timeline on its clip.
+            usesFinder.onShow = { use in
+                activeTimelineID = use.timelineID
+                selection = TimelineSelection(timelineID: use.timelineID, layerID: use.layerID, timelineClipID: use.clipID)
+            }
+            usesFinder.update(project: project)
             connectHistory()
             analysis.projectSource = { project }
             analysis.update(with: project)
@@ -222,6 +232,7 @@ struct EditorView: View {
         beatMatch.update(project: newValue)
         motionDesign.update(project: newValue)
         sceneSplitter.update(project: newValue)
+        usesFinder.update(project: newValue)
     }
 
     /// Keyframing effects waiting on analysis make their keyframes: Audio

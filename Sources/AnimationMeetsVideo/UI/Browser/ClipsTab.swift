@@ -95,6 +95,10 @@ struct ClipsTab: View {
     @Environment(SceneSplitter.self) private var splitter: SceneSplitter?
     /// Files on their way in, listed after the clips.
     @Environment(MediaImports.self) private var imports: MediaImports?
+    /// Find All's panel; absent where there is no editor (previews, tests).
+    @Environment(UsesFinder.self) private var finder: UsesFinder?
+    /// Removing media the timelines use, waiting to be agreed to.
+    @State private var pendingRemoval: RemovalRequest?
 
     private var project: EditingProject {
         get { access.value }
@@ -284,6 +288,7 @@ struct ClipsTab: View {
             let focus = splitterFocus(for: ids, snapshot: snapshot)
             splitter?.follow(focus, selecting: focus.map { sceneIDs(ids, of: $0.assetID) } ?? [])
         }
+        .removalConfirmation($pendingRemoval, finder: finder)
         .sheet(item: $sensitivityTarget) { target in
             SensitivitySheet(project: access.binding, target: target, track: analysis.tracks[target.assetID])
         }
@@ -376,6 +381,7 @@ struct ClipsTab: View {
         .accessibilityAction(named: "Remove from Project") {
             if entry.sceneNumber != nil || !removeFromProject([entry.clip.id]) { NSSound.beep() }
         }
+        .accessibilityAction(named: "Find All") { findAll(findQuery(for: entry)) }
     }
 
     /// An asset's name, edited in place while `renamingAsset` names it.
@@ -413,6 +419,7 @@ struct ClipsTab: View {
             Button("Add Whole Clip to Timeline") {
                 addToTimeline([MediaPiece(assetID: clip.id, start: .zero, end: clip.duration)])
             }
+            findAllButton([findQuery(for: clip)])
             assetMenu(clip)
         }
         .accessibilityElement(children: .combine)
@@ -422,6 +429,7 @@ struct ClipsTab: View {
         }
         .accessibilityAction(named: "Rename") { renamingAsset = clip.id }
         .accessibilityAction(named: "Remove from Project") { if !removeFromProject([clip.id]) { NSSound.beep() } }
+        .accessibilityAction(named: "Find All") { findAll(findQuery(for: clip)) }
     }
 
     private func accessibilityName(_ entry: BrowserEntry, isUsed: Bool) -> String {
@@ -686,6 +694,7 @@ struct ClipsTab: View {
         Button(ids.count > 1 ? "Add \(ids.count) Clips to Timeline" : "Add to Timeline") {
             addToTimeline(piecesToAdd(from: entry.id, snapshot: snapshot))
         }
+        findAllButton(ids.compactMap { snapshot.byID[$0] }.map(findQuery(for:)))
         if ids.count == 1 {
             switch entry.id {
             case .asset:
@@ -709,7 +718,6 @@ struct ClipsTab: View {
                 Button(assets.count > 1 ? "Remove \(assets.count) Clips from Project" : "Remove from Project") {
                     removeFromProject(assets)
                 }
-                .disabled(assets.allSatisfy(project.isUsed(media:)))
             }
         }
     }
@@ -749,9 +757,34 @@ struct ClipsTab: View {
         Divider()
         ReplaceMediaMenuItems(clip: clip, project: access.binding, analysis: analysis, controller: replacement, packageURL: packageURL)
         Divider()
-        // Only what no timeline uses, so nothing is left without its media.
+        // Asks first when the timelines use it.
         Button("Remove from Project") { removeFromProject([clip.id]) }
-            .disabled(project.isUsed(media: clip.id))
+    }
+
+    /// Find All for `queries`, disabled when none of them is used, or
+    /// where there is no panel to show them.
+    private func findAllButton(_ queries: [UsesFinder.Query]) -> some View {
+        Button("Find All") { finder?.show(queries) }
+            .disabled(finder == nil || queries.allSatisfy { project.uses(of: $0.item, within: $0.range).isEmpty })
+    }
+
+    /// Opens Find All on `query`; a beep where there is no panel.
+    private func findAll(_ query: UsesFinder.Query) {
+        if let finder { finder.show([query]) } else { NSSound.beep() }
+    }
+
+    /// What Find All looks for from a clip: the whole asset's uses, or a
+    /// scene's, those playing some of its stretch of the asset.
+    private func findQuery(for entry: BrowserEntry) -> UsesFinder.Query {
+        guard let number = entry.sceneNumber else { return findQuery(for: entry.clip) }
+        return UsesFinder.Query(
+            item: .media(entry.clip.id), range: CMTimeRange(start: entry.start, duration: entry.duration),
+            name: "Scene \(number) of \(entry.clip.name)"
+        )
+    }
+
+    private func findQuery(for clip: MediaClip) -> UsesFinder.Query {
+        UsesFinder.Query(item: .media(clip.id), range: nil, name: clip.name)
     }
 
     @ViewBuilder
@@ -798,20 +831,36 @@ struct ClipsTab: View {
         }
     }
 
-    /// Takes the media wholly selected out of the project, leaving what a
-    /// timeline uses; false when that leaves nothing to take out.
+    /// Takes the media wholly selected out of the project; false when no
+    /// asset is wholly selected.
     private func removeSelection(_ snapshot: Snapshot) -> Bool {
         removeFromProject(wholeAssetsPicked(snapshot))
     }
 
-    /// Takes the assets no timeline uses out of the project, undoably; their
-    /// files stay where they are. False when none of them can go.
+    /// Takes the assets out of the project, undoably; their files stay where
+    /// they are. When the timelines use any of them, it asks first, saying
+    /// how many uses go with them (`RemovalRequest`). False with none.
     @discardableResult
     private func removeFromProject(_ assetIDs: [UUID]) -> Bool {
-        guard assetIDs.contains(where: { !project.isUsed(media: $0) }) else { return false }
-        if let skimmed = skim?.target?.item.base as? BrowserItemID, assetIDs.contains(skimmed.assetID) { skim?.end() }
-        project.removeUnusedMedia(assetIDs)
+        let clips = assetIDs.compactMap { project.mediaClip(id: $0) }
+        guard !clips.isEmpty else { return false }
+        let ids = clips.map(\.id)
+        let used = clips.filter { project.isUsed(.media($0.id)) }
+        guard !used.isEmpty else {
+            remove(ids)
+            return true
+        }
+        pendingRemoval = RemovalRequest(
+            removing: clips.map(\.name), noun: "clip", action: "Remove",
+            uses: used.flatMap { project.uses(of: .media($0.id)) }, in: project,
+            queries: used.map(findQuery(for:)), perform: { remove(ids) }
+        )
         return true
+    }
+
+    private func remove(_ assetIDs: [UUID]) {
+        if let skimmed = skim?.target?.item.base as? BrowserItemID, assetIDs.contains(skimmed.assetID) { skim?.end() }
+        project.removeMedia(assetIDs)
     }
 
     /// The cuts whose removal joins the picked scenes: each picked scene's

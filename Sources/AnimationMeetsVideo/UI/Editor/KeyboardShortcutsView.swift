@@ -58,7 +58,7 @@ struct KeyboardShortcutsView: View {
             Shortcut(keys: "I O", does: "Set the start or end of the range"),
             Shortcut(keys: "Return", does: "Add the selection to the timeline"),
             Shortcut(keys: "⌘A", does: "Select every clip"),
-            Shortcut(keys: "⌫", does: "Remove the selected media no timeline uses"),
+            Shortcut(keys: "⌫", does: "Remove the selected media from the project"),
         ]),
         Group(title: "Project", shortcuts: [
             Shortcut(keys: "⌘N ⌘O", does: "New or open a project"),

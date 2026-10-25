@@ -23,10 +23,12 @@ struct TimelineFilmstrips: View {
     @Binding var renamingID: UUID?
     let onOpen: (UUID) -> Void
     let onRename: (UUID, String) -> Void
-    /// VoiceOver's Embed, Duplicate and Delete, as on the list's rows.
+    /// VoiceOver's Embed, Duplicate, Delete and Find All, as on the list's
+    /// rows.
     let onEmbed: (UUID) -> Void
     let onDuplicate: (UUID) -> Void
     let onDelete: (UUID) -> Void
+    let onFindAll: (UUID) -> Void
     /// The menu of a timeline, shared with the list.
     let menu: (UUID) -> AnyView
 
@@ -210,6 +212,7 @@ struct TimelineFilmstrips: View {
                 .accessibilityAction(named: "Rename timeline") { strips.renamingID = timeline.id }
                 .accessibilityAction(named: "Duplicate timeline") { strips.onDuplicate(timeline.id) }
                 .accessibilityAction(named: "Delete timeline") { strips.onDelete(timeline.id) }
+                .accessibilityAction(named: "Find All") { strips.onFindAll(timeline.id) }
         }
     }
 

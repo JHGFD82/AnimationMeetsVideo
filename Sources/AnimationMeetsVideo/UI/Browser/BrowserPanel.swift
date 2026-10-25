@@ -220,7 +220,7 @@ struct BrowserPanel: View {
             onDuplicate: { id in project.duplicateTimeline(id) },
             onRename: { id, name in project.renameTimeline(id, to: name) },
             onOpenInNewWindow: onOpenTimelineInNewWindow,
-            onDelete: { ids in project.deleteUnusedTimelines(ids) }
+            onDelete: { ids in project.deleteTimelines(ids) }
         )
     }
 
