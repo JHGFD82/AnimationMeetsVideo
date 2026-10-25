@@ -49,6 +49,8 @@ struct BrowserPanel: View {
     @Environment(MediaImports.self) private var imports: MediaImports?
     @State private var presets = PresetsModel()
     @State private var showingSettings = false
+    /// Footage from Show in Clips Browser, for the Clips tab to pick.
+    @State private var revealing: MediaPiece?
     @AppStorage(Preferences.browserTab) private var tab = BrowserTab.clips
     @AppStorage(Preferences.thumbnailInterval) private var interval = ThumbnailInterval.all
     @AppStorage(Preferences.thumbnailSize) private var thumbnailSize = ThumbnailSize.medium
@@ -86,7 +88,8 @@ struct BrowserPanel: View {
                     )
                     ClipsTab(
                         access: access, activeTimelineID: activeTimelineID, selection: $selection,
-                        analysis: analysis, replacement: replacement, packageURL: packageURL
+                        analysis: analysis, replacement: replacement, packageURL: packageURL,
+                        revealing: $revealing
                     )
                 }
             case .timelines: timelinesList
@@ -102,6 +105,11 @@ struct BrowserPanel: View {
         }
         .messageAlert("Preset Problem", message: $presets.errorMessage)
         .onReceive(NotificationCenter.default.publisher(for: .presetsChanged)) { _ in presets.reload() }
+        .onReceive(NotificationCenter.default.publisher(for: .revealInBrowser)) { note in
+            guard let piece = note.object as? MediaPiece, project.mediaClip(id: piece.assetID) != nil else { return }
+            tab = .clips
+            revealing = piece
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in presets.reload() }
         // Files from the Finder. The app's own drags are URLs too, but
         // never file URLs.

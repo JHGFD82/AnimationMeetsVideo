@@ -123,19 +123,22 @@ extension TimelineView {
     }
 
     /// Where a clip is drawn, in window coordinates, clipped to its area's
-    /// visible part and the tracks beside the layer names.
-    private func frame(of clip: TimelineClip, on layer: TimelineLayer, pixelsPerSecond: CGFloat) -> CGRect? {
+    /// visible part and the tracks beside the layer names. With
+    /// `includingHandles`, it reaches as far as the trim handles do past
+    /// its edges, for telling where a press lands.
+    private func frame(of clip: TimelineClip, on layer: TimelineLayer, pixelsPerSecond: CGFloat, includingHandles: Bool = false) -> CGRect? {
         guard let row = geometryStore.layerRows[layer.id], let area = geometryStore.areas[layer.kind] else { return nil }
-        let x0 = row.minX + CGFloat(clip.startOffset.seconds) * pixelsPerSecond
-        let x1 = row.minX + CGFloat(clip.endOffset.seconds) * pixelsPerSecond
+        let reach = includingHandles ? ClipBlockView.trimHandleWidth / 2 : 0
+        let x0 = row.minX + CGFloat(clip.startOffset.seconds) * pixelsPerSecond - reach
+        let x1 = row.minX + CGFloat(clip.endOffset.seconds) * pixelsPerSecond + reach
         let tracks = CGRect(x: geometryStore.namesColumn.maxX, y: area.minY, width: max(0, area.maxX - geometryStore.namesColumn.maxX), height: area.height)
         return CGRect(x: x0, y: row.minY, width: max(2, x1 - x0), height: row.height).intersection(tracks)
     }
 
     /// Whether a press at a window point is in the empty part of the
     /// tracks: on a layer's row between its clips, or in an area's space
-    /// under its layers. Not on a clip, a layer name, a lane under a layer
-    /// or anything outside the areas.
+    /// under its layers. Not on a clip or its trim handles, a layer name, a
+    /// lane under a layer or anything outside the areas.
     private func isEmptyTrackSpace(_ point: CGPoint, pixelsPerSecond: CGFloat) -> Bool {
         guard tool == .arrow, point.x >= geometryStore.namesColumn.maxX else { return false }
         for kind in LayerKind.allCases {
@@ -146,7 +149,7 @@ extension TimelineView {
                 guard let row = geometryStore.layerRows[layer.id] else { continue }
                 lowest = max(lowest, row.maxY)
                 if row.contains(point) {
-                    return !layer.clips.contains { frame(of: $0, on: layer, pixelsPerSecond: pixelsPerSecond)?.contains(point) == true }
+                    return !layer.clips.contains { frame(of: $0, on: layer, pixelsPerSecond: pixelsPerSecond, includingHandles: true)?.contains(point) == true }
                 }
             }
             // Under the last layer, which may be scrolled out of sight.
@@ -161,7 +164,7 @@ extension TimelineView {
         guard point.x >= geometryStore.namesColumn.maxX else { return false }
         return timeline.layers.contains { layer in
             guard geometryStore.layerRows[layer.id]?.contains(point) == true else { return false }
-            return layer.clips.contains { frame(of: $0, on: layer, pixelsPerSecond: pixelsPerSecond)?.contains(point) == true }
+            return layer.clips.contains { frame(of: $0, on: layer, pixelsPerSecond: pixelsPerSecond, includingHandles: true)?.contains(point) == true }
         }
     }
 

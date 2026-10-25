@@ -247,7 +247,8 @@ struct TimelineEditorSurface<Library: View>: View {
                                     timelineClip: selectedTimelineClip,
                                     playhead: playhead,
                                     onSeek: { time in scrub(to: time) },
-                                    onDeleteSelection: { selection = nil }
+                                    onDeleteSelection: { selection = nil },
+                                    sceneTracks: { [analysis] in analysis.tracks }
                                 )
                             case .effects:
                                 EffectsPanel(
@@ -516,11 +517,12 @@ struct TimelineEditorSurface<Library: View>: View {
                     project.applyJointEdit(edit, at: clipID, in: timelineID, layer: layerID)
                 },
                 onTrimClipStart: { layerID, clipID, newTrimStart in
-                    project.trimClipStart(clipID, in: timelineID, layer: layerID, to: newTrimStart)
+                    project.trimClipStart(clipID, in: timelineID, layer: layerID, to: newTrimStart, sceneTracks: analysis.tracks)
                 },
                 onTrimClipEnd: { layerID, clipID, newTrimEnd in
-                    project.trimClipEnd(clipID, in: timelineID, layer: layerID, to: newTrimEnd)
+                    project.trimClipEnd(clipID, in: timelineID, layer: layerID, to: newTrimEnd, sceneTracks: analysis.tracks)
                 },
+                sceneTracks: { [analysis] in analysis.tracks },
                 onEditVolume: { layerID, change in
                     project.editVolume(of: layerID, in: timelineID, change)
                 },

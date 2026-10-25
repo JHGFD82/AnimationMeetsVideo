@@ -242,15 +242,21 @@ struct EditingProject: Identifiable, Equatable {
     /// Drags the clip's leading edge, non-destructively revealing or hiding
     /// source frames. Unlike a plain move, trimming the start keeps the
     /// clip's *end* fixed in time; see `resolvedTrimStart(of:in:layer:to:)`.
-    mutating func trimClipStart(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime) {
-        guard let trimmed = resolvedTrimStart(of: id, in: timelineID, layer: layerID, to: proposedTrimStart) else { return }
+    mutating func trimClipStart(
+        _ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime,
+        sceneTracks: [UUID: ChangeScoreTrack]? = nil
+    ) {
+        guard let trimmed = resolvedTrimStart(of: id, in: timelineID, layer: layerID, to: proposedTrimStart, sceneTracks: sceneTracks) else { return }
         updateClip(id, in: timelineID, layer: layerID) { $0 = trimmed }
     }
 
     /// Drags the clip's trailing edge; the start stays fixed and only the
     /// trimmed-out duration changes. See `resolvedTrimEnd(of:in:layer:to:)`.
-    mutating func trimClipEnd(_ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimEnd: CMTime) {
-        guard let trimmed = resolvedTrimEnd(of: id, in: timelineID, layer: layerID, to: proposedTrimEnd) else { return }
+    mutating func trimClipEnd(
+        _ id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimEnd: CMTime,
+        sceneTracks: [UUID: ChangeScoreTrack]? = nil
+    ) {
+        guard let trimmed = resolvedTrimEnd(of: id, in: timelineID, layer: layerID, to: proposedTrimEnd, sceneTracks: sceneTracks) else { return }
         updateClip(id, in: timelineID, layer: layerID) { $0 = trimmed }
     }
 

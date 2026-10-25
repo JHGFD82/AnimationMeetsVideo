@@ -418,8 +418,10 @@ its own is left whole: it has no picture edge to keep to.
   animated alike.
 
 Limits: a clip placed whole before its scenes were found spans many scenes,
-and so is split at each cut made in it later. Trimming, slipping and
-moving a clip on the timeline don't yet stop at its scenes' edges.
+and so is split at each cut made in it later. Trimming a clip stops at
+the edges of the scenes its first and last frames are in (see
+docs/timeline.md, "Moving and trimming clips"); slipping and moving it
+don't yet.
 
 ### Not implemented yet
 

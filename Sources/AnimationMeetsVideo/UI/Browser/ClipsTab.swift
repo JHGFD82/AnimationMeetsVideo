@@ -2,6 +2,14 @@ import AppKit
 import CoreMedia
 import SwiftUI
 
+extension Notification.Name {
+    /// Asks the browser to show a stretch of an asset (a `MediaPiece`, the
+    /// notification's object) in its Clips tab, from a timeline clip's
+    /// Show in Clips Browser. Only the browser whose project has the asset
+    /// answers.
+    static let revealInBrowser = Notification.Name("AnimationMeetsVideo.revealInBrowser")
+}
+
 /// Something listed in the Clips tab: a whole asset, or one of its scenes.
 enum BrowserItemID: Hashable {
     case asset(UUID)
@@ -66,6 +74,9 @@ struct ClipsTab: View {
     let analysis: AssetAnalysis
     let replacement: MediaReplacementController
     let packageURL: URL?
+    /// Footage to pick and scroll to, from Show in Clips Browser; set back
+    /// to nil once it is shown.
+    @Binding var revealing: MediaPiece?
 
     @AppStorage(Preferences.thumbnailInterval) private var interval = ThumbnailInterval.all
     @AppStorage(Preferences.thumbnailSize) private var thumbnailSize = ThumbnailSize.medium
@@ -150,11 +161,13 @@ struct ClipsTab: View {
         var id: String {
             switch self {
             case .heading(let clip, _): "heading|\(clip.id)"
-            case .title(let entry, _): "title|\(entry.id)"
+            case .title(let entry, _): Self.titleID(of: entry.id)
             case .strip(let entry, let layout, let row, _): "strip|\(entry.id)|\(row)|\(layout.rowCount)"
             case .note(let assetID, _): "note|\(assetID)"
             }
         }
+
+        static func titleID(of item: BrowserItemID) -> String { "title|\(item)" }
     }
 
     private func lines(_ snapshot: Snapshot) -> [Line] {
@@ -195,39 +208,46 @@ struct ClipsTab: View {
     var body: some View {
         let snapshot = makeSnapshot()
         let order = snapshot.order
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(lines(snapshot)) { line in
-                    switch line {
-                    case .heading(let clip, let count):
-                        heading(clip, sceneCount: count)
-                            .padding(.top, Design.Space.group)
-                    case .title(let entry, let isUsed):
-                        title(entry, isUsed: isUsed, snapshot: snapshot)
-                            .padding(.top, Design.Space.step)
-                            .padding(.bottom, Design.Space.tight)
-                    case .strip(let entry, let layout, let row, let used):
-                        stripRow(entry, layout: layout, row: row, used: used, snapshot: snapshot)
-                            .padding(.bottom, FilmstripLayout.rowSpacing)
-                    case .note(_, let note):
-                        Text(note)
-                            .font(Design.Typeface.label)
-                            .foregroundStyle(Design.statusWarning)
-                            .fixedSize(horizontal: false, vertical: true)
+        ScrollViewReader { scroller in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(lines(snapshot)) { line in
+                        switch line {
+                        case .heading(let clip, let count):
+                            heading(clip, sceneCount: count)
+                                .padding(.top, Design.Space.group)
+                        case .title(let entry, let isUsed):
+                            title(entry, isUsed: isUsed, snapshot: snapshot)
+                                .padding(.top, Design.Space.step)
+                                .padding(.bottom, Design.Space.tight)
+                        case .strip(let entry, let layout, let row, let used):
+                            stripRow(entry, layout: layout, row: row, used: used, snapshot: snapshot)
+                                .padding(.bottom, FilmstripLayout.rowSpacing)
+                        case .note(_, let note):
+                            Text(note)
+                                .font(Design.Typeface.label)
+                                .foregroundStyle(Design.statusWarning)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    if let imports {
+                        ImportingClips(imports: imports)
                     }
                 }
-                if let imports {
-                    ImportingClips(imports: imports)
+                .padding(.horizontal, Self.padding)
+                .padding(.bottom, Design.Space.group)
+                // Clicking off the clips, below them included, picks nothing.
+                .frame(maxWidth: .infinity, minHeight: height, alignment: .topLeading)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    focused = true
+                    picked.clear()
                 }
             }
-            .padding(.horizontal, Self.padding)
-            .padding(.bottom, Design.Space.group)
-            // Clicking off the clips, below them included, picks nothing.
-            .frame(maxWidth: .infinity, minHeight: height, alignment: .topLeading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                focused = true
-                picked.clear()
+            .onChange(of: revealing, initial: true) { _, piece in
+                guard let piece else { return }
+                revealing = nil
+                reveal(piece, snapshot: snapshot, scroller: scroller)
             }
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: {
@@ -265,6 +285,37 @@ struct ClipsTab: View {
             SensitivitySheet(project: access.binding, target: target, track: analysis.tracks[target.assetID])
         }
         .sunken(.sunken)
+    }
+
+    // MARK: - Show in Clips Browser
+
+    /// Picks the footage a timeline clip plays and scrolls to it: the part
+    /// of the scene (or clip) it plays as a range, the whole of it when it
+    /// plays all of it, or every scene it plays across.
+    private func reveal(_ piece: MediaPiece, snapshot: Snapshot, scroller: ScrollViewProxy) {
+        let entries = snapshot.entries.filter { $0.clip.id == piece.assetID }
+        let covered = entries.filter { $0.start < piece.end && CMTimeAdd($0.start, $0.duration) > piece.start }
+        guard let first = covered.first ?? entries.first else { return }
+        if let last = covered.last, covered.count > 1 {
+            picked.click(first.id)
+            picked.shiftClick(last.id, in: snapshot.order)
+        } else {
+            let from = CMTimeSubtract(piece.start, first.start).seconds
+            let to = CMTimeSubtract(piece.end, first.start).seconds
+            let slack = frameSeconds(first) / 2
+            if from <= slack, to >= first.seconds - slack {
+                picked.click(first.id)
+            } else {
+                picked.setRange(of: first.id, from: from, to: to, duration: first.seconds)
+            }
+        }
+        cursor = first.id
+        // Once the tab is laid out, which it may only now be.
+        DispatchQueue.main.async {
+            withAnimation(Design.Motion.respecting(Design.Motion.glide)) {
+                scroller.scrollTo(Line.titleID(of: first.id), anchor: .top)
+            }
+        }
     }
 
     // MARK: - Titles

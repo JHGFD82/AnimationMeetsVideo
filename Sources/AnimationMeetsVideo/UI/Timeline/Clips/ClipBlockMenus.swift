@@ -118,7 +118,10 @@ extension ClipBlockView {
             Button("Paste Effects", action: onPasteEffects)
                 .disabled(!EditorClipboard.shared.canPasteEffects)
         }
-        if case .media = clip.source {
+        if let piece = clip.footagePiece {
+            Divider()
+            Button("Show in Clips Browser") { NotificationCenter.default.post(name: .revealInBrowser, object: piece) }
+                .keyboardShortcut("f", modifiers: .shift)
             Divider()
             timeMenu
             if acceptsEffects { shutterMenu }

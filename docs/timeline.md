@@ -461,6 +461,12 @@ The rules for where a clip may go are in `ClipPlacement.swift`:
   before the source's start or after its end, can't cross a neighbor, and
   can't make a clip shorter than one frame (a twentieth of a second for
   audio).
+- **A trim stops at a scene cut.** A clip's picture can't be trimmed past
+  the start of the scene its first frame is in, or the end of the scene
+  its last frame is in (`trimFootage(of:sceneTracks:)`), dragged, from
+  the keyboard or typed into the inspector. A clip placed across several
+  scenes keeps reaching all of them. Sound taken off on its own trims
+  freely, having no picture edge to keep to.
 
 A video clip shows its footage along it once its layer leaves room for a
 band of pictures at least 22 points tall: one thumbnail per tile, each the
@@ -761,7 +767,8 @@ Drag in empty space in the tracks (between a layer's clips, or under the
 last layer) to draw a **lasso**: every clip it touches is picked, and they
 draw as selected. Hold Shift to add to what is picked. A lasso that touches
 one clip selects it as a click does; one that touches none selects nothing.
-Only the Arrow tool lassos.
+Only the Arrow tool lassos. A clip's trim handles reach a few points past
+its edges, and a press there trims rather than starting a lasso.
 
 The lasso's rectangle fades out when the button comes up.
 
