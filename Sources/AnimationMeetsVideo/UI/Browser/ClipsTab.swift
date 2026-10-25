@@ -95,6 +95,8 @@ struct ClipsTab: View {
     /// Where the arrow keys move from: the last clip clicked or stepped to.
     @State private var cursor: BrowserItemID?
     @State private var coverageCache = SceneCoverageCache()
+    /// The asset whose name is being edited, in its title or heading.
+    @State private var renamingAsset: UUID?
     @FocusState private var focused: Bool
     /// Shows the clip under the pointer in the viewer; absent where there
     /// is no viewer to show it (previews, tests).
@@ -330,10 +332,18 @@ struct ClipsTab: View {
         HStack(alignment: .firstTextBaseline, spacing: Design.Space.tight) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: Design.Space.tight) {
-                    Text(entry.sceneNumber.map { "Scene \($0)" } ?? entry.clip.name)
-                        .font(Design.Typeface.label)
-                        .foregroundStyle(isSelected ? Design.accent : Design.textPrimary)
-                        .lineLimit(1)
+                    if let number = entry.sceneNumber {
+                        Text("Scene \(number)")
+                            .font(Design.Typeface.label)
+                            .foregroundStyle(isSelected ? Design.accent : Design.textPrimary)
+                            .lineLimit(1)
+                    } else {
+                        // A whole asset's name renames it, as in the Finder: a
+                        // click on it once it is selected.
+                        assetName(entry.clip, isSelected: isSelected && picked.range == nil)
+                            .font(Design.Typeface.label)
+                            .foregroundStyle(isSelected ? Design.accent : Design.textPrimary)
+                    }
                     if entry.setByHand {
                         Image(systemName: "hand.point.up.left")
                             .font(Design.Typeface.micro)
@@ -365,6 +375,21 @@ struct ClipsTab: View {
         .accessibilityAction(named: "Skim Back") { skimStep(entry, seconds: -1) }
         .accessibilityAction(named: "Set Range Start") { setRangeEnd(.start, of: entry) }
         .accessibilityAction(named: "Set Range End") { setRangeEnd(.end, of: entry) }
+        .accessibilityAction(named: "Rename") { renamingAsset = entry.clip.id }
+    }
+
+    /// An asset's name, edited in place while `renamingAsset` names it.
+    /// With `isSelected`, a click on it once selected starts that too.
+    private func assetName(_ clip: MediaClip, isSelected: Bool?) -> some View {
+        InlineNameField(
+            name: clip.name,
+            isEditing: Binding(
+                get: { renamingAsset == clip.id },
+                set: { editing in renamingAsset = editing ? clip.id : nil }
+            ),
+            isSelected: isSelected,
+            onCommit: { project.renameMedia(clip.id, to: $0) }
+        )
     }
 
     /// A video's name over its scenes: not a clip itself, but where the
@@ -372,10 +397,10 @@ struct ClipsTab: View {
     private func heading(_ clip: MediaClip, sceneCount: Int) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: Design.Space.tight) {
-                Text(clip.name)
+                // Not a clip, so never selected: renamed from its menu.
+                assetName(clip, isSelected: nil)
                     .font(Design.Typeface.label.weight(.semibold))
                     .foregroundStyle(Design.textPrimary)
-                    .lineLimit(1)
                 Text(sceneCount == 1 ? "1 scene" : "\(sceneCount) scenes")
                     .font(Design.Typeface.micro)
                     .foregroundStyle(Design.textTertiary)
@@ -395,6 +420,7 @@ struct ClipsTab: View {
         .accessibilityAction(named: "Add Whole Clip to Timeline") {
             addToTimeline([MediaPiece(assetID: clip.id, start: .zero, end: clip.duration)])
         }
+        .accessibilityAction(named: "Rename") { renamingAsset = clip.id }
     }
 
     private func accessibilityName(_ entry: BrowserEntry, isUsed: Bool) -> String {
@@ -743,6 +769,7 @@ struct ClipsTab: View {
 
     @ViewBuilder
     private func assetMenu(_ clip: MediaClip) -> some View {
+        Button("Rename") { renamingAsset = clip.id }
         if clip.kind == .video {
             Divider()
             Button("Split Scenes…") {

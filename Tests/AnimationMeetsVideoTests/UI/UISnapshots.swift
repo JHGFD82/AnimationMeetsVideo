@@ -292,6 +292,32 @@ struct UISnapshots {
         )
     }
 
+    /// A name beside its icon, shown and being renamed: the field is
+    /// bordered, and neither the icon nor the name moves.
+    @Test func inlineNameField() throws {
+        func row(editing: Bool) -> some View {
+            Label {
+                InlineNameField(name: "Chorus", isEditing: .constant(editing), onCommit: { _ in })
+                    .foregroundStyle(Design.textPrimary)
+            } icon: {
+                Image(systemName: "rectangle.stack").foregroundStyle(Design.ClipTone.nested.color)
+            }
+            .font(Design.Typeface.label)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        try SnapshotSupport.render(
+            VStack(alignment: .leading, spacing: 12) {
+                row(editing: false)
+                row(editing: true)
+            }
+            .padding(16)
+            .frame(width: 260, alignment: .topLeading)
+            .background(Design.Surface.base.color)
+            .preferredColorScheme(.dark),
+            "inline-name-field", size: CGSize(width: 260, height: 90)
+        )
+    }
+
     /// The toolbar's warning while automatic backups fail.
     @Test func autosaveWarning() throws {
         let status = AutosaveStatus()

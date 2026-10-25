@@ -141,6 +141,13 @@ loses the keyboard.
 ## Selecting
 
 - **Click** selects the whole clip.
+- **Renaming** a clip works as in the Finder: a click on the name of a
+  clip already selected (after a moment, so it isn't taken for a
+  double-click) makes it a bordered field over the name, as does
+  **Rename** in its menu or its heading's; Return or clicking away keeps
+  the new name, Escape puts the old one back. It renames the asset, not
+  its file. Scenes are numbered, so only whole clips and headings have a
+  name to change.
 - **Clicking off the clips** (between or below them) selects nothing.
   **Double-clicking** there, or on the empty tab of a project with no
   media, opens the import dialog.

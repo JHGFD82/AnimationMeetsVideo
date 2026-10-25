@@ -59,6 +59,14 @@ struct EditingProject: Identifiable, Equatable {
         clips.first(id: id)
     }
 
+    /// Renames an asset in the browser; an empty name is ignored. Its file
+    /// keeps its own name.
+    mutating func renameMedia(_ id: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, let index = clips.firstIndex(id: id) else { return }
+        clips[index].name = trimmed
+    }
+
     func resolvedInfo(for source: ClipSource) -> ResolvedClipInfo? {
         switch source {
         case .adjustment:
