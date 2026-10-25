@@ -279,6 +279,11 @@ Following [accessibility.md](accessibility.md):
 
 - The arrow keys move the selection between clips; Shift extends it;
   Return adds the selection to the timeline.
+- In the Timelines tab, Right and Left show and hide the timelines the
+  selected one embeds, as the triangle does. The tree is drawn as a flat
+  list with triangles of its own, so a click on a nested row is taken as
+  on any other: rows in an outline view's disclosure groups had their
+  clicks taken by it, and double-clicks on them often didn't open.
 - With a clip selected, **Option-Left** and **Option-Right** move a skim
   position through it a frame at a time (ten with Shift), shown in the
   viewer as skimming is; it starts at the clip's range, or its start.

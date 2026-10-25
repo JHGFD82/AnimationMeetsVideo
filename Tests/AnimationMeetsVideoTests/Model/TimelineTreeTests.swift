@@ -65,6 +65,30 @@ import Testing
         #expect(sceneNode?.children == nil)
     }
 
+    /// The tab lists the tree as flat rows, each at its depth, so nested
+    /// rows take clicks as top-level ones do; a collapsed row hides all
+    /// that is under it.
+    @Test func theTreeIsListedAsRowsAtTheirDepth() throws {
+        var project = EditingProject.empty
+        let main = project.rootTimelineID
+        let scene = Self.addTimeline("Scene", to: &project)
+        let detail = Self.addTimeline("Detail", to: &project)
+        let loose = Self.addTimeline("Loose", to: &project)
+        _ = project.importClip(Self.media(), intoTimeline: detail)
+        _ = project.importClip(Self.media(), intoTimeline: scene)
+        _ = project.embedTimeline(detail, intoTimeline: scene)
+        _ = project.embedTimeline(scene, intoTimeline: main)
+        let nodes = TimelinesList.nodes(of: project)
+
+        let open = TimelinesList.rows(of: nodes, collapsed: [])
+        #expect(open.map(\.timelineID) == [main, scene, detail, loose])
+        #expect(open.map(\.depth) == [0, 1, 2, 0])
+        #expect(open.map(\.hasChildren) == [true, true, false, false])
+
+        #expect(TimelinesList.rows(of: nodes, collapsed: [scene]).map(\.timelineID) == [main, scene, loose])
+        #expect(TimelinesList.rows(of: nodes, collapsed: [main]).map(\.timelineID) == [main, loose])
+    }
+
     @Test func aDuplicateHasNewIDsAndItsOwnName() throws {
         var project = EditingProject.empty
         let main = project.rootTimelineID
