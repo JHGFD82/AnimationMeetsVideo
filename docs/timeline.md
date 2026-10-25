@@ -417,7 +417,9 @@ either edge trims that edge without destroying anything. While an edge of
 a video clip is dragged, the viewer shows the frame at that edge (its
 first frame for the left edge, its last for the right) with its source
 timecode, read straight from the file, so footage a lengthened edge
-reaches shows too (`TrimPreviewOverlay`). Holding the
+reaches shows too (`TrimPreviewOverlay`). It follows the pointer as the
+drag goes: one frame is read at a time, and when it is done the frame
+where the edge is then is read next. Holding the
 pointer near the left or right edge of the tracks during either drag
 scrolls the timeline that way, faster the closer to the edge
 (`TimelineAutoScroll`), so a clip can be taken past what is in view. Near

@@ -27,13 +27,31 @@ final class TrimPreviewModel {
     private(set) var firstTime: CMTime = .zero
     private(set) var lastTime: CMTime = .zero
 
+    private struct Request: Equatable {
+        var url: URL
+        var first: CMTime
+        var last: CMTime
+        var frames: TrimPreviewFrames
+    }
+
     @ObservationIgnored private var url: URL?
     @ObservationIgnored private var request: Task<Void, Never>?
-    @ObservationIgnored private var requested: (first: CMTime, last: CMTime, frames: TrimPreviewFrames)?
+    /// What the frames shown, or being read, are of.
+    @ObservationIgnored private var requested: Request?
+    /// The newest request, waiting for the one being read to finish.
+    @ObservationIgnored private var waiting: Request?
+    /// Counts reads, so one let go by `clear` doesn't start the next.
+    @ObservationIgnored private var generation = 0
 
     /// Shows the frames of the file at `url` at the file times given.
     /// `labelFirst` and `labelLast` are the same frames in the clip's
-    /// source time. Only the newest request is drawn.
+    /// source time.
+    ///
+    /// A drag asks for a new frame at every step, faster than frames can be
+    /// read. One read runs at a time and isn't cut short, and when it
+    /// finishes the newest step's frame is read next, so the picture keeps
+    /// following the pointer. Cancelling each read for the next showed
+    /// nothing new until the drag paused.
     func show(url: URL, first: CMTime, last: CMTime, labelFirst: CMTime, labelLast: CMTime, frames: TrimPreviewFrames = .both) {
         isActive = true
         self.frames = frames
@@ -45,14 +63,29 @@ final class TrimPreviewModel {
             lastFrame = nil
             requested = nil
         }
-        guard requested.map({ $0.first != first || $0.last != last || $0.frames != frames }) ?? true else { return }
-        requested = (first, last, frames)
-        request?.cancel()
+        let wanted = Request(url: url, first: first, last: last, frames: frames)
+        guard wanted != requested else {
+            waiting = nil
+            return
+        }
+        waiting = wanted
+        readNext()
+    }
+
+    /// Reads the waiting request's frames, unless a read is under way, which
+    /// reads it once done.
+    private func readNext() {
+        guard request == nil, let next = waiting else { return }
+        waiting = nil
+        requested = next
+        let generation = generation
         request = Task {
-            let images = await Self.frames(of: url, at: first, and: last, frames: frames)
-            guard !Task.isCancelled else { return }
+            let images = await Self.frames(of: next.url, at: next.first, and: next.last, frames: next.frames)
+            guard generation == self.generation else { return }
+            request = nil
             if let image = images.first { firstFrame = image }
             if let image = images.last { lastFrame = image }
+            readNext()
         }
     }
 
@@ -71,9 +104,11 @@ final class TrimPreviewModel {
     }
 
     func clear() {
+        generation += 1
         request?.cancel()
         request = nil
         requested = nil
+        waiting = nil
         isActive = false
         firstFrame = nil
         lastFrame = nil
