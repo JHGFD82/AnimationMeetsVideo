@@ -49,11 +49,17 @@ remembered.
   main timeline first, then those no timeline embeds, each with the
   timelines it embeds under a disclosure triangle, open to start with.
   Each timeline is listed once: one embedded in several timelines sits
-  under the one nearest the top. The active one is marked **Open**.
-  As in the Finder, a **click selects** a timeline and a **double-click
-  opens** it in the editor; clicking doesn't embed it. A click on the name
-  of the selected timeline (after a moment, so a double-click still
-  opens), Return, or **Rename Timeline** in its menu renames it: the name
+  under the one nearest the top. Each row has its name, its duration and
+  its settings (frame size, rate and colour space). The active one is
+  marked **Open**. Timelines are **selected as clips are** (see
+  "Selecting"): a click selects one, Command-click adds or takes one out,
+  Shift-click selects the run between, and Up and Down move the selection
+  (Shift extends it). A **double-click opens** a timeline in the editor;
+  clicking doesn't embed it. **Embed in Active Timeline** and **Duplicate
+  Timeline** act on everything selected when the row under the menu is.
+  A click on the name of the only timeline selected (after a moment, so a
+  double-click still opens), Return, or **Rename Timeline** in its menu
+  renames it: the name
   becomes a bordered field over it, Return or clicking away keeps the new
   name, Escape puts the old one back. Its menu also has **Open**,
   **Open in New Window** (a second editor on that timeline, sharing the

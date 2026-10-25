@@ -3,11 +3,14 @@ import SwiftUI
 
 /// The browser's Timelines tab: the project's timelines, each nested under
 /// the timeline it is embedded in (with a disclosure triangle), the main
-/// timeline first. A click selects one, as in the Finder: a double-click
-/// opens it in the editor, and a click on the name of the one selected,
-/// or Return, renames it. Its menu also embeds it in the active timeline,
-/// renames and duplicates it; dragging it puts it on an effect that takes
-/// an input. The active timeline is marked as open.
+/// timeline first, with its duration and settings. Selecting works as in
+/// the Clips tab: a click selects one, Command-click adds or takes one
+/// out, Shift-click selects a run, and the arrows move the selection. A
+/// double-click opens one in the editor, and a click on the name of the
+/// only one selected, or Return, renames it. Its menu embeds the selected
+/// timelines in the active timeline or duplicates them, and renames or
+/// opens the one clicked; dragging one puts it on an effect that takes an
+/// input. The active timeline is marked as open.
 struct TimelinesList: View {
     let project: EditingProject
     let activeTimelineID: UUID
@@ -19,7 +22,7 @@ struct TimelinesList: View {
     var onOpenInNewWindow: ((UUID) -> Void)?
 
     @AppStorage(Preferences.browserSort) private var sort = BrowserSort.added
-    @State private var selectedID: UUID?
+    @State private var picked = BrowserSelection<UUID>()
     /// The timeline whose name is being edited in its row.
     @State private var renamingID: UUID?
     @FocusState private var focused: Bool
@@ -87,10 +90,12 @@ struct TimelinesList: View {
     @State private var collapsed: Set<UUID> = []
 
     var body: some View {
+        let rows = Self.rows(of: Self.nodes(of: project, sort: sort), collapsed: collapsed)
+        let order = rows.map(\.timelineID)
         List {
-            ForEach(Self.rows(of: Self.nodes(of: project, sort: sort), collapsed: collapsed)) { listed in
+            ForEach(rows) { listed in
                 if let timeline = project.timeline(id: listed.timelineID) {
-                    row(timeline, listed)
+                    row(timeline, listed, order: order)
                 }
             }
         }
@@ -100,24 +105,50 @@ struct TimelinesList: View {
         .focusEffectDisabled()
         // Return renames the selected timeline, as in the Finder.
         .onKeyPress(.return) {
-            guard renamingID == nil, let selectedID else { return .ignored }
-            renamingID = selectedID
+            guard renamingID == nil, picked.items.count == 1, let id = picked.items.first else { return .ignored }
+            renamingID = id
             return .handled
         }
-        // Right and Left show and hide what the selected timeline embeds,
-        // as in the Finder's list view.
+        // Up and Down move the selection, Shift extends it, as in the
+        // Clips tab; Right and Left show and hide what the selected
+        // timeline embeds, as in the Finder's list view.
+        .onKeyPress(keys: [.upArrow, .downArrow]) { press in
+            guard renamingID == nil else { return .ignored }
+            return step(press.key == .upArrow ? -1 : 1, extending: press.modifiers.contains(.shift), in: order)
+        }
         .onKeyPress(.rightArrow) { showNested(true) }
         .onKeyPress(.leftArrow) { showNested(false) }
+        .onChange(of: order) { _, order in picked.keep(only: order) }
+    }
+
+    /// Moves the selection a row up or down from the timeline last clicked,
+    /// or extends it there with Shift.
+    private func step(_ by: Int, extending: Bool, in order: [UUID]) -> KeyPress.Result {
+        guard !order.isEmpty else { return .ignored }
+        let from = picked.anchor.flatMap(order.firstIndex(of:)) ?? (by > 0 ? -1 : order.count)
+        let to = order[(from + by).clamped(between: 0, and: order.count - 1)]
+        if extending {
+            picked.shiftClick(to, in: order)
+        } else {
+            picked.click(to)
+        }
+        return .handled
     }
 
     private func showNested(_ shown: Bool) -> KeyPress.Result {
-        guard renamingID == nil, let selectedID else { return .ignored }
-        if shown { collapsed.remove(selectedID) } else { collapsed.insert(selectedID) }
+        guard renamingID == nil, picked.items.count == 1, let id = picked.items.first else { return .ignored }
+        if shown { collapsed.remove(id) } else { collapsed.insert(id) }
         return .handled
     }
 
     private func toggleNested(_ id: UUID) {
         if collapsed.contains(id) { collapsed.remove(id) } else { collapsed.insert(id) }
+    }
+
+    /// What a menu on `id` acts on: everything selected when it is, in
+    /// browser order, otherwise just it.
+    private func targets(of id: UUID, in order: [UUID]) -> [UUID] {
+        picked.dragged(from: id, in: order)
     }
 
     /// The triangle that shows or hides what a timeline embeds, or room for
@@ -139,25 +170,33 @@ struct TimelinesList: View {
         }
     }
 
-    private func row(_ timeline: Timeline, _ listed: Row) -> some View {
-        let isSelected = selectedID == timeline.id
+    private func row(_ timeline: Timeline, _ listed: Row, order: [UUID]) -> some View {
+        let isSelected = picked.contains(timeline.id)
         let isActive = timeline.id == activeTimelineID
-        let canEmbed = project.canEmbed(timeline.id, into: activeTimelineID)
+        let targets = targets(of: timeline.id, in: order)
+        let embeddable = targets.filter { project.canEmbed($0, into: activeTimelineID) }
         return HStack(spacing: Design.Space.tight) {
             disclosure(timeline, listed)
-            label(timeline, isSelected: isSelected, isActive: isActive)
+            label(timeline, isSelected: isSelected, isOnlySelection: isSelected && picked.items.count == 1, isActive: isActive)
         }
         .padding(.leading, CGFloat(listed.depth) * Design.Space.group)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 2)
         .selectedRow(isSelected)
-        // On the press, with the system's click count: a tap gesture for
-        // the single click waits to rule out a double-click, and quick
-        // clicks were lost (see `onMouseDown`).
+        // On the press, with the system's click count and keys: a tap
+        // gesture for the single click waits to rule out a double-click,
+        // and quick clicks were lost (see `onMouseDown`).
         .onMouseDown { clicks in
             focused = true
-            selectedID = timeline.id
-            if clicks == 2 { open(timeline.id) }
+            let keys = NSApp.currentEvent?.modifierFlags ?? []
+            if keys.contains(.command) {
+                picked.commandClick(timeline.id)
+            } else if keys.contains(.shift) {
+                picked.shiftClick(timeline.id, in: order)
+            } else {
+                picked.click(timeline.id)
+                if clicks == 2 { open(timeline.id) }
+            }
         }
         .help(isActive ? "The timeline open in the editor" : "Double-click to open in the editor")
         .draggable(TimelineDragPayload(timelineID: timeline.id))
@@ -168,39 +207,45 @@ struct TimelinesList: View {
                 Button("Open in New Window") { onOpenInNewWindow(timeline.id) }
             }
             Divider()
-            Button("Embed in Active Timeline") { onEmbed(timeline.id) }
-                .disabled(!canEmbed)
+            Button(targets.count > 1 ? "Embed \(embeddable.count) Timelines in Active Timeline" : "Embed in Active Timeline") {
+                embeddable.forEach(onEmbed)
+            }
+            .disabled(embeddable.isEmpty)
             Button("Rename Timeline") {
-                selectedID = timeline.id
+                picked.click(timeline.id)
                 renamingID = timeline.id
             }
-            Button("Duplicate Timeline") { onDuplicate(timeline.id) }
+            Button(targets.count > 1 ? "Duplicate \(targets.count) Timelines" : "Duplicate Timeline") {
+                targets.forEach(onDuplicate)
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint("Opens the timeline in the editor")
         .accessibilityAction { open(timeline.id) }
         .accessibilityAction(named: "Embed in active timeline") {
-            if canEmbed { onEmbed(timeline.id) } else { NSSound.beep() }
+            if project.canEmbed(timeline.id, into: activeTimelineID) { onEmbed(timeline.id) } else { NSSound.beep() }
         }
         .accessibilityAction(named: "Rename timeline") { renamingID = timeline.id }
         .accessibilityAction(named: "Duplicate timeline") { onDuplicate(timeline.id) }
+        .accessibilityAction(named: isSelected ? "Deselect" : "Add to selection") { picked.commandClick(timeline.id) }
         .accessibilityAction(named: collapsed.contains(timeline.id) ? "Show nested timelines" : "Hide nested timelines") {
             if listed.hasChildren { toggleNested(timeline.id) } else { NSSound.beep() }
         }
     }
 
-    private func label(_ timeline: Timeline, isSelected: Bool, isActive: Bool) -> some View {
+    /// The icon, and the name and duration over the settings.
+    private func label(_ timeline: Timeline, isSelected: Bool, isOnlySelection: Bool, isActive: Bool) -> some View {
         Label {
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: Design.Space.close) {
+                HStack(alignment: .firstTextBaseline, spacing: Design.Space.close) {
                     InlineNameField(
                         name: timeline.name,
                         isEditing: Binding(
                             get: { renamingID == timeline.id },
                             set: { editing in renamingID = editing ? timeline.id : nil }
                         ),
-                        isSelected: isSelected,
+                        isSelected: isOnlySelection,
                         onCommit: { onRename(timeline.id, $0) }
                     )
                     .foregroundStyle(Design.textPrimary)
@@ -209,6 +254,11 @@ struct TimelinesList: View {
                             .font(Design.Typeface.label)
                             .foregroundStyle(Design.textSecondary)
                     }
+                    Spacer(minLength: 0)
+                    Text(timeline.duration.compactTimecode(frameRate: timeline.frameRate))
+                        .font(Design.Typeface.numericSmall)
+                        .foregroundStyle(Design.textSecondary)
+                        .accessibilityLabel("\(timeline.duration.formatted) long")
                 }
                 Text(timeline.timebaseSummary)
                     .font(Design.Typeface.numericMicro)
@@ -222,7 +272,7 @@ struct TimelinesList: View {
 
     private func open(_ id: UUID) {
         renamingID = nil
-        selectedID = id
+        picked.click(id)
         onOpen(id)
     }
 }
