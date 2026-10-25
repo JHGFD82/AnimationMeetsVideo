@@ -420,12 +420,14 @@ the top or bottom of an area, a clip moved across layers, or media dragged
 in from the browser, scrolls that area up or down the same way
 (`EdgeAutoScroll`, one per area, reached through `TimelineAutoScroll`).
 
-**Motion.** A moved clip stays under the pointer the whole way, in both
-directions, however its landing place snaps or the clips around it make
-room; the landing place is shown by the line at its start, which glides
-rather than jumping, and by the clips that slide aside. Let go, it glides
-from under the pointer into its place; into another layer, the clip's new
-block takes up the motion from where it was let go (`ClipFlights`). Clips
+**Motion.** A moved clip is drawn where it will land the whole way: on
+the frame its start snaps to and on the row of the layer it will go onto,
+stepping from frame to frame rather than floating with the pointer, so
+what is seen is exactly what the drop will do. The line at its start and
+the clips that slide aside show the rest. Only over the place a new layer
+would go, which has no row yet, does it follow the pointer up or down;
+let go there, the new layer's block takes up the motion from where it
+was let go (`ClipFlights`). Clips
 glide wherever an edit moves them, in whichever layer (`Motion.glide`),
 but not when the view is zoomed. Reduced motion makes all of it instant.
 The rules for where a clip may go are in `ClipPlacement.swift`:
