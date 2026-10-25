@@ -20,7 +20,9 @@ and what is selected in it is outlined in the accent while selections in
 the other panels turn grey, as the Mac draws a list that doesn't have the
 keyboard (`selectedRow`, reading `isInActivePanel`). Delete and the Edit
 menu go to the active panel first: the effects panel takes them only
-while it is active, and the timeline otherwise. A selected effect is
+while it is active, and the timeline otherwise, except while the browser
+is active: then Delete, Escape and ⌘A are the browser's, so they never
+reach the timeline's selection greyed out behind it. A selected effect is
 outlined whole, its controls with it, as that is what Delete and Copy
 take; a selected control is outlined alone.
 
