@@ -120,6 +120,9 @@ final class AssetAnalysis {
         /// False once the original is forgotten or the file was replaced:
         /// reference data is never taken from such a file.
         var canCaptureReference: Bool
+        /// Set when the asset's scenes are not to be detected: turning it on
+        /// ends a job under way, as any change of input does.
+        var skipsScenes = false
         /// What the analysis runs with, so results made with other settings
         /// are not mixed in; see `AnalysisProvenance`.
         var settings = AssetAnalysis.settings
@@ -166,7 +169,8 @@ final class AssetAnalysis {
         Input(
             id: clip.id, file: analyzedFile(of: clip), hasAudio: clip.hasAudio,
             onMusicLayer: musicAssets.contains(clip.id),
-            canCaptureReference: canCaptureReference(from: clip)
+            canCaptureReference: canCaptureReference(from: clip),
+            skipsScenes: clip.skipsSceneDetection
         )
     }
 
@@ -498,7 +502,8 @@ final class AssetAnalysis {
                 unavailable[clip.id] = nil
             }
             guard owners[clip.id] == nil, changedFiles[clip.id] == nil else { continue }
-            let wantsScores = clip.kind == .video && tracks[clip.id] == nil && failure(.scenes, for: clip.id) == nil
+            let wantsScores = clip.kind == .video && !clip.skipsSceneDetection && tracks[clip.id] == nil
+                && failure(.scenes, for: clip.id) == nil
             // Reference data describes the original, so it is never taken
             // from a file that replaced it. Stills have none: replacing one
             // needs no alignment.

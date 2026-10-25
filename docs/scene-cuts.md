@@ -311,6 +311,12 @@ Implemented:
   Apply, and warns before Apply when clips would be embedded (see below).
 - **Find Scenes Again** discards the asset's scores and re-scores it. Edits
   are kept.
+- **Don't Detect Scenes** turns finding the asset's cuts off: a search
+  under way stops and its result is dropped, none is started again, and
+  cuts already found aren't used, so the video is one clip in the browser
+  (cuts made by hand still count where scenes are used). **Detect Scenes**
+  turns it back on. It is saved on the asset (`skipsSceneDetection`) and,
+  as an edit, undone like any other, which starts the search again.
 
 All edits go through the project, so they are undoable and tracked as unsaved
 changes like any other.

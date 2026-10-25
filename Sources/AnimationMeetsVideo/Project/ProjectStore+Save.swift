@@ -220,6 +220,7 @@ extension ProjectStore {
                     previousPaths: clip.previousPaths.isEmpty ? nil : clip.previousPaths,
                     fileStamp: clip.acceptedStamp,
                     referenceForgotten: clip.referenceForgotten ? true : nil,
+                    skipsSceneDetection: clip.skipsSceneDetection ? true : nil,
                     kind: clip.kind.rawValue,
                     duration: ProjectFile.TimeEntry(clip.duration),
                     frameRate: clip.frameRate,

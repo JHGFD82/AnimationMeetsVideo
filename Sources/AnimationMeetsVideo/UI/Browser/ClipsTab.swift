@@ -133,7 +133,7 @@ struct ClipsTab: View {
     private func makeSnapshot() -> Snapshot {
         var snapshot = Snapshot()
         for clip in project.clips {
-            guard clip.kind == .video, let track = analysis.tracks[clip.id],
+            guard clip.kind == .video, !clip.skipsSceneDetection, let track = analysis.tracks[clip.id],
                   let coverage = coverageCache.coverage(of: clip, in: project, track: track)
             else {
                 snapshot.entries.append(BrowserEntry(id: .asset(clip.id), clip: clip, start: .zero, duration: clip.duration))
@@ -775,12 +775,18 @@ struct ClipsTab: View {
             Button("Split Scenes…") {
                 splitter?.show(SceneSplitter.Focus(assetID: clip.id, start: .zero, end: clip.duration))
             }
-            Button("Cut Sensitivity…") {
-                sensitivityTarget = SensitivityTarget(assetID: clip.id)
-            }
-            .disabled(analysis.tracks[clip.id] == nil)
-            AnalysisIdleButton(title: "Find Scenes Again", analysis: analysis, assetID: clip.id) {
-                analysis.reanalyze(clip, in: project)
+            if clip.skipsSceneDetection {
+                Button("Detect Scenes") { project.setDetectsScenes(true, ofAsset: clip.id) }
+            } else {
+                Button("Cut Sensitivity…") {
+                    sensitivityTarget = SensitivityTarget(assetID: clip.id)
+                }
+                .disabled(analysis.tracks[clip.id] == nil)
+                AnalysisIdleButton(title: "Find Scenes Again", analysis: analysis, assetID: clip.id) {
+                    analysis.reanalyze(clip, in: project)
+                }
+                // Stops a search under way, too; undoable, as any edit.
+                Button("Don't Detect Scenes") { project.setDetectsScenes(false, ofAsset: clip.id) }
             }
         }
         if let problem = analysis.persistenceProblem(for: clip.id) {

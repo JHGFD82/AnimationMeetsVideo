@@ -67,6 +67,13 @@ struct EditingProject: Identifiable, Equatable {
         clips[index].name = trimmed
     }
 
+    /// Turns finding an asset's scenes off (Don't Detect Scenes), which
+    /// stops a search under way and shows it as one clip, or on again.
+    mutating func setDetectsScenes(_ detects: Bool, ofAsset id: UUID) {
+        guard let index = clips.firstIndex(id: id) else { return }
+        clips[index].skipsSceneDetection = !detects
+    }
+
     func resolvedInfo(for source: ClipSource) -> ResolvedClipInfo? {
         switch source {
         case .adjustment:

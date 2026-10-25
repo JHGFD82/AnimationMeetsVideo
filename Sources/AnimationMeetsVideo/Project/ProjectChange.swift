@@ -398,6 +398,10 @@ private struct Describer {
                 return Found(name: "Rename \(label) to \(quoted(new.name))", what: "rename-media", ids: [new.id])
             }
             if old.sceneEdits != new.sceneEdits { return Found(name: "Edit Scenes of \(label)", what: "scenes", ids: [new.id]) }
+            if old.skipsSceneDetection != new.skipsSceneDetection {
+                let name = new.skipsSceneDetection ? "Don't Detect Scenes of \(label)" : "Detect Scenes of \(label)"
+                return Found(name: name, what: "scene-detection", ids: [new.id])
+            }
             if old.beatMap != new.beatMap { return Found(name: "Edit Beats of \(label)", what: "beats", ids: [new.id]) }
             if old.url != new.url { return Found(name: "Replace \(label)", what: "replace-media", ids: [new.id]) }
             return Found(name: "Change \(label)", what: "media", ids: [new.id])

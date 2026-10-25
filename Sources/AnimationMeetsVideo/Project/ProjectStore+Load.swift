@@ -54,6 +54,7 @@ extension ProjectStore {
             clip.originalDuration = asset.originalDuration?.time
             clip.previousPaths = asset.previousPaths ?? []
             clip.referenceForgotten = asset.referenceForgotten ?? false
+            clip.skipsSceneDetection = asset.skipsSceneDetection ?? false
             clip.acceptedStamp = asset.fileStamp ?? FileStamp(url: url)
             importedClips[asset.id] = clip
             orderedIDs.append(asset.id)
