@@ -40,8 +40,9 @@ struct TimelinesList: View {
     let project: EditingProject
     let activeTimelineID: UUID
     let onOpen: (UUID) -> Void
-    /// Embeds a timeline in the active timeline, all of it or a range.
-    let onEmbed: (UUID, CMTimeRange?) -> Void
+    /// Embeds timelines in the active timeline on one layer, back to back,
+    /// all of each, or a range of the one timeline.
+    let onEmbed: ([UUID], CMTimeRange?) -> Void
     let onDuplicate: (UUID) -> Void
     var onRename: (UUID, String) -> Void = { _, _ in }
     /// Opens a timeline in a window of its own; nil where there is none.
@@ -279,11 +280,11 @@ struct TimelinesList: View {
         }
         Divider()
         if let range {
-            Button("Embed Range in Active Timeline") { onEmbed(id, range) }
+            Button("Embed Range in Active Timeline") { onEmbed([id], range) }
                 .disabled(!project.canEmbed(id, into: activeTimelineID))
         }
         Button(embeddable.count > 1 ? "Embed \(embeddable.count) Timelines in Active Timeline" : "Embed in Active Timeline") {
-            embeddable.forEach { onEmbed($0, nil) }
+            onEmbed(embeddable, nil)
         }
         .disabled(embeddable.isEmpty)
         Button("Rename Timeline") {
@@ -382,7 +383,7 @@ struct TimelinesList: View {
     /// One timeline's Embed and Delete, from VoiceOver in either layout: a
     /// beep where it can't be done.
     private func embedOrBeep(_ id: UUID) {
-        if project.canEmbed(id, into: activeTimelineID) { onEmbed(id, nil) } else { NSSound.beep() }
+        if project.canEmbed(id, into: activeTimelineID) { onEmbed([id], nil) } else { NSSound.beep() }
     }
 
     private func deleteOrBeep(_ id: UUID) {

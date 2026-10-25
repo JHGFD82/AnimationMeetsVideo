@@ -56,7 +56,10 @@ remembered.
   Shift-click selects the run between, and Up and Down move the selection
   (Shift extends it). A **double-click opens** a timeline in the editor;
   clicking doesn't embed it. **Embed in Active Timeline** and **Duplicate
-  Timeline** act on everything selected when the row under the menu is.
+  Timeline** act on everything selected when the row under the menu is;
+  timelines embedded together go back to back on one new layer, in the
+  tab's order, as clips added together do. None goes in while any of them
+  would put a timeline inside itself, however deep.
   A click on the name of the only timeline selected (after a moment, so a
   double-click still opens), Return, or **Rename Timeline** in its menu
   renames it: the name

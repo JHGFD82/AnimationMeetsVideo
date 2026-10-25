@@ -237,12 +237,19 @@ struct BrowserPanel: View {
         }
     }
 
-    /// Puts a timeline, or a range of it, on a new layer of the active one,
-    /// and selects the clip it makes.
-    private func embed(_ timelineID: UUID, range: CMTimeRange?) {
-        if let result = project.embedTimeline(timelineID, intoTimeline: activeTimelineID, range: range) {
-            selection = TimelineSelection(timelineID: activeTimelineID, layerID: result.layerID, timelineClipID: result.clipID)
+    /// Puts timelines (or, with `range`, that stretch of the one timeline)
+    /// on one new layer of the active one, back to back in the order given,
+    /// as clips added together go, and selects the first clip it makes.
+    /// Nothing goes in when any of them can't (`canEmbed`).
+    private func embed(_ timelineIDs: [UUID], range: CMTimeRange?) {
+        let pieces = timelineIDs.compactMap { id -> MediaPiece? in
+            guard let timeline = project.timeline(id: id) else { return nil }
+            let whole = CMTimeRange(start: .zero, duration: timeline.duration)
+            let played = range.map { $0.intersection(whole) } ?? whole
+            return played.duration > .zero ? .timeline(id, from: played.start, to: played.end) : nil
         }
+        guard let result = project.addPieces(pieces, intoTimeline: activeTimelineID), let clipID = result.clipIDs.first else { return }
+        selection = TimelineSelection(timelineID: activeTimelineID, layerID: result.layerID, timelineClipID: clipID)
     }
 
     /// Imported files go into the library only; they reach a timeline when
