@@ -81,10 +81,13 @@ extension CompositionExporter {
                 }
                 // A nested timeline plays its own frames and sound past its
                 // ends at a joined cut, drawn from one flattening of it; a
-                // media clip's go on tracks of their own.
+                // media clip's go on tracks of their own. It does so under
+                // its neighbor's transition too, so this doesn't wait for
+                // one of its own: a joining transition is the incoming
+                // clip's, and the outgoing one has none.
                 var reach = (head: lead, tail: CMTime.zero)
                 var underReach = (head: CMTime.zero, tail: CMTime.zero)
-                if case .timeline = clip.source, clipStack.edges != nil {
+                if case .timeline = clip.source {
                     underReach = jointUnderlay(of: clip, among: clips, project: project)
                     reach.head = CMTimeMaximum(CMTimeMaximum(lead, underReach.head), audioFades.head)
                     reach.tail = CMTimeMaximum(underReach.tail, audioFades.tail)

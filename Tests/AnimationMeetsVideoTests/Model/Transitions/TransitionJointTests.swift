@@ -208,6 +208,31 @@ private func video(url: URL? = nil, duration: Double = 10) -> MediaClip {
     /// them are nested timelines, rather than either one over black.
     @Test(arguments: [(true, true), (false, true), (true, false)])
     func aJointBlendsNestedTimelinesAcrossTheCut(outgoingNested: Bool, incomingNested: Bool) async throws {
+        let levels = try await jointLevels(outgoingNested: outgoingNested, incomingNested: incomingNested, at: [1, 2, 3])
+        let before = levels[0], cut = levels[1], after = levels[2]
+        #expect(before < 60 && after > 200)
+        #expect(cut > before + 40 && cut < after - 40)
+    }
+
+    /// A nested timeline going out keeps playing under the rest of the
+    /// dissolve after the cut, as media does, rather than leaving the
+    /// incoming clip to fade in over black for its second half. The way in
+    /// is the incoming clip's, so the outgoing one has no transition of
+    /// its own.
+    @Test(arguments: [(true, true), (false, true), (true, false)])
+    func aNestedJointDissolvesLikeMedia(outgoingNested: Bool, incomingNested: Bool) async throws {
+        let times = [1.75, 2, 2.1, 2.25, 2.4]
+        let media = try await jointLevels(outgoingNested: false, incomingNested: false, at: times)
+        let nested = try await jointLevels(outgoingNested: outgoingNested, incomingNested: incomingNested, at: times)
+        for (a, b) in zip(media, nested) {
+            #expect(abs(a - b) <= 4, "\(media) against \(nested)")
+        }
+    }
+
+    /// Gray levels at `times` (in seconds) across a dissolve from two
+    /// seconds of dark to two of bright, cut at two seconds, each a nested
+    /// timeline or media.
+    private func jointLevels(outgoingNested: Bool, incomingNested: Bool, at times: [Double]) async throws -> [Int] {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }
         let frameSize = fixture.project.timelines[0].frameSize
@@ -234,10 +259,10 @@ private func video(url: URL? = nil, duration: Double = 10) -> MediaClip {
         #expect(fixture.project.joint(at: b.id, in: t, layer: layer)?.lead == seconds(0.5))
 
         let composed = try await fixture.build()
-        let before = try await grayLevel(of: composed, at: seconds(1))
-        let cut = try await grayLevel(of: composed, at: seconds(2))
-        let after = try await grayLevel(of: composed, at: seconds(3))
-        #expect(before < 60 && after > 200)
-        #expect(cut > before + 40 && cut < after - 40)
+        var levels: [Int] = []
+        for time in times {
+            levels.append(try await grayLevel(of: composed, at: seconds(time)))
+        }
+        return levels
     }
 }
