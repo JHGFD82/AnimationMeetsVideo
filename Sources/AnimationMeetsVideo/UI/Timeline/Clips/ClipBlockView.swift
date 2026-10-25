@@ -136,6 +136,9 @@ struct ClipBlockView: View {
     var onMotionDesign: (() -> Void)? = nil
     /// For an adjustment clip: what it reaches, and the choices.
     var reach: ReachMenu? = nil
+    /// Gives the timeline the clip's frame size, frame rate and colour
+    /// space; nil for clips without pictures of their own.
+    var onConformTimeline: (() -> Void)? = nil
 
     /// The clip as it will be if the current drag ends now. After a drop
     /// it stays up until the edited clip comes back down from the project:

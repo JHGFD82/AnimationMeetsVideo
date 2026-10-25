@@ -45,4 +45,38 @@ import Testing
         #expect(try #require(updated.layer(id: first.layerID)).volume.keyframes.allSatisfy { onFrame($0.time) })
         #expect(updated.sections.allSatisfy { onFrame($0.start) && onFrame($0.end) && $0.duration >= frame })
     }
+
+    @Test func conformingTakesTheClipsSizeRateAndColourSpace() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let media = MediaClip(
+            name: "HDR", kind: .video, url: nil, duration: seconds(10),
+            frameRate: 59.94, colorSpace: .rec2020PQ, codecName: "Stub"
+        )
+        let name = try #require(project.timeline(id: t)).name
+        project.conformTimeline(t, to: media, frameSize: CGSize(width: 3840, height: 2160))
+        let timeline = try #require(project.timeline(id: t))
+        #expect(timeline.frameSize == CGSize(width: 3840, height: 2160))
+        #expect(timeline.frameRate == 59.94)
+        #expect(timeline.colorSpace == .rec2020PQ)
+        #expect(timeline.name == name)
+    }
+
+    @Test func conformingToAStillKeepsTheRateAndAnUnknownSize() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let before = try #require(project.timeline(id: t))
+        let still = MediaClip(
+            name: "Still", kind: .image, url: nil, duration: MediaClip.stillLength,
+            frameRate: 0, colorSpace: .rec709, codecName: "PNG"
+        )
+        project.conformTimeline(t, to: still, frameSize: nil)
+        let timeline = try #require(project.timeline(id: t))
+        #expect(timeline.frameRate == before.frameRate)
+        #expect(timeline.frameSize == before.frameSize)
+
+        let song = MediaClip(name: "Song", kind: .audio, url: nil, duration: seconds(5), frameRate: 0, colorSpace: .rec2020PQ, codecName: "AAC")
+        project.conformTimeline(t, to: song, frameSize: nil)
+        #expect(try #require(project.timeline(id: t)).colorSpace == .rec709)
+    }
 }

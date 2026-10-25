@@ -49,6 +49,7 @@ extension ClipBlockView {
         if let piece = clip.footagePiece {
             Button("Show in clips browser") { NotificationCenter.default.post(name: .revealInBrowser, object: piece) }
         }
+        if let onConformTimeline { Button("Conform timeline to clip", action: onConformTimeline) }
         Button(isInGroup ? "Remove from selection" : "Add to selection", action: onToggleInGroup)
         Button(clip.enabled ? "Turn off" : "Turn on") { onEditClip { $0.enabled.toggle() } }
         if playsSound {

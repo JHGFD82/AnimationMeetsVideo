@@ -121,6 +121,18 @@ struct EditingProject: Identifiable, Equatable {
         }
     }
 
+    /// Gives a timeline an asset's frame size (when known), frame rate and
+    /// colour space, so it plays the asset as shot. A still has no frame
+    /// rate, so the timeline keeps its own; so does anything left unknown.
+    mutating func conformTimeline(_ id: UUID, to media: MediaClip, frameSize: CGSize?) {
+        guard let timeline = timeline(id: id), media.kind.hasPictures else { return }
+        let size = frameSize.map { CGSize(width: $0.width.rounded(), height: $0.height.rounded()) } ?? timeline.frameSize
+        updateTimelineSettings(
+            id, name: timeline.name, frameSize: size,
+            frameRate: media.frameRate > 0 ? media.frameRate : timeline.frameRate, colorSpace: media.colorSpace
+        )
+    }
+
     /// A timeline can't be embedded into itself or into any timeline it
     /// already contains (directly or transitively) — that would be a cycle.
     /// Nor can an empty one, which would make a clip with no length.

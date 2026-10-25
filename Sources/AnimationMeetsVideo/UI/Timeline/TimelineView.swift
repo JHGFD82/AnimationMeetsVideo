@@ -738,4 +738,15 @@ struct TimelineView: View {
         if selectedLayerID == id { selectedLayerID = nil }
         onDeleteLayer(id)
     }
+
+    /// Conform Timeline to Clip: the timeline takes the clip's frame size,
+    /// read from its file, its frame rate and its colour space, as one edit.
+    func conformTimeline(to clip: TimelineClip) {
+        guard case .media(let id) = clip.source, let media = project.mediaClip(id: id) else { return }
+        let timelineID = timelineID
+        Task { @MainActor in
+            let size = await MediaFile.pictureSize(of: media)
+            onEditProject { $0.conformTimeline(timelineID, to: media, frameSize: size) }
+        }
+    }
 }

@@ -446,6 +446,12 @@ The rules for where a clip may go are in `ClipPlacement.swift`:
   still meet. Keyframes that land on one frame merge, keeping the later.
   Rates other than whole numbers and the NTSC family (such as 12.5) are
   kept exact rather than rounded to a whole number.
+- **Conform Timeline to Clip**, in the right-click menu of a clip with
+  pictures, gives the timeline that clip's frame size (read from its
+  file, rotation applied), frame rate and colour space (SDR Rec. 709 or
+  one of the HDR spaces), as one undoable edit that moves everything onto
+  the new frames as above (`EditingProject.conformTimeline`). A still
+  has no frame rate, so the timeline keeps its own.
 - **Audio moves freely**, to 1/48000 of a second.
 - Clips never start before zero and never overlap on a layer. A moved
   clip lands where it is dropped. Dropped inside another clip, it goes to
