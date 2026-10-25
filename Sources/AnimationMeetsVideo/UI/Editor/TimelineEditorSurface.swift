@@ -21,6 +21,8 @@ struct TimelineEditorSurface<Library: View>: View {
     /// Assets whose file is missing. Their clips play as gaps, and the
     /// viewer rebuilds when one comes back.
     var offlineMedia: Set<UUID> = []
+    /// A clip for the timeline to zoom to and light up, from Find All.
+    var clipFocus: TimelineClipFocus? = nil
     @ViewBuilder let library: () -> Library
     /// Renders in the background; absent in windows that don't render.
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
@@ -573,7 +575,8 @@ struct TimelineEditorSurface<Library: View>: View {
                     if on { showsSidePanel = true; sideTab = .effects } else { sideTab = .inspector }
                 },
                 showsMeter: $showsMeter,
-                effectsState: effectsState
+                effectsState: effectsState,
+                focus: clipFocus
             )
         } else {
             ContentUnavailableView("No Timeline Selected", systemImage: "timeline.selection")

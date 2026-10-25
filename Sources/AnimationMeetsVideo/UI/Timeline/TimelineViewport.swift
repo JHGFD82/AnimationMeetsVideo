@@ -65,6 +65,16 @@ struct TimelineViewport: Equatable {
         return (scale <= fitPixelsPerSecond * 1.0001 ? nil : scale, scroll)
     }
 
+    /// The scale and scroll offset that fit `start...end` into the width
+    /// but for `margin` (a share of the width) either side, centered. A
+    /// span too short for the closest zoom is centered at that zoom; one
+    /// too long for the fit gets the fit.
+    func fitting(_ start: Double, _ end: Double, margin: CGFloat) -> (pixelsPerSecond: CGFloat?, scrollX: CGFloat) {
+        let span = max(end - start, .ulpOfOne)
+        let scale = width * (1 - 2 * margin) / CGFloat(span)
+        return zoomed(to: scale, keeping: (start + end) / 2, atX: width / 2)
+    }
+
     /// Zoom position on a 0...1 scale that is even in ratio, so each step of
     /// a slider multiplies the scale by the same amount.
     var zoomFraction: Double {

@@ -34,6 +34,8 @@ struct EditorView: View {
     /// browser.
     @State private var sceneSplitter = SceneSplitter()
     @State private var usesFinder = UsesFinder()
+    /// The clip last picked in Find All, for the timeline to show.
+    @State private var clipFocus: TimelineClipFocus?
     /// A clip skimmed in the browser, which the viewer shows.
     @State private var skim = BrowserSkim()
     /// Files on their way into the library, which the browser lists.
@@ -99,7 +101,8 @@ struct EditorView: View {
             TimelineEditorSurface(
                 project: $project, timelineID: activeTimeline.wrappedValue,
                 selectTimeline: { [activeTimeline] in activeTimeline.wrappedValue = $0 }, selection: $selection,
-                playback: playback, analysis: analysis, offlineMedia: replacement.missingMedia
+                playback: playback, analysis: analysis, offlineMedia: replacement.missingMedia,
+                clipFocus: clipFocus
             ) {
                 BrowserPanel(
                     access: browserProject, activeTimelineID: activeTimeline.wrappedValue, selection: $selection,
@@ -196,10 +199,12 @@ struct EditorView: View {
             sceneSplitter.sceneTracks = { [analysis] in analysis.tracks }
             sceneSplitter.onEdit = { change in change(&project) }
             sceneSplitter.update(project: project)
-            // A use picked in Find All opens its timeline on its clip.
+            // A use picked in Find All opens its timeline on its clip,
+            // zoomed to fit it, centered and lit up.
             usesFinder.onShow = { use in
                 activeTimelineID = use.timelineID
                 selection = TimelineSelection(timelineID: use.timelineID, layerID: use.layerID, timelineClipID: use.clipID)
+                clipFocus = TimelineClipFocus(timelineID: use.timelineID, layerID: use.layerID, clipID: use.clipID)
             }
             usesFinder.update(project: project)
             connectHistory()
