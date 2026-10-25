@@ -578,7 +578,7 @@ taking it out to) whatever is underneath: lower layers, or black.
 
 ### Transitions joining two clips
 
-Where two media clips with pictures meet on a layer (within
+Where two clips with pictures (media or nested timelines) meet on a layer (within
 `Timeline.abutmentTolerance`, as clips meet everywhere else, so edges a
 sliver apart from rounding still count), a transition dropped at the cut,
 on either clip, **joins** them: it becomes the incoming clip's
@@ -607,7 +607,11 @@ transition across both and the cut as a white line.
 Edits land on frames and are saved when a drag ends. **Done** in the
 label column closes the lane. In the composition, the incoming clip's
 frames before the cut go on a track above the layer's and the outgoing
-clip's frames after it on a track below. Nested timelines don't join.
+clip's frames after it on a track below. A nested timeline's spare
+footage is the rest of it beyond its trims: it is flattened once over its
+clip and the reach of its joints, and drawn there by groups that share
+those clips, one above the layer for its frames before the cut and one
+below for the frames under its neighbor's transition.
 
 There are 25 kinds in five groups (dissolves, wipes, moves, 3D,
 stylized); what each does, its settings (set in the inspector under the
@@ -845,5 +849,5 @@ trail.
 - Audio crossfades under transitions, and transitions on detached sound.
 - A larger graph editor for curves on short transitions.
 - Thumbnails of the frames in the transition footage lane.
-- Joining nested timelines, and trimming at a joined cut from the clips
-  themselves (the transition box covers the edges; roll the cut instead).
+- Trimming at a joined cut from the clips themselves (the transition box
+  covers the edges; roll the cut instead).
