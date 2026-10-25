@@ -267,9 +267,16 @@ struct ClipsTab: View {
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
-        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, "i", "o"]) { press in
+        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .delete, .deleteForward, "i", "o"]) { press in
             handleKey(press, snapshot: snapshot) ? .handled : .ignored
         }
+        // Delete and Select All in the Edit menu, while the browser is the
+        // active panel (see `EditCommands`).
+        .focusedSceneValue(\.browserEditActions, EditMenuActions(
+            delete: { if !removeSelection(snapshot) { NSSound.beep() } },
+            selectAll: { picked.selectAll(in: order) },
+            state: [AnyHashable(picked.revision), AnyHashable(order)]
+        ))
         // Leaving the browser gives the viewer back to the timeline; so does
         // leaving it from the keyboard. Without skimming, a frame clicked
         // stays shown until the browser loses the keyboard, so the pointer
@@ -380,6 +387,9 @@ struct ClipsTab: View {
         .accessibilityAction(named: "Set Range Start") { setRangeEnd(.start, of: entry) }
         .accessibilityAction(named: "Set Range End") { setRangeEnd(.end, of: entry) }
         .accessibilityAction(named: "Rename") { renamingAsset = entry.clip.id }
+        .accessibilityAction(named: "Remove from Project") {
+            if entry.sceneNumber != nil || !removeFromProject([entry.clip.id]) { NSSound.beep() }
+        }
     }
 
     /// An asset's name, edited in place while `renamingAsset` names it.
@@ -425,6 +435,7 @@ struct ClipsTab: View {
             addToTimeline([MediaPiece(assetID: clip.id, start: .zero, end: clip.duration)])
         }
         .accessibilityAction(named: "Rename") { renamingAsset = clip.id }
+        .accessibilityAction(named: "Remove from Project") { if !removeFromProject([clip.id]) { NSSound.beep() } }
     }
 
     private func accessibilityName(_ entry: BrowserEntry, isUsed: Bool) -> String {
@@ -699,7 +710,8 @@ struct ClipsTab: View {
     // MARK: - Keys
 
     /// Up and down move the selection (Shift extends it); Return adds the
-    /// selection to the timeline. Option-Left and Option-Right skim the
+    /// selection to the timeline, and Delete (or Command-Delete) takes the
+    /// media wholly selected out of the project. Option-Left and Option-Right skim the
     /// selected clip a frame at a time (ten with Shift), I and O set its
     /// range's ends where it is skimmed, and Escape stops skimming.
     private func handleKey(_ press: KeyPress, snapshot: Snapshot) -> Bool {
@@ -724,6 +736,11 @@ struct ClipsTab: View {
         if press.key == .return {
             guard let first = picked.range?.item ?? picked.ordered(in: order).first else { return false }
             addToTimeline(piecesToAdd(from: first, snapshot: snapshot))
+            return true
+        }
+        if press.key == .delete || press.key == .deleteForward {
+            guard press.modifiers.isDisjoint(with: [.control, .option, .shift]), !picked.items.isEmpty else { return false }
+            if !removeSelection(snapshot) { NSSound.beep() }
             return true
         }
         guard !order.isEmpty else { return false }
@@ -770,6 +787,14 @@ struct ClipsTab: View {
                     Button("Merge Selected Scenes") { mergeScenes(Set(sceneIDs), assetID: entry.clip.id, scenes: scenes) }
                 }
             }
+            let assets = picked.contains(entry.id) ? wholeAssetsPicked(snapshot) : []
+            if !assets.isEmpty {
+                Divider()
+                Button(assets.count > 1 ? "Remove \(assets.count) Clips from Project" : "Remove from Project") {
+                    removeFromProject(assets)
+                }
+                .disabled(assets.allSatisfy(project.isUsed(media:)))
+            }
         }
     }
 
@@ -807,6 +832,10 @@ struct ClipsTab: View {
         }
         Divider()
         ReplaceMediaMenuItems(clip: clip, project: access.binding, analysis: analysis, controller: replacement, packageURL: packageURL)
+        Divider()
+        // Only what no timeline uses, so nothing is left without its media.
+        Button("Remove from Project") { removeFromProject([clip.id]) }
+            .disabled(project.isUsed(media: clip.id))
     }
 
     @ViewBuilder
@@ -840,6 +869,33 @@ struct ClipsTab: View {
         guard let result = project.addPieces(pieces, intoTimeline: activeTimelineID, mutingSound: mutesAddedSound),
               let clipID = result.clipIDs.first else { return }
         selection = TimelineSelection(timelineID: activeTimelineID, layerID: result.layerID, timelineClipID: clipID)
+    }
+
+    /// The assets the selection takes in whole, in browser order: each one
+    /// with every clip of it selected (every scene, for a video split into
+    /// them) and no range picked.
+    private func wholeAssetsPicked(_ snapshot: Snapshot) -> [UUID] {
+        guard picked.range == nil else { return [] }
+        return snapshot.clips.map(\.id).filter { asset in
+            let entries = snapshot.entries.filter { $0.clip.id == asset }
+            return !entries.isEmpty && entries.allSatisfy { picked.contains($0.id) }
+        }
+    }
+
+    /// Takes the media wholly selected out of the project, leaving what a
+    /// timeline uses; false when that leaves nothing to take out.
+    private func removeSelection(_ snapshot: Snapshot) -> Bool {
+        removeFromProject(wholeAssetsPicked(snapshot))
+    }
+
+    /// Takes the assets no timeline uses out of the project, undoably; their
+    /// files stay where they are. False when none of them can go.
+    @discardableResult
+    private func removeFromProject(_ assetIDs: [UUID]) -> Bool {
+        guard assetIDs.contains(where: { !project.isUsed(media: $0) }) else { return false }
+        if let skimmed = skim?.target?.item.base as? BrowserItemID, assetIDs.contains(skimmed.assetID) { skim?.end() }
+        project.removeUnusedMedia(assetIDs)
+        return true
     }
 
     /// The cuts whose removal joins the picked scenes: each picked scene's

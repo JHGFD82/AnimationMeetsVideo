@@ -74,6 +74,15 @@ struct BrowserSelection<ID: Hashable>: Equatable {
         range = Range(item: id, start: start, end: end)
     }
 
+    /// Command-A: every item listed, whole. The anchor stays when it is
+    /// listed, so Shift-click still extends from it.
+    mutating func selectAll(in order: [ID]) {
+        revision += 1
+        items = Set(order)
+        range = nil
+        if anchor.map(order.contains) != true { anchor = order.first }
+    }
+
     mutating func clear() {
         revision += 1
         items = []

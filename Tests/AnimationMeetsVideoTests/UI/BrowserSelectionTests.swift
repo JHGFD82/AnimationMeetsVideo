@@ -101,4 +101,16 @@ import Testing
         #expect(selection.range == nil)
         #expect(selection.anchor == nil)
     }
+
+    /// Command-A takes every item whole, dropping a range, and Shift-click
+    /// still extends from the item last clicked.
+    @Test func selectAllTakesEveryItemAndKeepsTheAnchor() {
+        var selection = BrowserSelection<String>()
+        selection.setRange(of: "c", from: 1, to: 2, duration: 5)
+        selection.selectAll(in: order)
+        #expect(selection.items == Set(order))
+        #expect(selection.range == nil)
+        selection.shiftClick("e", in: order)
+        #expect(selection.ordered(in: order) == ["c", "d", "e"])
+    }
 }

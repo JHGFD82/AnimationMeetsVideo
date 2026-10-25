@@ -32,7 +32,8 @@ enum TimelinesLayout: String, CaseIterable, Identifiable {
 /// one in the editor, and a click on the name of the only one selected,
 /// or Return, renames it. Its menu embeds the selected timelines (or the
 /// picked range of one) in the active timeline or duplicates them, and
-/// renames or opens the one clicked. Dragged, the selected timelines go
+/// renames or opens the one clicked; it and Delete delete those nothing
+/// uses. Dragged, the selected timelines go
 /// onto the timeline embedded, as clips do, or onto an effect that takes
 /// an input. The active timeline is marked as open.
 struct TimelinesList: View {
@@ -45,6 +46,8 @@ struct TimelinesList: View {
     var onRename: (UUID, String) -> Void = { _, _ in }
     /// Opens a timeline in a window of its own; nil where there is none.
     var onOpenInNewWindow: ((UUID) -> Void)?
+    /// Deletes timelines; only ones `canDeleteTimeline` allows are passed.
+    var onDelete: ([UUID]) -> Void = { _ in }
 
     @AppStorage(Preferences.browserSort) private var sort = BrowserSort.added
     @AppStorage(Preferences.timelinesLayout) private var layout = TimelinesLayout.filmstrips
@@ -52,6 +55,7 @@ struct TimelinesList: View {
     /// The timeline whose name is being edited in its row.
     @State private var renamingID: UUID?
     @FocusState private var focused: Bool
+    @Environment(BrowserSkim.self) private var skim: BrowserSkim?
 
     /// A timeline at its place in the tree.
     struct Node: Identifiable {
@@ -117,20 +121,55 @@ struct TimelinesList: View {
 
     var body: some View {
         let nodes = Self.nodes(of: project, sort: sort)
-        switch layout {
-        case .tree:
-            tree(Self.rows(of: nodes, collapsed: collapsed))
-        case .filmstrips:
-            // Every timeline, in the tree's order read top to bottom.
-            let order = Self.rows(of: nodes, collapsed: []).map(\.timelineID)
-            TimelineFilmstrips(
-                project: project, activeTimelineID: activeTimelineID, order: order,
-                picked: $picked, renamingID: $renamingID,
-                onOpen: open, onRename: onRename,
-                menu: { id in AnyView(menu(id, order: order)) }
-            )
-            .onChange(of: order) { _, order in picked.keep(only: order) }
+        // Every timeline, in the tree's order read top to bottom.
+        let all = Self.rows(of: nodes, collapsed: []).map(\.timelineID)
+        Group {
+            switch layout {
+            case .tree:
+                tree(Self.rows(of: nodes, collapsed: collapsed))
+            case .filmstrips:
+                TimelineFilmstrips(
+                    project: project, activeTimelineID: activeTimelineID, order: all,
+                    picked: $picked, renamingID: $renamingID,
+                    onOpen: open, onRename: onRename,
+                    menu: { id in AnyView(menu(id, order: all)) }
+                )
+                .onChange(of: all) { _, order in picked.keep(only: order) }
+            }
         }
+        // In either layout, from the keys or the Edit menu while the
+        // browser is the active panel (see `EditCommands`).
+        .onKeyPress(keys: [.delete, .deleteForward]) { press in
+            guard renamingID == nil, press.modifiers.isDisjoint(with: [.control, .option, .shift]), !picked.items.isEmpty else {
+                return .ignored
+            }
+            if !deleteSelection(order: all) { NSSound.beep() }
+            return .handled
+        }
+        .focusedSceneValue(\.browserEditActions, EditMenuActions(
+            delete: { if !deleteSelection(order: all) { NSSound.beep() } },
+            // What is shown: a collapsed row's timelines stay out.
+            selectAll: { picked.selectAll(in: layout == .tree ? Self.rows(of: nodes, collapsed: collapsed).map(\.timelineID) : all) },
+            state: [AnyHashable(picked.revision), AnyHashable(all), AnyHashable(collapsed), AnyHashable(layout)]
+        ))
+    }
+
+    /// Deletes the selected timelines that nothing uses; false when none
+    /// of them can go.
+    private func deleteSelection(order: [UUID]) -> Bool {
+        delete(picked.ordered(in: order))
+    }
+
+    /// Deletes those of `ids` that nothing uses, leaving the rest; false
+    /// when none can go. One being skimmed stops being skimmed first.
+    @discardableResult
+    private func delete(_ ids: [UUID]) -> Bool {
+        let deletable = ids.filter(project.canDeleteTimeline)
+        guard !deletable.isEmpty else { return false }
+        if let skimmed = skim?.target?.item.base as? TimelineStripID, deletable.contains(skimmed.timelineID) { skim?.end() }
+        renamingID = nil
+        onDelete(deletable)
+        return true
     }
 
     private func tree(_ rows: [Row]) -> some View {
@@ -250,7 +289,7 @@ struct TimelinesList: View {
             Button("Embed Range in Active Timeline") { onEmbed(id, range) }
                 .disabled(!project.canEmbed(id, into: activeTimelineID))
         }
-        Button(targets.count > 1 ? "Embed \(embeddable.count) Timelines in Active Timeline" : "Embed in Active Timeline") {
+        Button(embeddable.count > 1 ? "Embed \(embeddable.count) Timelines in Active Timeline" : "Embed in Active Timeline") {
             embeddable.forEach { onEmbed($0, nil) }
         }
         .disabled(embeddable.isEmpty)
@@ -261,6 +300,11 @@ struct TimelinesList: View {
         Button(targets.count > 1 ? "Duplicate \(targets.count) Timelines" : "Duplicate Timeline") {
             targets.forEach(onDuplicate)
         }
+        Divider()
+        // Not the main timeline, nor one another embeds or takes as an input.
+        let deletable = targets.filter(project.canDeleteTimeline)
+        Button(deletable.count > 1 ? "Delete \(deletable.count) Timelines" : "Delete Timeline") { delete(deletable) }
+            .disabled(deletable.isEmpty)
     }
 
     private func row(_ timeline: Timeline, _ listed: Row, order: [UUID]) -> some View {
@@ -301,6 +345,7 @@ struct TimelinesList: View {
         }
         .accessibilityAction(named: "Rename timeline") { renamingID = timeline.id }
         .accessibilityAction(named: "Duplicate timeline") { onDuplicate(timeline.id) }
+        .accessibilityAction(named: "Delete timeline") { if !delete([timeline.id]) { NSSound.beep() } }
         .accessibilityAction(named: isSelected ? "Deselect" : "Add to selection") { picked.commandClick(timeline.id) }
         .accessibilityAction(named: collapsed.contains(timeline.id) ? "Show nested timelines" : "Hide nested timelines") {
             if listed.hasChildren { toggleNested(timeline.id) } else { NSSound.beep() }

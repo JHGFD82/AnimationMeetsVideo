@@ -219,7 +219,8 @@ struct BrowserPanel: View {
             onEmbed: embed,
             onDuplicate: { id in project.duplicateTimeline(id) },
             onRename: { id, name in project.renameTimeline(id, to: name) },
-            onOpenInNewWindow: onOpenTimelineInNewWindow
+            onOpenInNewWindow: onOpenTimelineInNewWindow,
+            onDelete: { ids in project.deleteUnusedTimelines(ids) }
         )
     }
 
