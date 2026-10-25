@@ -266,11 +266,37 @@ Built (step 3a):
   on-or-off settings as checkboxes. The effects panel shows the same
   controls; a Text effect with no words says so there. Reset keeps the
   words and font.
-- **Not yet, needing a range of letters picked in the words:** manual
-  kerning between two letters, and any setting for some letters and not
-  others (see Styled runs). Hyphenation (Core Text's line breaking
-  doesn't hyphenate), optical kerning, superscript and subscript, and
-  the anchor's place in the box.
+- **Styled runs.** `TextContent.runs` set some letters apart from the
+  block: each a range of UTF-16 code units (as the text editor counts)
+  and a `TextStyle` of optional settings: font, size, tracking, baseline
+  shift, vertical and horizontal scale, case, underline, strikethrough,
+  and fill and stroke colors. The words are typed in an AppKit text view
+  (`TextWordsEditor`), since SwiftUI's editor doesn't say what is
+  selected. With letters selected, the inspector's Character group sets
+  theirs (`TextSelectionRows`): each row shows the first selected
+  letter's own setting, or the block's dimmer, a button gives the
+  block's back, and Clear Styling gives back all of them. Leading,
+  Kerning and Character Rotation stay the block's. Typing keeps runs on
+  their letters: what is typed takes the style of the letter before it,
+  and an edit the editor makes itself (an undo) keeps the styles of what
+  is unchanged at either end. Adjacent letters styled alike are one run.
+  - **Keyframes.** A run's setting holds still: it replaces the block's
+    for its letters at every moment, so the block's keyframes don't
+    reach them, and unstyled letters follow the block's keyframes.
+    Animating some letters apart is the animators' job (still to come).
+  - **Colors.** A run's fill or stroke color is used where the block has
+    a fill or a stroke; turning the block's off turns off its runs'. The
+    letters are drawn as pieces, one per style, all the fills first and
+    then the strokes, so a stroke may overlap a neighbouring letter's fill
+    as in Illustrator.
+  - **Layout.** Each letter's scale is its font's matrix, so Core Text
+    measures, wraps and draws it scaled; a run's positions come back
+    without that scale and are scaled from where the line puts the run
+    (`CTLineGetOffsetForStringIndex`). Auto leading is 120% of the
+    largest size in each line, and a line is as tall as its tallest font.
+- **Not yet:** hyphenation (Core Text's line breaking doesn't hyphenate),
+  manual kerning between two letters, optical kerning, superscript and
+  subscript, and the anchor's place in the box.
 - **Naming.** A shape clip with a Text effect is named by the first line
   of its words on the timeline, in the inspector and in undo steps
   (`resolvedInfo(for:)` of the clip), and VoiceOver calls it a text clip.
@@ -284,9 +310,6 @@ Built (step 3a):
 
 Still to come:
 
-- **Styled runs.** An attributed string: runs of font family, style,
-  size, tracking, fill and stroke within one block, and the anchor's
-  place in the box.
 - **Variable fonts.** A font's variation axes (weight, width, slant,
   optical size) are controls like any other, so a word can animate from
   light to black.
@@ -365,8 +388,11 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
    kept, reading the controls, empty text, a missing font, the font
    catalog, a text layer drawn over black, render keys, saving, naming,
    Reset and the empty-text note; the `UISnapshots` cases `textInspector`
-   and `shapeInspector` show the inspector. (b) Styled runs, with manual
-   kerning. (c)
+   and `shapeInspector` show the inspector. (b, done) Styled runs: the
+   text editor, selection rows, runs kept through edits, drawing and
+   saving; `TextTests` checks editing, joining runs, a run's size, shift,
+   scale, case, colors and underline, and saving, and `UISnapshots`'
+   `textSelectionInspector` shows the selection's rows. (c)
    Variable axes. (d) Animators. (e) Text on a path. (f) Missing fonts
    reported before export.
 4. **Viewer handles.** Selecting a graphic clip in the viewer, handles for

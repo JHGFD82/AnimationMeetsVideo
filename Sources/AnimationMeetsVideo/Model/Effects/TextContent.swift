@@ -2,10 +2,10 @@ import CoreGraphics
 import CoreMedia
 import Foundation
 
-/// What a Text effect writes, which isn't a control: the words and the
-/// font they are set in (see docs/graphic-layers.md, "Text"). Its size,
-/// alignment, tracking, line height and wrap width are controls, so they
-/// can be keyframed like any other.
+/// What a Text effect writes, which isn't a control: the words, the font
+/// they are set in, and what some letters set differently (see
+/// docs/graphic-layers.md, "Text"). Its size, alignment, tracking and the
+/// rest are controls, so they can be keyframed like any other.
 struct TextContent: Equatable, Sendable {
     /// The words, with a line break for each new line.
     var string = "Text"
@@ -13,6 +13,14 @@ struct TextContent: Equatable, Sendable {
     /// ("HelveticaNeue-Bold"). Kept even when the font isn't installed,
     /// which then draws with a substitute (see `FontCatalog.isInstalled`).
     var fontName = TextContent.defaultFontName
+    /// Letters styled apart from the block, in order, none overlapping.
+    var runs: [TextRun] = []
+
+    init(string: String = "Text", fontName: String = TextContent.defaultFontName, runs: [TextRun] = []) {
+        self.string = string
+        self.fontName = fontName
+        self.runs = runs
+    }
 
     /// A heavy sans serif every Mac has.
     static let defaultFontName = "HelveticaNeue-Bold"

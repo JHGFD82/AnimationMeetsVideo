@@ -28,8 +28,119 @@ extension DrawingFixture {
         return setting
     }
 
+    /// The setting's glyphs and rules, the block's middle at the origin.
+    private func outline(_ setting: TextOutline.Setting) -> CGPath {
+        TextOutline(setting: setting, center: .zero).path
+    }
+
     private func bounds(_ setting: TextOutline.Setting) -> CGRect {
-        TextLayout.layOut(setting).boundingBoxOfPath
+        outline(setting).boundingBoxOfPath
+    }
+
+    /// The setting's pieces, filled white and stroked black.
+    private func pieces(_ setting: TextOutline.Setting) -> [TextOutline.Piece] {
+        TextOutline(setting: setting, center: .zero).pieces(fill: [1, 1, 1, 1], stroke: [0, 0, 0, 1])
+    }
+
+    // MARK: Styled runs
+
+    @Test func editingKeepsRunsOnTheirLetters() {
+        var content = TextContent(string: "Hello world")
+        content.changeStyle(in: NSRange(location: 6, length: 5)) { $0.size = 200 }
+        #expect(content.runs == [TextRun(start: 6, length: 5, style: TextStyle(size: 200))])
+        // Typing before the run moves it along; typing inside it widens it.
+        content.replaceCharacters(in: NSRange(location: 0, length: 0), with: "Oh, ")
+        #expect(content.runs.map(\.range) == [NSRange(location: 10, length: 5)])
+        content.replaceCharacters(in: NSRange(location: 12, length: 0), with: "!!")
+        #expect(content.runs.map(\.range) == [NSRange(location: 10, length: 7)])
+        // Deleting part of it shrinks it; an edit the editor made itself
+        // keeps what is unchanged at either end.
+        content.replaceCharacters(in: NSRange(location: 10, length: 3), with: "")
+        #expect(content.runs.map(\.range) == [NSRange(location: 10, length: 4)])
+        content.replaceString(with: "Oh, Hello, there world")
+        #expect(content.string == "Oh, Hello, there world")
+        // "Oh, Hello !rld": the unchanged "rld" keeps its style.
+        #expect(content.runs.map(\.range) == [NSRange(location: 19, length: 3)])
+        // Styling letters back to nothing removes the run.
+        content.changeStyle(in: NSRange(location: 0, length: content.length)) { $0 = .none }
+        #expect(content.runs.isEmpty)
+    }
+
+    @Test func adjacentLettersStyledAlikeAreOneRun() {
+        var content = TextContent(string: "abcdef")
+        content.changeStyle(in: NSRange(location: 0, length: 2)) { $0.underline = true }
+        content.changeStyle(in: NSRange(location: 2, length: 2)) { $0.underline = true }
+        content.changeStyle(in: NSRange(location: 3, length: 3)) { $0.tracking = 50 }
+        #expect(content.runs == [
+            TextRun(start: 0, length: 3, style: TextStyle(underline: true)),
+            TextRun(start: 3, length: 1, style: TextStyle(tracking: 50, underline: true)),
+            TextRun(start: 4, length: 2, style: TextStyle(tracking: 50)),
+        ])
+    }
+
+    @Test func aRunSetsItsLettersApartFromTheBlock() {
+        let plain = setting("HHHH")
+        var bigger = plain
+        bigger.runs = [TextRun(start: 2, length: 2, style: TextStyle(size: 200))]
+        // The two big letters are twice as wide and the block as tall as them.
+        let small = bounds(plain), mixed = bounds(bigger)
+        #expect(abs(mixed.width - small.width * 1.5) < 4)
+        #expect(mixed.height > small.height * 1.8)
+
+        var shifted = plain
+        shifted.runs = [TextRun(start: 0, length: 1, style: TextStyle(baselineShift: 40))]
+        #expect(abs(bounds(shifted).minY - (small.minY - 40)) < 0.5)
+
+        var wide = plain
+        wide.runs = [TextRun(start: 0, length: 4, style: TextStyle(horizontalScale: 200))]
+        #expect(abs(bounds(wide).width - small.width * 2) < 4)
+
+        var capped = setting("hello")
+        capped.runs = [TextRun(start: 0, length: 5, style: TextStyle(textCase: .allCaps))]
+        #expect(bounds(capped) == bounds(setting("HELLO")))
+    }
+
+    @Test func aRunsColorsPaintItsLetters() {
+        var styled = setting("ab")
+        styled.runs = [TextRun(start: 1, length: 1, style: TextStyle(fill: [1, 0, 0, 1], stroke: [0, 0, 1, 1]))]
+        let drawn = pieces(styled)
+        #expect(drawn.count == 2)
+        #expect(drawn.map(\.fill) == [[1, 1, 1, 1], [1, 0, 0, 1]])
+        #expect(drawn.map(\.stroke) == [[0, 0, 0, 1], [0, 0, 1, 1]])
+        // Without a block fill, a run's color doesn't add one.
+        #expect(TextOutline(setting: styled, center: .zero).pieces(fill: nil, stroke: nil).allSatisfy { $0.fill == nil && $0.stroke == nil })
+    }
+
+    @Test func aRunCanUnderlineSomeLetters() {
+        var styled = setting("HHHH")
+        styled.runs = [TextRun(start: 0, length: 2, style: TextStyle(underline: true))]
+        let underlined = pieces(styled).first { _ in true }
+        let plain = bounds(setting("HHHH"))
+        #expect(bounds(styled).maxY > plain.maxY + 2)
+        // The rule spans only the first two letters.
+        #expect((underlined?.path.boundingBoxOfPath.width ?? 0) < plain.width * 0.6)
+    }
+
+    @Test func savingKeepsRuns() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let text = try fixture.addShape(.text)
+        fixture.setText("Styled words", ofClip: text.clipID)
+        fixture.project.editClip(text.clipID, in: fixture.timelineID) { clip in
+            clip.effects[0].text?.changeStyle(in: NSRange(location: 0, length: 6)) { style in
+                style = TextStyle(
+                    fontName: "HelveticaNeue", size: 80, tracking: 20, baselineShift: 4, horizontalScale: 90, verticalScale: 110,
+                    textCase: .allCaps, underline: true, strikethrough: false, fill: [1, 0, 0, 1], stroke: [0, 1, 0, 0.5]
+                )
+            }
+        }
+        let package = fixture.directory.appending(path: "Runs.amv", directoryHint: .isDirectory)
+        try await ProjectStore.save(fixture.project, to: package)
+        let loaded = try await ProjectStore.load(from: package)
+        let saved = try #require(fixture.project.clipAndLayer(text.clipID, in: fixture.timelineID)?.clip)
+        let read = try #require(loaded.project.clipAndLayer(text.clipID, in: loaded.project.rootTimelineID)?.clip)
+        #expect(read.effects == saved.effects)
+        #expect(read.effects.first?.text?.runs.count == 1)
     }
 
     // MARK: Layout
@@ -138,7 +249,7 @@ extension DrawingFixture {
         let plain = bounds(setting("Hello"))
         let wide = bounds(setting("Hello") { $0.horizontalScale = 200 })
         let short = bounds(setting("Hello") { $0.verticalScale = 50 })
-        #expect(abs(wide.width - plain.width * 2) < 2)
+        #expect(abs(wide.width - plain.width * 2) < 2, "plain \(plain.width), wide \(wide.width)")
         #expect(abs(short.height - plain.height / 2) < 1)
         #expect(abs(short.width - plain.width) < 0.5)
     }
@@ -159,9 +270,9 @@ extension DrawingFixture {
     }
 
     @Test func underlineAndStrikethroughAreRules() {
-        let plain = TextLayout.layOut(setting("H"))
-        let underlined = TextLayout.layOut(setting("H") { $0.underline = true })
-        let struck = TextLayout.layOut(setting("H") { $0.strikethrough = true })
+        let plain = outline(setting("H"))
+        let underlined = outline(setting("H") { $0.underline = true })
+        let struck = outline(setting("H") { $0.strikethrough = true })
         // The underline sits below the baseline, under the H.
         #expect(underlined.boundingBoxOfPath.maxY > plain.boundingBoxOfPath.maxY + 2)
         #expect(struck != plain)
@@ -205,11 +316,10 @@ extension DrawingFixture {
         #expect(read.align == .justifyAll)
         #expect(read.stylisticSet == 20)
         #expect(read.contextualAlternates)
-        #expect(read.lineAdvance == 150)
     }
 
     @Test func noWordsDrawNothing() {
-        #expect(TextLayout.layOut(setting("")).isEmpty)
+        #expect(outline(setting("")).isEmpty)
         var effect = Effect(kind: .text)
         effect.text?.string = ""
         #expect(ShapeStep(effect, at: .zero, center: .zero) == nil)

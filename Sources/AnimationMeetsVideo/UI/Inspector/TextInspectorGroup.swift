@@ -9,8 +9,9 @@ import SwiftUI
 /// and OpenType (ligatures, alternates, figures, fractions, ordinals,
 /// swash, stylistic sets). All but the words and font are the effect's own
 /// controls, so a number set here at the playhead is a keyframe there once
-/// it is animated, as in the effects panel. Its fill and stroke follow in
-/// `PaintInspectorGroup`.
+/// it is animated, as in the effects panel. With letters selected in the
+/// words, Character styles them apart instead (`TextSelectionRows`). Its
+/// fill and stroke follow in `PaintInspectorGroup`.
 struct TextInspectorGroup: View {
     let effect: Effect
     /// Put before each group's title when the clip draws more than one
@@ -22,8 +23,20 @@ struct TextInspectorGroup: View {
     /// Moves the playhead to a time in the clip's source time.
     let onSeek: (CMTime) -> Void
 
-    /// Read once: listing the Mac's fonts takes a moment.
-    private static let families = FontCatalog.families()
+    /// The letters selected in the words.
+    @State private var selection: NSRange
+
+    init(
+        effect: Effect, prefix: String?, playhead: PlayheadTime, onEdit: @escaping ((inout Effect) -> Void) -> Void,
+        onSeek: @escaping (CMTime) -> Void, selection: NSRange = NSRange(location: 0, length: 0)
+    ) {
+        self.effect = effect
+        self.prefix = prefix
+        self.playhead = playhead
+        self.onEdit = onEdit
+        self.onSeek = onSeek
+        _selection = State(initialValue: selection)
+    }
 
     private var content: TextContent { effect.text ?? TextContent() }
 
@@ -34,27 +47,19 @@ struct TextInspectorGroup: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.group) {
             InspectorGroup(title("Text")) {
-                TextEditor(text: Binding(
-                    get: { content.string },
-                    set: { string in onEdit { $0.text = TextContent(string: string, fontName: $0.text?.fontName ?? TextContent.defaultFontName) } }
-                ))
-                .font(Design.Typeface.body)
-                .scrollContentBackground(.hidden)
-                .padding(4)
-                .frame(minHeight: 56, maxHeight: 120)
-                .background(Design.Surface.base.color, in: RoundedRectangle(cornerRadius: Design.Radius.control))
-                .accessibilityLabel("Text")
-                .help("The words the layer draws; Return starts a new paragraph")
+                TextWordsEditor(content: content, selection: $selection) { edited in onEdit { $0.text = edited } }
+                    .frame(minHeight: 56, maxHeight: 120)
+                    .background(Design.Surface.base.color, in: RoundedRectangle(cornerRadius: Design.Radius.control))
+                    .help("The words the layer draws; Return starts a new paragraph. Select letters to style them apart.")
             }
             InspectorGroup(title("Character")) {
-                fontPickers
-                if !FontCatalog.isInstalled(content.fontName) {
-                    Text("\u{201C}\(content.fontName)\u{201D} isn't installed on this Mac, so it draws with \(FontCatalog.familyAndStyle(of: content.fontName).family) until it is.")
-                        .font(Design.Typeface.label)
-                        .foregroundStyle(Design.statusWarning)
-                        .fixedSize(horizontal: false, vertical: true)
+                if selection.length > 0, selection.location < content.length {
+                    selectedLetters
+                } else {
+                    FontPickerRows(fontName: content.fontName) { name in onEdit { $0.text?.fontName = name } }
+                    missingFontNote(content.fontName)
+                    controls(EffectKind.characterControls)
                 }
-                controls(EffectKind.characterControls)
             }
             InspectorGroup(title("Paragraph")) {
                 controls(EffectKind.paragraphControls)
@@ -69,56 +74,53 @@ struct TextInspectorGroup: View {
         }
     }
 
-    private func controls(_ kinds: [ControlKind]) -> some View {
-        InspectorControls(effect: effect, kinds: kinds, playhead: playhead, onEdit: onEdit, onSeek: onSeek)
+    /// The selected letters' own settings, and the block's that can't be
+    /// set apart.
+    @ViewBuilder
+    private var selectedLetters: some View {
+        let time = playhead.now
+        let block = TextOutline.Setting(effect, at: time) ?? TextOutline.Setting(string: content.string, fontName: content.fontName, size: 1)
+        let style = content.style(at: selection.location)
+        HStack {
+            Text("\(selection.length) letter\(selection.length == 1 ? "" : "s") selected")
+                .font(Design.Typeface.bodyEmphasis)
+                .foregroundStyle(Design.textPrimary)
+            Spacer()
+            Button("Clear Styling") { changeSelection { $0 = .none } }
+                .controlSize(.small)
+                .disabled(!content.runs.contains { NSIntersectionRange($0.range, selection).length > 0 })
+                .help("Give the selected letters the block's settings")
+        }
+        TextSelectionRows(
+            style: style, letter: block.letterStyle(style),
+            blockFill: effect.control(.fill)?.values(at: time) ?? [1, 1, 1, 1],
+            blockStroke: effect.control(.stroke)?.values(at: time) ?? [0, 0, 0, 1],
+            onChange: changeSelection
+        )
+        missingFontNote(style.fontName ?? content.fontName)
+        Text("Leading, Kerning and Character Rotation are the whole block's:")
+            .font(Design.Typeface.label)
+            .foregroundStyle(Design.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        controls([.leading, .kerning, .characterRotation])
     }
 
-    // MARK: Font
+    private func changeSelection(_ change: (inout TextStyle) -> Void) {
+        let range = selection
+        onEdit { $0.text?.changeStyle(in: range, change) }
+    }
 
     @ViewBuilder
-    private var fontPickers: some View {
-        let shown = FontCatalog.familyAndStyle(of: content.fontName)
-        let styles = FontCatalog.styles(ofFamily: shown.family)
-        labelled("Font") {
-            Picker("Font", selection: Binding(
-                get: { shown.family },
-                set: { family in
-                    guard let name = FontCatalog.fontName(inFamily: family, like: content.fontName) else { return }
-                    setFont(name)
-                }
-            )) {
-                ForEach(Self.families, id: \.self) { Text($0).tag($0) }
-            }
-        }
-        labelled("Style") {
-            Picker("Style", selection: Binding(get: { content.fontName }, set: setFont)) {
-                // A missing font is kept, under its own name, until another
-                // is picked.
-                if !styles.contains(where: { $0.fontName == content.fontName }) {
-                    Text(content.fontName).tag(content.fontName)
-                }
-                ForEach(styles) { Text($0.name).tag($0.fontName) }
-            }
+    private func missingFontNote(_ fontName: String) -> some View {
+        if !FontCatalog.isInstalled(fontName) {
+            Text("\u{201C}\(fontName)\u{201D} isn't installed on this Mac, so it draws with \(FontCatalog.familyAndStyle(of: fontName).family) until it is.")
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.statusWarning)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func setFont(_ name: String) {
-        onEdit { $0.text = TextContent(string: $0.text?.string ?? "", fontName: name) }
-    }
-
-    /// A row with `name` where the control rows have theirs, and a picker.
-    private func labelled(_ name: String, @ViewBuilder picker: () -> some View) -> some View {
-        HStack(spacing: 4) {
-            Color.clear.frame(width: 18, height: 1)
-            Text(name)
-                .foregroundStyle(Design.textSecondary)
-                .frame(width: InspectorControlRow.nameWidth, alignment: .leading)
-            picker()
-                .labelsHidden()
-                .controlSize(.small)
-                .frame(width: 150, alignment: .leading)
-            Spacer(minLength: 0)
-        }
-        .font(Design.Typeface.label)
+    private func controls(_ kinds: [ControlKind]) -> some View {
+        InspectorControls(effect: effect, kinds: kinds, playhead: playhead, onEdit: onEdit, onSeek: onSeek)
     }
 }

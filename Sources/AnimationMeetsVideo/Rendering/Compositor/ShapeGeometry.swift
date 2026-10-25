@@ -95,7 +95,22 @@ struct ShapeStep: Equatable, Sendable {
 
     /// What it paints, bottom first: its fill, then its stroke, each an
     /// area filled with a color.
+    /// Text paints each group of letters drawn alike in its own colors and
+    /// opacity, all the fills first, then the strokes.
     var paints: [(area: CGPath, color: [Double])] {
+        if case .text(let text) = outline {
+            let pieces = text.pieces(fill: fill, stroke: stroke?.color)
+            func faded(_ color: [Double], _ opacity: Double) -> [Double] {
+                color.count == 4 ? [color[0], color[1], color[2], color[3] * opacity] : color
+            }
+            var result = pieces.compactMap { piece in piece.fill.map { (piece.path as CGPath, faded($0, piece.opacity)) } }
+            if let stroke {
+                result += pieces.compactMap { piece in
+                    piece.stroke.map { (stroke.area(around: piece.path), faded($0, piece.opacity)) }
+                }
+            }
+            return result
+        }
         let outline = path
         var result: [(area: CGPath, color: [Double])] = []
         if let fill { result.append((outline, fill)) }

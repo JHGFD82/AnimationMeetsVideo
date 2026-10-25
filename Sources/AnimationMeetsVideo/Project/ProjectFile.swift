@@ -538,17 +538,76 @@ struct ProjectFile: Codable {
         }
     }
 
-    /// A Text effect's words and the PostScript name of its font.
+    /// A Text effect's words, the PostScript name of its font, and its
+    /// styled runs.
     struct TextEntry: Codable {
         var string: String
         var font: String
+        /// Absent while no letters are styled apart.
+        var runs: [TextRunEntry]?
 
         init(_ content: TextContent) {
             string = content.string
             font = content.fontName
+            runs = content.runs.isEmpty ? nil : content.runs.map(TextRunEntry.init)
         }
 
-        var content: TextContent { TextContent(string: string, fontName: font) }
+        var content: TextContent {
+            TextContent(string: string, fontName: font, runs: (runs ?? []).map(\.run))
+        }
+    }
+
+    /// Letters styled apart from the block: where they start and how many
+    /// UTF-16 code units they span, and each setting they override.
+    struct TextRunEntry: Codable {
+        var start: Int
+        var length: Int
+        var font: String?
+        var size: Double?
+        var tracking: Double?
+        var baselineShift: Double?
+        var horizontalScale: Double?
+        var verticalScale: Double?
+        /// A `TextCase` name.
+        var textCase: String?
+        var underline: Bool?
+        var strikethrough: Bool?
+        var fill: [Double]?
+        var stroke: [Double]?
+
+        init(_ run: TextRun) {
+            start = run.start
+            length = run.length
+            let style = run.style
+            font = style.fontName
+            size = style.size
+            tracking = style.tracking
+            baselineShift = style.baselineShift
+            horizontalScale = style.horizontalScale
+            verticalScale = style.verticalScale
+            textCase = style.textCase?.rawValue
+            underline = style.underline
+            strikethrough = style.strikethrough
+            fill = style.fill
+            stroke = style.stroke
+        }
+
+        var run: TextRun {
+            TextRun(start: start, length: length, style: TextStyle(
+                fontName: font, size: size, tracking: tracking, baselineShift: baselineShift,
+                horizontalScale: horizontalScale, verticalScale: verticalScale, textCase: textCase.flatMap(TextCase.init(rawValue:)),
+                underline: underline, strikethrough: strikethrough, fill: fill, stroke: stroke
+            ))
+        }
+
+        static let shape = JSONShape.object(JSONObjectShape(fields: [
+            .required("start", .integer), .required("length", .integer),
+            .optional("font", .string), .optional("size", .number), .optional("tracking", .number),
+            .optional("baselineShift", .number), .optional("horizontalScale", .number), .optional("verticalScale", .number),
+            .optional("textCase", .choice(TextCase.allCases.map(\.rawValue), noun: "case")),
+            .optional("underline", .bool), .optional("strikethrough", .bool),
+            .optional("fill", .numbers(count: 4)), .optional("stroke", .numbers(count: 4)),
+        ]))
     }
 
     /// One effect of a clip's stack. `kind` is an `EffectKind` name such as
@@ -976,7 +1035,9 @@ extension ProjectFile {
             }
             if kind.isKeyframing { fields.append(.optional("keyframing", .object(keyframing))) }
             if kind == .text {
-                fields.append(.optional("text", .object(object([.required("string", .string), .required("font", .string)]))))
+                fields.append(.optional("text", .object(object([
+                    .required("string", .string), .required("font", .string), .optional("runs", .array(TextRunEntry.shape)),
+                ]))))
             }
             fields += extra
             var controls = Dictionary(uniqueKeysWithValues: kind.controlKinds.map { ($0.savedName, control($0)) })

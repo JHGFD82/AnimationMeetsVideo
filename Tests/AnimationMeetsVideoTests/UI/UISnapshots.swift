@@ -527,6 +527,26 @@ struct UISnapshots {
         )
     }
 
+    /// A Text effect's groups with "meets" selected, set apart in red at
+    /// 80 pixels: the selected letters' rows, their own settings with a
+    /// button giving the block's back, and the block's that can't be.
+    @Test func textSelectionInspector() throws {
+        var effect = Effect(kind: .text)
+        effect.text = TextContent(string: "Animation meets video")
+        effect.text?.changeStyle(in: NSRange(location: 10, length: 5)) { $0.size = 80; $0.fill = [1, 0.2, 0.2, 1] }
+        try SnapshotSupport.render(
+            ScrollView {
+                TextInspectorGroup(
+                    effect: effect, prefix: nil, playhead: PlayheadTime(fixed: .zero), onEdit: { _ in }, onSeek: { _ in },
+                    selection: NSRange(location: 10, length: 5)
+                )
+                .padding(Design.Space.group)
+            }
+            .panelSurface(.base),
+            "text-selection-inspector", size: CGSize(width: 340, height: 1300)
+        )
+    }
+
     /// The inspector for a shape layer: a rounded rectangle's size, corners
     /// and position, then its fill and a dashed outside stroke.
     @Test func shapeInspector() throws {
