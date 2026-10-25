@@ -82,6 +82,8 @@ struct TimelineView: View {
     /// What is selected in the effects panel, which gets the Delete key
     /// while it has something selected.
     let effectsState: EffectsPanelState
+    /// A clip to zoom to and light up, from Find All (`TimelineClipFocus`).
+    var focus: TimelineClipFocus? = nil
 
     /// The chosen zoom, or nil while the whole timeline is fitted to the
     /// window. Kept in points per second, not relative to the fit, so
@@ -103,6 +105,10 @@ struct TimelineView: View {
     @State var layerHeightBand = RubberBandZoom()
     @State var layerHeightBandKind: LayerKind?
     @State var scrollX: CGFloat = 0
+    /// The last `focus` shown, so a redraw doesn't zoom to it again.
+    @State var shownFocusID: UUID?
+    /// The focus whose clip is lit, until its light has faded.
+    @State var highlightedFocus: TimelineClipFocus?
     @State var trackAreaWidth: CGFloat = 800
     /// Layers showing their volume under their clips.
     @State var volumeRevealed: Set<UUID> = []
@@ -646,6 +652,12 @@ struct TimelineView: View {
             scrollX = 0
             expandedJoint = nil
             groupSelection = []
+            highlightedFocus = nil
+        }
+        // After this update, so a focus that also switched the timeline
+        // comes after the reset above.
+        .onChange(of: focus, initial: true) { _, _ in
+            Task { showFocusedClip() }
         }
     }
 

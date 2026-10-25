@@ -84,7 +84,7 @@ extension TimelineView {
     /// The clips' row: the layer's height, doubled (with a floor) on sound
     /// layers showing their channels, so each gets a band. Adjustment
     /// layers are always `adjustmentRowHeight`.
-    private func clipRowHeight(of layer: TimelineLayer) -> CGFloat {
+    func clipRowHeight(of layer: TimelineLayer) -> CGFloat {
         if layer.isAdjustment { return Self.adjustmentRowHeight }
         let height = areaLayout.height(of: layer.id, kind: layer.kind)
         guard layer.kind != .video, showsChannels(of: layer) else { return height }
@@ -119,33 +119,43 @@ extension TimelineView {
     func area(
         _ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, structure: EditingProject
     ) -> some View {
-        ScrollView(.vertical) {
-            HStack(alignment: .top, spacing: 0) {
-                layerHeaders(kind)
-                    .frame(width: labelColumnWidth, alignment: .topLeading)
-                    .frame(minHeight: height, alignment: .top)
-                    .grooved(.trailing)
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-                        geometryStore.headerColumns[kind] = frame
-                    }
-                    // Media from the library dropped on the names goes on
-                    // a new layer of the kind under the pointer.
-                    .onDrop(of: [.text], delegate: NewLayerDropDelegate(
-                        column: { geometryStore.namesColumn },
-                        viewFrame: { geometryStore.headerColumns[kind] ?? .zero },
-                        isAudio: { project.mediaClip(id: $0)?.kind == .audio },
-                        onHover: { hover in if hover != newLayerHover { newLayerHover = hover } },
-                        onDrop: { payloads, kind in _ = onDropScenes(payloads, nil, playheadTime, kind) }
-                    ))
-                layerTracks(kind, areaHeight: height, viewport: viewport, structure: structure)
-                    .offset(x: -viewport.scrollX)
-                    .frame(width: viewport.width, alignment: .topLeading)
-                    .rubberBandStretch(zoomBand)
-                    .rubberBandScroll(scrollBand, length: trackAreaWidth)
-                    .clipped()
+        ScrollViewReader { scroller in
+            ScrollView(.vertical) {
+                HStack(alignment: .top, spacing: 0) {
+                    layerHeaders(kind)
+                        .frame(width: labelColumnWidth, alignment: .topLeading)
+                        .frame(minHeight: height, alignment: .top)
+                        .grooved(.trailing)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                            geometryStore.headerColumns[kind] = frame
+                        }
+                        // Media from the library dropped on the names goes on
+                        // a new layer of the kind under the pointer.
+                        .onDrop(of: [.text], delegate: NewLayerDropDelegate(
+                            column: { geometryStore.namesColumn },
+                            viewFrame: { geometryStore.headerColumns[kind] ?? .zero },
+                            isAudio: { project.mediaClip(id: $0)?.kind == .audio },
+                            onHover: { hover in if hover != newLayerHover { newLayerHover = hover } },
+                            onDrop: { payloads, kind in _ = onDropScenes(payloads, nil, playheadTime, kind) }
+                        ))
+                    layerTracks(kind, areaHeight: height, viewport: viewport, structure: structure)
+                        .overlay(alignment: .topLeading) { focusHighlight(kind, pixelsPerSecond: viewport.pixelsPerSecond) }
+                        .offset(x: -viewport.scrollX)
+                        .frame(width: viewport.width, alignment: .topLeading)
+                        .rubberBandStretch(zoomBand)
+                        .rubberBandScroll(scrollBand, length: trackAreaWidth)
+                        .clipped()
+                }
+                .overlay(alignment: .topLeading) { layerDropIndicator(kind) }
+                .edgeAutoScroll(areaScroller(kind))
             }
-            .overlay(alignment: .topLeading) { layerDropIndicator(kind) }
-            .edgeAutoScroll(areaScroller(kind))
+            // A clip focused from Find All comes to the middle of its area,
+            // once its highlight is laid out to scroll to. Only the area
+            // holding it has the ID.
+            .onChange(of: highlightedFocus?.id) { _, id in
+                guard let id else { return }
+                Task { scroller.scrollTo(id, anchor: .center) }
+            }
         }
         .frame(height: height)
         // A vertical pinch past the layer heights stretches this area.

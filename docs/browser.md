@@ -344,7 +344,12 @@ disabled when nothing uses them.
 
 The list follows edits, undo and redo, and drops what is removed.
 Double-clicking a row, or Return on it, opens its timeline in the editor
-with its clip selected. It is a table, so the arrow keys move through it
+with its clip selected (`TimelineClipFocus`): the timeline zooms so the
+clip fills the tracks but for a tenth of their width either side (as
+close as the zoom goes for a short clip), centers it, scrolls its area
+to it (showing the area if it was hidden), and lays a white light over
+it that fades out in about a second and a half. With reduced motion the
+light stays for that time and goes out at once. It is a table, so the arrow keys move through it
 and VoiceOver reads it by row and column.
 
 ## Previewing presets

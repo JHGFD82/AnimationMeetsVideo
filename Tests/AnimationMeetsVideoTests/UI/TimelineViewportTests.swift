@@ -43,4 +43,22 @@ import Testing
         #expect(abs(start.pixelsPerSecond(atZoomFraction: fraction) - 120) < 0.001)
         #expect(viewport().zoomFraction == 0)
     }
+
+    @Test func fittingASpanCentersItWithinTheMargin() {
+        let fit = viewport().fitting(20, 24, margin: 0.1)
+        let after = viewport(pixelsPerSecond: fit.pixelsPerSecond, scrollX: fit.scrollX)
+        #expect(abs(after.x(atSeconds: 20) - 60) < 0.001)
+        #expect(abs(after.x(atSeconds: 24) - 540) < 0.001)
+    }
+
+    @Test func fittingAShortSpanCentersItAtTheClosestZoom() {
+        let fit = viewport().fitting(30, 30.001, margin: 0.1)
+        #expect(fit.pixelsPerSecond == 24 * TimelineViewport.maximumFrameWidth)
+        let after = viewport(pixelsPerSecond: fit.pixelsPerSecond, scrollX: fit.scrollX)
+        #expect(abs(after.x(atSeconds: 30.0005) - 300) < 0.001)
+    }
+
+    @Test func fittingALongSpanGetsTheFit() {
+        #expect(viewport().fitting(0, 60, margin: 0.1).pixelsPerSecond == nil)
+    }
 }
