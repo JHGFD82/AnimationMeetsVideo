@@ -1,4 +1,5 @@
 import AppKit
+import CoreMedia
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -58,6 +59,7 @@ struct BrowserPanel: View {
     @State private var revealing: MediaPiece?
     @AppStorage(Preferences.browserTab) private var tab = BrowserTab.clips
     @AppStorage(Preferences.browserSort) private var sort = BrowserSort.added
+    @AppStorage(Preferences.timelinesLayout) private var timelinesLayout = TimelinesLayout.filmstrips
     @AppStorage(Preferences.thumbnailInterval) private var interval = ThumbnailInterval.all
     @AppStorage(Preferences.thumbnailSize) private var thumbnailSize = ThumbnailSize.medium
     @AppStorage(Preferences.browserSkimming) private var skimming = true
@@ -153,6 +155,13 @@ struct BrowserPanel: View {
             }
             .pickerStyle(.menu)
             .help("The order of the clips, and of the timelines when sorted by name")
+            Picker("Timelines", selection: $timelinesLayout) {
+                ForEach(TimelinesLayout.allCases) { layout in
+                    Text(layout.title).tag(layout)
+                }
+            }
+            .pickerStyle(.segmented)
+            .help("Show the Timelines tab as filmstrips to skim, or as the tree of what embeds what, with names, durations and settings")
             VStack(alignment: .leading, spacing: Design.Space.tight) {
                 HStack {
                     Text("Time per thumbnail")
@@ -207,7 +216,7 @@ struct BrowserPanel: View {
         TimelinesList(
             project: project, activeTimelineID: activeTimelineID,
             onOpen: onOpenTimeline,
-            onEmbed: { id in project.timeline(id: id).map(embed) },
+            onEmbed: embed,
             onDuplicate: { id in project.duplicateTimeline(id) },
             onRename: { id, name in project.renameTimeline(id, to: name) },
             onOpenInNewWindow: onOpenTimelineInNewWindow
@@ -227,8 +236,10 @@ struct BrowserPanel: View {
         }
     }
 
-    private func embed(_ timeline: Timeline) {
-        if let result = project.embedTimeline(timeline.id, intoTimeline: activeTimelineID) {
+    /// Puts a timeline, or a range of it, on a new layer of the active one,
+    /// and selects the clip it makes.
+    private func embed(_ timelineID: UUID, range: CMTimeRange?) {
+        if let result = project.embedTimeline(timelineID, intoTimeline: activeTimelineID, range: range) {
             selection = TimelineSelection(timelineID: activeTimelineID, layerID: result.layerID, timelineClipID: result.clipID)
         }
     }

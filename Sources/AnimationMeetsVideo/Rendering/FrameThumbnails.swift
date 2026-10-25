@@ -110,7 +110,7 @@ enum FrameThumbnails {
 
     /// Lets `slots` callers through at a time, in order. A caller whose task
     /// is cancelled while waiting is turned away.
-    private actor Limiter {
+    actor Limiter {
         private var free: Int
         private var waiting: [CheckedContinuation<Bool, Never>] = []
 

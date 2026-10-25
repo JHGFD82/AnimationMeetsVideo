@@ -258,12 +258,46 @@ struct UISnapshots {
         _ = project.importClip(still, intoTimeline: chorus)
         _ = project.embedTimeline(logo, intoTimeline: chorus)
         _ = project.embedTimeline(chorus, intoTimeline: project.rootTimelineID)
+        let defaults = try #require(UserDefaults(suiteName: "amv-snapshot-timelines-tree"))
+        defaults.set(TimelinesLayout.tree.rawValue, forKey: Preferences.timelinesLayout)
         try SnapshotSupport.render(
-            TimelinesList(project: project, activeTimelineID: project.rootTimelineID, onOpen: { _ in }, onEmbed: { _ in }, onDuplicate: { _ in })
+            TimelinesList(project: project, activeTimelineID: project.rootTimelineID, onOpen: { _ in }, onEmbed: { _, _ in }, onDuplicate: { _ in })
+                .defaultAppStorage(defaults)
                 .frame(width: 260, height: 260)
                 .background(Design.Surface.base.color)
                 .preferredColorScheme(.dark),
             "timelines-list", size: CGSize(width: 260, height: 260)
+        )
+    }
+
+    /// The Timelines tab as filmstrips: Main embeds a dark-then-bright
+    /// Chorus for its first two seconds, so Chorus is underlined there.
+    /// Each strip's frames are made from its own timeline.
+    @Test func timelineFilmstrips() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let size = fixture.project.timelines[0].frameSize
+        let chorus = fixture.project.addTimeline(name: "Chorus", frameSize: size, frameRate: 24, colorSpace: .rec709)
+        let url = fixture.directory.appending(path: "chorus.mov")
+        try await writeMovie(to: url, segments: [(luma: 50, frames: 48), (luma: 210, frames: 48)])
+        let media = MediaClip(
+            name: "chorus", kind: .video, url: url, duration: CMTime(value: 96, timescale: 24),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        _ = fixture.project.importClip(media, intoTimeline: chorus)
+        _ = fixture.project.embedTimeline(chorus, intoTimeline: fixture.timelineID, range: CMTimeRange(start: .zero, duration: CMTime(value: 2, timescale: 1)))
+
+        let defaults = try #require(UserDefaults(suiteName: "amv-snapshot-timelines-filmstrips"))
+        defaults.set(TimelinesLayout.filmstrips.rawValue, forKey: Preferences.timelinesLayout)
+        defaults.set(ThumbnailInterval.oneSecond.rawValue, forKey: Preferences.thumbnailInterval)
+        defaults.set(ThumbnailSize.small.rawValue, forKey: Preferences.thumbnailSize)
+        try await SnapshotSupport.render(
+            TimelinesList(project: fixture.project, activeTimelineID: fixture.timelineID, onOpen: { _ in }, onEmbed: { _, _ in }, onDuplicate: { _ in })
+                .defaultAppStorage(defaults)
+                .frame(width: 320, height: 240)
+                .background(Design.Surface.base.color)
+                .preferredColorScheme(.dark),
+            "timeline-filmstrips", size: CGSize(width: 320, height: 240), settle: .seconds(3)
         )
     }
 

@@ -89,6 +89,37 @@ import Testing
         #expect(TimelinesList.rows(of: nodes, collapsed: [main]).map(\.timelineID) == [main, loose])
     }
 
+    /// Embedding a range plays only it, the rest kept past the clip's trims;
+    /// the browser underlines what is embedded, and a timeline is drawn
+    /// from those it nests and those its effects take.
+    @Test func embeddingARangeAndWhatATimelineIsDrawnFrom() throws {
+        var project = EditingProject.empty
+        let main = project.rootTimelineID
+        let scene = Self.addTimeline("Scene", to: &project)
+        let detail = Self.addTimeline("Detail", to: &project)
+        let loose = Self.addTimeline("Loose", to: &project)
+        _ = project.importClip(Self.media(), intoTimeline: scene)
+        _ = project.importClip(Self.media(), intoTimeline: detail)
+        _ = project.importClip(Self.media(), intoTimeline: loose)
+
+        let range = CMTimeRange(start: CMTime(value: 1, timescale: 1), duration: CMTime(value: 2, timescale: 1))
+        let embedded = project.embedTimeline(scene, intoTimeline: main, range: range)
+        let placed = try #require(embedded)
+        let clip = try #require(project.clipAndLayer(placed.clipID, in: main)?.clip)
+        #expect(clip.trimStart == range.start && clip.trimEnd == range.end && clip.startOffset == .zero)
+        #expect(project.usedRanges(ofTimeline: scene) == [range])
+        #expect(project.usedRanges(ofTimeline: loose).isEmpty)
+        // A range wholly past the end embeds nothing.
+        let past = project.embedTimeline(scene, intoTimeline: main, range: CMTimeRange(start: CMTime(value: 9, timescale: 1), duration: CMTime(value: 1, timescale: 1)))
+        #expect(past == nil)
+
+        var input = Effect(kind: .matte)
+        input.input = EffectInput(source: .timeline(detail))
+        project.editClip(placed.clipID, in: main) { $0.effects = [input] }
+        #expect(project.timelinesDrawn(from: main) == [main, scene, detail])
+        #expect(project.timelinesDrawn(from: scene) == [scene])
+    }
+
     @Test func aDuplicateHasNewIDsAndItsOwnName() throws {
         var project = EditingProject.empty
         let main = project.rootTimelineID

@@ -210,12 +210,12 @@ private struct SkimPicture: View {
     let skim: BrowserSkim
 
     var body: some View {
-        let clip = skim.target?.clip
-        let rate = clip?.frameRate ?? 0
+        let target = skim.target
+        let rate = target?.frameRate ?? 0
         let time = rate > 0 ? skim.sourceTime.timecode(frameRate: rate) : skim.sourceTime.formatted
         ZStack(alignment: .bottom) {
             Color.black
-            if clip?.kind.hasPictures == true {
+            if target?.hasPictures == true {
                 PlayerLayerView(player: skim.player)
             } else {
                 Image(systemName: MediaKind.audio.systemImage)
@@ -224,7 +224,7 @@ private struct SkimPicture: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             HStack(spacing: Design.Space.close) {
-                Text(clip?.name ?? "")
+                Text(target?.name ?? "")
                     .font(Design.Typeface.label)
                     .foregroundStyle(Design.textPrimary)
                     .lineLimit(1)
@@ -238,7 +238,7 @@ private struct SkimPicture: View {
             .padding(.bottom, Design.Space.group)
         }
         .accessibilityElement()
-        .accessibilityLabel("Viewer, skimming \(clip?.name ?? "")")
+        .accessibilityLabel("Viewer, skimming \(target?.name ?? "")")
         .accessibilityValue(time)
         .accessibilityAddTraits(.isImage)
     }

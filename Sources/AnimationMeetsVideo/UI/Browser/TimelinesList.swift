@@ -1,27 +1,52 @@
 import AppKit
+import CoreMedia
 import SwiftUI
 
-/// The browser's Timelines tab: the project's timelines, each nested under
-/// the timeline it is embedded in (with a disclosure triangle), the main
-/// timeline first, with its duration and settings. Selecting works as in
-/// the Clips tab: a click selects one, Command-click adds or takes one
-/// out, Shift-click selects a run, and the arrows move the selection. A
-/// double-click opens one in the editor, and a click on the name of the
-/// only one selected, or Return, renames it. Its menu embeds the selected
-/// timelines in the active timeline or duplicates them, and renames or
-/// opens the one clicked; dragging one puts it on an effect that takes an
-/// input. The active timeline is marked as open.
+/// How the browser's Timelines tab is laid out, chosen in its view options.
+enum TimelinesLayout: String, CaseIterable, Identifiable {
+    /// Each timeline a filmstrip of its frames, skimmed as clips are
+    /// (`TimelineFilmstrips`).
+    case filmstrips
+    /// The tree of what embeds what, each timeline a row with its icon,
+    /// name, duration and settings, and no pictures.
+    case tree
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .filmstrips: "Filmstrips"
+        case .tree: "Tree"
+        }
+    }
+}
+
+/// The browser's Timelines tab, laid out as filmstrips
+/// (`TimelineFilmstrips`) or as the tree below, as its view options say.
+///
+/// The tree: the project's timelines, each nested under the timeline it is
+/// embedded in (with a disclosure triangle), the main timeline first, with
+/// its duration and settings. Selecting works as in the Clips tab in both:
+/// a click selects one, Command-click adds or takes one out, Shift-click
+/// selects a run, and the arrows move the selection. A double-click opens
+/// one in the editor, and a click on the name of the only one selected,
+/// or Return, renames it. Its menu embeds the selected timelines (or the
+/// picked range of one) in the active timeline or duplicates them, and
+/// renames or opens the one clicked; dragging one puts it on an effect
+/// that takes an input. The active timeline is marked as open.
 struct TimelinesList: View {
     let project: EditingProject
     let activeTimelineID: UUID
     let onOpen: (UUID) -> Void
-    let onEmbed: (UUID) -> Void
+    /// Embeds a timeline in the active timeline, all of it or a range.
+    let onEmbed: (UUID, CMTimeRange?) -> Void
     let onDuplicate: (UUID) -> Void
     var onRename: (UUID, String) -> Void = { _, _ in }
     /// Opens a timeline in a window of its own; nil where there is none.
     var onOpenInNewWindow: ((UUID) -> Void)?
 
     @AppStorage(Preferences.browserSort) private var sort = BrowserSort.added
+    @AppStorage(Preferences.timelinesLayout) private var layout = TimelinesLayout.filmstrips
     @State private var picked = BrowserSelection<UUID>()
     /// The timeline whose name is being edited in its row.
     @State private var renamingID: UUID?
@@ -90,9 +115,26 @@ struct TimelinesList: View {
     @State private var collapsed: Set<UUID> = []
 
     var body: some View {
-        let rows = Self.rows(of: Self.nodes(of: project, sort: sort), collapsed: collapsed)
+        let nodes = Self.nodes(of: project, sort: sort)
+        switch layout {
+        case .tree:
+            tree(Self.rows(of: nodes, collapsed: collapsed))
+        case .filmstrips:
+            // Every timeline, in the tree's order read top to bottom.
+            let order = Self.rows(of: nodes, collapsed: []).map(\.timelineID)
+            TimelineFilmstrips(
+                project: project, activeTimelineID: activeTimelineID, order: order,
+                picked: $picked, renamingID: $renamingID,
+                onOpen: open, onRename: onRename,
+                menu: { id in AnyView(menu(id, order: order)) }
+            )
+            .onChange(of: order) { _, order in picked.keep(only: order) }
+        }
+    }
+
+    private func tree(_ rows: [Row]) -> some View {
         let order = rows.map(\.timelineID)
-        List {
+        return List {
             ForEach(rows) { listed in
                 if let timeline = project.timeline(id: listed.timelineID) {
                     row(timeline, listed, order: order)
@@ -170,11 +212,47 @@ struct TimelinesList: View {
         }
     }
 
+    /// A timeline's menu, in either layout. Embedding and duplicating act
+    /// on everything selected when it is; with a range picked of it,
+    /// embedding takes only the range.
+    @ViewBuilder
+    private func menu(_ id: UUID, order: [UUID]) -> some View {
+        let targets = targets(of: id, in: order)
+        let embeddable = targets.filter { project.canEmbed($0, into: activeTimelineID) }
+        let range = picked.range.flatMap { range -> CMTimeRange? in
+            guard range.item == id else { return nil }
+            let timescale: CMTimeScale = 600
+            return CMTimeRange(
+                start: CMTime(seconds: range.start, preferredTimescale: timescale),
+                end: CMTime(seconds: range.end, preferredTimescale: timescale)
+            )
+        }
+        Button("Open") { open(id) }
+            .disabled(id == activeTimelineID)
+        if let onOpenInNewWindow {
+            Button("Open in New Window") { onOpenInNewWindow(id) }
+        }
+        Divider()
+        if let range {
+            Button("Embed Range in Active Timeline") { onEmbed(id, range) }
+                .disabled(!project.canEmbed(id, into: activeTimelineID))
+        }
+        Button(targets.count > 1 ? "Embed \(embeddable.count) Timelines in Active Timeline" : "Embed in Active Timeline") {
+            embeddable.forEach { onEmbed($0, nil) }
+        }
+        .disabled(embeddable.isEmpty)
+        Button("Rename Timeline") {
+            picked.click(id)
+            renamingID = id
+        }
+        Button(targets.count > 1 ? "Duplicate \(targets.count) Timelines" : "Duplicate Timeline") {
+            targets.forEach(onDuplicate)
+        }
+    }
+
     private func row(_ timeline: Timeline, _ listed: Row, order: [UUID]) -> some View {
         let isSelected = picked.contains(timeline.id)
         let isActive = timeline.id == activeTimelineID
-        let targets = targets(of: timeline.id, in: order)
-        let embeddable = targets.filter { project.canEmbed($0, into: activeTimelineID) }
         return HStack(spacing: Design.Space.tight) {
             disclosure(timeline, listed)
             label(timeline, isSelected: isSelected, isOnlySelection: isSelected && picked.items.count == 1, isActive: isActive)
@@ -200,31 +278,13 @@ struct TimelinesList: View {
         }
         .help(isActive ? "The timeline open in the editor" : "Double-click to open in the editor")
         .draggable(TimelineDragPayload(timelineID: timeline.id))
-        .contextMenu {
-            Button("Open") { open(timeline.id) }
-                .disabled(isActive)
-            if let onOpenInNewWindow {
-                Button("Open in New Window") { onOpenInNewWindow(timeline.id) }
-            }
-            Divider()
-            Button(targets.count > 1 ? "Embed \(embeddable.count) Timelines in Active Timeline" : "Embed in Active Timeline") {
-                embeddable.forEach(onEmbed)
-            }
-            .disabled(embeddable.isEmpty)
-            Button("Rename Timeline") {
-                picked.click(timeline.id)
-                renamingID = timeline.id
-            }
-            Button(targets.count > 1 ? "Duplicate \(targets.count) Timelines" : "Duplicate Timeline") {
-                targets.forEach(onDuplicate)
-            }
-        }
+        .contextMenu { menu(timeline.id, order: order) }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint("Opens the timeline in the editor")
         .accessibilityAction { open(timeline.id) }
         .accessibilityAction(named: "Embed in active timeline") {
-            if project.canEmbed(timeline.id, into: activeTimelineID) { onEmbed(timeline.id) } else { NSSound.beep() }
+            if project.canEmbed(timeline.id, into: activeTimelineID) { onEmbed(timeline.id, nil) } else { NSSound.beep() }
         }
         .accessibilityAction(named: "Rename timeline") { renamingID = timeline.id }
         .accessibilityAction(named: "Duplicate timeline") { onDuplicate(timeline.id) }

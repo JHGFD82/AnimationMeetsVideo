@@ -68,8 +68,26 @@ remembered.
   `TimelineWindow`), **Embed in Active Timeline** (disabled where it can't be: it is empty,
   or would contain the active one) and **Duplicate Timeline**, which
   puts a copy below it ("Main copy", "Main copy 2") with new IDs
-  for its layers and clips, sharing the timelines it embeds. Planned:
-  thumbnails drawn from the timeline itself.
+  for its layers and clips, sharing the timelines it embeds.
+
+  **Layout**, in the view options under Sort by (`TimelinesLayout`,
+  remembered between launches), shows the tab one of two ways:
+  - **Filmstrips** (the default, `TimelineFilmstrips`): each timeline is a
+    filmstrip as a clip is, in the tree's order read top to bottom, its
+    name, **Open** mark and settings above it and its duration on its
+    first thumbnail. The pictures are the timeline's own frames, made
+    from a composition built of it (`TimelinePreview`) at the time per
+    thumbnail and size the Clips tab uses. It is built again only when
+    something it draws changes (its own clips, or the timelines it nests
+    or its effects take), so editing one timeline leaves the others'
+    strips alone, and a strip keeps its old pictures until the new ones
+    are made. Skimming, ranges, Option-arrows, I, O and Escape work as on
+    clips; a range picked of a timeline adds **Embed Range in Active
+    Timeline** to its menu, which embeds only that stretch, the rest
+    kept past the clip's trims for transitions to draw on. Strips don't
+    drag; a timeline is dragged onto an effect by its name.
+  - **Tree**: the tree described above, each row its icon, name, duration
+    and settings, with no pictures.
 - **Presets**: saved effect presets (see [effects.md](effects.md),
   "Presets"). They have no duration; see "Previewing presets". Resting
   the pointer on one shows a card of what it holds, top of the stack
@@ -259,8 +277,8 @@ timelines included, is underlined in **red** along the bottom of its
 filmstrip (`usedRanges(ofMedia:)`). It follows edits as they happen:
 trimming a clip on the timeline grows or shrinks the line, and deleting the
 last use removes it. A scene shows the part of the asset inside the scene.
-A timeline in the Timelines tab is underlined where another timeline nests
-it.
+A timeline's filmstrip in the Timelines tab is underlined where another
+timeline nests it (`usedRanges(ofTimeline:)`).
 
 ## Previewing presets
 
@@ -319,6 +337,8 @@ Following [accessibility.md](accessibility.md):
 4. **Skimming** (built, Clips tab; not yet tried on screen) in the viewer,
    Space to play, Option-arrows, I and O.
 5. **Used media** underlines (built, Clips tab; not yet tried on screen).
-   The Timelines tab's line comes with stage 6.
-6. **Timelines** as filmstrips, with skimming.
+   The Timelines tab's line came with stage 6.
+6. **Timelines** as filmstrips, with skimming (built; not yet tried on
+   screen), or as the tree, chosen in the view options. Still to come:
+   dragging a timeline, or a range of one, onto the timeline.
 7. **Presets** with generated test footage.
