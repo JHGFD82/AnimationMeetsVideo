@@ -194,6 +194,8 @@ struct ProjectFile: Codable {
     /// from its top left, `matte` `"noise"` or the ID of a clip whose frame
     /// is the map. Kinds saved before a wipe's or slide's direction was a
     /// setting (`"wipeLeft"`, `"slideRight"`) are read with that direction.
+    /// `audioCrossfade` is an `AudioCrossfade` name, absent when the
+    /// transition follows the project's.
     struct TransitionEntry: Codable {
         var kind: String
         var duration: TimeEntry
@@ -207,12 +209,14 @@ struct ProjectFile: Codable {
         var order: String?
         var amount: Double?
         var matte: String?
+        var audioCrossfade: String?
 
         init(_ transition: ClipTransition) {
             kind = transition.kind.rawValue
             duration = TimeEntry(transition.duration)
             curve = transition.curve == .linear ? nil : transition.curve.points.map(CurvePointEntry.init)
             lead = transition.lead == .zero ? nil : TimeEntry(transition.lead)
+            audioCrossfade = transition.audioCrossfade?.rawValue
             let options = transition.options
             for setting in transition.kind.settings {
                 switch setting {
@@ -261,7 +265,8 @@ struct ProjectFile: Codable {
                 duration: duration.time,
                 curve: points.flatMap(TransitionCurve.init(points:)) ?? .linear,
                 lead: CMTimeMaximum(.zero, CMTimeMinimum(lead?.time ?? .zero, duration.time)),
-                options: options.clamped
+                options: options.clamped,
+                audioCrossfade: audioCrossfade.flatMap(AudioCrossfade.init(rawValue:))
             )
         }
     }
@@ -877,6 +882,8 @@ struct ProjectFile: Codable {
     var copiesMediaOnImport: Bool?
     /// Absent while it is the default, half a frame on each side.
     var canvasMargin: Double?
+    /// An `AudioCrossfade` name; absent while it is the default S-curve.
+    var jointAudioCrossfade: String?
     var assets: [AssetEntry]
     var timelines: [TimelineEntry]
 }
@@ -1021,6 +1028,7 @@ extension ProjectFile {
             .optional("count", .integer),
             .optional("order", .choice(GridOrder.allCases.map(\.rawValue), noun: "grid order")),
             .optional("amount", .number), .optional("matte", .string),
+            .optional("audioCrossfade", .choice(AudioCrossfade.allCases.map(\.rawValue), noun: "audio crossfade")),
         ]))
         let clip = JSONShape.object(object([
             .required("id", .uuid),
@@ -1111,6 +1119,7 @@ extension ProjectFile {
             .required("formatVersion", .integer), .required("id", .uuid), .required("name", .string),
             .required("rootTimelineID", .uuid), .optional("defaultSensitivity", .number),
             .optional("copiesMediaOnImport", .bool), .optional("canvasMargin", .number),
+            .optional("jointAudioCrossfade", .choice(AudioCrossfade.allCases.map(\.rawValue), noun: "audio crossfade")),
             .required("assets", .array(asset)), .required("timelines", .array(timeline)),
         ]))
     }

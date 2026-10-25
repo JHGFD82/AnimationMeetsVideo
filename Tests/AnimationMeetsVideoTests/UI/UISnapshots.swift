@@ -906,7 +906,7 @@ struct UISnapshots {
 
     @Test func projectSettings() throws {
         try SnapshotSupport.render(
-            ProjectSettingsView(project: .empty) { _, _ in }, "project-settings", size: CGSize(width: 460, height: 300)
+            ProjectSettingsView(project: .empty) { _ in }, "project-settings", size: CGSize(width: 460, height: 400)
         )
     }
 

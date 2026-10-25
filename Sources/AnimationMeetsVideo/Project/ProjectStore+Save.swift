@@ -208,6 +208,7 @@ extension ProjectStore {
             defaultSensitivity: project.defaultSensitivity == EditingProject.balancedSensitivity ? nil : project.defaultSensitivity,
             copiesMediaOnImport: project.copiesMediaOnImport ? nil : false,
             canvasMargin: project.canvasMargin == EditingProject.defaultCanvasMargin ? nil : project.canvasMargin,
+            jointAudioCrossfade: project.jointAudioCrossfade == .sCurve ? nil : project.jointAudioCrossfade.rawValue,
             assets: urlClips.map { clip in
                 ProjectFile.AssetEntry(
                     id: clip.id,

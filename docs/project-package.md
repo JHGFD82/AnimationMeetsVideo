@@ -276,7 +276,10 @@ Requirements for the file:
   (0, 0) to (1, 1) in increasing time loads as linear. The project's
   `copiesMediaOnImport` is written only as `false`, once imports are set to
   be referenced in place instead of copied into `Media/`, and its
-  `canvasMargin` only when it isn't 0.5.
+  `canvasMargin` only when it isn't 0.5. A transition's `audioCrossfade`
+  (`"sCurve"`, `"equalPower"` or `"linear"`) is written only when it
+  chooses its own, and the project's `jointAudioCrossfade` only when it
+  isn't `"sCurve"`.
 - Written atomically so a crash cannot leave a half-written file.
 
 ## Retention

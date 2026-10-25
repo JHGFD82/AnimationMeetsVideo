@@ -846,7 +846,6 @@ trail.
 
 ## Not implemented yet
 
-- Audio crossfades under transitions, and transitions on detached sound.
 - A larger graph editor for curves on short transitions.
 - Thumbnails of the frames in the transition footage lane.
 - Trimming at a joined cut from the clips themselves (the transition box

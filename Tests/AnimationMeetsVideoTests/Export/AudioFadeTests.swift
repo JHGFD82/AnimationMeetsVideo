@@ -53,8 +53,8 @@ private func seconds(_ value: Double) -> CMTime {
         project.setTransition(.crossDissolve, at: .leading, of: b, in: project.rootTimelineID, layer: layer)
         let outgoing = try fades(of: a, in: project)
         let incoming = try fades(of: b, in: project)
-        #expect(outgoing.fades == [AudioFade(start: 3.5, end: 4.5, rising: false)])
-        #expect(incoming.fades == [AudioFade(start: 3.5, end: 4.5, rising: true)])
+        #expect(outgoing.fades == [AudioFade(start: 3.5, end: 4.5, rising: false, crossfade: .sCurve)])
+        #expect(incoming.fades == [AudioFade(start: 3.5, end: 4.5, rising: true, crossfade: .sCurve)])
         // A plays half a second past its out point, B half a second before
         // its in point.
         #expect(outgoing.tail == seconds(0.5) && outgoing.head == .zero)
@@ -67,8 +67,8 @@ private func seconds(_ value: Double) -> CMTime {
         project.editClip(a, in: project.rootTimelineID) { $0.transitionOut = ClipTransition(kind: .crossDissolve, duration: seconds(1)) }
         let outgoing = try fades(of: a, in: project)
         let incoming = try fades(of: b, in: project)
-        #expect(outgoing.fades == [AudioFade(start: 3, end: 4, rising: false)])
-        #expect(incoming.fades == [AudioFade(start: 3, end: 4, rising: true)])
+        #expect(outgoing.fades == [AudioFade(start: 3, end: 4, rising: false, crossfade: .sCurve)])
+        #expect(incoming.fades == [AudioFade(start: 3, end: 4, rising: true, crossfade: .sCurve)])
         #expect(incoming.head == seconds(1))
     }
 
@@ -79,6 +79,55 @@ private func seconds(_ value: Double) -> CMTime {
         let result = try fades(of: a, in: project)
         #expect(result.fades == [AudioFade(start: 0, end: 1, rising: true)])
         #expect(result.head == .zero)
+    }
+
+    /// Each shape starts and ends level, and the two sides mirror each
+    /// other: an S-curve and a linear crossfade sum to one, equal power
+    /// sums in power.
+    @Test func crossfadeShapes() {
+        for shape in AudioCrossfade.allCases {
+            let rising = AudioFade(start: 0, end: 2, rising: true, crossfade: shape)
+            let falling = AudioFade(start: 0, end: 2, rising: false, crossfade: shape)
+            #expect(rising.gain(at: 0) == 0 && rising.gain(at: 2) == 1)
+            #expect(falling.gain(at: 0) == 1 && falling.gain(at: 2) < 0.0001)
+            for seconds in stride(from: 0.0, through: 2, by: 0.25) {
+                let (up, down) = (rising.gain(at: seconds), falling.gain(at: seconds))
+                switch shape {
+                case .sCurve, .linear: #expect(abs(up + down - 1) < 0.0001)
+                case .equalPower: #expect(abs(up * up + down * down - 1) < 0.0001)
+                }
+            }
+        }
+        // The S-curve eases out of its start, where linear doesn't.
+        let s = AudioFade(start: 0, end: 1, rising: true, crossfade: .sCurve)
+        let straight = AudioFade(start: 0, end: 1, rising: true, crossfade: .linear)
+        #expect(s.gain(at: 0.1) < straight.gain(at: 0.1) / 2)
+        #expect(abs(s.gain(at: 0.5) - 0.5) < 0.0001)
+    }
+
+    /// The project's shape applies at every joined cut whose transition
+    /// doesn't choose one; a transition's own wins, for both clips' sound.
+    @Test func aJoinedCutTakesTheProjectsShapeUnlessItsTransitionHasOne() throws {
+        var (project, a, b, layer) = try joined()
+        let t = project.rootTimelineID
+        project.setTransition(.crossDissolve, at: .leading, of: b, in: t, layer: layer)
+        project.jointAudioCrossfade = .equalPower
+        #expect(try fades(of: a, in: project).fades.map(\.crossfade) == [.equalPower])
+        #expect(try fades(of: b, in: project).fades.map(\.crossfade) == [.equalPower])
+
+        project.editClip(b, in: t) { $0.transitionIn?.audioCrossfade = .linear }
+        #expect(try fades(of: a, in: project).fades.map(\.crossfade) == [.linear])
+        #expect(try fades(of: b, in: project).fades.map(\.crossfade) == [.linear])
+
+        // Changing the kind keeps the sound's shape.
+        project.setTransition(.wipe, at: .leading, of: b, in: t, layer: layer)
+        #expect(try fades(of: b, in: project).fades.map(\.crossfade) == [.linear])
+
+        // The project's shape is built into the tracks' fades, so changing
+        // it rebuilds the player.
+        var changed = project
+        changed.jointAudioCrossfade = .sCurve
+        #expect(CompositionKey(project: changed) != CompositionKey(project: project))
     }
 
     @Test func theMixFadesInUnderAWayIn() async throws {

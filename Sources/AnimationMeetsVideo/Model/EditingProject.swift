@@ -21,6 +21,9 @@ struct EditingProject: Identifiable, Equatable {
     /// the picture moved off the frame, as a fraction of its width and
     /// height. See `defaultCanvasMargin`.
     var canvasMargin = EditingProject.defaultCanvasMargin
+    /// How attached sound crossfades under transitions joining two clips
+    /// that don't choose their own shape (see `AudioCrossfade`).
+    var jointAudioCrossfade = AudioCrossfade.sCurve
 
     /// Half a frame on each side: twice the frame's area.
     static let defaultCanvasMargin = 0.5

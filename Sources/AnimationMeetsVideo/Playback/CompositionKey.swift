@@ -15,8 +15,12 @@ struct CompositionKey: Equatable {
 
     var timelines: [Timeline]
     var media: [Media]
+    /// The crossfade shape of joined cuts whose transitions don't choose
+    /// one: it is in the fades the tracks are built with.
+    var jointAudioCrossfade: AudioCrossfade
 
     init(project: EditingProject) {
+        jointAudioCrossfade = project.jointAudioCrossfade
         timelines = project.timelines.map { timeline in
             var copy = timeline
             copy.name = ""
@@ -60,7 +64,7 @@ extension CompositionKey {
     /// frames play when, which only playing shows, so a drag of it doesn't
     /// need the picture updated as it goes.
     func differsOnlyInSpeed(from old: CompositionKey) -> Bool {
-        guard timelines.count == old.timelines.count, media == old.media else { return false }
+        guard timelines.count == old.timelines.count, media == old.media, jointAudioCrossfade == old.jointAudioCrossfade else { return false }
         func neutral(_ timelines: [Timeline]) -> [Timeline] {
             timelines.map { timeline in
                 var copy = timeline

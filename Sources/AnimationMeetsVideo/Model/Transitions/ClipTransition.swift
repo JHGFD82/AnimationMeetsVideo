@@ -259,6 +259,10 @@ struct ClipTransition: Equatable {
     var lead: CMTime = .zero
     /// Its settings; only those its kind offers are used.
     var options = TransitionOptions()
+    /// For a transition joining two clips: the shape the sound attached to
+    /// them crossfades with, or nil to follow the project's
+    /// (`EditingProject.jointAudioCrossfade`).
+    var audioCrossfade: AudioCrossfade?
 
     /// What a transition is given when it is first dropped on a clip.
     static let defaultDuration = CMTime(value: 1, timescale: 1)
@@ -330,7 +334,10 @@ extension EditingProject {
             let duration = existing?.duration ?? ClipTransition.defaultDuration
             let lead = existing.map(\.lead) ?? CMTimeMultiplyByRatio(duration, multiplier: 1, divisor: 2)
             if let fit = fittedJoint(duration: duration, lead: lead, outgoing: previous, incoming: clip, in: timeline) {
-                let transition = ClipTransition(kind: kind, duration: fit.duration, curve: curve, lead: fit.lead, options: options)
+                let transition = ClipTransition(
+                    kind: kind, duration: fit.duration, curve: curve, lead: fit.lead, options: options,
+                    audioCrossfade: existing?.audioCrossfade
+                )
                 updateClip(clip.id, in: timelineID, layer: layerID) { $0.setTransition(transition, at: .leading) }
                 return
             }
@@ -346,7 +353,10 @@ extension EditingProject {
             duration = fitted > .zero ? fitted : timeline.frameDuration
         }
         updateClip(clip.id, in: timelineID, layer: layerID) {
-            $0.setTransition(ClipTransition(kind: kind, duration: duration, curve: curve, options: options), at: edge)
+            $0.setTransition(
+                ClipTransition(kind: kind, duration: duration, curve: curve, options: options, audioCrossfade: existing?.audioCrossfade),
+                at: edge
+            )
         }
     }
 
