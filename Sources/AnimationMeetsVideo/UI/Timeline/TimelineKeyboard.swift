@@ -38,6 +38,13 @@ extension TimelineView {
     func handleKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if let handled = handleNavigationKey(event, flags: flags) { return handled }
+        // With the browser active, Escape, Command-A and Delete are its
+        // own: they stop its skimming and remove its media, and must not
+        // reach the timeline's selection, greyed out behind it.
+        if activePanel?.current == .browser,
+           [53, 51, 117].contains(event.keyCode) || (event.keyCode == 0 && flags == .command) {
+            return false
+        }
         // Escape lets go of whatever is selected.
         if event.keyCode == 53, flags.isEmpty, !ValueDragSession.isActive, hasAnythingSelected {
             clearSelection()

@@ -39,19 +39,7 @@ struct BrowserEntry: Identifiable {
     /// clip, in seconds into it, joined where they overlap or touch.
     func seconds(within ranges: [CMTimeRange]) -> [(start: Double, end: Double)] {
         let from = start.seconds, to = from + seconds
-        let inside = ranges
-            .map { (max($0.start.seconds, from) - from, min($0.end.seconds, to) - from) }
-            .filter { $0.1 > $0.0 }
-            .sorted { $0.0 < $1.0 }
-        var joined: [(start: Double, end: Double)] = []
-        for (a, b) in inside {
-            if let last = joined.last, a <= last.end + 1e-6 {
-                joined[joined.count - 1].end = max(last.end, b)
-            } else {
-                joined.append((a, b))
-            }
-        }
-        return joined
+        return FilmstripLayout.joined(ranges.map { (max($0.start.seconds, from) - from, min($0.end.seconds, to) - from) })
     }
 
     func piece(from a: Double = 0, to b: Double? = nil) -> MediaPiece {
@@ -107,6 +95,10 @@ struct ClipsTab: View {
     @Environment(SceneSplitter.self) private var splitter: SceneSplitter?
     /// Files on their way in, listed after the clips.
     @Environment(MediaImports.self) private var imports: MediaImports?
+    /// Find All's panel; absent where there is no editor (previews, tests).
+    @Environment(UsesFinder.self) private var finder: UsesFinder?
+    /// Removing media the timelines use, waiting to be agreed to.
+    @State private var pendingRemoval: RemovalRequest?
 
     private var project: EditingProject {
         get { access.value }
@@ -114,8 +106,6 @@ struct ClipsTab: View {
     }
 
     private static let padding: CGFloat = 10
-    /// How close to a range's end a press grabs its handle.
-    private static let handleReach: CGFloat = 6
 
     // MARK: - Entries
 
@@ -267,9 +257,16 @@ struct ClipsTab: View {
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
-        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, "i", "o"]) { press in
+        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return, .escape, .delete, .deleteForward, "i", "o"]) { press in
             handleKey(press, snapshot: snapshot) ? .handled : .ignored
         }
+        // Delete and Select All in the Edit menu, while the browser is the
+        // active panel (see `EditCommands`).
+        .focusedSceneValue(\.browserEditActions, EditMenuActions(
+            delete: { if !removeSelection(snapshot) { NSSound.beep() } },
+            selectAll: { picked.selectAll(in: order) },
+            state: [AnyHashable(picked.revision), AnyHashable(order)]
+        ))
         // Leaving the browser gives the viewer back to the timeline; so does
         // leaving it from the keyboard. Without skimming, a frame clicked
         // stays shown until the browser loses the keyboard, so the pointer
@@ -291,6 +288,7 @@ struct ClipsTab: View {
             let focus = splitterFocus(for: ids, snapshot: snapshot)
             splitter?.follow(focus, selecting: focus.map { sceneIDs(ids, of: $0.assetID) } ?? [])
         }
+        .removalConfirmation($pendingRemoval, finder: finder)
         .sheet(item: $sensitivityTarget) { target in
             SensitivitySheet(project: access.binding, target: target, track: analysis.tracks[target.assetID])
         }
@@ -362,11 +360,11 @@ struct ClipsTab: View {
                 }
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
+        // On the press, with the keys held, as a strip takes it: a tap
+        // gesture lost Command and Shift, and quick clicks.
+        .onMouseDown { _ in
             focused = true
-            picked.click(entry.id)
-            cursor = entry.id
+            click(entry.id, flags: NSApp.currentEvent?.modifierFlags ?? [], order: snapshot.order)
         }
         .contextMenu { menu(for: entry, snapshot: snapshot) }
         .accessibilityElement(children: .combine)
@@ -374,12 +372,16 @@ struct ClipsTab: View {
         .accessibilityValue(isSelected ? "selected" : "")
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
         .accessibilityAction { picked.click(entry.id) }
-        .accessibilityAction(named: "Add to Timeline") { addToTimeline(dragPieces(for: [entry.id], snapshot: snapshot)) }
+        .accessibilityAction(named: "Add to Timeline") { addToTimeline(piecesToAdd(from: entry.id, snapshot: snapshot)) }
         .accessibilityAction(named: "Skim Forward") { skimStep(entry, seconds: 1) }
         .accessibilityAction(named: "Skim Back") { skimStep(entry, seconds: -1) }
         .accessibilityAction(named: "Set Range Start") { setRangeEnd(.start, of: entry) }
         .accessibilityAction(named: "Set Range End") { setRangeEnd(.end, of: entry) }
         .accessibilityAction(named: "Rename") { renamingAsset = entry.clip.id }
+        .accessibilityAction(named: "Remove from Project") {
+            if entry.sceneNumber != nil || !removeFromProject([entry.clip.id]) { NSSound.beep() }
+        }
+        .accessibilityAction(named: "Find All") { findAll(findQuery(for: entry)) }
     }
 
     /// An asset's name, edited in place while `renamingAsset` names it.
@@ -417,6 +419,7 @@ struct ClipsTab: View {
             Button("Add Whole Clip to Timeline") {
                 addToTimeline([MediaPiece(assetID: clip.id, start: .zero, end: clip.duration)])
             }
+            findAllButton([findQuery(for: clip)])
             assetMenu(clip)
         }
         .accessibilityElement(children: .combine)
@@ -425,6 +428,8 @@ struct ClipsTab: View {
             addToTimeline([MediaPiece(assetID: clip.id, start: .zero, end: clip.duration)])
         }
         .accessibilityAction(named: "Rename") { renamingAsset = clip.id }
+        .accessibilityAction(named: "Remove from Project") { if !removeFromProject([clip.id]) { NSSound.beep() } }
+        .accessibilityAction(named: "Find All") { findAll(findQuery(for: clip)) }
     }
 
     private func accessibilityName(_ entry: BrowserEntry, isUsed: Bool) -> String {
@@ -462,7 +467,7 @@ struct ClipsTab: View {
                 onDown: { point, flags in pressBegan(entry, layout: layout, at: point, flags: flags) },
                 onPress: { press in pressed(press, entry: entry, layout: layout, order: snapshot.order) },
                 dragText: { point in dragText(entry, layout: layout, at: point, snapshot: snapshot) },
-                isOnHandle: { point in handle(of: entry, layout: layout, at: point) != nil },
+                isOnHandle: { point in picked.handle(of: entry.id, at: point, in: layout) != nil },
                 onHover: { point in
                     if skimming, let point { skim(entry, at: layout.seconds(at: point)) }
                 }
@@ -473,15 +478,19 @@ struct ClipsTab: View {
         .accessibilityHidden(true)
     }
 
-    /// The end of the clip's range whose handle is at `point`: the far
-    /// end, which stays put while the handle is dragged.
-    private func handle(of entry: BrowserEntry, layout: FilmstripLayout, at point: CGPoint) -> Double? {
-        guard let range = picked.range, range.item == entry.id else { return nil }
-        let start = layout.position(atSeconds: range.start), end = layout.position(atSeconds: range.end)
-        let row = Int(point.y / layout.rowPitch)
-        if row == start.row, abs(point.x - start.x) <= Self.handleReach { return range.end }
-        if row == end.row, abs(point.x - end.x) <= Self.handleReach { return range.start }
-        return nil
+    /// A click on a clip, on its title or its strip, `seconds` into it when
+    /// known: Command adds it or takes it out, Shift selects the run from
+    /// the last one clicked, and a plain click selects it alone (keeping
+    /// its range when inside it).
+    private func click(_ id: BrowserItemID, flags: NSEvent.ModifierFlags, order: [BrowserItemID], at seconds: Double? = nil) {
+        cursor = id
+        if flags.contains(.command) {
+            picked.commandClick(id)
+        } else if flags.contains(.shift) {
+            picked.shiftClick(id, in: order)
+        } else {
+            picked.click(id, at: seconds)
+        }
     }
 
     /// Whether a press tracks a range once it moves: on a handle, or off
@@ -489,7 +498,7 @@ struct ClipsTab: View {
     /// moves, so a press let go in place is still a click.
     private func pressBegan(_ entry: BrowserEntry, layout: FilmstripLayout, at point: CGPoint, flags: NSEvent.ModifierFlags) -> Bool {
         focused = true
-        if let fixed = handle(of: entry, layout: layout, at: point) {
+        if let fixed = picked.handle(of: entry.id, at: point, in: layout) {
             rangeDrag = (entry.id, fixed)
             return true
         }
@@ -505,14 +514,13 @@ struct ClipsTab: View {
         switch press {
         case .click(let point, let flags):
             rangeDrag = nil
-            cursor = entry.id
-            if flags.contains(.command) {
-                picked.commandClick(entry.id)
-            } else if flags.contains(.shift) {
-                picked.shiftClick(entry.id, in: order)
-            } else if handle(of: entry, layout: layout, at: point) == nil {
-                picked.click(entry.id, at: layout.seconds(at: point))
+            if !flags.isDisjoint(with: [.command, .shift]) {
+                click(entry.id, flags: flags, order: order)
+            } else if picked.handle(of: entry.id, at: point, in: layout) == nil {
+                click(entry.id, flags: flags, order: order, at: layout.seconds(at: point))
                 if !skimming { skim(entry, at: layout.seconds(at: point)) }
+            } else {
+                cursor = entry.id
             }
         case .track(let point):
             guard let rangeDrag, rangeDrag.item == entry.id else { return }
@@ -542,58 +550,18 @@ struct ClipsTab: View {
             pieces = dragPieces(for: picked.dragged(from: entry.id, in: snapshot.order), snapshot: snapshot)
         }
         guard let first = pieces.first, let clip = project.mediaClip(id: first.assetID) else { return nil }
-        let image = Self.dragImage(of: clip, at: first.start, size: cellSize, count: pieces.count)
+        let image = BrowserDragImage.make(
+            picture: Self.dragPicture(of: clip, at: first.start, height: cellSize.height), symbol: "waveform",
+            tone: NSColor(Design.ClipTone.of(.media(clip), streams: .videoAndAudio).color), size: cellSize, count: pieces.count
+        )
         return (MediaDragPayload.beginDrag(pieces).text, image)
     }
 
-    /// One thumbnail of the first thing dragged: its picture at its start,
-    /// or the nearest one made (a range seldom starts where a thumbnail
-    /// does); for sound, a tile of its colour with a waveform on it, as for
-    /// a picture not yet made. With how many things are dragged when there
-    /// are several.
-    static func dragImage(of clip: MediaClip, at start: CMTime, size: CGSize, count: Int) -> NSImage {
-        let picture = clip.kind.hasPictures ? clip.url.flatMap {
-            FrameThumbnails.nearestCached(url: $0, time: clip.fileTime(forSourceTime: start), height: size.height)
-        } : nil
-        let waveform = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: size.height * 0.4, weight: .medium))
-        let tone = NSColor(Design.ClipTone.of(.media(clip), streams: .videoAndAudio).color)
-        return NSImage(size: size, flipped: false) { rect in
-            let tile = NSBezierPath(roundedRect: rect, xRadius: Design.Radius.chip, yRadius: Design.Radius.chip)
-            (picture == nil ? tone : NSColor.black).setFill()
-            tile.fill()
-            if let picture {
-                let fitted = picture.size.width > 0 && picture.size.height > 0
-                    ? min(rect.width / picture.size.width, rect.height / picture.size.height) : 1
-                let drawn = CGSize(width: picture.size.width * fitted, height: picture.size.height * fitted)
-                picture.draw(in: CGRect(x: rect.midX - drawn.width / 2, y: rect.midY - drawn.height / 2, width: drawn.width, height: drawn.height))
-            } else if let waveform {
-                // Tinted white: a symbol image draws in its own colour.
-                let tinted = NSImage(size: waveform.size, flipped: false) { bounds in
-                    waveform.draw(in: bounds)
-                    NSColor.white.set()
-                    bounds.fill(using: .sourceAtop)
-                    return true
-                }
-                tinted.draw(in: CGRect(
-                    x: rect.midX - waveform.size.width / 2, y: rect.midY - waveform.size.height / 2,
-                    width: waveform.size.width, height: waveform.size.height
-                ))
-            }
-            NSColor(Design.accent).setStroke()
-            tile.lineWidth = 2
-            tile.stroke()
-            if count > 1 {
-                let text = NSAttributedString(string: "\(count)", attributes: [
-                    .font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.white,
-                ])
-                let badge = CGRect(x: rect.maxX - text.size().width - 14, y: rect.maxY - 20, width: text.size().width + 10, height: 16)
-                NSColor(Design.accent).setFill()
-                NSBezierPath(roundedRect: badge, xRadius: 8, yRadius: 8).fill()
-                text.draw(at: CGPoint(x: badge.minX + 5, y: badge.minY + (badge.height - text.size().height) / 2))
-            }
-            return true
-        }
+    /// The clip's picture nearest `start` already made (a range seldom
+    /// starts where a thumbnail does); nil for sound, or none made yet.
+    private static func dragPicture(of clip: MediaClip, at start: CMTime, height: CGFloat) -> NSImage? {
+        guard clip.kind.hasPictures, let url = clip.url else { return nil }
+        return FrameThumbnails.nearestCached(url: url, time: clip.fileTime(forSourceTime: start), height: height)
     }
 
     /// The pieces for `ids`, in that order. A scene whose whole asset is
@@ -664,20 +632,12 @@ struct ClipsTab: View {
         skim(entry, at: (skimmed(entry) ?? 0) + seconds)
     }
 
-    private enum RangeEnd { case start, end }
-
     /// Sets the start or end of `entry`'s range where it is skimmed, keeping
     /// the other end (or the clip's own); false when it isn't skimmed.
     @discardableResult
-    private func setRangeEnd(_ end: RangeEnd, of entry: BrowserEntry) -> Bool {
+    private func setRangeEnd(_ end: BrowserSelection<BrowserItemID>.RangeEnd, of entry: BrowserEntry) -> Bool {
         guard let at = skimmed(entry) else { return false }
-        let current = picked.range?.item == entry.id ? picked.range : nil
-        switch end {
-        case .start:
-            picked.setRange(of: entry.id, from: at, to: max(current?.end ?? entry.seconds, at), duration: entry.seconds)
-        case .end:
-            picked.setRange(of: entry.id, from: min(current?.start ?? 0, at), to: at, duration: entry.seconds)
-        }
+        picked.setRangeEnd(end, of: entry.id, at: at, duration: entry.seconds)
         cursor = entry.id
         return true
     }
@@ -685,7 +645,8 @@ struct ClipsTab: View {
     // MARK: - Keys
 
     /// Up and down move the selection (Shift extends it); Return adds the
-    /// selection to the timeline. Option-Left and Option-Right skim the
+    /// selection to the timeline, and Delete (or Command-Delete) takes the
+    /// media wholly selected out of the project. Option-Left and Option-Right skim the
     /// selected clip a frame at a time (ten with Shift), I and O set its
     /// range's ends where it is skimmed, and Escape stops skimming.
     private func handleKey(_ press: KeyPress, snapshot: Snapshot) -> Bool {
@@ -708,31 +669,20 @@ struct ClipsTab: View {
             break
         }
         if press.key == .return {
-            let ids = picked.ordered(in: order)
-            guard !ids.isEmpty else { return false }
-            if let range = picked.range, let entry = snapshot.byID[range.item] {
-                addToTimeline([entry.piece(from: range.start, to: range.end)])
-            } else {
-                addToTimeline(dragPieces(for: ids, snapshot: snapshot))
-            }
+            guard let first = picked.range?.item ?? picked.ordered(in: order).first else { return false }
+            addToTimeline(piecesToAdd(from: first, snapshot: snapshot))
             return true
         }
-        guard !order.isEmpty else { return false }
-        let current = cursor.flatMap { order.firstIndex(of: $0) }
-        let next: Int
-        switch press.key {
-        case .upArrow: next = max((current ?? order.count) - 1, 0)
-        case .downArrow: next = min((current ?? -1) + 1, order.count - 1)
-        default: return false
+        if press.key == .delete || press.key == .deleteForward {
+            guard press.modifiers.isDisjoint(with: [.control, .option, .shift]), !picked.items.isEmpty else { return false }
+            if !removeSelection(snapshot) { NSSound.beep() }
+            return true
         }
-        cursor = order[next]
+        guard press.key == .upArrow || press.key == .downArrow,
+              let next = picked.step(press.key == .upArrow ? -1 : 1, from: cursor, extending: press.modifiers.contains(.shift), in: order)
+        else { return false }
+        cursor = next
         skim?.end()
-        // Shift extends from the anchor, which stays put, to the cursor.
-        if press.modifiers.contains(.shift) {
-            picked.shiftClick(order[next], in: order)
-        } else {
-            picked.click(order[next])
-        }
         return true
     }
 
@@ -740,14 +690,11 @@ struct ClipsTab: View {
 
     @ViewBuilder
     private func menu(for entry: BrowserEntry, snapshot: Snapshot) -> some View {
-        let ids = picked.contains(entry.id) ? picked.ordered(in: snapshot.order) : [entry.id]
+        let ids = picked.dragged(from: entry.id, in: snapshot.order)
         Button(ids.count > 1 ? "Add \(ids.count) Clips to Timeline" : "Add to Timeline") {
-            if let range = picked.range, range.item == entry.id {
-                addToTimeline([entry.piece(from: range.start, to: range.end)])
-            } else {
-                addToTimeline(dragPieces(for: ids, snapshot: snapshot))
-            }
+            addToTimeline(piecesToAdd(from: entry.id, snapshot: snapshot))
         }
+        findAllButton(ids.compactMap { snapshot.byID[$0] }.map(findQuery(for:)))
         if ids.count == 1 {
             switch entry.id {
             case .asset:
@@ -756,16 +703,20 @@ struct ClipsTab: View {
                 sceneMenu(entry, assetID: assetID, scenes: snapshot.scenes(of: assetID))
             }
         } else {
-            let sceneIDs = ids.compactMap { id -> String? in
-                if case .scene(let asset, let scene) = id, asset == entry.clip.id { return scene }
-                return nil
-            }
+            let sceneIDs = sceneIDs(ids, of: entry.clip.id)
             let scenes = snapshot.scenes(of: entry.clip.id)
             if sceneIDs.count == ids.count {
                 Divider()
                 Button("Split Scenes…") { splitter?.show(splitterFocus(for: ids, snapshot: snapshot), selecting: sceneIDs) }
                 if !cutsToRemove(Set(sceneIDs), in: scenes).isEmpty {
                     Button("Merge Selected Scenes") { mergeScenes(Set(sceneIDs), assetID: entry.clip.id, scenes: scenes) }
+                }
+            }
+            let assets = picked.contains(entry.id) ? wholeAssetsPicked(snapshot) : []
+            if !assets.isEmpty {
+                Divider()
+                Button(assets.count > 1 ? "Remove \(assets.count) Clips from Project" : "Remove from Project") {
+                    removeFromProject(assets)
                 }
             }
         }
@@ -805,6 +756,35 @@ struct ClipsTab: View {
         }
         Divider()
         ReplaceMediaMenuItems(clip: clip, project: access.binding, analysis: analysis, controller: replacement, packageURL: packageURL)
+        Divider()
+        // Asks first when the timelines use it.
+        Button("Remove from Project") { removeFromProject([clip.id]) }
+    }
+
+    /// Find All for `queries`, disabled when none of them is used, or
+    /// where there is no panel to show them.
+    private func findAllButton(_ queries: [UsesFinder.Query]) -> some View {
+        Button("Find All") { finder?.show(queries) }
+            .disabled(finder == nil || queries.allSatisfy { project.uses(of: $0.item, within: $0.range).isEmpty })
+    }
+
+    /// Opens Find All on `query`; a beep where there is no panel.
+    private func findAll(_ query: UsesFinder.Query) {
+        if let finder { finder.show([query]) } else { NSSound.beep() }
+    }
+
+    /// What Find All looks for from a clip: the whole asset's uses, or a
+    /// scene's, those playing some of its stretch of the asset.
+    private func findQuery(for entry: BrowserEntry) -> UsesFinder.Query {
+        guard let number = entry.sceneNumber else { return findQuery(for: entry.clip) }
+        return UsesFinder.Query(
+            item: .media(entry.clip.id), range: CMTimeRange(start: entry.start, duration: entry.duration),
+            name: "Scene \(number) of \(entry.clip.name)"
+        )
+    }
+
+    private func findQuery(for clip: MediaClip) -> UsesFinder.Query {
+        UsesFinder.Query(item: .media(clip.id), range: nil, name: clip.name)
     }
 
     @ViewBuilder
@@ -824,10 +804,63 @@ struct ClipsTab: View {
 
     // MARK: - Editing
 
+    /// What Add to Timeline adds from `id`, from its menu, Return or
+    /// VoiceOver: its range when it has one, else every selected clip when
+    /// it is one of them, else it alone.
+    private func piecesToAdd(from id: BrowserItemID, snapshot: Snapshot) -> [MediaPiece] {
+        if let range = picked.range, range.item == id, let entry = snapshot.byID[id] {
+            return [entry.piece(from: range.start, to: range.end)]
+        }
+        return dragPieces(for: picked.dragged(from: id, in: snapshot.order), snapshot: snapshot)
+    }
+
     private func addToTimeline(_ pieces: [MediaPiece]) {
         guard let result = project.addPieces(pieces, intoTimeline: activeTimelineID, mutingSound: mutesAddedSound),
               let clipID = result.clipIDs.first else { return }
         selection = TimelineSelection(timelineID: activeTimelineID, layerID: result.layerID, timelineClipID: clipID)
+    }
+
+    /// The assets the selection takes in whole, in browser order: each one
+    /// with every clip of it selected (every scene, for a video split into
+    /// them) and no range picked.
+    private func wholeAssetsPicked(_ snapshot: Snapshot) -> [UUID] {
+        guard picked.range == nil else { return [] }
+        return snapshot.clips.map(\.id).filter { asset in
+            let entries = snapshot.entries.filter { $0.clip.id == asset }
+            return !entries.isEmpty && entries.allSatisfy { picked.contains($0.id) }
+        }
+    }
+
+    /// Takes the media wholly selected out of the project; false when no
+    /// asset is wholly selected.
+    private func removeSelection(_ snapshot: Snapshot) -> Bool {
+        removeFromProject(wholeAssetsPicked(snapshot))
+    }
+
+    /// Takes the assets out of the project, undoably; their files stay where
+    /// they are. When the timelines use any of them, it asks first, saying
+    /// how many uses go with them (`RemovalRequest`). False with none.
+    @discardableResult
+    private func removeFromProject(_ assetIDs: [UUID]) -> Bool {
+        let clips = assetIDs.compactMap { project.mediaClip(id: $0) }
+        guard !clips.isEmpty else { return false }
+        let ids = clips.map(\.id)
+        let used = clips.filter { project.isUsed(.media($0.id)) }
+        guard !used.isEmpty else {
+            remove(ids)
+            return true
+        }
+        pendingRemoval = RemovalRequest(
+            removing: clips.map(\.name), noun: "clip", action: "Remove",
+            uses: used.flatMap { project.uses(of: .media($0.id)) }, in: project,
+            queries: used.map(findQuery(for:)), perform: { remove(ids) }
+        )
+        return true
+    }
+
+    private func remove(_ assetIDs: [UUID]) {
+        if let skimmed = skim?.target?.item.base as? BrowserItemID, assetIDs.contains(skimmed.assetID) { skim?.end() }
+        project.removeMedia(assetIDs)
     }
 
     /// The cuts whose removal joins the picked scenes: each picked scene's

@@ -56,7 +56,10 @@ remembered.
   Shift-click selects the run between, and Up and Down move the selection
   (Shift extends it). A **double-click opens** a timeline in the editor;
   clicking doesn't embed it. **Embed in Active Timeline** and **Duplicate
-  Timeline** act on everything selected when the row under the menu is.
+  Timeline** act on everything selected when the row under the menu is;
+  timelines embedded together go back to back on one new layer, in the
+  tab's order, as clips added together do. None goes in while any of them
+  would put a timeline inside itself, however deep.
   A click on the name of the only timeline selected (after a moment, so a
   double-click still opens), Return, or **Rename Timeline** in its menu
   renames it: the name
@@ -68,7 +71,8 @@ remembered.
   `TimelineWindow`), **Embed in Active Timeline** (disabled where it can't be: it is empty,
   or would contain the active one) and **Duplicate Timeline**, which
   puts a copy below it ("Main copy", "Main copy 2") with new IDs
-  for its layers and clips, sharing the timelines it embeds.
+  for its layers and clips, sharing the timelines it embeds, and
+  **Delete Timeline** (see "Removing").
 
   **Layout**, in the view options under Sort by (`TimelinesLayout`,
   remembered between launches), shows the tab one of two ways:
@@ -296,6 +300,53 @@ last use removes it. A scene shows the part of the asset inside the scene.
 A timeline's filmstrip in the Timelines tab is underlined where another
 timeline nests it (`usedRanges(ofTimeline:)`).
 
+## Removing
+
+**Remove from Project**, in a clip's menu and its heading's, takes an
+asset out of the project; **Delete Timeline** in a timeline's menu
+deletes a timeline. Delete (or ⌘Delete) does either for what is
+selected, as does Edit > Delete while the browser is the active panel,
+and ⌘A selects everything listed first. Its uses go with it, so no clip
+or effect is left pointing at nothing (`removeMedia`,
+`deleteTimelines`):
+
+- An asset's clips are deleted, in every timeline (their layers stay),
+  effects taking it as their input let go of it, and clips tied to it
+  as their music are untied. Delete takes the assets wholly selected
+  (every scene of one split into scenes); a range or some of a video's
+  scenes remove nothing. Its file stays where it was and its analysis in
+  the package, so importing it again brings them back
+  ([project-package.md](project-package.md)).
+- Any timeline but the main one can be deleted. The clips embedding it
+  are deleted and effects taking it as their input let go of it; the
+  timelines it embedded stay. One deleted while open in an editor leaves
+  that editor on the main timeline.
+
+What nothing uses goes at once. When the timelines use any of it, a
+question comes first (`RemovalRequest`): it says how many times it is
+used and in which timelines (or how many, past three), and what goes
+with it, such as "It is used 3 times, in Main and Titles. Removing it
+also deletes those 2 clips and takes it off the effect using it as an
+input." Uses inside timelines deleted along with it aren't counted.
+**Find All** there opens the list of those uses (see "Finding uses")
+and removes nothing. Either removal is undone as any edit.
+
+## Finding uses
+
+**Find All**, in the menu of a clip, a heading, a scene or a timeline
+(and a VoiceOver action on each), opens a floating panel listing where
+the project's timelines use it (`UsesFinder`): one row per use, with the
+timeline, the layer, whether it is a clip of it or the input of an
+effect (named), and its start, end and duration on that timeline, as
+timecodes at the timeline's rate. A scene lists the uses that play some
+of it; with several things picked, each has its own heading. It is
+disabled when nothing uses them.
+
+The list follows edits, undo and redo, and drops what is removed.
+Double-clicking a row, or Return on it, opens its timeline in the editor
+with its clip selected. It is a table, so the arrow keys move through it
+and VoiceOver reads it by row and column.
+
 ## Previewing presets
 
 A preset's tile shows a thumbnail of the preset applied to **generated test
@@ -318,7 +369,9 @@ size into a temporary folder, and never saved with the project.
 Following [accessibility.md](accessibility.md):
 
 - The arrow keys move the selection between clips; Shift extends it;
-  Return adds the selection to the timeline.
+  Return adds the selection to the timeline; ⌘A selects every clip;
+  Delete removes what is selected, asking first when it is used (see
+  "Removing").
 - In the Timelines tab, Right and Left show and hide the timelines the
   selected one embeds, as the triangle does. The tree is drawn as a flat
   list with triangles of its own, so a click on a nested row is taken as
@@ -333,9 +386,14 @@ Following [accessibility.md](accessibility.md):
   selection or leaving the browser.
 - Each clip is one accessibility element, read as its name, duration, how
   much of it is used, and its range when it has one, with actions for Add
-  to Timeline, Skim Forward and Skim Back (a second at a time), and Set
+  to Timeline (its range when it has one, else the selection it is in, as
+  its menu does), Skim Forward and Skim Back (a second at a time), and Set
   Range Start and Set Range End at the skim position. The viewer reads as
   skimming the clip, with the time as its value.
+- A clip and a heading have Remove from Project and Find All actions
+  too. A timeline, in either layout, has actions for Embed in Active
+  Timeline, Rename, Duplicate, Delete and Find All, as its menu does; its
+  filmstrip's title adds the skimming and range actions clips have.
 
 ## Building it
 

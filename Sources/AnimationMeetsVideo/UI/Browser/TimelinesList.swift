@@ -32,19 +32,24 @@ enum TimelinesLayout: String, CaseIterable, Identifiable {
 /// one in the editor, and a click on the name of the only one selected,
 /// or Return, renames it. Its menu embeds the selected timelines (or the
 /// picked range of one) in the active timeline or duplicates them, and
-/// renames or opens the one clicked. Dragged, the selected timelines go
+/// renames or opens the one clicked; it and Delete delete those nothing
+/// uses. Dragged, the selected timelines go
 /// onto the timeline embedded, as clips do, or onto an effect that takes
 /// an input. The active timeline is marked as open.
 struct TimelinesList: View {
     let project: EditingProject
     let activeTimelineID: UUID
     let onOpen: (UUID) -> Void
-    /// Embeds a timeline in the active timeline, all of it or a range.
-    let onEmbed: (UUID, CMTimeRange?) -> Void
+    /// Embeds timelines in the active timeline on one layer, back to back,
+    /// all of each, or a range of the one timeline.
+    let onEmbed: ([UUID], CMTimeRange?) -> Void
     let onDuplicate: (UUID) -> Void
     var onRename: (UUID, String) -> Void = { _, _ in }
     /// Opens a timeline in a window of its own; nil where there is none.
     var onOpenInNewWindow: ((UUID) -> Void)?
+    /// Deletes timelines with their uses; only ones `canDeleteTimeline`
+    /// allows are passed.
+    var onDelete: ([UUID]) -> Void = { _ in }
 
     @AppStorage(Preferences.browserSort) private var sort = BrowserSort.added
     @AppStorage(Preferences.timelinesLayout) private var layout = TimelinesLayout.filmstrips
@@ -52,6 +57,11 @@ struct TimelinesList: View {
     /// The timeline whose name is being edited in its row.
     @State private var renamingID: UUID?
     @FocusState private var focused: Bool
+    @Environment(BrowserSkim.self) private var skim: BrowserSkim?
+    /// Find All's panel; absent where there is no editor (previews, tests).
+    @Environment(UsesFinder.self) private var finder: UsesFinder?
+    /// Deleting timelines others use, waiting to be agreed to.
+    @State private var pendingRemoval: RemovalRequest?
 
     /// A timeline at its place in the tree.
     struct Node: Identifiable {
@@ -117,20 +127,83 @@ struct TimelinesList: View {
 
     var body: some View {
         let nodes = Self.nodes(of: project, sort: sort)
-        switch layout {
-        case .tree:
-            tree(Self.rows(of: nodes, collapsed: collapsed))
-        case .filmstrips:
-            // Every timeline, in the tree's order read top to bottom.
-            let order = Self.rows(of: nodes, collapsed: []).map(\.timelineID)
-            TimelineFilmstrips(
-                project: project, activeTimelineID: activeTimelineID, order: order,
-                picked: $picked, renamingID: $renamingID,
-                onOpen: open, onRename: onRename,
-                menu: { id in AnyView(menu(id, order: order)) }
-            )
-            .onChange(of: order) { _, order in picked.keep(only: order) }
+        // Every timeline, in the tree's order read top to bottom.
+        let all = Self.rows(of: nodes, collapsed: []).map(\.timelineID)
+        Group {
+            switch layout {
+            case .tree:
+                tree(Self.rows(of: nodes, collapsed: collapsed))
+            case .filmstrips:
+                TimelineFilmstrips(
+                    project: project, activeTimelineID: activeTimelineID, order: all,
+                    picked: $picked, renamingID: $renamingID,
+                    onOpen: open, onRename: onRename,
+                    onEmbed: embedOrBeep, onDuplicate: onDuplicate, onDelete: deleteOrBeep, onFindAll: findAll,
+                    menu: { id in AnyView(menu(id, order: all)) }
+                )
+                .onChange(of: all) { _, order in picked.keep(only: order) }
+            }
         }
+        // In either layout, from the keys or the Edit menu while the
+        // browser is the active panel (see `EditCommands`).
+        .onKeyPress(keys: [.delete, .deleteForward]) { press in
+            guard renamingID == nil, press.modifiers.isDisjoint(with: [.control, .option, .shift]), !picked.items.isEmpty else {
+                return .ignored
+            }
+            if !deleteSelection(order: all) { NSSound.beep() }
+            return .handled
+        }
+        .focusedSceneValue(\.browserEditActions, EditMenuActions(
+            delete: { if !deleteSelection(order: all) { NSSound.beep() } },
+            // What is shown: a collapsed row's timelines stay out.
+            selectAll: { picked.selectAll(in: layout == .tree ? Self.rows(of: nodes, collapsed: collapsed).map(\.timelineID) : all) },
+            state: [AnyHashable(picked.revision), AnyHashable(all), AnyHashable(collapsed), AnyHashable(layout)]
+        ))
+        .removalConfirmation($pendingRemoval, finder: finder)
+    }
+
+    /// Deletes the selected timelines; false when only the main one is.
+    private func deleteSelection(order: [UUID]) -> Bool {
+        delete(picked.ordered(in: order))
+    }
+
+    /// Deletes those of `ids` that can go (all but the main timeline), with
+    /// the clips embedding them; false when none can. When other timelines
+    /// use them, it asks first, saying how many uses go with them. Uses
+    /// inside timelines deleted with them aren't counted: they go anyway.
+    @discardableResult
+    private func delete(_ ids: [UUID]) -> Bool {
+        let deletable = ids.filter(project.canDeleteTimeline)
+        guard !deletable.isEmpty else { return false }
+        let going = Set(deletable)
+        let uses = deletable.flatMap { project.uses(of: .timeline($0)) }.filter { !going.contains($0.timelineID) }
+        let perform = {
+            if let skimmed = skim?.target?.item.base as? TimelineStripID, going.contains(skimmed.timelineID) { skim?.end() }
+            renamingID = nil
+            onDelete(deletable)
+        }
+        guard !uses.isEmpty else {
+            perform()
+            return true
+        }
+        let used = deletable.filter { id in project.uses(of: .timeline(id)).contains { !going.contains($0.timelineID) } }
+        pendingRemoval = RemovalRequest(
+            removing: deletable.compactMap { project.timeline(id: $0)?.name }, noun: "timeline", action: "Delete",
+            uses: uses, in: project, queries: used.compactMap(findQuery(for:)), perform: perform
+        )
+        return true
+    }
+
+    /// What Find All looks for from a timeline: the clips embedding it and
+    /// the effects taking it as an input.
+    private func findQuery(for id: UUID) -> UsesFinder.Query? {
+        project.timeline(id: id).map { UsesFinder.Query(item: .timeline(id), range: nil, name: $0.name) }
+    }
+
+    /// Opens Find All on one timeline; a beep where there is no panel.
+    private func findAll(_ id: UUID) {
+        guard let finder, let query = findQuery(for: id) else { return NSSound.beep() }
+        finder.show([query])
     }
 
     private func tree(_ rows: [Row]) -> some View {
@@ -167,15 +240,7 @@ struct TimelinesList: View {
     /// Moves the selection a row up or down from the timeline last clicked,
     /// or extends it there with Shift.
     private func step(_ by: Int, extending: Bool, in order: [UUID]) -> KeyPress.Result {
-        guard !order.isEmpty else { return .ignored }
-        let from = picked.anchor.flatMap(order.firstIndex(of:)) ?? (by > 0 ? -1 : order.count)
-        let to = order[(from + by).clamped(between: 0, and: order.count - 1)]
-        if extending {
-            picked.shiftClick(to, in: order)
-        } else {
-            picked.click(to)
-        }
-        return .handled
+        picked.step(by, from: picked.anchor, extending: extending, in: order) == nil ? .ignored : .handled
     }
 
     private func showNested(_ shown: Bool) -> KeyPress.Result {
@@ -247,11 +312,11 @@ struct TimelinesList: View {
         }
         Divider()
         if let range {
-            Button("Embed Range in Active Timeline") { onEmbed(id, range) }
+            Button("Embed Range in Active Timeline") { onEmbed([id], range) }
                 .disabled(!project.canEmbed(id, into: activeTimelineID))
         }
-        Button(targets.count > 1 ? "Embed \(embeddable.count) Timelines in Active Timeline" : "Embed in Active Timeline") {
-            embeddable.forEach { onEmbed($0, nil) }
+        Button(embeddable.count > 1 ? "Embed \(embeddable.count) Timelines in Active Timeline" : "Embed in Active Timeline") {
+            onEmbed(embeddable, nil)
         }
         .disabled(embeddable.isEmpty)
         Button("Rename Timeline") {
@@ -261,6 +326,14 @@ struct TimelinesList: View {
         Button(targets.count > 1 ? "Duplicate \(targets.count) Timelines" : "Duplicate Timeline") {
             targets.forEach(onDuplicate)
         }
+        let queries = targets.compactMap(findQuery(for:))
+        Button("Find All") { finder?.show(queries) }
+            .disabled(finder == nil || queries.allSatisfy { !project.isUsed($0.item) })
+        Divider()
+        // Any but the main timeline; asks first when others use it.
+        let deletable = targets.filter(project.canDeleteTimeline)
+        Button(deletable.count > 1 ? "Delete \(deletable.count) Timelines" : "Delete Timeline") { delete(deletable) }
+            .disabled(deletable.isEmpty)
     }
 
     private func row(_ timeline: Timeline, _ listed: Row, order: [UUID]) -> some View {
@@ -296,11 +369,11 @@ struct TimelinesList: View {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint("Opens the timeline in the editor")
         .accessibilityAction { open(timeline.id) }
-        .accessibilityAction(named: "Embed in active timeline") {
-            if project.canEmbed(timeline.id, into: activeTimelineID) { onEmbed(timeline.id, nil) } else { NSSound.beep() }
-        }
+        .accessibilityAction(named: "Embed in active timeline") { embedOrBeep(timeline.id) }
         .accessibilityAction(named: "Rename timeline") { renamingID = timeline.id }
         .accessibilityAction(named: "Duplicate timeline") { onDuplicate(timeline.id) }
+        .accessibilityAction(named: "Delete timeline") { deleteOrBeep(timeline.id) }
+        .accessibilityAction(named: "Find All") { findAll(timeline.id) }
         .accessibilityAction(named: isSelected ? "Deselect" : "Add to selection") { picked.commandClick(timeline.id) }
         .accessibilityAction(named: collapsed.contains(timeline.id) ? "Show nested timelines" : "Hide nested timelines") {
             if listed.hasChildren { toggleNested(timeline.id) } else { NSSound.beep() }
@@ -341,6 +414,16 @@ struct TimelinesList: View {
             Image(systemName: "rectangle.stack")
                 .foregroundStyle(Design.ClipTone.nested.color)
         }
+    }
+
+    /// One timeline's Embed and Delete, from VoiceOver in either layout: a
+    /// beep where it can't be done.
+    private func embedOrBeep(_ id: UUID) {
+        if project.canEmbed(id, into: activeTimelineID) { onEmbed([id], nil) } else { NSSound.beep() }
+    }
+
+    private func deleteOrBeep(_ id: UUID) {
+        if !delete([id]) { NSSound.beep() }
     }
 
     private func open(_ id: UUID) {

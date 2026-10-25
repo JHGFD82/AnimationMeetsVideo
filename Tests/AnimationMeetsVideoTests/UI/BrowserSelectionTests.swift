@@ -1,3 +1,4 @@
+import CoreGraphics
 import Testing
 @testable import AnimationMeetsVideo
 
@@ -100,5 +101,61 @@ import Testing
         #expect(selection.items.isEmpty)
         #expect(selection.range == nil)
         #expect(selection.anchor == nil)
+    }
+
+    /// Command-A takes every item whole, dropping a range, and Shift-click
+    /// still extends from the item last clicked.
+    @Test func selectAllTakesEveryItemAndKeepsTheAnchor() {
+        var selection = BrowserSelection<String>()
+        selection.setRange(of: "c", from: 1, to: 2, duration: 5)
+        selection.selectAll(in: order)
+        #expect(selection.items == Set(order))
+        #expect(selection.range == nil)
+        selection.shiftClick("e", in: order)
+        #expect(selection.ordered(in: order) == ["c", "d", "e"])
+    }
+
+    /// A press near either end of a range grabs it, giving the end that
+    /// stays put; elsewhere, or on another item, it grabs nothing.
+    @Test func aHandleIsNearARangeEnd() {
+        // Ten one-second thumbnails in a row, 96 points each.
+        let layout = FilmstripLayout(duration: 10, interval: .oneSecond, cellSize: CGSize(width: 96, height: 54), width: 1000)
+        var selection = BrowserSelection<String>()
+        selection.setRange(of: "a", from: 2, to: 5, duration: 10)
+        #expect(selection.handle(of: "a", at: CGPoint(x: 190, y: 10), in: layout) == 5)
+        #expect(selection.handle(of: "a", at: CGPoint(x: 484, y: 10), in: layout) == 2)
+        #expect(selection.handle(of: "a", at: CGPoint(x: 300, y: 10), in: layout) == nil)
+        #expect(selection.handle(of: "b", at: CGPoint(x: 190, y: 10), in: layout) == nil)
+    }
+
+    /// I and O keep the range's other end, or the item's own without one,
+    /// and either may come first.
+    @Test func settingARangeEndKeepsTheOtherOne() {
+        var selection = BrowserSelection<String>()
+        selection.setRangeEnd(.end, of: "a", at: 6, duration: 10)
+        #expect(selection.range == .init(item: "a", start: 0, end: 6))
+        selection.setRangeEnd(.start, of: "a", at: 2, duration: 10)
+        #expect(selection.range == .init(item: "a", start: 2, end: 6))
+        // A start past the end takes the end with it.
+        selection.setRangeEnd(.start, of: "a", at: 8, duration: 10)
+        #expect(selection.range == .init(item: "a", start: 8, end: 8))
+        // Another item starts from its own ends.
+        selection.setRangeEnd(.start, of: "b", at: 3, duration: 4)
+        #expect(selection.range == .init(item: "b", start: 3, end: 4))
+    }
+
+    /// Up and Down step from the cursor, stopping at the ends; without one
+    /// they start at the first or last. Shift extends from the anchor.
+    @Test func steppingMovesOrExtendsTheSelection() {
+        var selection = BrowserSelection<String>()
+        #expect(selection.step(1, from: nil, extending: false, in: order) == "a")
+        #expect(selection.step(-1, from: nil, extending: false, in: order) == "e")
+        #expect(selection.step(1, from: "e", extending: false, in: order) == "e")
+        #expect(selection.items == ["e"])
+        selection.click("b")
+        #expect(selection.step(1, from: "b", extending: true, in: order) == "c")
+        #expect(selection.step(1, from: "c", extending: true, in: order) == "d")
+        #expect(selection.ordered(in: order) == ["b", "c", "d"])
+        #expect(selection.step(1, from: nil, extending: false, in: []) == nil)
     }
 }

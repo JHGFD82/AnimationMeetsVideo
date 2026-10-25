@@ -791,7 +791,9 @@ clip.
   from, else onto a new layer of its kind at the top. The pasted clip is
   selected and the playhead moves to its end, so pasting again lays the
   next copy after it. Clips paste into other timelines too, but a nested
-  timeline never into itself or a timeline it contains.
+  timeline never into itself or a timeline it contains, however deep; an
+  effect input that would do that is taken off the pasted clip, which
+  pastes without it.
 - **Duplicate** puts a copy right after the clip on its layer.
 - **One clipboard.** Paste pastes what was copied last: copying effects
   after a clip makes ⌘V paste the effects, and the other way round

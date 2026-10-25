@@ -110,7 +110,7 @@ extension EditingProject {
         adopt(bundle.sources)
         guard let tIndex = timelines.firstIndex(id: timelineID) else { return nil }
         let timeline = timelines[tIndex]
-        var clip = coveringWholeFrames(bundle.clip.duplicated(), in: timeline)
+        var clip = coveringWholeFrames(withoutCyclicInputs(bundle.clip.duplicated(), in: timelineID), in: timeline)
         // An adjustment clip reaching a layer of another timeline reaches
         // every layer below instead.
         if let reach = clip.reach, timeline.layer(id: reach) == nil { clip.reach = nil }
@@ -138,9 +138,23 @@ extension EditingProject {
         guard canPaste(bundle, into: timelineID) else { return nil }
         adopt(bundle.sources)
         guard let tIndex = timelines.firstIndex(id: timelineID) else { return nil }
-        var clip = coveringWholeFrames(bundle.clip.duplicated(), in: timelines[tIndex])
+        var clip = coveringWholeFrames(withoutCyclicInputs(bundle.clip.duplicated(), in: timelineID), in: timelines[tIndex])
         if let reach = clip.reach, timelines[tIndex].layer(id: reach) == nil { clip.reach = nil }
         return insertOnNewLayer(clip, kind: kind, in: tIndex, at: start)
+    }
+
+    /// The clip with any effect input taken off that would put
+    /// `timelineID` inside itself: the timeline itself, or one that has it
+    /// in it however deep. The rest of the clip pastes as it is.
+    private func withoutCyclicInputs(_ clip: TimelineClip, in timelineID: UUID) -> TimelineClip {
+        var clip = clip
+        for index in clip.effects.indices {
+            if case .timeline(let inputID)? = clip.effects[index].input?.source, timeline(id: inputID) != nil,
+               !canEmbed(inputID, into: timelineID) {
+                clip.effects[index].input = nil
+            }
+        }
+        return clip
     }
 
     private mutating func insertOnNewLayer(_ clip: TimelineClip, kind wanted: LayerKind, in tIndex: Int, at start: CMTime) -> (layerID: UUID, clipID: UUID) {

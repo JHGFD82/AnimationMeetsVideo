@@ -270,6 +270,36 @@ struct UISnapshots {
         )
     }
 
+    /// Find All on a clip used three times: twice on Main, on two layers,
+    /// and once as the input of a matte on a timeline of its own.
+    @Test func usesFinder() throws {
+        var project = EditingProject.empty
+        let main = project.rootTimelineID
+        let shot = MediaClip(
+            name: "Beach.mov", kind: .video, url: nil, duration: CMTime(seconds: 5, preferredTimescale: 600),
+            frameRate: 24, colorSpace: .rec709, codecName: "Stub"
+        )
+        _ = project.importClip(shot, intoTimeline: main)
+        _ = project.addPieces(
+            [MediaPiece(assetID: shot.id, start: .zero, end: CMTime(seconds: 2, preferredTimescale: 600))],
+            intoTimeline: main, at: CMTime(seconds: 7, preferredTimescale: 600)
+        )
+        let titles = project.addTimeline(name: "Titles", frameSize: CGSize(width: 1920, height: 1080), frameRate: 24, colorSpace: .rec709)
+        let card = MediaClip(
+            name: "Card", kind: .video, url: nil, duration: CMTime(seconds: 3, preferredTimescale: 600),
+            frameRate: 24, colorSpace: .rec709, codecName: "Stub"
+        )
+        let imported = project.importClip(card, intoTimeline: titles)
+        let placed = try #require(imported)
+        var matte = Effect(kind: .matte)
+        matte.input = EffectInput(source: .asset(shot.id))
+        project.editClip(placed.clipID, in: titles) { $0.effects = [matte] }
+        let finder = UsesFinder()
+        finder.update(project: project)
+        finder.showWithoutPanel([UsesFinder.Query(item: .media(shot.id), range: nil, name: shot.name)])
+        try SnapshotSupport.render(UsesFinderView(finder: finder), "uses-finder", size: CGSize(width: 620, height: 260))
+    }
+
     /// The Timelines tab as filmstrips: Main embeds a dark-then-bright
     /// Chorus for its first two seconds, so Chorus is underlined there.
     /// Each strip's frames are made from its own timeline.

@@ -75,4 +75,12 @@ import Testing
         #expect(spans[1] == CGRect(x: 0, y: layout.rowPitch, width: 144, height: 54))
         #expect(layout.spans(from: 3, to: 3).isEmpty)
     }
+
+    /// What a strip underlines: spans in order, joined where they overlap
+    /// or touch, empty ones left out.
+    @Test func usedSpansAreJoined() {
+        let joined = FilmstripLayout.joined([(6, 9), (2, 5), (4, 6), (15, 16), (12, 12)])
+        #expect(joined.map(\.start) == [2, 15])
+        #expect(joined.map(\.end) == [9, 16])
+    }
 }
