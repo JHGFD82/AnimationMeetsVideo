@@ -63,7 +63,7 @@ struct TimelineFilmstrips: View {
     }
 
     var body: some View {
-        let previews = TimelinePreviews.previews(of: order, in: project)
+        let previews = TimelinePreviews.shared.previews(of: order, in: project)
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(lines()) { line in
@@ -103,6 +103,8 @@ struct TimelineFilmstrips: View {
         .onChange(of: focused) { _, focused in
             if !focused { skim?.end() }
         }
+        // Out of sight, no preview is kept or built.
+        .onDisappear { TimelinePreviews.shared.releaseAll() }
         .sunken(.sunken)
     }
 
@@ -360,7 +362,7 @@ struct TimelineFilmstrips: View {
 
     private func skimStep(_ timeline: Timeline, seconds: Double) {
         // Asked for with the rest, which a lone request would let go.
-        guard let preview = TimelinePreviews.previews(of: order, in: project)[timeline.id] else { return }
+        guard let preview = TimelinePreviews.shared.previews(of: order, in: project)[timeline.id] else { return }
         skim(timeline, preview: preview, at: (skimmed(timeline) ?? 0) + seconds)
     }
 

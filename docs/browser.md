@@ -79,9 +79,14 @@ remembered.
     from a composition built of it (`TimelinePreview`) at the time per
     thumbnail and size the Clips tab uses. It is built again only when
     something it draws changes (its own clips, or the timelines it nests
-    or its effects take), so editing one timeline leaves the others'
-    strips alone, and a strip keeps its old pictures until the new ones
-    are made. Skimming, ranges, Option-arrows, I, O and Escape work as on
+    or its effects take), values included, so editing one timeline
+    leaves the others' strips alone. It waits for edits to settle (half
+    a second after the last) and builds once for a run of them, a build
+    overtaken by a newer one is cancelled, and a strip keeps its old
+    pictures until the new ones are made. Edits reach the previews from
+    the editor (`TimelinePreviews.projectChanged`), since the browser
+    isn't redrawn while only values change. With the tab out of sight
+    no preview is kept or built. Skimming, ranges, Option-arrows, I, O and Escape work as on
     clips; a range picked of a timeline adds **Embed Range in Active
     Timeline** to its menu, which embeds only that stretch, the rest
     kept past the clip's trims for transitions to draw on. Timelines

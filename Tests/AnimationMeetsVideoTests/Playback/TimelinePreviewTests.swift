@@ -21,21 +21,52 @@ import Testing
         _ = fixture.project.embedTimeline(inner, intoTimeline: fixture.timelineID)
         let ids = [fixture.timelineID, inner, other]
 
-        let first = TimelinePreviews.previews(of: ids, in: fixture.project)
-        // An edit to Other leaves Main and Inner as they were.
-        fixture.setTransform([(.opacity, [50])], ofClip: try #require(fixture.project.timeline(id: other)?.layers.first?.clips.first?.id), in: other)
-        let second = TimelinePreviews.previews(of: ids, in: fixture.project)
+        let previews = TimelinePreviews(settleDelay: .milliseconds(40))
+        defer { previews.releaseAll() }
+        func settle() async { try? await Task.sleep(for: .milliseconds(250)) }
+        let first = previews.previews(of: ids, in: fixture.project)
+        #expect(first.count == 3)
+
+        // A value edit to Other (which the browser isn't redrawn for) comes
+        // from the editor; once it settles, Other is built again and Main
+        // and Inner are left as they were.
+        let otherClip = try #require(fixture.project.timeline(id: other)?.layers.first?.clips.first?.id)
+        fixture.setTransform([(.opacity, [50])], ofClip: otherClip, in: other)
+        // The browser's older project doesn't replace anything by itself.
+        #expect(previews.previews(of: ids, in: fixture.project)[other] === first[other])
+        previews.projectChanged(fixture.project)
+        #expect(previews.previews(of: ids, in: fixture.project)[other] === first[other])
+        await settle()
+        let second = previews.previews(of: ids, in: fixture.project)
+        #expect(second[other] !== first[other])
         #expect(second[fixture.timelineID] === first[fixture.timelineID])
         #expect(second[inner] === first[inner])
-        #expect(second[other] !== first[other])
-        // An edit inside Inner changes Main, which draws it, too.
-        fixture.setTransform([(.opacity, [50])], ofClip: clip.clipID, in: inner)
-        let third = TimelinePreviews.previews(of: ids, in: fixture.project)
+
+        // A run of edits inside Inner builds Inner, and Main which draws
+        // it, once each.
+        let before = previews.revision
+        fixture.setTransform([(.opacity, [40])], ofClip: clip.clipID, in: inner)
+        previews.projectChanged(fixture.project)
+        fixture.setTransform([(.opacity, [30])], ofClip: clip.clipID, in: inner)
+        previews.projectChanged(fixture.project)
+        await settle()
+        #expect(previews.revision == before + 2)
+        let third = previews.previews(of: ids, in: fixture.project)
         #expect(third[fixture.timelineID] !== second[fixture.timelineID])
         #expect(third[inner] !== second[inner])
-        // Renaming changes nothing drawn.
+        #expect(third[inner]?.key == TimelinePreview.key(of: inner, in: fixture.project))
+
+        // An edit undone before it settles builds nothing; renaming changes
+        // nothing drawn.
+        let undone = fixture.project
+        fixture.setTransform([(.opacity, [20])], ofClip: clip.clipID, in: inner)
+        previews.projectChanged(fixture.project)
+        fixture.project = undone
         fixture.project.renameTimeline(inner, to: "Renamed")
-        #expect(TimelinePreviews.previews(of: ids, in: fixture.project)[inner] === third[inner])
+        previews.projectChanged(fixture.project)
+        await settle()
+        #expect(previews.revision == before + 2)
+        #expect(previews.previews(of: ids, in: fixture.project)[inner] === third[inner])
     }
 
     @Test func framesComeFromTheTimeline() async throws {
