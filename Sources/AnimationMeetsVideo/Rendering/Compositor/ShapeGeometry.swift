@@ -13,6 +13,8 @@ struct ShapeStep: Equatable, Sendable {
         /// first point straight up from the center before `rotation`
         /// (degrees, clockwise).
         case polygon(center: CGPoint, points: Int, radius: Double, innerRadius: Double?, cornerRadius: Double, rotation: Double)
+        /// A block of text, whose outline is its glyphs.
+        case text(TextOutline)
     }
 
     var outline: Outline
@@ -22,9 +24,9 @@ struct ShapeStep: Equatable, Sendable {
     /// Nil when it isn't stroked.
     var stroke: ShapeStroke?
 
-    /// The shape of a Rectangle, Ellipse, Polygon or Star effect at source
-    /// time `time`, centered on `center` plus its Position. Nil when it
-    /// has no size. A shape with neither a fill nor a stroke draws nothing
+    /// The shape of a Rectangle, Ellipse, Polygon, Star or Text effect at
+    /// source time `time`, centered on `center` plus its Position. Nil when
+    /// it has no size, or is text with no words. A shape with neither a fill nor a stroke draws nothing
     /// but still has an outline for a Stroke below it to follow.
     init?(_ effect: Effect, at time: CMTime, center: CGPoint) {
         func values(_ kind: ControlKind) -> [Double] {
@@ -52,6 +54,18 @@ struct ShapeStep: Equatable, Sendable {
                 innerRadius: effect.kind == .star ? max(0, single(.innerRadius)) : nil,
                 cornerRadius: max(0, single(.cornerRadius)), rotation: single(.shapeRotation)
             )
+        case .text:
+            let size = single(.fontSize)
+            guard let content = effect.text, !content.string.isEmpty, size > 0 else { return nil }
+            let align = effect.control(.textAlign).flatMap { $0.enabled ? $0.choice : nil }.flatMap(TextAlign.init(rawValue:))
+            outline = .text(TextOutline(
+                setting: TextOutline.Setting(
+                    string: content.string, fontName: content.fontName, size: size,
+                    tracking: single(.tracking), lineHeight: max(1, single(.lineHeight)), wrapWidth: max(0, single(.wrapWidth)),
+                    align: align ?? .center
+                ),
+                center: middle
+            ))
         default:
             return nil
         }
@@ -83,6 +97,8 @@ struct ShapeStep: Equatable, Sendable {
                 return CGPoint(x: center.x + reach * cos(angle), y: center.y + reach * sin(angle))
             }
             return Self.closedPath(through: vertices, cornerRadius: corner)
+        case .text(let text):
+            return text.path
         }
     }
 
@@ -114,6 +130,8 @@ struct ShapeStep: Equatable, Sendable {
         case .ellipse(let r): text = "h e \(rect(r))"
         case .polygon(let c, let points, let radius, let inner, let corner, let rotation):
             text = "h p\(points) \(n(c.x)),\(n(c.y)) \(n(radius)) \(inner.map(n) ?? "-") \(n(corner)) \(n(rotation))"
+        case .text(let outline):
+            text = outline.keyText
         }
         text += " f" + (fill ?? []).map(n).joined(separator: ",")
         text += " s" + (stroke?.keyText ?? "-")

@@ -120,8 +120,8 @@ struct InspectorPanel: View {
                 case .adjustment:
                     InspectorRow("Kind", value: "Adjustment")
                     reachPicker
-                case .graphic:
-                    InspectorRow("Kind", value: "Shapes")
+                case .graphic(let title):
+                    InspectorRow("Kind", value: title == nil ? "Shapes" : "Text")
                 case nil:
                     EmptyView()
                 }
@@ -138,6 +138,8 @@ struct InspectorPanel: View {
                     Button("Beat Match…") { beatMatch.open(assetID: asset.id, in: project) }
                 }
             }
+
+            textGroups
 
             if let selection, let timelineClip, let maxDurationSeconds {
                 InspectorGroup("Trim") {
@@ -338,6 +340,26 @@ struct InspectorPanel: View {
             to: CMTime(seconds: seconds, preferredTimescale: 600),
             sceneTracks: sceneTracks()
         )
+    }
+}
+
+// The text of a selected clip.
+extension InspectorPanel {
+    /// A group for each Text effect in the clip's stack, where its words,
+    /// font, size and alignment are set (see `TextInspectorGroup`).
+    @ViewBuilder
+    var textGroups: some View {
+        if let timelineClip, let timeline = project.timeline(id: timelineID) {
+            let texts = timelineClip.effects.filter { $0.kind == .text }
+            let sourceNow = PlayheadTime(playhead) { timeline.snappedToFrame(timelineClip.sourceTime(atTimelineTime: $0)) }
+            ForEach(texts) { effect in
+                TextInspectorGroup(
+                    effect: effect, title: texts.count > 1 ? effect.displayName : "Text", playhead: sourceNow,
+                    onEdit: { change in project.editEffect(effect.id, ofClip: timelineClip.id, in: timelineID, change) },
+                    onSeek: { onSeek(timelineClip.timelineTime(forSourceTime: $0)) }
+                )
+            }
+        }
     }
 }
 

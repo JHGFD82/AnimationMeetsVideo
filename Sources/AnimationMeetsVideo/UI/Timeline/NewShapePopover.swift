@@ -25,7 +25,9 @@ struct NewShapePopover: View {
                 }
                 // Its own style, not the header's icon buttons'.
                 .buttonStyle(.borderless)
-                .help("Add a shape layer with a \(kind.name.lowercased()) at the playhead")
+                .help(kind == .text
+                      ? "Add a text layer at the playhead; type its words in the inspector"
+                      : "Add a shape layer with a \(kind.name.lowercased()) at the playhead")
             }
         }
         .padding(Design.Space.step)

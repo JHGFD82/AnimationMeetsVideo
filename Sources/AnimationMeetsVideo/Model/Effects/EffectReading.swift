@@ -61,6 +61,9 @@ extension EditingProject {
         }
 
         if effect.kind.isKeyframing { return keyframingNote(for: effect, in: clip) }
+        if effect.kind == .text, effect.text?.string.isEmpty ?? true {
+            return EffectNote(text: "It has no words to draw. Type them in the inspector.", dims: true)
+        }
         if reachesNothing(clip, on: layer, in: timeline) {
             return EffectNote(text: "The layer this adjustment reaches down to is above it, so it reaches nothing.", dims: true)
         }

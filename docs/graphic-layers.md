@@ -1,8 +1,10 @@
 # Images, shapes and text
 
 Status: stills, shapes (rectangle, ellipse, polygon and star) and strokes
-are **built** (steps 1, 2a and 2b, not yet tried in the running app);
-gradients, free paths, path operations and text are **planned** (see
+are **built** (steps 1, 2a and 2b, not yet tried in the running app), as
+is the text framework (step 3a: one font per block, set in the
+inspector); gradients, free paths, path operations, styled runs,
+variable axes, animators and text on a path are **planned** (see
 [Building it](#building-it)).
 Pictures that don't come from footage:
 still images imported from files, and shapes and text made in the app,
@@ -190,17 +192,57 @@ Still to come:
 
 ## Text
 
-Text is a shape effect whose outline is a block of text, laid out with
-Core Text and drawn as glyph paths through the same code as the other
-shapes, so it has a fill and a stroke and stays sharp the same way. A
-text layer is a shape clip holding one.
+Text is a shape effect (`EffectKind.text`, in the Shapes category) whose
+outline is a block of text, laid out with Core Text and drawn as glyph
+paths through the same code as the other shapes (`ShapeStep`'s `.text`
+outline), so it has a fill and a stroke, takes a Stroke below it, and
+stays sharp through moves the same way. A text layer is a shape clip
+holding one: New Shape Layer → Text, or Text from the Effects Library.
 
-- **Content.** An attributed string: runs of font family, style, size,
-  tracking, line height, fill and stroke. Alignment, a box width for
-  wrapping (or none, for one line), and the anchor's place in the box.
-- **Layout.** `CTFramesetter` sets the lines, and `CTFontCreatePathForGlyph`
-  gives each glyph's path. Layout is redone only when the text or its
-  styling changes, not for every frame.
+Built (step 3a):
+
+- **Content.** `Effect.text` (`TextContent`) holds what isn't a control:
+  the words and the font's PostScript name, one font for the whole block.
+  The rest are controls, keyframed like any other: **Size** (pixels; a new
+  layer's is a ninth of the frame's height), **Alignment** (Left, Center,
+  Right, Justified), **Tracking** (pixels after each letter), **Line
+  Height** (percent of the font's own), **Wrap Width** (pixels; 0 sets each
+  paragraph on one line), and the shapes' Position, Fill and Stroke
+  controls. The block's middle sits at the frame's middle plus Position.
+- **Layout** (`TextLayout`). Each paragraph is wrapped with
+  `CTTypesetterSuggestLineBreak` (or set whole), lines are stacked a line
+  height apart and lined up within the block (as wide as the wrap width,
+  or the widest line), and each glyph's outline comes from
+  `CTFontCreatePathForGlyph` with the run's own font, so letters a font
+  lacks fall back as Core Text picks. Justified stretches every wrapped
+  line but a paragraph's last. A glyph with no outline (an emoji's
+  picture) draws nothing. Laid-out blocks are kept by what was set, so
+  layout is redone only when the words or styling change, not for every
+  frame or move.
+- **The inspector** has a Text group for each Text effect of the selected
+  clip: the words in a text editor, Font (family) and Style pickers
+  (`FontCatalog`, keeping the style's name when the family changes), and
+  Size, Alignment, Tracking, Line Height and Wrap Width, the numbers with
+  the stopwatch and keyframe buttons the sound rows have, set at the
+  playhead. The effects panel shows the same controls, and Fill and
+  Stroke; a Text effect with no words says so there. Reset keeps the
+  words and font.
+- **Naming.** A shape clip with a Text effect is named by the first line
+  of its words on the timeline, in the inspector and in undo steps
+  (`resolvedInfo(for:)` of the clip), and VoiceOver calls it a text clip.
+- **Missing fonts.** The project stores the font's name, not its file.
+  Without the font, Core Text draws with a substitute, the name is kept
+  and saved, and the inspector says which font is missing and what draws
+  in its place. Not yet: a report before export.
+- **Render key.** The words, font and every setting are part of the
+  shape's key, so changing any of them re-renders and moving the clip
+  doesn't.
+
+Still to come:
+
+- **Styled runs.** An attributed string: runs of font family, style,
+  size, tracking, fill and stroke within one block, and the anchor's
+  place in the box.
 - **Variable fonts.** A font's variation axes (weight, width, slant,
   optical size) are controls like any other, so a word can animate from
   light to black.
@@ -211,12 +253,8 @@ text layer is a shape clip holding one.
   transform about its own anchor.
 - **Text on a path.** A text item can follow one of the clip's shape paths,
   with a start offset that can be animated.
-- **Missing fonts.** The project stores font names, not files. Opening a
-  project on a Mac without one of its fonts keeps the name, draws with a
-  substitute, and reports the missing font in the inspector and before
-  export, as missing media is reported.
-- **Editing.** Text is typed in the inspector (TextKit 2) and, later, in
-  place in the viewer.
+- **Editing in the viewer.** Typing in place, and a handle for the wrap
+  width.
 
 ## Editing in the viewer
 
@@ -234,7 +272,9 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
   (`"rectangle"`, `"ellipse"`, `"polygon"`, `"star"`, `"stroke"`) written
   like any other, their controls as numbers (colors as `[r, g, b, a]`)
   or, for Edge, Join and Cap, the option's name. A size's link is written only when
-  it differs from a new control's. Free paths, when they come, will be
+  it differs from a new control's. A Text effect (`"text"`) also has
+  `"text": {"string": …, "font": <PostScript name>}`; its Alignment is
+  saved as the option's name like the other choices. Free paths, when they come, will be
   arrays of vertices (`[x, y, inX, inY, outX, outY]`) so they can be read
   and edited by hand. Loading stays strict.
 - These are additions, so the format version stays the same: files
@@ -269,8 +309,17 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
    which also fixes Matte's Take listing blend modes. (c) Gradients.
    (d) Free paths and their keyframes. (e) Path operations and trim
    paths.
-3. **Text.** Core Text layout and glyph paths, styling runs, the inspector
-   editor, missing fonts, variable axes, then animators and text on a path.
+3. **Text.** (a, done) The Text effect, `TextContent`, Core Text layout
+   and glyph paths (`TextLayout`), the inspector's Text group and
+   `FontCatalog`, missing fonts in the inspector, naming clips by their
+   text, and saving. `TextTests` checks centering, line breaks and line
+   height, wrapping, alignment against the wrap width, justification,
+   tracking, empty text, a missing font, the font catalog, a text layer
+   drawn over black, render keys, saving (a missing font and keyframed
+   size too), naming, Reset and the empty-text note; the `UISnapshots`
+   case `textInspector` shows the inspector. (b) Styled runs. (c)
+   Variable axes. (d) Animators. (e) Text on a path. (f) Missing fonts
+   reported before export.
 4. **Viewer handles.** Selecting a graphic clip in the viewer, handles for
    vertices and primitives, and their keyboard paths.
 5. **Stills as effect inputs**, so a PNG can be a Matte's input.

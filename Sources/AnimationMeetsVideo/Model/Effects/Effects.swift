@@ -446,6 +446,8 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// For a Keyframing effect: what it writes to and how (nil for every
     /// other kind).
     var keyframing: KeyframingSetup?
+    /// For a Text effect: its words and font (nil for every other kind).
+    var text: TextContent?
     /// What pasting or applying a preset couldn't bring over, until each is
     /// marked resolved (see docs/effects.md, "Paste changes").
     var pasteChanges: [PasteChange] = []
@@ -461,6 +463,7 @@ struct Effect: Identifiable, Equatable, Sendable {
         self.controls = controls ?? kind.controlKinds.map { EffectControl(kind: $0, enabled: $0.startsEnabled) }
         keyframing = kind.isKeyframing ? KeyframingSetup() : nil
         if kind == .audioKeys { keyframing?.audioSource = .mix }
+        text = kind == .text ? TextContent() : nil
     }
 
     var displayName: String { missing?.name ?? name ?? kind.name }
@@ -545,14 +548,16 @@ struct Effect: Identifiable, Equatable, Sendable {
     }
 
     /// Back to a new effect's controls, all at their defaults, keeping its
-    /// ID and name.
+    /// ID and name, and a Text effect's words and font.
     mutating func reset(in frame: CGSize? = nil) {
         // A missing effect's settings can't be known, so they stay.
         guard missing == nil else { return }
         let setup = keyframing
+        let content = text
         self = Effect(id: id, kind: kind, name: name)
         if let frame { sizeShape(to: frame) }
         keyframing = setup
+        text = content
     }
 
     /// The control of `kind` a new effect of this one's kind starts with,
@@ -733,7 +738,7 @@ extension EditingProject {
     /// The name of what a clip plays.
     func clipName(_ clipID: UUID, in timelineID: UUID) -> String {
         guard let clip = clipAndLayer(clipID, in: timelineID)?.clip else { return "Clip" }
-        return resolvedInfo(for: clip.source)?.name ?? "Clip"
+        return resolvedInfo(for: clip)?.name ?? "Clip"
     }
 }
 

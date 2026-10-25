@@ -14,6 +14,8 @@ extension EffectKind {
     static let ellipse = EffectKind(builtIn: "ellipse")
     static let polygon = EffectKind(builtIn: "polygon")
     static let star = EffectKind(builtIn: "star")
+    /// A block of text whose outline is its glyphs, set with Core Text.
+    static let text = EffectKind(builtIn: "text")
     /// Strokes the outline of the shapes above it in the stack, strokes
     /// and all, so a stroke can have a stroke of its own.
     static let stroke = EffectKind(builtIn: "stroke")
@@ -104,6 +106,12 @@ extension ControlKind {
     static let shapeRotation = ControlKind(builtIn: "shapeRotation")
     // Star
     static let innerRadius = ControlKind(builtIn: "innerRadius")
+    // Text
+    static let fontSize = ControlKind(builtIn: "fontSize")
+    static let textAlign = ControlKind(builtIn: "textAlign")
+    static let tracking = ControlKind(builtIn: "tracking")
+    static let lineHeight = ControlKind(builtIn: "lineHeight")
+    static let wrapWidth = ControlKind(builtIn: "wrapWidth")
     // EQ
     static let eqLowCut = ControlKind(builtIn: "eqLowCut")
     static let eqLowCutSlope = ControlKind(builtIn: "eqLowCutSlope")
@@ -179,7 +187,7 @@ enum BuiltInEffects {
         "grain", "staticNoise", "fractalNoise", "cells", "dither", "interference", "blockGlitch",
         "displace", "liquid", "twirl", "wave", "kaleidoscope", "mirrorTile", "chromaticAberration",
         "flowSmear", "slitScan", "feedback",
-        "rectangle", "ellipse", "polygon", "star", "stroke",
+        "rectangle", "ellipse", "polygon", "star", "text", "stroke",
         "equalizer", "compressor", "limiter", "voiceIsolation",
         "audioKeys", "beatKeys", "wiggler", "oscillator", "smoother", "looper", "timeStep", "overshoot",
     ]
@@ -217,6 +225,12 @@ enum BuiltInEffects {
         EffectDefinition(
             .star, "Star", .shapes, "star",
             controls: [.points, .radius, .innerRadius, .cornerRadius, .shapeRotation, .shapePosition] + EffectKind.paintControls
+        ),
+        // Its outline is its glyphs, so it fills, strokes and stays sharp
+        // as the other shapes do.
+        EffectDefinition(
+            .text, "Text", .shapes, "textformat",
+            controls: [.fontSize, .textAlign, .tracking, .lineHeight, .wrapWidth, .shapePosition] + EffectKind.paintControls
         ),
         // Strokes the outline of the shapes above it in the stack, strokes
         // and all, so a stroke can have a stroke of its own.
@@ -318,6 +332,15 @@ enum BuiltInEffects {
         ControlDefinition(.shapeRotation, "Rotation", .polygon, defaults: [0], unit: "°"),
         // Star
         ControlDefinition(.innerRadius, "Inner Radius", .star, defaults: [90], unit: " px", range: 0...50_000),
+        // Text
+        ControlDefinition(.fontSize, "Size", .text, defaults: [120], unit: " px", range: 1...10_000),
+        ControlDefinition(.textAlign, "Alignment", .text, choice: TextAlign.center),
+        // Added after each letter.
+        ControlDefinition(.tracking, "Tracking", .text, defaults: [0], unit: " px", dragStep: 0.1, range: -1000...10_000),
+        // Of the font's own line height.
+        ControlDefinition(.lineHeight, "Line Height", .text, defaults: [100], unit: "%", range: 10...1000),
+        // 0 sets each paragraph on one line.
+        ControlDefinition(.wrapWidth, "Wrap Width", .text, defaults: [0], unit: " px", range: 0...100_000),
         // EQ
         ControlDefinition(.eqLowCut, band: .lowCut),
         ControlDefinition(.eqLowCutSlope, "Low Slope", .equalizer, choice: EqualizerSlope.db12),

@@ -82,7 +82,7 @@ struct EditingProject: Identifiable, Equatable {
         case .adjustment:
             return .adjustment
         case .graphic:
-            return .graphic
+            return .graphic(title: nil)
         case .media(let mediaID):
             guard let clip = mediaClip(id: mediaID) else { return nil }
             return .media(clip)

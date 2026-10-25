@@ -538,6 +538,19 @@ struct ProjectFile: Codable {
         }
     }
 
+    /// A Text effect's words and the PostScript name of its font.
+    struct TextEntry: Codable {
+        var string: String
+        var font: String
+
+        init(_ content: TextContent) {
+            string = content.string
+            font = content.fontName
+        }
+
+        var content: TextContent { TextContent(string: string, fontName: font) }
+    }
+
     /// One effect of a clip's stack. `kind` is an `EffectKind` name such as
     /// `"transform"`.
     struct EffectEntry: Codable {
@@ -556,6 +569,8 @@ struct ProjectFile: Codable {
         var input: InputEntry?
         /// For a Keyframing effect, what it writes to.
         var keyframing: KeyframingEntry?
+        /// For a Text effect, its words and font.
+        var text: TextEntry?
         /// Absent unless some are unresolved.
         var pasteChanges: [PasteChangeRecord]?
         /// Presets only: what the effect's input and Against were called
@@ -571,7 +586,7 @@ struct ProjectFile: Codable {
         var controlsUnread = false
 
         private enum CodingKeys: String, CodingKey {
-            case id, kind, name, enabled, movesAnchor, against, input, keyframing, pasteChanges, inputName, againstName, controls
+            case id, kind, name, enabled, movesAnchor, against, input, keyframing, text, pasteChanges, inputName, againstName, controls
         }
 
         init(_ effect: Effect) {
@@ -594,6 +609,7 @@ struct ProjectFile: Codable {
             against = effect.kind.readsAgainst ? effect.against : nil
             input = effect.kind.takesInput ? effect.input.map(InputEntry.init) : nil
             keyframing = effect.keyframing.map(KeyframingEntry.init)
+            text = effect.kind == .text ? effect.text.map(TextEntry.init) : nil
             pasteChanges = effect.pasteChanges.isEmpty ? nil : effect.pasteChanges.map(PasteChangeRecord.init)
             controls = effect.controls.map(ControlEntry.init)
         }
@@ -615,6 +631,7 @@ struct ProjectFile: Codable {
             against = try container.decodeIfPresent(UUID.self, forKey: .against)
             input = try container.decodeIfPresent(InputEntry.self, forKey: .input)
             keyframing = try container.decodeIfPresent(KeyframingEntry.self, forKey: .keyframing)
+            text = try container.decodeIfPresent(TextEntry.self, forKey: .text)
             pasteChanges = try container.decodeIfPresent([PasteChangeRecord].self, forKey: .pasteChanges)
             inputName = try container.decodeIfPresent(String.self, forKey: .inputName)
             againstName = try container.decodeIfPresent(String.self, forKey: .againstName)
@@ -641,6 +658,7 @@ struct ProjectFile: Codable {
             try container.encodeIfPresent(against, forKey: .against)
             try container.encodeIfPresent(input, forKey: .input)
             try container.encodeIfPresent(keyframing, forKey: .keyframing)
+            try container.encodeIfPresent(text, forKey: .text)
             try container.encodeIfPresent(pasteChanges, forKey: .pasteChanges)
             try container.encodeIfPresent(inputName, forKey: .inputName)
             try container.encodeIfPresent(againstName, forKey: .againstName)
@@ -678,6 +696,7 @@ struct ProjectFile: Codable {
             effect.against = against
             effect.input = input?.input
             if kind.isKeyframing { effect.keyframing = keyframing?.setup ?? KeyframingSetup() }
+            if kind == .text { effect.text = text?.content ?? TextContent() }
             effect.pasteChanges = (pasteChanges ?? []).compactMap(\.change)
             return effect
         }
@@ -956,6 +975,9 @@ extension ProjectFile {
                 ], oneOf: [["asset", "timeline"]]))))
             }
             if kind.isKeyframing { fields.append(.optional("keyframing", .object(keyframing))) }
+            if kind == .text {
+                fields.append(.optional("text", .object(object([.required("string", .string), .required("font", .string)]))))
+            }
             fields += extra
             var controls = Dictionary(uniqueKeysWithValues: kind.controlKinds.map { ($0.savedName, control($0)) })
             if kind == .equalizer {

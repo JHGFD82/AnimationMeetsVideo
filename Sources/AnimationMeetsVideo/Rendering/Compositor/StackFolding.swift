@@ -203,7 +203,7 @@ enum StackFolding {
                 guard amount > 0 else { continue }
                 flush()
                 steps.append(.matte(effect: effect.id, mode: take.matteMode, amount: amount))
-            case .rectangle, .ellipse, .polygon, .star:
+            case .rectangle, .ellipse, .polygon, .star, .text:
                 // Drawn over what the steps above made of the picture, so
                 // they come first.
                 guard let shape = ShapeStep(effect, at: time, center: center) else { continue }

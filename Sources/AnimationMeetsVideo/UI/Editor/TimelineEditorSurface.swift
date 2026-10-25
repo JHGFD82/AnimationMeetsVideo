@@ -194,7 +194,7 @@ struct TimelineEditorSurface<Library: View>: View {
 
     private var selectedInfo: ResolvedClipInfo? {
         guard let selectedTimelineClip else { return nil }
-        return project.resolvedInfo(for: selectedTimelineClip.source)
+        return project.resolvedInfo(for: selectedTimelineClip)
     }
 
     var body: some View {

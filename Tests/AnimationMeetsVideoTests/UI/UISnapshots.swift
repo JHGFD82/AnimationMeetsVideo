@@ -495,6 +495,33 @@ struct UISnapshots {
         )
     }
 
+    /// The inspector for a text layer of two lines, right-aligned, with its
+    /// size keyframed: the words, font and style, and the numbers.
+    @Test func textInspector() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let added = project.addShapeLayer(.text, to: t)
+        let text = try #require(added)
+        project.editClip(text.clipID, in: t) { clip in
+            clip.effects[0].text?.string = "Animation\nmeets video"
+            clip.effects[0].changeControl(.textAlign) { $0.choice = TextAlign.right.rawValue }
+            clip.effects[0].changeControl(.tracking) { $0.setComponent(0, to: 4, at: .zero) }
+            clip.effects[0].changeControl(.fontSize) { size in
+                size.number.setAnimated(true, at: .zero)
+                size.setComponent(0, to: 160, at: CMTime(seconds: 2, preferredTimescale: 600))
+            }
+        }
+        let clip = try #require(project.clipAndLayer(text.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: text.layerID, timelineClipID: text.clipID),
+                info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "text-inspector", size: CGSize(width: 340, height: 620)
+        )
+    }
+
     /// The audio meter mid-song: left in the red with a held peak, right
     /// in the yellow, and the left clip lamp lit.
     @Test func audioMeter() throws {
