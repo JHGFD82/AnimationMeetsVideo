@@ -827,7 +827,8 @@ The lasso's rectangle fades out when the button comes up.
 ## Going into a nested timeline
 
 **Double-click a nested timeline's clip** (Arrow tool) to go into the
-timeline it plays; **Open Timeline** in its right-click menu and its
+timeline it plays (except on one of its transitions, where the click
+selects the transition and shows its details, as on any clip); **Open Timeline** in its right-click menu and its
 VoiceOver action do the same. The header bar then shows a **breadcrumb**
 before the timeline's name: the timelines gone through to get here,
 outermost first, each a button that goes back out to it (`trail` in
