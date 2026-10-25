@@ -181,7 +181,11 @@ struct ClipBlockView: View {
     /// Scrolls the timeline while a move or trim holds the pointer at an edge.
     @Environment(TimelineAutoScroll.self) private var autoScroll: TimelineAutoScroll?
 
-    private let handleWidth: CGFloat = 8
+    /// How wide the trim handles are. They are centered on the clip's
+    /// edges, so half of each is outside the block, where the timeline must
+    /// not take a press for the start of a lasso.
+    static let trimHandleWidth: CGFloat = 8
+    private let handleWidth = trimHandleWidth
     /// The band along the top of a clip showing pictures that holds its name.
     private static let labelBand: CGFloat = 18
     let space = "clipBlock"

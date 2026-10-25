@@ -761,7 +761,8 @@ Drag in empty space in the tracks (between a layer's clips, or under the
 last layer) to draw a **lasso**: every clip it touches is picked, and they
 draw as selected. Hold Shift to add to what is picked. A lasso that touches
 one clip selects it as a click does; one that touches none selects nothing.
-Only the Arrow tool lassos.
+Only the Arrow tool lassos. A clip's trim handles reach a few points past
+its edges, and a press there trims rather than starting a lasso.
 
 The lasso's rectangle fades out when the button comes up.
 
