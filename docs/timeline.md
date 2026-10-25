@@ -261,6 +261,11 @@ lands out of view.
 
 ### Skimming
 
+While a dialog is open over the window (New Timeline, Timeline
+Settings, an alert), the window behind it takes no pointer input at all:
+no skimming, hovering, scrolling or clicks (`WindowInputBlock`), and a
+skim under way when it opens ends.
+
 With **Skimming** on (the default; it is switched in the timeline's
 view options, the Timeline menu or the Settings window's Timeline tab),
 moving the pointer over the track area or the ruler while paused shows

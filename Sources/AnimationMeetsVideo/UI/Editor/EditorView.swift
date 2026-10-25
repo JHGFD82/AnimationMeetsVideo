@@ -129,6 +129,12 @@ struct EditorView: View {
             skim.end()
             playback.endSkim()
         }
+        // So does one under way when a dialog opens over a window, which
+        // then keeps the pointer out too (`WindowInputBlock`).
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willBeginSheetNotification)) { _ in
+            skim.end()
+            playback.endSkim()
+        }
         .environment(beatMatch)
         .environment(motionDesign)
         .background(Design.Surface.base.color)
