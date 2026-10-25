@@ -60,6 +60,9 @@ struct ClipBlockView: View {
     let onMovePreview: (ClipMovePreview?) -> Void
     let onTrimStart: (CMTime) -> Void
     let onTrimEnd: (CMTime) -> Void
+    /// Hears each trim draft with the edge being dragged, for the viewer
+    /// to show the frame there, then nil when the drag ends.
+    let onTrimPreview: (TimelineClip?, TrimPreviewFrames) -> Void
     let onSetTransition: (TransitionKind, TransitionEdge) -> Void
     let onRemoveTransition: (TransitionEdge) -> Void
     let onSelectTransition: (TransitionEdge) -> Void
@@ -686,11 +689,13 @@ struct ClipBlockView: View {
         case .trailing: resolveTrimEnd(clip.sourceTime(atTimelineTime: CMTimeAdd(clip.endOffset, delta))) ?? clip
         }
         showPreview(trimmed)
+        onTrimPreview(trimmed, edge == .leading ? .first : .last)
     }
 
     /// A trim drag ended: commits it, or selects the clip when it was a click.
     private func trimEnded(_ edge: Edge) {
         onSnapIndicator(nil)
+        onTrimPreview(nil, .both)
         if let preview, preview != clip {
             commitDrop {
                 switch edge {

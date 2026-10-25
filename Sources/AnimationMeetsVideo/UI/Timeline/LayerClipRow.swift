@@ -82,7 +82,7 @@ struct LayerClipRow: View {
     let snapTolerance: CMTime
     /// Where a drag snapped, to draw; nil when it didn't or ended.
     let onSnapIndicator: (CMTime?) -> Void
-    let onTrimPreview: (TimelineClip?) -> Void
+    let onTrimPreview: (TimelineClip?, TrimPreviewFrames) -> Void
     /// An edit of the joint at the start of a clip.
     let onApplyJointEdit: (UUID, JointEdit) -> Void
     let onSetTransitionDuration: (UUID, TransitionEdge, CMTime) -> Void
@@ -164,9 +164,9 @@ struct LayerClipRow: View {
     private func slipDraft(of clip: TimelineClip, _ draft: TimelineClip?, committing: Bool) {
         if let draft {
             followerShift = FollowerShift(clipID: clip.id, after: clip.endOffset, shift: CMTimeSubtract(draft.endOffset, clip.endOffset))
-            onTrimPreview(draft)
+            onTrimPreview(draft, .both)
         } else {
-            onTrimPreview(nil)
+            onTrimPreview(nil, .both)
             if !committing { followerShift = nil }
         }
     }
@@ -248,6 +248,7 @@ struct LayerClipRow: View {
                     onMovePreview: onMovePreview,
                     onTrimStart: { newTrimStart in onTrimClipStart(clip.id, newTrimStart) },
                     onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) },
+                    onTrimPreview: onTrimPreview,
                     onSetTransition: { kind, edge in onSetTransition(clip.id, kind, edge) },
                     onRemoveTransition: { edge in onRemoveTransition(clip.id, edge) },
                     onSelectTransition: { edge in onSelectTransition(clip, edge) },

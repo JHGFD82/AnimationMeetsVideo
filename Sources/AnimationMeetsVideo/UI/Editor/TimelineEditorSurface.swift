@@ -557,7 +557,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 onSlipClip: { layerID, clipID, delta in
                     project.slipClip(clipID, in: timelineID, layer: layerID, by: delta)
                 },
-                onTrimPreview: { clip in showTrimPreview(of: clip) },
+                onTrimPreview: { clip, frames in showTrimPreview(of: clip, frames: frames) },
                 onSetTransitionDuration: { layerID, clipID, edge, duration in
                     project.setTransitionDuration(duration, at: edge, of: clipID, in: timelineID, layer: layerID)
                 },
@@ -620,22 +620,26 @@ struct TimelineEditorSurface<Library: View>: View {
 
     // MARK: -
 
-    /// Shows a slipped clip's first and last frames over the viewer, or
-    /// stops with nil. Only clips with pictures from a file have frames.
-    private func showTrimPreview(of clip: TimelineClip?) {
+    /// Shows a slipped clip's first and last frames over the viewer, or the
+    /// frame at the edge being trimmed, or stops with nil. Only clips with
+    /// pictures from a file have frames.
+    private func showTrimPreview(of clip: TimelineClip?, frames: TrimPreviewFrames) {
         guard let clip, let timeline, case .media(let mediaID) = clip.source,
               let media = project.mediaClip(id: mediaID), media.kind == .video, let url = media.url
         else {
             trimPreview.clear()
             return
         }
-        let last = CMTimeMaximum(clip.trimStart, CMTimeSubtract(clip.trimEnd, timeline.frameDuration))
+        let finalFrame = CMTimeMaximum(clip.trimStart, CMTimeSubtract(clip.trimEnd, timeline.frameDuration))
+        // Backwards, the clip starts on its trim's last frame.
+        let (first, last) = clip.isReversed ? (finalFrame, clip.trimStart) : (clip.trimStart, finalFrame)
         trimPreview.show(
             url: url,
-            first: media.fileTime(forSourceTime: clip.trimStart),
+            first: media.fileTime(forSourceTime: first),
             last: media.fileTime(forSourceTime: last),
-            labelFirst: clip.trimStart,
-            labelLast: last
+            labelFirst: first,
+            labelLast: last,
+            frames: frames
         )
     }
 

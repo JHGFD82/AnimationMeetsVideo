@@ -62,7 +62,7 @@ struct TimelineView: View {
     let onSlipClip: (UUID, UUID, CMTime) -> Void
     /// The clip as a slip drag would leave it, for the viewer to show its
     /// first and last frames; nil when the drag ends.
-    let onTrimPreview: (TimelineClip?) -> Void
+    let onTrimPreview: (TimelineClip?, TrimPreviewFrames) -> Void
     let onSetTransitionDuration: (UUID, UUID, TransitionEdge, CMTime) -> Void
     /// Applies a change to the project, for the section lane.
     let onEditProject: ((inout EditingProject) -> Void) -> Void

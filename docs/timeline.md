@@ -408,7 +408,11 @@ transitions and keyframes don't snap.
 ## Moving and trimming clips
 
 Dragging the middle of a clip moves it; dragging within a few points of
-either edge trims that edge without destroying anything. Holding the
+either edge trims that edge without destroying anything. While an edge of
+a video clip is dragged, the viewer shows the frame at that edge (its
+first frame for the left edge, its last for the right) with its source
+timecode, read straight from the file, so footage a lengthened edge
+reaches shows too (`TrimPreviewOverlay`). Holding the
 pointer near the left or right edge of the tracks during either drag
 scrolls the timeline that way, faster the closer to the edge
 (`TimelineAutoScroll`), so a clip can be taken past what is in view. Near
