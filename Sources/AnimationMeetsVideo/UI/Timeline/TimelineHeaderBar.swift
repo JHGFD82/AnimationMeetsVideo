@@ -10,8 +10,6 @@ struct TimelineHeaderBar: View {
     var onLeaveTo: (Int) -> Void = { _ in }
     @State private var showingSettings = false
     @State private var showingNew = false
-    /// Whether the timeline's name is being edited in place.
-    @State private var renaming = false
 
     private var currentTimeline: Timeline? {
         project.timeline(id: timelineID)
@@ -31,40 +29,16 @@ struct TimelineHeaderBar: View {
                     .foregroundStyle(Design.textTertiary)
                     .accessibilityHidden(true)
             }
-            // A click on the name renames the timeline in place; the menu
-            // beside it goes to another.
-            InlineNameField(name: currentTimeline?.name ?? "Timeline", isEditing: $renaming) { name in
-                project.renameTimeline(timelineID, to: name)
-            }
-            .font(Design.Typeface.bodyEmphasis)
-            .foregroundStyle(Design.textPrimary)
-            // Its own width, so the name starts at the rail's inset like
-            // every other rail's first item; a fixed frame centred it.
-            .fixedSize()
-            .frame(minWidth: renaming ? 160 : nil, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture { if currentTimeline != nil { renaming = true } }
-            .contextMenu {
-                Button("Rename Timeline") { renaming = true }
-                    .disabled(currentTimeline == nil)
-            }
-            .help("Click to rename the timeline")
-            .accessibilityAddTraits(renaming ? [] : .isButton)
-            .accessibilityHint(renaming ? "" : "Renames the timeline")
-            .accessibilityAction(named: "Rename") { renaming = true }
-            Menu {
-                ForEach(project.timelines) { timeline in
-                    Button(timeline.name) { timelineID = timeline.id }
-                }
-            } label: {
-                Image(systemName: "chevron.down")
-                    .font(Design.Typeface.glyphSmall)
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Go to another timeline")
-            .accessibilityLabel("Go to another timeline")
+            // The open timeline's name, only shown: timelines are opened
+            // and renamed in the browser's Timelines tab.
+            Text(currentTimeline?.name ?? "Timeline")
+                .font(Design.Typeface.bodyEmphasis)
+                .foregroundStyle(Design.textPrimary)
+                .lineLimit(1)
+                // Its own width, so the name starts at the rail's inset like
+                // every other rail's first item; a fixed frame centred it.
+                .fixedSize()
+                .accessibilityAddTraits(.isHeader)
             Button {
                 showingSettings = true
             } label: {

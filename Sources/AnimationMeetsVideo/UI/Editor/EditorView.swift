@@ -16,7 +16,11 @@ struct EditorView: View {
     let replacement: MediaReplacementController
     /// Where the project is saved; nil only while the start sheet is up.
     let packageURL: URL?
+    /// In a timeline window, which shares the project window's history
+    /// and undo: that window connects the history, not this one.
+    let sharesHistory: Bool
     @Environment(\.undoManager) private var undoManager
+    @Environment(\.openWindow) private var openWindow
     @State private var activeTimelineID: UUID
     @State private var selection: TimelineSelection?
     @State private var playback = PlaybackModel()
@@ -39,7 +43,8 @@ struct EditorView: View {
     /// `selection` is the clip selected to begin with: none in the app,
     /// one for a benchmark hosting the editor with its effects showing.
     /// `playback` is the player to use, for a test to watch; the editor
-    /// makes its own otherwise.
+    /// makes its own otherwise. `timelineID` is the timeline it opens on,
+    /// the main one for nil.
     init(
         project: Binding<EditingProject>,
         history: ProjectHistory,
@@ -47,14 +52,17 @@ struct EditorView: View {
         replacement: MediaReplacementController,
         packageURL: URL?,
         selection: TimelineSelection? = nil,
-        playback: PlaybackModel? = nil
+        playback: PlaybackModel? = nil,
+        timelineID: UUID? = nil,
+        sharesHistory: Bool = false
     ) {
         self._project = project
         self.history = history
         self.analysis = analysis
         self.replacement = replacement
         self.packageURL = packageURL
-        self._activeTimelineID = State(initialValue: project.wrappedValue.rootTimelineID)
+        self.sharesHistory = sharesHistory
+        self._activeTimelineID = State(initialValue: timelineID ?? project.wrappedValue.rootTimelineID)
         self._selection = State(initialValue: selection)
         if let playback { self._playback = State(initialValue: playback) }
     }
@@ -95,6 +103,10 @@ struct EditorView: View {
                 BrowserPanel(
                     access: browserProject, activeTimelineID: activeTimeline.wrappedValue, selection: $selection,
                     analysis: analysis, replacement: replacement, packageURL: packageURL,
+                    onOpenTimeline: { [activeTimeline] in activeTimeline.wrappedValue = $0 },
+                    onOpenTimelineInNewWindow: packageURL.map { url in
+                        { [openWindow] id in openWindow(id: TimelineWindow.groupID, value: TimelineWindowRef(projectURL: url, timelineID: id)) }
+                    },
                     shown: BrowserPanel.Shown(structure: project.structure, activeTimelineID: activeTimelineID, selection: selection)
                 )
                 .equatable()
@@ -238,6 +250,7 @@ struct EditorView: View {
     }
 
     private func connectHistory() {
+        guard !sharesHistory else { return }
         history.undoManager = undoManager
         history.restore = { project = $0 }
         history.current = { project }

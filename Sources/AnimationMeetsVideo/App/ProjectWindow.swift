@@ -63,6 +63,7 @@ struct ProjectWindow: View {
                 )
             }
             .background(WindowCloseGuard(shouldClose: shouldClose))
+            .background(WindowReader { session.editorWindow = $0 })
             .background(ProjectWindowTitle(projectState: session.projectState, savedProject: session.savedProject, packageURL: session.projectURL, autosaveStatus: session.autosaveStatus))
             .background(
                 Color.clear.sheet(isPresented: Bindable(session).showsProjectSettings) {

@@ -259,7 +259,7 @@ struct UISnapshots {
         _ = project.embedTimeline(logo, intoTimeline: chorus)
         _ = project.embedTimeline(chorus, intoTimeline: project.rootTimelineID)
         try SnapshotSupport.render(
-            TimelinesList(project: project, activeTimelineID: project.rootTimelineID, onEmbed: { _ in }, onDuplicate: { _ in })
+            TimelinesList(project: project, activeTimelineID: project.rootTimelineID, onOpen: { _ in }, onEmbed: { _ in }, onDuplicate: { _ in })
                 .frame(width: 260, height: 260)
                 .background(Design.Surface.base.color)
                 .preferredColorScheme(.dark),

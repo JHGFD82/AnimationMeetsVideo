@@ -28,6 +28,11 @@ struct BrowserPanel: View {
     let analysis: AssetAnalysis
     let replacement: MediaReplacementController
     let packageURL: URL?
+    /// Opens a timeline in the editor, from the Timelines tab (not compared
+    /// in `==`; it always sets the editor's active timeline).
+    var onOpenTimeline: (UUID) -> Void = { _ in }
+    /// Opens a timeline in a window of its own; nil where there is none.
+    var onOpenTimelineInNewWindow: ((UUID) -> Void)?
     /// What the browser shows, as the editor had it when it drew, which the
     /// comparison uses (see `==`): the bindings always read the current
     /// values.
@@ -193,9 +198,11 @@ struct BrowserPanel: View {
     private var timelinesList: some View {
         TimelinesList(
             project: project, activeTimelineID: activeTimelineID,
+            onOpen: onOpenTimeline,
             onEmbed: { id in project.timeline(id: id).map(embed) },
             onDuplicate: { id in project.duplicateTimeline(id) },
-            onRename: { id, name in project.renameTimeline(id, to: name) }
+            onRename: { id, name in project.renameTimeline(id, to: name) },
+            onOpenInNewWindow: onOpenTimelineInNewWindow
         )
     }
 

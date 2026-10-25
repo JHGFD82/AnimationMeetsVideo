@@ -22,6 +22,12 @@ final class ProjectSession {
     /// toolbar when not.
     let autosaveStatus = AutosaveStatus()
     @ObservationIgnored let fileMonitor = ProjectFileMonitor()
+    /// The project's own window, whose undo its timeline windows share
+    /// (see `TimelineWindow`).
+    @ObservationIgnored weak var editorWindow: NSWindow?
+    /// Set once the project's window has closed, which closes its timeline
+    /// windows too.
+    private(set) var isClosed = false
 
     private(set) var projectURL: URL?
     /// The project as last saved or opened, to tell whether there are unsaved changes.
@@ -510,6 +516,7 @@ final class ProjectSession {
         projectLock = nil
         DetectedBeats.shared.remove(owner: ObjectIdentifier(analysis))
         ProjectWindows.shared.unregister(self)
+        isClosed = true
     }
 
     // MARK: - Pasted media

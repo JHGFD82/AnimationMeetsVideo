@@ -2,44 +2,61 @@ import AppKit
 import SwiftUI
 
 /// The browser's Timelines tab: the project's timelines, each nested under
-/// the timelines it is embedded in (with a disclosure triangle), the main
-/// timeline first. Clicking one embeds it into the active timeline;
-/// dragging it puts it on an effect that takes an input; its menu also
-/// renames and duplicates it. The active timeline is listed, marked as
-/// open, but can't be embedded into itself.
+/// the timeline it is embedded in (with a disclosure triangle), the main
+/// timeline first. A click selects one, as in the Finder: a double-click
+/// opens it in the editor, and a click on the name of the one selected,
+/// or Return, renames it. Its menu also embeds it in the active timeline,
+/// renames and duplicates it; dragging it puts it on an effect that takes
+/// an input. The active timeline is marked as open.
 struct TimelinesList: View {
     let project: EditingProject
     let activeTimelineID: UUID
+    let onOpen: (UUID) -> Void
     let onEmbed: (UUID) -> Void
     let onDuplicate: (UUID) -> Void
     var onRename: (UUID, String) -> Void = { _, _ in }
+    /// Opens a timeline in a window of its own; nil where there is none.
+    var onOpenInNewWindow: ((UUID) -> Void)?
 
+    @State private var selectedID: UUID?
     /// The timeline whose name is being edited in its row.
     @State private var renamingID: UUID?
+    @FocusState private var focused: Bool
 
-    /// A timeline at one place in the tree. One embedded in two timelines
-    /// shows under both, so a row is told apart by its path from the top.
+    /// A timeline at its place in the tree.
     struct Node: Identifiable {
-        let id: String
+        var id: UUID { timelineID }
         let timelineID: UUID
         let children: [Node]?
     }
 
+    /// The tree, each timeline once: under the timeline nearest the top
+    /// that embeds it (the first of those, in order), so one embedded in two
+    /// timelines isn't listed twice.
     nonisolated static func nodes(of project: EditingProject) -> [Node] {
-        func node(_ timelineID: UUID, path: [UUID]) -> Node {
-            let here = path + [timelineID]
-            // A timeline can't embed itself, but a damaged file could say so.
-            let children = project.embeddedTimelines(in: timelineID)
-                .filter { !here.contains($0) }
-                .map { node($0, path: here) }
-            return Node(id: here.map(\.uuidString).joined(separator: "/"), timelineID: timelineID, children: children.isEmpty ? nil : children)
+        // Breadth first, so a timeline goes to its shallowest parent;
+        // claiming each once also stops a cycle a damaged file could hold.
+        let top = project.topLevelTimelines
+        var claimed = Set(top)
+        var children: [UUID: [UUID]] = [:]
+        var queue = top[...]
+        while let parent = queue.popFirst() {
+            for child in project.embeddedTimelines(in: parent) where !claimed.contains(child) {
+                claimed.insert(child)
+                children[parent, default: []].append(child)
+                queue.append(child)
+            }
         }
-        return project.topLevelTimelines.map { node($0, path: []) }
+        func node(_ timelineID: UUID) -> Node {
+            let below = (children[timelineID] ?? []).map(node)
+            return Node(timelineID: timelineID, children: below.isEmpty ? nil : below)
+        }
+        return top.map(node)
     }
 
     /// Rows whose nested timelines are hidden. All start shown, since the
     /// nesting is what the tab is for.
-    @State private var collapsed: Set<String> = []
+    @State private var collapsed: Set<UUID> = []
 
     var body: some View {
         List {
@@ -48,6 +65,15 @@ struct TimelinesList: View {
             }
         }
         .browserListStyle()
+        .focusable()
+        .focused($focused)
+        .focusEffectDisabled()
+        // Return renames the selected timeline, as in the Finder.
+        .onKeyPress(.return) {
+            guard renamingID == nil, let selectedID else { return .ignored }
+            renamingID = selectedID
+            return .handled
+        }
     }
 
     /// A row, and under a disclosure triangle the timelines it embeds.
@@ -65,19 +91,11 @@ struct TimelinesList: View {
         })
     }
 
-    @ViewBuilder
     private func row(_ timeline: Timeline) -> some View {
-        if renamingID == timeline.id {
-            // Out of the button while its name is edited, so a click in the
-            // field doesn't embed the timeline.
-            rowLabel(timeline)
-        } else {
-            embedButton(timeline)
-        }
-    }
-
-    private func rowLabel(_ timeline: Timeline) -> some View {
-        Label {
+        let isSelected = selectedID == timeline.id
+        let isActive = timeline.id == activeTimelineID
+        let canEmbed = project.canEmbed(timeline.id, into: activeTimelineID)
+        return Label {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: Design.Space.close) {
                     InlineNameField(
@@ -86,10 +104,11 @@ struct TimelinesList: View {
                             get: { renamingID == timeline.id },
                             set: { editing in renamingID = editing ? timeline.id : nil }
                         ),
+                        isSelected: isSelected,
                         onCommit: { onRename(timeline.id, $0) }
                     )
                     .foregroundStyle(Design.textPrimary)
-                    if timeline.id == activeTimelineID {
+                    if isActive {
                         Text("Open")
                             .font(Design.Typeface.label)
                             .foregroundStyle(Design.textSecondary)
@@ -103,30 +122,46 @@ struct TimelinesList: View {
             Image(systemName: "rectangle.stack")
                 .foregroundStyle(Design.ClipTone.nested.color)
         }
-    }
-
-    private func embedButton(_ timeline: Timeline) -> some View {
-        let isActive = timeline.id == activeTimelineID
-        let canEmbed = project.canEmbed(timeline.id, into: activeTimelineID)
-        // Not disabled when it can't be embedded: its name stays readable
-        // and its menu still renames and duplicates it; a click just beeps.
-        return Button {
-            if canEmbed { onEmbed(timeline.id) } else { NSSound.beep() }
-        } label: {
-            rowLabel(timeline)
-        }
-        .buttonStyle(.plain)
-        .help(isActive ? "The timeline open below; it can't be embedded into itself"
-              : canEmbed ? "Embed into the active timeline, or drag onto an effect that takes an input"
-              : "Can't be embedded here: it's empty, or it contains the active timeline")
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 2)
+        .selectedRow(isSelected)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { open(timeline.id) }
+        .simultaneousGesture(TapGesture().onEnded {
+            focused = true
+            selectedID = timeline.id
+        })
+        .help(isActive ? "The timeline open in the editor" : "Double-click to open in the editor")
         .draggable(TimelineDragPayload(timelineID: timeline.id))
         .contextMenu {
+            Button("Open") { open(timeline.id) }
+                .disabled(isActive)
+            if let onOpenInNewWindow {
+                Button("Open in New Window") { onOpenInNewWindow(timeline.id) }
+            }
+            Divider()
             Button("Embed in Active Timeline") { onEmbed(timeline.id) }
                 .disabled(!canEmbed)
-            Button("Rename Timeline") { renamingID = timeline.id }
+            Button("Rename Timeline") {
+                selectedID = timeline.id
+                renamingID = timeline.id
+            }
             Button("Duplicate Timeline") { onDuplicate(timeline.id) }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityHint("Opens the timeline in the editor")
+        .accessibilityAction { open(timeline.id) }
+        .accessibilityAction(named: "Embed in active timeline") {
+            if canEmbed { onEmbed(timeline.id) } else { NSSound.beep() }
         }
         .accessibilityAction(named: "Rename timeline") { renamingID = timeline.id }
         .accessibilityAction(named: "Duplicate timeline") { onDuplicate(timeline.id) }
+    }
+
+    private func open(_ id: UUID) {
+        renamingID = nil
+        selectedID = id
+        onOpen(id)
     }
 }

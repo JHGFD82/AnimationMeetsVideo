@@ -46,13 +46,20 @@ remembered.
   clips with a waveform in place of thumbnails.
 - **Timelines**: the project's timelines as a tree (`TimelinesList`): the
   main timeline first, then those no timeline embeds, each with the
-  timelines it embeds under a disclosure triangle, open to start with (one
-  embedded in two shows under both). The active one is marked **Open**.
-  Clicking one embeds it into the active timeline; one that can't be (it
-  is empty, or would contain itself) beeps, with its tooltip saying why.
-  Its menu has **Embed in Active Timeline**, **Rename Timeline** (the
-  name becomes a field in its row: Return or clicking away keeps the new
-  name, Escape puts the old one back) and **Duplicate Timeline**, which
+  timelines it embeds under a disclosure triangle, open to start with.
+  Each timeline is listed once: one embedded in several timelines sits
+  under the one nearest the top. The active one is marked **Open**.
+  As in the Finder, a **click selects** a timeline and a **double-click
+  opens** it in the editor; clicking doesn't embed it. A click on the name
+  of the selected timeline (after a moment, so a double-click still
+  opens), Return, or **Rename Timeline** in its menu renames it: the name
+  becomes a bordered field over it, Return or clicking away keeps the new
+  name, Escape puts the old one back. Its menu also has **Open**,
+  **Open in New Window** (a second editor on that timeline, sharing the
+  project with its window: the same undo, so ⌘Z in either undoes the last
+  edit made in either, and it closes when the project's window does;
+  `TimelineWindow`), **Embed in Active Timeline** (disabled where it can't be: it is empty,
+  or would contain the active one) and **Duplicate Timeline**, which
   puts a copy below it ("Main copy", "Main copy 2") with new IDs
   for its layers and clips, sharing the timelines it embeds. Planned:
   thumbnails drawn from the timeline itself.

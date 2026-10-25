@@ -43,6 +43,12 @@ struct AnimationMeetsVideoApp: App {
             ProjectWindow(url: $url)
         }
         .windowResizability(.contentSize)
+        // A second editor on one timeline of a project open above, from
+        // the Timelines tab's Open in New Window (see `TimelineWindow`).
+        WindowGroup("Timeline", id: TimelineWindow.groupID, for: TimelineWindowRef.self) { $ref in
+            TimelineWindow(ref: $ref)
+        }
+        .windowResizability(.contentSize)
         .commands {
             ProjectCommands()
             FileCommands()
