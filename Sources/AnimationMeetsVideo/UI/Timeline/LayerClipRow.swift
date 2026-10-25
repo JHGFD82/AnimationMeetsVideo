@@ -61,6 +61,9 @@ struct LayerClipRow: View {
     let onEditJoint: (UUID) -> Void
     let onTrimClipStart: (UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, CMTime) -> Void
+    /// The assets' scene scores, read as a trim is dragged (not compared
+    /// in `==`), so its edge stops at a cut.
+    let sceneTracks: () -> [UUID: ChangeScoreTrack]
     let onSetTransition: (UUID, TransitionKind, TransitionEdge) -> Void
     let onRemoveTransition: (UUID, TransitionEdge) -> Void
     let onSelectTransition: (TimelineClip, TransitionEdge) -> Void
@@ -229,8 +232,12 @@ struct LayerClipRow: View {
                     height: height,
                     visibleX: visibleX,
                     resolveMove: { start, pointer in resolveMove(clip, pointer, start) },
-                    resolveTrimStart: { project.resolvedTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
-                    resolveTrimEnd: { project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: $0) },
+                    resolveTrimStart: {
+                        project.resolvedTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: $0, sceneTracks: sceneTracks())
+                    },
+                    resolveTrimEnd: {
+                        project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: $0, sceneTracks: sceneTracks())
+                    },
                     onSelect: { onSelectClip(clip) },
                     onMove: { newStart, targetLayerID in onMoveClip(clip.id, targetLayerID, newStart) },
                     onMoveToNewLayer: { kind, start in onMoveClipToNewLayer(clip.id, kind, start) },

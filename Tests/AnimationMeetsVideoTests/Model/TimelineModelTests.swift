@@ -236,6 +236,36 @@ private struct Fixture {
         f.project.trimClipEnd(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(10))
         #expect(f.clip.endOffset == seconds(6))
     }
+
+    @Test func trimEndStopsAtTheEndOfItsScene() {
+        var f = Fixture()
+        f.project.clips[0].sceneEdits.manualCuts = [seconds(4)]
+        f.project.trimClipEnd(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(3))
+        f.project.trimClipEnd(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(8), sceneTracks: [:])
+        #expect(f.clip.trimEnd == seconds(4))
+        // Without the scenes, as before: up to the source's end.
+        f.project.trimClipEnd(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(8))
+        #expect(f.clip.trimEnd == seconds(8))
+    }
+
+    @Test func trimStartStopsAtTheStartOfItsScene() {
+        var f = Fixture()
+        f.project.clips[0].sceneEdits.manualCuts = [seconds(4)]
+        f.project.moveClip(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(10))
+        f.project.trimClipStart(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(6))
+        let preview = f.project.resolvedTrimStart(of: f.clipID, in: f.timelineID, layer: f.layerID, to: .zero, sceneTracks: [:])
+        #expect(preview?.trimStart == seconds(4))
+        #expect(preview?.endOffset == seconds(20))
+    }
+
+    @Test func detachedSoundTrimsAcrossScenes() {
+        var f = Fixture()
+        f.project.clips[0].sceneEdits.manualCuts = [seconds(4)]
+        f.project.trimClipEnd(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(3))
+        f.project.updateClip(f.clipID, in: f.timelineID, layer: f.layerID) { $0.streams = .audio }
+        f.project.trimClipEnd(f.clipID, in: f.timelineID, layer: f.layerID, to: seconds(8), sceneTracks: [:])
+        #expect(f.clip.trimEnd == seconds(8))
+    }
 }
 
 @Suite struct FrameLockTests {

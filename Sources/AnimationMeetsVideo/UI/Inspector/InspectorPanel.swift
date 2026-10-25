@@ -12,6 +12,9 @@ struct InspectorPanel: View {
     let playhead: PlayheadState
     let onSeek: (CMTime) -> Void
     let onDeleteSelection: () -> Void
+    /// The assets' scene scores, so a trim typed in stops at a cut as a
+    /// dragged one does.
+    let sceneTracks: () -> [UUID: ChangeScoreTrack]
     /// The surface's graph editor panels.
     @Environment(KeyframeGraphHUDs.self) private var graphs: KeyframeGraphHUDs?
     @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
@@ -21,7 +24,7 @@ struct InspectorPanel: View {
     init(
         project: Binding<EditingProject>, timelineID: UUID, selection: TimelineSelection? = nil, info: ResolvedClipInfo?,
         timelineClip: TimelineClip?, playhead: PlayheadState, onSeek: @escaping (CMTime) -> Void,
-        onDeleteSelection: @escaping () -> Void
+        onDeleteSelection: @escaping () -> Void, sceneTracks: @escaping () -> [UUID: ChangeScoreTrack] = { [:] }
     ) {
         _project = project
         self.timelineID = timelineID
@@ -31,6 +34,7 @@ struct InspectorPanel: View {
         self.playhead = playhead
         self.onSeek = onSeek
         self.onDeleteSelection = onDeleteSelection
+        self.sceneTracks = sceneTracks
     }
 
     /// An inspector with the playhead parked at `playheadTime`.
@@ -321,7 +325,8 @@ struct InspectorPanel: View {
             selection.timelineClipID,
             in: timelineID,
             layer: selection.layerID,
-            to: CMTime(seconds: seconds, preferredTimescale: 600)
+            to: CMTime(seconds: seconds, preferredTimescale: 600),
+            sceneTracks: sceneTracks()
         )
     }
 
@@ -330,7 +335,8 @@ struct InspectorPanel: View {
             selection.timelineClipID,
             in: timelineID,
             layer: selection.layerID,
-            to: CMTime(seconds: seconds, preferredTimescale: 600)
+            to: CMTime(seconds: seconds, preferredTimescale: 600),
+            sceneTracks: sceneTracks()
         )
     }
 }

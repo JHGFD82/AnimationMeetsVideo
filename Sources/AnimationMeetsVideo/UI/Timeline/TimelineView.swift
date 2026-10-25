@@ -39,6 +39,9 @@ struct TimelineView: View {
     let onApplyJointEdit: (UUID, UUID, JointEdit) -> Void
     let onTrimClipStart: (UUID, UUID, CMTime) -> Void
     let onTrimClipEnd: (UUID, UUID, CMTime) -> Void
+    /// The assets' scene scores (`AssetAnalysis.tracks`), read as a trim is
+    /// dragged so its edge stops at a cut.
+    let sceneTracks: () -> [UUID: ChangeScoreTrack]
     let onEditVolume: (UUID, (inout AnimatedValue<Double>) -> Void) -> Void
     let onSetTransition: (UUID, UUID, TransitionKind, TransitionEdge) -> Void
     let onRemoveTransition: (UUID, UUID, TransitionEdge) -> Void

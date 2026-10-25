@@ -361,6 +361,7 @@ extension TimelineView {
                         },
                         onTrimClipStart: { clipID, newStart in onTrimClipStart(layer.id, clipID, newStart) },
                         onTrimClipEnd: { clipID, newEnd in onTrimClipEnd(layer.id, clipID, newEnd) },
+                        sceneTracks: sceneTracks,
                         onSetTransition: { clipID, kind, edge in onSetTransition(layer.id, clipID, kind, edge) },
                         onRemoveTransition: { clipID, edge in onRemoveTransition(layer.id, clipID, edge) },
                         onSelectTransition: { clip, edge in onSelectTransition(layer.id, clip, edge) },

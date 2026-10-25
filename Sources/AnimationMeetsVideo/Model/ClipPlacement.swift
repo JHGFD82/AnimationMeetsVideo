@@ -261,13 +261,21 @@ extension EditingProject {
     /// The clip after dragging its leading edge toward `proposedTrimStart`.
     /// The clip's end stays put while its start follows the trim: it can't
     /// reveal frames before the source's own start, cross zero, run into
-    /// the previous clip, or shrink below the minimum length.
-    func resolvedTrimStart(of id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime) -> TimelineClip? {
+    /// the previous clip, or shrink below the minimum length. Given the
+    /// assets' scores, it also can't reach into the scene before the one
+    /// its first frame is in (see `trimFootage(of:sceneTracks:)`).
+    func resolvedTrimStart(
+        of id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimStart: CMTime,
+        sceneTracks: [UUID: ChangeScoreTrack]? = nil
+    ) -> TimelineClip? {
         guard let (timeline, clip, others) = placementContext(id, in: timelineID, layer: layerID) else { return nil }
         let locked = isFrameLocked(clip)
         // Where the source's own start would play, on the timeline.
         // (Backwards, the leading edge is the end of the trim.)
         var lowest = CMTimeMaximum(.zero, clip.timelineTime(forSourceTime: clip.isReversed ? (sourceDuration(for: clip.source) ?? clip.trimEnd) : .zero))
+        if let footage = trimFootage(of: clip, sceneTracks: sceneTracks) {
+            lowest = CMTimeMaximum(lowest, clip.timelineTime(forSourceTime: clip.isReversed ? footage.end : footage.start))
+        }
         if let previousEnd = others.filter({ $0.endOffset <= clip.startOffset }).map(\.endOffset).max() {
             lowest = CMTimeMaximum(lowest, previousEnd)
         }
@@ -288,8 +296,12 @@ extension EditingProject {
 
     /// The clip after dragging its trailing edge toward `proposedTrimEnd`.
     /// The start stays put; the end is bounded by the source's length, the
-    /// next clip and the minimum length.
-    func resolvedTrimEnd(of id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimEnd: CMTime) -> TimelineClip? {
+    /// next clip and the minimum length, and given the assets' scores, by
+    /// the end of the scene its last frame is in.
+    func resolvedTrimEnd(
+        of id: UUID, in timelineID: UUID, layer layerID: UUID, to proposedTrimEnd: CMTime,
+        sceneTracks: [UUID: ChangeScoreTrack]? = nil
+    ) -> TimelineClip? {
         guard let (timeline, clip, others) = placementContext(id, in: timelineID, layer: layerID),
               let sourceDuration = sourceDuration(for: clip.source)
         else {
@@ -298,6 +310,9 @@ extension EditingProject {
         let locked = isFrameLocked(clip)
         // Where the end of the source would play, on the timeline.
         var highest = clip.timelineTime(forSourceTime: clip.isReversed ? .zero : sourceDuration)
+        if let footage = trimFootage(of: clip, sceneTracks: sceneTracks) {
+            highest = CMTimeMinimum(highest, clip.timelineTime(forSourceTime: clip.isReversed ? footage.start : footage.end))
+        }
         if let nextStart = others.filter({ $0.startOffset >= clip.endOffset }).map(\.startOffset).min() {
             highest = CMTimeMinimum(highest, nextStart)
         }
@@ -313,6 +328,18 @@ extension EditingProject {
         let source = clip.sourceTime(atTimelineTime: newEnd)
         if clip.isReversed { trimmed.trimStart = source } else { trimmed.trimEnd = source }
         return trimmed
+    }
+
+    /// The footage a trim of the clip's picture keeps to: from the start of
+    /// the scene its first frame is in to the end of the scene its last
+    /// frame is in, so an edge stops at a cut rather than running on into
+    /// the next shot. Nil without `sceneTracks` (the scores by asset), and
+    /// for sound taken off on its own, which has no picture edge to keep
+    /// to. An asset whose scores aren't in yet is still held to the cuts
+    /// made by hand.
+    func trimFootage(of clip: TimelineClip, sceneTracks: [UUID: ChangeScoreTrack]?) -> CMTimeRange? {
+        guard let sceneTracks, clip.streams != .audio, case .media(let id) = clip.source else { return nil }
+        return sceneFootage(of: clip, track: sceneTracks[id])
     }
 
     /// The clip after slipping its footage by `proposedDelta` (positive plays
