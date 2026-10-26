@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "levels",
+  "version": 1,
+  "name": "Levels",
+  "category": "correction",
+  "symbol": "chart.bar.xaxis",
+  "kernel": {"file": "kernel.metal", "function": "amvLevels", "type": "color"},
+  "controls": [
+    {"id": "levelsChannel", "name": "Channel", "type": "choice", "default": "rgb", "options": [{"id": "rgb", "name": "RGB"}, {"id": "red", "name": "Red"}, {"id": "green", "name": "Green"}, {"id": "blue", "name": "Blue"}]},
+    {"id": "inputBlack", "name": "Input Black", "type": "number", "default": 0, "range": [0, 99], "unit": "%"},
+    {"id": "inputWhite", "name": "Input White", "type": "number", "default": 100, "range": [1, 400], "unit": "%"},
+    {"id": "levelsGamma", "name": "Gamma", "type": "number", "default": 1, "range": [0.1, 10], "unit": "×"},
+    {"id": "outputBlack", "name": "Output Black", "type": "number", "default": 0, "range": [0, 100], "unit": "%"},
+    {"id": "outputWhite", "name": "Output White", "type": "number", "default": 100, "range": [0, 400], "unit": "%"}
+  ],
+  "amount": true,
+  "arguments": ["index(levelsChannel)", "inputBlack / 100", "inputWhite / 100", "levelsGamma", "outputBlack / 100", "outputWhite / 100"]
+}

@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "id": "grayPoint",
+  "version": 1,
+  "name": "Gray Point",
+  "category": "correction",
+  "symbol": "eyedropper",
+  "kernel": {"file": "kernel.metal", "function": "amvGrayPoint", "type": "color"},
+  "controls": [
+    {"id": "neutralColor", "name": "Make Gray", "type": "color", "default": [0.5, 0.5, 0.5]}
+  ],
+  "amount": true,
+  "arguments": ["neutralColor"]
+}

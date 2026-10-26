@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "id": "colorize",
+  "version": 1,
+  "name": "Colorize",
+  "category": "correction",
+  "symbol": "paintbrush",
+  "kernel": {"file": "kernel.metal", "function": "amvColorize", "type": "color"},
+  "controls": [
+    {"id": "colorizeHue", "name": "Hue", "type": "number", "default": 210, "range": [0, 360], "unit": "°"},
+    {"id": "colorizeSaturation", "name": "Saturation", "type": "number", "default": 40, "range": [0, 100], "unit": "%"}
+  ],
+  "amount": true,
+  "arguments": ["colorizeHue / 360", "colorizeSaturation / 100"]
+}

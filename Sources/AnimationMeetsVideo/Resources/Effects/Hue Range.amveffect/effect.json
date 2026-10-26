@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "id": "hueRange",
+  "version": 1,
+  "name": "Hue Range",
+  "category": "correction",
+  "symbol": "eyedropper.halffull",
+  "kernel": {"file": "kernel.metal", "function": "amvHueRange", "type": "color"},
+  "controls": [
+    {"id": "rangeCenter", "name": "Hue", "type": "number", "default": 0, "range": [0, 360], "unit": "°"},
+    {"id": "rangeWidth", "name": "Width", "type": "number", "default": 30, "range": [0, 180], "unit": "°"},
+    {"id": "rangeSoftness", "name": "Softness", "type": "number", "default": 30, "range": [0, 180], "unit": "°"},
+    {"id": "rangeHueShift", "name": "Hue Shift", "type": "number", "default": 0, "range": [-180, 180], "unit": "°"},
+    {"id": "rangeSaturation", "name": "Saturation", "type": "number", "default": 0, "range": [-100, 100], "unit": "%"},
+    {"id": "rangeLightness", "name": "Lightness", "type": "number", "default": 0, "range": [-100, 100], "unit": "%"},
+    {"id": "rangeView", "name": "Show", "type": "choice", "default": "result", "options": [{"id": "result", "name": "Result"}, {"id": "range", "name": "Range"}]}
+  ],
+  "amount": true,
+  "arguments": ["rangeCenter / 360", "rangeWidth / 360", "rangeSoftness / 360", "rad(rangeHueShift)", "rangeSaturation / 100", "rangeLightness / 100", "index(rangeView)"]
+}
