@@ -308,7 +308,10 @@ struct ChoiceRow<MenuContent: View>: View {
 }
 
 /// The row of an effect: a handle to drag it by, a disclosure arrow, an
-/// enable checkbox, its name (double-click to rename) and a ⋯ menu.
+/// enable checkbox, its name (double-click to rename) and a ⋯ menu. For a
+/// graphic clip's drawing (`isDrawing`), which is the clip's own content
+/// and not an effect in its stack, its kind's symbol in place of the
+/// handle and no checkbox: it can't be moved or turned off.
 struct EffectHeaderRow<MenuContent: View>: View {
     let effect: Effect
     let isCollapsed: Bool
@@ -316,6 +319,7 @@ struct EffectHeaderRow<MenuContent: View>: View {
     let clipID: UUID
     /// The clip's picture after this effect, at the playhead.
     var thumbnail: CGImage?
+    var isDrawing = false
     /// For an effect that draws nothing and writes keyframes: a curve in
     /// place of the thumbnail.
     var showsCurve = false
@@ -338,18 +342,20 @@ struct EffectHeaderRow<MenuContent: View>: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: "line.3.horizontal")
-                .font(Design.Typeface.glyphSmall)
-                .foregroundStyle(Design.textTertiary)
-                .frame(width: 12)
-                .contentShape(Rectangle())
-                .onDrag {
-                    EffectMovePayload(clipID: clipID, effectID: effect.id).itemProvider()
-                } preview: {
-                    Label(effect.displayName, systemImage: effect.kind.systemImage)
-                        .padding(4)
-                }
-                .help("Drag to move the effect in the stack; Option-drag to copy it")
+            if !isDrawing {
+                Image(systemName: "line.3.horizontal")
+                    .font(Design.Typeface.glyphSmall)
+                    .foregroundStyle(Design.textTertiary)
+                    .frame(width: 12)
+                    .contentShape(Rectangle())
+                    .onDrag {
+                        EffectMovePayload(clipID: clipID, effectID: effect.id).itemProvider()
+                    } preview: {
+                        Label(effect.displayName, systemImage: effect.kind.systemImage)
+                            .padding(4)
+                    }
+                    .help("Drag to move the effect in the stack; Option-drag to copy it")
+            }
             Button(action: onToggleCollapsed) {
                 Image(systemName: "chevron.right")
                     .rotationEffect(.degrees(isCollapsed ? 0 : 90))
@@ -359,11 +365,20 @@ struct EffectHeaderRow<MenuContent: View>: View {
             .foregroundStyle(Design.textSecondary)
             .help(isCollapsed ? "Show \(effect.displayName)'s settings" : "Hide \(effect.displayName)'s settings")
             .accessibilityLabel(isCollapsed ? "Show \(effect.displayName)'s settings" : "Hide \(effect.displayName)'s settings")
-            Toggle("", isOn: Binding(get: { effect.enabled }, set: { onSetEnabled($0) }))
-                .toggleStyle(.checkbox)
-                .labelsHidden()
-                .controlSize(.small)
-                .help(effect.enabled ? "Turn the effect off" : "Turn the effect on")
+            if isDrawing {
+                Image(systemName: effect.kind.systemImage)
+                    .font(Design.Typeface.glyphSmall)
+                    .foregroundStyle(Design.textSecondary)
+                    .frame(width: 16)
+                    .accessibilityHidden(true)
+            } else {
+                Toggle("", isOn: Binding(get: { effect.enabled }, set: { onSetEnabled($0) }))
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .help(effect.enabled ? "Turn the effect off" : "Turn the effect on")
+                    .accessibilityLabel("\(effect.displayName) on")
+            }
             if isRenaming {
                 TextField("Name", text: $draft)
                     .textFieldStyle(.plain)
@@ -382,8 +397,9 @@ struct EffectHeaderRow<MenuContent: View>: View {
                     .font(Design.Typeface.bodyEmphasis)
                     .foregroundStyle(effect.enabled ? Design.textPrimary : Design.textTertiary)
                     .lineLimit(1)
-                    .onMouseDown { clicks in if clicks == 2 { isRenaming = true } }
+                    .onMouseDown { clicks in if clicks == 2, !isDrawing { isRenaming = true } }
                     .accessibilityLabel(accessibilitySummary ?? effect.displayName)
+                    .accessibilityAddTraits(isDrawing ? .isHeader : [])
             }
             Spacer(minLength: 2)
             if showsCurve {

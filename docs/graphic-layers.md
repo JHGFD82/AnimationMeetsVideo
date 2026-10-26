@@ -116,6 +116,22 @@ and saving all work on shapes as they are.
   (New Shape Layer: Rectangle, Ellipse, Polygon or Star), five seconds
   long, holding one shape sized to the frame; a shape added from the
   library is sized the same way. It is drawn in its own tone.
+- **The clip's drawing in the effects panel.** On a shape or text clip,
+  the shapes and text it draws are the clip itself, not effects applied
+  to it: the effects panel shows them first, pinned above its other rows,
+  each titled with its kind's symbol and name ("Text", "Rectangle"). They
+  have no drag handle or enable checkbox, and their ⋯ menu has only
+  Reset and Add Control, so they can't be moved, turned off, copied,
+  duplicated or deleted from there; Delete, Cut, Copy and Duplicate
+  ignore them (Delete still removes a selected control of theirs).
+  Further shapes in the same clip (a circle for text on a path) show the
+  same way. Effects added to the clip (a Transform, a Stroke) are its
+  stack, listed below the anchor point as on any clip. Which effects are
+  the drawing is `TimelineClip.drawingEffects`: on a `.graphic` clip, the
+  effects of its stack that draw a shape (`EffectKind.drawsShape`), in
+  stack order; `stackEffects` are the rest. It is the one place that
+  says where a clip's drawing is kept. The model still keeps the drawing
+  in the stack, where it draws in stack order.
 - **Shapes on anything.** A shape can go in any visual clip's stack: a
   box drawn over footage for a lower third, below a Transform that moves
   both, is one clip. The Effects Library lists them under Shapes. Dragged

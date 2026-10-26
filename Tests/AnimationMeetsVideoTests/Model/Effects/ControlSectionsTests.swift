@@ -3,8 +3,8 @@ import Foundation
 import Testing
 @testable import AnimationMeetsVideo
 
-/// How the effects panel groups an effect's controls under headers, and
-/// which it lists.
+/// How the effects panel groups an effect's controls under headers, which
+/// it lists, and which effects are a graphic clip's drawing.
 @Suite struct ControlSectionsTests {
     @Test func aSectionedKindListsEveryControlOfItsSectionsOnce() {
         for kind in EffectKind.all where !kind.sections.isEmpty {
@@ -58,5 +58,22 @@ import Testing
         let transform = Effect(kind: .transform)
         #expect(transform.panelSections().count == 1)
         #expect(transform.panelSections()[0].section == nil)
+    }
+
+    @Test func aGraphicClipsDrawingIsItsShapesAndText() {
+        let text = Effect(kind: .text)
+        let shape = Effect(kind: .ellipse)
+        let transform = Effect(kind: .transform)
+        let stroke = Effect(kind: .stroke)
+        var clip = TimelineClip(source: .graphic, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(seconds: 5, preferredTimescale: 600))
+        clip.effects = [shape, text, transform, stroke]
+        #expect(clip.drawingEffects.map(\.id) == [shape.id, text.id])
+        #expect(clip.stackEffects.map(\.id) == [transform.id, stroke.id])
+        #expect(clip.isDrawing(text.id))
+        #expect(!clip.isDrawing(transform.id))
+
+        clip.source = .adjustment
+        #expect(clip.drawingEffects.isEmpty)
+        #expect(clip.stackEffects.count == 4)
     }
 }

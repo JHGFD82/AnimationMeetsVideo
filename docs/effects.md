@@ -536,6 +536,11 @@ row selects it, as clicking it on the timeline does.
   Rename, Enable/Disable, Delete, Show Up to Here, and, on Transform, Moves
   Anchor. New effects are numbered by kind ("Transform 2") so that rows
   and graph editor titles can be told apart; renaming replaces the number.
+- A shape or text clip's **drawing** (its shapes and text) heads the
+  panel, pinned, as the clip's own content rather than an effect in the
+  stack: no handle or checkbox, and no way to move, turn off, copy or
+  delete it (see [graphic-layers.md](graphic-layers.md#shapes)). Other
+  effects on the clip are its stack, as on any clip.
 - An effect's controls are listed under **section headers** where its
   kind groups them (`ControlSection`, in its `EffectDefinition`): Text's
   Character, Paragraph, Path, OpenType and Fill & Stroke; a shape's Shape
@@ -565,7 +570,7 @@ row selects it, as clicking it on the timeline does.
   effects or, for a control, between its effect's controls; effects and
   presets from the library show it too. A place is counted among the
   rows shown, then turned into one among all the effects (or controls),
-  past a shape's unlisted choices. Held near the stack's top or
+  past a pinned drawing and a shape's unlisted choices. Held near the stack's top or
   bottom edge, the drag **scrolls the stack**, faster the deeper into the
   edge (`EdgeAutoScroll`). The whole stack is one drop target
   (`EffectStackDropDelegate`), which finds the place from where each row
