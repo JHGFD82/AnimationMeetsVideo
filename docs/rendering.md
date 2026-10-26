@@ -190,6 +190,13 @@ Limits:
   full-size still), not the old video frame, and the old still stays
   until its replacement is drawn. Any new source of pictures (a still, a
   live frame) should go through `PlaybackModel.cover` for this reason.
+- **Drawing frames at once.** The viewer's compositor draws one frame at a
+  time, in the order asked for, so a seek lets go of everything queued.
+  Export and background renders, which draw without `DrawingOptions`,
+  draw two at once (`LayeredCompositor.exportConcurrency`), so one
+  frame's work on the processor overlaps the last one's on the GPU: a
+  96-frame 1080p export of three blurred, motion-blurred layers went from
+  1.39 s to 1.00 s; three or four at once were no faster.
 - **Export.** A ProRes 422 export plays every stretch that has a render
   from the cache instead of compositing it again, which is much faster for
   stacked or animated stretches. The render is encoded a second time, which
