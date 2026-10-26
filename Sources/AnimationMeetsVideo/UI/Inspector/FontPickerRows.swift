@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// A font's Font (family) and Style pickers, in the inspector's row layout,
-/// for a Text effect's block or its selected letters. Changing the family
-/// keeps the style's name where the new family has it (`FontCatalog`).
+/// A font's family and style menus, full width one above the other as in
+/// Illustrator's Character panel, for a Text effect's block or its
+/// selected letters. Changing the family keeps the style's name where the
+/// new family has it (`FontCatalog`).
 struct FontPickerRows: View {
     /// The PostScript name of the font shown.
     let fontName: String
@@ -13,33 +14,26 @@ struct FontPickerRows: View {
 
     var body: some View {
         let shown = FontCatalog.familyAndStyle(of: fontName)
-        let styles = FontCatalog.styles(ofFamily: shown.family)
-        InspectorLabelledRow("Font") {
-            Picker("Font", selection: Binding(
-                get: { shown.family },
-                set: { family in
-                    guard let name = FontCatalog.fontName(inFamily: family, like: fontName) else { return }
-                    onPick(name)
-                }
-            )) {
-                ForEach(Self.families, id: \.self) { Text($0).tag($0) }
-            }
+        var styles = FontCatalog.styles(ofFamily: shown.family).map { (value: $0.fontName, name: $0.name) }
+        // A missing font is kept, under its own name, until another is
+        // picked.
+        if !styles.contains(where: { $0.value == fontName }) {
+            styles.insert((fontName, fontName), at: 0)
         }
-        InspectorLabelledRow("Style") {
-            Picker("Style", selection: Binding(get: { fontName }, set: onPick)) {
-                // A missing font is kept, under its own name, until another
-                // is picked.
-                if !styles.contains(where: { $0.fontName == fontName }) {
-                    Text(fontName).tag(fontName)
-                }
-                ForEach(styles) { Text($0.name).tag($0.fontName) }
+        return VStack(spacing: Design.Space.close) {
+            PanelMenuField(
+                glyph: .symbol("textformat"), name: "Font", options: Self.families.map { ($0, $0) }, selection: shown.family
+            ) { family in
+                guard let name = FontCatalog.fontName(inFamily: family, like: fontName) else { return }
+                onPick(name)
             }
+            PanelMenuField(glyph: .symbol("bold.italic.underline"), name: "Font Style", options: styles, selection: fontName, onPick: onPick)
         }
     }
 }
 
-/// A row with `name` where the control rows have theirs (after the
-/// stopwatch's place), and a control, as a menu picker is laid out.
+/// A row with `name` where the control rows have theirs, and a control
+/// filling the rest.
 struct InspectorLabelledRow<Control: View>: View {
     let name: String
     @ViewBuilder let control: () -> Control
@@ -51,16 +45,12 @@ struct InspectorLabelledRow<Control: View>: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Color.clear.frame(width: 18, height: 1)
             Text(name)
                 .foregroundStyle(Design.textSecondary)
                 .lineLimit(1)
                 .frame(width: InspectorControlRow.nameWidth, alignment: .leading)
             control()
-                .labelsHidden()
-                .controlSize(.small)
-                .frame(width: 150, alignment: .leading)
-            Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .font(Design.Typeface.label)
     }

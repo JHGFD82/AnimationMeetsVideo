@@ -186,20 +186,18 @@ struct InspectorPanel: View {
                                         project.editClip(timelineClip.id, in: timelineID) { change(&$0[keyPath: keyPath]) }
                                     },
                                     onSeek: { onSeek(timelineClip.timelineTime(forSourceTime: $0)) },
-                                    onShowGraph: graphs.map { graphs in
-                                        {
-                                            let parameter: AnimatedParameter = property == .volume
-                                                ? .clipVolume(clipID: timelineClip.id) : .clipPan(clipID: timelineClip.id)
-                                            graphs.show(ParameterKey(timelineID: timelineID, parameter: parameter))
-                                        }
-                                    },
-                                    held: { projectState?.held?.clipAndLayer(timelineClip.id, in: timelineID)?.clip[keyPath: keyPath] }
+                                    held: { projectState?.held?.clipAndLayer(timelineClip.id, in: timelineID)?.clip[keyPath: keyPath] },
+                                    // A clip's sound is keyframed in the effects panel.
+                                    keyframing: false
                                 )
                             }
                         }
                     }
                     if let layer = timeline.layer(id: selection.layerID), layer.kind.isAudio {
                         let frameTime = PlayheadTime(playhead) { timeline.snappedToFrame($0) }
+                        // Keeps its keyframe buttons: the effects panel shows
+                        // a clip, not its layer, so a layer's pan and sound
+                        // effects are keyframed nowhere else.
                         InspectorGroup("Layer sound") {
                             AudioPropertyRow(
                                 value: layer.volume,
