@@ -165,7 +165,7 @@ struct EffectKind: RawRepresentable, Hashable, Identifiable, Sendable {
     var isShape: Bool { category == .shapes }
 
     /// Whether it draws a shape of its own, rather than stroking others.
-    var drawsShape: Bool { isShape && self != .stroke }
+    var drawsShape: Bool { isShape && self != .stroke && self != .textAnimator }
 
     var systemImage: String { definition.systemImage }
 
@@ -292,8 +292,9 @@ struct ControlKind: RawRepresentable, Hashable, Identifiable, Sendable {
     // MARK: Components
 
     /// Whether a new control of this kind is on: an EQ's bands start off,
-    /// to be switched on as they're needed.
-    var startsEnabled: Bool { EqualizerBand(controlKind: self) == nil }
+    /// to be switched on as they're needed, and so does a Text Animator's
+    /// Fill, which would otherwise recolor the letters it selects.
+    var startsEnabled: Bool { EqualizerBand(controlKind: self) == nil && self != .animatorFill }
 
     /// The unit of one component. Most controls' components share one; an
     /// EQ band's frequency, gain and Q each have their own.

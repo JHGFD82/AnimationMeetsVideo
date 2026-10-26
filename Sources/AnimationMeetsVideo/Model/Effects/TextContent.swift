@@ -103,6 +103,72 @@ enum TextAlign: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// What a Text Animator's range counts in.
+enum TextAnimatorUnit: String, CaseIterable, Identifiable, Sendable {
+    case characters, charactersExcludingSpaces, words, lines
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .characters: "Characters"
+        case .charactersExcludingSpaces: "Characters Excluding Spaces"
+        case .words: "Words"
+        case .lines: "Lines"
+        }
+    }
+}
+
+/// How much a Text Animator's range selects each unit along it, as After
+/// Effects' range selector shapes do.
+enum TextAnimatorShape: String, CaseIterable, Identifiable, Sendable {
+    /// Wholly inside the range, partly at its edges.
+    case square
+    /// Rising across the range, and wholly after it.
+    case rampUp
+    /// Falling across the range, wholly before it.
+    case rampDown
+    case triangle, round, smooth
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .square: "Square"
+        case .rampUp: "Ramp Up"
+        case .rampDown: "Ramp Down"
+        case .triangle: "Triangle"
+        case .round: "Round"
+        case .smooth: "Smooth"
+        }
+    }
+
+    /// How much unit `index` of `count` is selected, 0 to 1, by a range
+    /// from `start` to `end` (fractions of all the units).
+    func amount(unit index: Int, of count: Int, start: Double, end: Double) -> Double {
+        guard count > 0 else { return 0 }
+        let low = min(start, end), high = max(start, end)
+        let unitStart = Double(index) / Double(count), unitEnd = Double(index + 1) / Double(count)
+        if self == .square {
+            let overlap = min(high, unitEnd) - max(low, unitStart)
+            return (overlap / (unitEnd - unitStart)).clamped(between: 0, and: 1)
+        }
+        let middle = (unitStart + unitEnd) / 2
+        if middle < low { return self == .rampDown ? 1 : 0 }
+        if middle > high { return self == .rampUp ? 1 : 0 }
+        let t = high > low ? (middle - low) / (high - low) : 0.5
+        let peak = 1 - abs(2 * t - 1)
+        switch self {
+        case .square: return 1
+        case .rampUp: return t
+        case .rampDown: return 1 - t
+        case .triangle: return peak
+        case .round: return (1 - pow(2 * t - 1, 2)).squareRoot()
+        case .smooth: return peak * peak * (3 - 2 * peak)
+        }
+    }
+}
+
 /// Which point of a text block sits at its Position: a corner, the middle
 /// of an edge, or its middle.
 enum TextAnchor: String, CaseIterable, Identifiable, Sendable {

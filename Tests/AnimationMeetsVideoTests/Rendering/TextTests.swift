@@ -297,6 +297,128 @@ extension DrawingFixture {
         #expect(abs(left.minX - topLeft.minX) < 0.5 && abs(left.minY - middle.minY) < 0.5)
     }
 
+    // MARK: Animators
+
+    @Test func eachRangeShapeSelectsAlongTheRange() {
+        // Ten units, the range over the middle half.
+        func amounts(_ shape: TextAnimatorShape) -> [Double] {
+            (0..<10).map { shape.amount(unit: $0, of: 10, start: 0.25, end: 0.75) }
+        }
+        let square = amounts(.square)
+        #expect(square[0] == 0 && square[4] == 1 && square[9] == 0)
+        // A unit the range's edge crosses is partly selected.
+        #expect(abs(square[2] - 0.5) < 1e-9)
+        let up = amounts(.rampUp), down = amounts(.rampDown)
+        #expect(up[0] == 0 && up[9] == 1 && up[3] < up[6])
+        #expect(down[0] == 1 && down[9] == 0 && down[3] > down[6])
+        for shape in [TextAnimatorShape.triangle, .round, .smooth] {
+            let values = amounts(shape)
+            #expect(values[0] == 0 && values[9] == 0)
+            #expect(values[4] > values[3] && values[5] > values[6])
+        }
+    }
+
+    @Test func anAnimatorMovesFadesAndRecolorsWhatItSelects() {
+        var animator = TextOutline.Animator()
+        animator.end = 0.5
+        animator.dy = -50
+        animator.opacity = 0.5
+        animator.fill = [1, 0, 0, 1]
+        let block = setting("HHHH")
+        let still = TextOutline(setting: block, center: .zero).pieces(fill: [1, 1, 1, 1], stroke: nil)
+        let moved = TextOutline(setting: block, center: .zero, animators: [animator]).pieces(fill: [1, 1, 1, 1], stroke: nil)
+        #expect(still.count == 1)
+        #expect(moved.count == 2)
+        let raised = moved.first { $0.opacity == 0.5 }, rest = moved.first { $0.opacity == 1 }
+        #expect(raised?.fill == [1, 0, 0, 1])
+        #expect(rest?.fill == [1, 1, 1, 1])
+        // The first two letters rise 50 pixels; the others stay.
+        let base = still[0].path.boundingBoxOfPath
+        #expect(abs((raised?.path.boundingBoxOfPath.minY ?? 0) - (base.minY - 50)) < 0.5)
+        #expect(abs((rest?.path.boundingBoxOfPath.minY ?? 0) - base.minY) < 0.5)
+        #expect(abs((raised?.path.boundingBoxOfPath.minX ?? 0) - base.minX) < 0.5)
+    }
+
+    @Test func anAnimatorScalesAndTurnsEachGlyphAboutItsBaseline() {
+        var grow = TextOutline.Animator()
+        grow.scale = 2
+        let block = setting("I")
+        let plain = bounds(block)
+        let grown = TextOutline(setting: block, center: .zero, animators: [grow]).path.boundingBoxOfPath
+        #expect(abs(grown.height - plain.height * 2) < 1)
+        // The baseline stays where it was.
+        #expect(abs(grown.maxY - plain.maxY) < 0.5)
+        var turn = TextOutline.Animator()
+        turn.rotation = 90
+        let turned = TextOutline(setting: block, center: .zero, animators: [turn]).path.boundingBoxOfPath
+        #expect(turned.width > turned.height * 2)
+    }
+
+    @Test func anAnimatorsTrackingSpreadsTheLettersAndKeepsThemCentered() {
+        var spread = TextOutline.Animator()
+        spread.tracking = 200
+        let block = setting("HHHHH")
+        let plain = bounds(block)
+        let wide = TextOutline(setting: block, center: .zero, animators: [spread]).path.boundingBoxOfPath
+        // 20 pixels after each of the first four letters.
+        #expect(abs(wide.width - plain.width - 80) < 0.5)
+        #expect(abs(wide.midX - plain.midX) < 0.5)
+    }
+
+    @Test func aRangeCanCountWordsAndLines() {
+        let laid = TextLayout.layOut(setting("ab cd\nef"))
+        var words = TextOutline.Animator()
+        words.unit = .words
+        words.end = 1.0 / 3
+        #expect(laid.glyphs.map { words.amount(of: $0, in: laid) } == [1, 1, 0, 0, 0, 0])
+        var lines = words
+        lines.unit = .lines
+        lines.start = 0.5
+        lines.end = 1
+        #expect(laid.glyphs.map { lines.amount(of: $0, in: laid) } == [0, 0, 0, 0, 1, 1])
+    }
+
+    @Test func aTextAnimatorBelowATextEffectDrawsAndSaves() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let text = try fixture.addShape(.text)
+        fixture.setText("I", ofClip: text.clipID)
+        fixture.setControl(.fontSize, [48], ofClip: text.clipID)
+        let before = try await fixture.build().segments.filter(\.needsRender).map(\.key)
+        let added = fixture.project.addEffect(.textAnimator, toClip: text.clipID, in: fixture.timelineID)
+        #expect(added != nil)
+        // It changes nothing until told to: the I's stem still covers the middle.
+        let untouched = try await grayLevel(of: fixture.build(), at: second)
+        #expect(untouched > 220)
+        fixture.setControl(.animatorPosition, [40, 0], ofClip: text.clipID)
+        let composed = try await fixture.build()
+        let after = composed.segments.filter(\.needsRender).map(\.key)
+        #expect(Set(after).isDisjoint(with: Set(before)))
+        // The I's stem moved off the middle.
+        let middle = try await grayLevel(of: composed, at: second)
+        #expect(middle < 10)
+
+        let package = fixture.directory.appending(path: "Animator.amv", directoryHint: .isDirectory)
+        try await ProjectStore.save(fixture.project, to: package)
+        let loaded = try await ProjectStore.load(from: package)
+        let saved = try #require(fixture.project.clipAndLayer(text.clipID, in: fixture.timelineID)?.clip)
+        let read = try #require(loaded.project.clipAndLayer(text.clipID, in: loaded.project.rootTimelineID)?.clip)
+        #expect(read.effects == saved.effects)
+        #expect(read.effects.last?.control(.animatorFill)?.enabled == false)
+    }
+
+    @Test func aTextAnimatorWithNoTextAboveSaysSo() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let layer = project.addShapeLayer(.rectangle, to: t)
+        let shape = try #require(layer)
+        _ = project.addEffect(.textAnimator, toClip: shape.clipID, in: t)
+        let (clip, onLayer) = try #require(project.clipAndLayer(shape.clipID, in: t))
+        let timeline = try #require(project.timeline(id: t))
+        #expect(project.note(forEffectAt: 1, in: clip, on: onLayer, of: timeline)?.dims == true)
+        #expect(!EffectKind.textAnimator.drawsShape)
+    }
+
     // MARK: Missing fonts
 
     @Test func exportStopsOnAMissingFontButTheViewerDraws() async throws {

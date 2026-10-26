@@ -147,9 +147,77 @@ struct TextOutline: Equatable, Sendable {
         var opacity = 1.0
     }
 
+    /// A Text Animator below the Text effect, at one moment (see
+    /// `TextAnimatorShape`): which units its range selects, and what it
+    /// does to each glyph in proportion to how much.
+    struct Animator: Equatable, Sendable {
+        /// The range, in fractions of all the units, offset included.
+        var start = 0.0
+        var end = 1.0
+        var unit = TextAnimatorUnit.characters
+        var shape = TextAnimatorShape.square
+        /// Pixels.
+        var dx = 0.0
+        var dy = 0.0
+        /// Fractions: 1 leaves a glyph as it is.
+        var scale = 1.0
+        var opacity = 1.0
+        /// Degrees, clockwise.
+        var rotation = 0.0
+        /// The color the glyphs it selects take; nil while its Fill is off.
+        var fill: [Double]?
+        /// Thousandths of an em after each glyph it selects.
+        var tracking = 0.0
+
+        /// A Text Animator effect at source time `time`; nil while it is off.
+        init?(_ effect: Effect, at time: CMTime) {
+            guard effect.kind == .textAnimator, effect.enabled else { return nil }
+            func values(_ kind: ControlKind) -> [Double] {
+                guard let control = effect.control(kind), control.enabled else { return kind.defaultValues }
+                return control.values(at: time)
+            }
+            func number(_ kind: ControlKind) -> Double { values(kind).first ?? 0 }
+            func choice<Option: RawRepresentable>(_ kind: ControlKind, _ fallback: Option) -> Option where Option.RawValue == String {
+                let picked = effect.control(kind).flatMap { $0.enabled ? $0.choice : nil } ?? kind.defaultChoice
+                return picked.flatMap(Option.init(rawValue:)) ?? fallback
+            }
+            let offset = number(.animatorOffset) / 100
+            start = number(.animatorStart) / 100 + offset
+            end = number(.animatorEnd) / 100 + offset
+            unit = choice(.animatorUnit, .characters)
+            shape = choice(.animatorShape, .square)
+            let move = values(.animatorPosition)
+            dx = move.first ?? 0
+            dy = move.count > 1 ? move[1] : 0
+            scale = max(0, number(.animatorScale) / 100)
+            opacity = (number(.animatorOpacity) / 100).clamped(between: 0, and: 1)
+            rotation = number(.animatorRotation)
+            if let control = effect.control(.animatorFill), control.enabled {
+                fill = control.values(at: time).map { $0.clamped(between: 0, and: 1) }
+            }
+            tracking = number(.animatorTracking)
+        }
+
+        init() {}
+
+        /// How much it selects `glyph`, 0 to 1.
+        func amount(of glyph: TextLayout.Laid.Glyph, in laid: TextLayout.Laid) -> Double {
+            let (index, count) = switch unit {
+            case .characters: (glyph.character, laid.characterCount)
+            case .charactersExcludingSpaces: (glyph.letter, laid.letterCount)
+            case .words: (glyph.word, laid.wordCount)
+            case .lines: (glyph.line, laid.lineCount)
+            }
+            return shape.amount(unit: index, of: count, start: start, end: end)
+        }
+    }
+
     var setting: Setting
     /// The middle of the block.
     var center: CGPoint
+    /// The Text Animators below the Text effect, in order. They place the
+    /// glyphs laid out, so animating them doesn't lay the block out again.
+    var animators: [Animator] = []
 
     /// The glyphs' outlines, in the frame's pixels.
     var path: CGPath {
@@ -158,9 +226,19 @@ struct TextOutline: Equatable, Sendable {
         return path
     }
 
-    /// The block's letters and rules placed in the frame, grouped by how
-    /// they are drawn: each run's colors over the block's `fill` and
-    /// `stroke`, where the block has them.
+    /// What one group of letters is drawn with, for gathering them.
+    private struct Look: Hashable {
+        var style: Int
+        /// Thousandths.
+        var opacity: Int
+        /// The fill's components in thousandths, nil where the style's is.
+        var fill: [Int]?
+    }
+
+    /// The block's letters and rules placed in the frame, turned and moved
+    /// by the animators, and grouped by how they are drawn: each run's
+    /// colors over the block's `fill` and `stroke`, where the block has
+    /// them, mixed toward an animator's fill, and faded.
     func pieces(fill: [Double]?, stroke: [Double]?) -> [Piece] {
         let laid = TextLayout.shared.laid(setting)
         let turn = setting.characterRotation * .pi / 180
@@ -168,8 +246,20 @@ struct TextOutline: Equatable, Sendable {
         let toFrame = CGAffineTransform(
             translationX: center.x - laid.size.width * anchor.x, y: center.y - laid.size.height * anchor.y
         )
-        var paths = laid.styles.map { _ in CGMutablePath() }
-        for glyph in laid.glyphs {
+        let amounts = laid.glyphs.map { glyph in animators.map { $0.amount(of: glyph, in: laid) } }
+        let shifts = trackingShifts(laid, amounts: amounts)
+
+        var looks: [Look] = []
+        var paths: [Look: CGMutablePath] = [:]
+        var colors: [Look: [Double]] = [:]
+        func path(for look: Look) -> CGMutablePath {
+            if let path = paths[look] { return path }
+            let path = CGMutablePath()
+            looks.append(look)
+            paths[look] = path
+            return path
+        }
+        for (index, glyph) in laid.glyphs.enumerated() {
             var place = CGAffineTransform.identity
             if turn != 0 {
                 let pivot = CGPoint(x: glyph.advance / 2, y: -glyph.middle)
@@ -177,21 +267,80 @@ struct TextOutline: Equatable, Sendable {
                     .concatenating(CGAffineTransform(rotationAngle: turn))
                     .concatenating(CGAffineTransform(translationX: pivot.x, y: pivot.y))
             }
-            place = place.concatenating(CGAffineTransform(translationX: glyph.origin.x, y: glyph.origin.y)).concatenating(toFrame)
-            paths[glyph.style].addPath(glyph.outline, transform: place)
+            var opacity = 1.0
+            var color = fill.map { laid.styles[glyph.style].fill ?? $0 }
+            var recolored = false
+            for (animator, amount) in zip(animators, amounts[index]) where amount > 0 {
+                // About the middle of its baseline, as After Effects does.
+                let pivot = CGPoint(x: glyph.advance / 2, y: 0)
+                let scale = 1 + (animator.scale - 1) * amount
+                place = place
+                    .concatenating(CGAffineTransform(translationX: -pivot.x, y: -pivot.y))
+                    .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+                    .concatenating(CGAffineTransform(rotationAngle: animator.rotation * amount * .pi / 180))
+                    .concatenating(CGAffineTransform(translationX: pivot.x + animator.dx * amount, y: pivot.y + animator.dy * amount))
+                opacity *= 1 + (animator.opacity - 1) * amount
+                if let target = animator.fill, let base = color, base.count == 4, target.count == 4 {
+                    color = zip(base, target).map { $0 + ($1 - $0) * amount }
+                    recolored = true
+                }
+            }
+            place = place
+                .concatenating(CGAffineTransform(translationX: glyph.origin.x + shifts[index], y: glyph.origin.y))
+                .concatenating(toFrame)
+            let look = Look(
+                style: glyph.style, opacity: Int((opacity * 1000).rounded()),
+                fill: recolored ? color?.map { Int(($0 * 1000).rounded()) } : nil
+            )
+            if recolored, let color { colors[look] = color }
+            path(for: look).addPath(glyph.outline, transform: place)
         }
         for rule in laid.rules {
-            paths[rule.style].addRect(rule.rect, transform: toFrame)
+            path(for: Look(style: rule.style, opacity: 1000, fill: nil)).addRect(rule.rect, transform: toFrame)
         }
-        return zip(laid.styles, paths).compactMap { style, path in
-            guard !path.isEmpty else { return nil }
-            return Piece(path: path, fill: fill.map { style.fill ?? $0 }, stroke: stroke.map { style.stroke ?? $0 })
+        return looks.compactMap { look in
+            guard let path = paths[look], !path.isEmpty else { return nil }
+            let style = laid.styles[look.style]
+            return Piece(
+                path: path, fill: colors[look] ?? fill.map { style.fill ?? $0 }, stroke: stroke.map { style.stroke ?? $0 },
+                opacity: Double(look.opacity) / 1000
+            )
         }
+    }
+
+    /// How far along its line each glyph moves for the tracking the
+    /// animators add after the glyphs before it, each line then moved back
+    /// as its alignment keeps it: half the added width when centered, all
+    /// of it at the right.
+    private func trackingShifts(_ laid: TextLayout.Laid, amounts: [[Double]]) -> [Double] {
+        var shifts = [Double](repeating: 0, count: laid.glyphs.count)
+        guard animators.contains(where: { $0.tracking != 0 }) else { return shifts }
+        var added: [Int: Double] = [:]
+        var last: [Int: Double] = [:]
+        for (index, glyph) in laid.glyphs.enumerated() {
+            shifts[index] = added[glyph.line, default: 0]
+            let size = laid.styles[glyph.style].size
+            let extra = zip(animators, amounts[index]).reduce(0) { $0 + $1.1 * $1.0.tracking / 1000 * size }
+            added[glyph.line, default: 0] += extra
+            last[glyph.line] = extra
+        }
+        let share: Double = switch setting.align {
+        case .center: 0.5
+        case .right: 1
+        default: 0
+        }
+        guard share > 0 else { return shifts }
+        for (index, glyph) in laid.glyphs.enumerated() {
+            // Not counting what follows the line's last glyph.
+            let width = added[glyph.line, default: 0] - last[glyph.line, default: 0]
+            shifts[index] -= width * share
+        }
+        return shifts
     }
 
     /// What it draws, in words, for a render's key: every setting, which
     /// a new one joins without being listed here.
     var keyText: String {
-        "h t \(String(describing: setting)) \(String(format: "%.5f,%.5f", center.x, center.y))"
+        "h t \(String(describing: setting)) \(String(describing: animators)) \(String(format: "%.5f,%.5f", center.x, center.y))"
     }
 }

@@ -67,6 +67,8 @@ final class TextLayout: @unchecked Sendable {
             /// Which character, word and line it belongs to, counting from
             /// 0, for an animator's range.
             var character: Int
+            /// Counting only letters that aren't spaces.
+            var letter: Int
             var word: Int
             var line: Int
         }
@@ -82,6 +84,7 @@ final class TextLayout: @unchecked Sendable {
         var styles: [LetterStyle] = []
         var size = CGSize.zero
         var characterCount = 0
+        var letterCount = 0
         var wordCount = 0
         var lineCount = 0
     }
@@ -286,8 +289,8 @@ final class TextLayout: @unchecked Sendable {
         // Paragraphs, and which character and word each code unit is in.
         let text = display.string as NSString
         var paragraphs: [NSRange] = []
-        var characters = [Int](repeating: 0, count: text.length), words = characters
-        var paragraphStart = 0, character = -1, word = -1, inWord = false
+        var characters = [Int](repeating: 0, count: text.length), words = characters, letters = characters
+        var paragraphStart = 0, character = -1, letterNumber = -1, word = -1, inWord = false
         text.enumerateSubstrings(in: NSRange(location: 0, length: text.length), options: .byComposedCharacterSequences) { letter, range, _, _ in
             let letter = letter ?? ""
             if letter.contains(where: \.isNewline) {
@@ -299,14 +302,17 @@ final class TextLayout: @unchecked Sendable {
             character += 1
             let isSpace = letter.allSatisfy(\.isWhitespace)
             if !isSpace, !inWord { word += 1 }
+            if !isSpace { letterNumber += 1 }
             inWord = !isSpace
             for unit in range.location..<(range.location + range.length) {
                 characters[unit] = character
+                letters[unit] = max(0, letterNumber)
                 words[unit] = max(0, word)
             }
         }
         paragraphs.append(NSRange(location: paragraphStart, length: text.length - paragraphStart))
         laid.characterCount = character + 1
+        laid.letterCount = letterNumber + 1
         laid.wordCount = word + 1
 
         let wraps = setting.wrapWidth > 0
@@ -407,7 +413,7 @@ final class TextLayout: @unchecked Sendable {
             case .right: line.indent + room - line.width
             default: line.indent
             }
-            addGlyphs(of: line, number: number, at: CGPoint(x: start, y: lineBaseline), to: &laid, characters: characters, words: words)
+            addGlyphs(of: line, number: number, at: CGPoint(x: start, y: lineBaseline), to: &laid, characters: characters, letters: letters, words: words)
         }
         return laid
     }
@@ -515,7 +521,7 @@ final class TextLayout: @unchecked Sendable {
     /// Adds every glyph of `line`, its baseline starting at `origin`, to
     /// `laid`, and its runs' underlines and strikethroughs. A glyph with no
     /// outline (an emoji's picture) adds nothing.
-    private static func addGlyphs(of line: Line, number: Int, at origin: CGPoint, to laid: inout Laid, characters: [Int], words: [Int]) {
+    private static func addGlyphs(of line: Line, number: Int, at origin: CGPoint, to laid: inout Laid, characters: [Int], letters: [Int], words: [Int]) {
         guard let runs = CTLineGetGlyphRuns(line.line) as? [CTRun] else { return }
         let flip = CGAffineTransform(scaleX: 1, y: -1)
         /// Where the next run starts along the line.
@@ -561,6 +567,7 @@ final class TextLayout: @unchecked Sendable {
                     origin: CGPoint(x: origin.x + positions[k].x, y: origin.y - positions[k].y - style.baselineShift),
                     advance: advances[k].width, middle: middle, style: styleIndex,
                     character: characters.indices.contains(unit) ? characters[unit] : 0,
+                    letter: letters.indices.contains(unit) ? letters[unit] : 0,
                     word: words.indices.contains(unit) ? words[unit] : 0, line: number
                 ))
             }

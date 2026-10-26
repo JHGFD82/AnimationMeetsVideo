@@ -16,6 +16,9 @@ extension EffectKind {
     static let star = EffectKind(builtIn: "star")
     /// A block of text whose outline is its glyphs, set with Core Text.
     static let text = EffectKind(builtIn: "text")
+    /// Moves, scales, turns, fades and recolors a range of the letters of
+    /// the Text effect above it, glyph by glyph.
+    static let textAnimator = EffectKind(builtIn: "textAnimator")
     /// Strokes the outline of the shapes above it in the stack, strokes
     /// and all, so a stroke can have a stroke of its own.
     static let stroke = EffectKind(builtIn: "stroke")
@@ -148,6 +151,18 @@ extension ControlKind {
     static let swash = ControlKind(builtIn: "swash")
     static let stylisticAlternates = ControlKind(builtIn: "stylisticAlternates")
     static let stylisticSet = ControlKind(builtIn: "stylisticSet")
+    // Text Animator
+    static let animatorStart = ControlKind(builtIn: "animatorStart")
+    static let animatorEnd = ControlKind(builtIn: "animatorEnd")
+    static let animatorOffset = ControlKind(builtIn: "animatorOffset")
+    static let animatorUnit = ControlKind(builtIn: "animatorUnit")
+    static let animatorShape = ControlKind(builtIn: "animatorShape")
+    static let animatorPosition = ControlKind(builtIn: "animatorPosition")
+    static let animatorScale = ControlKind(builtIn: "animatorScale")
+    static let animatorRotation = ControlKind(builtIn: "animatorRotation")
+    static let animatorOpacity = ControlKind(builtIn: "animatorOpacity")
+    static let animatorFill = ControlKind(builtIn: "animatorFill")
+    static let animatorTracking = ControlKind(builtIn: "animatorTracking")
     // EQ
     static let eqLowCut = ControlKind(builtIn: "eqLowCut")
     static let eqLowCutSlope = ControlKind(builtIn: "eqLowCutSlope")
@@ -223,7 +238,7 @@ enum BuiltInEffects {
         "grain", "staticNoise", "fractalNoise", "cells", "dither", "interference", "blockGlitch",
         "displace", "liquid", "twirl", "wave", "kaleidoscope", "mirrorTile", "chromaticAberration",
         "flowSmear", "slitScan", "feedback",
-        "rectangle", "ellipse", "polygon", "star", "text", "stroke",
+        "rectangle", "ellipse", "polygon", "star", "text", "textAnimator", "stroke",
         "equalizer", "compressor", "limiter", "voiceIsolation",
         "audioKeys", "beatKeys", "wiggler", "oscillator", "smoother", "looper", "timeStep", "overshoot",
     ]
@@ -268,6 +283,14 @@ enum BuiltInEffects {
             .text, "Text", .shapes, "textformat",
             controls: EffectKind.characterControls + EffectKind.paragraphControls + EffectKind.openTypeControls
                 + [.shapePosition] + EffectKind.paintControls
+        ),
+        // Animates a range of the letters of the Text effect above it.
+        EffectDefinition(
+            .textAnimator, "Text Animator", .shapes, "textformat.abc.dottedunderline",
+            controls: [
+                .animatorStart, .animatorEnd, .animatorOffset, .animatorUnit, .animatorShape,
+                .animatorPosition, .animatorScale, .animatorRotation, .animatorOpacity, .animatorFill, .animatorTracking,
+            ]
         ),
         // Strokes the outline of the shapes above it in the stack, strokes
         // and all, so a stroke can have a stroke of its own.
@@ -410,6 +433,23 @@ enum BuiltInEffects {
         ControlDefinition(.stylisticAlternates, "Stylistic Alternates", .text, choice: OnOff.off),
         // ss01 to ss20; 0 for none.
         ControlDefinition(.stylisticSet, "Stylistic Set", .text, defaults: [0], range: 0...20, isWhole: true),
+        // Text Animator: a range of the units, in percent of them all, and
+        // what it does to what it selects, in proportion to how much.
+        ControlDefinition(.animatorStart, "Start", .textAnimator, defaults: [0], unit: "%", range: 0...100),
+        ControlDefinition(.animatorEnd, "End", .textAnimator, defaults: [100], unit: "%", range: 0...100),
+        ControlDefinition(.animatorOffset, "Offset", .textAnimator, defaults: [0], unit: "%", range: -100...100),
+        ControlDefinition(.animatorUnit, "Based On", .textAnimator, choice: TextAnimatorUnit.characters),
+        ControlDefinition(.animatorShape, "Shape", .textAnimator, choice: TextAnimatorShape.square),
+        ControlDefinition(
+            .animatorPosition, "Position", .textAnimator, defaults: [0, 0], unit: " px", componentNames: ["Δx", "Δy"]
+        ),
+        ControlDefinition(.animatorScale, "Scale", .textAnimator, defaults: [100], unit: "%", range: 0...10_000),
+        ControlDefinition(.animatorRotation, "Rotation", .textAnimator, defaults: [0], unit: "°"),
+        ControlDefinition(.animatorOpacity, "Opacity", .textAnimator, defaults: [100], unit: "%", range: 0...100),
+        // Starts off: on, the letters take this color.
+        ControlDefinition(.animatorFill, "Fill", .textAnimator, defaults: [1, 0.3, 0.2, 1], dragStep: 0.01, range: 0...1, isColor: true),
+        // Thousandths of an em after each selected letter.
+        ControlDefinition(.animatorTracking, "Tracking", .textAnimator, defaults: [0], range: -1000...10_000),
         // EQ
         ControlDefinition(.eqLowCut, band: .lowCut),
         ControlDefinition(.eqLowCutSlope, "Low Slope", .equalizer, choice: EqualizerSlope.db12),

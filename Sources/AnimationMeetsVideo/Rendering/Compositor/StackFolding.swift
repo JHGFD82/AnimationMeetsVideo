@@ -178,7 +178,7 @@ enum StackFolding {
         }
         let targets = Set(effects.compactMap { $0.kind.readsAgainst && $0.enabled ? $0.against : nil })
 
-        for effect in effects {
+        for (position, effect) in effects.enumerated() {
             if targets.contains(effect.id) {
                 flush()
                 steps.append(.mark(effect.id))
@@ -206,7 +206,11 @@ enum StackFolding {
             case .rectangle, .ellipse, .polygon, .star, .text:
                 // Drawn over what the steps above made of the picture, so
                 // they come first.
-                guard let shape = ShapeStep(effect, at: time, center: center) else { continue }
+                // Text takes the Text Animators directly below it.
+                let animators = effect.kind == .text
+                    ? Array(effects.dropFirst(position + 1).prefix { $0.kind == .textAnimator })
+                    : []
+                guard let shape = ShapeStep(effect, at: time, center: center, animators: animators) else { continue }
                 flush()
                 steps.append(.shape(shape))
             case .stroke:

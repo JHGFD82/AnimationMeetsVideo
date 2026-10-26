@@ -344,6 +344,24 @@ Built (step 3a):
   every letter, a run's font too (`kCTFontVariationAttribute`). Not yet:
   their keyframes show in neither the effects panel's lanes nor the
   graph editor, and F9's eases at the playhead don't reach them.
+- **Animators.** A Text Animator effect (`"textAnimator"`, in Shapes)
+  animates the Text effect directly above it, other Text Animators
+  between, as After Effects' animators with a range selector do; with no
+  Text effect there, the effects panel says so. Its controls, keyframed
+  like any other: **Start**, **End** and **Offset** (percent of the units),
+  **Based On** (Characters, Characters Excluding Spaces, Words, Lines),
+  **Shape** (Square, which selects a unit the range's edge crosses
+  partly; Ramp Up, wholly after the range; Ramp Down, wholly before it;
+  Triangle, Round, Smooth), and what it does to each glyph in proportion
+  to how much it is selected: **Position** (pixels), **Scale** and
+  **Rotation** about the middle of the glyph's baseline, **Opacity**,
+  **Fill** (off at first; on, the glyphs' fill mixes toward it), and
+  **Tracking** (thousandths of an em after each, the line kept to its
+  alignment). Several apply in order. They work on the glyphs as laid out
+  (`TextOutline.Animator`, applied in `pieces`), so animating them never
+  lays the block out again; glyphs drawn alike are still one piece. They
+  don't move underlines and strikethroughs, and a glyph's stroke takes its
+  opacity but not its fill's color.
 - **Anchor** is a Paragraph choice of nine points (Top Left to Bottom
   Right, Middle at first): which point of the block, as wide as its wrap
   width or widest line and as tall as its lines, sits at the frame's
@@ -365,11 +383,6 @@ Built (step 3a):
 
 Still to come:
 
-- **Animators.** As in After Effects, an animator applies offset, scale,
-  rotation, opacity, fill and tracking to a range of characters, words or
-  lines, with the range's start, end and offset keyframed and a shape for
-  how it falls off (square, ramp, smooth). Each glyph is drawn at its own
-  transform about its own anchor.
 - **Text on a path.** A text item can follow one of the clip's shape paths,
   with a start offset that can be animated.
 - **Editing in the viewer.** Typing in place, and a handle for the wrap
@@ -449,7 +462,11 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
    small caps, the anchor, and (c) variable axes, each tested in
    `TextTests` (`textPairKerningInspector` and
    `textVariableFontInspector` show their rows). (f, done) Missing fonts
-   stop export. (d) Animators. (e) Text on a path.
+   stop export. (d, done) Animators: `TextTests` checks each range
+   shape, moving, fading and recoloring a range, scale and rotation about
+   the baseline, tracking kept centered, ranges by words and lines, an
+   animator drawn and saved, and its note with no text above;
+   `textAnimatorInspector` shows its controls. (e) Text on a path.
 4. **Viewer handles.** Selecting a graphic clip in the viewer, handles for
    vertices and primitives, and their keyboard paths.
 5. **Stills as effect inputs**, so a PNG can be a Matte's input.

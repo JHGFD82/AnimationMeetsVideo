@@ -585,6 +585,35 @@ struct UISnapshots {
         )
     }
 
+    /// The inspector for a text layer with a Text Animator below its Text
+    /// effect: the animator's range, shape and properties, its Fill off.
+    @Test func textAnimatorInspector() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let added = project.addShapeLayer(.text, to: t)
+        let text = try #require(added)
+        _ = project.addEffect(.textAnimator, toClip: text.clipID, in: t)
+        project.editClip(text.clipID, in: t) { clip in
+            clip.effects[1].changeControl(.animatorEnd) { range in
+                range.number.setAnimated(true, at: .zero)
+                range.setComponent(0, to: 0, at: .zero)
+                range.setComponent(0, to: 100, at: CMTime(seconds: 2, preferredTimescale: 600))
+            }
+            clip.effects[1].changeControl(.animatorPosition) { $0.number = AnimatedValue(ComponentValue(values: [0, -80])) }
+            clip.effects[1].changeControl(.animatorOpacity) { $0.setComponent(0, to: 0, at: .zero) }
+            clip.effects[1].changeControl(.animatorShape) { $0.choice = TextAnimatorShape.rampDown.rawValue }
+        }
+        let clip = try #require(project.clipAndLayer(text.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: text.layerID, timelineClipID: text.clipID),
+                info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "text-animator-inspector", size: CGSize(width: 340, height: 2400)
+        )
+    }
+
     /// The inspector for a shape layer: a rounded rectangle's size, corners
     /// and position, then its fill and a dashed outside stroke.
     @Test func shapeInspector() throws {
