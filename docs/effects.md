@@ -394,7 +394,14 @@ works on frames already chosen:
   speed doesn't land on whole frames), or Optical Flow (build in-between
   frames from Vision's optical flow). Optical Flow is too slow to draw
   live, so it is drawn only in background renders and export; until a
-  stretch is rendered, the viewer shows it with Blend.
+  stretch is rendered, the viewer shows it with Blend. The motion between
+  two frames is measured once and kept for every moment drawn between
+  them (`FlowFieldCache`): each motion blur sample, and each frame of a
+  slowed clip that falls between the same two frames. It is looked up by
+  the file and the first frame's number, and only taken when a
+  fingerprint of both frames' pixels matches, so footage with uneven
+  frame timing, whose frame numbers can name other frames, is measured
+  again rather than given another pair's motion.
 - **Echo**: earlier source frames layered under the current one, with a
   count, a delay and a decay.
 

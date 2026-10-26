@@ -103,9 +103,20 @@ enum OpticalFlow {
     /// The frame between two, or nil when there isn't one to estimate.
     /// Where Vision or the Metal kernel can't run (a virtual Mac may lack
     /// the hardware), the motion is measured by block matching instead,
-    /// as a morph's is.
-    static func between(_ first: CIImage, _ second: CIImage, fraction: Double) -> CIImage? {
-        if let field = field(from: first, to: second),
+    /// as a morph's is. With `flows`, the motion of `pair` (frames with
+    /// `fingerprint`) is measured once and kept there for the other moments
+    /// between the same two frames.
+    static func between(
+        _ first: CIImage, _ second: CIImage, fraction: Double,
+        flows: FlowFieldCache? = nil, pair: FlowFieldCache.Pair? = nil, fingerprint: FlowFieldCache.Fingerprint? = nil
+    ) -> CIImage? {
+        let measured: Field?
+        if let flows, let pair, let fingerprint {
+            measured = flows.field(for: pair, fingerprint: fingerprint) { field(from: first, to: second) }
+        } else {
+            measured = field(from: first, to: second)
+        }
+        if let field = measured,
            let moved = interpolated(from: first, to: second, fraction: fraction, field: field) {
             return moved
         }

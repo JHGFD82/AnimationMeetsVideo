@@ -95,6 +95,35 @@ private let frame = CMTime(value: 1, timescale: 24)
         #expect(abs(live - faded) < 0.002)
     }
 
+    @Test func opticalFlowMeasuresEachPairOfFramesOnce() throws {
+        var harness = CompositorHarness(size: CGSize(width: 192, height: 108))
+        try harness.addPicture(track: 1, texture(0, 0))
+        try harness.addPicture(track: 2, texture(12, 6))
+        var clip = baseClip()
+        clip.time.speed = AnimatedValue(50)
+        clip.time.frameBlending = .opticalFlow
+        let drawn = drawClip(clip) {
+            $0.nextFrame = copy(2)
+            $0.opticalFlow = true
+        }
+        let flows = FlowFieldCache()
+        // At 50%, both moments fall between the source's fourth and fifth
+        // frames: a half and a quarter of the way.
+        let half = try harness.draw([drawn], at: CMTime(value: 7, timescale: 24), flows: flows)
+        let quarter = try harness.draw([drawn], at: CMTime(value: 13, timescale: 48), flows: flows)
+        #expect(flows.measuredCount == 1)
+        // What is drawn from the kept motion is what is drawn without it.
+        let fresh = try harness.draw([drawn], at: CMTime(value: 13, timescale: 48))
+        #expect(zip(quarter, fresh).allSatisfy { close($0, $1, tolerance: 0.002) })
+        #expect(half != quarter)
+
+        // Footage with uneven frame timing can put other frames where the
+        // count says these are: they are measured, not given this motion.
+        try harness.addPicture(track: 2, texture(-12, -6))
+        _ = try harness.draw([drawn], at: CMTime(value: 7, timescale: 24), flows: flows)
+        #expect(flows.measuredCount == 2)
+    }
+
     @Test func withoutBlendTheNearestFrameShowsAlone() throws {
         var harness = CompositorHarness()
         try harness.addSolid(track: 1, SIMD4(0, 0, 0, 1))

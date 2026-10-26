@@ -102,6 +102,9 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         return MetalDevice.shared.map { CIContext(mtlDevice: $0, options: options) } ?? CIContext(options: options)
     }()
     private let queue = DispatchQueue(label: "LayeredCompositor", qos: .userInitiated)
+    /// Optical Flow's motion between pairs of frames, measured once for every
+    /// moment drawn between them.
+    private let flows = FlowFieldCache()
     /// Bumped when the player gives up on the requests it has made, as on
     /// a seek: those still queued are let go undrawn.
     private let generation = OSAllocatedUnfairLock(initialState: 0)
@@ -149,7 +152,7 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                 // A value drag held to one side of the project is seen as the
                 // viewer plays (see `LiveValues`).
                 let drawn = instruction.followingHeldValues(instruction.options?.liveValues.clips)
-                let image = Self.compose(drawn, at: request.compositionTime, outputSize: size) {
+                let image = Self.compose(drawn, at: request.compositionTime, outputSize: size, flows: flows) {
                     request.sourceFrame(byTrackID: $0)
                 }
                 context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
@@ -167,11 +170,12 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     }
 
     /// The frame at `time`: the instruction's clips from the bottom up over
-    /// black.
+    /// black. `flows` keeps Optical Flow's motion for other frames.
     static func compose(
         _ instruction: LayeredInstruction,
         at time: CMTime,
         outputSize: CGSize,
+        flows: FlowFieldCache? = nil,
         frame: @escaping (CMPersistentTrackID) -> CVPixelBuffer?
     ) -> CIImage {
         let renderSize = instruction.renderSize
@@ -184,6 +188,7 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             scale: CGSize(width: scale, height: renderSize.height > 0 ? outputSize.height / renderSize.height : 1),
             canvasMargin: instruction.canvasMargin,
             options: instruction.options,
+            flows: flows,
             source: frame
         )
         let black = CIImage(color: .black).cropped(to: bounds)
@@ -234,6 +239,8 @@ struct Drawing {
     let canvasMargin: Double
     /// What the viewer asks of drawing while it plays, if it is the viewer.
     var options: DrawingOptions?
+    /// Where Optical Flow's motion between two frames is kept, if anywhere.
+    var flows: FlowFieldCache?
     /// The decoded frame of a composition track at `time`.
     let source: (CMPersistentTrackID) -> CVPixelBuffer?
 
@@ -515,6 +522,12 @@ struct Drawing {
         func frame(_ trackID: CMPersistentTrackID) -> CIImage? {
             source(trackID).map { CIImage(cvPixelBuffer: $0, options: [.colorSpace: NSNull()]) }
         }
+        /// The two frames' pixels, which a kept flow field must have been
+        /// measured from.
+        func fingerprint(_ first: CMPersistentTrackID, _ second: CMPersistentTrackID) -> FlowFieldCache.Fingerprint? {
+            guard let a = source(first), let b = source(second) else { return nil }
+            return FlowFieldCache.Fingerprint(a, b)
+        }
         func scaled(_ image: CIImage, by strength: Double) -> CIImage {
             guard strength < 1 else { return image }
             return image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(strength))])
@@ -535,7 +548,16 @@ struct Drawing {
                 // them. It costs too much to do while the viewer plays or
                 // is drawing for display; renders and export do (they draw
                 // without options). Where it can't be done, it fades.
-                if media.opticalFlow, options == nil, let moved = OpticalFlow.between(image, later, fraction: fraction) {
+                let pair = FlowFieldCache.Pair(
+                    url: media.url, frame: Int64((position + 1e-6).rounded(.down)), frameSeconds: media.frameDuration.seconds,
+                    alignmentSeconds: media.alignmentOffset.seconds, nextDelaySeconds: next.delay.seconds,
+                    width: image.extent.width, height: image.extent.height
+                )
+                if media.opticalFlow, options == nil,
+                   let moved = OpticalFlow.between(
+                       image, later, fraction: fraction, flows: flows, pair: pair,
+                       fingerprint: flows == nil ? nil : fingerprint(media.trackID, next.trackID)
+                   ) {
                     image = moved
                 } else {
                     image = scaled(later, by: fraction).composited(over: image)
