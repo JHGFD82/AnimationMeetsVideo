@@ -2,6 +2,17 @@ import CoreGraphics
 import CoreMedia
 import Foundation
 
+extension EffectKind {
+    /// What the browser's Generators tab lists, in its order: text, then
+    /// the shapes. Each makes a clip of its own on the timeline (a graphic
+    /// clip holding it) rather than going into another clip's stack, so
+    /// none of them is in the Effects Library.
+    static var generators: [EffectKind] {
+        let shapes = all.filter(\.drawsShape)
+        return shapes.filter { $0 == .text } + shapes.filter { $0 != .text }
+    }
+}
+
 extension Effect {
     /// Sizes a new shape to a frame `frame` big: a rectangle half its width
     /// and height, an ellipse a circle half its height, a polygon or star
@@ -25,9 +36,33 @@ extension Effect {
 }
 
 extension EditingProject {
-    /// Puts a video layer at `index` (the top by default) holding a shape
-    /// clip from `start`, with one shape of `kind` sized to the frame (see
-    /// `Effect.sizeShape`). Lasts `duration`, five seconds unless given.
+    /// Whether `kind` can go into `clip`'s stack. Text and the shapes are
+    /// generators, not effects: they only go into a graphic clip, the clip
+    /// a generator makes, where another one drawn below can follow it (text
+    /// on the path of the shape above). Everything else goes by
+    /// `addEffect`'s own rules.
+    func stack(of clip: TimelineClip, takes kind: EffectKind) -> Bool {
+        !kind.drawsShape || clip.source == .graphic
+    }
+
+    /// A graphic clip from `start` lasting `duration` (at least a frame),
+    /// holding one generator of `kind` sized to the frame.
+    private func generatorClip(_ kind: EffectKind, in timeline: Timeline, from start: CMTime, duration: CMTime) -> TimelineClip {
+        let length = CMTimeMaximum(timeline.frameDuration, timeline.frameAligned(duration, .down))
+        var shape = Effect(kind: kind)
+        shape.sizeShape(to: timeline.frameSize)
+        var clip = TimelineClip(
+            source: .graphic, startOffset: timeline.frameAligned(start, .nearest),
+            trimStart: .zero, trimEnd: length, streams: .video
+        )
+        clip.effects = [shape]
+        return clip
+    }
+
+    /// Puts a video layer at `index` (the top by default) holding a clip
+    /// of the generator `kind` (text or a shape) from `start`, sized to the
+    /// frame (see `Effect.sizeShape`). Lasts `duration`, five seconds
+    /// unless given.
     @discardableResult
     mutating func addShapeLayer(
         _ kind: EffectKind = .rectangle,
@@ -37,40 +72,36 @@ extension EditingProject {
         duration: CMTime = MediaClip.stillLength
     ) -> (layerID: UUID, clipID: UUID)? {
         guard kind.drawsShape, let tIndex = timelines.firstIndex(id: timelineID) else { return nil }
-        let timeline = timelines[tIndex]
-        let length = CMTimeMaximum(timeline.frameDuration, timeline.frameAligned(duration, .down))
-        var shape = Effect(kind: kind)
-        shape.sizeShape(to: timeline.frameSize)
-        var clip = TimelineClip(
-            source: .graphic, startOffset: timeline.frameAligned(start, .nearest),
-            trimStart: .zero, trimEnd: length, streams: .video
-        )
-        clip.effects = [shape]
+        let clip = generatorClip(kind, in: timelines[tIndex], from: start, duration: duration)
         let layer = TimelineLayer(customName: nil, kind: .video, clips: [clip])
         timelines[tIndex].layers.insert(layer, clampedAt: index)
         return (layer.id, clip.id)
     }
-}
 
-/// What adding an effect from the Effects Library did.
-enum LibraryAddition: Equatable {
-    /// Added the effect with this ID to the clip.
-    case effect(UUID)
-    /// Made a shape layer holding the shape.
-    case shapeLayer(layerID: UUID, clipID: UUID)
-}
-
-extension EditingProject {
-    /// Adds `kind` as a double-click in the Effects Library does: to the
-    /// selected clip, except that a shape joins only a selected shape clip
-    /// and otherwise starts a shape layer of its own at `playhead`. Nil when
-    /// nothing could take it.
-    mutating func addFromLibrary(_ kind: EffectKind, in timelineID: UUID, selectedClip: UUID?, playhead: CMTime) -> LibraryAddition? {
-        let selected = selectedClip.flatMap { clipAndLayer($0, in: timelineID)?.clip }
-        if kind.drawsShape, selected?.source != .graphic {
-            return addShapeLayer(kind, to: timelineID, from: playhead).map { .shapeLayer(layerID: $0.layerID, clipID: $0.clipID) }
+    /// Puts a clip of the generator `kind` on the layer `layerID` at
+    /// `start`, landing as a clip moved there would (see `insertion`):
+    /// inside a clip it goes to the nearer edge and the clips after it move
+    /// right to make room. A layer that can't take it (audio, adjustment)
+    /// gets a new video layer above it instead. Lasts five seconds.
+    @discardableResult
+    mutating func addGenerator(
+        _ kind: EffectKind, to timelineID: UUID, onLayer layerID: UUID, at start: CMTime
+    ) -> (layerID: UUID, clipID: UUID)? {
+        guard kind.drawsShape, let tIndex = timelines.firstIndex(id: timelineID),
+              let lIndex = timelines[tIndex].layers.firstIndex(id: layerID)
+        else { return nil }
+        let timeline = timelines[tIndex]
+        var clip = generatorClip(kind, in: timeline, from: start, duration: MediaClip.stillLength)
+        let layer = timeline.layers[lIndex]
+        guard self.layer(layer, accepts: clip) else {
+            return addShapeLayer(kind, to: timelineID, at: lIndex, from: start)
         }
-        guard let selected else { return nil }
-        return addEffect(kind, toClip: selected.id, in: timelineID).map { .effect($0) }
+        var others = layer.clips
+        let move = insertion(lasting: clip.placedDuration, frameLocked: isFrameLocked(clip), among: others, in: timeline, at: start)
+        others.makeRoom(for: move)
+        clip.startOffset = move.start
+        others.append(clip)
+        timelines[tIndex].layers[lIndex].clips = others.sorted { $0.startOffset < $1.startOffset }
+        return (layer.id, clip.id)
     }
 }

@@ -109,6 +109,9 @@ playhead to the middle of the view when it lands out of view.
   lamps as a button that clears them.
 - **Browser scenes** read as one line each (number, whether a hand-set
   boundary starts it, start and length), without their thumbnails.
+- **Generators** (the browser's text and shape tiles) read their name;
+  their default action makes a layer at the playhead, and actions add
+  one there or to the selected text or shape clip, as dragging would.
 - **Group titles** in the inspector and in sheets are headings.
 - **Icon-only buttons** have labels, and toggles say whether they are on.
   The keyframe buttons shared by property rows (`KeyframeControls.swift`)

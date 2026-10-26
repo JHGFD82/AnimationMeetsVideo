@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 /// What the browser lists.
 enum BrowserTab: String, CaseIterable, Identifiable {
-    case clips, timelines
+    case clips, timelines, generators
 
     var id: Self { self }
 
@@ -13,6 +13,7 @@ enum BrowserTab: String, CaseIterable, Identifiable {
         switch self {
         case .clips: "Clips"
         case .timelines: "Timelines"
+        case .generators: "Generators"
         }
     }
 }
@@ -52,6 +53,8 @@ struct BrowserPanel: View {
     }
     @State private var importError: String?
     @Environment(MediaImports.self) private var imports: MediaImports?
+    /// The editor's playhead, where a double-clicked generator starts.
+    @Environment(PlayheadState.self) private var playhead: PlayheadState?
     @State private var showingSettings = false
     /// Footage from Show in Clips Browser, for the Clips tab to pick.
     @State private var revealing: MediaPiece?
@@ -101,6 +104,7 @@ struct BrowserPanel: View {
                     )
                 }
             case .timelines: timelinesList
+            case .generators: generatorsList
             }
         }
         .panelSurface(.base)
@@ -212,6 +216,31 @@ struct BrowserPanel: View {
             onOpenInNewWindow: onOpenTimelineInNewWindow,
             onDelete: { ids in project.deleteTimelines(ids) }
         )
+    }
+
+    private var generatorsList: some View {
+        let selected = selection.flatMap { selection in
+            project.clipAndLayer(selection.timelineClipID, in: selection.timelineID)?.clip.source == .graphic ? selection : nil
+        }
+        return GeneratorsList(
+            onAdd: addGeneratorLayer,
+            onAddToSelected: selected.map { selected in
+                { kind in
+                    if project.addEffect(kind, toClip: selected.timelineClipID, in: selected.timelineID) == nil { NSSound.beep() }
+                }
+            }
+        )
+    }
+
+    /// Makes a layer at the top of the active timeline holding a clip of
+    /// `kind` from the playhead, and selects the clip.
+    private func addGeneratorLayer(_ kind: EffectKind) {
+        let start = playhead?.actionTime ?? .zero
+        guard let created = project.addShapeLayer(kind, to: activeTimelineID, from: start) else {
+            NSSound.beep()
+            return
+        }
+        selection = TimelineSelection(timelineID: activeTimelineID, layerID: created.layerID, timelineClipID: created.clipID)
     }
 
     /// Puts timelines (or, with `range`, that stretch of the one timeline)

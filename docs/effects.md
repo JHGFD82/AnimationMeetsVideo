@@ -218,10 +218,12 @@ footage gets replaced):
 
 ## Shapes
 
-**Shapes** (Rectangle, Ellipse, Polygon, Star) draw a shape over the
-picture handed down to them, and the steps below act on both. **Stroke**
-strokes the outline of the shapes above it, strokes included. A shape clip has no picture of
-its own, so its picture is its shapes. See
+**Shapes** (Rectangle, Ellipse, Polygon, Star) and **Text** are
+generators, not effects: each makes a clip of its own, from the browser's
+Generators tab, and goes only into such a clip's stack. There they draw
+over the picture handed down to them, and the steps below act on both.
+**Stroke** strokes the outline of the shapes above it, strokes included.
+A shape clip has no picture of its own, so its picture is its shapes. See
 [graphic-layers.md](graphic-layers.md#shapes).
 
 ## Mattes
@@ -513,13 +515,20 @@ The Effects tab is resizable by its left edge.
 
 The **Effects Library** at the right end of the timeline has tabs too:
 **Effects** (the library, grouped by category, Foundations first),
-**Transitions** and **Presets** (see "Copying and presets"). One button in the timeline's header shows or hides it, and opening it
-changes nothing else. Drag an effect onto a clip or into the stack, or
+**Transitions** and **Presets** (see "Copying and presets"). Text and the
+shapes aren't in it: they aren't effects but clips of their own, made from
+the browser's **Generators** tab (see [browser.md](browser.md#tabs)). What
+works on them in their clip's stack, Stroke and Text Animator, is listed
+under **For Shapes & Text**. One button in the timeline's header shows or
+hides it, and opening it changes nothing else. Drag an effect onto a clip or into the stack, or
 double-click it to add it to the end of the selected clip's stack.
 Dropped on an effect row, it goes in at that place; dropped anywhere else
 on the stack, or on a clip, it goes at the end. Either way it is selected.
 VoiceOver's Add to the Selected Clip action does what double-clicking
-does.
+does. Text and shapes go only into a text or shape clip's stack
+(`EditingProject.stack(of:takes:)`): adding one to any other clip is
+refused, and pasting effects or applying a preset onto one leaves them
+out.
 
 A clip, the stack and each effect row take every kind of drag they use
 through one drop target, since the app's drags all travel as URLs: with

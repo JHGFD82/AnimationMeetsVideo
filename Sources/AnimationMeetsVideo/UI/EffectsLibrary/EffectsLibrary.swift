@@ -1,5 +1,4 @@
 import AppKit
-import CoreMedia
 import SwiftUI
 
 /// What the Effects Library at the right end of the timeline lists.
@@ -25,10 +24,6 @@ struct EffectsLibrary: View {
     @Binding var project: EditingProject
     let timelineID: UUID
     let selection: TimelineSelection?
-    /// Where a shape double-clicked with no shape clip selected starts,
-    /// read when it is, not as this is built (see `PlayheadState`).
-    let playhead: PlayheadState
-    let onSelect: (TimelineSelection) -> Void
     let state: EffectsPanelState
     @Binding var tab: EffectsLibraryTab
     let onClose: () -> Void
@@ -42,10 +37,7 @@ struct EffectsLibrary: View {
             PanelTabBar(tabs: EffectsLibraryTab.allCases, selection: $tab, title: \.title, onClose: onClose, closeHelp: "Hide the Effects Library")
             switch tab {
             case .effects:
-                EffectsListPanel(
-                    project: $project, timelineID: timelineID, selection: selection,
-                    playhead: playhead, onSelect: onSelect, state: state
-                )
+                EffectsListPanel(project: $project, timelineID: timelineID, selection: selection, state: state)
             case .transitions:
                 TransitionsPanel()
             case .presets:

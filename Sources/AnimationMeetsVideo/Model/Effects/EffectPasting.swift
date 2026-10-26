@@ -88,9 +88,11 @@ extension EditingProject {
     /// Pastes `bundle` into a clip's stacks at `index` (the end for nil),
     /// or in place of the whole stacks. Picture effects go in the picture's
     /// stack and sound effects in the sound's, each only if the clip has
-    /// one; `index` counts in the stack the bundle's first effect goes to,
-    /// and the other kind goes at the end of its own. Returns the IDs of
-    /// the new effects; empty when the clip has nowhere to put them.
+    /// one; text and shapes are left out except on a graphic clip
+    /// (`stack(of:takes:)`). `index` counts in the stack the bundle's first
+    /// effect goes to, and the other kind goes at the end of its own.
+    /// Returns the IDs of the new effects; empty when the clip has nowhere
+    /// to put them.
     @discardableResult
     mutating func paste(
         _ bundle: EffectBundle, ontoClip clipID: UUID, in timelineID: UUID, at index: Int? = nil, replacingStack: Bool = false
@@ -100,7 +102,7 @@ extension EditingProject {
         var newIDs: [UUID: UUID] = [:]
         var pastedIDs: [UUID] = []
         for isAudio in [false, true] {
-            let items = bundle.effects.filter { $0.effect.kind.isAudio == isAudio }
+            let items = bundle.effects.filter { $0.effect.kind.isAudio == isAudio && stack(of: clip, takes: $0.effect.kind) }
             guard !items.isEmpty, isAudio ? playsAudio(clip) : hasEffectStack(clip) else { continue }
             let key: WritableKeyPath<TimelineClip, [Effect]> = isAudio ? \.audioEffects : \.effects
             let stack = paste(items, origin: bundle.origin, into: replacingStack ? [] : clip[keyPath: key], of: clip,

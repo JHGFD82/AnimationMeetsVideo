@@ -1,19 +1,15 @@
-import CoreMedia
+import AppKit
 import SwiftUI
 
 /// The effects that can be added, grouped by category: a tab of the
-/// Effects Library at the right end of the timeline. Effects are dragged onto a clip or into the stack in the effects
-/// panel, or double-clicked to add them to the selected clip. A shape
-/// dragged onto the timeline's video area, or double-clicked with no
-/// shape clip selected, starts a shape layer of its own.
+/// Effects Library at the right end of the timeline. Effects are dragged
+/// onto a clip or into the stack in the effects panel, or double-clicked
+/// to add them to the selected clip. Text and the shapes aren't here:
+/// they make clips of their own, from the browser's Generators tab.
 struct EffectsListPanel: View {
     @Binding var project: EditingProject
     let timelineID: UUID
     let selection: TimelineSelection?
-    /// Where a shape layer started by a double-click begins, read then.
-    let playhead: PlayheadState
-    /// Selects a shape layer's clip once it is made.
-    let onSelect: (TimelineSelection) -> Void
     let state: EffectsPanelState
     /// Which packages' kernels don't compile, as found after launch.
     var packageStatus = EffectPackageStatus.shared
@@ -25,26 +21,30 @@ struct EffectsListPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Design.Space.close) {
                     ForEach(EffectCategory.allCases) { category in
-                        Text(category.name)
-                            .font(Design.Typeface.groupTitle)
-                            .foregroundStyle(Design.textSecondary)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 6)], alignment: .leading, spacing: 6) {
-                            ForEach(EffectKind.all.filter { $0.category == category }) { kind in
-                                // The double-click goes inside the drag: on
-                                // the outside its tap gesture takes the mouse
-                                // down first, and the chip never starts a drag.
-                                EffectLibraryChip(kind: kind, problem: packageStatus.kernelProblems[kind.rawValue])
-                                    .onTapGesture(count: 2) { addToSelectedClip(kind) }
-                                    .draggable(EffectDragPayload(kind: kind)) { EffectLibraryChip(kind: kind) }
-                                    .contextMenu {
-                                        if let package = kind.definition.package {
-                                            Button("Make a Package from This") { NewEffectPackagePrompt.shared.copy(package) }
+                        let kinds = Self.kinds.filter { $0.category == category }
+                        if !kinds.isEmpty {
+                            Text(category.name)
+                                .font(Design.Typeface.groupTitle)
+                                .foregroundStyle(Design.textSecondary)
+                                .accessibilityAddTraits(.isHeader)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 6)], alignment: .leading, spacing: 6) {
+                                ForEach(kinds) { kind in
+                                    // The double-click goes inside the drag: on
+                                    // the outside its tap gesture takes the mouse
+                                    // down first, and the chip never starts a drag.
+                                    EffectLibraryChip(kind: kind, problem: packageStatus.kernelProblems[kind.rawValue])
+                                        .onTapGesture(count: 2) { addToSelectedClip(kind) }
+                                        .draggable(EffectDragPayload(kind: kind)) { EffectLibraryChip(kind: kind) }
+                                        .contextMenu {
+                                            if let package = kind.definition.package {
+                                                Button("Make a Package from This") { NewEffectPackagePrompt.shared.copy(package) }
+                                            }
                                         }
-                                    }
-                                    .accessibilityAction(named: "Add to the selected clip") { addToSelectedClip(kind) }
-                                    .accessibilityAction(named: "Make a Package from This") {
-                                        if let package = kind.definition.package { NewEffectPackagePrompt.shared.copy(package) }
-                                    }
+                                        .accessibilityAction(named: "Add to the selected clip") { addToSelectedClip(kind) }
+                                        .accessibilityAction(named: "Make a Package from This") {
+                                            if let package = kind.definition.package { NewEffectPackagePrompt.shared.copy(package) }
+                                        }
+                                }
                             }
                         }
                     }
@@ -61,7 +61,7 @@ struct EffectsListPanel: View {
             .accessibilityAction(named: "New Effect Package") { NewEffectPackagePrompt.shared.ask() }
             .accessibilityAction(named: "Show Effects Folder") { NewEffectPackagePrompt.showEffectsFolder() }
 
-            Text("Drag an effect onto a clip or into the stack, or double-click it to add it to the selected clip. A shape dragged onto empty timeline, or double-clicked with no shape clip selected, makes a shape layer.")
+            Text("Drag an effect onto a clip or into the stack, or double-click it to add it to the selected clip. Text and shapes are in the browser's Generators tab.")
                 .font(Design.Typeface.micro)
                 .foregroundStyle(Design.textTertiary)
                 .padding(.horizontal, Design.Space.group)
@@ -95,19 +95,20 @@ struct EffectsListPanel: View {
         }
     }
 
-    /// Adds to the selected clip, or for a shape with no shape clip
-    /// selected, makes a shape layer at the playhead (on footage a shape
-    /// goes by a drag).
+    /// What the library lists: every effect but the generators (text and
+    /// the shapes), which aren't effects but clips of their own.
+    static var kinds: [EffectKind] { EffectKind.all.filter { !$0.drawsShape } }
+
+    /// Adds to the selected clip; a beep when none is selected or it can't
+    /// take the effect.
     private func addToSelectedClip(_ kind: EffectKind) {
-        let selected = selection?.timelineID == timelineID ? selection?.timelineClipID : nil
-        switch project.addFromLibrary(kind, in: timelineID, selectedClip: selected, playhead: playhead.time) {
-        case .effect(let id):
-            state.select(effect: id)
-        case .shapeLayer(let layerID, let clipID):
-            onSelect(TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clipID))
-        case nil:
-            break
+        guard let selection, selection.timelineID == timelineID,
+              let id = project.addEffect(kind, toClip: selection.timelineClipID, in: timelineID)
+        else {
+            NSSound.beep()
+            return
         }
+        state.select(effect: id)
     }
 }
 
@@ -136,9 +137,8 @@ struct EffectLibraryChip: View {
         .beveledChip(fill: isHovering ? Design.Surface.floating.color : Design.Surface.overlay.color)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .help(problem.map { "\(kind.name) can't draw: its kernel doesn't compile. \($0)" } ?? (kind.drawsShape
-            ? "\(kind.name): drag onto a clip or onto empty timeline, or double-click to make a shape layer (or add it to the selected shape clip)"
-            : "\(kind.name): drag onto a clip or into the stack, or double-click to add it to the selected clip"))
+        .help(problem.map { "\(kind.name) can't draw: its kernel doesn't compile. \($0)" }
+            ?? "\(kind.name): drag onto a clip or into the stack, or double-click to add it to the selected clip")
         .accessibilityValue(problem == nil ? "" : "Can't draw: its kernel doesn't compile")
     }
 }

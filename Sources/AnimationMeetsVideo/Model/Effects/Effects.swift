@@ -46,6 +46,9 @@ enum BlendMode: String, CaseIterable, Identifiable, Sendable {
 /// A group of effects in the library.
 enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
     case foundations
+    /// Text and the shapes, which make graphic clips of their own (the
+    /// browser's Generators tab), and what works on them in such a clip's
+    /// stack: Stroke and Text Animator, the only ones the library lists.
     case shapes
     case mattes
     /// Remaps the picture's colors (see docs/psychedelic-effects.md).
@@ -64,7 +67,7 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
     var name: String {
         switch self {
         case .foundations: "Foundations"
-        case .shapes: "Shapes"
+        case .shapes: "For Shapes & Text"
         case .mattes: "Mattes"
         case .recolor: "Color"
         case .noise: "Noise"
@@ -750,12 +753,14 @@ extension EditingProject {
     /// Adds a new effect of `kind` to a clip's stack, at `index` or at the
     /// end (a Keyframing effect at the top): a sound effect to its sound's.
     /// Clips with no pictures take no picture effects, and clips with no
-    /// sound no sound effects. A Keyframing effect writes to the first
+    /// sound no sound effects; text and the shapes go only into a graphic
+    /// clip (`stack(of:takes:)`). A Keyframing effect writes to the first
     /// control below it that no other one does. Returns the effect's ID.
     @discardableResult
     mutating func addEffect(_ kind: EffectKind, toClip clipID: UUID, in timelineID: UUID, at index: Int? = nil) -> UUID? {
         guard let clip = clipAndLayer(clipID, in: timelineID)?.clip,
-              kind.isAudio ? playsAudio(clip) : hasEffectStack(clip)
+              kind.isAudio ? playsAudio(clip) : hasEffectStack(clip),
+              stack(of: clip, takes: kind)
         else { return nil }
         let stack = TimelineClip.stack(for: kind)
         var effect = Effect.make(kind, among: clip[keyPath: stack])

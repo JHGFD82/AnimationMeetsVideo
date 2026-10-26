@@ -18,7 +18,7 @@ anywhere else picks a range.
 ## Names
 
 - The **Browser** is the panel left of the viewer (formerly the
-  "Library"), with the tabs **Clips** and **Timelines**.
+  "Library"), with the tabs **Clips**, **Timelines** and **Generators**.
 - The **Effects Library** is the panel at the right end of the timeline
   with the tabs **Effects**, **Transitions** and **Presets** (formerly
   the "browser", see [effects.md](effects.md)). Presets moved there from
@@ -100,6 +100,28 @@ before it moved) opens on Clips.
     drag as clips do (see "Dragging").
   - **Tree**: the tree described above, each row its icon, name, duration
     and settings, with no pictures.
+- **Generators**: **Text**, **Rectangle**, **Ellipse**, **Polygon** and
+  **Star**, which aren't effects but clips of their own (a graphic clip,
+  see [graphic-layers.md](graphic-layers.md)), so the Effects Library
+  doesn't list them (`GeneratorsList`, `EffectKind.generators`).
+  - **Dragged** onto the timeline's video area, one makes a five-second
+    clip where it lands: on the layer under the pointer, landing as a
+    clip moved there would (inside a clip it goes to the nearer edge and
+    what follows moves right), or on a new layer at the top below the
+    layers. A layer that can't take it (an adjustment layer) gets a new
+    layer above it (`EditingProject.addGenerator`).
+  - Dropped on **footage** (or a nested timeline), it goes on a new layer
+    just above that clip's, at the drop, since only a text or shape clip
+    takes one in its stack. Dropped on a **text or shape clip**, it joins
+    that clip, below what it draws, so text can follow the path of a
+    shape above it.
+  - **Double-clicked**, or with **Add at the Playhead** from its menu, it
+    makes a new layer at the top from the playhead and selects the clip.
+    **Add to the Selected Clip** puts it in the selected text or shape
+    clip instead. Both are VoiceOver actions too, the first the tile's
+    default.
+  - The drag travels as an `amv-generator:` URL (`GeneratorDragPayload`),
+    which no effect drop target reads as an effect.
 
 ## Sorting
 
@@ -406,7 +428,8 @@ Following [accessibility.md](accessibility.md):
 
 1. **Tabs and names** (done). Clips, Timelines and Presets tabs in place of
    the sections, and the Effects Library rename. Lists stay as they are.
-   Presets later moved to the Effects Library.
+   Presets later moved to the Effects Library, and a Generators tab (text
+   and shapes) took their place.
 2. **Filmstrips** (built, Clips tab; not yet tried on screen). Thumbnails,
    wrapping, the settings popover (time per thumbnail, size), duration
    boxes, scenes as clips. Rendered offscreen to check layout only.
