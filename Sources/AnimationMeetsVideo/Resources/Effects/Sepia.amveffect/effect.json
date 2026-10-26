@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "id": "sepia",
+  "version": 1,
+  "name": "Sepia",
+  "category": "correction",
+  "symbol": "photo.artframe",
+  "kernel": {"file": "kernel.metal", "function": "amvSepia", "type": "color"},
+  "controls": [
+    {"id": "sepiaWarmth", "name": "Warmth", "type": "number", "default": 50, "range": [0, 100], "unit": "%"}
+  ],
+  "amount": true,
+  "arguments": ["sepiaWarmth / 100"]
+}

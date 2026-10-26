@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "id": "invert",
+  "version": 1,
+  "name": "Invert",
+  "category": "correction",
+  "symbol": "plusminus.circle",
+  "kernel": {"file": "kernel.metal", "function": "amvInvert", "type": "color"},
+  "controls": [
+    {"id": "invertChannels", "name": "Channels", "type": "choice", "default": "rgb", "options": [{"id": "rgb", "name": "RGB"}, {"id": "red", "name": "Red"}, {"id": "green", "name": "Green"}, {"id": "blue", "name": "Blue"}, {"id": "brightness", "name": "Brightness"}]}
+  ],
+  "amount": true,
+  "arguments": ["index(invertChannels)"]
+}

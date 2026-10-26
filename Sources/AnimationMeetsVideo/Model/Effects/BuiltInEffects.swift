@@ -259,6 +259,8 @@ enum BuiltInEffects {
     static let libraryOrder: [String] = [
         "transform", "blending", "color", "matte",
         // Color Correction
+        "levels", "shadowsHighlights", "hueSaturation", "vibrance", "hueRange", "grayPoint", "blackAndWhite", "colorize",
+        "sepia", "invert", "threshold", "broadcastSafe",
         // Blur & Sharpen
         // Keying & Masks
         // Light

@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "shadowsHighlights",
+  "version": 1,
+  "name": "Highs & Lows",
+  "category": "correction",
+  "symbol": "sun.lefthalf.filled",
+  "kernel": {"file": "kernel.metal", "function": "amvShadowsHighlights", "type": "color"},
+  "controls": [
+    {"id": "shadows", "name": "Shadows", "type": "number", "default": 0, "range": [-100, 100], "unit": "%"},
+    {"id": "highlights", "name": "Highlights", "type": "number", "default": 0, "range": [-100, 100], "unit": "%"},
+    {"id": "shadowRange", "name": "Shadow Range", "type": "number", "default": 50, "range": [10, 100], "unit": "%"},
+    {"id": "highlightRange", "name": "Highlight Range", "type": "number", "default": 50, "range": [10, 100], "unit": "%"}
+  ],
+  "amount": true,
+  "arguments": ["shadows / 100", "highlights / 100", "shadowRange / 100", "highlightRange / 100"]
+}

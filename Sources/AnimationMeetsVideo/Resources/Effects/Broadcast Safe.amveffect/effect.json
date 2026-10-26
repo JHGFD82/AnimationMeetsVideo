@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "id": "broadcastSafe",
+  "version": 1,
+  "name": "Broadcast Safe",
+  "category": "correction",
+  "symbol": "checkmark.shield",
+  "kernel": {"file": "kernel.metal", "function": "amvBroadcastSafe", "type": "color"},
+  "controls": [
+    {"id": "ceiling", "name": "Brightest", "type": "number", "default": 100, "range": [10, 5000], "unit": "%"},
+    {"id": "saturationLimit", "name": "Most Saturated", "type": "number", "default": 100, "range": [0, 100], "unit": "%"},
+    {"id": "safeMethod", "name": "Bring In By", "type": "choice", "default": "desaturating", "options": [{"id": "desaturating", "name": "Desaturating"}, {"id": "clipping", "name": "Clipping"}]}
+  ],
+  "amount": true,
+  "arguments": ["ceiling / 100", "saturationLimit / 100", "index(safeMethod)"]
+}

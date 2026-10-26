@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "id": "vibrance",
+  "version": 1,
+  "name": "Vibrance",
+  "category": "correction",
+  "symbol": "camera.filters",
+  "kernel": {"file": "kernel.metal", "function": "amvVibrance", "type": "color"},
+  "controls": [
+    {"id": "vibranceAmount", "name": "Vibrance", "type": "number", "default": 0, "range": [-100, 100], "unit": "%"},
+    {"id": "protectSkin", "name": "Protect Skin Tones", "type": "number", "default": 50, "range": [0, 100], "unit": "%"}
+  ],
+  "amount": true,
+  "arguments": ["vibranceAmount / 100", "protectSkin / 100"]
+}

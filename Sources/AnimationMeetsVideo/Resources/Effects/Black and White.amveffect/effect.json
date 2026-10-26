@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "blackAndWhite",
+  "version": 1,
+  "name": "Black & White",
+  "category": "correction",
+  "symbol": "circle.lefthalf.filled",
+  "kernel": {"file": "kernel.metal", "function": "amvBlackAndWhite", "type": "color"},
+  "controls": [
+    {"id": "reds", "name": "Reds", "type": "number", "default": 40, "range": [-200, 300], "unit": "%"},
+    {"id": "yellows", "name": "Yellows", "type": "number", "default": 60, "range": [-200, 300], "unit": "%"},
+    {"id": "greens", "name": "Greens", "type": "number", "default": 40, "range": [-200, 300], "unit": "%"},
+    {"id": "cyans", "name": "Cyans", "type": "number", "default": 60, "range": [-200, 300], "unit": "%"},
+    {"id": "blues", "name": "Blues", "type": "number", "default": 20, "range": [-200, 300], "unit": "%"},
+    {"id": "magentas", "name": "Magentas", "type": "number", "default": 80, "range": [-200, 300], "unit": "%"}
+  ],
+  "amount": true,
+  "arguments": ["reds / 100", "yellows / 100", "greens / 100", "cyans / 100", "blues / 100", "magentas / 100"]
+}

@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "id": "threshold",
+  "version": 1,
+  "name": "Threshold",
+  "category": "correction",
+  "symbol": "rectangle.lefthalf.filled",
+  "kernel": {"file": "kernel.metal", "function": "amvThreshold", "type": "color"},
+  "controls": [
+    {"id": "thresholdLevel", "name": "Level", "type": "number", "default": 50, "range": [0, 100], "unit": "%"},
+    {"id": "thresholdSoftness", "name": "Softness", "type": "number", "default": 0, "range": [0, 100], "unit": "%"},
+    {"id": "thresholdChannels", "name": "Channels", "type": "choice", "default": "brightness", "options": [{"id": "brightness", "name": "Brightness"}, {"id": "each", "name": "Each Channel"}]}
+  ],
+  "amount": true,
+  "arguments": ["thresholdLevel / 100", "thresholdSoftness / 100", "index(thresholdChannels)"]
+}

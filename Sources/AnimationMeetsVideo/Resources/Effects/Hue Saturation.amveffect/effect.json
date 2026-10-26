@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "id": "hueSaturation",
+  "version": 1,
+  "name": "Hue/Saturation",
+  "category": "correction",
+  "symbol": "drop.halffull",
+  "kernel": {"file": "kernel.metal", "function": "amvHueSaturation", "type": "color"},
+  "controls": [
+    {"id": "hueShift", "name": "Hue", "type": "number", "default": 0, "range": [-180, 180], "unit": "°"},
+    {"id": "hueSaturationAmount", "name": "Saturation", "type": "number", "default": 0, "range": [-100, 100], "unit": "%"},
+    {"id": "lightness", "name": "Lightness", "type": "number", "default": 0, "range": [-100, 100], "unit": "%"}
+  ],
+  "amount": true,
+  "arguments": ["rad(hueShift)", "hueSaturationAmount / 100", "lightness / 100"]
+}
