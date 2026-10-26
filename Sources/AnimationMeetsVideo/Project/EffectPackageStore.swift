@@ -305,7 +305,7 @@ enum EffectPackageStore {
     /// The units a control may have, as written in a package and as shown.
     static let units: [String: String] = ["%": "%", "°": "°", "px": " px", "s": " s", "×": "×", "/s": " /s", "turns/s": " turns/s", "frames": " frames"]
 
-    static let categories: [EffectCategory] = [.recolor, .noise, .distortion]
+    static let categories: [EffectCategory] = [.correction, .blur, .keying, .light, .stylize, .recolor, .noise, .distortion]
 
     /// What effect.json may contain.
     static let shape: JSONShape = {

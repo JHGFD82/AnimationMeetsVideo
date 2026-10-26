@@ -168,7 +168,7 @@ extension EditingProject {
     static func strokeHasShapes(_ effects: [Effect], at index: Int) -> Bool {
         for effect in effects.prefix(index).reversed() where effect.enabled {
             if effect.kind.drawsShape { return true }
-            if effect.kind == .matte || effect.kind == .blending || effect.kind.category == .distortion { return false }
+            if effect.kind == .matte || effect.kind == .blending || effect.kind.readsBesidePixels { return false }
         }
         return false
     }

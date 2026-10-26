@@ -724,7 +724,7 @@ struct Drawing {
                 // first, to be part of the picture it changes.
                 let canvas = canvasRect(of: frameSize)
                 let frame = CGRect(x: 0, y: 0, width: frameSize.width * scale.width, height: frameSize.height * scale.height)
-                if look.kind.category == .distortion {
+                if look.kind.readsBesidePixels {
                     settleOpacity()
                     drawShapes()
                     edges = []

@@ -51,6 +51,17 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
     /// stack: Stroke and Text Animator, the only ones the library lists.
     case shapes
     case mattes
+    /// Corrects color: levels, curves-like tone, black and white.
+    case correction
+    /// Softens or sharpens by reading beside each pixel.
+    case blur
+    /// Cuts the picture by its color or brightness, or to a shape, as
+    /// packages: keys and masks.
+    case keying
+    /// Light added to the picture: glows, vignettes, flares.
+    case light
+    /// Redraws the picture as something else: halftone, pixelate, emboss.
+    case stylize
     /// Remaps the picture's colors (see docs/psychedelic-effects.md).
     case recolor
     /// Grain, snow and procedural fields.
@@ -69,6 +80,11 @@ enum EffectCategory: String, CaseIterable, Identifiable, Sendable {
         case .foundations: "Foundations"
         case .shapes: "For Shapes & Text"
         case .mattes: "Mattes"
+        case .correction: "Color Correction"
+        case .blur: "Blur & Sharpen"
+        case .keying: "Keying & Masks"
+        case .light: "Light"
+        case .stylize: "Stylize"
         case .recolor: "Color"
         case .noise: "Noise"
         case .distortion: "Distortion"
@@ -186,9 +202,18 @@ struct EffectKind: RawRepresentable, Hashable, Identifiable, Sendable {
     /// they end up.
     var dependsOnPixelSize: Bool { definition.dependsOnPixelSize }
 
-    /// Whether it is one of the looks of docs/psychedelic-effects.md,
-    /// which are drawn as a `.look` step.
-    var isLook: Bool { category == .recolor || category == .noise || category == .distortion }
+    /// Whether it is one of the looks of docs/psychedelic-effects.md, or
+    /// another package's, which are drawn as a `.look` step.
+    var isLook: Bool { EffectPackageStore.categories.contains(category) }
+
+    /// Whether it reads beside each pixel or moves pixels, rather than
+    /// changing each one where it is: a warp or general kernel, or a
+    /// built-in filter after it (a blur). Opacity and shapes above it are
+    /// settled first, and a Stroke below it has no outline to follow.
+    var readsBesidePixels: Bool {
+        guard let package = definition.package else { return category == .distortion }
+        return package.kernelType != .color || !package.after.isEmpty
+    }
 
     /// Whether it replaces the picture with one it makes, rather than
     /// changing the one that reaches it.

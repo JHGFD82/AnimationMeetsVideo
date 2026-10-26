@@ -258,6 +258,12 @@ enum BuiltInEffects {
     /// the person installed) comes after them.
     static let libraryOrder: [String] = [
         "transform", "blending", "color", "matte",
+        // Color Correction
+        // Blur & Sharpen
+        // Keying & Masks
+        // Light
+        // Stylize
+        // Color
         "hueCycle", "cosinePalette", "gradientMap", "solarize", "posterize", "channelMixer", "falseColor", "neonEdges",
         "grain", "staticNoise", "fractalNoise", "cells", "dither", "interference", "blockGlitch",
         "displace", "liquid", "twirl", "wave", "kaleidoscope", "mirrorTile", "chromaticAberration",

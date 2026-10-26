@@ -68,7 +68,7 @@ Posterize.amveffect/
 | `id` | The kind saved in projects and presets. Built-in packages keep the names saved today (`posterize`), so no project changes. Any other package's `id` must contain a dot, reverse-DNS style (`com.example.glow`), so it can never clash with a built-in kind, now or later. |
 | `version` | The package's own version, a whole number raised whenever its controls or drawing change. Part of the render key. |
 | `name`, `symbol` | Shown in the effects library and the stack. `symbol` is an SF Symbol name; an unknown one shows a generic icon. |
-| `category` | `recolor`, `noise` or `distortion`. New categories are under [Not yet](#not-yet). |
+| `category` | `correction` (Color Correction), `blur` (Blur & Sharpen), `keying` (Keying & Masks), `light`, `stylize`, `recolor` (Color), `noise` or `distortion`. A package whose kernel is a warp or general one, or that has `after` filters, reads beside each pixel (`EffectKind.readsBesidePixels`): opacity and shapes above it are settled first, as for Distortion. Categories defined by packages are under [Not yet](#not-yet). |
 | `kernel` | The Metal file, the function in it, and its type: `color`, `warp` or `general`, the rungs of [Efficiency](psychedelic-effects.md#efficiency). |
 | `controls` | The controls a new effect of this kind lists, in order. |
 | `amount` | Whether the standard Amount control (0–100%, default 100%) comes last. A look with it is a no-op at 0%, as today. A `{ "type": "amount" }` entry in `controls` puts it there instead (Grain lists it first). |

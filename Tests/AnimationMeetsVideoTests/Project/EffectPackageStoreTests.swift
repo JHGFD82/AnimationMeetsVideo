@@ -134,7 +134,7 @@ import Testing
             (changed { $0["id"] = "glow" }, "The ID \"glow\" needs a dot, as in \"com.example.glow\" at id."),
             (changed { $0["id"] = "com..glow" }, "\"com..glow\" isn't a valid ID: use letters, digits and hyphens, in parts joined by dots at id."),
             (changed { $0["colour"] = "red" }, "Unknown key \"colour\" at the top level of the file."),
-            (changed { $0["category"] = "blur" }, "Unknown category \"blur\" at category."),
+            (changed { $0["category"] = "sparkle" }, "Unknown category \"sparkle\" at category."),
             (changed { $0["arguments"] = ["radius", "spped"] }, "Unknown name \"spped\" at arguments[1]."),
             (changed { $0["kernel"] = ["file": "missing.metal", "function": "exGlow", "type": "general"] },
              "The package has no file \"missing.metal\" at kernel.file."),
