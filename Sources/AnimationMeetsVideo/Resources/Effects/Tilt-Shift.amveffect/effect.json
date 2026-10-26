@@ -1,0 +1,22 @@
+{
+  "formatVersion": 1,
+  "id": "tiltShift",
+  "version": 1,
+  "name": "Tilt-Shift",
+  "category": "blur",
+  "symbol": "camera.macro",
+  "kernel": {"file": "kernel.metal", "function": "amvTiltShift", "type": "general"},
+  "controls": [
+    {"id": "focusShape", "name": "Shape", "type": "choice", "default": "band", "options": [{"id": "band", "name": "Band"}, {"id": "radial", "name": "Radial"}]},
+    {"id": "focusCenter", "name": "Center", "type": "point"},
+    {"id": "focusAngle", "name": "Angle", "type": "number", "default": 0, "unit": "°"},
+    {"id": "focusSize", "name": "Focus Size", "type": "number", "default": 120, "range": [0, 10000], "unit": "px"},
+    {"id": "focusFalloff", "name": "Transition", "type": "number", "default": 250, "range": [0, 10000], "unit": "px"},
+    {"id": "blurRadius", "name": "Radius", "type": "number", "default": 12, "range": [0, 200], "unit": "px", "step": 0.1}
+  ],
+  "arguments": ["center(focusCenter)", "-rad(focusAngle)", "focusSize * scale", "focusFalloff * scale", "blurRadius * scale", "index(focusShape)", "pass"],
+  "dependsOnPixelSize": true,
+  "reach": "3 * blurRadius * scale + 2",
+  "input": "clamped",
+  "repeat": {"count": "(blurRadius > 0) * 2"}
+}

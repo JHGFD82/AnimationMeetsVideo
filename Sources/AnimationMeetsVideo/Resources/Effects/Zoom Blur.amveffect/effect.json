@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "zoomBlur",
+  "version": 1,
+  "name": "Zoom Blur",
+  "category": "blur",
+  "symbol": "arrow.up.backward.and.arrow.down.forward",
+  "kernel": {"file": "kernel.metal", "function": "amvZoomBlur", "type": "general"},
+  "controls": [
+    {"id": "zoomCenter", "name": "Center", "type": "point"},
+    {"id": "zoomAmount", "name": "Amount", "type": "number", "default": 15, "range": [-100, 100], "unit": "%"},
+    {"id": "blurEdges", "name": "Edges", "type": "choice", "default": "repeat", "options": [{"id": "repeat", "name": "Repeat"}, {"id": "transparent", "name": "Transparent"}]}
+  ],
+  "arguments": ["center(zoomCenter)", "zoomAmount / 100", "24", "pass", "1 - index(blurEdges)", "frameWidth", "frameHeight"],
+  "dependsOnPixelSize": true,
+  "repeat": {"count": "(zoomAmount != 0) * 2"}
+}

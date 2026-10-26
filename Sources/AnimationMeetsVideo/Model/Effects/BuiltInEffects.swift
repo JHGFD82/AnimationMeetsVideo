@@ -260,6 +260,7 @@ enum BuiltInEffects {
         "transform", "blending", "color", "matte",
         // Color Correction
         // Blur & Sharpen
+        "gaussianBlur", "directionalBlur", "zoomBlur", "spinBlur", "lensBlur", "tiltShift", "surfaceBlur", "sharpen", "unsharpMask",
         // Keying & Masks
         // Light
         // Stylize

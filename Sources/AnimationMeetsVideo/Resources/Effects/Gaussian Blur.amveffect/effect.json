@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "id": "gaussianBlur",
+  "version": 1,
+  "name": "Gaussian Blur",
+  "category": "blur",
+  "symbol": "aqi.medium",
+  "kernel": {"file": "kernel.metal", "function": "amvGaussianBlur", "type": "general"},
+  "controls": [
+    {"id": "blurRadius", "name": "Radius", "type": "number", "default": 10, "range": [0, 1000], "unit": "px", "step": 0.1},
+    {"id": "blurEdges", "name": "Edges", "type": "choice", "default": "repeat", "options": [{"id": "repeat", "name": "Repeat"}, {"id": "transparent", "name": "Transparent"}]}
+  ],
+  "arguments": [],
+  "dependsOnPixelSize": true,
+  "reach": "0",
+  "after": [
+    {"filter": "CIGaussianBlur", "when": "(blurRadius > 0) * (index(blurEdges) == 0)", "input": "clamped", "parameters": {"inputRadius": "blurRadius * scale"}},
+    {"filter": "CIGaussianBlur", "when": "(blurRadius > 0) * (index(blurEdges) == 1)", "parameters": {"inputRadius": "blurRadius * scale"}}
+  ]
+}

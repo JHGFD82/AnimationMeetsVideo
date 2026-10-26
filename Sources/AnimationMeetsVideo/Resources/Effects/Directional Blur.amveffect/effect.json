@@ -1,0 +1,21 @@
+{
+  "formatVersion": 1,
+  "id": "directionalBlur",
+  "version": 1,
+  "name": "Directional Blur",
+  "category": "blur",
+  "symbol": "arrow.left.and.right",
+  "kernel": {"file": "kernel.metal", "function": "amvDirectionalBlur", "type": "general"},
+  "controls": [
+    {"id": "blurLength", "name": "Length", "type": "number", "default": 20, "range": [0, 1000], "unit": "px", "step": 0.1},
+    {"id": "blurAngle", "name": "Angle", "type": "number", "default": 0, "unit": "°"},
+    {"id": "blurEdges", "name": "Edges", "type": "choice", "default": "repeat", "options": [{"id": "repeat", "name": "Repeat"}, {"id": "transparent", "name": "Transparent"}]}
+  ],
+  "arguments": [],
+  "dependsOnPixelSize": true,
+  "reach": "0",
+  "after": [
+    {"filter": "CIMotionBlur", "when": "(blurLength > 0) * (index(blurEdges) == 0)", "input": "clamped", "parameters": {"inputRadius": "blurLength * scale", "inputAngle": "-rad(blurAngle)"}},
+    {"filter": "CIMotionBlur", "when": "(blurLength > 0) * (index(blurEdges) == 1)", "parameters": {"inputRadius": "blurLength * scale", "inputAngle": "-rad(blurAngle)"}}
+  ]
+}
