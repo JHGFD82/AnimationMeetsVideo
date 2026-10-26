@@ -123,8 +123,49 @@ final class TextLayout: @unchecked Sendable {
         var room: Double?
         var startsParagraph: Bool
         var endsParagraph: Bool
+        /// Where the string the line was set from starts in the block's
+        /// letters, which its runs' string indices count from.
+        var offset = 0
         /// Kerning set by hand in the line (`handKerning`).
         var kerning = HandKerning()
+    }
+
+    /// A line from `start` broken inside a word with a hyphen, where Core
+    /// Text broke it at `end`: before a word that would partly fit, or in a
+    /// word too long for a line. The latest place the word can hyphenate
+    /// (`CFStringGetHyphenationLocationBeforeIndex`) whose part and hyphen
+    /// fit `room` wins; nil when none does, or the line would be empty.
+    private static func hyphenated(
+        _ paragraph: NSAttributedString, from start: Int, breakingAt end: Int, typesetter: CTTypesetter, room: Double
+    ) -> (line: CTLine, count: Int)? {
+        let text = paragraph.string as NSString
+        func isLetter(_ index: Int) -> Bool {
+            guard index >= 0, index < text.length, let scalar = Unicode.Scalar(text.character(at: index)) else { return false }
+            return CharacterSet.letters.contains(scalar)
+        }
+        // The word broken, or the one after the break.
+        var wordStart = end
+        while wordStart > start, isLetter(wordStart - 1), isLetter(wordStart) { wordStart -= 1 }
+        var wordEnd = max(end, wordStart)
+        while wordEnd < text.length, isLetter(wordEnd) { wordEnd += 1 }
+        guard wordEnd - wordStart >= 4 else { return nil }
+        // As much as fits, in whole letters.
+        var limit = min(wordEnd, start + max(1, CTTypesetterSuggestClusterBreak(typesetter, start, room)))
+        // The Mac's language where it hyphenates, else English.
+        let current = CFLocaleCopyCurrent()
+        let locale = CFStringIsHyphenationAvailableForLocale(current) ? current : CFLocaleCreate(nil, CFLocaleIdentifier("en_US" as CFString))
+        while limit > wordStart {
+            let breakAt = CFStringGetHyphenationLocationBeforeIndex(
+                text as CFString, limit, CFRange(location: wordStart, length: wordEnd - wordStart), 0, locale, nil
+            )
+            guard breakAt != kCFNotFound, breakAt > max(wordStart, start), breakAt < wordEnd else { return nil }
+            let part = NSMutableAttributedString(attributedString: paragraph.attributedSubstring(from: NSRange(location: start, length: breakAt - start)))
+            part.append(NSAttributedString(string: "-", attributes: paragraph.attributes(at: breakAt - 1, effectiveRange: nil)))
+            let line = CTLineCreateWithAttributedString(part)
+            if width(of: line) <= room { return (line, breakAt - start) }
+            limit = breakAt
+        }
+        return nil
     }
 
     /// The kerning set by hand in one line: how far each letter, by its code
@@ -247,7 +288,10 @@ final class TextLayout: @unchecked Sendable {
                     ? CTLineCreateWithAttributedString(attributed)
                     : CTLineCreateWithAttributedString(NSAttributedString(string: "", attributes: attributes(font(of: block), block, index(of: block), setting)))
                 let room = wraps ? max(1, setting.wrapWidth - firstIndent - setting.rightIndent) : nil
-                lines.append(Line(line: line, width: width(of: line), indent: firstIndent, room: room, startsParagraph: true, endsParagraph: true))
+                lines.append(Line(
+                    line: line, width: width(of: line), indent: firstIndent, room: room, startsParagraph: true, endsParagraph: true,
+                    offset: paragraph.location
+                ))
                 continue
             }
             let typesetter = CTTypesetterCreateWithAttributedString(attributed)
@@ -256,11 +300,19 @@ final class TextLayout: @unchecked Sendable {
                 let indent = start == 0 ? firstIndent : setting.leftIndent
                 let room = max(1, setting.wrapWidth - indent - setting.rightIndent)
                 // At least a letter a line, however narrow the room.
-                let count = max(1, CTTypesetterSuggestLineBreak(typesetter, start, room))
-                let line = CTTypesetterCreateLine(typesetter, CFRange(location: start, length: count))
+                var count = max(1, CTTypesetterSuggestLineBreak(typesetter, start, room))
+                var line = CTTypesetterCreateLine(typesetter, CFRange(location: start, length: count))
+                var offset = paragraph.location
+                if setting.hyphenate, start + count < attributed.length,
+                   let hyphenated = hyphenated(attributed, from: start, breakingAt: start + count, typesetter: typesetter, room: room) {
+                    count = hyphenated.count
+                    line = hyphenated.line
+                    // Its own string, which starts at the line's first letter.
+                    offset = paragraph.location + start
+                }
                 lines.append(Line(
                     line: line, width: width(of: line), indent: indent, room: room,
-                    startsParagraph: start == 0, endsParagraph: start + count >= attributed.length
+                    startsParagraph: start == 0, endsParagraph: start + count >= attributed.length, offset: offset
                 ))
                 start += count
             }
@@ -459,7 +511,7 @@ final class TextLayout: @unchecked Sendable {
             for k in 0..<count {
                 guard var outline = CTFontCreatePathForGlyph(font, glyphs[k], nil) else { continue }
                 outline = outline.copy(using: [flip]) ?? outline
-                let unit = indices[k]
+                let unit = indices[k] + line.offset
                 laid.glyphs.append(Laid.Glyph(
                     outline: outline,
                     origin: CGPoint(x: origin.x + positions[k].x, y: origin.y - positions[k].y - style.baselineShift),

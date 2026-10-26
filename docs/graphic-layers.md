@@ -218,7 +218,7 @@ Built (step 3a):
     the last line left, centered or right; Justify All Lines); Left, Right
     and First Line Indent (below 0 hangs the first line); Space Before and
     After, between paragraphs; Wrap Width (0 sets each paragraph on one
-    line).
+    line); Hyphenate.
   - **OpenType.** Ligatures (Standard, None, or Standard and
     Discretionary); Contextual Alternates (on at first); Figures (Default,
     Tabular or Proportional, Lining or Oldstyle); Fractions; Ordinals;
@@ -309,8 +309,15 @@ Built (step 3a):
   `FontCatalog.supports`, which asks Core Text for the feature and sees
   whether it keeps it); otherwise they are made as Illustrator makes
   them, at 58.3% of the size, raised or lowered by a third of it.
-- **Not yet:** hyphenation (Core Text's line breaking doesn't hyphenate),
-  optical kerning, and the anchor's place in the box.
+- **Hyphenation** is a Paragraph setting, off at first. Core Text's line
+  breaking doesn't hyphenate, so where it breaks a wrapped line before a
+  word that would partly fit, or inside a word too long for a line, the
+  latest place the word can be hyphenated
+  (`CFStringGetHyphenationLocationBeforeIndex`, in the Mac's language
+  where it hyphenates, else English) whose part and a hyphen fit the
+  line is taken, and the hyphen drawn in the last letter's style. Words
+  shorter than four letters aren't broken.
+- **Not yet:** optical kerning, and the anchor's place in the box.
 - **Naming.** A shape clip with a Text effect is named by the first line
   of its words on the timeline, in the inspector and in undo steps
   (`resolvedInfo(for:)` of the clip), and VoiceOver calls it a text clip.

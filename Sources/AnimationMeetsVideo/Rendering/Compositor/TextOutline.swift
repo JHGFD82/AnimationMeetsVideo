@@ -43,6 +43,8 @@ struct TextOutline: Equatable, Sendable {
         var spaceAfter = 0.0
         /// Where lines wrap; 0 sets each paragraph on one line.
         var wrapWidth = 0.0
+        /// Whether a word may break across wrapped lines, with a hyphen.
+        var hyphenate = false
 
         // OpenType
         var ligatures = TextLigatures.standard
@@ -92,6 +94,7 @@ struct TextOutline: Equatable, Sendable {
             spaceBefore = max(0, number(.spaceBefore))
             spaceAfter = max(0, number(.spaceAfter))
             wrapWidth = max(0, number(.wrapWidth))
+            hyphenate = isOn(.hyphenate)
             ligatures = choice(.ligatures, .standard)
             contextualAlternates = isOn(.contextualAlternates)
             figures = choice(.figures, .default)

@@ -182,6 +182,41 @@ extension DrawingFixture {
         #expect(own.resolved().baselineShift == 0)
     }
 
+    @Test func hyphenationBreaksAWordThatWouldPartlyFit() {
+        let words = "go internationalization"
+        // The long word fits whole on its own line, but not after "go".
+        let wrap = (bounds(setting("internationalization")).width + 30).rounded()
+        let plain = setting(words) { $0.wrapWidth = wrap; $0.align = .left }
+        var hyphenated = plain
+        hyphenated.hyphenate = true
+        let laidPlain = TextLayout.layOut(plain), laidHyphenated = TextLayout.layOut(hyphenated)
+        #expect(laidPlain.lineCount == 2)
+        #expect(laidHyphenated.lineCount == 2)
+        // The first line takes part of the word and a hyphen, so it holds
+        // more glyphs than "go".
+        let firstLine = { (laid: TextLayout.Laid) in laid.glyphs.filter { $0.line == 0 }.count }
+        #expect(firstLine(laidPlain) == 2)
+        #expect(firstLine(laidHyphenated) > 4)
+        #expect(bounds(hyphenated).width <= wrap)
+        // Every letter keeps its place in the words, for animators.
+        #expect(laidHyphenated.glyphs.filter { $0.line == 1 }.allSatisfy { $0.word == 1 })
+    }
+
+    @Test func hyphenationBreaksAWordTooLongForALine() {
+        let word = setting("internationalization") { $0.wrapWidth = 500; $0.align = .left; $0.hyphenate = true }
+        let laid = TextLayout.layOut(word)
+        #expect(laid.lineCount >= 2)
+        #expect(bounds(word).width <= 500)
+    }
+
+    @Test func lettersAreNumberedAcrossParagraphs() {
+        let laid = TextLayout.layOut(setting("ab cd\nef"))
+        #expect(laid.glyphs.map(\.character) == [0, 1, 3, 4, 5, 6])
+        #expect(laid.glyphs.map(\.word) == [0, 0, 1, 1, 2, 2])
+        #expect(laid.glyphs.map(\.line) == [0, 0, 0, 0, 1, 1])
+        #expect(laid.characterCount == 7 && laid.wordCount == 3 && laid.lineCount == 2)
+    }
+
     @Test func savingKeepsRuns() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }

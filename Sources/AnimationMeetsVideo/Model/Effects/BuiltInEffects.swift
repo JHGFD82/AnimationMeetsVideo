@@ -75,7 +75,7 @@ extension EffectKind {
         .textCase, .underline, .strikethrough,
     ]
     static let paragraphControls: [ControlKind] = [
-        .textAlign, .leftIndent, .rightIndent, .firstLineIndent, .spaceBefore, .spaceAfter, .wrapWidth,
+        .textAlign, .leftIndent, .rightIndent, .firstLineIndent, .spaceBefore, .spaceAfter, .wrapWidth, .hyphenate,
     ]
     static let openTypeControls: [ControlKind] = [
         .ligatures, .contextualAlternates, .figures, .fractions, .ordinals, .swash, .stylisticAlternates, .stylisticSet,
@@ -138,6 +138,7 @@ extension ControlKind {
     static let spaceBefore = ControlKind(builtIn: "spaceBefore")
     static let spaceAfter = ControlKind(builtIn: "spaceAfter")
     static let wrapWidth = ControlKind(builtIn: "wrapWidth")
+    static let hyphenate = ControlKind(builtIn: "hyphenate")
     static let ligatures = ControlKind(builtIn: "ligatures")
     static let contextualAlternates = ControlKind(builtIn: "contextualAlternates")
     static let figures = ControlKind(builtIn: "figures")
@@ -394,6 +395,8 @@ enum BuiltInEffects {
         ControlDefinition(.spaceAfter, "Space After", .text, defaults: [0], unit: " px", range: 0...100_000),
         // 0 sets each paragraph on one line.
         ControlDefinition(.wrapWidth, "Wrap Width", .text, defaults: [0], unit: " px", range: 0...100_000),
+        // Breaks a word across wrapped lines with a hyphen.
+        ControlDefinition(.hyphenate, "Hyphenate", .text, choice: OnOff.off),
         // OpenType
         ControlDefinition(.ligatures, "Ligatures", .text, choice: TextLigatures.standard),
         ControlDefinition(.contextualAlternates, "Contextual Alternates", .text, choice: OnOff.on),
