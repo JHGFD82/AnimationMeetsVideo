@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "id": "scanLines",
+  "version": 1,
+  "name": "Scan Lines",
+  "category": "stylize",
+  "symbol": "line.3.horizontal",
+  "kernel": {"file": "kernel.metal", "function": "amvScanLines", "type": "color"},
+  "controls": [
+    {"id": "lineSize", "name": "Line Size", "type": "number", "default": 4, "range": [1, 200], "unit": "px", "step": 0.1},
+    {"id": "lineDarkness", "name": "Darkness", "type": "number", "default": 50, "range": [0, 100], "unit": "%"},
+    {"id": "phosphorMask", "name": "Mask", "type": "choice", "default": "apertureGrille", "options": [{"id": "none", "name": "None"}, {"id": "apertureGrille", "name": "Aperture Grille"}, {"id": "slotMask", "name": "Slot Mask"}]},
+    {"id": "maskStrength", "name": "Mask Strength", "type": "number", "default": 30, "range": [0, 100], "unit": "%"},
+    {"id": "rollSpeed", "name": "Roll", "type": "number", "default": 0, "range": [-10, 10], "unit": "/s", "rate": true}
+  ],
+  "amount": true,
+  "arguments": ["lineSize * scale", "lineDarkness / 100", "index(phosphorMask)", "maskStrength / 100", "rollSpeed * seconds - floor(rollSpeed * seconds)", "frameCenter", "frameHeight", "rollSpeed != 0"]
+}

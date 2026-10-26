@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "id": "strobe",
+  "version": 1,
+  "name": "Strobe",
+  "category": "stylize",
+  "symbol": "light.beacon.max",
+  "kernel": {"file": "kernel.metal", "function": "amvStrobe", "type": "color"},
+  "controls": [
+    {"id": "strobeRate", "name": "Rate", "type": "number", "default": 2, "range": [0, 30], "unit": "/s", "rate": true},
+    {"id": "strobeLength", "name": "Length", "type": "number", "default": 50, "range": [0, 100], "unit": "%"},
+    {"id": "strobeMode", "name": "Flash", "type": "choice", "default": "color", "options": [{"id": "color", "name": "Color"}, {"id": "clear", "name": "Hide Picture"}, {"id": "invert", "name": "Invert"}]},
+    {"id": "strobeColor", "name": "Color", "type": "color", "default": [1, 1, 1, 1]}
+  ],
+  "amount": true,
+  "arguments": ["strobeRate * seconds - floor(strobeRate * seconds)", "strobeRate != 0", "strobeLength / 100", "index(strobeMode)", "strobeColor"],
+  "flashes": "abs(strobeRate) > 3"
+}

@@ -269,6 +269,8 @@ enum BuiltInEffects {
         // Light
         "glow", "bloom", "halation", "lightRays", "lensFlare", "lightLeak", "spotlight", "vignette",
         // Stylize
+        "pixelate", "halftone", "crystallize", "oilPaint", "celShade", "findEdges", "emboss",
+        "scanLines", "vhs", "oldFilm", "filmDamage", "strobe",
         // Color
         "hueCycle", "cosinePalette", "gradientMap", "solarize", "posterize", "channelMixer", "falseColor", "neonEdges",
         "grain", "staticNoise", "fractalNoise", "cells", "dither", "interference", "blockGlitch",

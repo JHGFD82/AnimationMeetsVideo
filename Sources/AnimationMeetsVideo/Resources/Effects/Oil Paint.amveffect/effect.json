@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "oilPaint",
+  "version": 1,
+  "name": "Oil Paint",
+  "category": "stylize",
+  "symbol": "paintbrush",
+  "kernel": {"file": "kernel.metal", "function": "amvOilPaint", "type": "general"},
+  "controls": [
+    {"id": "brushSize", "name": "Brush Size", "type": "number", "default": 6, "range": [1, 60], "unit": "px", "step": 0.1},
+    {"id": "brushSharpness", "name": "Sharpness", "type": "number", "default": 50, "range": [0, 100], "unit": "%"}
+  ],
+  "amount": true,
+  "arguments": ["brushSize * scale", "brushSharpness / 100"],
+  "reach": "brushSize * scale + 1",
+  "input": "clamped"
+}

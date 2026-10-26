@@ -1,0 +1,21 @@
+{
+  "formatVersion": 1,
+  "id": "halftone",
+  "version": 1,
+  "name": "Halftone",
+  "category": "stylize",
+  "symbol": "circle.grid.3x3.fill",
+  "kernel": {"file": "kernel.metal", "function": "amvHalftone", "type": "general"},
+  "controls": [
+    {"id": "screenSize", "name": "Size", "type": "number", "default": 8, "range": [2, 500], "unit": "px", "step": 0.1},
+    {"id": "screenPattern", "name": "Pattern", "type": "choice", "default": "dots", "options": [{"id": "dots", "name": "Dots"}, {"id": "lines", "name": "Lines"}]},
+    {"id": "inks", "name": "Inks", "type": "choice", "default": "mono", "options": [{"id": "mono", "name": "One Ink"}, {"id": "cmyk", "name": "CMYK"}]},
+    {"id": "screenAngle", "name": "Angle", "type": "number", "default": 45, "unit": "°"},
+    {"id": "inkColor", "name": "Ink", "type": "color", "default": [0, 0, 0, 1]},
+    {"id": "paperColor", "name": "Paper", "type": "color", "default": [1, 1, 1, 1]}
+  ],
+  "amount": true,
+  "arguments": ["screenSize * scale", "index(screenPattern)", "index(inks)", "rad(screenAngle)", "inkColor", "paperColor", "frameCenter"],
+  "reach": "screenSize * scale",
+  "input": "clamped"
+}

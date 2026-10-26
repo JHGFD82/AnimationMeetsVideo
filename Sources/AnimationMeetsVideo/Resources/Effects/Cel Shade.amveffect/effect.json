@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "id": "celShade",
+  "version": 1,
+  "name": "Cel Shade",
+  "category": "stylize",
+  "symbol": "paintbrush.pointed",
+  "kernel": {"file": "kernel.metal", "function": "amvCelShade", "type": "general"},
+  "controls": [
+    {"id": "shadeBands", "name": "Bands", "type": "number", "default": 4, "range": [2, 16], "whole": true},
+    {"id": "outlineWidth", "name": "Outline", "type": "number", "default": 2, "range": [0, 30], "unit": "px", "step": 0.1},
+    {"id": "outlineThreshold", "name": "Threshold", "type": "number", "default": 25, "range": [0, 100], "unit": "%"},
+    {"id": "outlineColor", "name": "Outline Color", "type": "color", "default": [0, 0, 0, 1]},
+    {"id": "colorBoost", "name": "Saturation", "type": "number", "default": 120, "range": [0, 300], "unit": "%"}
+  ],
+  "amount": true,
+  "arguments": ["shadeBands", "outlineWidth * scale", "outlineThreshold / 100", "outlineColor", "colorBoost / 100", "1.5 * scale"],
+  "reach": "(outlineWidth + 2) * scale",
+  "input": "clamped"
+}
