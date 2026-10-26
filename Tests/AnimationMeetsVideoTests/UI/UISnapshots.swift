@@ -496,8 +496,10 @@ struct UISnapshots {
     }
 
     /// The inspector for a text layer of two lines, right-aligned, with its
-    /// size keyframed: the words; Character, Paragraph and OpenType; and a
-    /// yellow fill with a stroke.
+    /// size keyframed (shown read-only, with the keyframe badge): the
+    /// words; Character and Paragraph as fields with icons two to a row,
+    /// alignment, case, underline and OpenType as icon buttons; and a
+    /// yellow fill with a stroke, its edge, join and cap as drawn buttons.
     @Test func textInspector() throws {
         var project = EditingProject.empty
         let t = project.rootTimelineID
@@ -572,8 +574,8 @@ struct UISnapshots {
         )
     }
 
-    /// A Text effect in Skia, a variable font: its Weight and Width rows,
-    /// the weight keyframed.
+    /// A Text effect in Skia, a variable font: its Weight and Width fields,
+    /// the weight keyframed and so read-only.
     @Test func textVariableFontInspector() throws {
         var effect = Effect(kind: .text)
         effect.text = TextContent(string: "Variable", fontName: "Skia-Regular")
@@ -588,6 +590,29 @@ struct UISnapshots {
             }
             .panelSurface(.base),
             "text-variable-font-inspector", size: CGSize(width: 340, height: 520)
+        )
+    }
+
+    /// The inspector's clip sound rows, which don't keyframe: a fixed pan
+    /// to type or drag, and a keyframed volume shown read-only with its
+    /// badge.
+    @Test func inspectorSoundRows() throws {
+        var volume = AnimatedValue(-6.0)
+        volume.setAnimated(true, at: .zero)
+        volume.set(0, at: CMTime(seconds: 1, preferredTimescale: 600))
+        try SnapshotSupport.render(
+            InspectorGroup("Sound") {
+                AudioPropertyRow(
+                    value: volume, playhead: PlayheadTime(fixed: .zero), onEdit: { _ in }, onSeek: { _ in }, keyframing: false
+                )
+                AudioPropertyRow(
+                    property: .pan, value: AnimatedValue(-30), playhead: PlayheadTime(fixed: .zero), onEdit: { _ in }, onSeek: { _ in },
+                    keyframing: false
+                )
+            }
+            .padding(Design.Space.group)
+            .panelSurface(.base),
+            "inspector-sound-rows", size: CGSize(width: 340, height: 120)
         )
     }
 

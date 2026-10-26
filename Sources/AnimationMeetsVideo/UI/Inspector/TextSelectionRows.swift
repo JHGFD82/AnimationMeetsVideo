@@ -5,10 +5,16 @@ import SwiftUI
 /// The Character settings of a Text effect's selected letters, set apart
 /// from the block as a styled run (see `TextRunStyle`). Each shows what the
 /// first selected letter has at the playhead: its own setting, or the
-/// block's, dimmer. A number or color has the stopwatch and keyframe
-/// buttons the controls have, so the letters' own setting can be keyframed;
-/// setting one starts from the block's value there. A setting the letters
-/// have their own of has a button that gives them the block's back.
+/// block's, dimmer. Case is icon buttons, and superscript, subscript,
+/// underline and strikethrough buttons that stay lit, as in the block's
+/// Character group.
+///
+/// A number or color keeps the stopwatch and keyframe buttons, the one
+/// place in the inspector that keyframes something other than an animator:
+/// the effects panel doesn't show styled runs yet, so a run's keyframes
+/// have no other home. Setting one starts from the block's value there. A
+/// setting the letters have their own of has a button that gives them the
+/// block's back.
 struct TextSelectionRows: View {
     /// What the first selected letter sets apart from the block.
     let style: TextRunStyle
@@ -33,22 +39,29 @@ struct TextSelectionRows: View {
         number("Vertical Scale", \.verticalScale, block: block.verticalScale, unit: "%", range: 1...10_000)
         number("Horizontal Scale", \.horizontalScale, block: block.horizontalScale, unit: "%", range: 1...10_000)
         InspectorLabelledRow("Case") {
-            Picker("Case", selection: Binding(get: { letter.textCase }, set: { picked in onChange { $0.textCase = picked } })) {
-                ForEach(TextCase.allCases) { Text($0.name).tag($0) }
-            }
+            PanelSegmentedPicker(
+                name: "Case",
+                segments: TextCase.allCases.map { PanelSegment(value: $0, glyph: .text(InspectorGlyphs.caseGlyph($0)), name: $0.name) },
+                selection: letter.textCase, fills: true
+            ) { picked in onChange { $0.textCase = picked } }
         }
         if style.textCase != nil { resetRow("Case") { $0.textCase = nil } }
         InspectorLabelledRow("Position") {
-            Picker("Position", selection: Binding(
-                get: { style.position ?? .normal },
-                set: { picked in onChange { $0.position = picked == .normal ? nil : picked } }
-            )) {
-                ForEach(TextPosition.allCases) { Text($0.name).tag($0) }
+            HStack(spacing: Design.Space.step) {
+                PanelToggleStrip(name: "Position", items: [
+                    position(.superscript, glyph: "textformat.superscript"), position(.subscript, glyph: "textformat.subscript"),
+                ])
+                .help("Superscript or subscript: the font's own where it has them, else smaller and raised or lowered")
+                PanelToggleStrip(name: "Decoration", items: [
+                    PanelToggleStrip.Item(glyph: .symbol("underline"), name: "Underline", isOn: letter.underline) { on in
+                        onChange { $0.underline = on }
+                    },
+                    PanelToggleStrip.Item(glyph: .symbol("strikethrough"), name: "Strikethrough", isOn: letter.strikethrough) { on in
+                        onChange { $0.strikethrough = on }
+                    },
+                ])
             }
         }
-        .help("Superscript or subscript: the font's own where it has them, else smaller and raised or lowered")
-        checkbox("Underline", letter.underline) { $0.underline = $1 }
-        checkbox("Strikethrough", letter.strikethrough) { $0.strikethrough = $1 }
         color("Fill", \.fill, block: blockFill)
         color("Stroke", \.stroke, block: blockStroke)
         number("Stroke Width", \.strokeWidth, block: blockStrokeWidth, unit: " px", range: 0...10_000)
@@ -65,12 +78,12 @@ struct TextSelectionRows: View {
         )
     }
 
-    private func checkbox(_ name: String, _ isOn: Bool, set: @escaping (inout TextRunStyle, Bool) -> Void) -> some View {
-        Toggle(name, isOn: Binding(get: { isOn }, set: { on in onChange { set(&$0, on) } }))
-            .toggleStyle(.checkbox)
-            .font(Design.Typeface.label)
-            .foregroundStyle(Design.textSecondary)
-            .padding(.leading, 22)
+    /// Superscript or subscript as a button that stays lit while on;
+    /// turning it off sets the letters back to normal.
+    private func position(_ position: TextPosition, glyph: String) -> PanelToggleStrip.Item {
+        PanelToggleStrip.Item(glyph: .symbol(glyph), name: position.name, isOn: style.position == position) { on in
+            onChange { $0.position = on ? position : nil }
+        }
     }
 
     /// A color the letters can have their own of, keyframed or not. It
@@ -199,20 +212,21 @@ struct TextRunNumberRow: View {
                 .foregroundStyle(Design.textSecondary)
                 .lineLimit(1)
                 .frame(width: InspectorControlRow.nameWidth, alignment: .leading)
-            NumericField(
-                value: value.value(at: time), unit: unit, dragStep: 1, dragRange: range,
-                accessibilityName: "Selected letters' \(lowercase)"
-            ) { picked in
-                let at = playhead.current
-                let kept = picked.clamped(between: range.lowerBound, and: range.upperBound)
-                onChange { own in
-                    var value = own ?? AnimatedValue(block)
-                    value.set(kept, at: at)
-                    own = value
+            PanelField(glyph: nil, name: name) {
+                NumericField(
+                    value: value.value(at: time), unit: unit, dragStep: 1, dragRange: range,
+                    accessibilityName: "Selected letters' \(lowercase)"
+                ) { picked in
+                    let at = playhead.current
+                    let kept = picked.clamped(between: range.lowerBound, and: range.upperBound)
+                    onChange { own in
+                        var value = own ?? AnimatedValue(block)
+                        value.set(kept, at: at)
+                        own = value
+                    }
                 }
+                .opacity(own != nil ? 1 : 0.6)
             }
-            .opacity(own != nil ? 1 : 0.6)
-            Spacer(minLength: 4)
             if value.isAnimated {
                 KeyframeNavigator(
                     name: "the selected letters' \(lowercase)", keyframeTimes: value.keyframes.map(\.time), time: time, onSeek: onSeek,

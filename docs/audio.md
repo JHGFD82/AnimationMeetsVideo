@@ -66,9 +66,15 @@ The row's label column holds the stopwatch, the level (click it to type
 decibels; arithmetic works), a fader, and the keyframe buttons. Its lane
 draws the level as a line across the clips, mute at the bottom and +6 dB at
 the top with a faint line at 0 dB, and the keyframes as diamonds to click,
-drag in time or delete. The inspector shows the same row under **Sound**
-for the selected clip, and under **Layer sound** for a Sound or Music
-layer. Right-click the row to reset it to 0 dB.
+drag in time or delete. The inspector shows the row under **Sound** for
+the selected clip without the stopwatch or keyframe buttons, since the
+effects panel keyframes a clip's sound: a fixed level is set there
+outright, and an animated one shows its level at the playhead read-only
+with a keyframe badge pointing to the effects panel. Under **Layer
+sound**, for a Sound or Music layer, the row keeps its keyframe buttons:
+the effects panel shows clips, not layers, so the inspector is the only
+place a layer's pan is keyframed. Right-click the row to reset it to 0
+dB (not in the inspector while it is animated).
 
 ## Pan
 

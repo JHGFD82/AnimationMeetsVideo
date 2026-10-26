@@ -100,7 +100,8 @@ graph editor (see [Graph editor](#graph-editor)).
 ### Graph editor
 
 Each animated property has a graph button (a small chart) after its
-keyframe buttons, in the timeline and the inspector; volume does too. It
+keyframe buttons, in the timeline and the effects panel (and the
+inspector's Layer sound rows); volume does too. It
 opens that parameter's graph editor in a floating **HUD panel** of its
 own, titled with the layer and the parameter ("Video 1 · Position"), so
 several can be open side by side: one per parameter, and pressing the

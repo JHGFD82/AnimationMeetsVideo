@@ -64,6 +64,11 @@ enum AudioProperty {
 /// works), a slider, and once animated the keyframe buttons, as on a
 /// transform property. Used in the timeline, the effects panel and the
 /// inspector.
+///
+/// Without `keyframing` (the inspector's clip Sound group, since the
+/// effects panel keyframes a clip's sound) it has no stopwatch or keyframe
+/// buttons: a fixed value is set outright, and an animated one shows its
+/// level at the playhead read-only with a badge saying where to change it.
 struct AudioPropertyRow: View {
     var property: AudioProperty = .volume
     let value: AnimatedValue<Double>
@@ -77,12 +82,15 @@ struct AudioPropertyRow: View {
     /// when none is: dragging the number moves the slider beside it. Read
     /// as the row draws, so only these rows follow a step of a drag.
     var held: (() -> AnimatedValue<Double>?)?
+    /// Whether it has the stopwatch and keyframe buttons.
+    var keyframing = true
 
     init(
         property: AudioProperty = .volume, value: AnimatedValue<Double>, playhead: PlayheadTime,
         onEdit: @escaping ((inout AnimatedValue<Double>) -> Void) -> Void, onSeek: @escaping (CMTime) -> Void,
-        onShowGraph: (() -> Void)? = nil, held: (() -> AnimatedValue<Double>?)? = nil
+        onShowGraph: (() -> Void)? = nil, held: (() -> AnimatedValue<Double>?)? = nil, keyframing: Bool = true
     ) {
+        self.keyframing = keyframing
         self.property = property
         self.value = value
         self.playhead = playhead
@@ -130,8 +138,11 @@ struct AudioPropertyRow: View {
         let value = held?() ?? self.value
         let time = playhead.shown(animated: value.isAnimated)
         let current = value.value(at: time)
+        let isReadOnly = value.isAnimated && !keyframing
         HStack(spacing: 4) {
-            AnimateToggle(name: lowercaseName, isAnimated: value.isAnimated, onToggle: toggleAnimated)
+            if keyframing {
+                AnimateToggle(name: lowercaseName, isAnimated: value.isAnimated, onToggle: toggleAnimated)
+            }
 
             Text(property.name)
                 .foregroundStyle(Design.textSecondary)
@@ -139,11 +150,12 @@ struct AudioPropertyRow: View {
 
             NumericField(
                 value: current, label: property.label, dragStep: 1, dragRange: property.range,
-                accessibilityName: "\(property.name) \(property == .volume ? "level" : "position")"
+                accessibilityName: "\(property.name) \(property == .volume ? "level" : "position")\(isReadOnly ? ", animated" : "")"
             ) { newValue in
                 setValue(property.clamped(newValue))
             }
             .frame(width: 54, alignment: .leading)
+            .disabled(isReadOnly)
 
             Slider(
                 value: Binding(
@@ -157,10 +169,13 @@ struct AudioPropertyRow: View {
             .help(property.help)
             .accessibilityLabel(property.name)
             .accessibilityValue(property.label(current))
+            .disabled(isReadOnly)
 
             Spacer(minLength: 4)
 
-            if value.isAnimated {
+            if isReadOnly {
+                AnimatedInEffectsBadge(name: lowercaseName)
+            } else if value.isAnimated {
                 KeyframeNavigator(name: lowercaseName, keyframeTimes: value.keyframes.map(\.time), time: time, onSeek: onSeek, onToggle: toggleKeyframe)
                 if let onShowGraph { GraphEditorButton(name: lowercaseName, action: onShowGraph) }
             }
@@ -168,7 +183,7 @@ struct AudioPropertyRow: View {
         .font(Design.Typeface.label)
         .contextMenu {
             Button(property.resetTitle) { onEdit { $0 = AnimatedValue(0.0) } }
-                .disabled(value == AnimatedValue(0.0))
+                .disabled(value == AnimatedValue(0.0) || isReadOnly)
         }
     }
 }

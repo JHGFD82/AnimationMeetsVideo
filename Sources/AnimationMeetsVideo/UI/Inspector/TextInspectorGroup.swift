@@ -5,13 +5,20 @@ import SwiftUI
 /// "Text"), grouped as Illustrator's panels are: its words, typed in place;
 /// Character (font and style, size, leading, kerning, tracking, scale,
 /// baseline shift, rotation, case, underline and strikethrough);
-/// Paragraph (alignment, indents, space between paragraphs, wrap width);
-/// and OpenType (ligatures, alternates, figures, fractions, ordinals,
-/// swash, stylistic sets). All but the words and font are the effect's own
-/// controls, so a number set here at the playhead is a keyframe there once
-/// it is animated, as in the effects panel. With letters selected in the
-/// words, Character styles them apart instead (`TextSelectionRows`). Its
-/// fill and stroke follow in `PaintInspectorGroup`.
+/// Paragraph (alignment, indents, space between paragraphs, wrap width,
+/// anchor, hyphenation); Path; and OpenType (ligatures, figures,
+/// alternates, ordinals, fractions, swash, stylistic sets).
+///
+/// All but the words and font are the effect's own controls, laid out as
+/// Illustrator lays them out: numbers as fields with icons, two to a row;
+/// small choices and on-or-off settings as icon buttons. They are set
+/// outright here, not keyframed: one animated in the effects panel shows
+/// its value at the playhead read-only (`InspectorControlRow`). With
+/// letters selected in the words, Character styles them apart instead
+/// (`TextSelectionRows`). Its fill and stroke follow in
+/// `PaintInspectorGroup`.
+///
+/// Driven by the `Effect` it is given alone, wherever in a clip that is.
 struct TextInspectorGroup: View {
     let effect: Effect
     /// Put before each group's title when the clip draws more than one
@@ -59,32 +66,45 @@ struct TextInspectorGroup: View {
                     FontPickerRows(fontName: content.fontName) { name in onEdit { $0.text?.fontName = name } }
                     FontAxisRows(
                         fontName: content.fontName, content: content, playhead: playhead,
-                        onChange: { change in onEdit { effect in if effect.text != nil { change(&effect.text!) } } },
-                        onSeek: onSeek
+                        onChange: { change in onEdit { effect in if effect.text != nil { change(&effect.text!) } } }
                     )
                     missingFontNote(content.fontName)
-                    let kerning = (EffectKind.characterControls.firstIndex(of: .kerning) ?? 0) + 1
-                    controls(Array(EffectKind.characterControls.prefix(kerning)))
+                    grid([[.fontSize, .leading], [.kerning, .tracking], [.verticalScale, .horizontalScale], [.baselineShift, .characterRotation]])
                     pairKerning
-                    controls(Array(EffectKind.characterControls.dropFirst(kerning)))
+                    HStack(spacing: Design.Space.step) {
+                        cell(.textCase)
+                        PanelToggleStrip(
+                            name: "Decoration", items: [toggle(.underline, glyph: .symbol("underline")), toggle(.strikethrough, glyph: .symbol("strikethrough"))]
+                        )
+                    }
                 }
             }
             InspectorGroup(title("Paragraph")) {
-                controls(EffectKind.paragraphControls)
+                cell(.textAlign)
+                grid([[.leftIndent, .rightIndent], [.firstLineIndent, .wrapWidth], [.spaceBefore, .spaceAfter]])
+                HStack(alignment: .center, spacing: Design.Space.step) {
+                    controls([.textAnchor])
+                    controls([.hyphenate])
+                }
             }
             InspectorGroup(title("Path")) {
-                controls(EffectKind.pathControls)
-                Text("On, the text follows the outline of the shape above it in the effects, from Path Offset along it.")
-                    .font(Design.Typeface.label)
-                    .foregroundStyle(Design.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: Design.Space.step) {
+                    controls([.textOnPath, .pathFlip])
+                    cell(.pathOffset)
+                }
+                note("On, the text follows the outline of the shape above it in the effects, from Path Offset along it.")
             }
             InspectorGroup(title("OpenType")) {
-                controls(EffectKind.openTypeControls)
-                Text("A font without one of these draws as if it were off.")
-                    .font(Design.Typeface.label)
-                    .foregroundStyle(Design.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                controls([.ligatures])
+                figures
+                HStack(spacing: Design.Space.step) {
+                    PanelToggleStrip(
+                        name: "OpenType features",
+                        items: InspectorGlyphs.openTypeToggles.filter { effect.control($0.kind) != nil }.map { toggle($0.kind, glyph: $0.glyph) }
+                    )
+                    cell(.stylisticSet)
+                }
+                note("A font without one of these draws as if it were off.")
             }
         }
     }
@@ -114,11 +134,8 @@ struct TextInspectorGroup: View {
             playhead: playhead, onSeek: onSeek, onChange: changeSelection
         )
         missingFontNote(style.fontName ?? content.fontName)
-        Text("Leading, Kerning and Character Rotation are the whole block's:")
-            .font(Design.Typeface.label)
-            .foregroundStyle(Design.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-        controls([.leading, .kerning, .characterRotation])
+        note("Leading, Kerning and Character Rotation are the whole block's:")
+        grid([[.leading, .kerning], [.characterRotation]])
     }
 
     /// Kerning set by hand between the two letters either side of the
@@ -153,7 +170,93 @@ struct TextInspectorGroup: View {
         }
     }
 
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(Design.Typeface.label)
+            .foregroundStyle(Design.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // MARK: Controls
+
     private func controls(_ kinds: [ControlKind]) -> some View {
         InspectorControls(effect: effect, kinds: kinds, playhead: playhead, onEdit: onEdit, onSeek: onSeek)
+    }
+
+    /// A control without its name: a field with its icon, or its icon
+    /// buttons (`InspectorControlRow.Layout.cell`).
+    @ViewBuilder
+    private func cell(_ kind: ControlKind) -> some View {
+        if let control = effect.control(kind) {
+            InspectorControlRow(
+                control: control, playhead: playhead, layout: .cell,
+                onEdit: { change in onEdit { $0.changeControl(kind, change) } }, onSeek: onSeek
+            )
+        }
+    }
+
+    /// Controls as cells, two to a row, as Illustrator's Character and
+    /// Paragraph panels lay out their numbers.
+    private func grid(_ rows: [[ControlKind]]) -> some View {
+        Grid(horizontalSpacing: Design.Space.step, verticalSpacing: Design.Space.close) {
+            ForEach(rows.indices, id: \.self) { row in
+                GridRow {
+                    ForEach(rows[row], id: \.self) { cell($0) }
+                    if rows[row].count == 1 { Color.clear.gridCellUnsizedAxes(.vertical) }
+                }
+            }
+        }
+    }
+
+    /// An on-or-off control as a button of a `PanelToggleStrip`.
+    private func toggle(_ kind: ControlKind, glyph: PanelGlyph) -> PanelToggleStrip.Item {
+        PanelToggleStrip.Item(
+            glyph: glyph, name: kind.name, isOn: effect.control(kind)?.choice == OnOff.on.rawValue,
+            set: { isOn in onEdit { $0.changeControl(kind) { $0.choice = (isOn ? OnOff.on : .off).rawValue } } }
+        )
+    }
+
+    /// Figures as InDesign splits them: spacing (the font's default,
+    /// tabular or proportional), then for either of the last two, lining
+    /// or oldstyle.
+    @ViewBuilder
+    private var figures: some View {
+        if let control = effect.control(.figures) {
+            let picked = control.choice.flatMap(TextFigures.init(rawValue:)) ?? .default
+            let tabular = picked == .tabularLining || picked == .tabularOldstyle
+            let oldstyle = picked == .tabularOldstyle || picked == .proportionalOldstyle
+            let set: (TextFigures) -> Void = { figures in onEdit { $0.changeControl(.figures) { $0.choice = figures.rawValue } } }
+            InspectorLabelledRow("Figures") {
+                PanelSegmentedPicker(
+                    name: "Figure spacing",
+                    segments: [
+                        PanelSegment(value: 0, glyph: .text("Auto"), name: "Default Figures"),
+                        PanelSegment(value: 1, glyph: .text("Tabular"), name: "Tabular Figures"),
+                        PanelSegment(value: 2, glyph: .text("Proportional"), name: "Proportional Figures"),
+                    ],
+                    selection: picked == .default ? 0 : tabular ? 1 : 2
+                ) { spacing in
+                    switch spacing {
+                    case 1: set(oldstyle ? .tabularOldstyle : .tabularLining)
+                    case 2: set(oldstyle ? .proportionalOldstyle : .proportionalLining)
+                    default: set(.default)
+                    }
+                }
+            }
+            InspectorLabelledRow("") {
+                PanelSegmentedPicker(
+                    name: "Figure style",
+                    segments: [
+                        PanelSegment(value: false, glyph: .text("Lining"), name: "Lining Figures"),
+                        PanelSegment(value: true, glyph: .text("Oldstyle"), name: "Oldstyle Figures"),
+                    ],
+                    selection: oldstyle
+                ) { old in
+                    set(tabular ? (old ? .tabularOldstyle : .tabularLining) : (old ? .proportionalOldstyle : .proportionalLining))
+                }
+                .disabled(picked == .default)
+                .help(picked == .default ? "Pick Tabular or Proportional to choose lining or oldstyle figures" : "Lining or oldstyle figures")
+            }
+        }
     }
 }

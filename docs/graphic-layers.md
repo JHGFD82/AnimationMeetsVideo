@@ -251,23 +251,44 @@ Built (step 3a):
   lowercase letters drawn as capitals at 70% of the size (with All Small
   Caps, its capitals too); a font with it (Didot) draws its own.
 - **The inspector** shows every shape and text of the selected clip, in
-  stack order, as Illustrator's panels do. A Text effect has a Text group
-  (its words in a text editor), Character (Font and Style pickers from
-  `FontCatalog`, keeping the style's name when the family changes, then
-  its Character controls), Paragraph and OpenType. Another shape has a
-  group of its own controls (`ShapeInspectorGroup`: a rectangle's size,
-  corners and position, a star's points and radii), and a Stroke effect
-  one of its stroke. Each drawn shape and text then has **Fill &
-  Stroke** (`PaintInspectorGroup`): Fill and Stroke, each with a checkbox
-  that leaves it out, a color well and its opacity, and while there is a
-  stroke its width, Edge, Join, Cap and Dash. With more than one shape,
-  each group is titled with its effect's name. Every row is an
-  `InspectorControlRow`: numbers with the stopwatch and keyframe buttons
-  the sound rows have, set at the playhead (Leading reads "Auto" at 0, a
-  size has its link); choices as menus, the alignments as icons, and
-  on-or-off settings as checkboxes. The effects panel shows the same
-  controls; a Text effect with no words says so there. Reset keeps the
-  words and font.
+  stack order, laid out as Illustrator's and InDesign's panels are. A
+  Text effect has a Text group (its words in a text editor), Character,
+  Paragraph, Path and OpenType. Character has full-width Font and Style
+  menus from `FontCatalog` (keeping the style's name when the family
+  changes), the variable axes, then its numbers as fields with icons, two
+  to a row (size and leading, kerning's method and tracking, vertical and
+  horizontal scale, baseline shift and rotation), then Case as four
+  buttons (Aa, AA, Aᴀ, ᴀᴀ) and Underline and Strikethrough as buttons
+  that stay lit. Paragraph has the seven alignments as icon buttons, the
+  indents, wrap width and spacing as fields two to a row, the anchor as
+  the nine points of a box (Illustrator's reference point) and a
+  Hyphenate checkbox. OpenType has Ligatures as three buttons, Figures
+  as spacing (Auto, Tabular, Proportional) and style (Lining, Oldstyle)
+  buttons, contextual alternates, swash, stylistic alternates, ordinals
+  and fractions as buttons that stay lit, and the stylistic set. Another
+  shape has a group of its own controls (`ShapeInspectorGroup`: a
+  rectangle's size, corners and position, a star's points and radii),
+  and a Stroke effect one of its stroke. Each drawn shape and text then
+  has **Fill & Stroke** (`PaintInspectorGroup`): Fill and Stroke, each
+  with a checkbox that leaves it out, a color well and its opacity, and
+  while there is a stroke its width, Edge, Join and Cap (icon buttons
+  drawn like the stroke they pick, as in Illustrator's Stroke panel) and
+  Dash. With more than one shape, each group is titled with its effect's
+  name. Every control is an `InspectorControlRow` (a name and fields, or
+  in a grid a field with its icon); the shared buttons, fields and point
+  grid are `PanelControls` in the design system. Leading reads "Auto" at
+  0, a size has its link.
+  - **No keyframing.** The inspector sets values outright; keyframes are
+    the effects panel's. A control (or variable axis) animated there
+    shows its value at the playhead read-only, dimmed, with an amber
+    keyframe badge whose help says to change it in the Effects panel,
+    rather than an edit quietly adding a keyframe. Two exceptions keep
+    the stopwatch and keyframe buttons: a **Text Animator**'s controls,
+    since it exists only to animate, and the **selected letters'** rows
+    (styled runs, below), since the effects panel doesn't show runs yet
+    and their keyframes have no other home.
+  The effects panel shows the same controls; a Text effect with no words
+  says so there. Reset keeps the words and font.
 - **Styled runs.** `TextContent.runs` set some letters apart from the
   block: each a range of UTF-16 code units (as the text editor counts)
   and a `TextStyle` of optional settings: font, size, tracking, baseline
@@ -349,9 +370,9 @@ Built (step 3a):
   "LT" by between half and twice as much as the designer did, and leaves
   "HH" and "nn" as they are; it is a heuristic, not Adobe's algorithm.
 - **Variable fonts.** A variable font's axes (`FontCatalog.axes`, from
-  `CTFontCopyVariationAxes`, hidden axes left out) each get a row under
-  Style in Character, keyframed with a stopwatch like the controls, so a
-  word can animate from light to black. They aren't controls, since a
+  `CTFontCopyVariationAxes`, hidden axes left out) each get a field
+  under Style in Character, keyframed in the effects panel like the
+  controls, so a word can animate from light to black. They aren't controls, since a
   font's axes aren't known until it is picked: `TextContent.variations`
   keeps each by its four-letter tag with its `AnimatedValue`, saved as
   `"variations": [{"axis": "wght", "value": …}]`. They last through a
@@ -504,7 +525,8 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
    kept, reading the controls, empty text, a missing font, the font
    catalog, a text layer drawn over black, render keys, saving, naming,
    Reset and the empty-text note; the `UISnapshots` cases `textInspector`
-   and `shapeInspector` show the inspector. (b, done) Styled runs: the
+   and `shapeInspector` show the inspector, and `inspectorSoundRows` its
+   read-only animated values. (b, done) Styled runs: the
    text editor, selection rows, runs kept through edits, drawing and
    saving; `TextTests` checks editing, joining runs, a run's size, shift,
    scale, case, colors and underline, and saving, and `UISnapshots`'
