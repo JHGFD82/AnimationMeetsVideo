@@ -137,6 +137,64 @@ extension EffectsPanel {
         }
     }
 
+    /// A variable font axis of a Text effect's font, as a control's row is:
+    /// its value at the playhead, stopwatch and keyframe buttons, its lane
+    /// of keyframes and its graph editor, kept in the effect's
+    /// `TextContent.variations` by tag. Reset gives the font's default.
+    @ViewBuilder
+    func variationRow(_ axis: FontCatalog.Axis, of effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
+        let clip = c.clip
+        let value = effect.text?.variations.first { $0.axis == axis.tag }?.value ?? AnimatedValue(axis.defaultValue)
+        let components = value.asComponents
+        let key = ParameterKey(timelineID: timelineID, parameter: .textVariation(axis: axis.tag, clipID: clip.id, effectID: effect.id))
+        let edit = { (change: @escaping (inout AnimatedValue<Double>) -> Void) in
+            editEffect(effect.id, in: clip) { $0.text?.changeVariation(axis.tag, initial: axis.defaultValue, change) }
+        }
+        let reset = { editEffect(effect.id, in: clip) { $0.text?.variations.removeAll { $0.axis == axis.tag } } }
+        labelled(
+            ParameterRow(
+                name: axis.name,
+                indent: EffectsPanelMetrics.controlIndent - 12,
+                components: components.value(at: c.sourceNow(animated: value.isAnimated)).values,
+                unit: "",
+                dragStep: (axis.maximum - axis.minimum) / 200,
+                dragRange: { _ in axis.minimum...axis.maximum },
+                isAnimated: value.isAnimated,
+                isSelected: false,
+                keyframeTimes: value.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
+                playhead: c.frameTime(animated: value.isAnimated),
+                dragHandle: AnyView(Color.clear.frame(width: 12)),
+                isDimmed: effectDimmed,
+                onReset: reset,
+                showsReset: { [variations = effect.text?.variations ?? []] in variations.contains { $0.axis == axis.tag } },
+                onSelect: { state.select(effect: effect.id) },
+                onSetComponent: { _, picked in
+                    let at = c.now.sourceNow
+                    edit { $0.set(picked.clamped(between: axis.minimum, and: axis.maximum), at: at) }
+                },
+                onToggleAnimated: {
+                    let at = c.now.sourceNow
+                    edit { $0.setAnimated(!$0.isAnimated, at: at) }
+                },
+                onToggleKeyframe: {
+                    let at = c.now.sourceNow
+                    edit { $0.toggleKeyframe(at: at) }
+                },
+                onSeek: onSeek,
+                onShowGraph: graphs.map { graphs in { graphs.show(key) } },
+                menu: { Button("Reset to the Font's Default", action: reset) }
+            ),
+            lane: ParameterLane(
+                marks: components.marks, geometry: c.geometry, playhead: c.frameTime(animated: value.isAnimated),
+                height: EffectsPanelMetrics.rowHeight, onSeek: onSeek,
+                onMove: { from, to, copy in edit { $0.moveKeyframe(at: from, to: to, copying: copy) } },
+                onDelete: { time in edit { $0.removeKeyframe(at: time) } },
+                onEase: { time, preset in edit { $0.applyEase(preset, at: time) } }
+            )
+        )
+        .help("The font's \(axis.name.lowercased()), from \(NumericExpression.format(axis.minimum)) to \(NumericExpression.format(axis.maximum))")
+    }
+
     /// What a row's reset button does, nil while the control holds what a
     /// new one would: a shape's size fitted to the frame, as when added.
     private func reset(_ control: EffectControl, of effect: Effect, in c: RowContext) -> (() -> Void)? {

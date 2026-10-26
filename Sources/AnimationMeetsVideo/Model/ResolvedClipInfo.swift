@@ -6,14 +6,16 @@ enum ResolvedClipInfo {
     case media(MediaClip)
     case timeline(Timeline)
     case adjustment
-    case graphic
+    /// With `title`, the words of its first Text effect (see
+    /// `EditingProject.textTitle(of:)`), which name it.
+    case graphic(title: String?)
 
     var name: String {
         switch self {
         case .media(let clip): clip.name
         case .timeline(let timeline): timeline.name
         case .adjustment: "Adjustment"
-        case .graphic: "Shapes"
+        case .graphic(let title): title ?? "Shapes"
         }
     }
 
@@ -31,7 +33,7 @@ enum ResolvedClipInfo {
         case .media(let clip): clip.formatSummary
         case .timeline(let timeline): "Nested Timeline · \(timeline.timebaseSummary)"
         case .adjustment: "Adjustment · applies its effects to the layers below"
-        case .graphic: "Shapes · draws the shapes in its effects"
+        case .graphic(let title): title == nil ? "Shapes · draws the shapes in its effects" : "Text · draws the text and shapes in its effects"
         }
     }
 

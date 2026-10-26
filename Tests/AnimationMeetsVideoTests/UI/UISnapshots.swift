@@ -495,6 +495,205 @@ struct UISnapshots {
         )
     }
 
+    /// The inspector for a text layer of two lines, right-aligned, with its
+    /// size keyframed: the words; Character, Paragraph and OpenType; and a
+    /// yellow fill with a stroke.
+    @Test func textInspector() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let added = project.addShapeLayer(.text, to: t)
+        let text = try #require(added)
+        project.editClip(text.clipID, in: t) { clip in
+            clip.effects[0].text?.string = "Animation\nmeets video"
+            clip.effects[0].changeControl(.textAlign) { $0.choice = TextAlign.right.rawValue }
+            clip.effects[0].changeControl(.tracking) { $0.setComponent(0, to: 40, at: .zero) }
+            clip.effects[0].changeControl(.underline) { $0.choice = OnOff.on.rawValue }
+            clip.effects[0].changeControl(.figures) { $0.choice = TextFigures.tabularLining.rawValue }
+            clip.effects[0].changeControl(.fill) { $0.number = AnimatedValue(ComponentValue(values: [1, 0.8, 0.1, 1])) }
+            clip.effects[0].changeControl(.strokeWidth) { $0.setComponent(0, to: 6, at: .zero) }
+            clip.effects[0].changeControl(.fontSize) { size in
+                size.number.setAnimated(true, at: .zero)
+                size.setComponent(0, to: 160, at: CMTime(seconds: 2, preferredTimescale: 600))
+            }
+        }
+        let clip = try #require(project.clipAndLayer(text.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: text.layerID, timelineClipID: text.clipID),
+                info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "text-inspector", size: CGSize(width: 340, height: 1700)
+        )
+    }
+
+    /// A Text effect's groups with "meets" selected, set apart in red at
+    /// 80 pixels: the selected letters' rows, their own settings with a
+    /// button giving the block's back, and the block's that can't be.
+    @Test func textSelectionInspector() throws {
+        var effect = Effect(kind: .text)
+        effect.text = TextContent(string: "Animation meets video")
+        effect.text?.changeStyle(in: NSRange(location: 10, length: 5)) { style in
+            var size = AnimatedValue(80.0)
+            size.setAnimated(true, at: .zero)
+            size.set(160, at: CMTime(seconds: 1, preferredTimescale: 600))
+            style.size = size
+            style.fill = AnimatedValue(ComponentValue(values: [1, 0.2, 0.2, 1]))
+        }
+        try SnapshotSupport.render(
+            ScrollView {
+                TextInspectorGroup(
+                    effect: effect, prefix: nil, playhead: PlayheadTime(fixed: .zero), onEdit: { _ in }, onSeek: { _ in },
+                    selection: NSRange(location: 10, length: 5)
+                )
+                .padding(Design.Space.group)
+            }
+            .panelSurface(.base),
+            "text-selection-inspector", size: CGSize(width: 340, height: 1300)
+        )
+    }
+
+    /// A Text effect's Character group with the cursor between "A" and
+    /// "V", kerned by hand: the block's rows and the pair's Kern row.
+    @Test func textPairKerningInspector() throws {
+        var effect = Effect(kind: .text)
+        effect.text = TextContent(string: "AVATAR")
+        effect.text?.changeStyle(in: NSRange(location: 0, length: 1)) { $0.kerning = AnimatedValue(-60) }
+        try SnapshotSupport.render(
+            ScrollView {
+                TextInspectorGroup(
+                    effect: effect, prefix: nil, playhead: PlayheadTime(fixed: .zero), onEdit: { _ in }, onSeek: { _ in },
+                    selection: NSRange(location: 1, length: 0)
+                )
+                .padding(Design.Space.group)
+            }
+            .panelSurface(.base),
+            "text-pair-kerning-inspector", size: CGSize(width: 340, height: 700)
+        )
+    }
+
+    /// A Text effect in Skia, a variable font: its Weight and Width rows,
+    /// the weight keyframed.
+    @Test func textVariableFontInspector() throws {
+        var effect = Effect(kind: .text)
+        effect.text = TextContent(string: "Variable", fontName: "Skia-Regular")
+        effect.text?.changeVariation("wght", initial: 1) { value in
+            value.setAnimated(true, at: .zero)
+            value.set(2, at: CMTime(seconds: 1, preferredTimescale: 600))
+        }
+        try SnapshotSupport.render(
+            ScrollView {
+                TextInspectorGroup(effect: effect, prefix: nil, playhead: PlayheadTime(fixed: .zero), onEdit: { _ in }, onSeek: { _ in })
+                    .padding(Design.Space.group)
+            }
+            .panelSurface(.base),
+            "text-variable-font-inspector", size: CGSize(width: 340, height: 520)
+        )
+    }
+
+    /// The inspector for a text layer with a Text Animator below its Text
+    /// effect: the animator's range, shape and properties, its Fill off.
+    @Test func textAnimatorInspector() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let added = project.addShapeLayer(.text, to: t)
+        let text = try #require(added)
+        _ = project.addEffect(.textAnimator, toClip: text.clipID, in: t)
+        project.editClip(text.clipID, in: t) { clip in
+            clip.effects[1].changeControl(.animatorEnd) { range in
+                range.number.setAnimated(true, at: .zero)
+                range.setComponent(0, to: 0, at: .zero)
+                range.setComponent(0, to: 100, at: CMTime(seconds: 2, preferredTimescale: 600))
+            }
+            clip.effects[1].changeControl(.animatorPosition) { $0.number = AnimatedValue(ComponentValue(values: [0, -80])) }
+            clip.effects[1].changeControl(.animatorOpacity) { $0.setComponent(0, to: 0, at: .zero) }
+            clip.effects[1].changeControl(.animatorShape) { $0.choice = TextAnimatorShape.rampDown.rawValue }
+        }
+        let clip = try #require(project.clipAndLayer(text.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: text.layerID, timelineClipID: text.clipID),
+                info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "text-animator-inspector", size: CGSize(width: 340, height: 2400)
+        )
+    }
+
+    /// What the compositor's shape steps draw for a stack of a circle, a
+    /// Text effect on its path, and a Text Animator raising and reddening
+    /// the first word: the words around the circle. Drawn here with
+    /// SwiftUI from the same paints, to see the glyphs' placement.
+    @Test func textOnPathDrawing() throws {
+        var circle = Effect(kind: .ellipse)
+        circle.changeControl(.shapeSize) { $0.number = AnimatedValue(ComponentValue(values: [500, 500])) }
+        circle.changeControl(.fill) { $0.number = AnimatedValue(ComponentValue(values: [0.15, 0.3, 0.6, 1])) }
+        var text = Effect(kind: .text)
+        text.text = TextContent(string: "Animation meets video · around and around")
+        text.changeControl(.fontSize) { $0.setComponent(0, to: 44, at: .zero) }
+        text.changeControl(.textOnPath) { $0.choice = OnOff.on.rawValue }
+        text.changeControl(.underline) { $0.choice = OnOff.on.rawValue }
+        text.changeControl(.strokeWidth) { $0.setComponent(0, to: 2, at: .zero) }
+        var animator = Effect(kind: .textAnimator)
+        animator.changeControl(.animatorEnd) { $0.setComponent(0, to: 25, at: .zero) }
+        animator.changeControl(.animatorPosition) { $0.number = AnimatedValue(ComponentValue(values: [0, -12])) }
+        animator.changeControl(.animatorFill) { $0.enabled = true }
+        animator.changeControl(.animatorStroke) { $0.enabled = true; $0.number = AnimatedValue(ComponentValue(values: [1, 1, 0.3, 1])) }
+        // From the top, clockwise round the outside, as in Illustrator.
+        text.changeControl(.textAlign) { $0.choice = TextAlign.left.rawValue }
+        // And flipped: inside, the other way round.
+        var inside = Effect(kind: .text)
+        inside.text = TextContent(string: "flipped inside")
+        inside.changeControl(.fontSize) { $0.setComponent(0, to: 36, at: .zero) }
+        inside.changeControl(.textAlign) { $0.choice = TextAlign.left.rawValue }
+        inside.changeControl(.textOnPath) { $0.choice = OnOff.on.rawValue }
+        inside.changeControl(.pathFlip) { $0.choice = OnOff.on.rawValue }
+        inside.changeControl(.fill) { $0.number = AnimatedValue(ComponentValue(values: [0.6, 0.9, 1, 1])) }
+        let steps = StackFolding.steps(
+            effects: [circle, text, animator, inside], anchorPoint: AnimatedValue(.zero), at: .zero, center: CGPoint(x: 350, y: 350)
+        )
+        var paints: [(area: CGPath, color: [Double])] = []
+        for case .shape(let shape) in steps { paints += shape.paints }
+        try SnapshotSupport.render(
+            Canvas { context, _ in
+                for paint in paints where paint.color.count == 4 {
+                    context.fill(
+                        Path(paint.area),
+                        with: .color(Color(.sRGB, red: paint.color[0], green: paint.color[1], blue: paint.color[2], opacity: paint.color[3]))
+                    )
+                }
+            }
+            .background(Color.black),
+            "text-on-path", size: CGSize(width: 700, height: 700)
+        )
+    }
+
+    /// The inspector for a shape layer: a rounded rectangle's size, corners
+    /// and position, then its fill and a dashed outside stroke.
+    @Test func shapeInspector() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let added = project.addShapeLayer(.rectangle, to: t)
+        let shape = try #require(added)
+        project.editClip(shape.clipID, in: t) { clip in
+            clip.effects[0].changeControl(.cornerRadius) { $0.setComponent(0, to: 24, at: .zero) }
+            clip.effects[0].changeControl(.fill) { $0.number = AnimatedValue(ComponentValue(values: [0.2, 0.5, 0.9, 0.75])) }
+            clip.effects[0].changeControl(.stroke) { $0.number = AnimatedValue(ComponentValue(values: [1, 1, 1, 1])) }
+            clip.effects[0].changeControl(.strokeWidth) { $0.setComponent(0, to: 8, at: .zero) }
+            clip.effects[0].changeControl(.strokeEdge) { $0.choice = StrokeEdge.outside.rawValue }
+            clip.effects[0].changeControl(.dash) { $0.number = AnimatedValue(ComponentValue(values: [20, 10])) }
+        }
+        let clip = try #require(project.clipAndLayer(shape.clipID, in: t)?.clip)
+        try SnapshotSupport.render(
+            InspectorPanel(
+                project: .constant(project), timelineID: t,
+                selection: TimelineSelection(timelineID: t, layerID: shape.layerID, timelineClipID: shape.clipID),
+                info: project.resolvedInfo(for: clip), timelineClip: clip, playheadTime: .zero, onSeek: { _ in }, onDeleteSelection: {}
+            ),
+            "shape-inspector", size: CGSize(width: 340, height: 820)
+        )
+    }
+
     /// The audio meter mid-song: left in the red with a held peak, right
     /// in the yellow, and the left clip lamp lit.
     @Test func audioMeter() throws {
@@ -641,6 +840,33 @@ struct UISnapshots {
                 playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
             ),
             "shape-effects-panel", size: CGSize(width: 520, height: 420)
+        )
+    }
+
+    /// The effects panel for a text layer in Skia, a variable font, its
+    /// Text effect cut down to Size: rows for its Weight and Width axes
+    /// after its controls, the weight keyframed, with its lane.
+    @Test func textAxesEffectsPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.text, to: timelineID)
+        let text = try #require(added)
+        project.editClip(text.clipID, in: timelineID) { clip in
+            clip.effects[0].controls = clip.effects[0].controls.filter { $0.kind == .fontSize }
+            clip.effects[0].text?.fontName = "Skia-Regular"
+            clip.effects[0].text?.changeVariation("wght", initial: 1) { value in
+                value.setAnimated(true, at: CMTime(seconds: 1, preferredTimescale: 600))
+                value.set(0.6, at: CMTime(seconds: 1, preferredTimescale: 600))
+                value.set(2.5, at: CMTime(seconds: 3, preferredTimescale: 600))
+            }
+        }
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: text.layerID, timelineClipID: text.clipID),
+                playheadTime: CMTime(seconds: 2, preferredTimescale: 600), state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "text-axes-effects-panel", size: CGSize(width: 620, height: 300)
         )
     }
 

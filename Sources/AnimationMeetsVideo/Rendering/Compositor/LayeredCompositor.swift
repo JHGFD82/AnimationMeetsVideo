@@ -655,6 +655,9 @@ struct Drawing {
         var shapes: [ShapeRendering.Paint] = []
         // The edges of the shapes drawn so far, strokes included.
         var edges: [ShapeRendering.Edge] = []
+        // The outline of the last shape drawn, other than text, for text on
+        // a path to follow where the moves since have put it.
+        var pathOutline: ShapeRendering.Edge?
         // From the frame's pixels to output pixels, where the clip's own
         // frame is placed: where a shape added now is drawn from.
         let frameToOutput = start
@@ -680,11 +683,16 @@ struct Drawing {
                 picture = picture.transformed(by: move)
                 for index in shapes.indices { shapes[index].transform = shapes[index].transform.concatenating(move) }
                 for index in edges.indices { edges[index].transform = edges[index].transform.concatenating(move) }
+                if let outline = pathOutline { pathOutline?.transform = outline.transform.concatenating(move) }
                 opacity *= factor
-            case .shape(let shape):
+            case .shape(let folded):
                 // Over the picture as the steps above left it, opacity and
                 // all; the steps below act on both.
                 settleOpacity()
+                let shape = ShapeRendering.following(folded, outline: pathOutline, current: frameToOutput)
+                if case .text = shape.outline {} else {
+                    pathOutline = ShapeRendering.Edge(area: shape.path, transform: frameToOutput)
+                }
                 for paint in shape.paints {
                     shapes.append(ShapeRendering.Paint(area: paint.area, color: paint.color, transform: frameToOutput))
                 }

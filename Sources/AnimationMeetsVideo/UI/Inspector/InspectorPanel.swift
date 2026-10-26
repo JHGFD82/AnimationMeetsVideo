@@ -120,8 +120,8 @@ struct InspectorPanel: View {
                 case .adjustment:
                     InspectorRow("Kind", value: "Adjustment")
                     reachPicker
-                case .graphic:
-                    InspectorRow("Kind", value: "Shapes")
+                case .graphic(let title):
+                    InspectorRow("Kind", value: title == nil ? "Shapes" : "Text")
                 case nil:
                     EmptyView()
                 }
@@ -138,6 +138,8 @@ struct InspectorPanel: View {
                     Button("Beat Match…") { beatMatch.open(assetID: asset.id, in: project) }
                 }
             }
+
+            shapeGroups
 
             if let selection, let timelineClip, let maxDurationSeconds {
                 InspectorGroup("Trim") {
@@ -338,6 +340,43 @@ struct InspectorPanel: View {
             to: CMTime(seconds: seconds, preferredTimescale: 600),
             sceneTracks: sceneTracks()
         )
+    }
+}
+
+// The shapes and text of a selected clip.
+extension InspectorPanel {
+    /// For each shape in the clip's stack, in order: a Text effect's words
+    /// and type (`TextInspectorGroup`), another shape's own settings
+    /// (`ShapeInspectorGroup`), and the fill and stroke of either
+    /// (`PaintInspectorGroup`). A Stroke effect has one group, of its
+    /// stroke. With more than one shape, each group is titled with its
+    /// effect's name.
+    @ViewBuilder
+    var shapeGroups: some View {
+        if let timelineClip, let timeline = project.timeline(id: timelineID) {
+            let shapes = timelineClip.effects.filter { $0.kind.isShape && $0.missing == nil }
+            let sourceNow = PlayheadTime(playhead) { timeline.snappedToFrame(timelineClip.sourceTime(atTimelineTime: $0)) }
+            let named = shapes.count > 1
+            ForEach(shapes) { effect in
+                let onEdit: ((inout Effect) -> Void) -> Void = { change in
+                    project.editEffect(effect.id, ofClip: timelineClip.id, in: timelineID, change)
+                }
+                let onSeek: (CMTime) -> Void = { onSeek(timelineClip.timelineTime(forSourceTime: $0)) }
+                if effect.kind == .text {
+                    TextInspectorGroup(
+                        effect: effect, prefix: named ? effect.displayName : nil, playhead: sourceNow, onEdit: onEdit, onSeek: onSeek
+                    )
+                } else {
+                    ShapeInspectorGroup(effect: effect, playhead: sourceNow, onEdit: onEdit, onSeek: onSeek)
+                }
+                if effect.kind.drawsShape {
+                    PaintInspectorGroup(
+                        effect: effect, title: named ? "\(effect.displayName) · Fill & Stroke" : "Fill & Stroke",
+                        playhead: sourceNow, onEdit: onEdit, onSeek: onSeek
+                    )
+                }
+            }
+        }
     }
 }
 

@@ -165,7 +165,7 @@ struct EffectKind: RawRepresentable, Hashable, Identifiable, Sendable {
     var isShape: Bool { category == .shapes }
 
     /// Whether it draws a shape of its own, rather than stroking others.
-    var drawsShape: Bool { isShape && self != .stroke }
+    var drawsShape: Bool { isShape && self != .stroke && self != .textAnimator }
 
     var systemImage: String { definition.systemImage }
 
@@ -292,8 +292,9 @@ struct ControlKind: RawRepresentable, Hashable, Identifiable, Sendable {
     // MARK: Components
 
     /// Whether a new control of this kind is on: an EQ's bands start off,
-    /// to be switched on as they're needed.
-    var startsEnabled: Bool { EqualizerBand(controlKind: self) == nil }
+    /// to be switched on as they're needed, and so does a Text Animator's
+    /// Fill, which would otherwise recolor the letters it selects.
+    var startsEnabled: Bool { EqualizerBand(controlKind: self) == nil && self != .animatorFill && self != .animatorStroke }
 
     /// The unit of one component. Most controls' components share one; an
     /// EQ band's frequency, gain and Q each have their own.
@@ -446,6 +447,8 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// For a Keyframing effect: what it writes to and how (nil for every
     /// other kind).
     var keyframing: KeyframingSetup?
+    /// For a Text effect: its words and font (nil for every other kind).
+    var text: TextContent?
     /// What pasting or applying a preset couldn't bring over, until each is
     /// marked resolved (see docs/effects.md, "Paste changes").
     var pasteChanges: [PasteChange] = []
@@ -461,6 +464,7 @@ struct Effect: Identifiable, Equatable, Sendable {
         self.controls = controls ?? kind.controlKinds.map { EffectControl(kind: $0, enabled: $0.startsEnabled) }
         keyframing = kind.isKeyframing ? KeyframingSetup() : nil
         if kind == .audioKeys { keyframing?.audioSource = .mix }
+        text = kind == .text ? TextContent() : nil
     }
 
     var displayName: String { missing?.name ?? name ?? kind.name }
@@ -545,14 +549,16 @@ struct Effect: Identifiable, Equatable, Sendable {
     }
 
     /// Back to a new effect's controls, all at their defaults, keeping its
-    /// ID and name.
+    /// ID and name, and a Text effect's words and font.
     mutating func reset(in frame: CGSize? = nil) {
         // A missing effect's settings can't be known, so they stay.
         guard missing == nil else { return }
         let setup = keyframing
+        let content = text
         self = Effect(id: id, kind: kind, name: name)
         if let frame { sizeShape(to: frame) }
         keyframing = setup
+        text = content
     }
 
     /// The control of `kind` a new effect of this one's kind starts with,
@@ -627,10 +633,11 @@ struct Effect: Identifiable, Equatable, Sendable {
         return package.framesAhead(of: self)
     }
 
-    /// The span of time in which any enabled control is between keyframes.
+    /// The span of time in which any enabled control, or a Text effect's
+    /// styled run, is between keyframes.
     var animatedRanges: [ClosedRange<CMTime>] {
         guard enabled, !kind.isKeyframing else { return [] }
-        return controls.compactMap { $0.enabled ? $0.animatedRange : nil }
+        return controls.compactMap { $0.enabled ? $0.animatedRange : nil } + (text?.animatedRanges ?? [])
     }
 }
 
@@ -723,7 +730,7 @@ extension EditingProject {
             return "\(displayName(of: layer, in: timeline)) · \(key.parameter.name)"
         case .clipVolume(let clipID), .clipPan(let clipID), .anchorPoint(let clipID), .speed(let clipID):
             return "\(clipName(clipID, in: key.timelineID)) · \(key.parameter.name)"
-        case .control(_, let clipID, let effectID, _):
+        case .control(_, let clipID, let effectID, _), .textVariation(_, let clipID, let effectID):
             let effect = clipAndLayer(clipID, in: key.timelineID)?.clip.effect(id: effectID)
             return [clipName(clipID, in: key.timelineID), effect?.displayName, key.parameter.name]
                 .compactMap { $0 }.joined(separator: " · ")
@@ -733,7 +740,7 @@ extension EditingProject {
     /// The name of what a clip plays.
     func clipName(_ clipID: UUID, in timelineID: UUID) -> String {
         guard let clip = clipAndLayer(clipID, in: timelineID)?.clip else { return "Clip" }
-        return resolvedInfo(for: clip.source)?.name ?? "Clip"
+        return resolvedInfo(for: clip)?.name ?? "Clip"
     }
 }
 
@@ -859,6 +866,7 @@ extension TimelineClip {
                     self[keyPath: stack][e].controls[c].number.applyEase(preset, at: source)
                     eased = true
                 }
+                if self[keyPath: stack][e].text?.applyEase(preset, at: source) == true { eased = true }
             }
         }
         return eased

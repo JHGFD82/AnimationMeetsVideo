@@ -118,7 +118,7 @@ private struct Describer {
     /// while the scenes aren't known, or what else it plays.
     private func clipLabel(_ clip: TimelineClip, in project: EditingProject) -> String {
         guard case .media(let assetID) = clip.source, let media = project.mediaClip(id: assetID) else {
-            return quoted(project.resolvedInfo(for: clip.source)?.name ?? "Clip")
+            return quoted(project.resolvedInfo(for: clip)?.name ?? "Clip")
         }
         let file = fileLabel(media)
         guard let ranges = scenes?(project, assetID), ranges.count > 1 else { return file }

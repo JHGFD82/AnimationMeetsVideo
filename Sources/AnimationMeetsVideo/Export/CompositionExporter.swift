@@ -30,6 +30,8 @@ enum CompositionError: LocalizedError {
     case cyclicTimeline
     /// A clip's file isn't there; carries the asset's name.
     case missingMedia(String)
+    /// Text is set in a font this Mac doesn't have; carries its name.
+    case missingFont(String)
     case incompatiblePreset
     case noExportSession
     case exportFailed(String)
@@ -39,6 +41,7 @@ enum CompositionError: LocalizedError {
         case .emptyTimeline: "The timeline has no clips to export."
         case .cyclicTimeline: "This timeline embeds itself, directly or indirectly."
         case .missingMedia(let name): "\u{201C}\(name)\u{201D} is missing, so the timeline can't be exported. Put the file back, or replace it from the Clips list in the browser."
+        case .missingFont(let name): "The font \u{201C}\(name)\u{201D} isn't installed, so text set in it can't be exported as it was designed. Install the font, or pick another in the inspector."
         case .incompatiblePreset: "The selected ProRes preset can't export this timeline."
         case .noExportSession: "Could not create an export session."
         case .exportFailed(let reason): reason
@@ -83,6 +86,11 @@ enum CompositionExporter {
         }
         guard let timeline = project.timeline(id: timelineID), !timeline.layers.isEmpty else {
             throw CompositionError.emptyTimeline
+        }
+        // As with missing media, the viewer draws a substitute and export
+        // stops, so a substitute font is never written out.
+        if !forPreview, let font = project.missingFonts(in: timelineID).first {
+            throw CompositionError.missingFont(font)
         }
 
         // Matte wipes' maps are read before drawing starts.

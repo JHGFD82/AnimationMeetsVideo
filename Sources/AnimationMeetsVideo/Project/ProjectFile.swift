@@ -538,6 +538,131 @@ struct ProjectFile: Codable {
         }
     }
 
+    /// A Text effect's words, the PostScript name of its font, and its
+    /// styled runs.
+    struct TextEntry: Codable {
+        var string: String
+        var font: String
+        /// Absent while no letters are styled apart.
+        var runs: [TextRunEntry]?
+        /// Absent while the font sits at its default on every axis.
+        var variations: [VariationEntry]?
+
+        init(_ content: TextContent) {
+            string = content.string
+            font = content.fontName
+            runs = content.runs.isEmpty ? nil : content.runs.map(TextRunEntry.init)
+            variations = content.variations.isEmpty ? nil : content.variations.map(VariationEntry.init)
+        }
+
+        var content: TextContent {
+            TextContent(
+                string: string, fontName: font, runs: (runs ?? []).map(\.run),
+                variations: (variations ?? []).map(\.variation)
+            )
+        }
+    }
+
+    /// Where a variable font sits along one axis, by its tag, keyframed or
+    /// not.
+    struct VariationEntry: Codable {
+        var axis: String
+        var value: PropertyEntry<Double>
+
+        init(_ variation: TextVariation) {
+            axis = variation.axis
+            value = PropertyEntry(variation.value) { $0 }
+        }
+
+        var variation: TextVariation {
+            TextVariation(axis: axis, value: value.property(default: 0) { $0 })
+        }
+    }
+
+    /// Letters styled apart from the block: where they start and how many
+    /// UTF-16 code units they span, and each setting they override, its
+    /// numbers and colors as a value or keyframes like a control's.
+    struct TextRunEntry: Codable {
+        var start: Int
+        var length: Int
+        var font: String?
+        var size: PropertyEntry<Double>?
+        var tracking: PropertyEntry<Double>?
+        var baselineShift: PropertyEntry<Double>?
+        var horizontalScale: PropertyEntry<Double>?
+        var verticalScale: PropertyEntry<Double>?
+        /// A `TextCase` name.
+        var textCase: String?
+        var underline: Bool?
+        var strikethrough: Bool?
+        var fill: PropertyEntry<[Double]>?
+        var stroke: PropertyEntry<[Double]>?
+        /// Thousandths of an em after the run's letters, set by hand.
+        var kerning: PropertyEntry<Double>?
+        /// A `TextPosition` name.
+        var position: String?
+        var strokeWidth: PropertyEntry<Double>?
+
+        init(_ run: TextRun) {
+            func number(_ value: AnimatedValue<Double>?) -> PropertyEntry<Double>? { value.map { PropertyEntry($0) { $0 } } }
+            func color(_ value: AnimatedValue<ComponentValue>?) -> PropertyEntry<[Double]>? { value.map { PropertyEntry($0) { $0.values } } }
+            start = run.start
+            length = run.length
+            let style = run.style
+            font = style.fontName
+            size = number(style.size)
+            tracking = number(style.tracking)
+            baselineShift = number(style.baselineShift)
+            horizontalScale = number(style.horizontalScale)
+            verticalScale = number(style.verticalScale)
+            textCase = style.textCase?.rawValue
+            underline = style.underline
+            strikethrough = style.strikethrough
+            fill = color(style.fill)
+            stroke = color(style.stroke)
+            kerning = number(style.kerning)
+            position = style.position?.rawValue
+            strokeWidth = number(style.strokeWidth)
+        }
+
+        var run: TextRun {
+            func number(_ entry: PropertyEntry<Double>?) -> AnimatedValue<Double>? { entry.map { $0.property(default: 0) { $0 } } }
+            func color(_ entry: PropertyEntry<[Double]>?) -> AnimatedValue<ComponentValue>? {
+                entry.map { $0.property(default: ComponentValue(values: [1, 1, 1, 1])) { ComponentValue(values: $0) } }
+            }
+            var style = TextRunStyle()
+            style.fontName = font
+            style.size = number(size)
+            style.tracking = number(tracking)
+            style.baselineShift = number(baselineShift)
+            style.horizontalScale = number(horizontalScale)
+            style.verticalScale = number(verticalScale)
+            style.textCase = textCase.flatMap(TextCase.init(rawValue:))
+            style.underline = underline
+            style.strikethrough = strikethrough
+            style.fill = color(fill)
+            style.stroke = color(stroke)
+            style.kerning = number(kerning)
+            style.position = position.flatMap(TextPosition.init(rawValue:))
+            style.strokeWidth = number(strokeWidth)
+            return TextRun(start: start, length: length, style: style)
+        }
+
+        static var shape: JSONShape {
+            let number = ShapeKit.property(.number), color = ShapeKit.property(.numbers(count: 4))
+            return .object(JSONObjectShape(fields: [
+                .required("start", .integer), .required("length", .integer),
+                .optional("font", .string), .optional("size", number), .optional("tracking", number),
+                .optional("baselineShift", number), .optional("horizontalScale", number), .optional("verticalScale", number),
+                .optional("textCase", .choice(TextCase.allCases.map(\.rawValue), noun: "case")),
+                .optional("underline", .bool), .optional("strikethrough", .bool),
+                .optional("fill", color), .optional("stroke", color), .optional("kerning", number),
+                .optional("position", .choice(TextPosition.allCases.map(\.rawValue), noun: "position")),
+                .optional("strokeWidth", number),
+            ]))
+        }
+    }
+
     /// One effect of a clip's stack. `kind` is an `EffectKind` name such as
     /// `"transform"`.
     struct EffectEntry: Codable {
@@ -556,6 +681,8 @@ struct ProjectFile: Codable {
         var input: InputEntry?
         /// For a Keyframing effect, what it writes to.
         var keyframing: KeyframingEntry?
+        /// For a Text effect, its words and font.
+        var text: TextEntry?
         /// Absent unless some are unresolved.
         var pasteChanges: [PasteChangeRecord]?
         /// Presets only: what the effect's input and Against were called
@@ -571,7 +698,7 @@ struct ProjectFile: Codable {
         var controlsUnread = false
 
         private enum CodingKeys: String, CodingKey {
-            case id, kind, name, enabled, movesAnchor, against, input, keyframing, pasteChanges, inputName, againstName, controls
+            case id, kind, name, enabled, movesAnchor, against, input, keyframing, text, pasteChanges, inputName, againstName, controls
         }
 
         init(_ effect: Effect) {
@@ -594,6 +721,7 @@ struct ProjectFile: Codable {
             against = effect.kind.readsAgainst ? effect.against : nil
             input = effect.kind.takesInput ? effect.input.map(InputEntry.init) : nil
             keyframing = effect.keyframing.map(KeyframingEntry.init)
+            text = effect.kind == .text ? effect.text.map(TextEntry.init) : nil
             pasteChanges = effect.pasteChanges.isEmpty ? nil : effect.pasteChanges.map(PasteChangeRecord.init)
             controls = effect.controls.map(ControlEntry.init)
         }
@@ -615,6 +743,7 @@ struct ProjectFile: Codable {
             against = try container.decodeIfPresent(UUID.self, forKey: .against)
             input = try container.decodeIfPresent(InputEntry.self, forKey: .input)
             keyframing = try container.decodeIfPresent(KeyframingEntry.self, forKey: .keyframing)
+            text = try container.decodeIfPresent(TextEntry.self, forKey: .text)
             pasteChanges = try container.decodeIfPresent([PasteChangeRecord].self, forKey: .pasteChanges)
             inputName = try container.decodeIfPresent(String.self, forKey: .inputName)
             againstName = try container.decodeIfPresent(String.self, forKey: .againstName)
@@ -641,6 +770,7 @@ struct ProjectFile: Codable {
             try container.encodeIfPresent(against, forKey: .against)
             try container.encodeIfPresent(input, forKey: .input)
             try container.encodeIfPresent(keyframing, forKey: .keyframing)
+            try container.encodeIfPresent(text, forKey: .text)
             try container.encodeIfPresent(pasteChanges, forKey: .pasteChanges)
             try container.encodeIfPresent(inputName, forKey: .inputName)
             try container.encodeIfPresent(againstName, forKey: .againstName)
@@ -678,6 +808,7 @@ struct ProjectFile: Codable {
             effect.against = against
             effect.input = input?.input
             if kind.isKeyframing { effect.keyframing = keyframing?.setup ?? KeyframingSetup() }
+            if kind == .text { effect.text = text?.content ?? TextContent() }
             effect.pasteChanges = (pasteChanges ?? []).compactMap(\.change)
             return effect
         }
@@ -956,6 +1087,12 @@ extension ProjectFile {
                 ], oneOf: [["asset", "timeline"]]))))
             }
             if kind.isKeyframing { fields.append(.optional("keyframing", .object(keyframing))) }
+            if kind == .text {
+                fields.append(.optional("text", .object(object([
+                    .required("string", .string), .required("font", .string), .optional("runs", .array(TextRunEntry.shape)),
+                    .optional("variations", .array(.object(object([.required("axis", .string), .required("value", property(.number))])))),
+                ]))))
+            }
             fields += extra
             var controls = Dictionary(uniqueKeysWithValues: kind.controlKinds.map { ($0.savedName, control($0)) })
             if kind == .equalizer {

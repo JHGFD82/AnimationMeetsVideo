@@ -4,8 +4,9 @@ import Foundation
 
 extension Effect {
     /// Sizes a new shape to a frame `frame` big: a rectangle half its width
-    /// and height, an ellipse a circle half its height, and a polygon or
-    /// star as tall (its inner points halfway in).
+    /// and height, an ellipse a circle half its height, a polygon or star
+    /// as tall (its inner points halfway in), and text a ninth of its
+    /// height (120 pixels in HD).
     mutating func sizeShape(to frame: CGSize) {
         let side = Double(frame.height / 2).rounded()
         func set(_ kind: ControlKind, _ values: [Double]) {
@@ -17,6 +18,7 @@ extension Effect {
         case .polygon, .star:
             set(.radius, [side / 2])
             set(.innerRadius, [(side / 4).rounded()])
+        case .text: set(.fontSize, [max(1, Double(frame.height / 9).rounded())])
         default: break
         }
     }

@@ -219,7 +219,7 @@ struct LayerClipRow: View {
             ForEach(layer.clips) { clip in
                 let isSelected = selection?.layerID == layer.id && selection?.timelineClipID == clip.id
                 let isInGroup = groupSelected.contains(clip.id)
-                let info = project.resolvedInfo(for: clip.source)
+                let info = project.resolvedInfo(for: clip)
                 let joinedLead = project.joinedLead(of: clip, among: layer.clips)
                 ClipBlockView(
                     clip: clip,

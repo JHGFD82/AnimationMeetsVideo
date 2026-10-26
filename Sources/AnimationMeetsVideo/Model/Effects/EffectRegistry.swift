@@ -239,6 +239,15 @@ extension MatteMode: ControlChoice {}
 extension StrokeEdge: ControlChoice {}
 extension StrokeJoin: ControlChoice {}
 extension StrokeCap: ControlChoice {}
+extension TextAlign: ControlChoice {}
+extension TextAnchor: ControlChoice {}
+extension TextAnimatorUnit: ControlChoice {}
+extension TextAnimatorShape: ControlChoice {}
+extension TextKerning: ControlChoice {}
+extension TextCase: ControlChoice {}
+extension TextLigatures: ControlChoice {}
+extension TextFigures: ControlChoice {}
+extension OnOff: ControlChoice {}
 extension EqualizerSlope: ControlChoice {}
 extension BeatSelection: ControlChoice {}
 extension BeatShape: ControlChoice {}

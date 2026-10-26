@@ -1,8 +1,11 @@
 # Images, shapes and text
 
 Status: stills, shapes (rectangle, ellipse, polygon and star) and strokes
-are **built** (steps 1, 2a and 2b, not yet tried in the running app);
-gradients, free paths, path operations and text are **planned** (see
+are **built** (steps 1, 2a and 2b, not yet tried in the running app), as
+is text (step 3: Illustrator's character, paragraph and OpenType
+settings, styled runs, kerning by hand and optical kerning, hyphenation,
+variable axes, animators and text on a path, set in the inspector);
+gradients, free paths and path operations are **planned** (see
 [Building it](#building-it)).
 Pictures that don't come from footage:
 still images imported from files, and shapes and text made in the app,
@@ -190,33 +193,251 @@ Still to come:
 
 ## Text
 
-Text is a shape effect whose outline is a block of text, laid out with
-Core Text and drawn as glyph paths through the same code as the other
-shapes, so it has a fill and a stroke and stays sharp the same way. A
-text layer is a shape clip holding one.
+Text is a shape effect (`EffectKind.text`, in the Shapes category) whose
+outline is a block of text, laid out with Core Text and drawn as glyph
+paths through the same code as the other shapes (`ShapeStep`'s `.text`
+outline), so it has a fill and a stroke, takes a Stroke below it, and
+stays sharp through moves the same way. A text layer is a shape clip
+holding one: New Shape Layer → Text, or Text from the Effects Library.
 
-- **Content.** An attributed string: runs of font family, style, size,
-  tracking, line height, fill and stroke. Alignment, a box width for
-  wrapping (or none, for one line), and the anchor's place in the box.
-- **Layout.** `CTFramesetter` sets the lines, and `CTFontCreatePathForGlyph`
-  gives each glyph's path. Layout is redone only when the text or its
-  styling changes, not for every frame.
-- **Variable fonts.** A font's variation axes (weight, width, slant,
-  optical size) are controls like any other, so a word can animate from
-  light to black.
-- **Animators.** As in After Effects, an animator applies offset, scale,
-  rotation, opacity, fill and tracking to a range of characters, words or
-  lines, with the range's start, end and offset keyframed and a shape for
-  how it falls off (square, ramp, smooth). Each glyph is drawn at its own
-  transform about its own anchor.
-- **Text on a path.** A text item can follow one of the clip's shape paths,
-  with a start offset that can be animated.
-- **Missing fonts.** The project stores font names, not files. Opening a
-  project on a Mac without one of its fonts keeps the name, draws with a
-  substitute, and reports the missing font in the inspector and before
-  export, as missing media is reported.
-- **Editing.** Text is typed in the inspector (TextKit 2) and, later, in
-  place in the viewer.
+Built (step 3a):
+
+- **Content.** `Effect.text` (`TextContent`) holds what isn't a control:
+  the words and the font's PostScript name, one font for the whole block.
+  Everything else is a control, keyframed like any other numbers are, in
+  the groups of Illustrator's and InDesign's panels. Each applies to the
+  whole block (`TextOutline.Setting`):
+  - **Character.** Size (pixels; a new layer's is a ninth of the frame's
+    height); Leading (baseline to baseline in pixels, 0 for Auto, 120% of
+    the size); Kerning (Metrics, the font's pairs; Optical; or None); Tracking
+    (thousandths of an em after each letter); Vertical and Horizontal
+    Scale; Baseline Shift (up); Character Rotation (each letter about its
+    middle, clockwise, as the app's other rotations turn); Case (Normal,
+    All Caps, Small Caps, All Small Caps); Underline and Strikethrough.
+  - **Paragraph.** Alignment (Align Left, Center or Right; Justify with
+    the last line left, centered or right; Justify All Lines); Left, Right
+    and First Line Indent (below 0 hangs the first line); Space Before and
+    After, between paragraphs; Wrap Width (0 sets each paragraph on one
+    line); Hyphenate; Anchor.
+  - **OpenType.** Ligatures (Standard, None, or Standard and
+    Discretionary); Contextual Alternates (on at first); Figures (Default,
+    Tabular or Proportional, Lining or Oldstyle); Fractions; Ordinals;
+    Swash; Stylistic Alternates; Stylistic Set (1 to 20, 0 for none).
+  - And the shapes' Position, Fill and Stroke controls. The block's
+    anchor (its middle at first) sits at the frame's middle plus Position.
+- **Layout** (`TextLayout`). Each paragraph is wrapped with
+  `CTTypesetterSuggestLineBreak` within the wrap width less its indents
+  (allowing for horizontal scale), or set whole. Lines are stacked a
+  leading apart, with paragraph spacing between paragraphs, and lined up
+  within the block (as wide as the wrap width, or the widest line and its
+  indents). Each glyph's outline comes from `CTFontCreatePathForGlyph`
+  with its run's own font, so letters a font lacks fall back as Core Text
+  picks, and is scaled, then turned about the middle of its advance, then
+  shifted. Underline and strikethrough are rectangles added to the
+  outline, as thick as the font's underline: the underline where the
+  font puts it, the strikethrough half the x-height up. So they fill,
+  stroke and stay sharp with the letters. A glyph with no outline (an
+  emoji's picture) draws nothing. Laid-out blocks are kept by what was
+  set, so layout is redone only when the words or styling change, not
+  for every frame or move.
+- **How Core Text is asked.** Tracking is `kCTTrackingAttributeName`,
+  which leaves kerning pairs alone; Kerning None is a kern of 0 (the
+  OpenType 'kern' feature turned off does nothing); All Caps draws the
+  words uppercased. Small caps, ligatures, figures and the rest are
+  OpenType features on the font (`kCTFontFeatureSettingsAttribute`), and
+  Core Text keeps only those the font has, so a font without one draws as
+  if it were off, as the inspector says. Small caps are the exception: a
+  font without 'smcp' gets them made as Illustrator makes them, its
+  lowercase letters drawn as capitals at 70% of the size (with All Small
+  Caps, its capitals too); a font with it (Didot) draws its own.
+- **The inspector** shows every shape and text of the selected clip, in
+  stack order, as Illustrator's panels do. A Text effect has a Text group
+  (its words in a text editor), Character (Font and Style pickers from
+  `FontCatalog`, keeping the style's name when the family changes, then
+  its Character controls), Paragraph and OpenType. Another shape has a
+  group of its own controls (`ShapeInspectorGroup`: a rectangle's size,
+  corners and position, a star's points and radii), and a Stroke effect
+  one of its stroke. Each drawn shape and text then has **Fill &
+  Stroke** (`PaintInspectorGroup`): Fill and Stroke, each with a checkbox
+  that leaves it out, a color well and its opacity, and while there is a
+  stroke its width, Edge, Join, Cap and Dash. With more than one shape,
+  each group is titled with its effect's name. Every row is an
+  `InspectorControlRow`: numbers with the stopwatch and keyframe buttons
+  the sound rows have, set at the playhead (Leading reads "Auto" at 0, a
+  size has its link); choices as menus, the alignments as icons, and
+  on-or-off settings as checkboxes. The effects panel shows the same
+  controls; a Text effect with no words says so there. Reset keeps the
+  words and font.
+- **Styled runs.** `TextContent.runs` set some letters apart from the
+  block: each a range of UTF-16 code units (as the text editor counts)
+  and a `TextStyle` of optional settings: font, size, tracking, baseline
+  shift, vertical and horizontal scale, case, underline, strikethrough,
+  and fill and stroke colors. The words are typed in an AppKit text view
+  (`TextWordsEditor`), since SwiftUI's editor doesn't say what is
+  selected. With letters selected, the inspector's Character group sets
+  theirs (`TextSelectionRows`): each row shows the first selected
+  letter's own setting, or the block's dimmer, a button gives the
+  block's back, and Clear Styling gives back all of them. Leading,
+  Kerning and Character Rotation stay the block's. Typing keeps runs on
+  their letters: what is typed takes the style of the letter before it,
+  and an edit the editor makes itself (an undo) keeps the styles of what
+  is unchanged at either end. Adjacent letters styled alike are one run.
+  - **Keyframes.** A run's numbers (size, tracking, baseline shift,
+    scales, kerning by hand, stroke width) and colors are values that can
+    be keyframed in the clip's source time (`TextRunStyle`), with the
+    stopwatch and keyframe buttons in the selection's rows; its font,
+    case, position, underline and strikethrough are choices and hold
+    still. They combine with the block's by replacing: a setting a run
+    has replaces the block's for its letters, its own keyframes with it,
+    so the block's keyframes don't reach those letters; a setting it
+    lacks follows the block's keyframes. Setting one starts from the
+    block's value at the playhead. The layout gets each run's values at
+    its moment (`TextStyleRun`). Run keyframes count as animation for
+    the render cache, F9's eases reach them, and they are saved as a
+    control's are (`{"value": …}` or `{"keyframes": […]}`). Not yet: they
+    show in neither the effects panel's lanes nor the graph editor.
+  - **Colors.** A run's own fill or stroke color paints its letters
+    whether or not the block's fill or stroke is on, and letters without
+    one take the block's, or nothing while it is off. A run's stroke is
+    drawn as the block strokes (its Edge, Join, Cap and Dash, kept even
+    while the block's stroke is off: `ShapeStroke(geometryOf:)`), at the
+    run's own Stroke Width or the block's; giving letters a stroke color
+    while their width is 0 gives them a width, a thirtieth of the size,
+    so the color shows. The letters are drawn as pieces, one per style,
+    all the fills first and then the strokes, so a stroke may overlap a
+    neighbouring letter's fill as in Illustrator.
+  - **Layout.** Each letter's scale is its font's matrix, so Core Text
+    measures, wraps and draws it scaled; a run's positions come back
+    without that scale and are scaled from where the line puts the run
+    (`CTLineGetOffsetForStringIndex`). Auto leading is 120% of the
+    largest size in each line, and a line is as tall as its tallest font.
+    Letters whose styles differ only in color, tracking, rules or kerning
+    share one font, so Core Text still kerns pairs across them.
+- **Kerning by hand.** With the cursor between two letters, Character
+  has a Kern row for that pair, in thousandths of an em, saved as the
+  first letter's run's `kerning`. It moves every later letter of the line
+  along, after the font's own pair kerning and the tracking, and widens
+  the line for alignment. It is added after Core Text sets the line,
+  since Core Text's tracking puts half its space before a letter, so a
+  line wraps as if it weren't there and may reach past the wrap width by
+  that much.
+- **Superscript and subscript** are a run's Position. A font with the
+  OpenType 'sups' or 'subs' feature draws its own (checked with
+  `FontCatalog.supports`, which asks Core Text for the feature and sees
+  whether it keeps it); otherwise they are made as Illustrator makes
+  them, at 58.3% of the size, raised or lowered by a third of it.
+- **Hyphenation** is a Paragraph setting, off at first. Core Text's line
+  breaking doesn't hyphenate, so where it breaks a wrapped line before a
+  word that would partly fit, or inside a word too long for a line, the
+  latest place the word can be hyphenated
+  (`CFStringGetHyphenationLocationBeforeIndex`, in the Mac's language
+  where it hyphenates, else English) whose part and a hyphen fit the
+  line is taken, and the hyphen drawn in the last letter's style. Words
+  shorter than four letters aren't broken.
+- **Optical kerning** is Kerning's third choice. Core Text has none, so
+  `OpticalKerning` approximates it from the letters' shapes: each glyph is
+  rasterized once (cached by font, size and glyph) into 48 horizontal
+  bands across the font's height, giving how far in its ink starts from
+  either side. A pair's space is the mean over the bands of the gap
+  between the first's right ink and the second's left, a band where
+  either has no ink counting as a quarter em (so an open side doesn't
+  read as a gulf), and each pair moves so its space matches a reference
+  pair's, "HH" between capitals and "nn" otherwise, by at most 0.15 em.
+  It starts from plain advances (the font's pairs off) and goes through
+  the same per-letter offsets as kerning by hand, which add to it. Tested
+  against Helvetica Neue's designed pairs, it closes "AV", "To", "Ty" and
+  "LT" by between half and twice as much as the designer did, and leaves
+  "HH" and "nn" as they are; it is a heuristic, not Adobe's algorithm.
+- **Variable fonts.** A variable font's axes (`FontCatalog.axes`, from
+  `CTFontCopyVariationAxes`, hidden axes left out) each get a row under
+  Style in Character, keyframed with a stopwatch like the controls, so a
+  word can animate from light to black. They aren't controls, since a
+  font's axes aren't known until it is picked: `TextContent.variations`
+  keeps each by its four-letter tag with its `AnimatedValue`, saved as
+  `"variations": [{"axis": "wght", "value": …}]`. They last through a
+  change of font, and a font without an axis ignores it. They apply to
+  every letter, a run's font too (`kCTFontVariationAttribute`). Their
+  keyframes behave as a control's: each axis is a parameter
+  (`AnimatedParameter.textVariation`, by tag), so it has a row after the
+  Text effect's controls in the effects panel, with its lane of
+  keyframes (moved, deleted and eased there) and its graph editor; F9's
+  eases reach it; and its keyframes count as animation for the render
+  cache. Resetting it gives the font's default.
+- **Animators.** A Text Animator effect (`"textAnimator"`, in Shapes)
+  animates the Text effect directly above it, other Text Animators
+  between, as After Effects' animators with a range selector do; with no
+  Text effect there, the effects panel says so. Its controls, keyframed
+  like any other: **Start**, **End** and **Offset** (percent of the units),
+  **Based On** (Characters, Characters Excluding Spaces, Words, Lines),
+  **Shape** (Square, which selects a unit the range's edge crosses
+  partly; Ramp Up, wholly after the range; Ramp Down, wholly before it;
+  Triangle, Round, Smooth), and what it does to each glyph in proportion
+  to how much it is selected: **Position** (pixels), **Scale** and
+  **Rotation** about the middle of the glyph's baseline, **Opacity**,
+  **Fill** and **Stroke** (off at first; on, the glyphs' fill or stroke
+  color mixes toward it, where they have one), and
+  **Tracking** (thousandths of an em after each, the line kept to its
+  alignment). Several apply in order. They work on the glyphs as laid out
+  (`TextOutline.Animator`, applied in `pieces`), so animating them never
+  lays the block out again; glyphs drawn alike are still one piece.
+  Underlines and strikethroughs are drawn as a piece under each glyph,
+  reaching to the next so they join, and placed with it, so they move,
+  scale, turn and fade with the letters they are under (and follow a
+  path); Character Rotation alone leaves them level, as in Illustrator.
+- **Text on a path.** With **On Path** (the inspector's Path group) a
+  Text effect follows the outline of the last shape drawn above it in the
+  stack (a Rectangle, Ellipse, Polygon or Star, not other text), from
+  **Path Offset** pixels along it, which can be animated to run the words
+  round. The outline's first subpath is flattened (`TextPath`, curves cut
+  into 24 pieces) in the frame's pixels. A closed outline is turned to
+  start at its topmost point and run clockwise on screen, whatever way
+  Core Graphics drew it (an ellipse from its right, counter-clockwise),
+  so text sits outside the shape and reads clockwise from its top, as in
+  Illustrator. Each glyph's baseline middle goes at its distance along
+  the path, turned to the path's direction there, standing on its
+  outside; later lines run parallel to it. **Flip** runs the text the
+  other way from the same start, on the other side: inside a shape.
+  Left-aligned text starts at the offset; centered text centers on the
+  path's length, right-aligned ends at its end. A closed path goes round
+  again; past an open one's ends the letters run on straight. Animators
+  still apply, along the path. Position and Anchor don't place text on a
+  path; underlines and strikethroughs follow it in pieces, one under each
+  glyph.
+  - **After moves.** A Transform between the shape and the text moves the
+    shape, and the text follows it where it went: the compositor keeps
+    the outline of the last shape it drew, moves it with every move after
+    it as it does the shapes it hasn't drawn yet, and maps it back into
+    the frame's pixels where the text is drawn
+    (`ShapeRendering.following`), as the Stroke effect follows the edges
+    above it. Only the outline moves: a Transform that scales the shape
+    up makes the path longer, not the letters bigger. Stack folding still
+    gives the text the outline as drawn, for its render key and wherever
+    no compositor draws it.
+  - **Its own path.** Text can't have a path of its own yet: that needs
+    free paths (step 2d), which aren't built, so it follows a shape's.
+- **Anchor** is a Paragraph choice of nine points (Top Left to Bottom
+  Right, Middle at first): which point of the block, as wide as its wrap
+  width or widest line and as tall as its lines, sits at the frame's
+  middle plus Position.
+- **Naming.** A shape clip with a Text effect is named by the first line
+  of its words on the timeline, in the inspector and in undo steps
+  (`resolvedInfo(for:)` of the clip), and VoiceOver calls it a text clip.
+- **Missing fonts.** The project stores the font's name, not its file.
+  Without the font, Core Text draws with a substitute, the name is kept
+  and saved, and the inspector says which font is missing and what draws
+  in its place. As with missing media, the viewer draws (with the
+  substitute) and export, and background renders, stop with the font's
+  name (`CompositionError.missingFont`), so a substitute is never written
+  out: `missingFonts(in:)` finds every font a Text effect that is on uses,
+  its own and its runs', in the timeline and those nested in it.
+- **Render key.** The words, font and every setting are part of the
+  shape's key, so changing any of them re-renders and moving the clip
+  doesn't.
+
+Still to come:
+
+- **Editing in the viewer.** Typing in place, and a handle for the wrap
+  width.
 
 ## Editing in the viewer
 
@@ -234,7 +455,9 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
   (`"rectangle"`, `"ellipse"`, `"polygon"`, `"star"`, `"stroke"`) written
   like any other, their controls as numbers (colors as `[r, g, b, a]`)
   or, for Edge, Join and Cap, the option's name. A size's link is written only when
-  it differs from a new control's. Free paths, when they come, will be
+  it differs from a new control's. A Text effect (`"text"`) also has
+  `"text": {"string": …, "font": <PostScript name>}`; its Alignment is
+  saved as the option's name like the other choices. Free paths, when they come, will be
   arrays of vertices (`[x, y, inX, inY, outX, outY]`) so they can be read
   and edited by hand. Loading stays strict.
 - These are additions, so the format version stays the same: files
@@ -269,8 +492,36 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
    which also fixes Matte's Take listing blend modes. (c) Gradients.
    (d) Free paths and their keyframes. (e) Path operations and trim
    paths.
-3. **Text.** Core Text layout and glyph paths, styling runs, the inspector
-   editor, missing fonts, variable axes, then animators and text on a path.
+3. **Text.** (a, done) The Text effect, `TextContent`, Core Text layout
+   and glyph paths (`TextLayout`) with the Character, Paragraph and
+   OpenType settings, the inspector's groups for text and for every
+   shape's settings, fill and stroke, `FontCatalog`, missing fonts in the
+   inspector, naming clips by their text, and saving. `TextTests` checks
+   centering, leading, paragraph spacing, wrapping, alignment against the
+   wrap width, each justification, indents and a hung first line,
+   tracking, kerning off, scale, baseline shift, character rotation, All
+   Caps, underline and strikethrough, the OpenType features asked for and
+   kept, reading the controls, empty text, a missing font, the font
+   catalog, a text layer drawn over black, render keys, saving, naming,
+   Reset and the empty-text note; the `UISnapshots` cases `textInspector`
+   and `shapeInspector` show the inspector. (b, done) Styled runs: the
+   text editor, selection rows, runs kept through edits, drawing and
+   saving; `TextTests` checks editing, joining runs, a run's size, shift,
+   scale, case, colors and underline, and saving, and `UISnapshots`'
+   `textSelectionInspector` shows the selection's rows. Then, done: kerning
+   by hand, superscript and subscript, hyphenation, optical kerning, made
+   small caps, the anchor, and (c) variable axes, each tested in
+   `TextTests` (`textPairKerningInspector` and
+   `textVariableFontInspector` show their rows). (f, done) Missing fonts
+   stop export. (d, done) Animators: `TextTests` checks each range
+   shape, moving, fading and recoloring a range, scale and rotation about
+   the baseline, tracking kept centered, ranges by words and lines, an
+   animator drawn and saved, and its note with no text above;
+   `textAnimatorInspector` shows its controls. (e, done) Text on a path:
+   `TextTests` checks measuring and walking paths, following one from
+   its offset, turning with it, centering on it, and following the shape
+   above in a stack; `textOnPathDrawing` draws words round a circle with
+   an animator.
 4. **Viewer handles.** Selecting a graphic clip in the viewer, handles for
    vertices and primitives, and their keyboard paths.
 5. **Stills as effect inputs**, so a PNG can be a Matte's input.
