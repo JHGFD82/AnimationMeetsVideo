@@ -96,14 +96,14 @@ struct CompositorHarness {
     /// from the top left, row by row, in a timeline of `colorSpace`.
     func draw(
         _ clips: [DrawClip], at time: CMTime = .zero, options: DrawingOptions? = nil, colorSpace: ProjectColorSpace = .rec709,
-        flows: FlowFieldCache? = nil
+        flows: FlowFieldCache? = nil, kept: ClipPictureCache? = nil, keeping: ClipPictureCache.Keeping = .trails
     ) throws -> [Color] {
         let instruction = LayeredInstruction(
             timeRange: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 1)),
-            clips: DrawClip.assembled(clips), renderSize: size, colorSpace: colorSpace, options: options
+            clips: DrawClip.assembled(clips), renderSize: size, colorSpace: colorSpace, options: options, keeping: keeping
         )
         let pictures = pictures
-        let image = LayeredCompositor.compose(instruction, at: time, outputSize: size, flows: flows) { pictures[$0] }
+        let image = LayeredCompositor.compose(instruction, at: time, outputSize: size, flows: flows, pictures: kept) { pictures[$0] }
         let width = Int(size.width), height = Int(size.height)
         var bytes = [Float](repeating: 0, count: width * height * 4)
         bytes.withUnsafeMutableBytes {

@@ -25,9 +25,14 @@ final class DrawingOptions: @unchecked Sendable {
     /// The held drag the viewer's frames follow: the app's one, or a test's
     /// own, so tests drawing at once don't see each other's drags.
     let liveValues: LiveValues
+    /// Clips' finished pictures kept for the viewer's other frames: the
+    /// player's, the paused frame drawn again with new values, and the
+    /// playhead's neighborhood drawn ahead (see `ClipPictureCache`).
+    let pictures: ClipPictureCache
 
-    init(liveValues: LiveValues = .shared) {
+    init(liveValues: LiveValues = .shared, pictures: ClipPictureCache = ClipPictureCache()) {
         self.liveValues = liveValues
+        self.pictures = pictures
     }
 
     func update(isPlaying: Bool? = nil, isQuarterSize: Bool? = nil, motionBlurInPreview: Bool? = nil) {

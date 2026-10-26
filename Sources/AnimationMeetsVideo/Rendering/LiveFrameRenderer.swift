@@ -14,7 +14,10 @@ import Foundation
 /// from and the stretch's drawing (a `Scene`). An edit that changes only
 /// values, as dragging one does, is then drawn from those (`redraw`): the
 /// edited clips' new values put into the drawing and the one frame composed
-/// again, in a few milliseconds, with no build and no decoding.
+/// again, in a few milliseconds, with no build and no decoding. Both keep
+/// the finished picture of each clip drawn the same way as the last time
+/// (`ClipPictureCache.Keeping.steady`), so a drag of one clip's value
+/// draws only that clip again and takes the others' as they were.
 @MainActor
 final class LiveFrameRenderer {
     struct Request {
@@ -107,7 +110,7 @@ final class LiveFrameRenderer {
             drawn.append(patched)
         }
         enqueue(.redraw(Redraw(
-            instruction: recorded.instruction.drawing(drawn), frames: recorded.frames, size: recorded.size,
+            instruction: recorded.instruction.drawing(drawn, keeping: .steady), frames: recorded.frames, size: recorded.size,
             time: time, deep: scene.deep, interactive: interactive
         )))
         return true
@@ -159,7 +162,7 @@ final class LiveFrameRenderer {
             // Each stretch keeps what it is drawn from; only the one at the
             // playhead draws.
             copy.instructions = copy.instructions.map { instruction in
-                (instruction as? LayeredInstruction).map { $0.drawing($0.clips, capture: capture) } ?? instruction
+                (instruction as? LayeredInstruction).map { $0.drawing($0.clips, capture: capture, keeping: .steady) } ?? instruction
             }
             videoComposition = copy
         }
@@ -184,7 +187,9 @@ final class LiveFrameRenderer {
         let job = HandedOver(value: redraw)
         return await Task.detached(priority: .userInitiated) { () -> HandedOver<CVPixelBuffer>? in
             let redraw = job.value
-            let image = LayeredCompositor.compose(redraw.instruction, at: redraw.time, outputSize: redraw.size) { redraw.frames[$0] }
+            let image = LayeredCompositor.compose(
+                redraw.instruction, at: redraw.time, outputSize: redraw.size, pictures: redraw.instruction.options?.pictures
+            ) { redraw.frames[$0] }
             var buffer: CVPixelBuffer?
             let attributes: [String: Any] = [
                 kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any],

@@ -207,6 +207,10 @@ final class PlaybackModel {
 
     func prepare(_ item: AVPlayerItem, with composed: ComposedTimeline, structure: EditingProject, frameRate: Double) {
         self.composed = composed
+        // Pictures kept for a project of another structure are found by
+        // values that no longer say everything about them (a replaced
+        // file, a changed package); an edit of values alone keeps them.
+        if playedStructure != structure { drawingOptions.pictures.removeAll() }
         playedStructure = structure
         playedUsesRenders = !composed.cachedKeys.isEmpty
         self.frameRate = frameRate

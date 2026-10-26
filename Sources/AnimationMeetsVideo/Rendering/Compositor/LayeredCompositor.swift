@@ -32,11 +32,15 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
     /// the frame again with new values without decoding (see
     /// `LiveFrameRenderer`); nil to keep nothing.
     let capture: SourceCapture?
+    /// Which clips' finished pictures are kept for later frames (see
+    /// `ClipPictureCache`).
+    let keeping: ClipPictureCache.Keeping
 
     init(
         timeRange: CMTimeRange, clips: [DrawClip], passthrough: CMPersistentTrackID = kCMPersistentTrackID_Invalid,
         renderSize: CGSize, colorSpace: ProjectColorSpace, canvasMargin: Double = EditingProject.defaultCanvasMargin,
-        meter: RenderMeter? = nil, options: DrawingOptions? = nil, capture: SourceCapture? = nil
+        meter: RenderMeter? = nil, options: DrawingOptions? = nil, capture: SourceCapture? = nil,
+        keeping: ClipPictureCache.Keeping = .trails
     ) {
         self.timeRange = timeRange
         self.clips = clips
@@ -47,14 +51,17 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
         self.meter = meter
         self.options = options
         self.capture = capture
+        self.keeping = keeping
         requiredSourceTrackIDs = Set(clips.flatMap(\.allTrackIDs)).sorted().map { NSNumber(value: $0) }
     }
 
-    /// The same stretch drawing `clips` instead.
-    func drawing(_ clips: [DrawClip], capture: SourceCapture? = nil) -> LayeredInstruction {
+    /// The same stretch drawing `clips` instead, keeping pictures as
+    /// `keeping` says, or as this one does.
+    func drawing(_ clips: [DrawClip], capture: SourceCapture? = nil, keeping: ClipPictureCache.Keeping? = nil) -> LayeredInstruction {
         LayeredInstruction(
             timeRange: timeRange, clips: clips, passthrough: passthroughTrackID, renderSize: renderSize,
-            colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options, capture: capture
+            colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options, capture: capture,
+            keeping: keeping ?? self.keeping
         )
     }
 }
@@ -124,6 +131,9 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     /// Optical Flow's motion between pairs of frames, measured once for every
     /// moment drawn between them.
     private let flows = FlowFieldCache()
+    /// Export's and renders' finished pictures of clips with trails, for
+    /// their copies in later frames; the viewer's are its options'.
+    private let pictures = ClipPictureCache(budget: 512 << 20)
     /// Bumped when the player gives up on the requests it has made, as on
     /// a seek: those still queued are let go undrawn.
     private let generation = OSAllocatedUnfairLock(initialState: 0)
@@ -177,7 +187,9 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             // A value drag held to one side of the project is seen as the
             // viewer plays (see `LiveValues`).
             let drawn = instruction.followingHeldValues(instruction.options?.liveValues.clips)
-            let image = Self.compose(drawn, at: request.compositionTime, outputSize: size, flows: flows) {
+            let image = Self.compose(
+                drawn, at: request.compositionTime, outputSize: size, flows: flows, pictures: instruction.options?.pictures ?? pictures
+            ) {
                 request.sourceFrame(byTrackID: $0)
             }
             context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
@@ -201,12 +213,15 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     }
 
     /// The frame at `time`: the instruction's clips from the bottom up over
-    /// black. `flows` keeps Optical Flow's motion for other frames.
+    /// black. `flows` keeps Optical Flow's motion for other frames, and
+    /// `pictures` clips' finished pictures, as the instruction's `keeping`
+    /// says.
     static func compose(
         _ instruction: LayeredInstruction,
         at time: CMTime,
         outputSize: CGSize,
         flows: FlowFieldCache? = nil,
+        pictures: ClipPictureCache? = nil,
         frame: @escaping (CMPersistentTrackID) -> CVPixelBuffer?
     ) -> CIImage {
         let renderSize = instruction.renderSize
@@ -216,10 +231,14 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         let scale = renderSize.width > 0 ? outputSize.width / renderSize.width : 1
         let drawing = Drawing(
             time: time,
+            frameTime: time,
             scale: CGSize(width: scale, height: renderSize.height > 0 ? outputSize.height / renderSize.height : 1),
             canvasMargin: instruction.canvasMargin,
             options: instruction.options,
+            isPlaying: instruction.options?.isPlaying ?? false,
             flows: flows,
+            pictures: pictures,
+            keeping: instruction.keeping,
             source: frame
         )
         let black = CIImage(color: .black).cropped(to: bounds)
@@ -263,6 +282,9 @@ struct OuterPlacement {
 /// nested in them.
 struct Drawing {
     var time: CMTime
+    /// The moment of the frame being drawn, whose footage `source` gives,
+    /// whatever moment `time` is moved to.
+    let frameTime: CMTime
     /// Output pixels per frame pixel, in each direction.
     let scale: CGSize
     /// How far past a frame's edges pictures are kept, as a fraction of its
@@ -270,8 +292,13 @@ struct Drawing {
     let canvasMargin: Double
     /// What the viewer asks of drawing while it plays, if it is the viewer.
     var options: DrawingOptions?
+    /// Whether it is drawn as the viewer plays, read once for the frame.
+    var isPlaying: Bool
     /// Where Optical Flow's motion between two frames is kept, if anywhere.
     var flows: FlowFieldCache?
+    /// Where clips' finished pictures are kept, if anywhere, and which.
+    var pictures: ClipPictureCache?
+    var keeping: ClipPictureCache.Keeping = .trails
     /// The decoded frame of a composition track at `time`.
     let source: (CMPersistentTrackID) -> CVPixelBuffer?
 
@@ -302,7 +329,7 @@ struct Drawing {
         }
         // Which moment a nested timeline's pictures are drawn at is the
         // drawing's own time; so a group is drawn through `at`.
-        guard var picture = finishedPicture(clip, at: time, frame: frameSize, over: output, outer: outer) else { return output }
+        guard var picture = keptOrFinished(clip, at: time, frame: frameSize, over: output, outer: outer) else { return output }
         let shutter = clip.stack.shutter
 
         // Motion blur: the finished clip drawn at moments across the shutter
@@ -316,7 +343,7 @@ struct Drawing {
                 var sum: CIImage?
                 for index in 0..<samples {
                     let moment = CMTimeAdd(time, CMTime(seconds: shutterSeconds * ((Double(index) + 0.5) / Double(samples) - 0.5), preferredTimescale: 240_000))
-                    guard let sample = finishedPicture(clip, at: moment, frame: frameSize, over: output, outer: outer) else { continue }
+                    guard let sample = keptOrFinished(clip, at: moment, frame: frameSize, over: output, outer: outer) else { continue }
                     // The matrix works on colors before they are multiplied by
                     // alpha, so scaling alpha alone scales the picture.
                     let scaled = sample.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: weight)])
@@ -332,7 +359,7 @@ struct Drawing {
             var under: CIImage?
             for trail in media.trails.reversed() {
                 let moment = CMTimeSubtract(time, trail.delay)
-                guard let copy = finishedPicture(clip, at: moment, frame: frameSize, over: output, outer: outer, trail: trail) else { continue }
+                guard let copy = keptOrFinished(clip, at: moment, frame: frameSize, over: output, outer: outer, trail: trail) else { continue }
                 let faded = trail.strength == 1 ? copy : copy.applyingFilter("CIColorMatrix", parameters: [
                     "inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(trail.strength)),
                 ])
@@ -350,6 +377,99 @@ struct Drawing {
             from: transition.entering ? output : together,
             to: transition.entering ? together : output,
             in: bounds
+        )
+    }
+
+    /// `finishedPicture`, taken from `pictures` when it was kept there, and
+    /// kept there when `keeping` says to.
+    private func keptOrFinished(
+        _ clip: DrawClip,
+        at time: CMTime,
+        frame frameSize: CGSize,
+        over output: CIImage,
+        outer: OuterPlacement,
+        trail: TrackCopy? = nil
+    ) -> CIImage? {
+        func drawn() -> CIImage? { finishedPicture(clip, at: time, frame: frameSize, over: output, outer: outer, trail: trail) }
+        guard let pictures, let recipe = recipe(for: clip, at: time, frame: frameSize, outer: outer, trail: trail) else { return drawn() }
+        if let kept = pictures.picture(for: recipe) { return kept }
+        guard let picture = drawn() else { return nil }
+        let keeps: Bool
+        switch keeping {
+        case .all:
+            keeps = true
+        case .steady:
+            keeps = pictures.drawnAgain(recipe) || Self.keepsForTrails(clip, at: time, frameTime: frameTime, trail: trail)
+        case .trails:
+            keeps = Self.keepsForTrails(clip, at: time, frameTime: frameTime, trail: trail)
+        }
+        guard keeps else { return picture }
+        return pictures.keep(picture, for: recipe, within: canvasRect(of: frameSize)) ?? picture
+    }
+
+    /// Whether this is the picture of a clip with trails at the frame being
+    /// drawn, which its copies in later frames are.
+    private static func keepsForTrails(_ clip: DrawClip, at time: CMTime, frameTime: CMTime, trail: TrackCopy?) -> Bool {
+        guard trail == nil, time == frameTime, case .media(let media) = clip.content else { return false }
+        return !media.trails.isEmpty
+    }
+
+    /// Everything that decides the clip's finished picture at root time
+    /// `time` (see `finishedPicture`); nil when more decides it, or when it
+    /// is cheap enough to draw that keeping it gains nothing:
+    ///
+    /// - A nested timeline, an adjustment layer, or a clip taking another
+    ///   picture (an input, other moments of its footage, a motion field).
+    /// - One blending with what is below it, or whose transition shows
+    ///   what is below through it, which change with the layers under it.
+    /// - One whose stack only moves it, with no frame blend or echo.
+    private func recipe(
+        for clip: DrawClip, at time: CMTime, frame frameSize: CGSize, outer: OuterPlacement, trail: TrackCopy?
+    ) -> ClipPictureCache.Recipe? {
+        guard clip.inputs.isEmpty else { return nil }
+        let media: MediaDraw?
+        switch clip.content {
+        case .media(let drawn):
+            guard drawn.moments.isEmpty, drawn.ahead == nil else { return nil }
+            media = drawn
+        case .graphic:
+            media = nil
+        case .group, .adjustment:
+            return nil
+        }
+        let resolved = clip.stack.resolve(atRoot: time)
+        for step in resolved.steps {
+            switch step {
+            case .blend(_, _, let against) where against == nil:
+                return nil
+            case .look(let look):
+                if let package = look.kind.definition.package,
+                   package.pictures.contains(where: { $0.source != .against }) { return nil }
+            default:
+                break
+            }
+        }
+        if let reveal = resolved.transition?.lumaReveal, !reveal.keysIncoming { return nil }
+        // A trail copy is the footage alone, without the frame blend or echo.
+        let mixes = trail == nil && media.map { $0.still == nil && ($0.nextFrame != nil || !$0.echoes.isEmpty) } == true
+        guard resolved.changesPixels || mixes || resolved.transition?.lumaReveal != nil else { return nil }
+
+        var footage: CMTime?
+        if let media, media.still == nil {
+            let at = CMTimeSubtract(frameTime, trail?.delay ?? .zero)
+            footage = clip.stack.sourceTime(atLocal: clip.stack.localTime(atRoot: at))
+        }
+        return ClipPictureCache.Recipe(
+            clipID: clip.stack.clipID, owner: clip.owner, layerID: clip.layerID,
+            url: media?.url ?? URL(fileURLWithPath: "/"), still: media?.still.map(ObjectIdentifier.init),
+            base: media?.base ?? .identity, footage: footage,
+            blendMoment: mixes && media?.nextFrame != nil ? time : nil,
+            nextFrame: mixes ? media?.nextFrame : nil, echoes: mixes ? media?.echoes ?? [] : [],
+            opticalFlow: media?.opticalFlow ?? false,
+            resolved: resolved,
+            outerMatrix: outer.matrix, outerOpacity: outer.opacity, passesThrough: outer.passesThrough,
+            frameSize: frameSize, scale: scale, canvasMargin: canvasMargin, colorSpace: clip.stack.colorSpace,
+            playing: isPlaying, fullQuality: options == nil
         )
     }
 
@@ -814,7 +934,7 @@ struct Drawing {
                     case .motion:
                         // To the frame ahead in the footage, as the morph
                         // measures it; not while playing, as it is costly.
-                        guard !(options?.isPlaying ?? false), let later = ahead?(look.effectID),
+                        guard !isPlaying, let later = ahead?(look.effectID),
                               let field = BlockMatchFlow.field(from: picture, to: later, progress: 0, in: frame.integral, reach: 1.0 / 6)
                         else {
                             flags["hasMotion"] = 0
@@ -833,7 +953,7 @@ struct Drawing {
                 let moments = PackageLookRenderer.Moments(
                     earlier: { delay in earlier?(delay, look.effectID) },
                     frameDuration: clip.stack.frameDuration > .zero ? clip.stack.frameDuration : CMTime(value: 1, timescale: 24),
-                    isPlaying: options?.isPlaying ?? false
+                    isPlaying: isPlaying
                 )
                 picture = LookRenderer.apply(
                     look, to: picture, over: picture.extent.intersection(canvas), canvas: canvas, frame: frame, scale: scale.width,

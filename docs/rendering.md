@@ -187,6 +187,27 @@ Limits:
   (`CoverPicture.frame`), so the screen color-matches it on the GPU as it
   does the video; an image would be converted on the main thread each
   time it is shown.
+- **Clips' pictures kept between frames.** A clip's finished picture (put
+  into the frame and run through its stack and transitions, before it is
+  drawn over what is below) is drawn into memory and kept when a later
+  frame will draw it again (`ClipPictureCache`), least recently used
+  going first past a budget: a sixteenth of the Mac's memory, at most
+  1 GB, for the viewer; 512 MB for each export or render. It is kept
+  for a clip with Trails, whose copy `delay` later is the picture the
+  clip finished as then, so sequential playback and export take the copy
+  rather than draw it again; and, for a paused frame drawn again with new
+  values, for each clip drawn the same way as the last time
+  (`Keeping.steady`), so a drag draws only the clip being changed: 7.0 ms
+  a frame to 2.7 ms for one of three graded, blurred 1080p layers. A
+  picture is found by everything that decides it (the clip, its footage's
+  file time, its resolved steps and transition, its placement, the frame
+  and output size, the color space, playing or not), so a frame drawn from
+  kept pictures is the frame drawn without. A clip whose picture depends on
+  more (what is below it through Blending or a transition's reveal, an
+  input, other moments of its footage, a nested timeline) is never kept,
+  nor one only moved, which costs no more to draw. The viewer's pictures
+  are let go when a build of another structure is played, since a
+  replaced file or a changed package isn't in what finds them.
 - **Following other edits.** Each change builds a new composition, and while paused the
   frame under the playhead is drawn from it (`LiveFrameRenderer`, latest
   request wins) and shown over the player. A build is never cancelled by
