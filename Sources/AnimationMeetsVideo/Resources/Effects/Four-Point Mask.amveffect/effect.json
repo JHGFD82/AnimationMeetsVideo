@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "fourPointMask",
+  "version": 1,
+  "name": "Four-Point Mask",
+  "category": "keying",
+  "symbol": "lasso",
+  "kernel": {"file": "kernel.metal", "function": "amvFourPointMask", "type": "color"},
+  "controls": [
+    {"id": "cornerTopLeft", "name": "Top Left", "type": "point", "default": [-480, -270]},
+    {"id": "cornerTopRight", "name": "Top Right", "type": "point", "default": [480, -270]},
+    {"id": "cornerBottomRight", "name": "Bottom Right", "type": "point", "default": [480, 270]},
+    {"id": "cornerBottomLeft", "name": "Bottom Left", "type": "point", "default": [-480, 270]},
+    {"id": "maskFeather", "name": "Feather", "type": "number", "default": 10, "range": [0, 10000], "unit": "px"},
+    {"id": "maskKeep", "name": "Keep", "type": "choice", "default": "inside", "options": [{"id": "inside", "name": "Inside"}, {"id": "outside", "name": "Outside"}]}
+  ],
+  "amount": true,
+  "arguments": ["center(cornerTopLeft)", "center(cornerTopRight)", "center(cornerBottomRight)", "center(cornerBottomLeft)", "maskFeather * scale", "index(maskKeep)"]
+}

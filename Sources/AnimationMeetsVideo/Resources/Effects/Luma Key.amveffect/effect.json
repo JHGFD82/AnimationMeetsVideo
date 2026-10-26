@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "lumaKey",
+  "version": 1,
+  "name": "Luma Key",
+  "category": "keying",
+  "symbol": "circle.lefthalf.filled",
+  "kernel": {"file": "kernel.metal", "function": "amvLumaKey", "type": "color"},
+  "controls": [
+    {"id": "lumaKeyOut", "name": "Key Out", "type": "choice", "default": "dark", "options": [{"id": "dark", "name": "Darks"}, {"id": "bright", "name": "Brights"}]},
+    {"id": "lumaThreshold", "name": "Threshold", "type": "number", "default": 10, "range": [0, 100], "unit": "%"},
+    {"id": "lumaSoftness", "name": "Softness", "type": "number", "default": 10, "range": [0, 100], "unit": "%"},
+    {"id": "keyView", "name": "View", "type": "choice", "default": "result", "options": [{"id": "result", "name": "Result"}, {"id": "matte", "name": "Matte"}]}
+  ],
+  "amount": true,
+  "arguments": ["index(lumaKeyOut)", "lumaThreshold / 100", "lumaSoftness / 100", "index(keyView)"]
+}

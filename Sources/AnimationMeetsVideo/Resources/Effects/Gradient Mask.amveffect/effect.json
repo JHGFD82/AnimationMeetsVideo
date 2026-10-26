@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "gradientMask",
+  "version": 1,
+  "name": "Gradient Mask",
+  "category": "keying",
+  "symbol": "rectangle.lefthalf.inset.filled",
+  "kernel": {"file": "kernel.metal", "function": "amvGradientMask", "type": "color"},
+  "controls": [
+    {"id": "gradientShape", "name": "Shape", "type": "choice", "default": "linear", "options": [{"id": "linear", "name": "Linear"}, {"id": "radial", "name": "Radial"}]},
+    {"id": "gradientStart", "name": "Start", "type": "point", "default": [0, -200]},
+    {"id": "gradientEnd", "name": "End", "type": "point", "default": [0, 200]},
+    {"id": "maskKeep", "name": "Keep", "type": "choice", "default": "start", "options": [{"id": "start", "name": "Start"}, {"id": "end", "name": "End"}]}
+  ],
+  "amount": true,
+  "arguments": ["index(gradientShape)", "center(gradientStart)", "center(gradientEnd)", "index(maskKeep)"]
+}

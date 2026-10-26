@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "matteChoker",
+  "version": 1,
+  "name": "Matte Choker",
+  "category": "keying",
+  "symbol": "smallcircle.filled.circle",
+  "kernel": {"file": "kernel.metal", "function": "amvMatteChoker", "type": "general"},
+  "controls": [
+    {"id": "chokeGrow", "name": "Shrink/Grow", "type": "number", "default": -2, "range": [-500, 500], "unit": "px", "step": 0.1},
+    {"id": "chokeFeather", "name": "Feather", "type": "number", "default": 2, "range": [0, 1000], "unit": "px", "step": 0.1}
+  ],
+  "amount": true,
+  "arguments": ["chokeGrow * scale", "chokeFeather * scale"],
+  "reach": "abs(chokeGrow * scale) + chokeFeather * scale / 2 + 2",
+  "input": "clamped"
+}

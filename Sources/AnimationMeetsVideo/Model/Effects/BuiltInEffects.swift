@@ -263,6 +263,8 @@ enum BuiltInEffects {
         "sepia", "invert", "threshold", "broadcastSafe",
         // Blur & Sharpen
         // Keying & Masks
+        "chromaKey", "lumaKey", "differenceKey", "spillSuppressor", "matteChoker",
+        "rectangleMask", "ellipseMask", "fourPointMask", "gradientMask", "alphaTools",
         // Light
         "glow", "bloom", "halation", "lightRays", "lensFlare", "lightLeak", "spotlight", "vignette",
         // Stylize
