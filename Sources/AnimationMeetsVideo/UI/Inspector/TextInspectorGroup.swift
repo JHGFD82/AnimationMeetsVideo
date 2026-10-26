@@ -58,7 +58,10 @@ struct TextInspectorGroup: View {
                 } else {
                     FontPickerRows(fontName: content.fontName) { name in onEdit { $0.text?.fontName = name } }
                     missingFontNote(content.fontName)
-                    controls(EffectKind.characterControls)
+                    let kerning = (EffectKind.characterControls.firstIndex(of: .kerning) ?? 0) + 1
+                    controls(Array(EffectKind.characterControls.prefix(kerning)))
+                    pairKerning
+                    controls(Array(EffectKind.characterControls.dropFirst(kerning)))
                 }
             }
             InspectorGroup(title("Paragraph")) {
@@ -103,6 +106,32 @@ struct TextInspectorGroup: View {
             .foregroundStyle(Design.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
         controls([.leading, .kerning, .characterRotation])
+    }
+
+    /// Kerning set by hand between the two letters either side of the
+    /// cursor, as in Illustrator, when it is between two.
+    @ViewBuilder
+    private var pairKerning: some View {
+        if selection.length == 0, let pair = content.kerningPair(at: selection.location) {
+            let text = content.string as NSString
+            let first = text.substring(with: pair)
+            let second = text.substring(with: text.rangeOfComposedCharacterSequence(at: selection.location))
+            let kerning = content.style(at: pair.location).kerning
+            HStack(spacing: 4) {
+                Color.clear.frame(width: 18, height: 1)
+                Text("Kern \u{201C}\(first)\(second)\u{201D}")
+                    .foregroundStyle(Design.textSecondary)
+                    .lineLimit(1)
+                    .frame(width: InspectorControlRow.nameWidth, alignment: .leading)
+                NumericField(value: kerning ?? 0, dragStep: 1, dragRange: -1000...10_000, accessibilityName: "Kerning between \(first) and \(second)") { value in
+                    let kept = value.clamped(between: -1000, and: 10_000)
+                    onEdit { $0.text?.changeStyle(in: pair) { $0.kerning = kept == 0 ? nil : kept } }
+                }
+                Spacer(minLength: 4)
+            }
+            .font(Design.Typeface.label)
+            .help("Thousandths of an em between these two letters, besides the font's kerning and the tracking")
+        }
     }
 
     private func changeSelection(_ change: (inout TextStyle) -> Void) {

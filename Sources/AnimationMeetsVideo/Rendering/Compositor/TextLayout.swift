@@ -24,6 +24,9 @@ final class TextLayout: @unchecked Sendable {
         /// The run's colors, nil where the block's are used.
         var fill: [Double]?
         var stroke: [Double]?
+        /// Thousandths of an em after the letter, set by hand for the pair
+        /// it begins (`TextStyle.kerning`).
+        var kerning = 0.0
     }
 
     /// A block as laid out, in its own space: its top left at the origin,
@@ -100,6 +103,44 @@ final class TextLayout: @unchecked Sendable {
         var room: Double?
         var startsParagraph: Bool
         var endsParagraph: Bool
+        /// Kerning set by hand in the line (`handKerning`).
+        var kerning = HandKerning()
+    }
+
+    /// The kerning set by hand in one line: how far each letter, by its code
+    /// unit, moves along for the pairs before it, and how much wider the
+    /// line is for them.
+    private struct HandKerning {
+        var offsets: [CFIndex: Double] = [:]
+        var total = 0.0
+    }
+
+    /// The pairs kerned by hand in `line`: each letter's kerning (in
+    /// thousandths of its em) moves every letter after it in the line, so
+    /// the line's last letter's is left out. Added after Core Text sets the
+    /// line, since its tracking puts half its space before a letter; so a
+    /// line wraps as if it weren't there.
+    private static func handKerning(of line: CTLine, styles: [LetterStyle]) -> HandKerning {
+        var letters: [(index: CFIndex, amount: Double)] = []
+        for run in CTLineGetGlyphRuns(line) as? [CTRun] ?? [] {
+            let count = CTRunGetGlyphCount(run)
+            guard count > 0, let styleIndex = (CTRunGetAttributes(run) as NSDictionary)[styleKey.rawValue] as? Int else { continue }
+            let style = styles[styleIndex]
+            var indices = [CFIndex](repeating: 0, count: count)
+            CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
+            for index in Set(indices) { letters.append((index, style.kerning / 1000 * style.size)) }
+        }
+        letters.sort { $0.index < $1.index }
+        guard letters.contains(where: { $0.amount != 0 }) else { return HandKerning() }
+        // Spaces ending the line don't make a pair with what wraps.
+        let lineRange = CTLineGetStringRange(line)
+        let visibleEnd = lineRange.location + lineRange.length
+        var result = HandKerning()
+        for (position, letter) in letters.enumerated() {
+            result.offsets[letter.index] = result.total
+            if position < letters.count - 1, letter.index < visibleEnd { result.total += letter.amount }
+        }
+        return result
     }
 
     /// Sets `setting`'s letters, each in its own style, lines one under the
@@ -112,7 +153,18 @@ final class TextLayout: @unchecked Sendable {
         let block = setting.letterStyle(.none)
         let content = TextContent(string: setting.string, fontName: setting.fontName, runs: setting.runs)
         var styleIndex: [LetterStyle: Int] = [:]
+        // Letters whose styles differ only in color, tracking or rules share
+        // one font, so Core Text kerns pairs across them.
         var fonts: [LetterStyle: CTFont] = [:]
+        func fontKey(_ style: LetterStyle) -> LetterStyle {
+            var key = block
+            key.fontName = style.fontName
+            key.size = style.size
+            key.horizontalScale = style.horizontalScale
+            key.verticalScale = style.verticalScale
+            key.textCase = style.textCase
+            return key
+        }
         func index(of style: LetterStyle) -> Int {
             if let index = styleIndex[style] { return index }
             laid.styles.append(style)
@@ -120,9 +172,10 @@ final class TextLayout: @unchecked Sendable {
             return laid.styles.count - 1
         }
         func font(of style: LetterStyle) -> CTFont {
-            if let font = fonts[style] { return font }
-            let font = Self.font(for: setting, style: style)
-            fonts[style] = font
+            let key = fontKey(style)
+            if let font = fonts[key] { return font }
+            let font = Self.font(for: setting, style: key)
+            fonts[key] = font
             return font
         }
 
@@ -192,6 +245,11 @@ final class TextLayout: @unchecked Sendable {
             }
         }
         laid.lineCount = lines.count
+        // Kerning set by hand widens its line.
+        for index in lines.indices {
+            lines[index].kerning = handKerning(of: lines[index].line, styles: laid.styles)
+            lines[index].width += lines[index].kerning.total
+        }
 
         // Each line's height and spacing from its own letters.
         func metrics(of line: CTLine) -> (ascent: Double, descent: Double, size: Double) {
@@ -231,7 +289,7 @@ final class TextLayout: @unchecked Sendable {
             let room = line.room ?? (blockWidth - line.indent - setting.rightIndent)
             var align = line.endsParagraph ? setting.align.lastLine : setting.align
             if align.isJustified {
-                if wraps, let justified = CTLineCreateJustifiedLine(line.line, 1, room) {
+                if wraps, let justified = CTLineCreateJustifiedLine(line.line, 1, room - line.kerning.total) {
                     line.line = justified
                     line.width = room
                 }
@@ -342,6 +400,8 @@ final class TextLayout: @unchecked Sendable {
     private static func addGlyphs(of line: Line, number: Int, at origin: CGPoint, to laid: inout Laid, characters: [Int], words: [Int]) {
         guard let runs = CTLineGetGlyphRuns(line.line) as? [CTRun] else { return }
         let flip = CGAffineTransform(scaleX: 1, y: -1)
+        /// Where the next run starts along the line.
+        var pen: Double?
         for run in runs {
             let count = CTRunGetGlyphCount(run)
             let attributes = CTRunGetAttributes(run) as NSDictionary
@@ -361,15 +421,18 @@ final class TextLayout: @unchecked Sendable {
             CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
             // A run's positions and advances leave out its font's matrix
             // (its letters' scale), which its outlines and the line's
-            // widths have: they are scaled from where the line puts the
-            // run's first letter.
+            // widths have: each run is scaled and set where the runs before
+            // it end.
             let matrix = CTRunGetTextMatrix(run)
-            let runStart = CTLineGetOffsetForStringIndex(line.line, indices.min() ?? 0, nil)
-            let firstX = positions.map(\.x).min() ?? 0
+            let firstX = positions.first?.x ?? 0
+            if pen == nil { pen = firstX }
+            let runStart = pen ?? 0
             for k in 0..<count {
-                positions[k] = CGPoint(x: runStart + (positions[k].x - firstX) * matrix.a, y: positions[k].y * matrix.d)
+                let kerned = line.kerning.offsets[indices[k]] ?? 0
+                positions[k] = CGPoint(x: runStart + (positions[k].x - firstX) * matrix.a + kerned, y: positions[k].y * matrix.d)
                 advances[k].width *= matrix.a
             }
+            pen = runStart + advances.reduce(0) { $0 + $1.width }
             let middle = (CTFontGetAscent(font) - CTFontGetDescent(font)) / 2
             for k in 0..<count {
                 guard var outline = CTFontCreatePathForGlyph(font, glyphs[k], nil) else { continue }

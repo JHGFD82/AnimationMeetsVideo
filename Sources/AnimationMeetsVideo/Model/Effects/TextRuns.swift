@@ -23,6 +23,10 @@ struct TextStyle: Hashable, Sendable {
     /// stroke has for these letters, while the block has one.
     var fill: [Double]?
     var stroke: [Double]?
+    /// Thousandths of an em between this letter and the next, besides the
+    /// font's pair kerning and the tracking: kerning set by hand with the
+    /// cursor between the two.
+    var kerning: Double?
 
     static let none = TextStyle()
 
@@ -35,7 +39,7 @@ struct TextStyle: Hashable, Sendable {
             baselineShift: other.baselineShift ?? baselineShift, horizontalScale: other.horizontalScale ?? horizontalScale,
             verticalScale: other.verticalScale ?? verticalScale, textCase: other.textCase ?? textCase,
             underline: other.underline ?? underline, strikethrough: other.strikethrough ?? strikethrough,
-            fill: other.fill ?? fill, stroke: other.stroke ?? stroke
+            fill: other.fill ?? fill, stroke: other.stroke ?? stroke, kerning: other.kerning ?? kerning
         )
     }
 }
@@ -82,6 +86,17 @@ extension TextContent {
     /// What the letter at code unit `index` sets; nothing past the end.
     func style(at index: Int) -> TextStyle {
         runs.first { $0.start <= index && index < $0.end }?.style ?? .none
+    }
+
+    /// The letter just before code unit `index`, the first of the pair a
+    /// cursor there kerns: nil at either end of the words or of a line.
+    func kerningPair(at index: Int) -> NSRange? {
+        let text = string as NSString
+        guard index > 0, index < text.length else { return nil }
+        let before = text.rangeOfComposedCharacterSequence(at: index - 1)
+        let after = text.rangeOfComposedCharacterSequence(at: index)
+        let isBreak = { (range: NSRange) in text.substring(with: range).contains(where: \.isNewline) }
+        return isBreak(before) || isBreak(after) ? nil : before
     }
 
     /// Changes the style of the letters in `range` (kept to the words) with

@@ -121,6 +121,28 @@ extension DrawingFixture {
         #expect((underlined?.path.boundingBoxOfPath.width ?? 0) < plain.width * 0.6)
     }
 
+    @Test func kerningByHandSpacesOnePair() {
+        let plain = setting("AVAV")
+        var kerned = plain
+        // 200 thousandths at 100 pixels: 20 pixels between the first pair.
+        kerned.runs = [TextRun(start: 0, length: 1, style: TextStyle(kerning: 200))]
+        #expect(abs(bounds(kerned).width - bounds(plain).width - 20) < 0.5, "\(bounds(kerned).width - bounds(plain).width)")
+        // The font's own pair kerning stays.
+        var unkerned = plain
+        unkerned.kerning = .none
+        #expect(bounds(plain).width < bounds(unkerned).width)
+    }
+
+    @Test func aCursorKernsThePairAroundIt() {
+        let content = TextContent(string: "AV\nW")
+        #expect(content.kerningPair(at: 1) == NSRange(location: 0, length: 1))
+        #expect(content.kerningPair(at: 0) == nil)
+        #expect(content.kerningPair(at: 2) == nil)
+        #expect(content.kerningPair(at: 4) == nil)
+        // A letter of two code units is one letter of the pair.
+        #expect(TextContent(string: "😀A").kerningPair(at: 2) == NSRange(location: 0, length: 2))
+    }
+
     @Test func savingKeepsRuns() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }
@@ -130,7 +152,8 @@ extension DrawingFixture {
             clip.effects[0].text?.changeStyle(in: NSRange(location: 0, length: 6)) { style in
                 style = TextStyle(
                     fontName: "HelveticaNeue", size: 80, tracking: 20, baselineShift: 4, horizontalScale: 90, verticalScale: 110,
-                    textCase: .allCaps, underline: true, strikethrough: false, fill: [1, 0, 0, 1], stroke: [0, 1, 0, 0.5]
+                    textCase: .allCaps, underline: true, strikethrough: false, fill: [1, 0, 0, 1], stroke: [0, 1, 0, 0.5],
+                    kerning: -40
                 )
             }
         }

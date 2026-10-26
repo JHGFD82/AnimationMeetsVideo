@@ -547,6 +547,25 @@ struct UISnapshots {
         )
     }
 
+    /// A Text effect's Character group with the cursor between "A" and
+    /// "V", kerned by hand: the block's rows and the pair's Kern row.
+    @Test func textPairKerningInspector() throws {
+        var effect = Effect(kind: .text)
+        effect.text = TextContent(string: "AVATAR")
+        effect.text?.changeStyle(in: NSRange(location: 0, length: 1)) { $0.kerning = -60 }
+        try SnapshotSupport.render(
+            ScrollView {
+                TextInspectorGroup(
+                    effect: effect, prefix: nil, playhead: PlayheadTime(fixed: .zero), onEdit: { _ in }, onSeek: { _ in },
+                    selection: NSRange(location: 1, length: 0)
+                )
+                .padding(Design.Space.group)
+            }
+            .panelSurface(.base),
+            "text-pair-kerning-inspector", size: CGSize(width: 340, height: 700)
+        )
+    }
+
     /// The inspector for a shape layer: a rounded rectangle's size, corners
     /// and position, then its fill and a dashed outside stroke.
     @Test func shapeInspector() throws {

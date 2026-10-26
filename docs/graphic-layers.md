@@ -294,9 +294,19 @@ Built (step 3a):
     without that scale and are scaled from where the line puts the run
     (`CTLineGetOffsetForStringIndex`). Auto leading is 120% of the
     largest size in each line, and a line is as tall as its tallest font.
+    Letters whose styles differ only in color, tracking, rules or kerning
+    share one font, so Core Text still kerns pairs across them.
+- **Kerning by hand.** With the cursor between two letters, Character
+  has a Kern row for that pair, in thousandths of an em, saved as the
+  first letter's run's `kerning`. It moves every later letter of the line
+  along, after the font's own pair kerning and the tracking, and widens
+  the line for alignment. It is added after Core Text sets the line,
+  since Core Text's tracking puts half its space before a letter, so a
+  line wraps as if it weren't there and may reach past the wrap width by
+  that much.
 - **Not yet:** hyphenation (Core Text's line breaking doesn't hyphenate),
-  manual kerning between two letters, optical kerning, superscript and
-  subscript, and the anchor's place in the box.
+  optical kerning, superscript and subscript, and the anchor's place in
+  the box.
 - **Naming.** A shape clip with a Text effect is named by the first line
   of its words on the timeline, in the inspector and in undo steps
   (`resolvedInfo(for:)` of the clip), and VoiceOver calls it a text clip.

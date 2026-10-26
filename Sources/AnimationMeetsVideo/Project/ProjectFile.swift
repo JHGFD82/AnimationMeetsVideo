@@ -574,6 +574,8 @@ struct ProjectFile: Codable {
         var strikethrough: Bool?
         var fill: [Double]?
         var stroke: [Double]?
+        /// Thousandths of an em after the run's letters, set by hand.
+        var kerning: Double?
 
         init(_ run: TextRun) {
             start = run.start
@@ -590,13 +592,14 @@ struct ProjectFile: Codable {
             strikethrough = style.strikethrough
             fill = style.fill
             stroke = style.stroke
+            kerning = style.kerning
         }
 
         var run: TextRun {
             TextRun(start: start, length: length, style: TextStyle(
                 fontName: font, size: size, tracking: tracking, baselineShift: baselineShift,
                 horizontalScale: horizontalScale, verticalScale: verticalScale, textCase: textCase.flatMap(TextCase.init(rawValue:)),
-                underline: underline, strikethrough: strikethrough, fill: fill, stroke: stroke
+                underline: underline, strikethrough: strikethrough, fill: fill, stroke: stroke, kerning: kerning
             ))
         }
 
@@ -606,7 +609,7 @@ struct ProjectFile: Codable {
             .optional("baselineShift", .number), .optional("horizontalScale", .number), .optional("verticalScale", .number),
             .optional("textCase", .choice(TextCase.allCases.map(\.rawValue), noun: "case")),
             .optional("underline", .bool), .optional("strikethrough", .bool),
-            .optional("fill", .numbers(count: 4)), .optional("stroke", .numbers(count: 4)),
+            .optional("fill", .numbers(count: 4)), .optional("stroke", .numbers(count: 4)), .optional("kerning", .number),
         ]))
     }
 
