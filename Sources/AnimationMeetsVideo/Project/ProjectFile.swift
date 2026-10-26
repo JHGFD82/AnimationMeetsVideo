@@ -38,7 +38,16 @@ struct ProjectFile: Codable {
             }
         }
 
+        /// Throws for an invalid, indefinite or infinite time rather than
+        /// writing a rational that wouldn't read back, or would read back as
+        /// a real moment.
         func encode(to encoder: Encoder) throws {
+            guard time.isNumeric else {
+                throw EncodingError.invalidValue(time, EncodingError.Context(
+                    codingPath: encoder.codingPath,
+                    debugDescription: "A project time must be numeric, not \(time)."
+                ))
+            }
             var container = encoder.singleValueContainer()
             try container.encode("\(time.value)/\(time.timescale)s")
         }

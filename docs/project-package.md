@@ -258,6 +258,7 @@ Requirements for the file:
 - **Deterministic output**: sorted keys and fixed formatting so that two saves
   of the same project are byte-identical and diffs show only real changes.
 - **Rational times** such as `"1001/24000s"`, never floating-point seconds.
+  Saving fails rather than write an invalid, indefinite or infinite time.
 - **Defaults are left out**, so untouched data adds nothing to a diff. For
   example a clip's `effects`, `anchorPoint` and `volume` (see
   [effects.md](effects.md#saving) and [audio.md](audio.md)) are written

@@ -474,6 +474,32 @@ private struct Sandbox {
         #expect(first.last == 0x0A)
     }
 
+    @Test func savingWhatWasLoadedProducesIdenticalBytes() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        let (project, _, _) = sandbox.makeProject()
+
+        // The first load stamps the media and aligns the fixture's trim to
+        // frames; from then on a load and save must give the file back as is.
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        let settled = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        try await ProjectStore.save(settled.project, to: sandbox.packageURL)
+        let first = try Data(contentsOf: sandbox.projectJSON)
+        let loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        try await ProjectStore.save(loaded.project, to: sandbox.packageURL)
+        let second = try Data(contentsOf: sandbox.projectJSON)
+
+        #expect(first == second)
+    }
+
+    @Test func refusesToWriteATimeThatIsNotNumeric() {
+        for time in [CMTime.invalid, .indefinite, .positiveInfinity, .negativeInfinity] {
+            #expect(throws: EncodingError.self) {
+                try JSONFile.encode(ProjectFile.TimeEntry(time))
+            }
+        }
+    }
+
     @Test func writesTimesAsRationalStrings() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }
