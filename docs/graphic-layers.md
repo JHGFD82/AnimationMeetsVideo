@@ -333,6 +333,17 @@ Built (step 3a):
   against Helvetica Neue's designed pairs, it closes "AV", "To", "Ty" and
   "LT" by between half and twice as much as the designer did, and leaves
   "HH" and "nn" as they are; it is a heuristic, not Adobe's algorithm.
+- **Variable fonts.** A variable font's axes (`FontCatalog.axes`, from
+  `CTFontCopyVariationAxes`, hidden axes left out) each get a row under
+  Style in Character, keyframed with a stopwatch like the controls, so a
+  word can animate from light to black. They aren't controls, since a
+  font's axes aren't known until it is picked: `TextContent.variations`
+  keeps each by its four-letter tag with its `AnimatedValue`, saved as
+  `"variations": [{"axis": "wght", "value": …}]`. They last through a
+  change of font, and a font without an axis ignores it. They apply to
+  every letter, a run's font too (`kCTFontVariationAttribute`). Not yet:
+  their keyframes show in neither the effects panel's lanes nor the
+  graph editor, and F9's eases at the playhead don't reach them.
 - **Anchor** is a Paragraph choice of nine points (Top Left to Bottom
   Right, Middle at first): which point of the block, as wide as its wrap
   width or widest line and as tall as its lines, sits at the frame's
@@ -350,9 +361,6 @@ Built (step 3a):
 
 Still to come:
 
-- **Variable fonts.** A font's variation axes (weight, width, slant,
-  optical size) are controls like any other, so a word can animate from
-  light to black.
 - **Animators.** As in After Effects, an animator applies offset, scale,
   rotation, opacity, fill and tracking to a range of characters, words or
   lines, with the range's start, end and offset keyframed and a shape for
@@ -432,8 +440,11 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
    text editor, selection rows, runs kept through edits, drawing and
    saving; `TextTests` checks editing, joining runs, a run's size, shift,
    scale, case, colors and underline, and saving, and `UISnapshots`'
-   `textSelectionInspector` shows the selection's rows. (c)
-   Variable axes. (d) Animators. (e) Text on a path. (f) Missing fonts
+   `textSelectionInspector` shows the selection's rows. Then, done: kerning
+   by hand, superscript and subscript, hyphenation, optical kerning, made
+   small caps, the anchor, and (c) variable axes, each tested in
+   `TextTests` (`textPairKerningInspector` and
+   `textVariableFontInspector` show their rows). (d) Animators. (e) Text on a path. (f) Missing fonts
    reported before export.
 4. **Viewer handles.** Selecting a graphic clip in the viewer, handles for
    vertices and primitives, and their keyboard paths.

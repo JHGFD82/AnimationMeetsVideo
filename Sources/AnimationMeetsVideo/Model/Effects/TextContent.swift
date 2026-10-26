@@ -15,12 +15,39 @@ struct TextContent: Equatable, Sendable {
     var fontName = TextContent.defaultFontName
     /// Letters styled apart from the block, in order, none overlapping.
     var runs: [TextRun] = []
+    /// Where the font sits along its variation axes (weight, width), each
+    /// keyframed in the clip's source time. Kept when the font changes; a
+    /// font without an axis ignores it.
+    var variations: [TextVariation] = []
 
-    init(string: String = "Text", fontName: String = TextContent.defaultFontName, runs: [TextRun] = []) {
+    init(string: String = "Text", fontName: String = TextContent.defaultFontName, runs: [TextRun] = [], variations: [TextVariation] = []) {
         self.string = string
         self.fontName = fontName
         self.runs = runs
+        self.variations = variations
     }
+
+    /// Changes the value along `axis`, starting at `initial` (the font's
+    /// default) if it has none yet.
+    mutating func changeVariation(_ axis: String, initial: Double, _ change: (inout AnimatedValue<Double>) -> Void) {
+        if let index = variations.firstIndex(where: { $0.axis == axis }) {
+            change(&variations[index].value)
+        } else {
+            var value = AnimatedValue(initial)
+            change(&value)
+            variations.append(TextVariation(axis: axis, value: value))
+        }
+    }
+}
+
+/// Where a variable font sits along one of its axes.
+struct TextVariation: Equatable, Sendable {
+    /// The axis's four-letter tag ("wght", "wdth").
+    var axis: String
+    var value: AnimatedValue<Double>
+}
+
+extension TextContent {
 
     /// A heavy sans serif every Mac has.
     static let defaultFontName = "HelveticaNeue-Bold"

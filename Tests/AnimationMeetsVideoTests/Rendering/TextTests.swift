@@ -297,6 +297,64 @@ extension DrawingFixture {
         #expect(abs(left.minX - topLeft.minX) < 0.5 && abs(left.minY - middle.minY) < 0.5)
     }
 
+    // MARK: Variable fonts
+
+    @Test func aVariableFontsAxesAreListed() throws {
+        // Skia, which every Mac has, varies in weight and width.
+        let axes = FontCatalog.axes(of: "Skia-Regular")
+        let weight = try #require(axes.first { $0.tag == "wght" })
+        #expect(weight.minimum < weight.defaultValue && weight.defaultValue < weight.maximum)
+        #expect(axes.contains { $0.tag == "wdth" })
+        #expect(FontCatalog.axes(of: TextContent.defaultFontName).isEmpty)
+        #expect(FontCatalog.axisTag(FontCatalog.axisNumber("wght")) == "wght")
+    }
+
+    @Test func anAxisChangesTheLettersAndCanBeKeyframed() throws {
+        let weight = try #require(FontCatalog.axes(of: "Skia-Regular").first { $0.tag == "wght" })
+        func skia(_ value: Double?) -> CGRect {
+            bounds(setting("Weight") {
+                $0.fontName = "Skia-Regular"
+                if let value { $0.variations = [.init(axis: "wght", value: value)] }
+            })
+        }
+        #expect(skia(weight.maximum).width > skia(weight.minimum).width + 10)
+        #expect(abs(skia(weight.defaultValue).width - skia(nil).width) < 0.5)
+
+        var effect = Effect(kind: .text)
+        effect.text = TextContent(string: "Weight", fontName: "Skia-Regular")
+        let second = CMTime(seconds: 1, preferredTimescale: 600)
+        effect.text?.changeVariation("wght", initial: weight.defaultValue) { value in
+            value.setAnimated(true, at: .zero)
+            value.set(weight.minimum, at: .zero)
+            value.set(weight.maximum, at: second)
+        }
+        let start = try #require(TextOutline.Setting(effect, at: .zero))
+        let end = try #require(TextOutline.Setting(effect, at: second))
+        #expect(start.variations == [.init(axis: "wght", value: weight.minimum)])
+        #expect(end.variations == [.init(axis: "wght", value: weight.maximum)])
+    }
+
+    @Test func savingKeepsAxesAndTheirKeyframes() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let text = try fixture.addShape(.text)
+        fixture.project.editClip(text.clipID, in: fixture.timelineID) { clip in
+            clip.effects[0].text?.fontName = "Skia-Regular"
+            clip.effects[0].text?.changeVariation("wght", initial: 1) { value in
+                value.setAnimated(true, at: .zero)
+                value.set(2, at: CMTime(seconds: 1, preferredTimescale: 600))
+            }
+            clip.effects[0].text?.changeVariation("wdth", initial: 1) { $0.set(0.8, at: .zero) }
+        }
+        let package = fixture.directory.appending(path: "Axes.amv", directoryHint: .isDirectory)
+        try await ProjectStore.save(fixture.project, to: package)
+        let loaded = try await ProjectStore.load(from: package)
+        let saved = try #require(fixture.project.clipAndLayer(text.clipID, in: fixture.timelineID)?.clip)
+        let read = try #require(loaded.project.clipAndLayer(text.clipID, in: loaded.project.rootTimelineID)?.clip)
+        #expect(read.effects == saved.effects)
+        #expect(read.effects.first?.text?.variations.first?.value.isAnimated == true)
+    }
+
     @Test func savingKeepsRuns() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }

@@ -566,6 +566,25 @@ struct UISnapshots {
         )
     }
 
+    /// A Text effect in Skia, a variable font: its Weight and Width rows,
+    /// the weight keyframed.
+    @Test func textVariableFontInspector() throws {
+        var effect = Effect(kind: .text)
+        effect.text = TextContent(string: "Variable", fontName: "Skia-Regular")
+        effect.text?.changeVariation("wght", initial: 1) { value in
+            value.setAnimated(true, at: .zero)
+            value.set(2, at: CMTime(seconds: 1, preferredTimescale: 600))
+        }
+        try SnapshotSupport.render(
+            ScrollView {
+                TextInspectorGroup(effect: effect, prefix: nil, playhead: PlayheadTime(fixed: .zero), onEdit: { _ in }, onSeek: { _ in })
+                    .padding(Design.Space.group)
+            }
+            .panelSurface(.base),
+            "text-variable-font-inspector", size: CGSize(width: 340, height: 520)
+        )
+    }
+
     /// The inspector for a shape layer: a rounded rectangle's size, corners
     /// and position, then its fill and a dashed outside stroke.
     @Test func shapeInspector() throws {

@@ -56,6 +56,48 @@ enum FontCatalog {
         return (family, style)
     }
 
+    /// One of a variable font's axes, as the inspector shows it.
+    struct Axis: Hashable, Identifiable {
+        /// The four-letter tag ("wght").
+        var tag: String
+        var name: String
+        var minimum: Double
+        var maximum: Double
+        var defaultValue: Double
+        var id: String { tag }
+    }
+
+    /// The variation axes of the font named `fontName`; none for a font
+    /// that doesn't vary.
+    static func axes(of fontName: String) -> [Axis] {
+        let font = CTFontCreateWithName(fontName as CFString, 12, nil)
+        let axes = CTFontCopyVariationAxes(font) as? [[CFString: Any]] ?? []
+        return axes.compactMap { axis in
+            guard let number = (axis[kCTFontVariationAxisIdentifierKey] as? NSNumber)?.uint32Value,
+                  let minimum = (axis[kCTFontVariationAxisMinimumValueKey] as? NSNumber)?.doubleValue,
+                  let maximum = (axis[kCTFontVariationAxisMaximumValueKey] as? NSNumber)?.doubleValue,
+                  minimum < maximum
+            else { return nil }
+            // A hidden axis is the designer's, not the person's.
+            if (axis[kCTFontVariationAxisHiddenKey] as? Bool) == true { return nil }
+            let tag = axisTag(number)
+            return Axis(
+                tag: tag, name: axis[kCTFontVariationAxisNameKey] as? String ?? tag, minimum: minimum, maximum: maximum,
+                defaultValue: (axis[kCTFontVariationAxisDefaultValueKey] as? NSNumber)?.doubleValue ?? minimum
+            )
+        }
+    }
+
+    /// An axis's four-letter tag as the number fonts name it by.
+    static func axisNumber(_ tag: String) -> UInt32 {
+        tag.unicodeScalars.prefix(4).reduce(0) { $0 << 8 | ($1.value & 0xFF) }
+    }
+
+    /// The four-letter tag of an axis number.
+    static func axisTag(_ number: UInt32) -> String {
+        String((0..<4).compactMap { Unicode.Scalar((number >> UInt32(24 - 8 * $0)) & 0xFF).map(Character.init) })
+    }
+
     /// Whether the font named `fontName` has the OpenType feature `tag`
     /// ("smcp", "sups"). Core Text keeps only the features a font has, so a
     /// copy of it asked for the feature says.

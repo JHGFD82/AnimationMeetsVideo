@@ -463,9 +463,18 @@ final class TextLayout: @unchecked Sendable {
         let features = (openTypeFeatures(for: setting, textCase: style.textCase) + own).map { feature -> [CFString: Any] in
             [kCTFontOpenTypeFeatureTag: feature.tag, kCTFontOpenTypeFeatureValue: feature.on ? 1 : 0]
         }
-        guard !features.isEmpty else { return base }
-        let descriptor = CTFontDescriptorCreateWithAttributes([kCTFontFeatureSettingsAttribute: features] as CFDictionary)
-        return CTFontCreateCopyWithAttributes(base, style.size, &matrix, descriptor)
+        guard !features.isEmpty || !setting.variations.isEmpty else { return base }
+        var attributes: [CFString: Any] = [:]
+        if !features.isEmpty { attributes[kCTFontFeatureSettingsAttribute] = features }
+        if !setting.variations.isEmpty {
+            // By each axis's number; a font without the axis ignores it.
+            attributes[kCTFontVariationAttribute] = Dictionary(
+                setting.variations.map { (NSNumber(value: FontCatalog.axisNumber($0.axis)), NSNumber(value: $0.value)) },
+                uniquingKeysWith: { $1 }
+            )
+        }
+        let descriptor = CTFontDescriptorCreateCopyWithAttributes(CTFontCopyFontDescriptor(base), attributes as CFDictionary)
+        return CTFontCreateWithFontDescriptor(descriptor, style.size, &matrix)
     }
 
     /// The OpenType features `setting`'s Case and OpenType settings turn on

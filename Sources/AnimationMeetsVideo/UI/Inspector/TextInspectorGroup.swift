@@ -57,6 +57,11 @@ struct TextInspectorGroup: View {
                     selectedLetters
                 } else {
                     FontPickerRows(fontName: content.fontName) { name in onEdit { $0.text?.fontName = name } }
+                    FontAxisRows(
+                        fontName: content.fontName, content: content, playhead: playhead,
+                        onChange: { change in onEdit { effect in if effect.text != nil { change(&effect.text!) } } },
+                        onSeek: onSeek
+                    )
                     missingFontNote(content.fontName)
                     let kerning = (EffectKind.characterControls.firstIndex(of: .kerning) ?? 0) + 1
                     controls(Array(EffectKind.characterControls.prefix(kerning)))

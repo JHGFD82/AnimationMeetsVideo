@@ -545,15 +545,37 @@ struct ProjectFile: Codable {
         var font: String
         /// Absent while no letters are styled apart.
         var runs: [TextRunEntry]?
+        /// Absent while the font sits at its default on every axis.
+        var variations: [VariationEntry]?
 
         init(_ content: TextContent) {
             string = content.string
             font = content.fontName
             runs = content.runs.isEmpty ? nil : content.runs.map(TextRunEntry.init)
+            variations = content.variations.isEmpty ? nil : content.variations.map(VariationEntry.init)
         }
 
         var content: TextContent {
-            TextContent(string: string, fontName: font, runs: (runs ?? []).map(\.run))
+            TextContent(
+                string: string, fontName: font, runs: (runs ?? []).map(\.run),
+                variations: (variations ?? []).map(\.variation)
+            )
+        }
+    }
+
+    /// Where a variable font sits along one axis, by its tag, keyframed or
+    /// not.
+    struct VariationEntry: Codable {
+        var axis: String
+        var value: PropertyEntry<Double>
+
+        init(_ variation: TextVariation) {
+            axis = variation.axis
+            value = PropertyEntry(variation.value) { $0 }
+        }
+
+        var variation: TextVariation {
+            TextVariation(axis: axis, value: value.property(default: 0) { $0 })
         }
     }
 
@@ -1045,6 +1067,7 @@ extension ProjectFile {
             if kind == .text {
                 fields.append(.optional("text", .object(object([
                     .required("string", .string), .required("font", .string), .optional("runs", .array(TextRunEntry.shape)),
+                    .optional("variations", .array(.object(object([.required("axis", .string), .required("value", property(.number))])))),
                 ]))))
             }
             fields += extra

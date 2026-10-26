@@ -61,6 +61,14 @@ struct TextOutline: Equatable, Sendable {
 
         /// Letters styled apart from the block (`TextContent.runs`).
         var runs: [TextRun] = []
+        /// Where variable fonts sit along their axes, at this moment.
+        var variations: [AxisValue] = []
+
+        struct AxisValue: Hashable, Sendable {
+            /// A four-letter tag ("wght").
+            var axis: String
+            var value: Double
+        }
 
         /// What a Text effect sets at source time `time`: each control
         /// that is on at its value there, one that is off or deleted at its
@@ -79,6 +87,7 @@ struct TextOutline: Equatable, Sendable {
             guard let content = effect.text, !content.string.isEmpty, size > 0 else { return nil }
             self.init(string: content.string, fontName: content.fontName, size: size)
             runs = content.runs
+            variations = content.variations.map { AxisValue(axis: $0.axis, value: $0.value.value(at: time)) }
             leading = max(0, number(.leading))
             kerning = choice(.kerning, .metrics)
             tracking = number(.tracking)
