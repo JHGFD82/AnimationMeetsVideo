@@ -215,7 +215,7 @@ The person's packages load after the built-in ones. One whose `id` is
 already taken is refused, so a built-in effect can't be replaced by
 mistake. Each package that can't be used is listed at the end of the
 effects library, under "Can't Be Used", with why and Show in Finder, as
-preset problems are in the Presets tab.
+preset problems are in its Presets tab.
 
 Kernels are compiled in the background just after launch, not at first
 use, so a mistake shows up in the library at once

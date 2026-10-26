@@ -370,7 +370,7 @@ In order, each step usable on its own:
      and no Flow Smear; renders and export draw everything.
 5. **Recipes and safety** (done). The recipes are `LookRecipes`, written
    into the Presets folder as ordinary presets the first time the
-   browser's presets are shown (`PresetStore.installRecipes`), once per
+   Effects Library's presets are shown (`PresetStore.installRecipes`), once per
    `LookRecipes.version`, so one the person deletes or renames stays that
    way, and one whose name a preset already has is left out. Their
    Blending and Displace steps point at the effects they name by ID, which

@@ -1256,15 +1256,19 @@ struct UISnapshots {
         }
     }
 
-    /// The browser's Presets tab with the look recipes and one preset whose
-    /// file can't be read.
+    /// The Effects Library's Presets tab with the look recipes and one
+    /// preset whose file can't be read, under the library's tab bar.
     @Test func presetsList() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-presets-\(UUID().uuidString)", directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: folder) }
         for recipe in LookRecipes.all.prefix(5) { try PresetStore.save(recipe.bundle, named: recipe.name, in: folder) }
         try Data("{}".utf8).write(to: folder.appending(path: "Broken.json"))
-        let list = PresetsList(model: PresetsModel(folder: folder), onApply: { _ in })
-        try SnapshotSupport.render(list.preferredColorScheme(.dark), "presets-list", size: CGSize(width: 280, height: 360))
+        let project = EditingProject.empty
+        let library = EffectsLibrary(
+            project: .constant(project), timelineID: project.rootTimelineID, selection: nil, playhead: PlayheadState(),
+            onSelect: { _ in }, state: EffectsPanelState(), tab: .constant(.presets), onClose: {}, presets: PresetsModel(folder: folder)
+        )
+        try SnapshotSupport.render(library.preferredColorScheme(.dark), "presets-list", size: CGSize(width: 280, height: 360))
     }
 
     /// The timeline's view options, with skimming beside zoom and the

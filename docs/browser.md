@@ -18,16 +18,19 @@ anywhere else picks a range.
 ## Names
 
 - The **Browser** is the panel left of the viewer (formerly the
-  "Library"), with the tabs **Clips**, **Timelines** and **Presets**.
+  "Library"), with the tabs **Clips** and **Timelines**.
 - The **Effects Library** is the panel at the right end of the timeline
-  with the tabs **Effects** and **Transitions** (formerly the "browser",
-  see [effects.md](effects.md)). Only its name changes.
+  with the tabs **Effects**, **Transitions** and **Presets** (formerly
+  the "browser", see [effects.md](effects.md)). Presets moved there from
+  the browser, since like effects and transitions they go onto clips
+  rather than making clips of their own.
 
 ## Tabs
 
 The tabs sit at the top of the browser in the same tab bar as the side
 panel's Inspector and Effects tabs (`PanelTabBar`). The chosen tab is
-remembered.
+remembered; one no longer offered (a remembered Presets tab, from
+before it moved) opens on Clips.
 
 - **Clips**: the project's media, in import order. With none yet, the
   tab says how to begin (import, or drag files from the Finder) and has
@@ -97,12 +100,6 @@ remembered.
     drag as clips do (see "Dragging").
   - **Tree**: the tree described above, each row its icon, name, duration
     and settings, with no pictures.
-- **Presets**: saved effect presets (see [effects.md](effects.md),
-  "Presets"). They have no duration; see "Previewing presets". Resting
-  the pointer on one shows a card of what it holds, top of the stack
-  first: each effect's name (and its kind when renamed), whether it is
-  off, and the settings that differ from a new effect of its kind, with
-  animated ones marked. VoiceOver reads the same as the row's hint.
 
 ## Sorting
 
@@ -354,7 +351,12 @@ and VoiceOver reads it by row and column.
 
 ## Previewing presets
 
-A preset's tile shows a thumbnail of the preset applied to **generated test
+Presets are in the Effects Library's Presets tab (see
+[effects.md](effects.md), "Copying and presets"). Resting the pointer on
+one shows a card of what it holds, top of the stack first: each effect's
+name (and its kind when renamed), whether it is off, and the settings
+that differ from a new effect of its kind, with animated ones marked.
+VoiceOver reads the same as the row's hint. A preset's tile shows a thumbnail of the preset applied to **generated test
 footage**: pictures the app draws itself (colour bars, a gradient and
 moving shapes), so nothing is bundled and previews work in an empty
 project. Skimming a preset shows that footage with the preset in the
@@ -404,6 +406,7 @@ Following [accessibility.md](accessibility.md):
 
 1. **Tabs and names** (done). Clips, Timelines and Presets tabs in place of
    the sections, and the Effects Library rename. Lists stay as they are.
+   Presets later moved to the Effects Library.
 2. **Filmstrips** (built, Clips tab; not yet tried on screen). Thumbnails,
    wrapping, the settings popover (time per thumbnail, size), duration
    boxes, scenes as clips. Rendered offscreen to check layout only.

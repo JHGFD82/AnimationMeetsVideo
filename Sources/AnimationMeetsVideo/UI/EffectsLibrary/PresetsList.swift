@@ -2,9 +2,10 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// The presets in the presets folder, for the browser's Presets tab.
-/// They are shared by every project, so they are read from the folder
-/// again when the app comes forward or one is saved, not kept per project.
+/// The presets in the presets folder, for the Effects Library's Presets
+/// tab. They are shared by every project, so they are read from the
+/// folder again when the app comes forward or one is saved, not kept per
+/// project.
 @MainActor @Observable
 final class PresetsModel {
     var library = PresetLibrary()
@@ -14,6 +15,10 @@ final class PresetsModel {
     var errorMessage: String?
 
     let folder: URL
+
+    /// The one for the presets folder, made when first needed. Presets are
+    /// shared by every project, so every window's library lists these.
+    static let shared = PresetsModel()
 
     init(folder: URL = PresetStore.defaultFolder) {
         self.folder = folder
@@ -60,13 +65,13 @@ final class PresetsModel {
     }
 }
 
-/// The browser's Presets tab: each preset can be dragged onto a clip or
-/// into a stack, double-clicked to apply it to the selected clip, renamed,
-/// deleted or shown in the Finder. A file that can't be read is listed with
-/// why, and is never used.
+/// The Effects Library's Presets tab: each preset can be dragged onto a
+/// clip or into a stack, double-clicked to apply it to the selected clip,
+/// renamed, deleted or shown in the Finder. A file that can't be read is
+/// listed with why, and is never used.
 ///
 /// The rows sit in a scroll view rather than a `List`, as the Clips tab's
-/// and the Effects Library's do: a list's table takes the mouse-down for
+/// and the Effects tab's do: a list's table takes the mouse-down for
 /// its own row tracking, and a row's drag never started.
 struct PresetsList: View {
     let model: PresetsModel
