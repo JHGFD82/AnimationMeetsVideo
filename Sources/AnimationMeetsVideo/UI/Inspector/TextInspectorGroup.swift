@@ -107,10 +107,11 @@ struct TextInspectorGroup: View {
                 .help("Give the selected letters the block's settings")
         }
         TextSelectionRows(
-            style: style, letter: block.letterStyle(style),
+            style: style, block: block,
             blockFill: effect.control(.fill)?.values(at: time) ?? [1, 1, 1, 1],
             blockStroke: effect.control(.stroke)?.values(at: time) ?? [0, 0, 0, 1],
-            onChange: changeSelection
+            blockStrokeWidth: ShapeStroke(geometryOf: effect, at: time).width,
+            playhead: playhead, onSeek: onSeek, onChange: changeSelection
         )
         missingFontNote(style.fontName ?? content.fontName)
         Text("Leading, Kerning and Character Rotation are the whole block's:")
@@ -128,25 +129,16 @@ struct TextInspectorGroup: View {
             let text = content.string as NSString
             let first = text.substring(with: pair)
             let second = text.substring(with: text.rangeOfComposedCharacterSequence(at: selection.location))
-            let kerning = content.style(at: pair.location).kerning
-            HStack(spacing: 4) {
-                Color.clear.frame(width: 18, height: 1)
-                Text("Kern \u{201C}\(first)\(second)\u{201D}")
-                    .foregroundStyle(Design.textSecondary)
-                    .lineLimit(1)
-                    .frame(width: InspectorControlRow.nameWidth, alignment: .leading)
-                NumericField(value: kerning ?? 0, dragStep: 1, dragRange: -1000...10_000, accessibilityName: "Kerning between \(first) and \(second)") { value in
-                    let kept = value.clamped(between: -1000, and: 10_000)
-                    onEdit { $0.text?.changeStyle(in: pair) { $0.kerning = kept == 0 ? nil : kept } }
-                }
-                Spacer(minLength: 4)
-            }
-            .font(Design.Typeface.label)
+            TextRunNumberRow(
+                name: "Kern \u{201C}\(first)\(second)\u{201D}", own: content.style(at: pair.location).kerning, block: 0, unit: "",
+                range: -1000...10_000, playhead: playhead, onSeek: onSeek,
+                onChange: { change in onEdit { $0.text?.changeStyle(in: pair) { change(&$0.kerning) } } }
+            )
             .help("Thousandths of an em between these two letters, besides the font's kerning and the tracking")
         }
     }
 
-    private func changeSelection(_ change: (inout TextStyle) -> Void) {
+    private func changeSelection(_ change: (inout TextRunStyle) -> Void) {
         let range = selection
         onEdit { $0.text?.changeStyle(in: range, change) }
     }

@@ -282,15 +282,30 @@ Built (step 3a):
   their letters: what is typed takes the style of the letter before it,
   and an edit the editor makes itself (an undo) keeps the styles of what
   is unchanged at either end. Adjacent letters styled alike are one run.
-  - **Keyframes.** A run's setting holds still: it replaces the block's
-    for its letters at every moment, so the block's keyframes don't
-    reach them, and unstyled letters follow the block's keyframes.
-    Animating some letters apart is the animators' job (still to come).
-  - **Colors.** A run's fill or stroke color is used where the block has
-    a fill or a stroke; turning the block's off turns off its runs'. The
-    letters are drawn as pieces, one per style, all the fills first and
-    then the strokes, so a stroke may overlap a neighbouring letter's fill
-    as in Illustrator.
+  - **Keyframes.** A run's numbers (size, tracking, baseline shift,
+    scales, kerning by hand, stroke width) and colors are values that can
+    be keyframed in the clip's source time (`TextRunStyle`), with the
+    stopwatch and keyframe buttons in the selection's rows; its font,
+    case, position, underline and strikethrough are choices and hold
+    still. They combine with the block's by replacing: a setting a run
+    has replaces the block's for its letters, its own keyframes with it,
+    so the block's keyframes don't reach those letters; a setting it
+    lacks follows the block's keyframes. Setting one starts from the
+    block's value at the playhead. The layout gets each run's values at
+    its moment (`TextStyleRun`). Run keyframes count as animation for
+    the render cache, F9's eases reach them, and they are saved as a
+    control's are (`{"value": …}` or `{"keyframes": […]}`). Not yet: they
+    show in neither the effects panel's lanes nor the graph editor.
+  - **Colors.** A run's own fill or stroke color paints its letters
+    whether or not the block's fill or stroke is on, and letters without
+    one take the block's, or nothing while it is off. A run's stroke is
+    drawn as the block strokes (its Edge, Join, Cap and Dash, kept even
+    while the block's stroke is off: `ShapeStroke(geometryOf:)`), at the
+    run's own Stroke Width or the block's; giving letters a stroke color
+    while their width is 0 gives them a width, a thirtieth of the size,
+    so the color shows. The letters are drawn as pieces, one per style,
+    all the fills first and then the strokes, so a stroke may overlap a
+    neighbouring letter's fill as in Illustrator.
   - **Layout.** Each letter's scale is its font's matrix, so Core Text
     measures, wraps and draws it scaled; a run's positions come back
     without that scale and are scaled from where the line puts the run

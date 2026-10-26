@@ -633,10 +633,11 @@ struct Effect: Identifiable, Equatable, Sendable {
         return package.framesAhead(of: self)
     }
 
-    /// The span of time in which any enabled control is between keyframes.
+    /// The span of time in which any enabled control, or a Text effect's
+    /// styled run, is between keyframes.
     var animatedRanges: [ClosedRange<CMTime>] {
         guard enabled, !kind.isKeyframing else { return [] }
-        return controls.compactMap { $0.enabled ? $0.animatedRange : nil }
+        return controls.compactMap { $0.enabled ? $0.animatedRange : nil } + (text?.animatedRanges ?? [])
     }
 }
 
@@ -865,6 +866,7 @@ extension TimelineClip {
                     self[keyPath: stack][e].controls[c].number.applyEase(preset, at: source)
                     eased = true
                 }
+                if self[keyPath: stack][e].text?.applyEase(preset, at: source) == true { eased = true }
             }
         }
         return eased

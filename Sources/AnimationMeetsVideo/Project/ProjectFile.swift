@@ -580,64 +580,87 @@ struct ProjectFile: Codable {
     }
 
     /// Letters styled apart from the block: where they start and how many
-    /// UTF-16 code units they span, and each setting they override.
+    /// UTF-16 code units they span, and each setting they override, its
+    /// numbers and colors as a value or keyframes like a control's.
     struct TextRunEntry: Codable {
         var start: Int
         var length: Int
         var font: String?
-        var size: Double?
-        var tracking: Double?
-        var baselineShift: Double?
-        var horizontalScale: Double?
-        var verticalScale: Double?
+        var size: PropertyEntry<Double>?
+        var tracking: PropertyEntry<Double>?
+        var baselineShift: PropertyEntry<Double>?
+        var horizontalScale: PropertyEntry<Double>?
+        var verticalScale: PropertyEntry<Double>?
         /// A `TextCase` name.
         var textCase: String?
         var underline: Bool?
         var strikethrough: Bool?
-        var fill: [Double]?
-        var stroke: [Double]?
+        var fill: PropertyEntry<[Double]>?
+        var stroke: PropertyEntry<[Double]>?
         /// Thousandths of an em after the run's letters, set by hand.
-        var kerning: Double?
+        var kerning: PropertyEntry<Double>?
         /// A `TextPosition` name.
         var position: String?
+        var strokeWidth: PropertyEntry<Double>?
 
         init(_ run: TextRun) {
+            func number(_ value: AnimatedValue<Double>?) -> PropertyEntry<Double>? { value.map { PropertyEntry($0) { $0 } } }
+            func color(_ value: AnimatedValue<ComponentValue>?) -> PropertyEntry<[Double]>? { value.map { PropertyEntry($0) { $0.values } } }
             start = run.start
             length = run.length
             let style = run.style
             font = style.fontName
-            size = style.size
-            tracking = style.tracking
-            baselineShift = style.baselineShift
-            horizontalScale = style.horizontalScale
-            verticalScale = style.verticalScale
+            size = number(style.size)
+            tracking = number(style.tracking)
+            baselineShift = number(style.baselineShift)
+            horizontalScale = number(style.horizontalScale)
+            verticalScale = number(style.verticalScale)
             textCase = style.textCase?.rawValue
             underline = style.underline
             strikethrough = style.strikethrough
-            fill = style.fill
-            stroke = style.stroke
-            kerning = style.kerning
+            fill = color(style.fill)
+            stroke = color(style.stroke)
+            kerning = number(style.kerning)
             position = style.position?.rawValue
+            strokeWidth = number(style.strokeWidth)
         }
 
         var run: TextRun {
-            TextRun(start: start, length: length, style: TextStyle(
-                fontName: font, size: size, tracking: tracking, baselineShift: baselineShift,
-                horizontalScale: horizontalScale, verticalScale: verticalScale, textCase: textCase.flatMap(TextCase.init(rawValue:)),
-                underline: underline, strikethrough: strikethrough, fill: fill, stroke: stroke, kerning: kerning,
-                position: position.flatMap(TextPosition.init(rawValue:))
-            ))
+            func number(_ entry: PropertyEntry<Double>?) -> AnimatedValue<Double>? { entry.map { $0.property(default: 0) { $0 } } }
+            func color(_ entry: PropertyEntry<[Double]>?) -> AnimatedValue<ComponentValue>? {
+                entry.map { $0.property(default: ComponentValue(values: [1, 1, 1, 1])) { ComponentValue(values: $0) } }
+            }
+            var style = TextRunStyle()
+            style.fontName = font
+            style.size = number(size)
+            style.tracking = number(tracking)
+            style.baselineShift = number(baselineShift)
+            style.horizontalScale = number(horizontalScale)
+            style.verticalScale = number(verticalScale)
+            style.textCase = textCase.flatMap(TextCase.init(rawValue:))
+            style.underline = underline
+            style.strikethrough = strikethrough
+            style.fill = color(fill)
+            style.stroke = color(stroke)
+            style.kerning = number(kerning)
+            style.position = position.flatMap(TextPosition.init(rawValue:))
+            style.strokeWidth = number(strokeWidth)
+            return TextRun(start: start, length: length, style: style)
         }
 
-        static let shape = JSONShape.object(JSONObjectShape(fields: [
-            .required("start", .integer), .required("length", .integer),
-            .optional("font", .string), .optional("size", .number), .optional("tracking", .number),
-            .optional("baselineShift", .number), .optional("horizontalScale", .number), .optional("verticalScale", .number),
-            .optional("textCase", .choice(TextCase.allCases.map(\.rawValue), noun: "case")),
-            .optional("underline", .bool), .optional("strikethrough", .bool),
-            .optional("fill", .numbers(count: 4)), .optional("stroke", .numbers(count: 4)), .optional("kerning", .number),
-            .optional("position", .choice(TextPosition.allCases.map(\.rawValue), noun: "position")),
-        ]))
+        static var shape: JSONShape {
+            let number = ShapeKit.property(.number), color = ShapeKit.property(.numbers(count: 4))
+            return .object(JSONObjectShape(fields: [
+                .required("start", .integer), .required("length", .integer),
+                .optional("font", .string), .optional("size", number), .optional("tracking", number),
+                .optional("baselineShift", number), .optional("horizontalScale", number), .optional("verticalScale", number),
+                .optional("textCase", .choice(TextCase.allCases.map(\.rawValue), noun: "case")),
+                .optional("underline", .bool), .optional("strikethrough", .bool),
+                .optional("fill", color), .optional("stroke", color), .optional("kerning", number),
+                .optional("position", .choice(TextPosition.allCases.map(\.rawValue), noun: "position")),
+                .optional("strokeWidth", number),
+            ]))
+        }
     }
 
     /// One effect of a clip's stack. `kind` is an `EffectKind` name such as

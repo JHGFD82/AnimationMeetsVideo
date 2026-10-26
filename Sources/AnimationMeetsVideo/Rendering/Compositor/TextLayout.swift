@@ -28,6 +28,8 @@ final class TextLayout: @unchecked Sendable {
         /// it begins (`TextStyle.kerning`).
         var kerning = 0.0
         var position = TextPosition.normal
+        /// The run's own stroke width; nil where the block's is used.
+        var strokeWidth: Double?
         /// An OpenType feature the letters' font draws them with (its own
         /// superscripts), set as they are laid out.
         var feature: String?
@@ -240,7 +242,6 @@ final class TextLayout: @unchecked Sendable {
         var laid = Laid()
         guard setting.size > 0, !setting.string.isEmpty else { return laid }
         let block = setting.letterStyle(.none)
-        let content = TextContent(string: setting.string, fontName: setting.fontName, runs: setting.runs)
         var styleIndex: [LetterStyle: Int] = [:]
         // Letters whose styles differ only in color, tracking or rules share
         // one font, so Core Text kerns pairs across them.
@@ -274,7 +275,7 @@ final class TextLayout: @unchecked Sendable {
         let source = setting.string as NSString
         source.enumerateSubstrings(in: NSRange(location: 0, length: source.length), options: .byComposedCharacterSequences) { letter, range, _, _ in
             guard var letter else { return }
-            var style = setting.letterStyle(content.style(at: range.location)).resolved()
+            var style = setting.letterStyle(setting.runs.style(at: range.location)).resolved()
             if style.textCase == .allCaps { letter = letter.uppercased() }
             if style.textCase == .smallCaps || style.textCase == .allSmallCaps, !FontCatalog.supports(style.fontName, feature: "smcp") {
                 // Made as Illustrator makes them for a font without its

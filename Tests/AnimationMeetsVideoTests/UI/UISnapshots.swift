@@ -533,7 +533,13 @@ struct UISnapshots {
     @Test func textSelectionInspector() throws {
         var effect = Effect(kind: .text)
         effect.text = TextContent(string: "Animation meets video")
-        effect.text?.changeStyle(in: NSRange(location: 10, length: 5)) { $0.size = 80; $0.fill = [1, 0.2, 0.2, 1] }
+        effect.text?.changeStyle(in: NSRange(location: 10, length: 5)) { style in
+            var size = AnimatedValue(80.0)
+            size.setAnimated(true, at: .zero)
+            size.set(160, at: CMTime(seconds: 1, preferredTimescale: 600))
+            style.size = size
+            style.fill = AnimatedValue(ComponentValue(values: [1, 0.2, 0.2, 1]))
+        }
         try SnapshotSupport.render(
             ScrollView {
                 TextInspectorGroup(
@@ -552,7 +558,7 @@ struct UISnapshots {
     @Test func textPairKerningInspector() throws {
         var effect = Effect(kind: .text)
         effect.text = TextContent(string: "AVATAR")
-        effect.text?.changeStyle(in: NSRange(location: 0, length: 1)) { $0.kerning = -60 }
+        effect.text?.changeStyle(in: NSRange(location: 0, length: 1)) { $0.kerning = AnimatedValue(-60) }
         try SnapshotSupport.render(
             ScrollView {
                 TextInspectorGroup(

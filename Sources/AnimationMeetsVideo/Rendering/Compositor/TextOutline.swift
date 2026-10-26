@@ -59,8 +59,9 @@ struct TextOutline: Equatable, Sendable {
         /// ss01 to ss20; 0 for none.
         var stylisticSet = 0
 
-        /// Letters styled apart from the block (`TextContent.runs`).
-        var runs: [TextRun] = []
+        /// Letters styled apart from the block (`TextContent.runs`), as
+        /// they are at this moment.
+        var runs: [TextStyleRun] = []
         /// Where variable fonts sit along their axes, at this moment.
         var variations: [AxisValue] = []
 
@@ -86,7 +87,7 @@ struct TextOutline: Equatable, Sendable {
             let size = number(.fontSize)
             guard let content = effect.text, !content.string.isEmpty, size > 0 else { return nil }
             self.init(string: content.string, fontName: content.fontName, size: size)
-            runs = content.runs
+            runs = content.runs(at: time)
             variations = content.variations.map { AxisValue(axis: $0.axis, value: $0.value.value(at: time)) }
             leading = max(0, number(.leading))
             kerning = choice(.kerning, .metrics)
@@ -132,7 +133,7 @@ struct TextOutline: Equatable, Sendable {
                 horizontalScale: max(1, style.horizontalScale ?? horizontalScale), verticalScale: max(1, style.verticalScale ?? verticalScale),
                 textCase: style.textCase ?? textCase, underline: style.underline ?? underline,
                 strikethrough: style.strikethrough ?? strikethrough, fill: style.fill, stroke: style.stroke,
-                kerning: style.kerning ?? 0, position: style.position ?? .normal
+                kerning: style.kerning ?? 0, position: style.position ?? .normal, strokeWidth: style.strokeWidth
             )
         }
     }
@@ -141,9 +142,12 @@ struct TextOutline: Equatable, Sendable {
     /// colors and opacity they are filled and stroked with.
     struct Piece {
         var path: CGPath
-        /// Nil while the block has no fill, or no stroke.
+        /// Nil while neither the block nor the letters' run has a fill, or
+        /// a stroke.
         var fill: [Double]?
         var stroke: [Double]?
+        /// The run's own stroke width; nil where the block's is used.
+        var strokeWidth: Double?
         var opacity = 1.0
     }
 
@@ -223,6 +227,12 @@ struct TextOutline: Equatable, Sendable {
     /// place it.
     var followed: TextPath?
     var pathOffset = 0.0
+    /// How the block strokes, its width 0 while its stroke is off, which a
+    /// run with a stroke of its own is stroked with, at its own width
+    /// where it has one.
+    var strokeGeometry: ShapeStroke?
+    /// The block's stroke color, nil while it is off.
+    var strokeColor: [Double]?
 
     /// The glyphs' outlines, in the frame's pixels.
     var path: CGPath {
@@ -273,7 +283,7 @@ struct TextOutline: Equatable, Sendable {
                     .concatenating(CGAffineTransform(translationX: pivot.x, y: pivot.y))
             }
             var opacity = 1.0
-            var color = fill.map { laid.styles[glyph.style].fill ?? $0 }
+            var color = laid.styles[glyph.style].fill ?? fill
             var recolored = false
             for (animator, amount) in zip(animators, amounts[index]) where amount > 0 {
                 // About the middle of its baseline, as After Effects does.
@@ -319,9 +329,11 @@ struct TextOutline: Equatable, Sendable {
         return looks.compactMap { look in
             guard let path = paths[look], !path.isEmpty else { return nil }
             let style = laid.styles[look.style]
+            // A run's own color paints its letters whether or not the
+            // block's fill or stroke is on.
             return Piece(
-                path: path, fill: colors[look] ?? fill.map { style.fill ?? $0 }, stroke: stroke.map { style.stroke ?? $0 },
-                opacity: Double(look.opacity) / 1000
+                path: path, fill: colors[look] ?? style.fill ?? fill, stroke: style.stroke ?? stroke,
+                strokeWidth: style.strokeWidth, opacity: Double(look.opacity) / 1000
             )
         }
     }
@@ -369,5 +381,6 @@ struct TextOutline: Equatable, Sendable {
     var keyText: String {
         "h t \(String(describing: setting)) \(String(describing: animators)) \(String(format: "%.5f,%.5f", center.x, center.y))"
             + (followed.map { " p\(String(format: "%.5f", pathOffset)) \($0.closed) \($0.points)" } ?? "")
+            + " g\(strokeGeometry?.keyText ?? "-") \(strokeColor ?? [])"
     }
 }

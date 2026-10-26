@@ -64,6 +64,11 @@ struct ShapeStep: Equatable, Sendable {
                 text.followed = followed
                 text.pathOffset = single(.pathOffset)
             }
+            text.strokeGeometry = ShapeStroke(geometryOf: effect, at: time)
+            if let color = effect.control(.stroke), color.enabled {
+                let rgba = color.values(at: time).map { $0.clamped(between: 0, and: 1) }
+                text.strokeColor = rgba.count == 4 && rgba[3] > 0 ? rgba : nil
+            }
             outline = .text(text)
         default:
             return nil
@@ -107,14 +112,20 @@ struct ShapeStep: Equatable, Sendable {
     /// opacity, all the fills first, then the strokes.
     var paints: [(area: CGPath, color: [Double])] {
         if case .text(let text) = outline {
-            let pieces = text.pieces(fill: fill, stroke: stroke?.color)
+            let pieces = text.pieces(fill: fill, stroke: text.strokeColor)
             func faded(_ color: [Double], _ opacity: Double) -> [Double] {
                 color.count == 4 ? [color[0], color[1], color[2], color[3] * opacity] : color
             }
             var result = pieces.compactMap { piece in piece.fill.map { (piece.path as CGPath, faded($0, piece.opacity)) } }
-            if let stroke {
+            // Stroked as the block strokes, at the run's width where it has
+            // one.
+            if let geometry = text.strokeGeometry {
                 result += pieces.compactMap { piece in
-                    piece.stroke.map { (stroke.area(around: piece.path), faded($0, piece.opacity)) }
+                    guard let color = piece.stroke else { return nil }
+                    var style = geometry
+                    style.width = piece.strokeWidth ?? geometry.width
+                    guard style.width > 0 else { return nil }
+                    return (style.area(around: piece.path), faded(color, piece.opacity))
                 }
             }
             return result
@@ -130,6 +141,8 @@ struct ShapeStep: Equatable, Sendable {
     /// stroke's area when it has one.
     var edge: CGPath {
         let outline = path
+        // Text's strokes are its pieces'.
+        if case .text = self.outline { return paints.reduce(outline) { $0.union($1.area) } }
         guard let stroke else { return outline }
         return outline.union(stroke.area(around: outline))
     }
@@ -240,6 +253,25 @@ struct ShapeStroke: Equatable, Sendable {
     /// dash is 0. A gap of 0 is as long as the dash.
     var dash: Double
     var gap: Double
+
+    /// How an effect's controls stroke at source time `time` whether or not
+    /// its Stroke is on: its width (0 while Stroke Width is off), Edge,
+    /// Join, Cap and Dash, its color clear while Stroke is off. For text,
+    /// whose runs can have strokes of their own.
+    init(geometryOf effect: Effect, at time: CMTime) {
+        func values(_ kind: ControlKind) -> [Double]? { effect.control(kind).flatMap { $0.enabled ? $0.values(at: time) : nil } }
+        func choice(_ kind: ControlKind) -> String {
+            effect.control(kind).flatMap { $0.enabled ? $0.choice : nil } ?? kind.defaultChoice ?? ""
+        }
+        let dashes = values(.dash) ?? [0, 0]
+        color = values(.stroke) ?? [0, 0, 0, 0]
+        width = max(0, values(.strokeWidth)?.first ?? 0)
+        edge = StrokeEdge(rawValue: choice(.strokeEdge)) ?? .center
+        join = StrokeJoin(rawValue: choice(.strokeJoin)) ?? .miter
+        cap = StrokeCap(rawValue: choice(.strokeCap)) ?? .butt
+        dash = max(0, dashes.first ?? 0)
+        gap = max(0, dashes.count > 1 ? dashes[1] : 0)
+    }
 
     /// The stroke an effect's controls give at source time `time`: its
     /// Stroke color, Stroke Width, Edge, Join, Cap and Dash. Nil when the

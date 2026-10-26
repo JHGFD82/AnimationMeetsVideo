@@ -46,8 +46,8 @@ extension DrawingFixture {
 
     @Test func editingKeepsRunsOnTheirLetters() {
         var content = TextContent(string: "Hello world")
-        content.changeStyle(in: NSRange(location: 6, length: 5)) { $0.size = 200 }
-        #expect(content.runs == [TextRun(start: 6, length: 5, style: TextStyle(size: 200))])
+        content.changeStyle(in: NSRange(location: 6, length: 5)) { $0.size = AnimatedValue(200) }
+        #expect(content.runs == [TextRun(start: 6, length: 5, style: TextRunStyle(fixed: TextStyle(size: 200)))])
         // Typing before the run moves it along; typing inside it widens it.
         content.replaceCharacters(in: NSRange(location: 0, length: 0), with: "Oh, ")
         #expect(content.runs.map(\.range) == [NSRange(location: 10, length: 5)])
@@ -70,50 +70,110 @@ extension DrawingFixture {
         var content = TextContent(string: "abcdef")
         content.changeStyle(in: NSRange(location: 0, length: 2)) { $0.underline = true }
         content.changeStyle(in: NSRange(location: 2, length: 2)) { $0.underline = true }
-        content.changeStyle(in: NSRange(location: 3, length: 3)) { $0.tracking = 50 }
+        content.changeStyle(in: NSRange(location: 3, length: 3)) { $0.tracking = AnimatedValue(50) }
         #expect(content.runs == [
-            TextRun(start: 0, length: 3, style: TextStyle(underline: true)),
-            TextRun(start: 3, length: 1, style: TextStyle(tracking: 50, underline: true)),
-            TextRun(start: 4, length: 2, style: TextStyle(tracking: 50)),
+            TextRun(start: 0, length: 3, style: TextRunStyle(fixed: TextStyle(underline: true))),
+            TextRun(start: 3, length: 1, style: TextRunStyle(fixed: TextStyle(tracking: 50, underline: true))),
+            TextRun(start: 4, length: 2, style: TextRunStyle(fixed: TextStyle(tracking: 50))),
         ])
     }
 
     @Test func aRunSetsItsLettersApartFromTheBlock() {
         let plain = setting("HHHH")
         var bigger = plain
-        bigger.runs = [TextRun(start: 2, length: 2, style: TextStyle(size: 200))]
+        bigger.runs = [TextStyleRun(start: 2, length: 2, style: TextStyle(size: 200))]
         // The two big letters are twice as wide and the block as tall as them.
         let small = bounds(plain), mixed = bounds(bigger)
         #expect(abs(mixed.width - small.width * 1.5) < 4)
         #expect(mixed.height > small.height * 1.8)
 
         var shifted = plain
-        shifted.runs = [TextRun(start: 0, length: 1, style: TextStyle(baselineShift: 40))]
+        shifted.runs = [TextStyleRun(start: 0, length: 1, style: TextStyle(baselineShift: 40))]
         #expect(abs(bounds(shifted).minY - (small.minY - 40)) < 0.5)
 
         var wide = plain
-        wide.runs = [TextRun(start: 0, length: 4, style: TextStyle(horizontalScale: 200))]
+        wide.runs = [TextStyleRun(start: 0, length: 4, style: TextStyle(horizontalScale: 200))]
         #expect(abs(bounds(wide).width - small.width * 2) < 4)
 
         var capped = setting("hello")
-        capped.runs = [TextRun(start: 0, length: 5, style: TextStyle(textCase: .allCaps))]
+        capped.runs = [TextStyleRun(start: 0, length: 5, style: TextStyle(textCase: .allCaps))]
         #expect(bounds(capped) == bounds(setting("HELLO")))
     }
 
     @Test func aRunsColorsPaintItsLetters() {
         var styled = setting("ab")
-        styled.runs = [TextRun(start: 1, length: 1, style: TextStyle(fill: [1, 0, 0, 1], stroke: [0, 0, 1, 1]))]
+        styled.runs = [TextStyleRun(start: 1, length: 1, style: TextStyle(fill: [1, 0, 0, 1], stroke: [0, 0, 1, 1]))]
         let drawn = pieces(styled)
         #expect(drawn.count == 2)
         #expect(drawn.map(\.fill) == [[1, 1, 1, 1], [1, 0, 0, 1]])
         #expect(drawn.map(\.stroke) == [[0, 0, 0, 1], [0, 0, 1, 1]])
-        // Without a block fill, a run's color doesn't add one.
-        #expect(TextOutline(setting: styled, center: .zero).pieces(fill: nil, stroke: nil).allSatisfy { $0.fill == nil && $0.stroke == nil })
+        // Without a block fill or stroke, a run's own colors still paint
+        // its letters, and the rest are left unpainted.
+        let bare = TextOutline(setting: styled, center: .zero).pieces(fill: nil, stroke: nil)
+        #expect(bare.map(\.fill) == [nil, [1, 0, 0, 1]])
+        #expect(bare.map(\.stroke) == [nil, [0, 0, 1, 1]])
+    }
+
+    @Test func aRunsStrokeDrawsWhenTheBlockHasNone() throws {
+        var effect = Effect(kind: .text)
+        effect.text = TextContent(string: "ab")
+        // The block's stroke is off and has no width.
+        effect.changeControl(.stroke) { $0.enabled = false }
+        let plain = try #require(ShapeStep(effect, at: .zero, center: .zero))
+        #expect(plain.paints.count == 1)
+        effect.text?.changeStyle(in: NSRange(location: 1, length: 1)) { style in
+            style.stroke = AnimatedValue(ComponentValue(values: [1, 0, 0, 1]))
+            style.strokeWidth = AnimatedValue(4)
+        }
+        let stroked = try #require(ShapeStep(effect, at: .zero, center: .zero))
+        // Both letters' fill, and the run's stroke.
+        #expect(stroked.paints.count == 3)
+        #expect(stroked.paints.last?.color == [1, 0, 0, 1])
+        // A run's width with no color of its own takes the block's color,
+        // which is off, so draws nothing.
+        var widthOnly = effect
+        widthOnly.text?.changeStyle(in: NSRange(location: 1, length: 1)) { $0.stroke = nil }
+        #expect(try #require(ShapeStep(widthOnly, at: .zero, center: .zero)).paints.count == 2)
+    }
+
+    @Test func aRunsKeyframesReplaceTheBlocksForItsLetters() throws {
+        let second = CMTime(seconds: 1, preferredTimescale: 600)
+        var effect = Effect(kind: .text)
+        effect.text = TextContent(string: "ab")
+        // The block grows from 100 to 200; the run's own size from 50 to 60.
+        effect.changeControl(.fontSize) { size in
+            size.number.setAnimated(true, at: .zero)
+            size.setComponent(0, to: 100, at: .zero)
+            size.setComponent(0, to: 200, at: second)
+        }
+        effect.text?.changeStyle(in: NSRange(location: 1, length: 1)) { style in
+            var size = AnimatedValue(50.0)
+            size.setAnimated(true, at: .zero)
+            size.set(60, at: second)
+            style.size = size
+        }
+        let start = try #require(TextOutline.Setting(effect, at: .zero))
+        let end = try #require(TextOutline.Setting(effect, at: second))
+        #expect(start.size == 100 && end.size == 200)
+        #expect(start.runs.style(at: 1).size == 50)
+        #expect(end.runs.style(at: 1).size == 60)
+        // The first letter, with no size of its own, follows the block's.
+        #expect(start.runs.style(at: 0).size == nil)
+
+        // Its keyframes are animation the render cache redraws, and F9
+        // eases them.
+        #expect(effect.animatedRanges.contains(.zero...second))
+        var clip = TimelineClip(source: .graphic, startOffset: .zero, trimStart: .zero, trimEnd: CMTime(seconds: 2, preferredTimescale: 600))
+        clip.effects = [effect]
+        let easedAny = clip.easeKeyframes(atTimelineTime: second, .easeIn)
+        #expect(easedAny)
+        let eased = try #require(clip.effects[0].text?.runs.first?.style.size?.keyframes.last)
+        #expect(eased != effect.text?.runs.first?.style.size?.keyframes.last)
     }
 
     @Test func aRunCanUnderlineSomeLetters() {
         var styled = setting("HHHH")
-        styled.runs = [TextRun(start: 0, length: 2, style: TextStyle(underline: true))]
+        styled.runs = [TextStyleRun(start: 0, length: 2, style: TextStyle(underline: true))]
         let underlined = pieces(styled).first { _ in true }
         let plain = bounds(setting("HHHH"))
         #expect(bounds(styled).maxY > plain.maxY + 2)
@@ -125,7 +185,7 @@ extension DrawingFixture {
         let plain = setting("AVAV")
         var kerned = plain
         // 200 thousandths at 100 pixels: 20 pixels between the first pair.
-        kerned.runs = [TextRun(start: 0, length: 1, style: TextStyle(kerning: 200))]
+        kerned.runs = [TextStyleRun(start: 0, length: 1, style: TextStyle(kerning: 200))]
         #expect(abs(bounds(kerned).width - bounds(plain).width - 20) < 0.5, "\(bounds(kerned).width - bounds(plain).width)")
         // The font's own pair kerning stays.
         var unkerned = plain
@@ -148,7 +208,7 @@ extension DrawingFixture {
         #expect(!FontCatalog.supports(TextContent.defaultFontName, feature: "sups"))
         let plain = bounds(setting("H"))
         var raised = setting("H")
-        raised.runs = [TextRun(start: 0, length: 1, style: TextStyle(position: .superscript))]
+        raised.runs = [TextStyleRun(start: 0, length: 1, style: TextStyle(position: .superscript))]
         var lowered = raised
         lowered.runs[0].style.position = .subscript
         let up = bounds(raised), down = bounds(lowered)
@@ -157,7 +217,7 @@ extension DrawingFixture {
         // Beside an ordinary H, its baseline is 33.3 pixels up or down.
         func baselines(_ position: TextPosition) -> (plain: CGFloat, moved: CGFloat) {
             var pair = setting("HH")
-            pair.runs = [TextRun(start: 1, length: 1, style: TextStyle(position: position))]
+            pair.runs = [TextStyleRun(start: 1, length: 1, style: TextStyle(position: position))]
             let drawn = pieces(pair).map(\.path.boundingBoxOfPath.maxY)
             return (drawn[0], drawn[1])
         }
@@ -588,11 +648,16 @@ extension DrawingFixture {
         fixture.setText("Styled words", ofClip: text.clipID)
         fixture.project.editClip(text.clipID, in: fixture.timelineID) { clip in
             clip.effects[0].text?.changeStyle(in: NSRange(location: 0, length: 6)) { style in
-                style = TextStyle(
+                style = TextRunStyle(fixed: TextStyle(
                     fontName: "HelveticaNeue", size: 80, tracking: 20, baselineShift: 4, horizontalScale: 90, verticalScale: 110,
                     textCase: .allCaps, underline: true, strikethrough: false, fill: [1, 0, 0, 1], stroke: [0, 1, 0, 0.5],
-                    kerning: -40, position: .subscript
-                )
+                    kerning: -40, position: .subscript, strokeWidth: 3
+                ))
+                // Keyframed, a number and a color.
+                style.size?.setAnimated(true, at: .zero)
+                style.size?.set(120, at: CMTime(seconds: 1, preferredTimescale: 600))
+                style.fill?.setAnimated(true, at: .zero)
+                style.fill?.set(ComponentValue(values: [0, 0, 1, 1]), at: CMTime(seconds: 1, preferredTimescale: 600))
             }
         }
         let package = fixture.directory.appending(path: "Runs.amv", directoryHint: .isDirectory)
