@@ -297,6 +297,46 @@ extension DrawingFixture {
         #expect(abs(left.minX - topLeft.minX) < 0.5 && abs(left.minY - middle.minY) < 0.5)
     }
 
+    // MARK: Missing fonts
+
+    @Test func exportStopsOnAMissingFontButTheViewerDraws() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let text = try fixture.addShape(.text)
+        fixture.setText("Hello", font: "NoSuchFont-Bold", ofClip: text.clipID)
+
+        #expect(fixture.project.missingFonts(in: fixture.timelineID) == ["NoSuchFont-Bold"])
+        await #expect(throws: CompositionError.self) { try await fixture.build() }
+        do {
+            _ = try await fixture.build()
+        } catch CompositionError.missingFont(let name) {
+            #expect(name == "NoSuchFont-Bold")
+        }
+        let preview = try await fixture.build(forPreview: true)
+        #expect(preview.hasPictures)
+
+        // Off, it draws nothing, so its font doesn't matter.
+        fixture.project.editClip(text.clipID, in: fixture.timelineID) { $0.effects[0].enabled = false }
+        #expect(fixture.project.missingFonts(in: fixture.timelineID).isEmpty)
+    }
+
+    @Test func aMissingFontIsFoundInRunsAndNestedTimelines() throws {
+        var project = EditingProject.empty
+        let main = project.rootTimelineID
+        let nested = project.addTimeline(name: "Titles", frameSize: CGSize(width: 128, height: 72), frameRate: 24, colorSpace: .rec709)
+        let layer = project.addShapeLayer(.text, to: nested)
+        let text = try #require(layer)
+        project.editClip(text.clipID, in: nested) { clip in
+            clip.effects[0].text?.string = "Two fonts"
+            clip.effects[0].text?.changeStyle(in: NSRange(location: 0, length: 3)) { $0.fontName = "AlsoMissing-Regular" }
+        }
+        let embedded = project.embedTimeline(nested, intoTimeline: main)
+        #expect(embedded != nil)
+        #expect(project.missingFonts(in: main) == ["AlsoMissing-Regular"])
+        project.editClip(text.clipID, in: nested) { $0.effects[0].text?.fontName = "NoSuchFont-Bold" }
+        #expect(project.missingFonts(in: main) == ["NoSuchFont-Bold", "AlsoMissing-Regular"])
+    }
+
     // MARK: Variable fonts
 
     @Test func aVariableFontsAxesAreListed() throws {

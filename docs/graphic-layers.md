@@ -354,7 +354,11 @@ Built (step 3a):
 - **Missing fonts.** The project stores the font's name, not its file.
   Without the font, Core Text draws with a substitute, the name is kept
   and saved, and the inspector says which font is missing and what draws
-  in its place. Not yet: a report before export.
+  in its place. As with missing media, the viewer draws (with the
+  substitute) and export, and background renders, stop with the font's
+  name (`CompositionError.missingFont`), so a substitute is never written
+  out: `missingFonts(in:)` finds every font a Text effect that is on uses,
+  its own and its runs', in the timeline and those nested in it.
 - **Render key.** The words, font and every setting are part of the
   shape's key, so changing any of them re-renders and moving the clip
   doesn't.
@@ -444,8 +448,8 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
    by hand, superscript and subscript, hyphenation, optical kerning, made
    small caps, the anchor, and (c) variable axes, each tested in
    `TextTests` (`textPairKerningInspector` and
-   `textVariableFontInspector` show their rows). (d) Animators. (e) Text on a path. (f) Missing fonts
-   reported before export.
+   `textVariableFontInspector` show their rows). (f, done) Missing fonts
+   stop export. (d) Animators. (e) Text on a path.
 4. **Viewer handles.** Selecting a graphic clip in the viewer, handles for
    vertices and primitives, and their keyboard paths.
 5. **Stills as effect inputs**, so a PNG can be a Matte's input.
