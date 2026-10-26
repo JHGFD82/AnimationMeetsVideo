@@ -269,8 +269,17 @@ final class TextLayout: @unchecked Sendable {
         let source = setting.string as NSString
         source.enumerateSubstrings(in: NSRange(location: 0, length: source.length), options: .byComposedCharacterSequences) { letter, range, _, _ in
             guard var letter else { return }
-            let style = setting.letterStyle(content.style(at: range.location)).resolved()
+            var style = setting.letterStyle(content.style(at: range.location)).resolved()
             if style.textCase == .allCaps { letter = letter.uppercased() }
+            if style.textCase == .smallCaps || style.textCase == .allSmallCaps, !FontCatalog.supports(style.fontName, feature: "smcp") {
+                // Made as Illustrator makes them for a font without its
+                // own: capitals, smaller.
+                if letter != letter.uppercased() || style.textCase == .allSmallCaps {
+                    letter = letter.uppercased()
+                    style.size *= TextCase.syntheticSmallCapSize
+                }
+                style.textCase = .normal
+            }
             display.append(NSAttributedString(string: letter, attributes: attributes(font(of: style), style, index(of: style), setting)))
         }
 

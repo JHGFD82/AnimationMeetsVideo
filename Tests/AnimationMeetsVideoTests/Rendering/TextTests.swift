@@ -252,6 +252,32 @@ extension DrawingFixture {
         #expect((lefts.max() ?? 0) - (lefts.min() ?? 1) < 0.03)
     }
 
+    @Test func smallCapsAreMadeWhereTheFontHasNone() {
+        // Helvetica Neue has no 'smcp': lowercase letters become capitals
+        // at 70% of the size, beside full-size capitals.
+        #expect(!FontCatalog.supports(TextContent.defaultFontName, feature: "smcp"))
+        let drawn = pieces(setting("Hello") { $0.textCase = .smallCaps })
+        #expect(drawn.count == 2)
+        let capital = drawn[0].path.boundingBoxOfPath, small = drawn[1].path.boundingBoxOfPath
+        #expect(small.height < capital.height * 0.8)
+        // Their shapes are capitals': "ELLO" at 70%.
+        let capitals = bounds(setting("ELLO") { $0.size = 70 })
+        #expect(abs(small.width - capitals.width) < 1)
+        #expect(abs(small.height - capitals.height) < 0.5)
+        // All Small Caps makes the capital small too.
+        #expect(pieces(setting("Hello") { $0.textCase = .allSmallCaps }).count == 1)
+        #expect(abs(bounds(setting("Hello") { $0.textCase = .allSmallCaps }).height - small.height) < 0.5)
+    }
+
+    @Test func aFontsOwnSmallCapsAreUsedWhereItHasThem() {
+        // Didot, which every Mac has, draws its own.
+        guard FontCatalog.supports("Didot", feature: "smcp") else { return }
+        let own = pieces(setting("Hello") { $0.textCase = .smallCaps; $0.fontName = "Didot" })
+        #expect(own.count == 1)
+        #expect(bounds(setting("Hello") { $0.textCase = .smallCaps; $0.fontName = "Didot" })
+            != bounds(setting("Hello") { $0.fontName = "Didot" }))
+    }
+
     @Test func savingKeepsRuns() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }

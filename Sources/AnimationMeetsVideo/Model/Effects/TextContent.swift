@@ -113,6 +113,10 @@ enum TextCase: String, CaseIterable, Identifiable, Sendable {
         case .allSmallCaps: "All Small Caps"
         }
     }
+
+    /// For a font without its own small capitals: capitals at this much of
+    /// the size.
+    static let syntheticSmallCapSize = 0.7
 }
 
 /// Where letters sit: on the baseline, or small and raised or lowered.

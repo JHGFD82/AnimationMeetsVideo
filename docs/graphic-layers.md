@@ -246,8 +246,10 @@ Built (step 3a):
   words uppercased. Small caps, ligatures, figures and the rest are
   OpenType features on the font (`kCTFontFeatureSettingsAttribute`), and
   Core Text keeps only those the font has, so a font without one draws as
-  if it were off, as the inspector says. Small caps aren't faked for a
-  font without them, as Illustrator does.
+  if it were off, as the inspector says. Small caps are the exception: a
+  font without 'smcp' gets them made as Illustrator makes them, its
+  lowercase letters drawn as capitals at 70% of the size (with All Small
+  Caps, its capitals too); a font with it (Didot) draws its own.
 - **The inspector** shows every shape and text of the selected clip, in
   stack order, as Illustrator's panels do. A Text effect has a Text group
   (its words in a text editor), Character (Font and Style pickers from
