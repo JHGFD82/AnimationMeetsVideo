@@ -210,6 +210,9 @@ struct TimelineEditorSurface<Library: View>: View {
 
                 HStack(spacing: 0) {
                     library()
+                        // For the Generators tab, which starts a clip at
+                        // the playhead; read as it acts, not as it draws.
+                        .environment(playhead)
                         .frame(width: CGFloat(PanelResizeHandle.clamped(
                             browserWidth, min: Self.browserMinWidth, max: browserMaxWidth(in: geometry.size.width)
                         )))
@@ -307,7 +310,6 @@ struct TimelineEditorSurface<Library: View>: View {
                     if showsEffectsLibrary {
                         EffectsLibrary(
                             project: $project, timelineID: timelineID, selection: selection,
-                            playhead: playhead, onSelect: { selection = $0 },
                             state: effectsState, tab: $effectsLibraryTab, onClose: { showsEffectsLibrary = false }
                         )
                         .frame(width: 280)

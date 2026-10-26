@@ -734,16 +734,41 @@ struct TimelineView: View {
         }
     }
 
-    /// Puts a shape layer at the top of the stack, starting at `start`
-    /// (the playhead unless given), and selects its clip.
-    func addShapeLayer(_ kind: EffectKind, at start: CMTime? = nil) {
-        let start = start ?? playheadTime
+    /// Puts a shape layer at the top of the stack, starting at the
+    /// playhead, and selects its clip.
+    func addShapeLayer(_ kind: EffectKind) {
+        addGenerator(kind, onLayer: nil, at: playheadTime)
+    }
+
+    /// Makes a clip of a generator (text or a shape) at `start` and
+    /// selects it: on `layerID` as a clip moved there would land, or on a
+    /// new layer at the top for nil.
+    func addGenerator(_ kind: EffectKind, onLayer layerID: UUID?, at start: CMTime) {
         var created: (layerID: UUID, clipID: UUID)?
-        onEditProject { created = $0.addShapeLayer(kind, to: timelineID, from: start) }
-        // Selection goes by ID; the view hasn't seen the new clip yet.
-        if let created {
-            onSelectClip(created.layerID, TimelineClip(id: created.clipID, source: .graphic, startOffset: start, trimStart: .zero, trimEnd: .zero))
+        onEditProject { project in
+            created = if let layerID {
+                project.addGenerator(kind, to: timelineID, onLayer: layerID, at: start)
+            } else {
+                project.addShapeLayer(kind, to: timelineID, from: start)
+            }
         }
+        select(created, at: start)
+    }
+
+    /// Makes a clip of a generator at `start` on a new layer just above
+    /// `layerID`, over the clip it was dropped on, and selects it.
+    func addGenerator(_ kind: EffectKind, above layerID: UUID, at start: CMTime) {
+        let index = timeline.layers.firstIndex(id: layerID) ?? 0
+        var created: (layerID: UUID, clipID: UUID)?
+        onEditProject { created = $0.addShapeLayer(kind, to: timelineID, at: index, from: start) }
+        select(created, at: start)
+    }
+
+    /// Selects a generator's new clip. Selection goes by ID; the view
+    /// hasn't seen the new clip yet.
+    private func select(_ created: (layerID: UUID, clipID: UUID)?, at start: CMTime) {
+        guard let created else { return }
+        onSelectClip(created.layerID, TimelineClip(id: created.clipID, source: .graphic, startOffset: start, trimStart: .zero, trimEnd: .zero))
     }
 
     func deleteLayer(_ id: UUID) {

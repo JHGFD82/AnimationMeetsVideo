@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 /// What the browser lists.
 enum BrowserTab: String, CaseIterable, Identifiable {
-    case clips, timelines, presets
+    case clips, timelines, generators
 
     var id: Self { self }
 
@@ -13,7 +13,7 @@ enum BrowserTab: String, CaseIterable, Identifiable {
         switch self {
         case .clips: "Clips"
         case .timelines: "Timelines"
-        case .presets: "Presets"
+        case .generators: "Generators"
         }
     }
 }
@@ -53,10 +53,13 @@ struct BrowserPanel: View {
     }
     @State private var importError: String?
     @Environment(MediaImports.self) private var imports: MediaImports?
-    @State private var presets = PresetsModel()
+    /// The editor's playhead, where a double-clicked generator starts.
+    @Environment(PlayheadState.self) private var playhead: PlayheadState?
     @State private var showingSettings = false
     /// Footage from Show in Clips Browser, for the Clips tab to pick.
     @State private var revealing: MediaPiece?
+    /// A tab no longer offered (Presets moved to the Effects Library)
+    /// doesn't read as a `BrowserTab`, so it opens on Clips.
     @AppStorage(Preferences.browserTab) private var tab = BrowserTab.clips
     @AppStorage(Preferences.browserSort) private var sort = BrowserSort.added
     @AppStorage(Preferences.timelinesLayout) private var timelinesLayout = TimelinesLayout.filmstrips
@@ -101,24 +104,15 @@ struct BrowserPanel: View {
                     )
                 }
             case .timelines: timelinesList
-            case .presets: presetsList
+            case .generators: generatorsList
             }
         }
         .panelSurface(.base)
-        .alert("Rename Preset", isPresented: $presets.renaming.isPresent) {
-            @Bindable var presets = presets
-            TextField("Name", text: $presets.draftName)
-            Button("Rename") { presets.commitRename() }
-            Button("Cancel", role: .cancel) {}
-        }
-        .messageAlert("Preset Problem", message: $presets.errorMessage)
-        .onReceive(NotificationCenter.default.publisher(for: .presetsChanged)) { _ in presets.reload() }
         .onReceive(NotificationCenter.default.publisher(for: .revealInBrowser)) { note in
             guard let piece = note.object as? MediaPiece, project.mediaClip(id: piece.assetID) != nil else { return }
             tab = .clips
             revealing = piece
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in presets.reload() }
         // Files from the Finder. The app's own drags are URLs too, but
         // never file URLs.
         .dropDestination(for: URL.self) { urls, _ in importDropped(urls) }
@@ -224,17 +218,29 @@ struct BrowserPanel: View {
         )
     }
 
-    private var presetsList: some View {
-        PresetsList(model: presets, onApply: applyToSelectedClip)
+    private var generatorsList: some View {
+        let selected = selection.flatMap { selection in
+            project.clipAndLayer(selection.timelineClipID, in: selection.timelineID)?.clip.source == .graphic ? selection : nil
+        }
+        return GeneratorsList(
+            onAdd: addGeneratorLayer,
+            onAddToSelected: selected.map { selected in
+                { kind in
+                    if project.addEffect(kind, toClip: selected.timelineClipID, in: selected.timelineID) == nil { NSSound.beep() }
+                }
+            }
+        )
     }
 
-    /// Puts a preset's effects on the selected clip, below its stacks; a
-    /// beep when no clip is selected or it has nowhere to put them.
-    private func applyToSelectedClip(_ preset: EffectPreset) {
-        guard let selection, !project.paste(preset.bundle, ontoClip: selection.timelineClipID, in: selection.timelineID).isEmpty else {
+    /// Makes a layer at the top of the active timeline holding a clip of
+    /// `kind` from the playhead, and selects the clip.
+    private func addGeneratorLayer(_ kind: EffectKind) {
+        let start = playhead?.actionTime ?? .zero
+        guard let created = project.addShapeLayer(kind, to: activeTimelineID, from: start) else {
             NSSound.beep()
             return
         }
+        selection = TimelineSelection(timelineID: activeTimelineID, layerID: created.layerID, timelineClipID: created.clipID)
     }
 
     /// Puts timelines (or, with `range`, that stretch of the one timeline)

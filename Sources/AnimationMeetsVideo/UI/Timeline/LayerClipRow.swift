@@ -100,6 +100,8 @@ struct LayerClipRow: View {
     let onCopyClip: (UUID, CMTime, UUID?, LayerKind?) -> Void
     /// Files from the Finder dropped on a clip, and the time they land at.
     let onDropFiles: ([URL], CMTime) -> Void
+    /// A generator dropped on a clip that can't take it, and where.
+    let onDropGenerator: (EffectKind, CMTime) -> Void
     /// Sets whether a nested clip passes through.
     let onSetPassThrough: (UUID, Bool) -> Void
     /// Draws each clip's volume as a line across it.
@@ -286,6 +288,7 @@ struct LayerClipRow: View {
                     onClipboard: { onClipboard(clip.id, $0) },
                     onCopy: { start, target, kind in onCopyClip(clip.id, start, target, kind) },
                     onDropFiles: onDropFiles,
+                    onDropGenerator: onDropGenerator,
                     onSetPassThrough: { onSetPassThrough(clip.id, $0) },
                     playsSound: project.playsAudio(clip),
                     onEditTime: { change in onEditTime(clip.id, change) },

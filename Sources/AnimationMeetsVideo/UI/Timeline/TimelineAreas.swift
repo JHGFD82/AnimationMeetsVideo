@@ -441,6 +441,7 @@ extension TimelineView {
                         onClipboard: { clipID, command in clipboard(command, layerID: layer.id, clipID: clipID) },
                         onCopyClip: { clipID, start, target, kind in copyClip(clipID, from: layer.id, to: start, onto: target, newLayer: kind) },
                         onDropFiles: { urls, time in onDropFiles(urls, layer.id, time, layer.kind) },
+                        onDropGenerator: { kind, time in addGenerator(kind, above: layer.id, at: time) },
                         onSetPassThrough: { clipID, value in
                             onEditProject { $0.editClip(clipID, in: timelineID) { $0.passThrough = value } }
                         },
@@ -545,10 +546,11 @@ extension TimelineView {
         }
         .frame(width: contentWidth, alignment: .topLeading)
         .overlay(alignment: .topLeading) { reachBoxes(of: areaLayers(kind), pixelsPerSecond: pixelsPerSecond) }
-        // A shape from the Effects Library dropped on the video area, but
-        // not on a clip (which takes it into its stack), makes a shape layer
-        // where it lands. Library drags travel as URLs, media as text, so
-        // this doesn't catch media.
+        // A generator (text or a shape) from the browser dropped on the
+        // video area, but not on a clip (which handles it itself), makes a
+        // clip where it lands: on the layer under it, or on a new layer at
+        // the top below the layers. Browser generators travel as URLs,
+        // media as text, so this doesn't catch media.
         .dropDestination(for: ClipDropPayload.self) { payloads, location in
             let time = CMTime(seconds: max(0, Double(location.x / pixelsPerSecond)), preferredTimescale: 600)
             let files = payloads.compactMap(\.file)
@@ -556,8 +558,12 @@ extension TimelineView {
                 onDropFiles(files, nil, time, kind)
                 return true
             }
-            guard kind == .video, let shape = payloads.first?.effect?.kind, shape.drawsShape else { return false }
-            addShapeLayer(shape, at: CMTime(seconds: max(0, Double(location.x / pixelsPerSecond)), preferredTimescale: 600))
+            guard kind == .video, let generator = payloads.first?.generator?.kind else { return false }
+            let layers = areaLayers(kind)
+            let under = zip(layers, tops(of: layers)).first { layer, top in
+                location.y >= top && location.y < top + blockHeight(of: layer)
+            }
+            addGenerator(generator, onLayer: under?.0.id, at: time)
             return true
         }
     }

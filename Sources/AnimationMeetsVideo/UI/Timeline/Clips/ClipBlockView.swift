@@ -111,6 +111,10 @@ struct ClipBlockView: View {
     let onCopy: (CMTime, UUID?, LayerKind?) -> Void
     /// Files from the Finder dropped on the clip go onto its layer there.
     let onDropFiles: ([URL], CMTime) -> Void
+    /// A generator (text or a shape) from the browser dropped on a clip
+    /// that isn't one, and the time it lands at: it makes a clip of its
+    /// own on a new layer above, since it can't go into this clip.
+    let onDropGenerator: (EffectKind, CMTime) -> Void
     let onSetPassThrough: (Bool) -> Void
     /// Whether the clip makes sound, which a retimed clip's sound choice is for.
     let playsSound: Bool
@@ -356,12 +360,20 @@ struct ClipBlockView: View {
                     onDropFiles(files, CMTime(seconds: max(0, Double((drawnX + location.x) / pixelsPerSecond)), preferredTimescale: 600))
                     return true
                 }
+                if let generator = payload.generator, clip.source != .graphic {
+                    onDropGenerator(generator.kind, CMTime(seconds: max(0, Double((drawnX + location.x) / pixelsPerSecond)), preferredTimescale: 600))
+                    return true
+                }
                 if let transition = payload.transition, acceptsTransitions {
                     // The nearer end of the clip gets the transition.
                     let x = drawnX + location.x
                     onSetTransition(transition.kind, x - liveX < liveWidth / 2 ? .leading : .trailing)
                 } else if let effect = payload.effect, effect.kind.isAudio ? acceptsSoundEffects : acceptsEffects {
                     onAddEffect(effect.kind)
+                } else if let generator = payload.generator {
+                    // Joins a text or shape clip, below what it draws, so
+                    // text can follow the path of a shape above it.
+                    onAddEffect(generator.kind)
                 } else if let preset = payload.preset, acceptsEffects || acceptsSoundEffects {
                     onApplyPreset(preset.presetID)
                 } else {

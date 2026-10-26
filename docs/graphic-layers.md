@@ -114,16 +114,21 @@ and saving all work on shapes as they are.
   draw. Like an adjustment clip it has no length to run out of. The
   timeline's toolbar makes one at the playhead on a new video layer
   (New Shape Layer: Rectangle, Ellipse, Polygon or Star), five seconds
-  long, holding one shape sized to the frame; a shape added from the
-  library is sized the same way. It is drawn in its own tone.
-- **Shapes on anything.** A shape can go in any visual clip's stack: a
-  box drawn over footage for a lower third, below a Transform that moves
-  both, is one clip. The Effects Library lists them under Shapes. Dragged
-  onto a clip, a shape joins its stack; dragged onto the video area's
-  empty space, it makes a shape layer where it lands. Double-clicked, it
-  joins the selected clip if that is a shape clip, and otherwise makes a
-  shape layer at the playhead (`addFromLibrary`), so it never lands in
-  footage by accident.
+  long, holding one shape sized to the frame; so does the browser's
+  Generators tab, and a shape added to a shape clip is sized the same
+  way. It is drawn in its own tone.
+- **Generators, not effects.** Shapes and text make clips of their own
+  and go only into a shape or text clip's stack
+  (`EditingProject.stack(of:takes:)`): adding one to footage is refused,
+  and pasting effects or a preset onto footage leaves them out. The
+  Effects Library doesn't list them; the browser's **Generators** tab
+  does (see [browser.md](browser.md#tabs)). Dragged onto the video area,
+  one makes a clip where it lands, on the layer under the pointer or a
+  new one (`addGenerator`); dropped on footage it goes on a new layer
+  just above; dropped on a shape or text clip, it joins its stack, below
+  what is there, which is how text comes to follow a shape's path.
+  Double-clicked, it makes a layer at the playhead. A lower third over
+  footage is a shape layer above it.
 - **Controls.** Rectangle and Ellipse have a Size (width and height,
   which can be linked, but aren't at first); Polygon and Star have Points
   (a whole number, 3 to 100), Radius, Rotation and, for a star, Inner
@@ -193,12 +198,13 @@ Still to come:
 
 ## Text
 
-Text is a shape effect (`EffectKind.text`, in the Shapes category) whose
+Text is a shape (`EffectKind.text`, in the Shapes category) whose
 outline is a block of text, laid out with Core Text and drawn as glyph
 paths through the same code as the other shapes (`ShapeStep`'s `.text`
 outline), so it has a fill and a stroke, takes a Stroke below it, and
 stays sharp through moves the same way. A text layer is a shape clip
-holding one: New Shape Layer → Text, or Text from the Effects Library.
+holding one: New Shape Layer → Text, or Text from the browser's
+Generators tab, dragged onto the timeline or double-clicked.
 
 Built (step 3a):
 

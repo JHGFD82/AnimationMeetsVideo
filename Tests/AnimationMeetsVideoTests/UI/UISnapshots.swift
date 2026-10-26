@@ -884,7 +884,7 @@ struct UISnapshots {
             try SnapshotSupport.render(
                 EffectsListPanel(
                     project: .constant(project), timelineID: project.rootTimelineID, selection: nil,
-                    playhead: PlayheadState(), onSelect: { _ in }, state: EffectsPanelState(), packageStatus: status
+                    state: EffectsPanelState(), packageStatus: status
                 ),
                 "effects-library-problems", size: CGSize(width: 380, height: 1100)
             )
@@ -1256,15 +1256,38 @@ struct UISnapshots {
         }
     }
 
-    /// The browser's Presets tab with the look recipes and one preset whose
-    /// file can't be read.
+    /// The Effects Library's Presets tab with the look recipes and one
+    /// preset whose file can't be read, under the library's tab bar.
     @Test func presetsList() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-presets-\(UUID().uuidString)", directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: folder) }
         for recipe in LookRecipes.all.prefix(5) { try PresetStore.save(recipe.bundle, named: recipe.name, in: folder) }
         try Data("{}".utf8).write(to: folder.appending(path: "Broken.json"))
-        let list = PresetsList(model: PresetsModel(folder: folder), onApply: { _ in })
-        try SnapshotSupport.render(list.preferredColorScheme(.dark), "presets-list", size: CGSize(width: 280, height: 360))
+        let project = EditingProject.empty
+        let library = EffectsLibrary(
+            project: .constant(project), timelineID: project.rootTimelineID, selection: nil, state: EffectsPanelState(),
+            tab: .constant(.presets), onClose: {}, presets: PresetsModel(folder: folder)
+        )
+        try SnapshotSupport.render(library.preferredColorScheme(.dark), "presets-list", size: CGSize(width: 280, height: 360))
+    }
+
+    /// The Effects Library's Effects tab: no text or shapes, which are
+    /// generators, and Stroke and Text Animator under their own heading.
+    @Test func effectsLibraryEffects() throws {
+        let project = EditingProject.empty
+        let library = EffectsLibrary(
+            project: .constant(project), timelineID: project.rootTimelineID, selection: nil, state: EffectsPanelState(),
+            tab: .constant(.effects), onClose: {}, presets: PresetsModel(folder: FileManager.default.temporaryDirectory.appending(path: "amv-none-\(UUID().uuidString)"))
+        )
+        try SnapshotSupport.render(library.preferredColorScheme(.dark), "effects-library-effects", size: CGSize(width: 280, height: 900))
+    }
+
+    /// The browser's Generators tab: text and the shapes, each making a
+    /// clip of its own.
+    @Test func generatorsList() throws {
+        let list = GeneratorsList(onAdd: { _ in }, onAddToSelected: nil)
+            .panelSurface(.base)
+        try SnapshotSupport.render(list.preferredColorScheme(.dark), "generators-list", size: CGSize(width: 280, height: 320))
     }
 
     /// The timeline's view options, with skimming beside zoom and the

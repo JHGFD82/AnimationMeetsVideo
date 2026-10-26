@@ -218,10 +218,12 @@ footage gets replaced):
 
 ## Shapes
 
-**Shapes** (Rectangle, Ellipse, Polygon, Star) draw a shape over the
-picture handed down to them, and the steps below act on both. **Stroke**
-strokes the outline of the shapes above it, strokes included. A shape clip has no picture of
-its own, so its picture is its shapes. See
+**Shapes** (Rectangle, Ellipse, Polygon, Star) and **Text** are
+generators, not effects: each makes a clip of its own, from the browser's
+Generators tab, and goes only into such a clip's stack. There they draw
+over the picture handed down to them, and the steps below act on both.
+**Stroke** strokes the outline of the shapes above it, strokes included.
+A shape clip has no picture of its own, so its picture is its shapes. See
 [graphic-layers.md](graphic-layers.md#shapes).
 
 ## Mattes
@@ -511,15 +513,22 @@ shows or hides it. Picking a tab is the only thing that changes it, apart
 from applying an effect to the selected clip, which shows the Effects tab.
 The Effects tab is resizable by its left edge.
 
-The **Effects Library** at the right end of the timeline has tabs too: **Effects**
-(the library, grouped by category, Foundations first) and **Transitions**.
-One button in the timeline's header shows or hides it, and opening it
-changes nothing else. Drag an effect onto a clip or into the stack, or
+The **Effects Library** at the right end of the timeline has tabs too:
+**Effects** (the library, grouped by category, Foundations first),
+**Transitions** and **Presets** (see "Copying and presets"). Text and the
+shapes aren't in it: they aren't effects but clips of their own, made from
+the browser's **Generators** tab (see [browser.md](browser.md#tabs)). What
+works on them in their clip's stack, Stroke and Text Animator, is listed
+under **For Shapes & Text**. One button in the timeline's header shows or
+hides it, and opening it changes nothing else. Drag an effect onto a clip or into the stack, or
 double-click it to add it to the end of the selected clip's stack.
 Dropped on an effect row, it goes in at that place; dropped anywhere else
 on the stack, or on a clip, it goes at the end. Either way it is selected.
 VoiceOver's Add to the Selected Clip action does what double-clicking
-does.
+does. Text and shapes go only into a text or shape clip's stack
+(`EditingProject.stack(of:takes:)`): adding one to any other clip is
+refused, and pasting effects or applying a preset onto one leaves them
+out.
 
 A clip, the stack and each effect row take every kind of drag they use
 through one drop target, since the app's drags all travel as URLs: with
@@ -647,7 +656,7 @@ keys. A clip block with effects shows a small badge with the count.
 - **Presets**: selected effects can be saved as a preset, which is shared
   by every project. Presets are files in `~/Library/Application Support/
   AnimationMeetsVideo/Presets/`, one JSON file each, and appear in the
-  browser's **Presets** section, where they can be renamed, deleted or
+  Effects Library's **Presets** tab, where they can be renamed, deleted or
   shown in the Finder. Drag one onto a clip, or into a stack at a spot,
   or double-click it (or choose Apply to Selected Clip from its menu) to
   put it on the selected clip.
@@ -977,11 +986,11 @@ In order, each step usable on its own:
     of their own and the effects as a project writes them (plus, for what
     was left behind, `inputName` and `againstName`), with times from the
     start of the clip. They are checked as strictly as a project, so a bad
-    one is listed in the browser's Presets section with the path of the
+    one is listed in the Effects Library's Presets tab with the path of the
     problem and skipped. Save as Preset and Save Whole Stack as Preset are in
     the effect's ⋯ menu; presets are dragged onto a clip's block or into the
     stack, double-clicked onto the selected clip, renamed, shown in the Finder, or moved to the Trash from the
-    browser. Unresolved changes are saved on the effect as `pasteChanges`;
+    Effects Library. Unresolved changes are saved on the effect as `pasteChanges`;
     flagged effects get a marked edge and the changes listed under their
     name with Mark Resolved, and a flagged clip a warning mark on its
     block. The toolbar shows how many there are across the timelines the
