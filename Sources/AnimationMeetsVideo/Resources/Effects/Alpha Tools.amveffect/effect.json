@@ -1,0 +1,21 @@
+{
+  "formatVersion": 1,
+  "id": "alphaTools",
+  "version": 1,
+  "name": "Alpha Tools",
+  "category": "keying",
+  "symbol": "square.filled.on.square",
+  "kernel": {"file": "kernel.metal", "function": "amvAlphaTools", "type": "color"},
+  "controls": [
+    {"id": "alphaOperation", "name": "Operation", "type": "choice", "default": "invert", "options": [
+      {"id": "invert", "name": "Invert Alpha"},
+      {"id": "fromLuma", "name": "Alpha from Luma"},
+      {"id": "opaque", "name": "Make Opaque"},
+      {"id": "premultiply", "name": "Premultiply"},
+      {"id": "unpremultiply", "name": "Unpremultiply"},
+      {"id": "show", "name": "Show Alpha"}
+    ]}
+  ],
+  "amount": true,
+  "arguments": ["index(alphaOperation)"]
+}

@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "rectangleMask",
+  "version": 1,
+  "name": "Rectangle Mask",
+  "category": "keying",
+  "symbol": "rectangle.dashed",
+  "kernel": {"file": "kernel.metal", "function": "amvRectangleMask", "type": "color"},
+  "controls": [
+    {"id": "maskCenter", "name": "Center", "type": "point"},
+    {"id": "maskSize", "name": "Size", "type": "vector", "components": ["Width", "Height"], "default": [960, 540], "range": [0, 100000], "unit": "px"},
+    {"id": "maskRoundness", "name": "Roundness", "type": "number", "default": 0, "range": [0, 50000], "unit": "px"},
+    {"id": "maskFeather", "name": "Feather", "type": "number", "default": 20, "range": [0, 10000], "unit": "px"},
+    {"id": "maskAngle", "name": "Angle", "type": "number", "default": 0, "unit": "°"},
+    {"id": "maskKeep", "name": "Keep", "type": "choice", "default": "inside", "options": [{"id": "inside", "name": "Inside"}, {"id": "outside", "name": "Outside"}]}
+  ],
+  "amount": true,
+  "arguments": ["center(maskCenter)", "maskSize", "scale", "maskRoundness * scale", "maskFeather * scale", "-rad(maskAngle)", "index(maskKeep)"]
+}

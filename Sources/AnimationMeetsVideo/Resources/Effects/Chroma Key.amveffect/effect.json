@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "id": "chromaKey",
+  "version": 1,
+  "name": "Chroma Key",
+  "category": "keying",
+  "symbol": "person.and.background.dotted",
+  "kernel": {"file": "kernel.metal", "function": "amvChromaKey", "type": "color"},
+  "controls": [
+    {"id": "keyColor", "name": "Key Color", "type": "color", "default": [0.15, 0.75, 0.3]},
+    {"id": "keyTolerance", "name": "Tolerance", "type": "number", "default": 35, "range": [0, 200], "unit": "%"},
+    {"id": "keySoftness", "name": "Softness", "type": "number", "default": 15, "range": [0, 200], "unit": "%"},
+    {"id": "spillSuppression", "name": "Spill Suppression", "type": "number", "default": 50, "range": [0, 100], "unit": "%"},
+    {"id": "keyView", "name": "View", "type": "choice", "default": "result", "options": [{"id": "result", "name": "Result"}, {"id": "matte", "name": "Matte"}]}
+  ],
+  "amount": true,
+  "arguments": ["keyColor", "keyTolerance / 100", "keySoftness / 100", "spillSuppression / 100", "index(keyView)"]
+}

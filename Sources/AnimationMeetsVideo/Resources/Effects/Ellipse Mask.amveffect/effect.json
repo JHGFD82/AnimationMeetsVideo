@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "id": "ellipseMask",
+  "version": 1,
+  "name": "Ellipse Mask",
+  "category": "keying",
+  "symbol": "circle.dashed",
+  "kernel": {"file": "kernel.metal", "function": "amvEllipseMask", "type": "color"},
+  "controls": [
+    {"id": "maskCenter", "name": "Center", "type": "point"},
+    {"id": "maskSize", "name": "Size", "type": "vector", "components": ["Width", "Height"], "default": [720, 720], "range": [0, 100000], "unit": "px"},
+    {"id": "maskFeather", "name": "Feather", "type": "number", "default": 40, "range": [0, 10000], "unit": "px"},
+    {"id": "maskAngle", "name": "Angle", "type": "number", "default": 0, "unit": "°"},
+    {"id": "maskKeep", "name": "Keep", "type": "choice", "default": "inside", "options": [{"id": "inside", "name": "Inside"}, {"id": "outside", "name": "Outside"}]}
+  ],
+  "amount": true,
+  "arguments": ["center(maskCenter)", "maskSize", "scale", "maskFeather * scale", "-rad(maskAngle)", "index(maskKeep)"]
+}

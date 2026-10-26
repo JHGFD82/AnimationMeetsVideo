@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "id": "differenceKey",
+  "version": 1,
+  "name": "Difference Key",
+  "category": "keying",
+  "symbol": "square.on.square.dashed",
+  "kernel": {"file": "kernel.metal", "function": "amvDifferenceKey", "type": "general"},
+  "controls": [
+    {"id": "differenceTolerance", "name": "Tolerance", "type": "number", "default": 10, "range": [0, 200], "unit": "%"},
+    {"id": "differenceSoftness", "name": "Softness", "type": "number", "default": 10, "range": [0, 200], "unit": "%"},
+    {"id": "keyView", "name": "View", "type": "choice", "default": "result", "options": [{"id": "result", "name": "Result"}, {"id": "matte", "name": "Matte"}]}
+  ],
+  "amount": true,
+  "pictures": [{"id": "plate", "from": "input"}],
+  "drawsWhen": "hasInput > 0",
+  "arguments": ["differenceTolerance / 100", "differenceSoftness / 100", "index(keyView)"],
+  "reach": "0",
+  "input": "clamped"
+}

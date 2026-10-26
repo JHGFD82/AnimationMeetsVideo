@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "id": "spillSuppressor",
+  "version": 1,
+  "name": "Spill Suppressor",
+  "category": "keying",
+  "symbol": "eyedropper.halffull",
+  "kernel": {"file": "kernel.metal", "function": "amvSpillSuppressor", "type": "color"},
+  "controls": [
+    {"id": "spillColor", "name": "Spill Color", "type": "color", "default": [0.15, 0.75, 0.3]},
+    {"id": "spillRange", "name": "Range", "type": "number", "default": 100, "range": [1, 100], "unit": "%"}
+  ],
+  "amount": true,
+  "arguments": ["spillColor", "spillRange / 100"]
+}

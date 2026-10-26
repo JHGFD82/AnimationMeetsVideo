@@ -261,6 +261,8 @@ enum BuiltInEffects {
         // Color Correction
         // Blur & Sharpen
         // Keying & Masks
+        "chromaKey", "lumaKey", "differenceKey", "spillSuppressor", "matteChoker",
+        "rectangleMask", "ellipseMask", "fourPointMask", "gradientMask", "alphaTools",
         // Light
         // Stylize
         // Color
