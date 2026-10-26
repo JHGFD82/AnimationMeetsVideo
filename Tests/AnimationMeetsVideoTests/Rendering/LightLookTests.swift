@@ -32,12 +32,9 @@ import Testing
         return try harness.draw([clip], at: CMTime(seconds: seconds, preferredTimescale: 600))
     }
 
-    /// The pixel `x` across and `y` down the picture as it was added.
-    /// The harness's rows run the other way: a CVPixelBuffer's first row
-    /// is the top of the frame, Core Image's the bottom, which the
-    /// harness keeps when it turns them back.
+    /// The pixel `x` across and `y` down.
     private func pixel(_ colors: [Color], x: Int, y: Int) -> Color {
-        colors[(Int(Self.size.height) - 1 - y) * Int(Self.size.width) + x]
+        colors[y * Int(Self.size.width) + x]
     }
 
     private func light(_ kind: String, _ settings: [String: [Double]] = [:]) -> Effect {

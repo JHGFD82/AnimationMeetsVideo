@@ -69,11 +69,8 @@ private let frame = CMTime(value: 1, timescale: 24)
         // Two bands a frame apart: the top now, the bottom a frame ago.
         let effect = look(.slitScan, ["bands": [2], "timeSpread": [1.0 / 24]])
         let drawn = try h.draw([clip([effect], moments: [copy(2, delay: frame)])], at: CMTime(value: 1, timescale: 1))
-        // The harness's rows run from the frame's bottom up (it reverses
-        // Core Image's, which already run from the top), so row 6 is near
-        // the top of the frame.
-        #expect(close(h.pixel(drawn, x: 8, y: 6), SIMD4(0.2, 0.2, 0.2, 1)))
-        #expect(close(h.pixel(drawn, x: 8, y: 1), SIMD4(0.5, 0, 0, 1)))
+        #expect(close(h.pixel(drawn, x: 8, y: 1), SIMD4(0.2, 0.2, 0.2, 1)))
+        #expect(close(h.pixel(drawn, x: 8, y: 6), SIMD4(0.5, 0, 0, 1)))
     }
 
     @Test func slitScanRingsGoOutFromTheMiddle() throws {

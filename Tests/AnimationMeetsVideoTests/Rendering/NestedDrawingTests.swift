@@ -157,12 +157,15 @@ import Testing
         var harness = CompositorHarness(size: CGSize(width: 32, height: 16))
         try harness.addSolid(track: 1, SIMD4(0.9, 0.9, 0.9, 1))
         // The picture is bigger than the nested frame, so only the turned
-        // frame shows; its corners cut the rest.
+        // frame shows; its corners cut the rest. Turned clockwise, the wide
+        // frame runs from the top left to the bottom right, leaving the
+        // other two corners bare.
         let inner = CompositorHarness.clip(track: 1, frame: CGSize(width: 32, height: 16), base: CGAffineTransform(scaleX: 4, y: 4))
         let frame = try harness.draw([CompositorHarness.group([inner], effects: [turn(45)], frame: CGSize(width: 32, height: 16))])
         #expect(harness.pixel(frame, x: 16, y: 8).x > 0.8)
-        #expect(harness.pixel(frame, x: 1, y: 1).x < 0.05)
-        #expect(harness.pixel(frame, x: 30, y: 14).x < 0.05)
+        #expect(harness.pixel(frame, x: 30, y: 1).x < 0.05)
+        #expect(harness.pixel(frame, x: 1, y: 14).x < 0.05)
+        #expect(harness.pixel(frame, x: 4, y: 2).x > 0.8)
     }
 
     @Test func aPassThroughClipPlacesItsLayersBeforeTheyBlendWithWhatIsUnder() throws {

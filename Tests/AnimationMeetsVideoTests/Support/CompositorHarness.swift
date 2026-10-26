@@ -105,9 +105,11 @@ struct CompositorHarness {
         bytes.withUnsafeMutableBytes {
             context.render(image, toBitmap: $0.baseAddress!, rowBytes: width * 16, bounds: CGRect(origin: .zero, size: size), format: .RGBAf, colorSpace: nil)
         }
-        // CI's rows start at the bottom; return them from the top.
+        // A picture made from a pixel buffer keeps the buffer's first row at
+        // the top, and rendering to a bitmap writes the top row first, so
+        // the rows already run from the top.
         var colors: [Color] = []
-        for y in (0..<height).reversed() {
+        for y in 0..<height {
             for x in 0..<width {
                 let i = (y * width + x) * 4
                 let a = bytes[i + 3]
