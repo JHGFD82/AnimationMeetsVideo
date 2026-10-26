@@ -278,6 +278,25 @@ extension DrawingFixture {
             != bounds(setting("Hello") { $0.fontName = "Didot" }))
     }
 
+    @Test func theAnchorPutsAPointOfTheBlockAtThePosition() {
+        func anchored(_ anchor: TextAnchor) -> CGRect {
+            bounds(setting("Hi\nHi") { $0.wrapWidth = 600; $0.align = .left; $0.anchor = anchor })
+        }
+        let block = TextLayout.layOut(setting("Hi\nHi") { $0.wrapWidth = 600 }).size
+        let topLeft = anchored(.topLeft), bottomRight = anchored(.bottomRight), middle = anchored(.center)
+        // The block's top left at the origin: the letters start just right
+        // of it and below it.
+        #expect(topLeft.minX >= 0 && topLeft.minX < 15)
+        #expect(topLeft.minY > 0)
+        // Its bottom right at the origin: the block is 600 wide.
+        #expect(abs(bottomRight.minX - (topLeft.minX - 600)) < 0.5)
+        #expect(abs(bottomRight.minY - (topLeft.minY - block.height)) < 0.5)
+        #expect(abs(middle.minX - (topLeft.minX - 300)) < 0.5)
+        let top = anchored(.top), left = anchored(.left)
+        #expect(abs(top.minY - topLeft.minY) < 0.5 && abs(top.minX - middle.minX) < 0.5)
+        #expect(abs(left.minX - topLeft.minX) < 0.5 && abs(left.minY - middle.minY) < 0.5)
+    }
+
     @Test func savingKeepsRuns() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }

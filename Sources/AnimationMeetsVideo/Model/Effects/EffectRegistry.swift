@@ -240,6 +240,7 @@ extension StrokeEdge: ControlChoice {}
 extension StrokeJoin: ControlChoice {}
 extension StrokeCap: ControlChoice {}
 extension TextAlign: ControlChoice {}
+extension TextAnchor: ControlChoice {}
 extension TextKerning: ControlChoice {}
 extension TextCase: ControlChoice {}
 extension TextLigatures: ControlChoice {}

@@ -76,6 +76,45 @@ enum TextAlign: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Which point of a text block sits at its Position: a corner, the middle
+/// of an edge, or its middle.
+enum TextAnchor: String, CaseIterable, Identifiable, Sendable {
+    case topLeft, top, topRight
+    case left, center, right
+    case bottomLeft, bottom, bottomRight
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .topLeft: "Top Left"
+        case .top: "Top"
+        case .topRight: "Top Right"
+        case .left: "Left"
+        case .center: "Middle"
+        case .right: "Right"
+        case .bottomLeft: "Bottom Left"
+        case .bottom: "Bottom"
+        case .bottomRight: "Bottom Right"
+        }
+    }
+
+    /// Where the point is across and down the block, 0 to 1.
+    var fraction: (x: Double, y: Double) {
+        switch self {
+        case .topLeft: (0, 0)
+        case .top: (0.5, 0)
+        case .topRight: (1, 0)
+        case .left: (0, 0.5)
+        case .center: (0.5, 0.5)
+        case .right: (1, 0.5)
+        case .bottomLeft: (0, 1)
+        case .bottom: (0.5, 1)
+        case .bottomRight: (1, 1)
+        }
+    }
+}
+
 /// Whether letters are spaced by the font's kerning pairs.
 enum TextKerning: String, CaseIterable, Identifiable, Sendable {
     /// The pairs the font's designer set ("AV" closer than "HH").

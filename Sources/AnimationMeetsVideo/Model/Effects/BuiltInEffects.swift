@@ -75,7 +75,7 @@ extension EffectKind {
         .textCase, .underline, .strikethrough,
     ]
     static let paragraphControls: [ControlKind] = [
-        .textAlign, .leftIndent, .rightIndent, .firstLineIndent, .spaceBefore, .spaceAfter, .wrapWidth, .hyphenate,
+        .textAlign, .leftIndent, .rightIndent, .firstLineIndent, .spaceBefore, .spaceAfter, .wrapWidth, .hyphenate, .textAnchor,
     ]
     static let openTypeControls: [ControlKind] = [
         .ligatures, .contextualAlternates, .figures, .fractions, .ordinals, .swash, .stylisticAlternates, .stylisticSet,
@@ -139,6 +139,7 @@ extension ControlKind {
     static let spaceAfter = ControlKind(builtIn: "spaceAfter")
     static let wrapWidth = ControlKind(builtIn: "wrapWidth")
     static let hyphenate = ControlKind(builtIn: "hyphenate")
+    static let textAnchor = ControlKind(builtIn: "textAnchor")
     static let ligatures = ControlKind(builtIn: "ligatures")
     static let contextualAlternates = ControlKind(builtIn: "contextualAlternates")
     static let figures = ControlKind(builtIn: "figures")
@@ -397,6 +398,8 @@ enum BuiltInEffects {
         ControlDefinition(.wrapWidth, "Wrap Width", .text, defaults: [0], unit: " px", range: 0...100_000),
         // Breaks a word across wrapped lines with a hyphen.
         ControlDefinition(.hyphenate, "Hyphenate", .text, choice: OnOff.off),
+        // Which point of the block sits at Position.
+        ControlDefinition(.textAnchor, "Anchor", .text, choice: TextAnchor.center),
         // OpenType
         ControlDefinition(.ligatures, "Ligatures", .text, choice: TextLigatures.standard),
         ControlDefinition(.contextualAlternates, "Contextual Alternates", .text, choice: OnOff.on),

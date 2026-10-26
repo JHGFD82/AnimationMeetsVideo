@@ -218,13 +218,13 @@ Built (step 3a):
     the last line left, centered or right; Justify All Lines); Left, Right
     and First Line Indent (below 0 hangs the first line); Space Before and
     After, between paragraphs; Wrap Width (0 sets each paragraph on one
-    line); Hyphenate.
+    line); Hyphenate; Anchor.
   - **OpenType.** Ligatures (Standard, None, or Standard and
     Discretionary); Contextual Alternates (on at first); Figures (Default,
     Tabular or Proportional, Lining or Oldstyle); Fractions; Ordinals;
     Swash; Stylistic Alternates; Stylistic Set (1 to 20, 0 for none).
-  - And the shapes' Position, Fill and Stroke controls. The block's middle
-    sits at the frame's middle plus Position.
+  - And the shapes' Position, Fill and Stroke controls. The block's
+    anchor (its middle at first) sits at the frame's middle plus Position.
 - **Layout** (`TextLayout`). Each paragraph is wrapped with
   `CTTypesetterSuggestLineBreak` within the wrap width less its indents
   (allowing for horizontal scale), or set whole. Lines are stacked a
@@ -333,7 +333,10 @@ Built (step 3a):
   against Helvetica Neue's designed pairs, it closes "AV", "To", "Ty" and
   "LT" by between half and twice as much as the designer did, and leaves
   "HH" and "nn" as they are; it is a heuristic, not Adobe's algorithm.
-- **Not yet:** the anchor's place in the box.
+- **Anchor** is a Paragraph choice of nine points (Top Left to Bottom
+  Right, Middle at first): which point of the block, as wide as its wrap
+  width or widest line and as tall as its lines, sits at the frame's
+  middle plus Position.
 - **Naming.** A shape clip with a Text effect is named by the first line
   of its words on the timeline, in the inspector and in undo steps
   (`resolvedInfo(for:)` of the clip), and VoiceOver calls it a text clip.

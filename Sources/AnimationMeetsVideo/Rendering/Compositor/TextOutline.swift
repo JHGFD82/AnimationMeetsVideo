@@ -45,6 +45,8 @@ struct TextOutline: Equatable, Sendable {
         var wrapWidth = 0.0
         /// Whether a word may break across wrapped lines, with a hyphen.
         var hyphenate = false
+        /// Which point of the block sits at its position.
+        var anchor = TextAnchor.center
 
         // OpenType
         var ligatures = TextLigatures.standard
@@ -95,6 +97,7 @@ struct TextOutline: Equatable, Sendable {
             spaceAfter = max(0, number(.spaceAfter))
             wrapWidth = max(0, number(.wrapWidth))
             hyphenate = isOn(.hyphenate)
+            anchor = choice(.textAnchor, .center)
             ligatures = choice(.ligatures, .standard)
             contextualAlternates = isOn(.contextualAlternates)
             figures = choice(.figures, .default)
@@ -152,7 +155,10 @@ struct TextOutline: Equatable, Sendable {
     func pieces(fill: [Double]?, stroke: [Double]?) -> [Piece] {
         let laid = TextLayout.shared.laid(setting)
         let turn = setting.characterRotation * .pi / 180
-        let toFrame = CGAffineTransform(translationX: center.x - laid.size.width / 2, y: center.y - laid.size.height / 2)
+        let anchor = setting.anchor.fraction
+        let toFrame = CGAffineTransform(
+            translationX: center.x - laid.size.width * anchor.x, y: center.y - laid.size.height * anchor.y
+        )
         var paths = laid.styles.map { _ in CGMutablePath() }
         for glyph in laid.glyphs {
             var place = CGAffineTransform.identity
