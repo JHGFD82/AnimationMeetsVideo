@@ -167,6 +167,7 @@ extension ControlKind {
     static let animatorRotation = ControlKind(builtIn: "animatorRotation")
     static let animatorOpacity = ControlKind(builtIn: "animatorOpacity")
     static let animatorFill = ControlKind(builtIn: "animatorFill")
+    static let animatorStroke = ControlKind(builtIn: "animatorStroke")
     static let animatorTracking = ControlKind(builtIn: "animatorTracking")
     // EQ
     static let eqLowCut = ControlKind(builtIn: "eqLowCut")
@@ -294,7 +295,7 @@ enum BuiltInEffects {
             .textAnimator, "Text Animator", .shapes, "textformat.abc.dottedunderline",
             controls: [
                 .animatorStart, .animatorEnd, .animatorOffset, .animatorUnit, .animatorShape,
-                .animatorPosition, .animatorScale, .animatorRotation, .animatorOpacity, .animatorFill, .animatorTracking,
+                .animatorPosition, .animatorScale, .animatorRotation, .animatorOpacity, .animatorFill, .animatorStroke, .animatorTracking,
             ]
         ),
         // Strokes the outline of the shapes above it in the stack, strokes
@@ -457,6 +458,8 @@ enum BuiltInEffects {
         ControlDefinition(.animatorOpacity, "Opacity", .textAnimator, defaults: [100], unit: "%", range: 0...100),
         // Starts off: on, the letters take this color.
         ControlDefinition(.animatorFill, "Fill", .textAnimator, defaults: [1, 0.3, 0.2, 1], dragStep: 0.01, range: 0...1, isColor: true),
+        // Starts off: on, the strokes of the letters it selects take this color.
+        ControlDefinition(.animatorStroke, "Stroke", .textAnimator, defaults: [0.2, 0.5, 1, 1], dragStep: 0.01, range: 0...1, isColor: true),
         // Thousandths of an em after each selected letter.
         ControlDefinition(.animatorTracking, "Tracking", .textAnimator, defaults: [0], range: -1000...10_000),
         // EQ

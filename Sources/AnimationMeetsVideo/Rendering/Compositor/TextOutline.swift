@@ -168,8 +168,10 @@ struct TextOutline: Equatable, Sendable {
         var opacity = 1.0
         /// Degrees, clockwise.
         var rotation = 0.0
-        /// The color the glyphs it selects take; nil while its Fill is off.
+        /// The colors the glyphs it selects are filled and stroked with;
+        /// nil while its Fill or Stroke is off.
         var fill: [Double]?
+        var stroke: [Double]?
         /// Thousandths of an em after each glyph it selects.
         var tracking = 0.0
 
@@ -198,6 +200,9 @@ struct TextOutline: Equatable, Sendable {
             rotation = number(.animatorRotation)
             if let control = effect.control(.animatorFill), control.enabled {
                 fill = control.values(at: time).map { $0.clamped(between: 0, and: 1) }
+            }
+            if let control = effect.control(.animatorStroke), control.enabled {
+                stroke = control.values(at: time).map { $0.clamped(between: 0, and: 1) }
             }
             tracking = number(.animatorTracking)
         }
@@ -246,8 +251,10 @@ struct TextOutline: Equatable, Sendable {
         var style: Int
         /// Thousandths.
         var opacity: Int
-        /// The fill's components in thousandths, nil where the style's is.
+        /// The fill's and stroke's components in thousandths, as an
+        /// animator recolored them; nil where the style's are.
         var fill: [Int]?
+        var stroke: [Int]?
     }
 
     /// The block's letters and rules placed in the frame, turned and moved
@@ -267,6 +274,7 @@ struct TextOutline: Equatable, Sendable {
         var looks: [Look] = []
         var paths: [Look: CGMutablePath] = [:]
         var colors: [Look: [Double]] = [:]
+        var strokes: [Look: [Double]] = [:]
         func path(for look: Look) -> CGMutablePath {
             if let path = paths[look] { return path }
             let path = CGMutablePath()
@@ -275,16 +283,25 @@ struct TextOutline: Equatable, Sendable {
             return path
         }
         for (index, glyph) in laid.glyphs.enumerated() {
-            var place = CGAffineTransform.identity
+            // Character Rotation turns the letter alone, as in Illustrator;
+            // its rules stay level.
+            var turned = CGAffineTransform.identity
             if turn != 0 {
                 let pivot = CGPoint(x: glyph.advance / 2, y: -glyph.middle)
-                place = CGAffineTransform(translationX: -pivot.x, y: -pivot.y)
+                turned = CGAffineTransform(translationX: -pivot.x, y: -pivot.y)
                     .concatenating(CGAffineTransform(rotationAngle: turn))
                     .concatenating(CGAffineTransform(translationX: pivot.x, y: pivot.y))
             }
+            // What moves the letter and its rules alike.
+            var place = CGAffineTransform.identity
             var opacity = 1.0
-            var color = laid.styles[glyph.style].fill ?? fill
-            var recolored = false
+            var fillColor = laid.styles[glyph.style].fill ?? fill
+            var strokeColor = laid.styles[glyph.style].stroke ?? stroke
+            var refilled = false, restroked = false
+            func mix(_ base: [Double]?, toward target: [Double]?, by amount: Double) -> [Double]? {
+                guard let base, let target, base.count == 4, target.count == 4 else { return nil }
+                return zip(base, target).map { $0 + ($1 - $0) * amount }
+            }
             for (animator, amount) in zip(animators, amounts[index]) where amount > 0 {
                 // About the middle of its baseline, as After Effects does.
                 let pivot = CGPoint(x: glyph.advance / 2, y: 0)
@@ -295,9 +312,13 @@ struct TextOutline: Equatable, Sendable {
                     .concatenating(CGAffineTransform(rotationAngle: animator.rotation * amount * .pi / 180))
                     .concatenating(CGAffineTransform(translationX: pivot.x + animator.dx * amount, y: pivot.y + animator.dy * amount))
                 opacity *= 1 + (animator.opacity - 1) * amount
-                if let target = animator.fill, let base = color, base.count == 4, target.count == 4 {
-                    color = zip(base, target).map { $0 + ($1 - $0) * amount }
-                    recolored = true
+                if let mixed = mix(fillColor, toward: animator.fill, by: amount) {
+                    fillColor = mixed
+                    refilled = true
+                }
+                if let mixed = mix(strokeColor, toward: animator.stroke, by: amount) {
+                    strokeColor = mixed
+                    restroked = true
                 }
             }
             if let followed {
@@ -315,16 +336,17 @@ struct TextOutline: Equatable, Sendable {
                     .concatenating(CGAffineTransform(translationX: glyph.origin.x + shifts[index], y: glyph.origin.y))
                     .concatenating(toFrame)
             }
+            func thousandths(_ color: [Double]?) -> [Int]? { color?.map { Int(($0 * 1000).rounded()) } }
             let look = Look(
                 style: glyph.style, opacity: Int((opacity * 1000).rounded()),
-                fill: recolored ? color?.map { Int(($0 * 1000).rounded()) } : nil
+                fill: refilled ? thousandths(fillColor) : nil, stroke: restroked ? thousandths(strokeColor) : nil
             )
-            if recolored, let color { colors[look] = color }
-            path(for: look).addPath(glyph.outline, transform: place)
-        }
-        // A rule is straight, so it doesn't follow a path.
-        for rule in laid.rules where followed == nil {
-            path(for: Look(style: rule.style, opacity: 1000, fill: nil)).addRect(rule.rect, transform: toFrame)
+            if refilled, let fillColor { colors[look] = fillColor }
+            if restroked, let strokeColor { strokes[look] = strokeColor }
+            // Its pieces of the rules move, scale, turn and fade with it.
+            let drawn = path(for: look)
+            drawn.addPath(glyph.outline, transform: turned.concatenating(place))
+            for rule in glyph.rules { drawn.addRect(rule, transform: place) }
         }
         return looks.compactMap { look in
             guard let path = paths[look], !path.isEmpty else { return nil }
@@ -332,7 +354,7 @@ struct TextOutline: Equatable, Sendable {
             // A run's own color paints its letters whether or not the
             // block's fill or stroke is on.
             return Piece(
-                path: path, fill: colors[look] ?? style.fill ?? fill, stroke: style.stroke ?? stroke,
+                path: path, fill: colors[look] ?? style.fill ?? fill, stroke: strokes[look] ?? style.stroke ?? stroke,
                 strokeWidth: style.strokeWidth, opacity: Double(look.opacity) / 1000
             )
         }

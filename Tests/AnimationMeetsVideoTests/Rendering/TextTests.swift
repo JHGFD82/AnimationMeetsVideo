@@ -399,6 +399,57 @@ extension DrawingFixture {
         #expect(abs((raised?.path.boundingBoxOfPath.minX ?? 0) - base.minX) < 0.5)
     }
 
+    @Test func rulesMoveWithTheLettersTheyAreUnder() {
+        let block = setting("HHHH") { $0.underline = true }
+        var raise = TextOutline.Animator()
+        raise.end = 0.5
+        raise.dy = -50
+        raise.opacity = 0.5
+        let still = TextOutline(setting: block, center: .zero).pieces(fill: [1, 1, 1, 1], stroke: nil)
+        let moved = TextOutline(setting: block, center: .zero, animators: [raise]).pieces(fill: [1, 1, 1, 1], stroke: nil)
+        let base = still[0].path.boundingBoxOfPath
+        let raised = moved.first { $0.opacity == 0.5 }?.path.boundingBoxOfPath ?? .zero
+        let rest = moved.first { $0.opacity == 1 }?.path.boundingBoxOfPath ?? .zero
+        // The underline under the first two letters rose with them, faded
+        // with them, and the rest stayed.
+        #expect(abs(raised.maxY - (base.maxY - 50)) < 0.5)
+        #expect(abs(rest.maxY - base.maxY) < 0.5)
+        // Together they span the whole word, with no gap where they meet.
+        #expect(abs(raised.minX - base.minX) < 0.5 && abs(rest.maxX - base.maxX) < 0.5)
+        #expect(abs(raised.maxX - rest.minX) < 1)
+    }
+
+    @Test func rulesRunUnderSpacesAndStayLevelAsLettersTurn() {
+        let spaced = bounds(setting("i i") { $0.underline = true })
+        let letters = bounds(setting("i i"))
+        // The underline spans the space between the two letters.
+        #expect(spaced.width >= letters.width - 1)
+        let text = outline(setting("i i") { $0.underline = true })
+        #expect(text.contains(CGPoint(x: letters.midX, y: spaced.maxY - 1)))
+        // Character Rotation turns the letters, not their underline.
+        let turned = bounds(setting("HHHH") { $0.underline = true; $0.characterRotation = 90 })
+        let plain = bounds(setting("HHHH") { $0.underline = true })
+        #expect(turned.width >= plain.width - 1)
+    }
+
+    @Test func anAnimatorRecolorsStrokesAndFills() {
+        var recolor = TextOutline.Animator()
+        recolor.fill = [1, 0, 0, 1]
+        recolor.stroke = [0, 0, 1, 1]
+        let drawn = TextOutline(setting: setting("ab"), center: .zero, animators: [recolor]).pieces(fill: [1, 1, 1, 1], stroke: [0, 0, 0, 1])
+        #expect(drawn.count == 1)
+        #expect(drawn[0].fill == [1, 0, 0, 1])
+        #expect(drawn[0].stroke == [0, 0, 1, 1])
+        // Halfway selected, halfway there.
+        var half = recolor
+        half.end = 0.75
+        half.shape = .rampDown
+        let mixed = TextOutline(setting: setting("ab"), center: .zero, animators: [half]).pieces(fill: [1, 1, 1, 1], stroke: [0, 0, 0, 1])
+        #expect(mixed.contains { ($0.stroke?[2] ?? 0) > 0 && ($0.stroke?[2] ?? 1) < 1 })
+        // A new animator's Stroke starts off.
+        #expect(Effect(kind: .textAnimator).control(.animatorStroke)?.enabled == false)
+    }
+
     @Test func anAnimatorScalesAndTurnsEachGlyphAboutItsBaseline() {
         var grow = TextOutline.Animator()
         grow.scale = 2

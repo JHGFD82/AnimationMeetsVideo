@@ -294,7 +294,7 @@ struct ControlKind: RawRepresentable, Hashable, Identifiable, Sendable {
     /// Whether a new control of this kind is on: an EQ's bands start off,
     /// to be switched on as they're needed, and so does a Text Animator's
     /// Fill, which would otherwise recolor the letters it selects.
-    var startsEnabled: Bool { EqualizerBand(controlKind: self) == nil && self != .animatorFill }
+    var startsEnabled: Bool { EqualizerBand(controlKind: self) == nil && self != .animatorFill && self != .animatorStroke }
 
     /// The unit of one component. Most controls' components share one; an
     /// EQ band's frequency, gain and Q each have their own.

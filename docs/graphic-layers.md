@@ -374,13 +374,16 @@ Built (step 3a):
   Triangle, Round, Smooth), and what it does to each glyph in proportion
   to how much it is selected: **Position** (pixels), **Scale** and
   **Rotation** about the middle of the glyph's baseline, **Opacity**,
-  **Fill** (off at first; on, the glyphs' fill mixes toward it), and
+  **Fill** and **Stroke** (off at first; on, the glyphs' fill or stroke
+  color mixes toward it, where they have one), and
   **Tracking** (thousandths of an em after each, the line kept to its
   alignment). Several apply in order. They work on the glyphs as laid out
   (`TextOutline.Animator`, applied in `pieces`), so animating them never
-  lays the block out again; glyphs drawn alike are still one piece. They
-  don't move underlines and strikethroughs, and a glyph's stroke takes its
-  opacity but not its fill's color.
+  lays the block out again; glyphs drawn alike are still one piece.
+  Underlines and strikethroughs are drawn as a piece under each glyph,
+  reaching to the next so they join, and placed with it, so they move,
+  scale, turn and fade with the letters they are under (and follow a
+  path); Character Rotation alone leaves them level, as in Illustrator.
 - **Text on a path.** With **On Path** (the inspector's Path group) a
   Text effect follows the outline of the last shape drawn above it in the
   stack (a Rectangle, Ellipse, Polygon or Star, not other text), from
@@ -395,8 +398,8 @@ Built (step 3a):
   centered text centers on the path's length, right-aligned ends at its
   end. A closed path goes round again; past an open one's ends the
   letters run on straight. Animators still apply, along the path.
-  Position and Anchor don't place text on a path, and underlines and
-  strikethroughs, being straight, are left out. Not yet: flipping the
+  Position and Anchor don't place text on a path; underlines and
+  strikethroughs follow it in pieces, one under each glyph. Not yet: flipping the
   text to the other side or direction, and a path of its own (free paths,
   step 2d).
 - **Anchor** is a Paragraph choice of nine points (Top Left to Bottom

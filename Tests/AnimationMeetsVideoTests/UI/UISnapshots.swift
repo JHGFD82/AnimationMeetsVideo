@@ -632,10 +632,13 @@ struct UISnapshots {
         text.text = TextContent(string: "Animation meets video · around and around")
         text.changeControl(.fontSize) { $0.setComponent(0, to: 44, at: .zero) }
         text.changeControl(.textOnPath) { $0.choice = OnOff.on.rawValue }
+        text.changeControl(.underline) { $0.choice = OnOff.on.rawValue }
+        text.changeControl(.strokeWidth) { $0.setComponent(0, to: 2, at: .zero) }
         var animator = Effect(kind: .textAnimator)
         animator.changeControl(.animatorEnd) { $0.setComponent(0, to: 25, at: .zero) }
         animator.changeControl(.animatorPosition) { $0.number = AnimatedValue(ComponentValue(values: [0, -12])) }
         animator.changeControl(.animatorFill) { $0.enabled = true }
+        animator.changeControl(.animatorStroke) { $0.enabled = true; $0.number = AnimatedValue(ComponentValue(values: [1, 1, 0.3, 1])) }
         let steps = StackFolding.steps(
             effects: [circle, text, animator], anchorPoint: AnimatedValue(.zero), at: .zero, center: CGPoint(x: 350, y: 350)
         )

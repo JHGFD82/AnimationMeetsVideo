@@ -73,16 +73,12 @@ final class TextLayout: @unchecked Sendable {
             var letter: Int
             var word: Int
             var line: Int
-        }
-
-        /// An underline or strikethrough.
-        struct Rule {
-            var rect: CGRect
-            var style: Int
+            /// Its pieces of its letter's underline and strikethrough, in
+            /// the same space as its outline, so they move with it.
+            var rules: [CGRect] = []
         }
 
         var glyphs: [Glyph] = []
-        var rules: [Rule] = []
         var styles: [LetterStyle] = []
         var size = CGSize.zero
         /// How far down the block its first line's baseline is.
@@ -562,34 +558,36 @@ final class TextLayout: @unchecked Sendable {
             }
             pen = runStart + advances.reduce(0) { $0 + $1.width }
             let middle = (CTFontGetAscent(font) - CTFontGetDescent(font)) / 2
+            // Underlines and strikethroughs, as heights above the baseline.
+            var heights: [Double] = []
+            if style.underline { heights.append(CTFontGetUnderlinePosition(font)) }
+            if style.strikethrough { heights.append(CTFontGetXHeight(font) / 2) }
+            let given = CTFontGetUnderlineThickness(font)
+            let thickness = given > 0 ? given : style.size / 20
+            // The rules stop where the line's letters do, not at the spaces
+            // ending it.
+            let lineEnd = line.width
             for k in 0..<count {
-                guard var outline = CTFontCreatePathForGlyph(font, glyphs[k], nil) else { continue }
-                outline = outline.copy(using: [flip]) ?? outline
+                // A glyph with no outline (a space) still carries its rules.
+                let outline = CTFontCreatePathForGlyph(font, glyphs[k], nil).flatMap { $0.copy(using: [flip]) } ?? CGMutablePath()
                 let unit = indices[k] + line.offset
+                // Each glyph's piece of the rules reaches the next glyph, so
+                // they join, and moves with it.
+                let end = min(k + 1 < count ? positions[k + 1].x : positions[k].x + advances[k].width, lineEnd)
+                let width = end - positions[k].x
+                let rules = width > 0
+                    ? heights.map { CGRect(x: 0, y: positions[k].y - $0 - thickness / 2, width: width, height: thickness) }
+                    : []
+                guard !outline.isEmpty || !rules.isEmpty else { continue }
                 laid.glyphs.append(Laid.Glyph(
                     outline: outline,
                     origin: CGPoint(x: origin.x + positions[k].x, y: origin.y - positions[k].y - style.baselineShift),
                     advance: advances[k].width, middle: middle, style: styleIndex,
                     character: characters.indices.contains(unit) ? characters[unit] : 0,
                     letter: letters.indices.contains(unit) ? letters[unit] : 0,
-                    word: words.indices.contains(unit) ? words[unit] : 0, line: number
+                    word: words.indices.contains(unit) ? words[unit] : 0, line: number, rules: rules
                 ))
             }
-            guard style.underline || style.strikethrough, let first = positions.first, let lastIndex = positions.indices.last else { continue }
-            // As far as the run's letters reach, not the spaces ending a line.
-            let left = origin.x + first.x
-            let right = min(origin.x + positions[lastIndex].x + advances[lastIndex].width, origin.x + line.width)
-            guard right > left else { continue }
-            let given = CTFontGetUnderlineThickness(font)
-            let thickness = given > 0 ? given : style.size / 20
-            let baseline = origin.y - style.baselineShift
-            func rule(atHeight height: Double) {
-                laid.rules.append(Laid.Rule(
-                    rect: CGRect(x: left, y: baseline - height - thickness / 2, width: right - left, height: thickness), style: styleIndex
-                ))
-            }
-            if style.underline { rule(atHeight: CTFontGetUnderlinePosition(font)) }
-            if style.strikethrough { rule(atHeight: CTFontGetXHeight(font) / 2) }
         }
     }
 }
