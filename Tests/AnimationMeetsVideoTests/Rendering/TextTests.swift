@@ -769,6 +769,56 @@ extension DrawingFixture {
         #expect(clip.effects[0].text?.variations.first?.value.keyframes.last != before)
     }
 
+    @Test func aRunsSettingIsAParameterLikeAControl() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let layer = project.addShapeLayer(.text, to: t)
+        let text = try #require(layer)
+        let second = CMTime(seconds: 1, preferredTimescale: 600)
+        project.editClip(text.clipID, in: t) { clip in
+            clip.effects[0].text = TextContent(string: "Animation meets video")
+            clip.effects[0].text?.changeStyle(in: NSRange(location: 10, length: 5)) { style in
+                style.size = AnimatedValue(80)
+                style.fill = AnimatedValue(ComponentValue(values: [1, 0, 0, 1]))
+            }
+        }
+        let content = try #require(project.clipAndLayer(text.clipID, in: t)?.clip.effects.first?.text)
+        let run = try #require(content.runs.first)
+        #expect(run.style.ownSettings == [.size, .fill])
+        #expect(content.quotedLetters(of: run) == "\u{201C}meets\u{201D}")
+
+        let effectID = try #require(project.clipAndLayer(text.clipID, in: t)?.clip.effects.first?.id)
+        let key = ParameterKey(timelineID: t, parameter: .textRun(.size, start: 10, clipID: text.clipID, effectID: effectID))
+        // The effects panel and graph editor read and keyframe it as they
+        // do a control.
+        #expect(project.components(of: key)?.value(at: .zero).values == [80])
+        #expect(project.timeAxis(of: key) != nil)
+        #expect(project.parameterTitle(of: key) == "Animation meets video · Text · \u{201C}meets\u{201D} · Size")
+        project.editComponents(of: key) { value in
+            value.setAnimated(true, at: .zero)
+            value.set(ComponentValue(values: [160]), at: second)
+        }
+        let size = project.clipAndLayer(text.clipID, in: t)?.clip.effects.first?.text?.runs.first?.style.size
+        #expect(size?.isAnimated == true)
+        #expect(size?.value(at: second) == 160)
+
+        // A setting the letters take the block's of has nothing to keyframe.
+        let tracking = ParameterKey(timelineID: t, parameter: .textRun(.tracking, start: 10, clipID: text.clipID, effectID: effectID))
+        #expect(project.components(of: tracking) == nil)
+        project.editComponents(of: tracking) { $0.set(ComponentValue(values: [50]), at: .zero) }
+        #expect(project.clipAndLayer(text.clipID, in: t)?.clip.effects.first?.text?.runs.first?.style.tracking == nil)
+    }
+
+    @Test func changingARunKeepsItApartFromALikeNeighbour() {
+        var content = TextContent(string: "abcd")
+        content.changeStyle(in: NSRange(location: 0, length: 2)) { $0.size = AnimatedValue(10) }
+        content.changeStyle(in: NSRange(location: 2, length: 2)) { $0.size = AnimatedValue(20) }
+        content.changeRun(startingAt: 2) { $0.size = AnimatedValue(10) }
+        #expect(content.runs.map(\.start) == [0, 2])
+        content.changeRun(startingAt: 3) { $0.size = nil }
+        #expect(content.runs.map(\.style.size) == [AnimatedValue(10), AnimatedValue(10)])
+    }
+
     @Test func savingKeepsAxesAndTheirKeyframes() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }

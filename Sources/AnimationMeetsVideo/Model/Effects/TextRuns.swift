@@ -123,6 +123,119 @@ struct TextRunStyle: Equatable, Sendable {
     }
 }
 
+/// A setting of some letters that can be keyframed: the numbers and colors
+/// of `TextRunStyle`. The inspector gives letters their own of one; the
+/// effects panel keyframes it.
+enum TextRunSetting: String, CaseIterable, Hashable, Sendable {
+    case size, tracking, kerning, baselineShift, verticalScale, horizontalScale, fill, stroke, strokeWidth
+
+    var name: String {
+        switch self {
+        case .size: "Size"
+        case .tracking: "Tracking"
+        case .kerning: "Kerning"
+        case .baselineShift: "Baseline Shift"
+        case .verticalScale: "Vertical Scale"
+        case .horizontalScale: "Horizontal Scale"
+        case .fill: "Fill"
+        case .stroke: "Stroke"
+        case .strokeWidth: "Stroke Width"
+        }
+    }
+
+    var unit: String {
+        switch self {
+        case .size, .baselineShift, .strokeWidth: " px"
+        case .verticalScale, .horizontalScale: "%"
+        case .tracking, .kerning, .fill, .stroke: ""
+        }
+    }
+
+    /// What each component is limited to: the inspector's limits.
+    var range: ClosedRange<Double> {
+        switch self {
+        case .size, .verticalScale, .horizontalScale: 1...10_000
+        case .tracking, .kerning: -1000...10_000
+        case .baselineShift: -100_000...100_000
+        case .strokeWidth: 0...10_000
+        case .fill, .stroke: 0...1
+        }
+    }
+
+    var isColor: Bool { self == .fill || self == .stroke }
+
+    var componentNames: [String] { isColor ? ["Red", "Green", "Blue", "Alpha"] : [name] }
+
+    var number: WritableKeyPath<TextRunStyle, AnimatedValue<Double>?>? {
+        switch self {
+        case .size: \.size
+        case .tracking: \.tracking
+        case .kerning: \.kerning
+        case .baselineShift: \.baselineShift
+        case .verticalScale: \.verticalScale
+        case .horizontalScale: \.horizontalScale
+        case .strokeWidth: \.strokeWidth
+        case .fill, .stroke: nil
+        }
+    }
+
+    var color: WritableKeyPath<TextRunStyle, AnimatedValue<ComponentValue>?>? {
+        switch self {
+        case .fill: \.fill
+        case .stroke: \.stroke
+        default: nil
+        }
+    }
+}
+
+extension TextRunStyle {
+    /// The settings these letters have their own of, in `TextRunSetting`'s
+    /// order.
+    var ownSettings: [TextRunSetting] {
+        TextRunSetting.allCases.filter { components(of: $0) != nil }
+    }
+
+    /// A setting's keyframes as components; nil while the letters take the
+    /// block's.
+    func components(of setting: TextRunSetting) -> AnimatedValue<ComponentValue>? {
+        if let path = setting.number { return self[keyPath: path]?.asComponents }
+        if let path = setting.color { return self[keyPath: path] }
+        return nil
+    }
+
+    /// Changes a setting the letters have their own of, as components;
+    /// one they take the block's of is left alone.
+    mutating func changeComponents(of setting: TextRunSetting, _ change: (inout AnimatedValue<ComponentValue>) -> Void) {
+        if let path = setting.number, var components = self[keyPath: path]?.asComponents {
+            change(&components)
+            self[keyPath: path] = AnimatedValue(components: components)
+        } else if let path = setting.color, self[keyPath: path] != nil {
+            change(&self[keyPath: path]!)
+        }
+    }
+}
+
+extension TextContent {
+    /// Changes the style of the run starting at code unit `start`, as
+    /// kept: its letters stay a run of their own even if the change makes
+    /// them match a neighbour's, so a row showing it keeps its place.
+    mutating func changeRun(startingAt start: Int, _ change: (inout TextRunStyle) -> Void) {
+        guard let index = runs.firstIndex(where: { $0.start == start }) else { return }
+        change(&runs[index].style)
+    }
+
+    /// A run's letters in quotes, for a header naming it: “Hello”, cut
+    /// short past 16 letters, line breaks shown as spaces.
+    func quotedLetters(of run: TextRun) -> String {
+        let text = string as NSString
+        let lower = max(0, min(run.start, text.length)), upper = max(lower, min(run.end, text.length))
+        let letters = text.substring(with: NSRange(location: lower, length: upper - lower))
+            .map { $0.isNewline ? " " : String($0) }.joined()
+        let shown = letters.count > 16 ? String(letters.prefix(15)) + "…" : letters
+        return "\u{201C}\(shown)\u{201D}"
+    }
+}
+
 /// Letters of a Text effect's words styled alike: a range of UTF-16 code
 /// units, as `NSString` and the text editor count them.
 struct TextRun: Equatable, Sendable {

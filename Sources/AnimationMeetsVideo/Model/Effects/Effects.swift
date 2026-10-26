@@ -737,6 +737,11 @@ extension EditingProject {
             let effect = clipAndLayer(clipID, in: key.timelineID)?.clip.effect(id: effectID)
             return [clipName(clipID, in: key.timelineID), effect?.displayName, key.parameter.name]
                 .compactMap { $0 }.joined(separator: " · ")
+        case .textRun(_, let start, let clipID, let effectID):
+            let effect = clipAndLayer(clipID, in: key.timelineID)?.clip.effect(id: effectID)
+            let letters = effect?.text.flatMap { text in text.runs.first { $0.start == start }.map { text.quotedLetters(of: $0) } }
+            return [clipName(clipID, in: key.timelineID), effect?.displayName, letters, key.parameter.name]
+                .compactMap { $0 }.joined(separator: " · ")
         }
     }
 

@@ -131,7 +131,7 @@ struct TextInspectorGroup: View {
             blockFill: effect.control(.fill)?.values(at: time) ?? [1, 1, 1, 1],
             blockStroke: effect.control(.stroke)?.values(at: time) ?? [0, 0, 0, 1],
             blockStrokeWidth: ShapeStroke(geometryOf: effect, at: time).width,
-            playhead: playhead, onSeek: onSeek, onChange: changeSelection
+            playhead: playhead, onChange: changeSelection
         )
         missingFontNote(style.fontName ?? content.fontName)
         note("Leading, Kerning and Character Rotation are the whole block's:")
@@ -148,7 +148,7 @@ struct TextInspectorGroup: View {
             let second = text.substring(with: text.rangeOfComposedCharacterSequence(at: selection.location))
             TextRunNumberRow(
                 name: "Kern \u{201C}\(first)\(second)\u{201D}", own: content.style(at: pair.location).kerning, block: 0, unit: "",
-                range: -1000...10_000, playhead: playhead, onSeek: onSeek,
+                range: -1000...10_000, playhead: playhead,
                 onChange: { change in onEdit { $0.text?.changeStyle(in: pair) { change(&$0.kerning) } } }
             )
             .help("Thousandths of an em between these two letters, besides the font's kerning and the tracking")

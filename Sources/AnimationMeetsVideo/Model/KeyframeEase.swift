@@ -171,6 +171,9 @@ enum AnimatedParameter: Hashable {
     /// A Text effect's variable font axis, by its four-letter tag
     /// (`TextContent.variations`).
     case textVariation(axis: String, clipID: UUID, effectID: UUID)
+    /// A setting of a Text effect's letters styled apart, the run starting
+    /// at code unit `start` (`TextContent.runs`).
+    case textRun(TextRunSetting, start: Int, clipID: UUID, effectID: UUID)
 
     var name: String {
         switch self {
@@ -180,6 +183,7 @@ enum AnimatedParameter: Hashable {
         case .anchorPoint: "Anchor Point"
         case .control(let kind, _, _, _): kind.name
         case .textVariation(let axis, _, _): FontCatalog.axisName(axis)
+        case .textRun(let setting, _, _, _): setting.name
         }
     }
 
@@ -192,6 +196,7 @@ enum AnimatedParameter: Hashable {
         case .anchorPoint: ["x", "y"]
         case .control(let kind, _, _, _): kind.componentNames
         case .textVariation: [name]
+        case .textRun(let setting, _, _, _): setting.componentNames
         }
     }
 
@@ -211,6 +216,7 @@ enum AnimatedParameter: Hashable {
         case .control(let kind, _, _, _): kind.clamped(component)
         // A font keeps an axis to its own range as it draws.
         case .textVariation: component
+        case .textRun(let setting, _, _, _): component.clamped(between: setting.range.lowerBound, and: setting.range.upperBound)
         }
     }
 
@@ -229,6 +235,7 @@ enum AnimatedParameter: Hashable {
         case .anchorPoint: NumericExpression.format(shown, maxFractionDigits: 1) + " px"
         case .control(let kind, _, _, _): kind.label(shown)
         case .textVariation: NumericExpression.format(shown, maxFractionDigits: 2)
+        case .textRun(let setting, _, _, _): NumericExpression.format(shown, maxFractionDigits: setting.isColor ? 3 : 1) + setting.unit
         }
     }
 
@@ -283,7 +290,7 @@ extension EditingProject {
             let last = components(of: key)?.keyframes.last?.time.seconds ?? 0
             return ParameterTimeAxis(clip: nil, span: 0...max(timeline.duration.seconds, last, 1), frameDuration: frame)
         case .clipVolume(let clipID), .clipPan(let clipID), .anchorPoint(let clipID), .speed(let clipID),
-             .control(_, let clipID, _, _), .textVariation(_, let clipID, _):
+             .control(_, let clipID, _, _), .textVariation(_, let clipID, _), .textRun(_, _, let clipID, _):
             guard let clip = clipAndLayer(clipID, in: key.timelineID)?.clip else { return nil }
             let start = clip.trimStart.seconds, end = clip.trimEnd.seconds
             return ParameterTimeAxis(clip: clip, span: min(start, end)...max(start, end, min(start, end) + 1e-3), frameDuration: frame)
@@ -316,6 +323,9 @@ extension EditingProject {
         case .textVariation(let axis, let clipID, let effectID):
             let text = clipAndLayer(clipID, in: key.timelineID)?.clip.effect(id: effectID)?.text
             return text?.variations.first { $0.axis == axis }?.value.asComponents
+        case .textRun(let setting, let start, let clipID, let effectID):
+            let text = clipAndLayer(clipID, in: key.timelineID)?.clip.effect(id: effectID)?.text
+            return text?.runs.first { $0.start == start }?.style.components(of: setting)
         }
     }
 
@@ -369,6 +379,10 @@ extension EditingProject {
                 else { return }
                 change(&components)
                 effect.text?.variations[v].value = AnimatedValue(components: components)
+            }
+        case .textRun(let setting, let start, let clipID, let effectID):
+            editEffect(effectID, ofClip: clipID, in: key.timelineID) { effect in
+                effect.text?.changeRun(startingAt: start) { $0.changeComponents(of: setting, change) }
             }
         }
     }

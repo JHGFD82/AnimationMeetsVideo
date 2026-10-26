@@ -304,15 +304,15 @@ Built (step 3a):
     the effects panel's. A control (or variable axis) animated there
     shows its value at the playhead read-only, dimmed, with an amber
     keyframe badge whose help says to change it in the Effects panel,
-    rather than an edit quietly adding a keyframe. Two exceptions keep
-    the stopwatch and keyframe buttons: a **Text Animator**'s controls,
-    since it exists only to animate, and the **selected letters'** rows
-    (styled runs, below), since the effects panel doesn't show runs yet
-    and their keyframes have no other home.
+    rather than an edit quietly adding a keyframe. The selected
+    letters' rows (styled runs, below) follow the same rule. One
+    exception keeps the stopwatch and keyframe buttons: a **Text
+    Animator**'s controls, since it exists only to animate.
   The effects panel shows the ones that can be keyframed, its numbers
   and colors, under headers
   (Character, with the font's variation axes after its controls;
-  Paragraph, with Position; Path; OpenType; Fill & Stroke), and leaves
+  Paragraph, with Position; Path; OpenType; Fill & Stroke; then a
+  **Letters “…”** header for each styled run, below), and leaves
   the choices (font and style, Kerning, Case, Alignment, Anchor, On
   Path, Flip, the OpenType on-or-offs, Edge, Join, Cap) to the
   inspector; a Text effect with no words says so there. Reset keeps the
@@ -333,8 +333,18 @@ Built (step 3a):
   is unchanged at either end. Adjacent letters styled alike are one run.
   - **Keyframes.** A run's numbers (size, tracking, baseline shift,
     scales, kerning by hand, stroke width) and colors are values that can
-    be keyframed in the clip's source time (`TextRunStyle`), with the
-    stopwatch and keyframe buttons in the selection's rows; its font,
+    be keyframed in the clip's source time (`TextRunStyle`). The
+    inspector gives letters their own of a setting; the effects panel
+    keyframes it: after the text's other sections, each run with a
+    setting of its own has a header of its letters ("Letters “Hello”",
+    `TextContent.quotedLetters`) and a row for each such setting
+    (`TextRunSetting`, `EffectsPanel.runRow`) with its stopwatch,
+    keyframe buttons, lane and graph editor
+    (`AnimatedParameter.textRun`, which names the run by the code unit
+    it starts at). Its ⋯ menu gives the letters the block's setting back,
+    which takes the row away. Editing a run's keyframes there
+    (`TextContent.changeRun`) keeps it a run of its own even if it comes
+    to match a neighbour, so its row stays put. Its font,
     case, position, underline and strikethrough are choices and hold
     still. They combine with the block's by replacing: a setting a run
     has replaces the block's for its letters, its own keyframes with it,

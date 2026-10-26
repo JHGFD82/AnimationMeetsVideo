@@ -173,6 +173,16 @@ extension EffectsPanel {
                 variationRow(axis, of: effect, c, effectDimmed: effectDimmed)
             }
         }
+        // Letters styled apart, each run under a header of its letters,
+        // with the settings it has its own of.
+        if effect.kind == .text, let text = effect.text {
+            ForEach(text.runs.filter { !$0.style.ownSettings.isEmpty }, id: \.start) { run in
+                labelled(ControlSectionHeader(name: "Letters", detail: text.quotedLetters(of: run)), lane: emptyLane(c))
+                ForEach(run.style.ownSettings, id: \.self) { setting in
+                    runRow(setting, of: run, in: effect, c, effectDimmed: effectDimmed)
+                }
+            }
+        }
     }
     /// What a Blending step blends with, or a package's look reads: the
     /// backdrop, or for a look its input or nothing; or the clip's own

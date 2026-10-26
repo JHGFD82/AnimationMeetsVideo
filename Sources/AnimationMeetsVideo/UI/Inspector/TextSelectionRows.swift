@@ -9,12 +9,12 @@ import SwiftUI
 /// underline and strikethrough buttons that stay lit, as in the block's
 /// Character group.
 ///
-/// A number or color keeps the stopwatch and keyframe buttons, the one
-/// place in the inspector that keyframes something other than an animator:
-/// the effects panel doesn't show styled runs yet, so a run's keyframes
-/// have no other home. Setting one starts from the block's value there. A
-/// setting the letters have their own of has a button that gives them the
-/// block's back.
+/// A number or color is set outright, as the block's are: the letters'
+/// own settings are keyframed in the effects panel, under a header of their
+/// letters (`EffectsPanel.runRow`), and one animated there shows here
+/// read-only. Setting one starts from the block's value there. A setting
+/// the letters have their own of has a button that gives them the block's
+/// back.
 struct TextSelectionRows: View {
     /// What the first selected letter sets apart from the block.
     let style: TextRunStyle
@@ -26,7 +26,6 @@ struct TextSelectionRows: View {
     let blockStrokeWidth: Double
     /// The playhead in the clip's source time, snapped to a frame.
     let playhead: PlayheadTime
-    let onSeek: (CMTime) -> Void
     let onChange: ((inout TextRunStyle) -> Void) -> Void
 
     var body: some View {
@@ -73,7 +72,7 @@ struct TextSelectionRows: View {
         range: ClosedRange<Double>
     ) -> some View {
         TextRunNumberRow(
-            name: name, own: style[keyPath: path], block: block, unit: unit, range: range, playhead: playhead, onSeek: onSeek,
+            name: name, own: style[keyPath: path], block: block, unit: unit, range: range, playhead: playhead,
             onChange: { change in onChange { change(&$0[keyPath: path]) } }
         )
     }
@@ -98,14 +97,6 @@ struct TextSelectionRows: View {
         let strokeWidth = blockStrokeWidth
         let fallbackWidth = max(1, (block.isEmpty ? 0 : self.block.size / 30).rounded())
         return HStack(spacing: 4) {
-            AnimateToggle(name: "the selected letters' \(lowercase)", isAnimated: value.isAnimated) {
-                let at = playhead.current
-                onChange { style in
-                    var value = style[keyPath: path] ?? AnimatedValue(ComponentValue(values: block))
-                    value.setAnimated(!value.isAnimated, at: at)
-                    style[keyPath: path] = value
-                }
-            }
             Text(name)
                 .foregroundStyle(Design.textSecondary)
                 .frame(width: InspectorControlRow.nameWidth, alignment: .leading)
@@ -133,22 +124,11 @@ struct TextSelectionRows: View {
             ), supportsOpacity: true)
             .labelsHidden()
             .controlSize(.small)
-            .accessibilityLabel("Selected letters' \(lowercase)")
+            .accessibilityLabel(value.isAnimated ? "Selected letters' \(lowercase), animated" : "Selected letters' \(lowercase)")
+            .disabled(value.isAnimated)
             .opacity(own != nil ? 1 : 0.6)
             Spacer(minLength: 4)
-            if value.isAnimated {
-                KeyframeNavigator(
-                    name: "the selected letters' \(lowercase)", keyframeTimes: value.keyframes.map(\.time), time: time, onSeek: onSeek,
-                    onToggle: {
-                        let at = playhead.current
-                        onChange { style in
-                            var value = style[keyPath: path] ?? AnimatedValue(ComponentValue(values: block))
-                            value.toggleKeyframe(at: at)
-                            style[keyPath: path] = value
-                        }
-                    }
-                )
-            }
+            if value.isAnimated { AnimatedInEffectsBadge(name: "selected letters' \(lowercase)") }
             if own != nil { resetButton(name) { $0[keyPath: path] = nil } }
         }
         .font(Design.Typeface.label)
@@ -176,11 +156,11 @@ struct TextSelectionRows: View {
     }
 }
 
-/// One number some letters can have their own of (`TextRunStyle`): a
-/// stopwatch that animates it, its value at the playhead, dimmer while it
-/// is the block's, the keyframe buttons once animated, and a button that
+/// One number some letters can have their own of (`TextRunStyle`): its
+/// value at the playhead, dimmer while it is the block's, and a button that
 /// gives the letters the block's back. Setting it starts from the block's
-/// value there.
+/// value there. Once keyframed in the effects panel it shows read-only,
+/// with a badge saying so.
 struct TextRunNumberRow: View {
     let name: String
     /// The letters' own value; nil while they take the block's.
@@ -190,7 +170,6 @@ struct TextRunNumberRow: View {
     let unit: String
     let range: ClosedRange<Double>
     let playhead: PlayheadTime
-    let onSeek: (CMTime) -> Void
     /// Changes the letters' own value; setting nil gives them the block's.
     let onChange: ((inout AnimatedValue<Double>?) -> Void) -> Void
 
@@ -200,14 +179,6 @@ struct TextRunNumberRow: View {
         let lowercase = name.lowercased()
         let block = block
         HStack(spacing: 4) {
-            AnimateToggle(name: "the selected letters' \(lowercase)", isAnimated: value.isAnimated) {
-                let at = playhead.current
-                onChange { own in
-                    var value = own ?? AnimatedValue(block)
-                    value.setAnimated(!value.isAnimated, at: at)
-                    own = value
-                }
-            }
             Text(name)
                 .foregroundStyle(Design.textSecondary)
                 .lineLimit(1)
@@ -215,7 +186,7 @@ struct TextRunNumberRow: View {
             PanelField(glyph: nil, name: name) {
                 NumericField(
                     value: value.value(at: time), unit: unit, dragStep: 1, dragRange: range,
-                    accessibilityName: "Selected letters' \(lowercase)"
+                    accessibilityName: value.isAnimated ? "Selected letters' \(lowercase), animated" : "Selected letters' \(lowercase)"
                 ) { picked in
                     let at = playhead.current
                     let kept = picked.clamped(between: range.lowerBound, and: range.upperBound)
@@ -225,21 +196,10 @@ struct TextRunNumberRow: View {
                         own = value
                     }
                 }
+                .disabled(value.isAnimated)
                 .opacity(own != nil ? 1 : 0.6)
             }
-            if value.isAnimated {
-                KeyframeNavigator(
-                    name: "the selected letters' \(lowercase)", keyframeTimes: value.keyframes.map(\.time), time: time, onSeek: onSeek,
-                    onToggle: {
-                        let at = playhead.current
-                        onChange { own in
-                            var value = own ?? AnimatedValue(block)
-                            value.toggleKeyframe(at: at)
-                            own = value
-                        }
-                    }
-                )
-            }
+            if value.isAnimated { AnimatedInEffectsBadge(name: "selected letters' \(lowercase)") }
             if own != nil {
                 Button {
                     onChange { $0 = nil }

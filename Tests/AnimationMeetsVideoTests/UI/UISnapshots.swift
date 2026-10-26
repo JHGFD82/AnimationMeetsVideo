@@ -529,9 +529,10 @@ struct UISnapshots {
         )
     }
 
-    /// A Text effect's groups with "meets" selected, set apart in red at
-    /// 80 pixels: the selected letters' rows, their own settings with a
-    /// button giving the block's back, and the block's that can't be.
+    /// A Text effect's groups with "meets" selected, set apart in red and
+    /// with a size keyframed from 80 to 160 pixels: the selected letters'
+    /// rows, their own settings with a button giving the block's back, the
+    /// size read-only with its badge, and the block's that can't be.
     @Test func textSelectionInspector() throws {
         var effect = Effect(kind: .text)
         effect.text = TextContent(string: "Animation meets video")
@@ -923,6 +924,34 @@ struct UISnapshots {
                 playheadTime: CMTime(seconds: 1, preferredTimescale: 600), state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
             ),
             "text-effects-panel", size: CGSize(width: 620, height: 1100)
+        )
+    }
+
+    /// The effects panel for a text clip with "meets" set apart: after the
+    /// text's own sections, a Letters “meets” header with its keyframed
+    /// Size and its Fill, the settings it has its own of.
+    @Test func textRunEffectsPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.text, to: timelineID)
+        let text = try #require(added)
+        project.editClip(text.clipID, in: timelineID) { clip in
+            clip.effects[0].text = TextContent(string: "Animation meets video")
+            clip.effects[0].text?.changeStyle(in: NSRange(location: 10, length: 5)) { style in
+                var size = AnimatedValue(80.0)
+                size.setAnimated(true, at: .zero)
+                size.set(160, at: CMTime(seconds: 2, preferredTimescale: 600))
+                style.size = size
+                style.fill = AnimatedValue(ComponentValue(values: [1, 0.2, 0.2, 1]))
+            }
+        }
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: text.layerID, timelineClipID: text.clipID),
+                playheadTime: CMTime(seconds: 1, preferredTimescale: 600), state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "text-run-effects-panel", size: CGSize(width: 620, height: 1200)
         )
     }
 

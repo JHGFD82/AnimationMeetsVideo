@@ -447,16 +447,19 @@ struct EffectHeaderRow<MenuContent: View>: View {
 /// Character, Paragraph, Fill & Stroke.
 struct ControlSectionHeader: View {
     let name: String
+    /// Shown after the name as it is, not in capitals: the letters a
+    /// styled run's header names.
+    var detail: String?
 
     var body: some View {
-        Text(name.uppercased())
+        (Text(name.uppercased()) + Text(detail.map { " \($0)" } ?? ""))
             .font(Design.Typeface.micro)
             .foregroundStyle(Design.textTertiary)
             .lineLimit(1)
             .padding(.leading, EffectsPanelMetrics.controlIndent)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             .padding(.bottom, 4)
-            .accessibilityLabel(name)
+            .accessibilityLabel([name, detail].compactMap { $0 }.joined(separator: " "))
             .accessibilityAddTraits(.isHeader)
     }
 }

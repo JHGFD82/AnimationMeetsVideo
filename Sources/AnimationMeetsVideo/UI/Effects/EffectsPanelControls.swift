@@ -199,6 +199,104 @@ extension EffectsPanel {
         .help("The font's \(axis.name.lowercased()), from \(NumericExpression.format(axis.minimum)) to \(NumericExpression.format(axis.maximum))")
     }
 
+    /// A setting some letters of a Text effect have their own of
+    /// (`TextRunStyle`), under their run's header, as a control's row is:
+    /// its value at the playhead, stopwatch and keyframe buttons, its lane
+    /// and its graph editor. The inspector gives letters their own of a
+    /// setting; here it is keyframed. Reset gives them the block's back,
+    /// which takes the row away.
+    @ViewBuilder
+    func runRow(_ setting: TextRunSetting, of run: TextRun, in effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
+        let clip = c.clip
+        let start = run.start
+        if let value = run.style.components(of: setting) {
+            let key = ParameterKey(
+                timelineID: timelineID, parameter: .textRun(setting, start: start, clipID: clip.id, effectID: effect.id)
+            )
+            let edit = { (change: @escaping (inout AnimatedValue<ComponentValue>) -> Void) in
+                editEffect(effect.id, in: clip) { $0.text?.changeRun(startingAt: start) { $0.changeComponents(of: setting, change) } }
+            }
+            let reset = {
+                editEffect(effect.id, in: clip) { effect in
+                    effect.text?.changeStyle(in: run.range) { style in
+                        if let path = setting.number { style[keyPath: path] = nil }
+                        if let path = setting.color { style[keyPath: path] = nil }
+                    }
+                }
+            }
+            let range = setting.range
+            labelled(
+                ParameterRow(
+                    name: setting.name,
+                    indent: EffectsPanelMetrics.controlIndent - 12,
+                    components: value.value(at: c.sourceNow(animated: value.isAnimated)).values,
+                    unit: setting.unit,
+                    dragRange: { _ in range },
+                    isAnimated: value.isAnimated,
+                    isSelected: false,
+                    keyframeTimes: value.keyframes.map { clip.timelineTime(forSourceTime: $0.time) },
+                    playhead: c.frameTime(animated: value.isAnimated),
+                    dragHandle: AnyView(Color.clear.frame(width: 12)),
+                    isDimmed: effectDimmed,
+                    onReset: reset,
+                    onSelect: { state.select(effect: effect.id) },
+                    onSetComponent: { index, picked in
+                        let at = c.now.sourceNow
+                        edit { value in
+                            var values = value.value(at: at).values
+                            guard values.indices.contains(index) else { return }
+                            values[index] = picked.clamped(between: range.lowerBound, and: range.upperBound)
+                            value.set(ComponentValue(values: values), at: at)
+                        }
+                    },
+                    onToggleAnimated: {
+                        let at = c.now.sourceNow
+                        edit { $0.setAnimated(!$0.isAnimated, at: at) }
+                    },
+                    onToggleKeyframe: {
+                        let at = c.now.sourceNow
+                        edit { $0.toggleKeyframe(at: at) }
+                    },
+                    onSeek: onSeek,
+                    onShowGraph: graphs.map { graphs in { graphs.show(key) } },
+                    color: setting.isColor ? runColorBinding(value, at: c, edit: edit) : nil,
+                    menu: { Button("Use the Block's \(setting.name)", action: reset) }
+                ),
+                lane: ParameterLane(
+                    marks: value.marks, geometry: c.geometry, playhead: c.frameTime(animated: value.isAnimated),
+                    height: EffectsPanelMetrics.rowHeight, onSeek: onSeek,
+                    onMove: { from, to, copy in edit { $0.moveKeyframe(at: from, to: to, copying: copy) } },
+                    onDelete: { time in edit { $0.removeKeyframe(at: time) } },
+                    onEase: { time, preset in edit { $0.applyEase(preset, at: time) } }
+                )
+            )
+            .help("The \(setting.name.lowercased()) of the letters \(effect.text?.quotedLetters(of: run) ?? ""), set apart from the block's")
+        }
+    }
+
+    /// A styled run's color, picked with a well, set at the playhead.
+    private func runColorBinding(
+        _ value: AnimatedValue<ComponentValue>, at c: RowContext,
+        edit: @escaping (@escaping (inout AnimatedValue<ComponentValue>) -> Void) -> Void
+    ) -> Binding<CGColor> {
+        Binding(
+            get: {
+                let rgba = value.value(at: c.sourceNow(animated: value.isAnimated)).values.map { CGFloat($0) }
+                guard rgba.count == 4 else { return CGColor(gray: 1, alpha: 1) }
+                return CGColor(srgbRed: rgba[0], green: rgba[1], blue: rgba[2], alpha: rgba[3])
+            },
+            set: { picked in
+                guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+                      let srgb = picked.converted(to: space, intent: .defaultIntent, options: nil),
+                      let parts = srgb.components, parts.count >= 4
+                else { return }
+                let values = parts.prefix(4).map { Double($0).clamped(between: 0, and: 1) }
+                let at = c.now.sourceNow
+                edit { $0.set(ComponentValue(values: values), at: at) }
+            }
+        )
+    }
+
     /// What a row's reset button does, nil while the control holds what a
     /// new one would: a shape's size fitted to the frame, as when added.
     private func reset(_ control: EffectControl, of effect: Effect, in c: RowContext) -> (() -> Void)? {
