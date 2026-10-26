@@ -1,0 +1,25 @@
+{
+  "formatVersion": 1,
+  "id": "lensBlur",
+  "version": 1,
+  "name": "Lens Blur",
+  "category": "blur",
+  "symbol": "camera.aperture",
+  "kernel": {"file": "kernel.metal", "function": "amvLensBlur", "type": "general"},
+  "controls": [
+    {"id": "blurRadius", "name": "Radius", "type": "number", "default": 12, "range": [0, 500], "unit": "px", "step": 0.1},
+    {"id": "ringAmount", "name": "Highlight Rings", "type": "number", "default": 0, "range": [0, 100], "unit": "%"},
+    {"id": "ringSize", "name": "Ring Width", "type": "number", "default": 10, "range": [1, 50], "unit": "%"},
+    {"id": "ringSoftness", "name": "Ring Softness", "type": "number", "default": 100, "range": [0, 100], "unit": "%"},
+    {"id": "blurEdges", "name": "Edges", "type": "choice", "default": "repeat", "options": [{"id": "repeat", "name": "Repeat"}, {"id": "transparent", "name": "Transparent"}]}
+  ],
+  "arguments": [],
+  "dependsOnPixelSize": true,
+  "reach": "0",
+  "after": [
+    {"filter": "CIBokehBlur", "when": "(blurRadius > 0) * (index(blurEdges) == 0)", "input": "clamped",
+     "parameters": {"inputRadius": "blurRadius * scale", "inputRingAmount": "ringAmount / 100", "inputRingSize": "ringSize / 100", "inputSoftness": "ringSoftness / 100"}},
+    {"filter": "CIBokehBlur", "when": "(blurRadius > 0) * (index(blurEdges) == 1)",
+     "parameters": {"inputRadius": "blurRadius * scale", "inputRingAmount": "ringAmount / 100", "inputRingSize": "ringSize / 100", "inputSoftness": "ringSoftness / 100"}}
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "id": "surfaceBlur",
+  "version": 1,
+  "name": "Surface Blur",
+  "category": "blur",
+  "symbol": "wand.and.rays",
+  "kernel": {"file": "kernel.metal", "function": "amvSurfaceBlur", "type": "general"},
+  "controls": [
+    {"id": "surfaceRadius", "name": "Radius", "type": "number", "default": 6, "range": [0, 100], "unit": "px", "step": 0.1},
+    {"id": "surfaceThreshold", "name": "Threshold", "type": "number", "default": 12, "range": [1, 100], "unit": "%"}
+  ],
+  "arguments": ["surfaceRadius * scale", "surfaceThreshold / 100", "pass"],
+  "dependsOnPixelSize": true,
+  "reach": "surfaceRadius * scale + 2",
+  "input": "clamped",
+  "repeat": {"count": "(surfaceRadius > 0) * 2"}
+}

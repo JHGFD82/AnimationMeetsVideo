@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "spinBlur",
+  "version": 1,
+  "name": "Spin Blur",
+  "category": "blur",
+  "symbol": "arrow.clockwise.circle",
+  "kernel": {"file": "kernel.metal", "function": "amvSpinBlur", "type": "general"},
+  "controls": [
+    {"id": "spinCenter", "name": "Center", "type": "point"},
+    {"id": "spinAngle", "name": "Angle", "type": "number", "default": 10, "range": [-360, 360], "unit": "°", "step": 0.1},
+    {"id": "blurEdges", "name": "Edges", "type": "choice", "default": "repeat", "options": [{"id": "repeat", "name": "Repeat"}, {"id": "transparent", "name": "Transparent"}]}
+  ],
+  "arguments": ["center(spinCenter)", "rad(spinAngle)", "24", "pass", "1 - index(blurEdges)", "frameWidth", "frameHeight"],
+  "dependsOnPixelSize": true,
+  "repeat": {"count": "(spinAngle != 0) * 2"}
+}

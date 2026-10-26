@@ -262,6 +262,7 @@ enum BuiltInEffects {
         "levels", "shadowsHighlights", "hueSaturation", "vibrance", "hueRange", "grayPoint", "blackAndWhite", "colorize",
         "sepia", "invert", "threshold", "broadcastSafe",
         // Blur & Sharpen
+        "gaussianBlur", "directionalBlur", "zoomBlur", "spinBlur", "lensBlur", "tiltShift", "surfaceBlur", "sharpen", "unsharpMask",
         // Keying & Masks
         "chromaKey", "lumaKey", "differenceKey", "spillSuppressor", "matteChoker",
         "rectangleMask", "ellipseMask", "fourPointMask", "gradientMask", "alphaTools",

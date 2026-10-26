@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "unsharpMask",
+  "version": 1,
+  "name": "Unsharp Mask",
+  "category": "blur",
+  "symbol": "circle.righthalf.filled",
+  "kernel": {"file": "kernel.metal", "function": "amvUnsharpMask", "type": "color"},
+  "controls": [
+    {"id": "unsharpAmount", "name": "Amount", "type": "number", "default": 50, "range": [0, 500], "unit": "%"},
+    {"id": "unsharpRadius", "name": "Radius", "type": "number", "default": 2.5, "range": [0.1, 250], "unit": "px", "step": 0.1}
+  ],
+  "arguments": [],
+  "dependsOnPixelSize": true,
+  "after": [
+    {"filter": "CIUnsharpMask", "when": "(unsharpAmount > 0) * (unsharpRadius > 0)", "input": "clamped",
+     "parameters": {"inputIntensity": "unsharpAmount / 100", "inputRadius": "unsharpRadius * scale"}}
+  ]
+}

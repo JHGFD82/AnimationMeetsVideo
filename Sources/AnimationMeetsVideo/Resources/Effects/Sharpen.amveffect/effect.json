@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "sharpen",
+  "version": 1,
+  "name": "Sharpen",
+  "category": "blur",
+  "symbol": "triangle.lefthalf.filled",
+  "kernel": {"file": "kernel.metal", "function": "amvSharpen", "type": "color"},
+  "controls": [
+    {"id": "sharpness", "name": "Amount", "type": "number", "default": 40, "range": [0, 500], "unit": "%"},
+    {"id": "sharpenRadius", "name": "Radius", "type": "number", "default": 1.7, "range": [0.1, 50], "unit": "px", "step": 0.1}
+  ],
+  "arguments": [],
+  "dependsOnPixelSize": true,
+  "after": [
+    {"filter": "CISharpenLuminance", "when": "sharpness > 0", "input": "clamped",
+     "parameters": {"inputSharpness": "sharpness / 100", "inputRadius": "sharpenRadius * scale"}}
+  ]
+}
