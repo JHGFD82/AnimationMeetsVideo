@@ -263,6 +263,8 @@ enum BuiltInEffects {
         // Keying & Masks
         // Light
         // Stylize
+        "pixelate", "halftone", "crystallize", "oilPaint", "celShade", "findEdges", "emboss",
+        "scanLines", "vhs", "oldFilm", "filmDamage", "strobe",
         // Color
         "hueCycle", "cosinePalette", "gradientMap", "solarize", "posterize", "channelMixer", "falseColor", "neonEdges",
         "grain", "staticNoise", "fractalNoise", "cells", "dither", "interference", "blockGlitch",

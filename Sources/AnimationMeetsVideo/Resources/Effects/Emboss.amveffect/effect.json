@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "emboss",
+  "version": 1,
+  "name": "Emboss",
+  "category": "stylize",
+  "symbol": "square.on.square.intersection.dashed",
+  "kernel": {"file": "kernel.metal", "function": "amvEmboss", "type": "general"},
+  "controls": [
+    {"id": "lightAngle", "name": "Light", "type": "number", "default": 135, "unit": "°"},
+    {"id": "reliefHeight", "name": "Height", "type": "number", "default": 100, "range": [0, 1000], "unit": "%"},
+    {"id": "reliefWidth", "name": "Width", "type": "number", "default": 2, "range": [0.5, 50], "unit": "px", "step": 0.1},
+    {"id": "reliefColoring", "name": "Coloring", "type": "choice", "default": "gray", "options": [{"id": "gray", "name": "Gray"}, {"id": "keep", "name": "Picture's Colors"}]}
+  ],
+  "amount": true,
+  "arguments": ["rad(lightAngle)", "reliefHeight / 100", "reliefWidth * scale", "index(reliefColoring)"],
+  "reach": "reliefWidth * scale * 1.5",
+  "input": "clamped"
+}

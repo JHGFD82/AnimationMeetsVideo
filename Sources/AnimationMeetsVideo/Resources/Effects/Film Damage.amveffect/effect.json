@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "id": "filmDamage",
+  "version": 1,
+  "name": "Film Damage",
+  "category": "stylize",
+  "symbol": "film.stack",
+  "kernel": {"file": "kernel.metal", "function": "amvFilmDamage", "type": "color"},
+  "controls": [
+    {"id": "scratches", "name": "Scratches", "type": "number", "default": 40, "range": [0, 100], "unit": "%"},
+    {"id": "dust", "name": "Dust", "type": "number", "default": 40, "range": [0, 100], "unit": "%"},
+    {"id": "hairs", "name": "Hairs", "type": "number", "default": 20, "range": [0, 100], "unit": "%"},
+    {"id": "damageTone", "name": "Dirt", "type": "choice", "default": "both", "options": [{"id": "dark", "name": "Dark"}, {"id": "light", "name": "Light"}, {"id": "both", "name": "Dark & Light"}]},
+    {"id": "damageSize", "name": "Size", "type": "number", "default": 100, "range": [25, 400], "unit": "%"},
+    {"id": "seed", "name": "Seed", "type": "number", "default": 1, "range": [0, 100000], "whole": true}
+  ],
+  "amount": true,
+  "arguments": ["scratches / 100", "dust / 100", "hairs / 100", "index(damageTone)", "damageSize / 100", "seed", "frame", "seconds", "frameWidth", "frameHeight"],
+  "changesEveryFrame": true
+}

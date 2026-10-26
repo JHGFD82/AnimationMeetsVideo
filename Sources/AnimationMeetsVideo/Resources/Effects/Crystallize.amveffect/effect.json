@@ -1,0 +1,22 @@
+{
+  "formatVersion": 1,
+  "id": "crystallize",
+  "version": 1,
+  "name": "Crystallize",
+  "category": "stylize",
+  "symbol": "hexagon.fill",
+  "kernel": {"file": "kernel.metal", "function": "amvCrystallize", "type": "general"},
+  "controls": [
+    {"id": "crystalStyle", "name": "Style", "type": "choice", "default": "crystals", "options": [{"id": "crystals", "name": "Crystals"}, {"id": "dots", "name": "Dots"}]},
+    {"id": "crystalSize", "name": "Size", "type": "number", "default": 24, "range": [3, 1000], "unit": "px"},
+    {"id": "crystalJitter", "name": "Randomness", "type": "number", "default": 100, "range": [0, 100], "unit": "%"},
+    {"id": "dotSize", "name": "Dot Size", "type": "number", "default": 90, "range": [10, 200], "unit": "%"},
+    {"id": "borderWidth", "name": "Borders", "type": "number", "default": 0, "range": [0, 50], "unit": "px", "step": 0.1},
+    {"id": "fillColor", "name": "Border & Background", "type": "color", "default": [1, 1, 1, 1]},
+    {"id": "seed", "name": "Seed", "type": "number", "default": 1, "range": [0, 100000], "whole": true}
+  ],
+  "amount": true,
+  "arguments": ["index(crystalStyle)", "crystalSize * scale", "crystalJitter / 100", "dotSize / 100", "borderWidth * scale", "fillColor", "seed", "frameCenter"],
+  "reach": "crystalSize * scale * 2",
+  "input": "clamped"
+}

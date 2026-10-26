@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "id": "pixelate",
+  "version": 1,
+  "name": "Pixelate",
+  "category": "stylize",
+  "symbol": "squareshape.split.3x3",
+  "kernel": {"file": "kernel.metal", "function": "amvPixelate", "type": "general"},
+  "controls": [
+    {"id": "cellSize", "name": "Cell Size", "type": "number", "default": 16, "range": [2, 1000], "unit": "px"},
+    {"id": "cellShape", "name": "Shape", "type": "choice", "default": "squares", "options": [{"id": "squares", "name": "Squares"}, {"id": "hexagons", "name": "Hexagons"}]},
+    {"id": "cellOrigin", "name": "Origin", "type": "point"}
+  ],
+  "amount": true,
+  "arguments": ["cellSize * scale", "index(cellShape)", "center(cellOrigin)"],
+  "reach": "cellSize * scale * 1.2",
+  "input": "clamped"
+}

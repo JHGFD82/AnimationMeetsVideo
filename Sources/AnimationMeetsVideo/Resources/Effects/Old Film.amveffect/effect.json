@@ -1,0 +1,24 @@
+{
+  "formatVersion": 1,
+  "id": "oldFilm",
+  "version": 1,
+  "name": "Old Film",
+  "category": "stylize",
+  "symbol": "film",
+  "kernel": {"file": "kernel.metal", "function": "amvOldFilm", "type": "general"},
+  "controls": [
+    {"id": "toneColor", "name": "Tone", "type": "color", "default": [1, 0.84, 0.62, 1]},
+    {"id": "keepColor", "name": "Color", "type": "number", "default": 0, "range": [0, 100], "unit": "%"},
+    {"id": "fade", "name": "Fade", "type": "number", "default": 25, "range": [0, 100], "unit": "%"},
+    {"id": "flicker", "name": "Flicker", "type": "number", "default": 20, "range": [0, 100], "unit": "%"},
+    {"id": "gateWeave", "name": "Gate Weave", "type": "number", "default": 2, "range": [0, 40], "unit": "px", "step": 0.1},
+    {"id": "vignette", "name": "Vignette", "type": "number", "default": 40, "range": [0, 100], "unit": "%"},
+    {"id": "seed", "name": "Seed", "type": "number", "default": 1, "range": [0, 100000], "whole": true}
+  ],
+  "amount": true,
+  "arguments": ["toneColor", "keepColor / 100", "fade / 100", "flicker / 100", "gateWeave * scale", "vignette / 100", "seed", "frame", "seconds", "frameCenter", "frameWidth", "frameHeight"],
+  "changesEveryFrame": true,
+  "flashes": "flicker > 50",
+  "reach": "gateWeave * scale * 1.5 + 1",
+  "input": "clamped"
+}

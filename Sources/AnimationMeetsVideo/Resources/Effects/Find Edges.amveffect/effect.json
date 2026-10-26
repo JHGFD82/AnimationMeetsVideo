@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "findEdges",
+  "version": 1,
+  "name": "Find Edges",
+  "category": "stylize",
+  "symbol": "pencil.and.outline",
+  "kernel": {"file": "kernel.metal", "function": "amvFindEdges", "type": "general"},
+  "controls": [
+    {"id": "sketchStyle", "name": "Style", "type": "choice", "default": "colored", "options": [{"id": "colored", "name": "Colored"}, {"id": "pencil", "name": "Pencil"}, {"id": "ink", "name": "Ink"}]},
+    {"id": "lineWidth", "name": "Width", "type": "number", "default": 1, "range": [0.5, 50], "unit": "px", "step": 0.1},
+    {"id": "lineStrength", "name": "Strength", "type": "number", "default": 100, "range": [0, 500], "unit": "%"},
+    {"id": "inkThreshold", "name": "Threshold", "type": "number", "default": 20, "range": [0, 100], "unit": "%"}
+  ],
+  "amount": true,
+  "arguments": ["index(sketchStyle)", "lineWidth * scale", "lineStrength / 100", "inkThreshold / 100"],
+  "reach": "lineWidth * scale",
+  "input": "clamped"
+}
