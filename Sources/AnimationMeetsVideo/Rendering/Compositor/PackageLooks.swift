@@ -131,13 +131,17 @@ enum PackageLookRenderer {
     /// `pictures` are its input and Against picture by ID (one it doesn't
     /// have transparent), `flags` say which it has (`hasInput`), and
     /// `moments` give the footage at other times. A repeated look draws
-    /// once per pass, each over what the last made.
+    /// once per pass, each over what the last made. A linear look gets its
+    /// pictures as light and gives its result back encoded.
     static func apply(
-        _ package: EffectPackage, _ step: LookStep, to picture: CIImage, over region: CGRect, canvas: CGRect,
+        _ package: EffectPackage, _ step: LookStep, to encoded: CIImage, over region: CGRect, canvas: CGRect,
         frame: CGRect, scale: CGFloat, space: ProjectColorSpace, pictures: [String: CIImage] = [:], flags: [String: Double] = [:],
         moments: Moments? = nil
     ) -> CIImage {
-        guard let kernel = PackageKernels.kernel(for: package) else { return picture }
+        guard let kernel = PackageKernels.kernel(for: package) else { return encoded }
+        let spaceIndex = Float(space.gradingSpaceIndex)
+        let read = { (image: CIImage) in package.linear ? LinearLight.toLinear(image, space: spaceIndex) : image }
+        let picture = read(encoded)
         let frameDuration = moments.map { $0.frameDuration.seconds > 0 ? $0.frameDuration : CMTime(value: 1, timescale: 24) }
             ?? CMTime(value: 1, timescale: 24)
         var values = Values(
@@ -147,15 +151,16 @@ enum PackageLookRenderer {
             // Each moment as of this pass; the picture reaching the step for
             // no delay, or for one the composition hasn't where it says so.
             let others: [CIImage] = package.pictures.map { wanted in
-                guard wanted.source == .moment, let delay = wanted.delay else { return pictures[wanted.id] ?? CIImage(color: .clear) }
+                guard wanted.source == .moment, let delay = wanted.delay else { return pictures[wanted.id].map(read) ?? CIImage(color: .clear) }
                 let frames = (delay.number(values) / frameDuration.seconds).rounded()
                 guard frames > 0 else { return picture }
                 let earlier = moments?.earlier(CMTimeMultiply(frameDuration, multiplier: Int32(frames)))
-                return earlier ?? (wanted.missingIsPicture ? picture : CIImage(color: .clear))
+                return earlier.map(read) ?? (wanted.missingIsPicture ? picture : CIImage(color: .clear))
             }
             return draw(kernel, package, step, values, drawn, others, region: region, canvas: canvas, space: space)
         }
-        guard let repeats = package.repeats else { return pass(over: picture) }
+        let written = { (image: CIImage) in package.linear ? LinearLight.fromLinear(image, space: spaceIndex) : image }
+        guard let repeats = package.repeats else { return written(pass(over: picture)) }
         let playing = moments?.isPlaying ?? false
         let countExpression = playing ? repeats.countWhilePlaying ?? repeats.count : repeats.count
         let indexExpression = playing ? repeats.indexWhilePlaying ?? repeats.index : repeats.index
@@ -167,7 +172,7 @@ enum PackageLookRenderer {
             values.extra["index"] = indexExpression?.number(values) ?? Double(n)
             result = pass(over: result)
         }
-        return result
+        return written(result)
     }
 
     /// One drawing of the kernel over `picture`, with its other pictures.

@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "id": "zoomBlur",
-  "version": 1,
+  "version": 2,
   "name": "Zoom Blur",
   "category": "blur",
   "symbol": "arrow.up.backward.and.arrow.down.forward",
@@ -13,5 +13,6 @@
   ],
   "arguments": ["center(zoomCenter)", "zoomAmount / 100", "24", "pass", "1 - index(blurEdges)", "frameWidth", "frameHeight"],
   "dependsOnPixelSize": true,
+  "linear": true,
   "repeat": {"count": "(zoomAmount != 0) * 2"}
 }

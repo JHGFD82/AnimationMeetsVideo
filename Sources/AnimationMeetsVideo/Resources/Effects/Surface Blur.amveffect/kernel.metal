@@ -2,14 +2,21 @@
 // neighbor counts less the more its color differs from the pixel's,
 // by about `threshold` (a bilateral filter). Smooths skin, noise and
 // banding without softening outlines. Drawn in two passes, across and
-// then down, at most 32 reads either side.
+// then down, at most 32 reads either side. The package is linear, so it
+// averages light; colors are compared as tones, so Threshold means the
+// same in SDR and HDR.
+// Linear light as a tone: 0 black and 1 reference white, as toTones gives.
+inline float3 toneOfLight(float3 l) {
+    return (float3(lin2log(l.r), lin2log(l.g), lin2log(l.b)) - LOG_BLACK) / (LOG_WHITE - LOG_BLACK);
+}
+
 extern "C" [[stitchable]] float4 amvSurfaceBlur(coreimage::sampler src, float space, float radius, float threshold, float pass,
                                                 coreimage::destination dest) {
     float2 d = dest.coord();
     float4 here = src.sample(src.transform(d));
     if (radius < 0.5) return here;
     float2 axis = pass < 0.5 ? float2(1.0, 0.0) : float2(0.0, 1.0);
-    float3 color = straight(here);
+    float3 color = toneOfLight(straight(here));
     float sigma = radius / 2.0;
     float closeness = 0.5 / max(threshold * threshold, 1e-6);
     int taps = int(min(ceil(radius), 32.0));
@@ -21,7 +28,7 @@ extern "C" [[stitchable]] float4 amvSurfaceBlur(coreimage::sampler src, float sp
         float near = exp(-0.5 * x * x / (sigma * sigma));
         for (int side = -1; side <= 1; side += 2) {
             float4 n = src.sample(src.transform(d + axis * x * float(side)));
-            float3 diff = straight(n) - color;
+            float3 diff = toneOfLight(straight(n)) - color;
             float w = near * exp(-dot(diff, diff) * closeness);
             sum += w * n;
             total += w;

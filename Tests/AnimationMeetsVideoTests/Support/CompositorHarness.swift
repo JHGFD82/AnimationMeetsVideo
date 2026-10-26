@@ -47,16 +47,17 @@ struct CompositorHarness {
         try addPicture(track: track) { _, _ in color }
     }
 
-    /// A picture clip showing track `track` as it is, with this stack.
+    /// A picture clip showing track `track` as it is, with this stack, in a
+    /// timeline of `colorSpace` (which its looks are told).
     static func clip(
         track: CMPersistentTrackID, effects: [Effect] = [], frame: CGSize = CGSize(width: 16, height: 8),
-        base: CGAffineTransform = .identity, layer: UUID = UUID()
+        base: CGAffineTransform = .identity, layer: UUID = UUID(), colorSpace: ProjectColorSpace = .rec709
     ) -> DrawClip {
         DrawClip(
             content: .media(MediaDraw(
                 trackID: track, base: base, url: URL(fileURLWithPath: "/dev/null"), sourceStart: .zero, segmentStart: .zero
             )),
-            stack: ClipStack(effects: effects, center: CGPoint(x: frame.width / 2, y: frame.height / 2)),
+            stack: ClipStack(effects: effects, center: CGPoint(x: frame.width / 2, y: frame.height / 2), colorSpace: colorSpace),
             range: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 1)), owner: UUID(), layerID: layer
         )
     }
@@ -92,11 +93,13 @@ struct CompositorHarness {
     }
 
     /// The frame drawn from `clips` (top first), as straight RGBA per pixel
-    /// from the top left, row by row.
-    func draw(_ clips: [DrawClip], at time: CMTime = .zero, options: DrawingOptions? = nil) throws -> [Color] {
+    /// from the top left, row by row, in a timeline of `colorSpace`.
+    func draw(
+        _ clips: [DrawClip], at time: CMTime = .zero, options: DrawingOptions? = nil, colorSpace: ProjectColorSpace = .rec709
+    ) throws -> [Color] {
         let instruction = LayeredInstruction(
             timeRange: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 1)),
-            clips: DrawClip.assembled(clips), renderSize: size, colorSpace: .rec709, options: options
+            clips: DrawClip.assembled(clips), renderSize: size, colorSpace: colorSpace, options: options
         )
         let pictures = pictures
         let image = LayeredCompositor.compose(instruction, at: time, outputSize: size) { pictures[$0] }

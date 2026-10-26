@@ -344,7 +344,7 @@ enum EffectPackageStore {
             .optional("amount", .bool),
             .required("arguments", .array(.string)),
             .optional("generates", .bool), .optional("changesEveryFrame", .bool),
-            .optional("dependsOnPixelSize", .bool), .optional("flashes", .any),
+            .optional("dependsOnPixelSize", .bool), .optional("flashes", .any), .optional("linear", .bool),
             .optional("reach", .string),
             .optional("input", .choice(EffectPackage.Edges.allCases.map(\.rawValue), noun: "input")),
             .optional("pictures", .array(.object(object([
@@ -533,7 +533,8 @@ enum EffectPackageStore {
                 generates: json["generates"] as? Bool ?? false, changesEveryFrame: json["changesEveryFrame"] as? Bool ?? false,
                 dependsOnPixelSize: json["dependsOnPixelSize"] as? Bool ?? false, flashes: flashes,
                 rateControls: rates, reach: reach, pictures: pictures, drawsWhen: drawsWhen, repeats: repeats,
-                edges: (json["input"] as? String).flatMap(EffectPackage.Edges.init(rawValue:)) ?? .clear, after: after
+                edges: (json["input"] as? String).flatMap(EffectPackage.Edges.init(rawValue:)) ?? .clear, after: after,
+                linear: json["linear"] as? Bool ?? false
             )
         }
 

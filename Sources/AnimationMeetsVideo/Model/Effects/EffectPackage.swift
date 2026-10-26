@@ -130,6 +130,12 @@ struct EffectPackage: Sendable {
     }
     let edges: Edges
     let after: [Filter]
+    /// Whether it works on linear light rather than on the picture as the
+    /// timeline encodes it: the pictures it reads are turned into light
+    /// before its first pass, and its result back after its last pass and
+    /// filters. A blur averages light so, and a highlight keeps its
+    /// brightness as it spreads, the same in SDR, PQ and HLG.
+    var linear = false
 
     var kind: EffectKind { EffectKind(package: id) }
 

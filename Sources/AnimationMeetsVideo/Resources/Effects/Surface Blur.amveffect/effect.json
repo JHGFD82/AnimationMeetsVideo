@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "id": "surfaceBlur",
-  "version": 1,
+  "version": 2,
   "name": "Surface Blur",
   "category": "blur",
   "symbol": "wand.and.rays",
@@ -12,6 +12,7 @@
   ],
   "arguments": ["surfaceRadius * scale", "surfaceThreshold / 100", "pass"],
   "dependsOnPixelSize": true,
+  "linear": true,
   "reach": "surfaceRadius * scale + 2",
   "input": "clamped",
   "repeat": {"count": "(surfaceRadius > 0) * 2"}

@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "id": "directionalBlur",
-  "version": 1,
+  "version": 2,
   "name": "Directional Blur",
   "category": "blur",
   "symbol": "arrow.left.and.right",
@@ -13,6 +13,7 @@
   ],
   "arguments": [],
   "dependsOnPixelSize": true,
+  "linear": true,
   "reach": "0",
   "after": [
     {"filter": "CIMotionBlur", "when": "(blurLength > 0) * (index(blurEdges) == 0)", "input": "clamped", "parameters": {"inputRadius": "blurLength * scale", "inputAngle": "-rad(blurAngle)"}},

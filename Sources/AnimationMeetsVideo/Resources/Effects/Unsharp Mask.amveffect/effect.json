@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "id": "unsharpMask",
-  "version": 1,
+  "version": 2,
   "name": "Unsharp Mask",
   "category": "blur",
   "symbol": "diamond.righthalf.filled",
@@ -12,6 +12,7 @@
   ],
   "arguments": [],
   "dependsOnPixelSize": true,
+  "linear": true,
   "after": [
     {"filter": "CIUnsharpMask", "when": "(unsharpAmount > 0) * (unsharpRadius > 0)", "input": "clamped",
      "parameters": {"inputIntensity": "unsharpAmount / 100", "inputRadius": "unsharpRadius * scale"}}

@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "id": "sharpen",
-  "version": 1,
+  "version": 2,
   "name": "Sharpen",
   "category": "blur",
   "symbol": "triangle.lefthalf.filled",
@@ -12,6 +12,7 @@
   ],
   "arguments": [],
   "dependsOnPixelSize": true,
+  "linear": true,
   "after": [
     {"filter": "CISharpenLuminance", "when": "sharpness > 0", "input": "clamped",
      "parameters": {"inputSharpness": "sharpness / 100", "inputRadius": "sharpenRadius * scale"}}

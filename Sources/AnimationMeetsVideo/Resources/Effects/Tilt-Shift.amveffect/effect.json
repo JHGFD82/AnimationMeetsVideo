@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "id": "tiltShift",
-  "version": 1,
+  "version": 2,
   "name": "Tilt-Shift",
   "category": "blur",
   "symbol": "camera.macro",
@@ -16,6 +16,7 @@
   ],
   "arguments": ["center(focusCenter)", "-rad(focusAngle)", "focusSize * scale", "focusFalloff * scale", "blurRadius * scale", "index(focusShape)", "pass"],
   "dependsOnPixelSize": true,
+  "linear": true,
   "reach": "3 * blurRadius * scale + 2",
   "input": "clamped",
   "repeat": {"count": "(blurRadius > 0) * 2"}

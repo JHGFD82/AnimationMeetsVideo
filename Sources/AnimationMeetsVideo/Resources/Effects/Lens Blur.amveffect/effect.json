@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "id": "lensBlur",
-  "version": 1,
+  "version": 2,
   "name": "Lens Blur",
   "category": "blur",
   "symbol": "camera.aperture",
@@ -15,6 +15,7 @@
   ],
   "arguments": [],
   "dependsOnPixelSize": true,
+  "linear": true,
   "reach": "0",
   "after": [
     {"filter": "CIBokehBlur", "when": "(blurRadius > 0) * (index(blurEdges) == 0)", "input": "clamped",

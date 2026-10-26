@@ -10,6 +10,27 @@ viewer at Half draws what an export does; all nine say they depend on
 pixel size, so a nested timeline holding one isn't pushed into its
 layers.
 
+## Light, not code values
+
+All nine average light. Each package is `"linear": true` (see
+[effect-packages.md](effect-packages.md#effectjson)): the picture is
+turned into linear light (1 is reference white) before the look draws
+and back after its last pass and filter, so a kernel's samples, Core
+Image's filters and the interpolation between pixels all work on light.
+Averaging the timeline's code values instead darkens a highlight as it
+spreads, mildly in Rec. 709 and badly in PQ and HLG, whose curves are
+steeper: a 3-pixel Gaussian Blur kept 25% of a white square's light in
+Rec. 709 and 1.4% of a 1000-nit square's in PQ, which faded to about 4
+nits. Now the light is kept, a highlight spreads into a glow brighter
+than SDR's white on an HDR timeline, and the same picture blurs to the
+same light in Rec. 709, PQ and HLG. In SDR this makes halos around
+bright things brighter and leaves no dark fringe where light meets
+dark.
+
+Surface Blur compares colors as tones (the log scale `toTones` gives,
+black 0 and reference white 1), so its Threshold means the same in
+every color space.
+
 ## The effects
 
 | Effect | Controls | How it is drawn |
@@ -89,6 +110,12 @@ disc with an edge; Tilt-Shift keeps stripes in its band and blurs them
 away from it, turned with its Angle; Surface Blur smooths noise and
 keeps an edge; Sharpen and Unsharp Mask raise contrast at an edge and
 leave flat areas and the frame's edges alone; and Repeat keeps the
-frame's corners while Transparent fades them.
+frame's corners while Transparent fades them. On light:
+`eachSpreadsLightTheSameInSDRAndHDR` blurs the same light, a white
+square on a dim field, in Rec. 709, PQ and HLG with all nine, and
+finds the same light out of each; `aBlurredHDRHighlightKeepsItsLight`
+blurs a 1000-nit square in PQ with Gaussian, Directional and Lens Blur
+and finds its light kept to within 3% and still brighter than SDR's
+white.
 `PackageLookTests.aFilterCanReadThePictureWithItsEdgesRepeating` checks
 the filters' `"input": "clamped"`.

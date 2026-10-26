@@ -80,6 +80,7 @@ Posterize.amveffect/
 | `reach` | Warp and general kernels: how far, in output pixels, it reads from each pixel, an [expression](#arguments). Core Image renders only the pixels needed from it. Left out, the whole canvas. |
 | `input` | General kernels: `"clamped"` (edges repeat, for kernels that read beside a pixel) or `"clear"` (transparent past the edges, the default). |
 | `after` | Built-in Core Image filters applied to the kernel's result, in order (see [Built-in filters](#built-in-filters)). |
+| `linear` | `true` for a look that works on linear light (1 is reference white) rather than on the picture as the timeline encodes it: every picture it reads is turned into light, premultiplied, before its first pass, and its result back after its last pass and its filters (`LinearLight`). A blur needs it to average light, so a highlight keeps its brightness as it spreads and it looks the same in SDR and HDR (see [effects-blur.md](effects-blur.md#light-not-code-values)). |
 
 Strict loading applies: an unknown key, a wrong type or a missing
 required field refuses the package, with the problem and its place in the

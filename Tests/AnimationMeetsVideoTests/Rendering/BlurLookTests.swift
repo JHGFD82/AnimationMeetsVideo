@@ -44,6 +44,7 @@ import Testing
             #expect(PackageKernels.problem(for: package) == nil, "\(kind)")
             #expect(package.dependsOnPixelSize, "\(kind)")
             #expect(EffectKind(package: kind).readsBesidePixels, "\(kind)")
+            #expect(package.linear, "\(kind)")
         }
     }
 
@@ -173,6 +174,82 @@ import Testing
             #expect(abs(at(drawn, 4, 16).x - 0.3) < 0.005, "\(kind)")
             #expect(abs(at(drawn, 0, 0).x - 0.3) < 0.005, "\(kind)")
             #expect(abs(at(drawn, 31, 31).x - 0.7) < 0.005, "\(kind)")
+        }
+    }
+
+    // MARK: HDR
+
+    private static let spaces: [ProjectColorSpace] = [.rec709, .rec2020PQ, .rec2020HLG]
+
+    /// A picture given in linear light (1 is reference white), encoded as
+    /// a timeline of `space` holds it.
+    private func harness(in space: ProjectColorSpace, light: @escaping (Int, Int) -> Double) throws -> CompositorHarness {
+        try harness { x, y in self.gray(Float(TransferCurves.encoded(linear: light(x, y), space))) }
+    }
+
+    /// `pixels` as linear light, red's.
+    private func light(_ pixels: [SIMD4<Float>], in space: ProjectColorSpace) -> [Double] {
+        pixels.map { TransferCurves.linear(Double($0.x), space) }
+    }
+
+    /// Reference white in a 4 × 4 square right of the middle, on a dim
+    /// field, so Zoom and Spin have somewhere to streak it.
+    private func square(_ x: Int, _ y: Int, bright: Double = 1) -> Double {
+        (21...24).contains(x) && (14...17).contains(y) ? bright : 0.02
+    }
+
+    /// Each one averages light, not the picture as it is encoded: the same
+    /// light blurs to the same light in Rec. 709, PQ and HLG. Averaging PQ
+    /// or HLG's values instead darkens a highlight far more than Rec.
+    /// 709's do, so the three would disagree.
+    @Test func eachSpreadsLightTheSameInSDRAndHDR() throws {
+        let effects: [(String, [String: [Double]])] = [
+            ("gaussianBlur", ["blurRadius": [3]]), ("directionalBlur", ["blurLength": [4]]), ("zoomBlur", ["zoomAmount": [40]]),
+            ("spinBlur", ["spinAngle": [30]]), ("lensBlur", ["blurRadius": [3]]), ("tiltShift", ["focusSize": [0], "focusFalloff": [0], "blurRadius": [3]]),
+            ("surfaceBlur", ["surfaceRadius": [4], "surfaceThreshold": [100]]), ("sharpen", ["sharpness": [100]]),
+            ("unsharpMask", ["unsharpAmount": [100]]),
+        ]
+        for (kind, settings) in effects {
+            let effect = look(EffectKind(package: kind), settings)
+            var drawn: [ProjectColorSpace: [Double]] = [:]
+            var original: [Double] = []
+            for space in Self.spaces {
+                let h = try harness(in: space) { self.square($0, $1) }
+                let clip = CompositorHarness.clip(track: 1, effects: [effect], frame: h.size, colorSpace: space)
+                drawn[space] = light(try h.draw([clip], colorSpace: space), in: space)
+                if space == .rec709 {
+                    original = light(try h.draw([CompositorHarness.clip(track: 1, frame: h.size)]), in: space)
+                }
+            }
+            let sdr = try #require(drawn[.rec709])
+            // It did something.
+            #expect((zip(sdr, original).map { abs($0 - $1) }.max() ?? 0) > 0.1, "\(kind)")
+            for space in [ProjectColorSpace.rec2020PQ, .rec2020HLG] {
+                let worst = zip(sdr, try #require(drawn[space])).map { abs($0 - $1) }.max() ?? 0
+                #expect(worst < 0.01, "\(kind) in \(space) differs from Rec. 709 by \(worst)")
+            }
+        }
+    }
+
+    /// A 1000-nit highlight on a PQ timeline spreads into a glow that keeps
+    /// its light and stays brighter than SDR's white, rather than fading
+    /// to a few nits.
+    @Test func aBlurredHDRHighlightKeepsItsLight() throws {
+        let nits1000 = 1000.0 / 203
+        let h = try harness(in: .rec2020PQ) { self.square($0, $1, bright: nits1000) }
+        let plain = CompositorHarness.clip(track: 1, frame: h.size, colorSpace: .rec2020PQ)
+        let before = light(try h.draw([plain], colorSpace: .rec2020PQ), in: .rec2020PQ)
+        for (kind, settings) in [
+            // Short enough to keep the light inside the frame.
+            ("gaussianBlur", ["blurRadius": [3.0]]), ("directionalBlur", ["blurLength": [4.0]]), ("lensBlur", ["blurRadius": [3.0]]),
+        ] {
+            let effect = look(EffectKind(package: kind), settings)
+            let clip = CompositorHarness.clip(track: 1, effects: [effect], frame: h.size, colorSpace: .rec2020PQ)
+            let pixels = try h.draw([clip], colorSpace: .rec2020PQ)
+            let after = light(pixels, in: .rec2020PQ)
+            let kept = after.reduce(0, +) / before.reduce(0, +)
+            #expect(abs(kept - 1) < 0.03, "\(kind) kept \(kept) of the light")
+            #expect((after.max() ?? 0) > 1, "\(kind)")
         }
     }
 }

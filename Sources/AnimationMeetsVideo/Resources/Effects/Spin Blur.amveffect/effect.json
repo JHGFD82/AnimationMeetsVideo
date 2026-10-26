@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "id": "spinBlur",
-  "version": 1,
+  "version": 2,
   "name": "Spin Blur",
   "category": "blur",
   "symbol": "arrow.clockwise.circle",
@@ -13,5 +13,6 @@
   ],
   "arguments": ["center(spinCenter)", "rad(spinAngle)", "24", "pass", "1 - index(blurEdges)", "frameWidth", "frameHeight"],
   "dependsOnPixelSize": true,
+  "linear": true,
   "repeat": {"count": "(spinAngle != 0) * 2"}
 }
