@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "id": "rectangleMask",
   "version": 1,
-  "name": "Rectangle Mask",
+  "name": "Box Mask",
   "category": "keying",
   "symbol": "rectangle.dashed",
   "kernel": {"file": "kernel.metal", "function": "amvRectangleMask", "type": "color"},

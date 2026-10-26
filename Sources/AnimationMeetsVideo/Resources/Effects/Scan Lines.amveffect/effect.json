@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Scan Lines",
   "category": "stylize",
-  "symbol": "line.3.horizontal",
+  "symbol": "rectangle.split.3x1",
   "kernel": {"file": "kernel.metal", "function": "amvScanLines", "type": "color"},
   "controls": [
     {"id": "lineSize", "name": "Line Size", "type": "number", "default": 4, "range": [1, 200], "unit": "px", "step": 0.1},

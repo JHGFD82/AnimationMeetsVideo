@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Hue Range",
   "category": "correction",
-  "symbol": "eyedropper.halffull",
+  "symbol": "swatchpalette",
   "kernel": {"file": "kernel.metal", "function": "amvHueRange", "type": "color"},
   "controls": [
     {"id": "rangeCenter", "name": "Hue", "type": "number", "default": 0, "range": [0, 360], "unit": "°"},

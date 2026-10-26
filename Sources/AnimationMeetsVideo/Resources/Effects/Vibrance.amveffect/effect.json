@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Vibrance",
   "category": "correction",
-  "symbol": "camera.filters",
+  "symbol": "sparkles",
   "kernel": {"file": "kernel.metal", "function": "amvVibrance", "type": "color"},
   "controls": [
     {"id": "vibranceAmount", "name": "Vibrance", "type": "number", "default": 0, "range": [-100, 100], "unit": "%"},

@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Unsharp Mask",
   "category": "blur",
-  "symbol": "circle.righthalf.filled",
+  "symbol": "diamond.righthalf.filled",
   "kernel": {"file": "kernel.metal", "function": "amvUnsharpMask", "type": "color"},
   "controls": [
     {"id": "unsharpAmount", "name": "Amount", "type": "number", "default": 50, "range": [0, 500], "unit": "%"},

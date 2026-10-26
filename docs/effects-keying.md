@@ -21,15 +21,15 @@ it mixes its alpha in.
 | Chroma Key | color | Clears a key color. Controls: Key Color, Tolerance, Softness, Spill Suppression, View (Result or Matte). |
 | Luma Key | color | Clears the darks or the brights. Controls: Key Out (Darks or Brights), Threshold, Softness, View. |
 | Difference Key | general, input | Clears what matches a clean plate dropped onto it. Controls: Tolerance, Softness, View. |
-| Spill Suppressor | color | Takes a key color's cast out of what is kept. Controls: Spill Color, Range. |
+| Despill | color | Takes a key color's cast out of what is kept. Controls: Spill Color, Range. |
 | Matte Choker | general | Shrinks or grows the alpha's edge and feathers it. Controls: Shrink/Grow, Feather. |
-| Rectangle Mask | color | Keeps inside (or outside) a rectangle. Controls: Center, Size, Roundness, Feather, Angle, Keep. |
+| Box Mask | color | Keeps inside (or outside) a rectangle. Controls: Center, Size, Roundness, Feather, Angle, Keep. |
 | Ellipse Mask | color | Keeps inside (or outside) an ellipse. Controls: Center, Size, Feather, Angle, Keep. |
-| Four-Point Mask | color | Keeps inside (or outside) four corners, a garbage matte. Controls: Top Left, Top Right, Bottom Right, Bottom Left, Feather, Keep. |
+| Corner Mask | color | Keeps inside (or outside) four corners, a garbage matte. Controls: Top Left, Top Right, Bottom Right, Bottom Left, Feather, Keep. |
 | Gradient Mask | color | Fades the picture out from Start to End, linearly or as a circle. Controls: Shape, Start, End, Keep. |
 | Alpha Tools | color | Invert Alpha, Alpha from Luma, Make Opaque, Premultiply, Unpremultiply, Show Alpha. |
 
-A typical green screen stack, top to bottom: Four-Point Mask (Keep
+A typical green screen stack, top to bottom: Corner Mask (Keep
 Inside, around the subject, to cut away rigs and the screen's edges),
 Chroma Key, Matte Choker (a pixel or two in, feathered), and Spill
 Suppressor if Chroma Key's own spill suppression isn't enough.
@@ -60,7 +60,7 @@ values, turned into the timeline's space by the kernel.
   pixel by pixel: the distance between their tones within Tolerance is
   cleared. Where the plate has nothing, the picture is kept. Without a
   plate it does nothing, and the effects panel says to drop one.
-- **Spill Suppressor** removes chroma toward its color as Chroma Key's
+- **Despill** removes chroma toward its color as Chroma Key's
   Spill Suppression does, for footage keyed some other way (with Matte,
   or a key below). Range narrows which hues count: at 100% every color
   leaning toward the spill color, lower only those closer to its hue.
@@ -95,7 +95,7 @@ the frame, down positive. Angle turns the shape clockwise. Keep Outside
 inverts the mask.
 
 The ellipse's distance is estimated from its gradient, so its feather is
-even all the way round. The Four-Point Mask's corners can make any
+even all the way round. The Corner Mask's corners can make any
 four-sided shape; one that crosses itself keeps the two triangles it
 makes.
 

@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Ellipse Mask",
   "category": "keying",
-  "symbol": "circle.dashed",
+  "symbol": "oval",
   "kernel": {"file": "kernel.metal", "function": "amvEllipseMask", "type": "color"},
   "controls": [
     {"id": "maskCenter", "name": "Center", "type": "point"},

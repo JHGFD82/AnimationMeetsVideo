@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Vignette",
   "category": "light",
-  "symbol": "camera.aperture",
+  "symbol": "rectangle.inset.filled",
   "kernel": {"file": "kernel.metal", "function": "amvVignette", "type": "color"},
   "controls": [
     {"id": "vignetteSize", "name": "Size", "type": "number", "default": 75, "range": [0, 200], "unit": "%"},

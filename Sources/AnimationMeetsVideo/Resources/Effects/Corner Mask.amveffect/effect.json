@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "id": "fourPointMask",
   "version": 1,
-  "name": "Four-Point Mask",
+  "name": "Corner Mask",
   "category": "keying",
   "symbol": "lasso",
   "kernel": {"file": "kernel.metal", "function": "amvFourPointMask", "type": "color"},

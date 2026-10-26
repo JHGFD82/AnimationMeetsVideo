@@ -4,7 +4,7 @@
   "version": 1,
   "name": "Colorize",
   "category": "correction",
-  "symbol": "paintbrush",
+  "symbol": "paintbrush.pointed.fill",
   "kernel": {"file": "kernel.metal", "function": "amvColorize", "type": "color"},
   "controls": [
     {"id": "colorizeHue", "name": "Hue", "type": "number", "default": 210, "range": [0, 360], "unit": "°"},
