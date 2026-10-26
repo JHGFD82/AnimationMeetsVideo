@@ -27,6 +27,26 @@ final class TextLayout: @unchecked Sendable {
         /// Thousandths of an em after the letter, set by hand for the pair
         /// it begins (`TextStyle.kerning`).
         var kerning = 0.0
+        var position = TextPosition.normal
+        /// An OpenType feature the letters' font draws them with (its own
+        /// superscripts), set as they are laid out.
+        var feature: String?
+
+        /// How the letters are drawn in `fontName`: superscript and
+        /// subscript as the font's own where it has them, else smaller and
+        /// raised or lowered, as Illustrator makes them.
+        func resolved() -> LetterStyle {
+            guard let tag = position.feature else { return self }
+            var style = self
+            if FontCatalog.supports(fontName, feature: tag) {
+                style.feature = tag
+            } else {
+                let shift = size * TextPosition.syntheticShift
+                style.baselineShift += position == .superscript ? shift : -shift
+                style.size = size * TextPosition.syntheticSize
+            }
+            return style
+        }
     }
 
     /// A block as laid out, in its own space: its top left at the origin,
@@ -163,6 +183,7 @@ final class TextLayout: @unchecked Sendable {
             key.horizontalScale = style.horizontalScale
             key.verticalScale = style.verticalScale
             key.textCase = style.textCase
+            key.feature = style.feature
             return key
         }
         func index(of style: LetterStyle) -> Int {
@@ -184,7 +205,7 @@ final class TextLayout: @unchecked Sendable {
         let source = setting.string as NSString
         source.enumerateSubstrings(in: NSRange(location: 0, length: source.length), options: .byComposedCharacterSequences) { letter, range, _, _ in
             guard var letter else { return }
-            let style = setting.letterStyle(content.style(at: range.location))
+            let style = setting.letterStyle(content.style(at: range.location)).resolved()
             if style.textCase == .allCaps { letter = letter.uppercased() }
             display.append(NSAttributedString(string: letter, attributes: attributes(font(of: style), style, index(of: style), setting)))
         }
@@ -351,7 +372,8 @@ final class TextLayout: @unchecked Sendable {
     static func font(for setting: TextOutline.Setting, style: LetterStyle) -> CTFont {
         var matrix = CGAffineTransform(scaleX: style.horizontalScale / 100, y: style.verticalScale / 100)
         let base = CTFontCreateWithName(style.fontName as CFString, style.size, &matrix)
-        let features = openTypeFeatures(for: setting, textCase: style.textCase).map { feature -> [CFString: Any] in
+        let own = style.feature.map { [(tag: $0, on: true)] } ?? []
+        let features = (openTypeFeatures(for: setting, textCase: style.textCase) + own).map { feature -> [CFString: Any] in
             [kCTFontOpenTypeFeatureTag: feature.tag, kCTFontOpenTypeFeatureValue: feature.on ? 1 : 0]
         }
         guard !features.isEmpty else { return base }

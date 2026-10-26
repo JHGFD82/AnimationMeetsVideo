@@ -1,5 +1,6 @@
 import CoreText
 import Foundation
+import Synchronization
 
 /// The fonts installed on this Mac, by family and style, for picking a
 /// Text effect's font.
@@ -54,6 +55,25 @@ enum FontCatalog {
         let style = CTFontCopyName(font, kCTFontStyleNameKey).map { $0 as String } ?? ""
         return (family, style)
     }
+
+    /// Whether the font named `fontName` has the OpenType feature `tag`
+    /// ("smcp", "sups"). Core Text keeps only the features a font has, so a
+    /// copy of it asked for the feature says.
+    static func supports(_ fontName: String, feature tag: String) -> Bool {
+        let key = "\(fontName) \(tag)"
+        if let known = features.withLock({ $0[key] }) { return known }
+        let base = CTFontCreateWithName(fontName as CFString, 12, nil)
+        let asked = CTFontDescriptorCreateWithAttributes([
+            kCTFontFeatureSettingsAttribute: [[kCTFontOpenTypeFeatureTag: tag, kCTFontOpenTypeFeatureValue: 1]],
+        ] as CFDictionary)
+        let settings = CTFontCopyFeatureSettings(CTFontCreateCopyWithAttributes(base, 12, nil, asked)) as? [[CFString: Any]] ?? []
+        let has = settings.contains { $0[kCTFontOpenTypeFeatureTag] as? String == tag }
+        features.withLock { $0[key] = has }
+        return has
+    }
+
+    /// What `supports` found, by font and tag.
+    private static let features = Mutex<[String: Bool]>([:])
 
     /// The style of `family` nearest `fontName`'s: the one with the same
     /// style name, or else the first, for when the family is changed.

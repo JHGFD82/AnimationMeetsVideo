@@ -112,6 +112,36 @@ enum TextCase: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Where letters sit: on the baseline, or small and raised or lowered.
+enum TextPosition: String, CaseIterable, Identifiable, Sendable {
+    case normal, superscript, `subscript`
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .normal: "Normal"
+        case .superscript: "Superscript"
+        case .subscript: "Subscript"
+        }
+    }
+
+    /// The font's OpenType feature for it, which draws its own designed
+    /// letters where the font has them.
+    var feature: String? {
+        switch self {
+        case .normal: nil
+        case .superscript: "sups"
+        case .subscript: "subs"
+        }
+    }
+
+    /// Without the feature, as Illustrator makes them: this much of the size.
+    static let syntheticSize = 0.583
+    /// Raised (or lowered) by this much of the size.
+    static let syntheticShift = 0.333
+}
+
 /// Which of the font's ligatures join letters.
 enum TextLigatures: String, CaseIterable, Identifiable, Sendable {
     /// The font's standard ones ("fi", "fl").

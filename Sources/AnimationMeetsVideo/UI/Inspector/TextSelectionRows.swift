@@ -37,6 +37,15 @@ struct TextSelectionRows: View {
             }
         }
         if style.textCase != nil { resetRow("Case") { $0.textCase = nil } }
+        InspectorLabelledRow("Position") {
+            Picker("Position", selection: Binding(
+                get: { style.position ?? .normal },
+                set: { picked in onChange { $0.position = picked == .normal ? nil : picked } }
+            )) {
+                ForEach(TextPosition.allCases) { Text($0.name).tag($0) }
+            }
+        }
+        .help("Superscript or subscript: the font's own where it has them, else smaller and raised or lowered")
         checkbox("Underline", letter.underline) { $0.underline = $1 }
         checkbox("Strikethrough", letter.strikethrough) { $0.strikethrough = $1 }
         color("Fill", style.fill ?? blockFill, isOwn: style.fill != nil) { $0.fill = $1 }

@@ -143,6 +143,45 @@ extension DrawingFixture {
         #expect(TextContent(string: "😀A").kerningPair(at: 2) == NSRange(location: 0, length: 2))
     }
 
+    @Test func superscriptsAndSubscriptsAreMadeWhereTheFontHasNone() {
+        // Helvetica Neue has no 'sups': a third of the size up, at 58.3%.
+        #expect(!FontCatalog.supports(TextContent.defaultFontName, feature: "sups"))
+        let plain = bounds(setting("H"))
+        var raised = setting("H")
+        raised.runs = [TextRun(start: 0, length: 1, style: TextStyle(position: .superscript))]
+        var lowered = raised
+        lowered.runs[0].style.position = .subscript
+        let up = bounds(raised), down = bounds(lowered)
+        #expect(abs(up.height - plain.height * TextPosition.syntheticSize) < 1)
+        #expect(down.height == up.height)
+        // Beside an ordinary H, its baseline is 33.3 pixels up or down.
+        func baselines(_ position: TextPosition) -> (plain: CGFloat, moved: CGFloat) {
+            var pair = setting("HH")
+            pair.runs = [TextRun(start: 1, length: 1, style: TextStyle(position: position))]
+            let drawn = pieces(pair).map(\.path.boundingBoxOfPath.maxY)
+            return (drawn[0], drawn[1])
+        }
+        let superscript = baselines(.superscript), subscripted = baselines(.subscript)
+        #expect(abs(superscript.moved - (superscript.plain - 33.3)) < 0.5)
+        #expect(abs(subscripted.moved - (subscripted.plain + 33.3)) < 0.5)
+    }
+
+    @Test func aFontsOwnSuperscriptsAreUsedWhereItHasThem() {
+        let style = TextLayout.LetterStyle(
+            fontName: TextContent.defaultFontName, size: 100, tracking: 0, baselineShift: 0, horizontalScale: 100, verticalScale: 100,
+            textCase: .normal, underline: false, strikethrough: false, position: .superscript
+        )
+        #expect(style.resolved().feature == nil)
+        #expect(style.resolved().size < 100)
+        // Not every Mac has a font with 'sups'; SF Pro does, where installed.
+        guard let font = ["SFProText-Regular", "SFPro-Regular"].first(where: { FontCatalog.supports($0, feature: "sups") }) else { return }
+        var own = style
+        own.fontName = font
+        #expect(own.resolved().feature == "sups")
+        #expect(own.resolved().size == 100)
+        #expect(own.resolved().baselineShift == 0)
+    }
+
     @Test func savingKeepsRuns() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }
@@ -153,7 +192,7 @@ extension DrawingFixture {
                 style = TextStyle(
                     fontName: "HelveticaNeue", size: 80, tracking: 20, baselineShift: 4, horizontalScale: 90, verticalScale: 110,
                     textCase: .allCaps, underline: true, strikethrough: false, fill: [1, 0, 0, 1], stroke: [0, 1, 0, 0.5],
-                    kerning: -40
+                    kerning: -40, position: .subscript
                 )
             }
         }

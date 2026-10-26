@@ -576,6 +576,8 @@ struct ProjectFile: Codable {
         var stroke: [Double]?
         /// Thousandths of an em after the run's letters, set by hand.
         var kerning: Double?
+        /// A `TextPosition` name.
+        var position: String?
 
         init(_ run: TextRun) {
             start = run.start
@@ -593,13 +595,15 @@ struct ProjectFile: Codable {
             fill = style.fill
             stroke = style.stroke
             kerning = style.kerning
+            position = style.position?.rawValue
         }
 
         var run: TextRun {
             TextRun(start: start, length: length, style: TextStyle(
                 fontName: font, size: size, tracking: tracking, baselineShift: baselineShift,
                 horizontalScale: horizontalScale, verticalScale: verticalScale, textCase: textCase.flatMap(TextCase.init(rawValue:)),
-                underline: underline, strikethrough: strikethrough, fill: fill, stroke: stroke, kerning: kerning
+                underline: underline, strikethrough: strikethrough, fill: fill, stroke: stroke, kerning: kerning,
+                position: position.flatMap(TextPosition.init(rawValue:))
             ))
         }
 
@@ -610,6 +614,7 @@ struct ProjectFile: Codable {
             .optional("textCase", .choice(TextCase.allCases.map(\.rawValue), noun: "case")),
             .optional("underline", .bool), .optional("strikethrough", .bool),
             .optional("fill", .numbers(count: 4)), .optional("stroke", .numbers(count: 4)), .optional("kerning", .number),
+            .optional("position", .choice(TextPosition.allCases.map(\.rawValue), noun: "position")),
         ]))
     }
 

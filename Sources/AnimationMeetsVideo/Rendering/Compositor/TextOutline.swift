@@ -117,7 +117,7 @@ struct TextOutline: Equatable, Sendable {
                 horizontalScale: max(1, style.horizontalScale ?? horizontalScale), verticalScale: max(1, style.verticalScale ?? verticalScale),
                 textCase: style.textCase ?? textCase, underline: style.underline ?? underline,
                 strikethrough: style.strikethrough ?? strikethrough, fill: style.fill, stroke: style.stroke,
-                kerning: style.kerning ?? 0
+                kerning: style.kerning ?? 0, position: style.position ?? .normal
             )
         }
     }

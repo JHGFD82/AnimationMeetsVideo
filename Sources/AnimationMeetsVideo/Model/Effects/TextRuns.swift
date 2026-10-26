@@ -27,6 +27,8 @@ struct TextStyle: Hashable, Sendable {
     /// font's pair kerning and the tracking: kerning set by hand with the
     /// cursor between the two.
     var kerning: Double?
+    /// Superscript or subscript.
+    var position: TextPosition?
 
     static let none = TextStyle()
 
@@ -39,7 +41,8 @@ struct TextStyle: Hashable, Sendable {
             baselineShift: other.baselineShift ?? baselineShift, horizontalScale: other.horizontalScale ?? horizontalScale,
             verticalScale: other.verticalScale ?? verticalScale, textCase: other.textCase ?? textCase,
             underline: other.underline ?? underline, strikethrough: other.strikethrough ?? strikethrough,
-            fill: other.fill ?? fill, stroke: other.stroke ?? stroke, kerning: other.kerning ?? kerning
+            fill: other.fill ?? fill, stroke: other.stroke ?? stroke, kerning: other.kerning ?? kerning,
+            position: other.position ?? position
         )
     }
 }

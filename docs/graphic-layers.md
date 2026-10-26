@@ -304,9 +304,13 @@ Built (step 3a):
   since Core Text's tracking puts half its space before a letter, so a
   line wraps as if it weren't there and may reach past the wrap width by
   that much.
+- **Superscript and subscript** are a run's Position. A font with the
+  OpenType 'sups' or 'subs' feature draws its own (checked with
+  `FontCatalog.supports`, which asks Core Text for the feature and sees
+  whether it keeps it); otherwise they are made as Illustrator makes
+  them, at 58.3% of the size, raised or lowered by a third of it.
 - **Not yet:** hyphenation (Core Text's line breaking doesn't hyphenate),
-  optical kerning, superscript and subscript, and the anchor's place in
-  the box.
+  optical kerning, and the anchor's place in the box.
 - **Naming.** A shape clip with a Text effect is named by the first line
   of its words on the timeline, in the inspector and in undo steps
   (`resolvedInfo(for:)` of the clip), and VoiceOver calls it a text clip.
