@@ -22,13 +22,14 @@ extension EffectsPanel {
         var frameSize: CGSize
     }
 
-    func controlRow(_ control: EffectControl, of effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
+    /// `movable` gives the row a handle to drag it within the effect by.
+    func controlRow(_ control: EffectControl, of effect: Effect, _ c: RowContext, effectDimmed: Bool, movable: Bool = true) -> some View {
         let key = ControlRowKey(
             timelineID: timelineID, clipID: c.clip.id, effect: effect, effectDimmed: effectDimmed,
             isSelected: state.selectedControlID == control.id, showsLanes: showsKeyframeLanes,
             lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize
         )
-        return StackRow(key: key) { controlRowContent(control, of: effect, c, effectDimmed: effectDimmed) }
+        return StackRow(key: key) { controlRowContent(control, of: effect, c, effectDimmed: effectDimmed, movable: movable) }
             .equatable()
     }
 
@@ -44,9 +45,9 @@ extension EffectsPanel {
     }
 
     @ViewBuilder
-    private func controlRowContent(_ control: EffectControl, of effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
+    private func controlRowContent(_ control: EffectControl, of effect: Effect, _ c: RowContext, effectDimmed: Bool, movable: Bool) -> some View {
         let clip = c.clip
-        let handle = AnyView(
+        let handle = !movable ? AnyView(Color.clear.frame(width: 12)) : AnyView(
             Image(systemName: "line.3.horizontal")
                 .font(Design.Typeface.glyphTiny)
                 .foregroundStyle(Design.textTertiary)
@@ -137,7 +138,10 @@ extension EffectsPanel {
         }
     }
 
-    /// A variable font axis of a Text effect's font, as a control's row is:
+    /// A variable font axis of a Text effect's font, as a control's row is,
+    /// listed under the effect's Character section, apart from the font
+    /// and its named styles, which are set in the inspector and can't be
+    /// keyframed:
     /// its value at the playhead, stopwatch and keyframe buttons, its lane
     /// of keyframes and its graph editor, kept in the effect's
     /// `TextContent.variations` by tag. Reset gives the font's default.

@@ -839,13 +839,13 @@ struct UISnapshots {
                 selection: TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID),
                 playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
             ),
-            "shape-effects-panel", size: CGSize(width: 520, height: 420)
+            "shape-effects-panel", size: CGSize(width: 520, height: 480)
         )
     }
 
     /// The effects panel for a text layer in Skia, a variable font, its
     /// Text effect cut down to Size: rows for its Weight and Width axes
-    /// after its controls, the weight keyframed, with its lane.
+    /// after Size under Character, the weight keyframed, with its lane.
     @Test func textAxesEffectsPanel() throws {
         var project = EditingProject.empty
         let timelineID = project.rootTimelineID

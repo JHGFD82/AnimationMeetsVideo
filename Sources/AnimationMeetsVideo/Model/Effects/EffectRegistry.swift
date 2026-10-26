@@ -126,6 +126,9 @@ struct EffectDefinition: Sendable {
     let systemImage: String
     /// The controls a new effect of this kind lists, in order.
     let controlKinds: [ControlKind]
+    /// The groups the effects panel lists its controls in, under headers
+    /// (see `ControlSection`); empty for none.
+    var sections: [ControlSection] = []
     /// For a Keyframing effect: whether it reshapes the target's own
     /// keyframes, rather than making a signal combined with them.
     var reshapesTarget = false
@@ -162,6 +165,16 @@ struct EffectDefinition: Sendable {
         self.dependsOnPixelSize = dependsOnPixelSize
         self.generates = generates
         self.isHidden = isHidden
+    }
+
+    /// One whose controls are listed in `sections`, under headers: a new
+    /// one lists them all, a section's after the one before it.
+    init(
+        _ kind: EffectKind, _ name: String, _ category: EffectCategory, _ systemImage: String, sections: [ControlSection],
+        reshapesTarget: Bool = false
+    ) {
+        self.init(kind, name, category, systemImage, controls: sections.flatMap(\.kinds), reshapesTarget: reshapesTarget)
+        self.sections = sections
     }
 }
 

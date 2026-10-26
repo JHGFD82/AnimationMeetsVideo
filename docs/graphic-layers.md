@@ -265,8 +265,13 @@ Built (step 3a):
   `InspectorControlRow`: numbers with the stopwatch and keyframe buttons
   the sound rows have, set at the playhead (Leading reads "Auto" at 0, a
   size has its link); choices as menus, the alignments as icons, and
-  on-or-off settings as checkboxes. The effects panel shows the same
-  controls; a Text effect with no words says so there. Reset keeps the
+  on-or-off settings as checkboxes. The effects panel shows the ones
+  that can be keyframed, its numbers and colors, under headers
+  (Character, with the font's variation axes after its controls;
+  Paragraph, with Position; Path; OpenType; Fill & Stroke), and leaves
+  the choices (font and style, Kerning, Case, Alignment, Anchor, On
+  Path, Flip, the OpenType on-or-offs, Edge, Join, Cap) to the
+  inspector; a Text effect with no words says so there. Reset keeps the
   words and font.
 - **Styled runs.** `TextContent.runs` set some letters apart from the
   block: each a range of UTF-16 code units (as the text editor counts)
@@ -358,8 +363,10 @@ Built (step 3a):
   change of font, and a font without an axis ignores it. They apply to
   every letter, a run's font too (`kCTFontVariationAttribute`). Their
   keyframes behave as a control's: each axis is a parameter
-  (`AnimatedParameter.textVariation`, by tag), so it has a row after the
-  Text effect's controls in the effects panel, with its lane of
+  (`AnimatedParameter.textVariation`, by tag), so it has a row under the
+  Text effect's Character header in the effects panel, after its
+  controls and apart from the font's named styles (which are presets of
+  the axes, picked in the inspector and never keyframed), with its lane of
   keyframes (moved, deleted and eased there) and its graph editor; F9's
   eases reach it; and its keyframes count as animation for the render
   cache. Resetting it gives the font's default.

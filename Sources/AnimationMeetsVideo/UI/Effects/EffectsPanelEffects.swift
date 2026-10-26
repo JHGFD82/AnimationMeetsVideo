@@ -129,14 +129,7 @@ extension EffectsPanel {
                 if effect.kind.isKeyframing {
                     keyframingRows(effect, c, effectDimmed: dimmed)
                 }
-                ForEach(effect.controls) { control in
-                    controlRow(control, of: effect, c, effectDimmed: dimmed)
-                }
-                if effect.kind == .text, let content = effect.text {
-                    ForEach(FontCatalog.axes(of: content.fontName)) { axis in
-                        variationRow(axis, of: effect, c, effectDimmed: dimmed)
-                    }
-                }
+                controlSections(effect, c, effectDimmed: dimmed)
                 if effect.kind.readsAgainst {
                     againstRow(effect, c, effectDimmed: dimmed)
                 }
@@ -151,6 +144,29 @@ extension EffectsPanel {
         }
     }
 
+    /// An effect's controls the panel lists (`Effect.panelSections`): each
+    /// section under its header, a Text effect's font axes after its
+    /// Character controls. A section with nothing to show has no header.
+    @ViewBuilder
+    private func controlSections(_ effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
+        let axes = effect.kind == .text ? effect.text.map { FontCatalog.axes(of: $0.fontName) } ?? [] : []
+        let groups = effect.panelSections()
+        // Controls move only where the order is theirs alone: a sectioned
+        // effect lists them in its sections' order.
+        let movable = effect.kind.sections.isEmpty
+        ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+            let groupAxes = group.section?.holdsFontAxes == true ? axes : []
+            if let section = group.section, !group.controls.isEmpty || !groupAxes.isEmpty {
+                labelled(ControlSectionHeader(name: section.name), lane: emptyLane(c))
+            }
+            ForEach(group.controls) { control in
+                controlRow(control, of: effect, c, effectDimmed: effectDimmed, movable: movable)
+            }
+            ForEach(groupAxes) { axis in
+                variationRow(axis, of: effect, c, effectDimmed: effectDimmed)
+            }
+        }
+    }
     /// What a Blending step blends with, or a package's look reads: the
     /// backdrop, or for a look its input or nothing; or the clip's own
     /// picture as it was before one of the effects above it.
@@ -216,9 +232,10 @@ extension EffectsPanel {
                 set: { value in editEffect(effect.id, in: clip) { $0.movesAnchor = value } }
             ))
         }
-        if !effect.missingControlKinds.isEmpty {
+        let addable = effect.missingControlKinds.filter { effect.kind.panelLists($0) }
+        if !addable.isEmpty {
             Menu("Add Control") {
-                ForEach(effect.missingControlKinds) { kind in
+                ForEach(addable) { kind in
                     Button(kind.name) { editEffect(effect.id, in: clip) { $0.addControl(kind) } }
                 }
             }

@@ -534,10 +534,15 @@ struct EffectsPanel: View {
             } else if let preset = payload.preset {
                 _ = applyPreset(preset.presetID, to: clip, at: index)
             }
-        case .controls(let effectID, let index):
+        case .controls(let effectID, let shownIndex):
             guard let move = payload.controlMove, move.clipID == clip.id, move.effectID == effectID,
                   let effect = clip.effect(id: effectID), let from = effect.controlIndex(move.controlID)
             else { return }
+            // The drop target counts the controls shown, which leave out a
+            // shape's choices: a place among them is turned into one among
+            // all of the effect's controls.
+            let shown = effect.controls.filter { effect.kind.panelLists($0.kind) }
+            let index = shownIndex < shown.count ? effect.controlIndex(shown[shownIndex].id) ?? from : effect.controls.count
             editEffect(effectID, in: clip) { $0.moveControl(move.controlID, toIndex: index > from ? index - 1 : index) }
             state.select(effect: effectID, control: move.controlID)
         }

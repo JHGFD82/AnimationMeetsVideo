@@ -427,6 +427,24 @@ struct EffectHeaderRow<MenuContent: View>: View {
     }
 }
 
+/// The title of a group of an effect's controls (`ControlSection`):
+/// Character, Paragraph, Fill & Stroke.
+struct ControlSectionHeader: View {
+    let name: String
+
+    var body: some View {
+        Text(name.uppercased())
+            .font(Design.Typeface.micro)
+            .foregroundStyle(Design.textTertiary)
+            .lineLimit(1)
+            .padding(.leading, EffectsPanelMetrics.controlIndent)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .padding(.bottom, 4)
+            .accessibilityLabel(name)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
 /// A row pinned in the stack that isn't an effect: Pass Through, the
 /// transitions, and the like.
 struct PinnedRow<Trailing: View>: View {
