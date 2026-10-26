@@ -181,17 +181,40 @@ final class TextLayout: @unchecked Sendable {
     /// the line's last letter's is left out. Added after Core Text sets the
     /// line, since its tracking puts half its space before a letter; so a
     /// line wraps as if it weren't there.
-    private static func handKerning(of line: CTLine, styles: [LetterStyle]) -> HandKerning {
+    private static func handKerning(of line: CTLine, styles: [LetterStyle], optical: Bool, text: NSString, offset: Int) -> HandKerning {
         var letters: [(index: CFIndex, amount: Double)] = []
+        // Each glyph in order, for optical kerning's pairs.
+        var glyphs: [(index: CFIndex, glyph: CGGlyph, font: CTFont)] = []
         for run in CTLineGetGlyphRuns(line) as? [CTRun] ?? [] {
             let count = CTRunGetGlyphCount(run)
-            guard count > 0, let styleIndex = (CTRunGetAttributes(run) as NSDictionary)[styleKey.rawValue] as? Int else { continue }
+            let attributes = CTRunGetAttributes(run) as NSDictionary
+            guard count > 0, let styleIndex = attributes[styleKey.rawValue] as? Int,
+                  let value = attributes[kCTFontAttributeName as String] else { continue }
             let style = styles[styleIndex]
             var indices = [CFIndex](repeating: 0, count: count)
+            var ids = [CGGlyph](repeating: 0, count: count)
             CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
+            CTRunGetGlyphs(run, CFRange(location: 0, length: 0), &ids)
             for index in Set(indices) { letters.append((index, style.kerning / 1000 * style.size)) }
+            let font = value as! CTFont
+            for k in 0..<count { glyphs.append((indices[k], ids[k], font)) }
         }
         letters.sort { $0.index < $1.index }
+        if optical {
+            // Each pair of letters in one font, spaces left as they are.
+            func letter(_ index: CFIndex) -> String {
+                let unit = index + offset
+                return unit < text.length ? text.substring(with: text.rangeOfComposedCharacterSequence(at: unit)) : " "
+            }
+            glyphs.sort { $0.index < $1.index }
+            for (a, b) in zip(glyphs, glyphs.dropFirst()) where CFEqual(a.font, b.font) {
+                let first = letter(a.index), second = letter(b.index)
+                guard !first.allSatisfy(\.isWhitespace), !second.allSatisfy(\.isWhitespace),
+                      let place = letters.firstIndex(where: { $0.index == a.index }) else { continue }
+                let capitals = first.uppercased() == first && second.uppercased() == second
+                letters[place].amount += OpticalKerning.adjustment(a.glyph, b.glyph, in: a.font, capitals: capitals)
+            }
+        }
         guard letters.contains(where: { $0.amount != 0 }) else { return HandKerning() }
         // Spaces ending the line don't make a pair with what wraps.
         let lineRange = CTLineGetStringRange(line)
@@ -320,7 +343,9 @@ final class TextLayout: @unchecked Sendable {
         laid.lineCount = lines.count
         // Kerning set by hand widens its line.
         for index in lines.indices {
-            lines[index].kerning = handKerning(of: lines[index].line, styles: laid.styles)
+            lines[index].kerning = handKerning(
+                of: lines[index].line, styles: laid.styles, optical: setting.kerning == .optical, text: text, offset: lines[index].offset
+            )
             lines[index].width += lines[index].kerning.total
         }
 
@@ -389,7 +414,8 @@ final class TextLayout: @unchecked Sendable {
         ]
         // A kern of 0 turns the font's pairs off; its OpenType 'kern'
         // feature, off, doesn't.
-        if setting.kerning == .none { attributes[key(kCTKernAttributeName)] = 0 }
+        // Optical kerning starts from the letters' plain advances.
+        if setting.kerning != .metrics { attributes[key(kCTKernAttributeName)] = 0 }
         switch setting.ligatures {
         // Only those a script can't be written without.
         case .none: attributes[key(kCTLigatureAttributeName)] = 0

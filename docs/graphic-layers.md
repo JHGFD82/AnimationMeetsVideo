@@ -209,7 +209,7 @@ Built (step 3a):
   whole block (`TextOutline.Setting`):
   - **Character.** Size (pixels; a new layer's is a ninth of the frame's
     height); Leading (baseline to baseline in pixels, 0 for Auto, 120% of
-    the size); Kerning (Metrics, the font's pairs, or None); Tracking
+    the size); Kerning (Metrics, the font's pairs; Optical; or None); Tracking
     (thousandths of an em after each letter); Vertical and Horizontal
     Scale; Baseline Shift (up); Character Rotation (each letter about its
     middle, clockwise, as the app's other rotations turn); Case (Normal,
@@ -317,7 +317,21 @@ Built (step 3a):
   where it hyphenates, else English) whose part and a hyphen fit the
   line is taken, and the hyphen drawn in the last letter's style. Words
   shorter than four letters aren't broken.
-- **Not yet:** optical kerning, and the anchor's place in the box.
+- **Optical kerning** is Kerning's third choice. Core Text has none, so
+  `OpticalKerning` approximates it from the letters' shapes: each glyph is
+  rasterized once (cached by font, size and glyph) into 48 horizontal
+  bands across the font's height, giving how far in its ink starts from
+  either side. A pair's space is the mean over the bands of the gap
+  between the first's right ink and the second's left, a band where
+  either has no ink counting as a quarter em (so an open side doesn't
+  read as a gulf), and each pair moves so its space matches a reference
+  pair's, "HH" between capitals and "nn" otherwise, by at most 0.15 em.
+  It starts from plain advances (the font's pairs off) and goes through
+  the same per-letter offsets as kerning by hand, which add to it. Tested
+  against Helvetica Neue's designed pairs, it closes "AV", "To", "Ty" and
+  "LT" by between half and twice as much as the designer did, and leaves
+  "HH" and "nn" as they are; it is a heuristic, not Adobe's algorithm.
+- **Not yet:** the anchor's place in the box.
 - **Naming.** A shape clip with a Text effect is named by the first line
   of its words on the timeline, in the inspector and in undo steps
   (`resolvedInfo(for:)` of the clip), and VoiceOver calls it a text clip.

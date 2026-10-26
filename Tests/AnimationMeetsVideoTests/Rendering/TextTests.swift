@@ -217,6 +217,41 @@ extension DrawingFixture {
         #expect(laid.characterCount == 7 && laid.wordCount == 3 && laid.lineCount == 2)
     }
 
+    @Test func opticalKerningClosesOpenPairsAndLeavesStraightOnes() {
+        func width(_ string: String, _ kerning: TextKerning) -> CGFloat { bounds(setting(string) { $0.kerning = kerning }).width }
+        // Diagonals and overhangs close up, as the font's pairs do.
+        #expect(width("AV", .optical) < width("AV", .none) - 5)
+        #expect(width("To", .optical) < width("To", .none) - 5)
+        // The reference pairs keep the font's own spacing.
+        #expect(abs(width("HH", .optical) - width("HH", .none)) < 1)
+        #expect(abs(width("nn", .optical) - width("nn", .none)) < 1)
+        // Spaces are left alone.
+        #expect(abs(width("A V", .optical) - width("A V", .none)) < 1)
+        // About as much as the font's designer closed them.
+        for pair in ["AV", "To", "Ty", "LT"] {
+            let designed = width(pair, .none) - width(pair, .metrics), optical = width(pair, .none) - width(pair, .optical)
+            #expect(optical > designed * 0.5 && optical < designed * 2, "\(pair): designed \(designed), optical \(optical)")
+        }
+    }
+
+    @Test func aGlyphsProfileFollowsItsShape() {
+        let font = CTFontCreateWithName(TextContent.defaultFontName as CFString, 100, nil)
+        func glyph(_ letter: String) -> CGGlyph {
+            var characters = Array(letter.utf16)
+            var glyph = CGGlyph(0)
+            CTFontGetGlyphsForCharacters(font, &characters, &glyph, 1)
+            return glyph
+        }
+        // An A is wider at its foot than its peak; an H's sides are straight.
+        let a = OpticalKerning.profile(glyph("A"), font)
+        let inked = a.left.indices.filter { a.left[$0] != nil }
+        let top = try? #require(inked.first), foot = try? #require(inked.last)
+        if let top, let foot, let topLeft = a.left[top], let footLeft = a.left[foot] { #expect(topLeft > footLeft + 0.1) }
+        let h = OpticalKerning.profile(glyph("H"), font)
+        let lefts = h.left.compactMap { $0 }
+        #expect((lefts.max() ?? 0) - (lefts.min() ?? 1) < 0.03)
+    }
+
     @Test func savingKeepsRuns() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }

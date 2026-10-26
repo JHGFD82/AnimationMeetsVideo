@@ -80,6 +80,8 @@ enum TextAlign: String, CaseIterable, Identifiable, Sendable {
 enum TextKerning: String, CaseIterable, Identifiable, Sendable {
     /// The pairs the font's designer set ("AV" closer than "HH").
     case metrics
+    /// Each pair spaced from the letters' shapes (`OpticalKerning`).
+    case optical
     case none
 
     var id: Self { self }
@@ -87,6 +89,7 @@ enum TextKerning: String, CaseIterable, Identifiable, Sendable {
     var name: String {
         switch self {
         case .metrics: "Metrics"
+        case .optical: "Optical"
         case .none: "None"
         }
     }
