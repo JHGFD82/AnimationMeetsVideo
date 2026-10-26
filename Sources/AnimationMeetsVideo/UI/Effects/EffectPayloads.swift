@@ -105,7 +105,7 @@ struct ControlMovePayload: Transferable {
     }
 }
 
-/// A preset being dragged from the browser onto a clip or into a stack. It
+/// A preset being dragged from the Effects Library onto a clip or into a stack. It
 /// carries the preset's ID, which is its file's name.
 struct PresetDragPayload: Transferable {
     private static let scheme = "amv-preset"

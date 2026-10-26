@@ -57,8 +57,13 @@ extension EffectsPanel {
 
     // MARK: Effects
 
+    /// An effect's rows: its header, notes, and its controls under their
+    /// sections' headers. A graphic clip's drawing (`isDrawing`) is the
+    /// clip's own content rather than an effect: its header has no handle,
+    /// checkbox or thumbnail, and its menu neither moves, copies, turns
+    /// off nor deletes it.
     @ViewBuilder
-    func effectRows(_ effect: Effect, _ c: RowContext) -> some View {
+    func effectRows(_ effect: Effect, _ c: RowContext, isDrawing: Bool = false) -> some View {
         let clip = c.clip
         let collapsed = state.isCollapsed(effect.id)
         // Sound effects are in a stack of their own, and have no notes
@@ -75,7 +80,7 @@ extension EffectsPanel {
         let summary = effect.kind.isKeyframing ? project.keyframingSummary(of: effect, in: clip) : nil
         let headerKey = EffectHeaderKey(
             timelineID: timelineID, clip: clip, effect: effect, note: note, collapsed: collapsed, dimmed: dimmed,
-            thumbnail: thumbnails[effect.id].map(ObjectIdentifier.init), summary: summary,
+            thumbnail: isDrawing ? nil : thumbnails[effect.id].map(ObjectIdentifier.init), summary: summary,
             isRenaming: renamingEffectID == effect.id, showUpTo: state.showUpTo,
             canPaste: EditorClipboard.shared.hasEffects,
             showsLanes: showsKeyframeLanes, lane: LaneKey(c.geometry), frameSize: c.timeline.frameSize
@@ -88,7 +93,8 @@ extension EffectsPanel {
                         isCollapsed: collapsed,
                         isSelected: false,
                         clipID: clip.id,
-                        thumbnail: thumbnails[effect.id],
+                        thumbnail: isDrawing ? nil : thumbnails[effect.id],
+                        isDrawing: isDrawing,
                         showsCurve: effect.kind.isKeyframing,
                         accessibilitySummary: summary,
                         isDimmed: dimmed,
@@ -103,7 +109,7 @@ extension EffectsPanel {
                             set: { renamingEffectID = $0 && effect.missing == nil ? effect.id : nil }
                         )
                     ) {
-                        effectMenu(effect, in: clip)
+                        if isDrawing { drawingMenu(effect, in: clip) } else { effectMenu(effect, in: clip) }
                     },
                     lane: emptyLane(c)
                 )
@@ -129,14 +135,7 @@ extension EffectsPanel {
                 if effect.kind.isKeyframing {
                     keyframingRows(effect, c, effectDimmed: dimmed)
                 }
-                ForEach(effect.controls) { control in
-                    controlRow(control, of: effect, c, effectDimmed: dimmed)
-                }
-                if effect.kind == .text, let content = effect.text {
-                    ForEach(FontCatalog.axes(of: content.fontName)) { axis in
-                        variationRow(axis, of: effect, c, effectDimmed: dimmed)
-                    }
-                }
+                controlSections(effect, c, effectDimmed: dimmed)
                 if effect.kind.readsAgainst {
                     againstRow(effect, c, effectDimmed: dimmed)
                 }
@@ -146,11 +145,35 @@ extension EffectsPanel {
             }
         }
         .selectedRow(state.selectedEffectID == effect.id && state.selectedControlID == nil)
+        // A drawing isn't a place in the stack to drop at or move.
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(EffectStackLayout.space)) } action: { frame in
-            stackLayout.effects[effect.id] = frame
+            if isDrawing { stackLayout.effects[effect.id] = nil } else { stackLayout.effects[effect.id] = frame }
         }
     }
 
+    /// An effect's controls the panel lists (`Effect.panelSections`): each
+    /// section under its header, a Text effect's font axes after its
+    /// Character controls. A section with nothing to show has no header.
+    @ViewBuilder
+    private func controlSections(_ effect: Effect, _ c: RowContext, effectDimmed: Bool) -> some View {
+        let axes = effect.kind == .text ? effect.text.map { FontCatalog.axes(of: $0.fontName) } ?? [] : []
+        let groups = effect.panelSections()
+        // Controls move only where the order is theirs alone: a sectioned
+        // effect lists them in its sections' order.
+        let movable = effect.kind.sections.isEmpty
+        ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+            let groupAxes = group.section?.holdsFontAxes == true ? axes : []
+            if let section = group.section, !group.controls.isEmpty || !groupAxes.isEmpty {
+                labelled(ControlSectionHeader(name: section.name), lane: emptyLane(c))
+            }
+            ForEach(group.controls) { control in
+                controlRow(control, of: effect, c, effectDimmed: effectDimmed, movable: movable)
+            }
+            ForEach(groupAxes) { axis in
+                variationRow(axis, of: effect, c, effectDimmed: effectDimmed)
+            }
+        }
+    }
     /// What a Blending step blends with, or a package's look reads: the
     /// backdrop, or for a look its input or nothing; or the clip's own
     /// picture as it was before one of the effects above it.
@@ -216,9 +239,10 @@ extension EffectsPanel {
                 set: { value in editEffect(effect.id, in: clip) { $0.movesAnchor = value } }
             ))
         }
-        if !effect.missingControlKinds.isEmpty {
+        let addable = effect.missingControlKinds.filter { effect.kind.panelLists($0) }
+        if !addable.isEmpty {
             Menu("Add Control") {
-                ForEach(effect.missingControlKinds) { kind in
+                ForEach(addable) { kind in
                     Button(kind.name) { editEffect(effect.id, in: clip) { $0.addControl(kind) } }
                 }
             }
@@ -233,6 +257,22 @@ extension EffectsPanel {
         Button("Save Whole Stack as Preset…") { askPresetName(for: nil, in: clip, suggesting: "\(project.clipName(clip.id, in: timelineID)) look") }
         Divider()
         Button("Delete", role: .destructive) { delete(effect, from: clip) }
+    }
+
+    /// The ⋯ menu of a graphic clip's drawing: what changes its settings,
+    /// not what would treat it as an effect in the stack.
+    @ViewBuilder
+    private func drawingMenu(_ effect: Effect, in clip: TimelineClip) -> some View {
+        Button("Reset") { editEffect(effect.id, in: clip) { $0.reset(in: timeline?.frameSize) } }
+            .disabled(effect.controls.allSatisfy { $0.isNoOp && !$0.isAnimated } && effect.controls.count == effect.kind.controlKinds.count)
+        let addable = effect.missingControlKinds.filter { effect.kind.panelLists($0) }
+        if !addable.isEmpty {
+            Menu("Add Control") {
+                ForEach(addable) { kind in
+                    Button(kind.name) { editEffect(effect.id, in: clip) { $0.addControl(kind) } }
+                }
+            }
+        }
     }
 
     // MARK: Effect headers

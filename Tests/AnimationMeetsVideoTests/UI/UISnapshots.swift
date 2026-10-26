@@ -841,8 +841,10 @@ struct UISnapshots {
         )
     }
 
-    /// The effects panel for a shape clip: a rectangle with rounded corners,
-    /// an orange fill and a stroke, so the color wells show.
+    /// The effects panel for a shape clip: the rectangle pinned at the top
+    /// as the clip's own content, with rounded corners, an orange fill and
+    /// a stroke, so the color wells show; its Shape and Fill & Stroke
+    /// headers, and no Edge, Join or Cap, which are the inspector's.
     @Test func shapeEffectsPanel() throws {
         var project = EditingProject.empty
         let timelineID = project.rootTimelineID
@@ -864,13 +866,13 @@ struct UISnapshots {
                 selection: TimelineSelection(timelineID: timelineID, layerID: shape.layerID, timelineClipID: shape.clipID),
                 playheadTime: .zero, state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
             ),
-            "shape-effects-panel", size: CGSize(width: 520, height: 420)
+            "shape-effects-panel", size: CGSize(width: 520, height: 480)
         )
     }
 
     /// The effects panel for a text layer in Skia, a variable font, its
     /// Text effect cut down to Size: rows for its Weight and Width axes
-    /// after its controls, the weight keyframed, with its lane.
+    /// after Size under Character, the weight keyframed, with its lane.
     @Test func textAxesEffectsPanel() throws {
         var project = EditingProject.empty
         let timelineID = project.rootTimelineID
@@ -892,6 +894,35 @@ struct UISnapshots {
                 playheadTime: CMTime(seconds: 2, preferredTimescale: 600), state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
             ),
             "text-axes-effects-panel", size: CGSize(width: 620, height: 300)
+        )
+    }
+
+    /// The effects panel for a text clip in Skia, a variable font, with a
+    /// Transform after it: the Text pinned at the top as the clip's own
+    /// content, its numbers and colors under Character (the font's axes
+    /// last), Paragraph, Path, OpenType and Fill & Stroke headers, none of
+    /// its choices, and the Transform in the stack below the anchor point.
+    @Test func textEffectsPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.text, to: timelineID)
+        let text = try #require(added)
+        project.editClip(text.clipID, in: timelineID) { clip in
+            clip.effects[0].text?.fontName = "Skia-Regular"
+            clip.effects[0].changeControl(.tracking) { control in
+                control.number.setAnimated(true, at: .zero)
+                control.number.set(ComponentValue(values: [0]), at: .zero)
+                control.number.set(ComponentValue(values: [200]), at: CMTime(seconds: 2, preferredTimescale: 600))
+            }
+        }
+        _ = project.addEffect(.transform, toClip: text.clipID, in: timelineID)
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: text.layerID, timelineClipID: text.clipID),
+                playheadTime: CMTime(seconds: 1, preferredTimescale: 600), state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "text-effects-panel", size: CGSize(width: 620, height: 1100)
         )
     }
 

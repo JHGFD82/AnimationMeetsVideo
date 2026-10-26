@@ -545,6 +545,29 @@ row selects it, as clicking it on the timeline does.
   Rename, Enable/Disable, Delete, Show Up to Here, and, on Transform, Moves
   Anchor. New effects are numbered by kind ("Transform 2") so that rows
   and graph editor titles can be told apart; renaming replaces the number.
+- A shape or text clip's **drawing** (its shapes and text) heads the
+  panel, pinned, as the clip's own content rather than an effect in the
+  stack: no handle or checkbox, and no way to move, turn off, copy or
+  delete it (see [graphic-layers.md](graphic-layers.md#shapes)). Other
+  effects on the clip are its stack, as on any clip.
+- An effect's controls are listed under **section headers** where its
+  kind groups them (`ControlSection`, in its `EffectDefinition`): Text's
+  Character, Paragraph, Path, OpenType and Fill & Stroke; a shape's Shape
+  and Fill & Stroke; Color's Tone, White Balance and Lift, Gamma, Gain;
+  Text Animator's Range and Letters; Audio Keys' and Beat Keys' listening
+  and Keyframes settings. A header is a row with an empty lane, so the
+  lanes stay beside their rows; a section with nothing to show has none.
+  Effects with few controls (Transform, Blending, packages) have no
+  headers. Controls of a sectioned effect keep their sections' order and
+  have no handle to drag them by; a control no section names comes last.
+- The panel lists what can be **animated**: numbers and colors. A
+  shape's or text's choices (Edge, Join, Cap, Case, Alignment, the
+  OpenType on-or-offs) and its font and style are set in the inspector,
+  which lists every setting a shape has, and the panel leaves them out
+  (`EffectKind.panelLists`), Add Control included. Every other effect
+  keeps its choices in the panel, the only place they are set: Blending's
+  Mode, Matte's Take, an EQ's slopes, a package's choices, and the
+  settings of effects that exist to animate (Text Animator, Keyframing).
 - Each **control** row has the stopwatch, its name, its values (fields
   take arithmetic) and the keyframe buttons ◀ ◆ ▶. It also has the graph
   button, which opens the existing graph editor HUD ("Clip 3 · Transform 2 ·
@@ -554,7 +577,9 @@ row selects it, as clicking it on the timeline does.
   to reorder within their effect. While a drag is over the stack an
   accent **line with a ring at its start** shows where it would go, between
   effects or, for a control, between its effect's controls; effects and
-  presets from the library show it too. Held near the stack's top or
+  presets from the library show it too. A place is counted among the
+  rows shown, then turned into one among all the effects (or controls),
+  past a pinned drawing and a shape's unlisted choices. Held near the stack's top or
   bottom edge, the drag **scrolls the stack**, faster the deeper into the
   edge (`EdgeAutoScroll`). The whole stack is one drop target
   (`EffectStackDropDelegate`), which finds the place from where each row

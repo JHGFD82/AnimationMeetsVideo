@@ -129,6 +129,22 @@ and saving all work on shapes as they are.
   what is there, which is how text comes to follow a shape's path.
   Double-clicked, it makes a layer at the playhead. A lower third over
   footage is a shape layer above it.
+- **The clip's drawing in the effects panel.** On a shape or text clip,
+  the shapes and text it draws are the clip itself, not effects applied
+  to it: the effects panel shows them first, pinned above its other rows,
+  each titled with its kind's symbol and name ("Text", "Rectangle"). They
+  have no drag handle or enable checkbox, and their ⋯ menu has only
+  Reset and Add Control, so they can't be moved, turned off, copied,
+  duplicated or deleted from there; Delete, Cut, Copy and Duplicate
+  ignore them (Delete still removes a selected control of theirs).
+  Further shapes in the same clip (a circle for text on a path) show the
+  same way. Effects added to the clip (a Transform, a Stroke) are its
+  stack, listed below the anchor point as on any clip. Which effects are
+  the drawing is `TimelineClip.drawingEffects`: on a `.graphic` clip, the
+  effects of its stack that draw a shape (`EffectKind.drawsShape`), in
+  stack order; `stackEffects` are the rest. It is the one place that
+  says where a clip's drawing is kept. The model still keeps the drawing
+  in the stack, where it draws in stack order.
 - **Controls.** Rectangle and Ellipse have a Size (width and height,
   which can be linked, but aren't at first); Polygon and Star have Points
   (a whole number, 3 to 100), Radius, Rotation and, for a star, Inner
@@ -293,8 +309,14 @@ Built (step 3a):
     since it exists only to animate, and the **selected letters'** rows
     (styled runs, below), since the effects panel doesn't show runs yet
     and their keyframes have no other home.
-  The effects panel shows the same controls; a Text effect with no words
-  says so there. Reset keeps the words and font.
+  The effects panel shows the ones that can be keyframed, its numbers
+  and colors, under headers
+  (Character, with the font's variation axes after its controls;
+  Paragraph, with Position; Path; OpenType; Fill & Stroke), and leaves
+  the choices (font and style, Kerning, Case, Alignment, Anchor, On
+  Path, Flip, the OpenType on-or-offs, Edge, Join, Cap) to the
+  inspector; a Text effect with no words says so there. Reset keeps the
+  words and font.
 - **Styled runs.** `TextContent.runs` set some letters apart from the
   block: each a range of UTF-16 code units (as the text editor counts)
   and a `TextStyle` of optional settings: font, size, tracking, baseline
@@ -385,8 +407,10 @@ Built (step 3a):
   change of font, and a font without an axis ignores it. They apply to
   every letter, a run's font too (`kCTFontVariationAttribute`). Their
   keyframes behave as a control's: each axis is a parameter
-  (`AnimatedParameter.textVariation`, by tag), so it has a row after the
-  Text effect's controls in the effects panel, with its lane of
+  (`AnimatedParameter.textVariation`, by tag), so it has a row under the
+  Text effect's Character header in the effects panel, after its
+  controls and apart from the font's named styles (which are presets of
+  the axes, picked in the inspector and never keyframed), with its lane of
   keyframes (moved, deleted and eased there) and its graph editor; F9's
   eases reach it; and its keyframes count as animation for the render
   cache. Resetting it gives the font's default.

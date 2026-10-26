@@ -160,7 +160,9 @@ below it; dropped into the stack, it targets the first below where it
 lands.
 
 In the panel its row has the Target picker, Combine, and the kind's
-settings, and the target's keyframe lane highlights the keyframes it made
+settings (Audio Keys' under Listen and Keyframes headers, Beat Keys'
+under Beats and Keyframes), choices included: unlike a shape's, which
+the panel leaves to the inspector, they are set nowhere else, and the target's keyframe lane highlights the keyframes it made
 in its own color. VoiceOver reads the row as "Wiggler, driving Transform
 Position, 48 keyframes", and every setting, the Audio Keys box included,
 has fields as well as drags (the box as four frequency and level fields).

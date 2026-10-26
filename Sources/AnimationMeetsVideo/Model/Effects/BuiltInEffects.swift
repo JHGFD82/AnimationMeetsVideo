@@ -86,6 +86,23 @@ extension EffectKind {
     static let openTypeControls: [ControlKind] = [
         .ligatures, .contextualAlternates, .figures, .fractions, .ordinals, .swash, .stylisticAlternates, .stylisticSet,
     ]
+
+    /// A drawn shape's sections in the effects panel: what shapes it, then
+    /// how it is painted.
+    static func shapeSections(_ shape: [ControlKind]) -> [ControlSection] {
+        [ControlSection("Shape", shape), ControlSection("Fill & Stroke", paintControls)]
+    }
+
+    /// A Text effect's sections in the effects panel, as the inspector
+    /// groups them; the font's variation axes go under Character. Where
+    /// the block sits goes with the paragraph, beside its Anchor.
+    static let textSections: [ControlSection] = [
+        ControlSection("Character", characterControls, holdsFontAxes: true),
+        ControlSection("Paragraph", paragraphControls + [.shapePosition]),
+        ControlSection("Path", pathControls),
+        ControlSection("OpenType", openTypeControls),
+        ControlSection("Fill & Stroke", paintControls),
+    ]
 }
 
 extension ControlKind {
@@ -262,7 +279,11 @@ enum BuiltInEffects {
         ),
         EffectDefinition(
             .color, "Color", .foundations, "slider.horizontal.3",
-            controls: [.exposure, .contrast, .saturation, .temperature, .tint, .lift, .gamma, .gain]
+            sections: [
+                ControlSection("Tone", [.exposure, .contrast, .saturation]),
+                ControlSection("White Balance", [.temperature, .tint]),
+                ControlSection("Lift, Gamma, Gain", [.lift, .gamma, .gain]),
+            ]
         ),
         EffectDefinition(
             .matte, "Matte", .mattes, "circle.dashed.inset.filled", controls: [.matteMode, .amount], takesInput: true
@@ -271,32 +292,29 @@ enum BuiltInEffects {
         // docs/graphic-layers.md, "Shapes").
         EffectDefinition(
             .rectangle, "Rectangle", .shapes, "rectangle",
-            controls: [.shapeSize, .cornerRadius, .shapePosition] + EffectKind.paintControls
+            sections: EffectKind.shapeSections([.shapeSize, .cornerRadius, .shapePosition])
         ),
-        EffectDefinition(
-            .ellipse, "Ellipse", .shapes, "circle", controls: [.shapeSize, .shapePosition] + EffectKind.paintControls
-        ),
+        EffectDefinition(.ellipse, "Ellipse", .shapes, "circle", sections: EffectKind.shapeSections([.shapeSize, .shapePosition])),
         EffectDefinition(
             .polygon, "Polygon", .shapes, "hexagon",
-            controls: [.points, .radius, .cornerRadius, .shapeRotation, .shapePosition] + EffectKind.paintControls
+            sections: EffectKind.shapeSections([.points, .radius, .cornerRadius, .shapeRotation, .shapePosition])
         ),
         EffectDefinition(
             .star, "Star", .shapes, "star",
-            controls: [.points, .radius, .innerRadius, .cornerRadius, .shapeRotation, .shapePosition] + EffectKind.paintControls
+            sections: EffectKind.shapeSections([.points, .radius, .innerRadius, .cornerRadius, .shapeRotation, .shapePosition])
         ),
         // Its outline is its glyphs, so it fills, strokes and stays sharp
         // as the other shapes do.
-        EffectDefinition(
-            .text, "Text", .shapes, "textformat",
-            controls: EffectKind.characterControls + EffectKind.paragraphControls + EffectKind.openTypeControls
-                + EffectKind.pathControls + [.shapePosition] + EffectKind.paintControls
-        ),
+        EffectDefinition(.text, "Text", .shapes, "textformat", sections: EffectKind.textSections),
         // Animates a range of the letters of the Text effect above it.
         EffectDefinition(
             .textAnimator, "Text Animator", .shapes, "textformat.abc.dottedunderline",
-            controls: [
-                .animatorStart, .animatorEnd, .animatorOffset, .animatorUnit, .animatorShape,
-                .animatorPosition, .animatorScale, .animatorRotation, .animatorOpacity, .animatorFill, .animatorStroke, .animatorTracking,
+            sections: [
+                ControlSection("Range", [.animatorStart, .animatorEnd, .animatorOffset, .animatorUnit, .animatorShape]),
+                ControlSection(
+                    "Letters",
+                    [.animatorPosition, .animatorScale, .animatorRotation, .animatorOpacity, .animatorFill, .animatorStroke, .animatorTracking]
+                ),
             ]
         ),
         // Strokes the outline of the shapes above it in the stack, strokes
@@ -319,11 +337,17 @@ enum BuiltInEffects {
         // keyframes onto a control below it, and draws nothing.
         EffectDefinition(
             .audioKeys, "Audio Keys", .keyframing, "waveform.badge.magnifyingglass",
-            controls: [.frequencyRange, .levelRange, .keyAttack, .keyRelease, .outputRange, .keyCurve, .tolerance]
+            sections: [
+                ControlSection("Listen", [.frequencyRange, .levelRange, .keyAttack, .keyRelease]),
+                ControlSection("Keyframes", [.outputRange, .keyCurve, .tolerance]),
+            ]
         ),
         EffectDefinition(
             .beatKeys, "Beat Keys", .keyframing, "metronome",
-            controls: [.beatSelection, .everyBeats, .beatOffset, .accent, .beatShape, .peak, .decay, .tolerance]
+            sections: [
+                ControlSection("Beats", [.beatSelection, .everyBeats, .beatOffset, .accent]),
+                ControlSection("Keyframes", [.beatShape, .peak, .decay, .tolerance]),
+            ]
         ),
         EffectDefinition(
             .wiggler, "Wiggler", .keyframing, "scribble.variable",

@@ -355,6 +355,11 @@ struct EffectsPanel: View {
     private func rows(_ c: RowContext) -> some View {
         let clip = c.clip
         VStack(spacing: 0) {
+            // A shape or text clip's drawing is what the clip is, so it
+            // heads the panel, pinned, rather than sitting in its stack.
+            ForEach(clip.drawingEffects) { effect in
+                effectRows(effect, c, isDrawing: true)
+            }
             if case .timeline = clip.source {
                 labelled(
                     PinnedRow(title: "Pass Through", systemImage: "square.stack.3d.down.right") {
@@ -373,7 +378,7 @@ struct EffectsPanel: View {
             clipRows(c) { timeRows(c) }
             if project.hasEffectStack(clip) {
                 clipRows(c) { anchorRow(c) }
-                ForEach(clip.effects) { effect in
+                ForEach(clip.stackEffects) { effect in
                     effectRows(effect, c)
                 }
                 ForEach([TransitionEdge.leading, .trailing], id: \.self) { edge in
@@ -511,8 +516,13 @@ struct EffectsPanel: View {
     private func dropOnStack(_ target: EffectStackTarget, _ payload: ClipDropPayload, copy: Bool) {
         guard let clip = selectedClip else { return }
         switch target {
-        case .effects(let isAudio, let index):
+        case .effects(let isAudio, let shownIndex):
+            // The drop target counts the rows shown; a shape or text
+            // clip's drawing is pinned apart from the stack, so a place
+            // among the rest is turned into one among all its effects.
+            let index = isAudio ? shownIndex : shownIndex.map { stackIndex(forShown: $0, in: clip) }
             if let move = payload.effectMove {
+                guard !clip.isDrawing(move.effectID) else { return }
                 guard move.clipID == clip.id, let index, let stack = clip.stack(holding: move.effectID),
                       (stack == \TimelineClip.audioEffects) == isAudio, let from = clip[keyPath: stack].index(of: move.effectID)
                 else { return }
@@ -534,13 +544,27 @@ struct EffectsPanel: View {
             } else if let preset = payload.preset {
                 _ = applyPreset(preset.presetID, to: clip, at: index)
             }
-        case .controls(let effectID, let index):
+        case .controls(let effectID, let shownIndex):
             guard let move = payload.controlMove, move.clipID == clip.id, move.effectID == effectID,
                   let effect = clip.effect(id: effectID), let from = effect.controlIndex(move.controlID)
             else { return }
+            // The drop target counts the controls shown, which leave out a
+            // shape's choices: a place among them is turned into one among
+            // all of the effect's controls.
+            let shown = effect.controls.filter { effect.kind.panelLists($0.kind) }
+            let index = shownIndex < shown.count ? effect.controlIndex(shown[shownIndex].id) ?? from : effect.controls.count
             editEffect(effectID, in: clip) { $0.moveControl(move.controlID, toIndex: index > from ? index - 1 : index) }
             state.select(effect: effectID, control: move.controlID)
         }
+    }
+
+    /// The place in `clip.effects` of the place `shown` among the effects
+    /// the stack lists (`TimelineClip.stackEffects`): before the one
+    /// listed there, or at the end.
+    private func stackIndex(forShown shown: Int, in clip: TimelineClip) -> Int {
+        let listed = clip.stackEffects
+        guard shown < listed.count else { return clip.effects.count }
+        return clip.effects.index(of: listed[shown].id) ?? clip.effects.count
     }
 
     private func applyPreset(_ id: String, to clip: TimelineClip, at index: Int?) -> Bool {
@@ -573,12 +597,13 @@ struct EffectsPanel: View {
         if state.selectedEffectID == effect.id { state.clear() }
     }
 
-    /// Removes the selected control, or else the selected effect.
+    /// Removes the selected control, or else the selected effect; a shape
+    /// or text clip's drawing stays.
     private func deleteSelection(_ effect: Effect, in clip: TimelineClip) {
         if let controlID = state.selectedControlID {
             editEffect(effect.id, in: clip) { $0.removeControl(controlID) }
             state.select(effect: effect.id)
-        } else {
+        } else if !clip.isDrawing(effect.id) {
             delete(effect, from: clip)
         }
     }
@@ -589,7 +614,10 @@ struct EffectsPanel: View {
     /// copied last is the timeline's to paste.
     private var editActions: EditMenuActions? {
         guard let clip = selectedClip else { return nil }
-        let effect = state.selectedEffectID.flatMap { clip.effect(id: $0) }
+        let selected = state.selectedEffectID.flatMap { clip.effect(id: $0) }
+        // A shape or text clip's drawing isn't an effect to cut, copy or
+        // duplicate; Delete still takes one of its selected controls.
+        let effect = selected.flatMap { clip.isDrawing($0.id) ? nil : $0 }
         let clipboard = EditorClipboard.shared
         let canPaste = clipboard.hasEffects && clipboard.clip == nil && (project.hasEffectStack(clip) || project.playsAudio(clip))
         let onEffect = { (action: @escaping (Effect) -> Void) -> (() -> Void)? in
@@ -603,7 +631,7 @@ struct EffectsPanel: View {
             copy: onEffect { copy($0, from: clip) },
             paste: canPaste ? { paste(in: clip, below: effect) } : nil,
             duplicate: onEffect { duplicate($0, in: clip) },
-            delete: onEffect { deleteSelection($0, in: clip) },
+            delete: (state.selectedControlID == nil ? effect : selected).map { effect in { deleteSelection(effect, in: clip) } },
             state: [clip.id, effect?.id, state.selectedControlID, canPaste] as [AnyHashable?]
         )
     }
@@ -628,7 +656,8 @@ struct EffectsPanel: View {
         else {
             return false
         }
-        if flags == .command, key == "c" {
+        let isDrawing = clip.isDrawing(effect.id)
+        if flags == .command, key == "c", !isDrawing {
             copy(effect, from: clip)
             return true
         }
@@ -636,7 +665,7 @@ struct EffectsPanel: View {
             deleteSelection(effect, in: clip)
             return true
         }
-        if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "d" {
+        if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "d", !isDrawing {
             duplicate(effect, in: clip)
             return true
         }
