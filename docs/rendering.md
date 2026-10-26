@@ -1,7 +1,8 @@
 # Rendering and smooth playback
 
-Status: **implemented**: viewer quality, the render cache, and export
-reusing renders.
+Status: **implemented**: viewer quality, the render cache, export
+reusing renders, clips' pictures kept between frames and drawn ahead of
+the playhead.
 
 Transitions, effect stacks, and soon more effects and
 adjustment layers make some stretches of a timeline too expensive to draw
@@ -208,6 +209,21 @@ Limits:
   nor one only moved, which costs no more to draw. The viewer's pictures
   are let go when a build of another structure is played, since a
   replaced file or a changed package isn't in what finds them.
+- **Drawing ahead of the playhead.** Half a second after the paused player
+  settles (after a pause, seek, new item or change of size),
+  `PlayheadPrerenderer` draws the next two seconds from the playhead, then
+  half a second before it, through the player's own composition at the
+  size it draws, keeping every clip's picture it can (`Keeping.all`).
+  They are drawn as playing draws them (the playing motion blur budget,
+  looks that draw less while playing), so pressing play there takes them
+  instead of drawing the clips again; paused frames draw at their own
+  quality and don't. Stretches with nothing worth keeping (plain pictures,
+  renders) are skipped, a pass stops once it has kept three quarters of
+  the budget so it doesn't push out its own first pictures, and it waits
+  while the Mac is hot or in Low Power Mode. Any seek, play, edit or
+  change of size stops it. It reaches only as far as it got before play
+  was pressed, so it covers a heavy stretch's first seconds at once;
+  background renders cover the rest once the timeline is idle.
 - **Following other edits.** Each change builds a new composition, and while paused the
   frame under the playhead is drawn from it (`LiveFrameRenderer`, latest
   request wins) and shown over the player. A build is never cancelled by

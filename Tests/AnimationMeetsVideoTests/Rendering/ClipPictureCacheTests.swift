@@ -111,10 +111,11 @@ private let frame = CMTime(value: 1, timescale: 24)
         for clip in clips { _ = try harness.draw([clip], kept: kept, keeping: .all) }
         #expect(kept.counts.kept == 3)
         #expect(kept.counts.bytes == 16 * 8 * 8 * 2)
-        // The first went; the last is still there.
-        _ = try harness.draw([clips[0]], kept: kept, keeping: .trails)
-        #expect(kept.counts.hits == 0)
-        _ = try harness.draw([clips[2]], kept: kept, keeping: .trails)
+        // The last is still there; the first went. (Drawn as they were kept:
+        // keeping all is drawing ahead, as playing draws.)
+        _ = try harness.draw([clips[2]], kept: kept, keeping: .all)
+        #expect(kept.counts.hits == 1)
+        _ = try harness.draw([clips[0]], kept: kept, keeping: .all)
         #expect(kept.counts.hits == 1)
     }
 }

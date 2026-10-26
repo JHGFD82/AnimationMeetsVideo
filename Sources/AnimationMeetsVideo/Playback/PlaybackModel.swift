@@ -92,6 +92,8 @@ final class PlaybackModel {
     @ObservationIgnored private var sampling: Task<Void, Never>?
     @ObservationIgnored private var stillTask: Task<Void, Never>?
     @ObservationIgnored private let liveRenderer = LiveFrameRenderer()
+    /// Draws the paused playhead's neighborhood ahead of playback.
+    @ObservationIgnored private let prerenderer = PlayheadPrerenderer()
     @ObservationIgnored private var liveGovernor = LiveGovernor()
     @ObservationIgnored private var preferencesTask: Task<Void, Never>?
     @ObservationIgnored private var deviceObservation: DeviceListObservation?
@@ -186,6 +188,9 @@ final class PlaybackModel {
         else { return }
         player.cancelPendingPrerolls()
         player.preroll(atRate: 1)
+        if let item = player.currentItem, let composition = item.asset as? AVComposition, let videoComposition = item.videoComposition {
+            prerenderer.start(composition: composition, videoComposition: videoComposition, around: player.currentTime())
+        }
     }
 
     /// Gives `item` the composition at the current level, and keeps
@@ -207,6 +212,7 @@ final class PlaybackModel {
 
     func prepare(_ item: AVPlayerItem, with composed: ComposedTimeline, structure: EditingProject, frameRate: Double) {
         self.composed = composed
+        prerenderer.cancel()
         // Pictures kept for a project of another structure are found by
         // values that no longer say everything about them (a replaced
         // file, a changed package); an edit of values alone keeps them.
@@ -278,6 +284,9 @@ final class PlaybackModel {
     private func receiveLiveFrame(_ picture: CoverPicture, seconds: Double, interactive: Bool) {
         guard !isPlaying, !isSeeking else { return }
         if interactive { liveGovernor.record(seconds: seconds) }
+        // An edit is under way: what the player holds is about to go, and
+        // the frames drawn ahead with it.
+        prerenderer.cancel()
         liveFrame = picture
         // A still of what was edited away mustn't show once this goes.
         clearStill()
@@ -335,6 +344,7 @@ final class PlaybackModel {
         if !playing, !isSeeking, !playerIsSkimmed { currentTime = player.currentTime() }
         isPlaying = playing
         if playing {
+            prerenderer.cancel()
             clearLive()
             // Playing lets go of the scrub engine and its device.
             scrubAudio.stop()
@@ -480,6 +490,7 @@ final class PlaybackModel {
     /// Seeks the player to `time`, after any seek under way.
     private func show(_ time: CMTime) {
         pendingSeek = time
+        prerenderer.cancel()
         clearLive()
         clearStill()
         guard !isSeeking else { return }

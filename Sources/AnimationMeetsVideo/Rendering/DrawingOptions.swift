@@ -52,11 +52,12 @@ final class DrawingOptions: @unchecked Sendable {
     /// them for a paused frame; while playing, as many as the budget
     /// allows (two to start, then as `adapt` finds frames have room for);
     /// none (one plain frame) at quarter size or when motion blur is off in
-    /// the viewer.
-    func motionBlurSamples(wanted: Int) -> Int {
+    /// the viewer. `asPlaying` asks as playing would, for frames drawn
+    /// ahead of playback while paused.
+    func motionBlurSamples(wanted: Int, asPlaying: Bool = false) -> Int {
         state.withLock { state in
             guard state.motionBlurInPreview else { return 1 }
-            guard state.isPlaying else { return wanted }
+            guard state.isPlaying || asPlaying else { return wanted }
             guard !state.isQuarterSize else { return 1 }
             state.largestBlurWanted = max(state.largestBlurWanted, wanted)
             return min(wanted, state.blurBudget)

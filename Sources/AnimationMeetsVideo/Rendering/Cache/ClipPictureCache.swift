@@ -117,6 +117,7 @@ final class ClipPictureCache: @unchecked Sendable {
         var lastDrawn: [Clip: Recipe] = [:]
         var hits = 0
         var kept = 0
+        var keptBytes = 0
     }
 
     /// How many bytes of pictures are kept before the least recently used go.
@@ -196,6 +197,7 @@ final class ClipPictureCache: @unchecked Sendable {
             state.entries[slot] = entries
             state.bytes += bytes
             state.kept += 1
+            state.keptBytes += bytes
             Self.evict(&state, toFit: budget)
         }
         return kept
@@ -226,9 +228,10 @@ final class ClipPictureCache: @unchecked Sendable {
         }
     }
 
-    /// For tests and measuring: pictures taken from here, pictures kept,
-    /// and the bytes kept now.
-    var counts: (hits: Int, kept: Int, bytes: Int) {
-        state.withLock { ($0.hits, $0.kept, $0.bytes) }
+    /// Pictures taken from here, pictures kept, the bytes kept now, and the
+    /// bytes of every picture ever kept, which says how much a pass of
+    /// drawing has added whatever went to make room.
+    var counts: (hits: Int, kept: Int, bytes: Int, keptBytes: Int) {
+        state.withLock { ($0.hits, $0.kept, $0.bytes, $0.keptBytes) }
     }
 }

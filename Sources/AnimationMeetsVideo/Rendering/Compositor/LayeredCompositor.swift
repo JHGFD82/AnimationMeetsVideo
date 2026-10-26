@@ -235,7 +235,8 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             scale: CGSize(width: scale, height: renderSize.height > 0 ? outputSize.height / renderSize.height : 1),
             canvasMargin: instruction.canvasMargin,
             options: instruction.options,
-            isPlaying: instruction.options?.isPlaying ?? false,
+            // Drawn ahead for playback, it is drawn as playing will draw it.
+            isPlaying: instruction.keeping == .all || instruction.options?.isPlaying == true,
             flows: flows,
             pictures: pictures,
             keeping: instruction.keeping,
@@ -335,7 +336,7 @@ struct Drawing {
         // Motion blur: the finished clip drawn at moments across the shutter
         // and averaged. The viewer draws fewer while playing.
         if let blur = shutter.motionBlur?.clamped {
-            let samples = options.map { $0.motionBlurSamples(wanted: blur.samples) } ?? blur.samples
+            let samples = options.map { $0.motionBlurSamples(wanted: blur.samples, asPlaying: keeping == .all) } ?? blur.samples
             let open = clip.stack.frameDuration.seconds > 0 ? clip.stack.frameDuration.seconds : 1.0 / 24
             let shutterSeconds = open * blur.angle / 360
             if samples > 1, shutterSeconds > 0 {

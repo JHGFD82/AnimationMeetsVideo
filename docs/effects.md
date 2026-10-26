@@ -437,7 +437,12 @@ above, the transition included:
   movement, which After Effects can only do by precomposing.
 
 Both cost as many draws of the clip as they have samples or copies, and are
-rendered in the background like everything else.
+rendered in the background like everything else. When frames are drawn in
+order (playing, rendering, exporting), a trail copy is the picture the
+clip finished as a frame or more earlier, which is kept and taken rather
+than drawn again (see rendering.md, "Clips' pictures kept between
+frames"); a clip whose picture depends on what is below it, or on other
+pictures, draws each copy as before.
 
 ## Inputs
 
