@@ -76,6 +76,10 @@ struct EffectPackage: Sendable {
         var when: EffectExpression?
         /// By the filter's input key, in a fixed order.
         var parameters: [(key: String, value: EffectExpression)]
+        /// What it reads past the picture's edges: transparent, or the
+        /// edges repeating (a blur that doesn't darken them), its result
+        /// then kept to the picture.
+        var edges: Edges = .clear
     }
 
     let url: URL

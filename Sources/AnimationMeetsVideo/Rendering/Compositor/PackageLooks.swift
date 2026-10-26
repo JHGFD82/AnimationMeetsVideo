@@ -226,7 +226,15 @@ enum PackageLookRenderer {
         for filter in package.after where filter.when.map({ $0.number(values) != 0 }) ?? true {
             var parameters: [String: Any] = [:]
             for (key, value) in filter.parameters { parameters[key] = filterParameter(value.evaluate(values)) }
-            drawn = drawn.applyingFilter(filter.name, parameters: parameters).cropped(to: drawn.extent)
+            if filter.edges == .clamped {
+                // The picture's edges repeat, so a blur doesn't fade them
+                // into the transparency past them; kept to the picture.
+                let kept = region.integral.intersection(drawn.extent)
+                guard !kept.isEmpty, !kept.isInfinite else { continue }
+                drawn = drawn.cropped(to: kept).clampedToExtent().applyingFilter(filter.name, parameters: parameters).cropped(to: kept)
+            } else {
+                drawn = drawn.applyingFilter(filter.name, parameters: parameters).cropped(to: drawn.extent)
+            }
         }
         return drawn
     }

@@ -361,6 +361,7 @@ enum EffectPackageStore {
             ]))),
             .optional("after", .array(.object(object([
                 .required("filter", .string), .optional("when", .string), .optional("parameters", .any),
+                .optional("input", .choice(EffectPackage.Edges.allCases.map(\.rawValue), noun: "input")),
             ])))),
         ]))
     }()
@@ -518,7 +519,8 @@ enum EffectPackageStore {
                     parameters.append((key, try expression(text, place)))
                 }
                 let when = try (entry["when"] as? String).map { try number($0, path + ".when") }
-                after.append(EffectPackage.Filter(name: name, when: when, parameters: parameters))
+                let edges = (entry["input"] as? String).flatMap(EffectPackage.Edges.init(rawValue:)) ?? .clear
+                after.append(EffectPackage.Filter(name: name, when: when, parameters: parameters, edges: edges))
             }
 
             return EffectPackage(

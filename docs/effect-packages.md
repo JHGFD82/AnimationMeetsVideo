@@ -198,6 +198,11 @@ Neon Edges ends with:
 
 A filter name Core Image doesn't know refuses the package when it loads.
 
+A filter reads the kernel's result as transparent past the picture's
+edges, so a blur fades them. With `"input": "clamped"` it reads them
+repeating instead, and its result is kept to the picture; a `when` on
+each of two copies of the filter lets a choice pick.
+
 ## Where packages come from
 
 - **Built in**: in the app's resources, from

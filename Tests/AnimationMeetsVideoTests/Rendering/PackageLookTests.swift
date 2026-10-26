@@ -121,6 +121,23 @@ import Testing
         #expect(try draw(look, ["gain": [2]], on: solid(1, 0, 0), size: CGSize(width: 4, height: 1))[0].x.rounded() == 0)
     }
 
+    @Test func aFilterCanReadThePictureWithItsEdgesRepeating() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        func blur(_ extra: [String: Any]) throws -> EffectPackage {
+            let filter: [String: Any] = ["filter": "CIBoxBlur", "parameters": ["inputRadius": "3"]].merging(extra) { $1 }
+            return try package(
+                effectManifest("com.example.box\(extra.isEmpty ? "" : "Clamped")", function: "exSame", extra: ["after": [filter]]),
+                kernel: "extern \"C\" [[stitchable]] float4 exSame(coreimage::sample_t s, float space) { return s; }"
+            )
+        }
+        // Read as transparent past them, the edges fade; repeating, they
+        // stay as they were.
+        let faded = try draw(blur([:]), on: solid(1, 0, 0, width: 8), size: CGSize(width: 8, height: 1))
+        #expect(faded[0].w < 0.9)
+        let repeated = try draw(blur(["input": "clamped"]), on: solid(1, 0, 0, width: 8), size: CGSize(width: 8, height: 1))
+        #expect(close(repeated[0], SIMD4(1, 0, 0, 1)))
+    }
+
     @Test func aKernelThatDoesNotCompileLeavesThePictureAndSaysWhy() throws {
         defer { try? FileManager.default.removeItem(at: folder) }
         let broken = try package(
