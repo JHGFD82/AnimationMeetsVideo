@@ -334,7 +334,7 @@ private enum Pasting {
         defer { try? FileManager.default.removeItem(at: dir) }
         let (bundle, _) = try bundle()
         try PresetStore.save(bundle, named: "Good", in: dir)
-        try Data(#"{"formatVersion": 1, "name": "Bad", "effects": [{"id": "\#(UUID().uuidString)", "kind": "glow", "controls": []}]}"#.utf8)
+        try Data(#"{"formatVersion": 1, "name": "Bad", "effects": [{"id": "\#(UUID().uuidString)", "kind": "shimmer", "controls": []}]}"#.utf8)
             .write(to: dir.appending(path: "Bad.json"))
         try Data(#"{"formatVersion": 9, "name": "Newer", "effects": []}"#.utf8).write(to: dir.appending(path: "Newer.json"))
         try Data("nope".utf8).write(to: dir.appending(path: "Broken.json"))
@@ -343,7 +343,7 @@ private enum Pasting {
         #expect(library.presets.map(\.name) == ["Good"])
         #expect(library.problems.count == 3)
         let bad = try #require(library.problems.first { $0.url.lastPathComponent == "Bad.json" })
-        #expect(bad.message == "The preset can't be used. Unknown effect kind \"glow\" at effects[0].kind.")
+        #expect(bad.message == "The preset can't be used. Unknown effect kind \"shimmer\" at effects[0].kind.")
         let newer = try #require(library.problems.first { $0.url.lastPathComponent == "Newer.json" })
         #expect(newer.message.contains("version 9"))
     }

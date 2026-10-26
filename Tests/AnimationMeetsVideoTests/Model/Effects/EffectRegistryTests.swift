@@ -12,8 +12,8 @@ import Testing
                 #expect(ControlKind(rawValue: control.rawValue) == control)
             }
         }
-        #expect(EffectKind(rawValue: "glow") == nil)
-        #expect(ControlKind(rawValue: "glowRadius") == nil)
+        #expect(EffectKind(rawValue: "shimmer") == nil)
+        #expect(ControlKind(rawValue: "shimmerRadius") == nil)
     }
 
     /// Swift's effects and the shipped packages' together, in the order

@@ -1,0 +1,24 @@
+{
+  "formatVersion": 1,
+  "id": "lightLeak",
+  "version": 1,
+  "name": "Light Leak",
+  "category": "light",
+  "symbol": "sun.dust",
+  "kernel": {"file": "kernel.metal", "function": "amvLightLeak", "type": "color"},
+  "controls": [
+    {"id": "leakAngle", "name": "From", "type": "number", "default": 0, "unit": "°"},
+    {"id": "leakSize", "name": "Size", "type": "number", "default": 100, "range": [10, 400], "unit": "%"},
+    {"id": "leakBrightness", "name": "Brightness", "type": "number", "default": 100, "range": [0, 1000], "unit": "%"},
+    {"id": "leakColor", "name": "Color", "type": "color", "default": [1, 0.45, 0.1, 1]},
+    {"id": "leakColor2", "name": "Second Color", "type": "color", "default": [1, 0.12, 0.3, 1]},
+    {"id": "leakSpeed", "name": "Speed", "type": "number", "default": 0.3, "range": [-10, 10], "unit": "/s", "rate": true},
+    {"id": "seed", "name": "Seed", "type": "number", "default": 1, "range": [0, 100000], "whole": true}
+  ],
+  "amount": true,
+  "arguments": [
+    "frameCenter", "frameWidth", "frameHeight", "-rad(leakAngle)", "leakSize / 100", "leakBrightness / 100", "leakColor",
+    "leakColor2", "leakSpeed * seconds", "seed"
+  ],
+  "flashes": "abs(leakSpeed) > 3"
+}

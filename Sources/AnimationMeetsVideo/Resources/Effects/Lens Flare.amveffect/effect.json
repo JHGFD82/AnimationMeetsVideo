@@ -1,0 +1,22 @@
+{
+  "formatVersion": 1,
+  "id": "lensFlare",
+  "version": 1,
+  "name": "Lens Flare",
+  "category": "light",
+  "symbol": "sun.max.circle",
+  "kernel": {"file": "kernel.metal", "function": "amvLensFlare", "type": "color"},
+  "controls": [
+    {"id": "flareCenter", "name": "Source", "type": "point", "default": [-480, -270]},
+    {"id": "flareBrightness", "name": "Brightness", "type": "number", "default": 100, "range": [0, 1000], "unit": "%"},
+    {"id": "flareSize", "name": "Size", "type": "number", "default": 100, "range": [1, 2000], "unit": "px"},
+    {"id": "flareColor", "name": "Color", "type": "color", "default": [1, 0.85, 0.65, 1]},
+    {"id": "flareStreak", "name": "Streak", "type": "number", "default": 50, "range": [0, 200], "unit": "%"},
+    {"id": "flareGhosts", "name": "Reflections", "type": "number", "default": 50, "range": [0, 200], "unit": "%"}
+  ],
+  "amount": true,
+  "arguments": [
+    "center(flareCenter)", "frameCenter", "flareSize * scale", "flareBrightness / 100", "flareColor", "flareStreak / 100",
+    "flareGhosts / 100"
+  ]
+}

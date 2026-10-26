@@ -1,0 +1,25 @@
+{
+  "formatVersion": 1,
+  "id": "bloom",
+  "version": 1,
+  "name": "Bloom",
+  "category": "light",
+  "symbol": "sun.haze",
+  "kernel": {"file": "kernel.metal", "function": "amvBloom", "type": "general"},
+  "controls": [
+    {"id": "bloomThreshold", "name": "Threshold", "type": "number", "default": 50, "range": [0, 100], "unit": "%"},
+    {"id": "bloomRadius", "name": "Radius", "type": "number", "default": 60, "range": [0, 1000], "unit": "px", "step": 0.1},
+    {"id": "bloomIntensity", "name": "Intensity", "type": "number", "default": 40, "range": [0, 1000], "unit": "%"},
+    {"id": "bloomSaturation", "name": "Saturation", "type": "number", "default": 100, "range": [0, 200], "unit": "%"}
+  ],
+  "amount": true,
+  "repeat": {"count": "4"},
+  "pictures": [{"id": "original", "from": "moment", "delay": "0"}],
+  "arguments": ["pass", "bloomThreshold / 100", "bloomSaturation / 100", "bloomIntensity / 100"],
+  "reach": "0",
+  "after": [
+    {"filter": "CIGaussianBlur", "when": "pass == 0", "parameters": {"inputRadius": "bloomRadius * scale"}},
+    {"filter": "CIGaussianBlur", "when": "pass == 1", "parameters": {"inputRadius": "bloomRadius * scale / 4"}},
+    {"filter": "CIGaussianBlur", "when": "pass == 2", "parameters": {"inputRadius": "bloomRadius * scale / 16"}}
+  ]
+}

@@ -1476,8 +1476,8 @@ private struct Sandbox {
     }
 
     @Test func anUnknownEffectKindNamesItsPath() async throws {
-        let message = try await loadingMessage { editEffect(&$0, 1) { $0["kind"] = "glow" } }
-        #expect(message == "The project can't be opened. Unknown effect kind \"glow\" at timelines[0].layers[0].clips[0].effects[1].kind.")
+        let message = try await loadingMessage { editEffect(&$0, 1) { $0["kind"] = "shimmer" } }
+        #expect(message == "The project can't be opened. Unknown effect kind \"shimmer\" at timelines[0].layers[0].clips[0].effects[1].kind.")
     }
 
     @Test func anUnknownBlendModeIsRejected() async throws {
