@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "id": "spotlight",
+  "version": 1,
+  "name": "Spotlight",
+  "category": "light",
+  "symbol": "flashlight.on.fill",
+  "kernel": {"file": "kernel.metal", "function": "amvSpotlight", "type": "color"},
+  "controls": [
+    {"id": "spotCenter", "name": "Center", "type": "point"},
+    {"id": "spotSize", "name": "Size", "type": "vector", "components": ["Width", "Height"], "default": [600, 400], "range": [0, 20000], "unit": "px"},
+    {"id": "spotAngle", "name": "Angle", "type": "number", "default": 0, "unit": "°"},
+    {"id": "spotFeather", "name": "Feather", "type": "number", "default": 50, "range": [0, 100], "unit": "%"},
+    {"id": "spotBrightness", "name": "Brightness", "type": "number", "default": 125, "range": [0, 800], "unit": "%"},
+    {"id": "spotAmbient", "name": "Surroundings", "type": "number", "default": 30, "range": [0, 100], "unit": "%"},
+    {"id": "spotColor", "name": "Color", "type": "color", "default": [1, 0.94, 0.82, 1]}
+  ],
+  "amount": true,
+  "arguments": [
+    "center(spotCenter)", "spotSize", "scale", "rad(spotAngle)", "spotFeather / 100", "spotBrightness / 100", "spotAmbient / 100",
+    "spotColor"
+  ]
+}

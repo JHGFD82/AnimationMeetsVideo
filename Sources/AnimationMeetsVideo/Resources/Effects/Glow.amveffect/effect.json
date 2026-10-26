@@ -1,0 +1,21 @@
+{
+  "formatVersion": 1,
+  "id": "glow",
+  "version": 1,
+  "name": "Glow",
+  "category": "light",
+  "symbol": "sun.max",
+  "kernel": {"file": "kernel.metal", "function": "amvGlow", "type": "general"},
+  "controls": [
+    {"id": "glowThreshold", "name": "Threshold", "type": "number", "default": 60, "range": [0, 100], "unit": "%"},
+    {"id": "glowRadius", "name": "Radius", "type": "number", "default": 20, "range": [0, 500], "unit": "px", "step": 0.1},
+    {"id": "glowIntensity", "name": "Intensity", "type": "number", "default": 100, "range": [0, 1000], "unit": "%"},
+    {"id": "glowColor", "name": "Color", "type": "color", "default": [1, 1, 1, 1]}
+  ],
+  "amount": true,
+  "repeat": {"count": "2"},
+  "pictures": [{"id": "original", "from": "moment", "delay": "0"}],
+  "arguments": ["pass", "glowThreshold / 100", "glowColor", "glowIntensity / 100"],
+  "reach": "0",
+  "after": [{"filter": "CIGaussianBlur", "when": "pass == 0", "parameters": {"inputRadius": "glowRadius * scale"}}]
+}

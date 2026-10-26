@@ -262,6 +262,7 @@ enum BuiltInEffects {
         // Blur & Sharpen
         // Keying & Masks
         // Light
+        "glow", "bloom", "halation", "lightRays", "lensFlare", "lightLeak", "spotlight", "vignette",
         // Stylize
         // Color
         "hueCycle", "cosinePalette", "gradientMap", "solarize", "posterize", "channelMixer", "falseColor", "neonEdges",

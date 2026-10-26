@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "id": "lightRays",
+  "version": 1,
+  "name": "Light Rays",
+  "category": "light",
+  "symbol": "rays",
+  "kernel": {"file": "kernel.metal", "function": "amvLightRays", "type": "general"},
+  "controls": [
+    {"id": "rayCenter", "name": "Source", "type": "point"},
+    {"id": "rayLength", "name": "Length", "type": "number", "default": 60, "range": [0, 100], "unit": "%"},
+    {"id": "rayThreshold", "name": "Threshold", "type": "number", "default": 60, "range": [0, 100], "unit": "%"},
+    {"id": "rayIntensity", "name": "Intensity", "type": "number", "default": 150, "range": [0, 1000], "unit": "%"},
+    {"id": "rayColor", "name": "Color", "type": "color", "default": [1, 0.95, 0.85, 1]}
+  ],
+  "amount": true,
+  "repeat": {"count": "4"},
+  "pictures": [{"id": "original", "from": "moment", "delay": "0"}],
+  "arguments": ["pass", "center(rayCenter)", "rayLength / 100", "rayThreshold / 100", "rayColor", "rayIntensity / 100"]
+}

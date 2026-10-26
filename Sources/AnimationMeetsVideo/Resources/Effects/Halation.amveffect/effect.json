@@ -1,0 +1,21 @@
+{
+  "formatVersion": 1,
+  "id": "halation",
+  "version": 1,
+  "name": "Halation",
+  "category": "light",
+  "symbol": "smallcircle.filled.circle",
+  "kernel": {"file": "kernel.metal", "function": "amvHalation", "type": "general"},
+  "controls": [
+    {"id": "halationThreshold", "name": "Threshold", "type": "number", "default": 70, "range": [0, 100], "unit": "%"},
+    {"id": "halationRadius", "name": "Radius", "type": "number", "default": 8, "range": [0, 200], "unit": "px", "step": 0.1},
+    {"id": "halationIntensity", "name": "Intensity", "type": "number", "default": 100, "range": [0, 1000], "unit": "%"},
+    {"id": "halationColor", "name": "Color", "type": "color", "default": [1, 0.25, 0.08, 1]}
+  ],
+  "amount": true,
+  "repeat": {"count": "2"},
+  "pictures": [{"id": "original", "from": "moment", "delay": "0"}],
+  "arguments": ["pass", "halationThreshold / 100", "halationColor", "halationIntensity / 100"],
+  "reach": "0",
+  "after": [{"filter": "CIGaussianBlur", "when": "pass == 0", "parameters": {"inputRadius": "halationRadius * scale"}}]
+}

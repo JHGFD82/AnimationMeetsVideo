@@ -1,0 +1,21 @@
+{
+  "formatVersion": 1,
+  "id": "vignette",
+  "version": 1,
+  "name": "Vignette",
+  "category": "light",
+  "symbol": "camera.aperture",
+  "kernel": {"file": "kernel.metal", "function": "amvVignette", "type": "color"},
+  "controls": [
+    {"id": "vignetteSize", "name": "Size", "type": "number", "default": 75, "range": [0, 200], "unit": "%"},
+    {"id": "vignetteRoundness", "name": "Roundness", "type": "number", "default": 50, "range": [0, 100], "unit": "%"},
+    {"id": "vignetteFeather", "name": "Feather", "type": "number", "default": 60, "range": [0, 200], "unit": "%"},
+    {"id": "vignetteCenter", "name": "Center", "type": "point"},
+    {"id": "vignetteColor", "name": "Color", "type": "color", "default": [0, 0, 0, 1]}
+  ],
+  "amount": true,
+  "arguments": [
+    "center(vignetteCenter)", "frameWidth / 2", "frameHeight / 2", "vignetteSize / 100", "vignetteRoundness / 100",
+    "vignetteFeather / 100", "vignetteColor"
+  ]
+}
