@@ -23,7 +23,10 @@ import Testing
 
         let previews = TimelinePreviews(settleDelay: .milliseconds(40))
         defer { previews.releaseAll() }
-        func settle() async { try? await Task.sleep(for: .milliseconds(250)) }
+        // Waits for the rebuilds themselves: a fixed sleep lost the race
+        // whenever the main actor was busy, as it is with the whole suite
+        // running.
+        func settle() async { await previews.settle() }
         let first = previews.previews(of: ids, in: fixture.project)
         #expect(first.count == 3)
 

@@ -188,6 +188,17 @@ final class TimelinePreviews {
         }
     }
 
+    /// Waits until every rebuild waiting for edits to settle has been made
+    /// or cancelled. Each wait runs on the main actor, so how long that
+    /// takes depends on what else it is doing, not only on `settleDelay`.
+    /// A wait that finishes has installed its preview, and one cancelled
+    /// was taken out or replaced as it was, so none is waited for twice.
+    func settle() async {
+        while let wait = pending.values.first?.wait {
+            await wait.value
+        }
+    }
+
     /// Lets every preview go, as when the Timelines tab closes; they are
     /// made again when it is shown.
     func releaseAll() {
