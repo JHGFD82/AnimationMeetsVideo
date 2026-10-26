@@ -80,6 +80,9 @@ extension EffectKind {
     static let paragraphControls: [ControlKind] = [
         .textAlign, .leftIndent, .rightIndent, .firstLineIndent, .spaceBefore, .spaceAfter, .wrapWidth, .hyphenate, .textAnchor,
     ]
+    /// Whether text follows the outline of the shape above it, and where
+    /// along it it starts.
+    static let pathControls: [ControlKind] = [.textOnPath, .pathOffset]
     static let openTypeControls: [ControlKind] = [
         .ligatures, .contextualAlternates, .figures, .fractions, .ordinals, .swash, .stylisticAlternates, .stylisticSet,
     ]
@@ -143,6 +146,8 @@ extension ControlKind {
     static let wrapWidth = ControlKind(builtIn: "wrapWidth")
     static let hyphenate = ControlKind(builtIn: "hyphenate")
     static let textAnchor = ControlKind(builtIn: "textAnchor")
+    static let textOnPath = ControlKind(builtIn: "textOnPath")
+    static let pathOffset = ControlKind(builtIn: "pathOffset")
     static let ligatures = ControlKind(builtIn: "ligatures")
     static let contextualAlternates = ControlKind(builtIn: "contextualAlternates")
     static let figures = ControlKind(builtIn: "figures")
@@ -282,7 +287,7 @@ enum BuiltInEffects {
         EffectDefinition(
             .text, "Text", .shapes, "textformat",
             controls: EffectKind.characterControls + EffectKind.paragraphControls + EffectKind.openTypeControls
-                + [.shapePosition] + EffectKind.paintControls
+                + EffectKind.pathControls + [.shapePosition] + EffectKind.paintControls
         ),
         // Animates a range of the letters of the Text effect above it.
         EffectDefinition(
@@ -423,6 +428,10 @@ enum BuiltInEffects {
         ControlDefinition(.hyphenate, "Hyphenate", .text, choice: OnOff.off),
         // Which point of the block sits at Position.
         ControlDefinition(.textAnchor, "Anchor", .text, choice: TextAnchor.center),
+        // Path: on, the text follows the shape above it in the stack, from
+        // Path Offset pixels along it.
+        ControlDefinition(.textOnPath, "On Path", .text, choice: OnOff.off),
+        ControlDefinition(.pathOffset, "Path Offset", .text, defaults: [0], unit: " px"),
         // OpenType
         ControlDefinition(.ligatures, "Ligatures", .text, choice: TextLigatures.standard),
         ControlDefinition(.contextualAlternates, "Contextual Alternates", .text, choice: OnOff.on),

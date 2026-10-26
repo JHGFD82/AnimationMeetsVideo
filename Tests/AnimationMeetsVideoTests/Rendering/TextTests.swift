@@ -419,6 +419,70 @@ extension DrawingFixture {
         #expect(!EffectKind.textAnimator.drawsShape)
     }
 
+    // MARK: Text on a path
+
+    @Test func aPathIsMeasuredAndWalked() throws {
+        let square = try #require(TextPath(flattening: CGPath(rect: CGRect(x: 0, y: 0, width: 100, height: 100), transform: nil)))
+        #expect(square.closed)
+        #expect(abs(square.length - 400) < 1e-9)
+        let corner = square.place(at: 150)
+        #expect(abs(corner.point.x - 100) < 1e-9 && abs(corner.point.y - 50) < 1e-9)
+        // Round again, and backwards.
+        #expect(abs(square.place(at: 550).point.y - 50) < 1e-9)
+        #expect(abs(square.place(at: -50).point.y - 50) < 1e-9)
+        let circle = try #require(TextPath(flattening: CGPath(ellipseIn: CGRect(x: 0, y: 0, width: 200, height: 200), transform: nil)))
+        #expect(abs(circle.length - 200 * .pi) < 2)
+        // An open line runs on past its end.
+        let line = TextPath(points: [.zero, CGPoint(x: 100, y: 0)], closed: false)
+        #expect(line.place(at: 150).point == CGPoint(x: 150, y: 0))
+    }
+
+    @Test func textFollowsAPathFromItsOffset() {
+        var onLine = TextOutline(setting: setting("HHH") { $0.align = .left }, center: .zero)
+        onLine.followed = TextPath(points: [CGPoint(x: 0, y: 500), CGPoint(x: 2000, y: 500)], closed: false)
+        onLine.pathOffset = 100
+        let along = onLine.path.boundingBoxOfPath
+        // The H's sit on the line, starting 100 pixels along it.
+        #expect(abs(along.maxY - 500) < 0.5)
+        #expect(along.minX > 100 && along.minX < 115)
+        // Going down a vertical line, the letters turn with it.
+        var down = onLine
+        down.followed = TextPath(points: [CGPoint(x: 500, y: 0), CGPoint(x: 500, y: 2000)], closed: false)
+        let turned = down.path.boundingBoxOfPath
+        #expect(turned.height > turned.width * 2)
+        #expect(abs(turned.minX - 500) < 0.5 || abs(turned.maxX - 500) < 0.5)
+        // Centered text sits in the middle of the path.
+        var centered = TextOutline(setting: setting("HHH"), center: .zero)
+        centered.followed = TextPath(points: [CGPoint(x: 0, y: 500), CGPoint(x: 2000, y: 500)], closed: false)
+        #expect(abs(centered.path.boundingBoxOfPath.midX - 1000) < 6)
+    }
+
+    @Test func textOnPathFollowsTheShapeAboveIt() throws {
+        var rectangle = Effect(kind: .rectangle)
+        rectangle.changeControl(.shapeSize) { $0.number = AnimatedValue(ComponentValue(values: [800, 400])) }
+        var text = Effect(kind: .text)
+        text.text = TextContent(string: "Around")
+        func step(onPath: Bool) -> TextOutline? {
+            var effect = text
+            effect.changeControl(.textOnPath) { $0.choice = (onPath ? OnOff.on : .off).rawValue }
+            let steps = StackFolding.steps(effects: [rectangle, effect], anchorPoint: AnimatedValue(.zero), at: .zero, center: CGPoint(x: 960, y: 540))
+            for case .shape(let shape) in steps {
+                if case .text(let outline) = shape.outline { return outline }
+            }
+            return nil
+        }
+        let off = try #require(step(onPath: false)), on = try #require(step(onPath: true))
+        #expect(off.followed == nil)
+        let followed = try #require(on.followed)
+        #expect(abs(followed.length - 2400) < 1e-6)
+        // The path runs clockwise from the rectangle's top left (560, 340),
+        // so centered on its length the words turn its bottom right
+        // corner (1360, 740), standing outside both edges.
+        let bounds = on.path.boundingBoxOfPath
+        #expect(bounds.minX > 1100 && bounds.minY > 500)
+        #expect(bounds.maxX > 1360 && bounds.maxY > 740)
+    }
+
     // MARK: Missing fonts
 
     @Test func exportStopsOnAMissingFontButTheViewerDraws() async throws {

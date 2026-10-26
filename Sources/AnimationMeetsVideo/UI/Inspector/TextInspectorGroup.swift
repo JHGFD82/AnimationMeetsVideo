@@ -72,6 +72,13 @@ struct TextInspectorGroup: View {
             InspectorGroup(title("Paragraph")) {
                 controls(EffectKind.paragraphControls)
             }
+            InspectorGroup(title("Path")) {
+                controls(EffectKind.pathControls)
+                Text("On, the text follows the outline of the shape above it in the effects, from Path Offset along it.")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             InspectorGroup(title("OpenType")) {
                 controls(EffectKind.openTypeControls)
                 Text("A font without one of these draws as if it were off.")

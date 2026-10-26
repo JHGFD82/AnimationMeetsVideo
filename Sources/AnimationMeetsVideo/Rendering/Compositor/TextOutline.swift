@@ -218,6 +218,11 @@ struct TextOutline: Equatable, Sendable {
     /// The Text Animators below the Text effect, in order. They place the
     /// glyphs laid out, so animating them doesn't lay the block out again.
     var animators: [Animator] = []
+    /// The outline the text follows, while it is on a path, from
+    /// `pathOffset` pixels along it; the anchor and position then don't
+    /// place it.
+    var followed: TextPath?
+    var pathOffset = 0.0
 
     /// The glyphs' outlines, in the frame's pixels.
     var path: CGPath {
@@ -285,9 +290,21 @@ struct TextOutline: Equatable, Sendable {
                     recolored = true
                 }
             }
-            place = place
-                .concatenating(CGAffineTransform(translationX: glyph.origin.x + shifts[index], y: glyph.origin.y))
-                .concatenating(toFrame)
+            if let followed {
+                // The middle of its baseline at its distance along the
+                // path, turned to the path's direction there; later lines
+                // follow parallel to it.
+                let along = pathStart(laid, followed) + glyph.origin.x + shifts[index] + glyph.advance / 2
+                let (point, angle) = followed.place(at: along)
+                place = place
+                    .concatenating(CGAffineTransform(translationX: -glyph.advance / 2, y: glyph.origin.y - laid.firstBaseline))
+                    .concatenating(CGAffineTransform(rotationAngle: angle))
+                    .concatenating(CGAffineTransform(translationX: point.x, y: point.y))
+            } else {
+                place = place
+                    .concatenating(CGAffineTransform(translationX: glyph.origin.x + shifts[index], y: glyph.origin.y))
+                    .concatenating(toFrame)
+            }
             let look = Look(
                 style: glyph.style, opacity: Int((opacity * 1000).rounded()),
                 fill: recolored ? color?.map { Int(($0 * 1000).rounded()) } : nil
@@ -295,7 +312,8 @@ struct TextOutline: Equatable, Sendable {
             if recolored, let color { colors[look] = color }
             path(for: look).addPath(glyph.outline, transform: place)
         }
-        for rule in laid.rules {
+        // A rule is straight, so it doesn't follow a path.
+        for rule in laid.rules where followed == nil {
             path(for: Look(style: rule.style, opacity: 1000, fill: nil)).addRect(rule.rect, transform: toFrame)
         }
         return looks.compactMap { look in
@@ -306,6 +324,14 @@ struct TextOutline: Equatable, Sendable {
                 opacity: Double(look.opacity) / 1000
             )
         }
+    }
+
+    /// How far along `followed` the block's left edge is: the offset, and
+    /// for centered or right-aligned text, what centers it on the path or
+    /// ends it at the path's end.
+    private func pathStart(_ laid: TextLayout.Laid, _ followed: TextPath) -> Double {
+        let spare = followed.length - laid.size.width
+        return pathOffset + (setting.align == .center ? spare / 2 : setting.align == .right ? spare : 0)
     }
 
     /// How far along its line each glyph moves for the tracking the
@@ -342,5 +368,6 @@ struct TextOutline: Equatable, Sendable {
     /// a new one joins without being listed here.
     var keyText: String {
         "h t \(String(describing: setting)) \(String(describing: animators)) \(String(format: "%.5f,%.5f", center.x, center.y))"
+            + (followed.map { " p\(String(format: "%.5f", pathOffset)) \($0.closed) \($0.points)" } ?? "")
     }
 }

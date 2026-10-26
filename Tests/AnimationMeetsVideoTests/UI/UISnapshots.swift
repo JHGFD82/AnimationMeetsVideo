@@ -614,6 +614,41 @@ struct UISnapshots {
         )
     }
 
+    /// What the compositor's shape steps draw for a stack of a circle, a
+    /// Text effect on its path, and a Text Animator raising and reddening
+    /// the first word: the words around the circle. Drawn here with
+    /// SwiftUI from the same paints, to see the glyphs' placement.
+    @Test func textOnPathDrawing() throws {
+        var circle = Effect(kind: .ellipse)
+        circle.changeControl(.shapeSize) { $0.number = AnimatedValue(ComponentValue(values: [500, 500])) }
+        circle.changeControl(.fill) { $0.number = AnimatedValue(ComponentValue(values: [0.15, 0.3, 0.6, 1])) }
+        var text = Effect(kind: .text)
+        text.text = TextContent(string: "Animation meets video · around and around")
+        text.changeControl(.fontSize) { $0.setComponent(0, to: 44, at: .zero) }
+        text.changeControl(.textOnPath) { $0.choice = OnOff.on.rawValue }
+        var animator = Effect(kind: .textAnimator)
+        animator.changeControl(.animatorEnd) { $0.setComponent(0, to: 25, at: .zero) }
+        animator.changeControl(.animatorPosition) { $0.number = AnimatedValue(ComponentValue(values: [0, -12])) }
+        animator.changeControl(.animatorFill) { $0.enabled = true }
+        let steps = StackFolding.steps(
+            effects: [circle, text, animator], anchorPoint: AnimatedValue(.zero), at: .zero, center: CGPoint(x: 350, y: 350)
+        )
+        var paints: [(area: CGPath, color: [Double])] = []
+        for case .shape(let shape) in steps { paints += shape.paints }
+        try SnapshotSupport.render(
+            Canvas { context, _ in
+                for paint in paints where paint.color.count == 4 {
+                    context.fill(
+                        Path(paint.area),
+                        with: .color(Color(.sRGB, red: paint.color[0], green: paint.color[1], blue: paint.color[2], opacity: paint.color[3]))
+                    )
+                }
+            }
+            .background(Color.black),
+            "text-on-path", size: CGSize(width: 700, height: 700)
+        )
+    }
+
     /// The inspector for a shape layer: a rounded rectangle's size, corners
     /// and position, then its fill and a dashed outside stroke.
     @Test func shapeInspector() throws {

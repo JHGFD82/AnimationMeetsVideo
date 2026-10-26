@@ -28,8 +28,10 @@ struct ShapeStep: Equatable, Sendable {
     /// source time `time`, centered on `center` plus its Position. Nil when
     /// it has no size, or is text with no words. A shape with neither a fill nor a stroke draws nothing
     /// but still has an outline for a Stroke below it to follow.
-    /// A Text effect's `animators` are the Text Animator effects below it.
-    init?(_ effect: Effect, at time: CMTime, center: CGPoint, animators: [Effect] = []) {
+    /// A Text effect's `animators` are the Text Animator effects below it,
+    /// and `followed` the outline of the shape above it, which it follows
+    /// while it is On Path.
+    init?(_ effect: Effect, at time: CMTime, center: CGPoint, animators: [Effect] = [], followed: TextPath? = nil) {
         func values(_ kind: ControlKind) -> [Double] {
             guard let control = effect.control(kind), control.enabled else { return kind.defaultValues }
             return control.values(at: time)
@@ -57,7 +59,12 @@ struct ShapeStep: Equatable, Sendable {
             )
         case .text:
             guard let setting = TextOutline.Setting(effect, at: time) else { return nil }
-            outline = .text(TextOutline(setting: setting, center: middle, animators: animators.compactMap { TextOutline.Animator($0, at: time) }))
+            var text = TextOutline(setting: setting, center: middle, animators: animators.compactMap { TextOutline.Animator($0, at: time) })
+            if let followed, effect.control(.textOnPath).map({ $0.enabled && $0.choice == OnOff.on.rawValue }) ?? false {
+                text.followed = followed
+                text.pathOffset = single(.pathOffset)
+            }
+            outline = .text(text)
         default:
             return nil
         }

@@ -2,10 +2,10 @@
 
 Status: stills, shapes (rectangle, ellipse, polygon and star) and strokes
 are **built** (steps 1, 2a and 2b, not yet tried in the running app), as
-is the text framework (step 3a: Illustrator's character, paragraph and
-OpenType settings for a whole block, set in the
-inspector); gradients, free paths, path operations, styled runs,
-variable axes, animators and text on a path are **planned** (see
+is text (step 3: Illustrator's character, paragraph and OpenType
+settings, styled runs, kerning by hand and optical kerning, hyphenation,
+variable axes, animators and text on a path, set in the inspector);
+gradients, free paths and path operations are **planned** (see
 [Building it](#building-it)).
 Pictures that don't come from footage:
 still images imported from files, and shapes and text made in the app,
@@ -362,6 +362,24 @@ Built (step 3a):
   lays the block out again; glyphs drawn alike are still one piece. They
   don't move underlines and strikethroughs, and a glyph's stroke takes its
   opacity but not its fill's color.
+- **Text on a path.** With **On Path** (the inspector's Path group) a
+  Text effect follows the outline of the last shape drawn above it in the
+  stack (a Rectangle, Ellipse, Polygon or Star, not other text), from
+  **Path Offset** pixels along it, which can be animated to run the words
+  round. The outline's first subpath is flattened (`TextPath`, curves cut
+  into 24 pieces) in the frame's pixels, as that shape was drawn, before
+  any move below it. Each glyph's baseline middle goes at its distance
+  along the path, turned to the path's direction there, so the letters
+  stand on the side the outline's left hand is (outside a shape, whose
+  outlines Core Graphics draws clockwise on screen, except an ellipse's);
+  later lines run parallel to it. Left-aligned text starts at the offset;
+  centered text centers on the path's length, right-aligned ends at its
+  end. A closed path goes round again; past an open one's ends the
+  letters run on straight. Animators still apply, along the path.
+  Position and Anchor don't place text on a path, and underlines and
+  strikethroughs, being straight, are left out. Not yet: flipping the
+  text to the other side or direction, and a path of its own (free paths,
+  step 2d).
 - **Anchor** is a Paragraph choice of nine points (Top Left to Bottom
   Right, Middle at first): which point of the block, as wide as its wrap
   width or widest line and as tall as its lines, sits at the frame's
@@ -383,8 +401,6 @@ Built (step 3a):
 
 Still to come:
 
-- **Text on a path.** A text item can follow one of the clip's shape paths,
-  with a start offset that can be animated.
 - **Editing in the viewer.** Typing in place, and a handle for the wrap
   width.
 
@@ -466,7 +482,11 @@ vertex can be nudged by the arrow keys (ten pixels with Shift).
    shape, moving, fading and recoloring a range, scale and rotation about
    the baseline, tracking kept centered, ranges by words and lines, an
    animator drawn and saved, and its note with no text above;
-   `textAnimatorInspector` shows its controls. (e) Text on a path.
+   `textAnimatorInspector` shows its controls. (e, done) Text on a path:
+   `TextTests` checks measuring and walking paths, following one from
+   its offset, turning with it, centering on it, and following the shape
+   above in a stack; `textOnPathDrawing` draws words round a circle with
+   an animator.
 4. **Viewer handles.** Selecting a graphic clip in the viewer, handles for
    vertices and primitives, and their keyboard paths.
 5. **Stills as effect inputs**, so a PNG can be a Matte's input.

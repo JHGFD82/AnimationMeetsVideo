@@ -210,7 +210,16 @@ enum StackFolding {
                 let animators = effect.kind == .text
                     ? Array(effects.dropFirst(position + 1).prefix { $0.kind == .textAnimator })
                     : []
-                guard let shape = ShapeStep(effect, at: time, center: center, animators: animators) else { continue }
+                // And the outline of the last shape above it, to follow.
+                var followed: TextPath?
+                if effect.kind == .text {
+                    for case .shape(let above) in steps.reversed() {
+                        if case .text = above.outline { continue }
+                        followed = TextPath(flattening: above.path)
+                        break
+                    }
+                }
+                guard let shape = ShapeStep(effect, at: time, center: center, animators: animators, followed: followed) else { continue }
                 flush()
                 steps.append(.shape(shape))
             case .stroke:

@@ -83,6 +83,8 @@ final class TextLayout: @unchecked Sendable {
         var rules: [Rule] = []
         var styles: [LetterStyle] = []
         var size = CGSize.zero
+        /// How far down the block its first line's baseline is.
+        var firstBaseline = 0.0
         var characterCount = 0
         var letterCount = 0
         var wordCount = 0
@@ -397,6 +399,7 @@ final class TextLayout: @unchecked Sendable {
             baselines.append(baseline)
         }
         laid.size = CGSize(width: blockWidth, height: baseline + (lineMetrics.last?.descent ?? 0))
+        laid.firstBaseline = baselines.first ?? 0
 
         for (number, (var line, lineBaseline)) in zip(lines, baselines).enumerated() {
             let room = line.room ?? (blockWidth - line.indent - setting.rightIndent)
