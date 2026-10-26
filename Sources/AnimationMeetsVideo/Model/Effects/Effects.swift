@@ -730,7 +730,7 @@ extension EditingProject {
             return "\(displayName(of: layer, in: timeline)) · \(key.parameter.name)"
         case .clipVolume(let clipID), .clipPan(let clipID), .anchorPoint(let clipID), .speed(let clipID):
             return "\(clipName(clipID, in: key.timelineID)) · \(key.parameter.name)"
-        case .control(_, let clipID, let effectID, _):
+        case .control(_, let clipID, let effectID, _), .textVariation(_, let clipID, let effectID):
             let effect = clipAndLayer(clipID, in: key.timelineID)?.clip.effect(id: effectID)
             return [clipName(clipID, in: key.timelineID), effect?.displayName, key.parameter.name]
                 .compactMap { $0 }.joined(separator: " · ")

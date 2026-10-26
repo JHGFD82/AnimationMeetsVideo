@@ -620,6 +620,40 @@ extension DrawingFixture {
         #expect(end.variations == [.init(axis: "wght", value: weight.maximum)])
     }
 
+    @Test func anAxisIsAParameterLikeAControl() throws {
+        var project = EditingProject.empty
+        let t = project.rootTimelineID
+        let layer = project.addShapeLayer(.text, to: t)
+        let text = try #require(layer)
+        let second = CMTime(seconds: 1, preferredTimescale: 600)
+        project.editClip(text.clipID, in: t) { clip in
+            clip.effects[0].text?.fontName = "Skia-Regular"
+            clip.effects[0].text?.changeVariation("wght", initial: 1) { value in
+                value.setAnimated(true, at: .zero)
+                value.set(2, at: second)
+            }
+        }
+        let effectID = try #require(project.clipAndLayer(text.clipID, in: t)?.clip.effects.first?.id)
+        let key = ParameterKey(timelineID: t, parameter: .textVariation(axis: "wght", clipID: text.clipID, effectID: effectID))
+        // The graph editor reads and writes it as it does a control.
+        let read = try #require(project.components(of: key))
+        #expect(read.keyframes.map { $0.value.values } == [[1], [2]])
+        #expect(project.timeAxis(of: key) != nil)
+        #expect(project.parameterTitle(of: key) == "Text · Text · Weight")
+        project.editComponents(of: key) { $0.set(ComponentValue(values: [3]), at: second) }
+        let written = project.clipAndLayer(text.clipID, in: t)?.clip.effects.first?.text?.variations.first?.value
+        #expect(written?.value(at: second) == 3)
+
+        // Its keyframes are animation the render cache redraws, and F9
+        // eases them.
+        var clip = try #require(project.clipAndLayer(text.clipID, in: t)?.clip)
+        #expect(clip.animatedSourceRanges.contains(.zero...second))
+        let before = clip.effects[0].text?.variations.first?.value.keyframes.last
+        let eased = clip.easeKeyframes(atTimelineTime: second, .easeIn)
+        #expect(eased)
+        #expect(clip.effects[0].text?.variations.first?.value.keyframes.last != before)
+    }
+
     @Test func savingKeepsAxesAndTheirKeyframes() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }

@@ -154,16 +154,21 @@ extension TextContent {
     /// The words' length in UTF-16 code units, which runs count in.
     var length: Int { (string as NSString).length }
 
-    /// The spans in which any of its runs' settings are between keyframes.
+    /// The spans in which any of its runs' settings or its font's axes are
+    /// between keyframes.
     var animatedRanges: [ClosedRange<CMTime>] {
-        runs.flatMap(\.style.animatedRanges)
+        runs.flatMap(\.style.animatedRanges) + variations.compactMap(\.value.animatedRange)
     }
 
-    /// Applies an ease to every keyframe its runs have at `time`, for F9.
-    /// Returns whether there was one.
+    /// Applies an ease to every keyframe its runs and axes have at `time`,
+    /// for F9. Returns whether there was one.
     mutating func applyEase(_ preset: KeyframeEase.Preset, at time: CMTime) -> Bool {
         var eased = false
         for index in runs.indices where runs[index].style.applyEase(preset, at: time) { eased = true }
+        for index in variations.indices where variations[index].value.keyframe(at: time) != nil {
+            variations[index].value.applyEase(preset, at: time)
+            eased = true
+        }
         return eased
     }
 

@@ -830,6 +830,33 @@ struct UISnapshots {
         )
     }
 
+    /// The effects panel for a text layer in Skia, a variable font, its
+    /// Text effect cut down to Size: rows for its Weight and Width axes
+    /// after its controls, the weight keyframed, with its lane.
+    @Test func textAxesEffectsPanel() throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        let added = project.addShapeLayer(.text, to: timelineID)
+        let text = try #require(added)
+        project.editClip(text.clipID, in: timelineID) { clip in
+            clip.effects[0].controls = clip.effects[0].controls.filter { $0.kind == .fontSize }
+            clip.effects[0].text?.fontName = "Skia-Regular"
+            clip.effects[0].text?.changeVariation("wght", initial: 1) { value in
+                value.setAnimated(true, at: CMTime(seconds: 1, preferredTimescale: 600))
+                value.set(0.6, at: CMTime(seconds: 1, preferredTimescale: 600))
+                value.set(2.5, at: CMTime(seconds: 3, preferredTimescale: 600))
+            }
+        }
+        try SnapshotSupport.render(
+            EffectsPanel(
+                project: .constant(project), timelineID: timelineID,
+                selection: TimelineSelection(timelineID: timelineID, layerID: text.layerID, timelineClipID: text.clipID),
+                playheadTime: CMTime(seconds: 2, preferredTimescale: 600), state: EffectsPanelState(), onSeek: { _ in }, onSelectTransition: { _ in }
+            ),
+            "text-axes-effects-panel", size: CGSize(width: 620, height: 300)
+        )
+    }
+
     /// The effects library with a package that couldn't be read and a look
     /// whose kernel doesn't compile: the chip is marked, and both are
     /// listed at the end with why.

@@ -168,6 +168,9 @@ enum AnimatedParameter: Hashable {
     case anchorPoint(clipID: UUID)
     case speed(clipID: UUID)
     case control(ControlKind, clipID: UUID, effectID: UUID, controlID: UUID)
+    /// A Text effect's variable font axis, by its four-letter tag
+    /// (`TextContent.variations`).
+    case textVariation(axis: String, clipID: UUID, effectID: UUID)
 
     var name: String {
         switch self {
@@ -176,6 +179,7 @@ enum AnimatedParameter: Hashable {
         case .speed: "Speed"
         case .anchorPoint: "Anchor Point"
         case .control(let kind, _, _, _): kind.name
+        case .textVariation(let axis, _, _): FontCatalog.axisName(axis)
         }
     }
 
@@ -187,6 +191,7 @@ enum AnimatedParameter: Hashable {
         case .speed: ["Speed"]
         case .anchorPoint: ["x", "y"]
         case .control(let kind, _, _, _): kind.componentNames
+        case .textVariation: [name]
         }
     }
 
@@ -204,6 +209,8 @@ enum AnimatedParameter: Hashable {
         case .speed: ClipTime.clampedSpeed(component)
         case .anchorPoint: component
         case .control(let kind, _, _, _): kind.clamped(component)
+        // A font keeps an axis to its own range as it draws.
+        case .textVariation: component
         }
     }
 
@@ -221,6 +228,7 @@ enum AnimatedParameter: Hashable {
         case .speed: NumericExpression.format(shown, maxFractionDigits: 1) + "%"
         case .anchorPoint: NumericExpression.format(shown, maxFractionDigits: 1) + " px"
         case .control(let kind, _, _, _): kind.label(shown)
+        case .textVariation: NumericExpression.format(shown, maxFractionDigits: 2)
         }
     }
 
@@ -275,7 +283,7 @@ extension EditingProject {
             let last = components(of: key)?.keyframes.last?.time.seconds ?? 0
             return ParameterTimeAxis(clip: nil, span: 0...max(timeline.duration.seconds, last, 1), frameDuration: frame)
         case .clipVolume(let clipID), .clipPan(let clipID), .anchorPoint(let clipID), .speed(let clipID),
-             .control(_, let clipID, _, _):
+             .control(_, let clipID, _, _), .textVariation(_, let clipID, _):
             guard let clip = clipAndLayer(clipID, in: key.timelineID)?.clip else { return nil }
             let start = clip.trimStart.seconds, end = clip.trimEnd.seconds
             return ParameterTimeAxis(clip: clip, span: min(start, end)...max(start, end, min(start, end) + 1e-3), frameDuration: frame)
@@ -305,6 +313,9 @@ extension EditingProject {
             let control = clipAndLayer(clipID, in: key.timelineID)?.clip.effect(id: effectID)?
                 .controls.first(id: controlID)
             return control.flatMap { $0.kind.isChoice ? nil : $0.number }
+        case .textVariation(let axis, let clipID, let effectID):
+            let text = clipAndLayer(clipID, in: key.timelineID)?.clip.effect(id: effectID)?.text
+            return text?.variations.first { $0.axis == axis }?.value.asComponents
         }
     }
 
@@ -350,6 +361,14 @@ extension EditingProject {
             editEffect(effectID, ofClip: clipID, in: key.timelineID) { effect in
                 guard let c = effect.controls.firstIndex(id: controlID) else { return }
                 change(&effect.controls[c].number)
+            }
+        case .textVariation(let axis, let clipID, let effectID):
+            editEffect(effectID, ofClip: clipID, in: key.timelineID) { effect in
+                guard let v = effect.text?.variations.firstIndex(where: { $0.axis == axis }),
+                      var components = effect.text?.variations[v].value.asComponents
+                else { return }
+                change(&components)
+                effect.text?.variations[v].value = AnimatedValue(components: components)
             }
         }
     }

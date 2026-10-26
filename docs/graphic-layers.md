@@ -356,9 +356,13 @@ Built (step 3a):
   keeps each by its four-letter tag with its `AnimatedValue`, saved as
   `"variations": [{"axis": "wght", "value": …}]`. They last through a
   change of font, and a font without an axis ignores it. They apply to
-  every letter, a run's font too (`kCTFontVariationAttribute`). Not yet:
-  their keyframes show in neither the effects panel's lanes nor the
-  graph editor, and F9's eases at the playhead don't reach them.
+  every letter, a run's font too (`kCTFontVariationAttribute`). Their
+  keyframes behave as a control's: each axis is a parameter
+  (`AnimatedParameter.textVariation`, by tag), so it has a row after the
+  Text effect's controls in the effects panel, with its lane of
+  keyframes (moved, deleted and eased there) and its graph editor; F9's
+  eases reach it; and its keyframes count as animation for the render
+  cache. Resetting it gives the font's default.
 - **Animators.** A Text Animator effect (`"textAnimator"`, in Shapes)
   animates the Text effect directly above it, other Text Animators
   between, as After Effects' animators with a range selector do; with no

@@ -88,6 +88,19 @@ enum FontCatalog {
         }
     }
 
+    /// What an axis is called where no font is at hand: the registered
+    /// OpenType axes' names, or the tag.
+    static func axisName(_ tag: String) -> String {
+        switch tag {
+        case "wght": "Weight"
+        case "wdth": "Width"
+        case "opsz": "Optical Size"
+        case "slnt": "Slant"
+        case "ital": "Italic"
+        default: tag
+        }
+    }
+
     /// An axis's four-letter tag as the number fonts name it by.
     static func axisNumber(_ tag: String) -> UInt32 {
         tag.unicodeScalars.prefix(4).reduce(0) { $0 << 8 | ($1.value & 0xFF) }

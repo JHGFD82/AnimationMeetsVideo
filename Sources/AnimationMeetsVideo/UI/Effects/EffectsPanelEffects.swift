@@ -132,6 +132,11 @@ extension EffectsPanel {
                 ForEach(effect.controls) { control in
                     controlRow(control, of: effect, c, effectDimmed: dimmed)
                 }
+                if effect.kind == .text, let content = effect.text {
+                    ForEach(FontCatalog.axes(of: content.fontName)) { axis in
+                        variationRow(axis, of: effect, c, effectDimmed: dimmed)
+                    }
+                }
                 if effect.kind.readsAgainst {
                     againstRow(effect, c, effectDimmed: dimmed)
                 }
