@@ -7,7 +7,7 @@ guide to [writing a package](#making-a-package), and the app makes one
 new or from a look, and installs one opened from Finder. What remains is
 under [Not yet](#not-yet). `EffectKind` and `ControlKind`
 are names looked up in an `EffectRegistry` of the effects written in
-Swift (BuiltInEffects.swift), the 25 looks that ship as packages
+Swift (BuiltInEffects.swift), the 76 looks that ship as packages
 (Resources/Effects) and the person's packages, which
 `EffectPackageStore` reads from the Effects folder at launch. A
 package's look is listed, saved and drawn like any other
@@ -506,13 +506,20 @@ kernel:
 - The sound effects: biquad filters and Audio Units.
 - The Keyframing effects: they write keyframes, not pictures.
 
-No look stays: all 25 are built-in packages, the eight Color looks, the
-seven Noise looks and the ten Distortion looks. Each was checked against
+No look stays: the 25 that were written in Swift are built-in
+packages, the eight Color looks, the seven Noise looks and the ten
+Distortion looks. Each was checked against
 the Swift it replaced: its controls one by one, its pictures against
 reference frames recorded from the Swift, and the recipes using it.
 Most were generated from that Swift; Feedback, Slit-Scan and Flow
 Smear, which the Swift drew by chaining Core Image filters, have
-kernels of their own.
+kernels of their own. The 51 looks added since were written as packages
+from the start: Color Correction
+([effects-correction.md](effects-correction.md)), Blur & Sharpen
+([effects-blur.md](effects-blur.md)), Keying & Masks
+([effects-keying.md](effects-keying.md)), Light
+([effects-light.md](effects-light.md)) and Stylize
+([effects-stylize.md](effects-stylize.md)).
 
 ## Inside the app
 
