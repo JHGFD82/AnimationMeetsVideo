@@ -53,6 +53,13 @@ per project:
   playback or a scrub starts. Scrubbing shows the smaller size until it
   stops. While Auto is below full, the menu shows ½ or ¼.
 
+Within a size, what a playing frame draws follows how heavy frames are:
+the compositor tells `RenderMeter` how long each playing frame took
+against how long it is on screen, and `DrawingOptions` moves the motion
+blur samples it draws by that smoothed load (see effects.md, "Time and
+Shutter"). That needs no new composition, so it can go both ways while
+playing, and it gives way before the size does.
+
 Starting playback: whenever the player is paused (after a pause, a seek,
 a new item or a size change) it is prerolled, so its pipeline is already
 full when play is pressed, and it doesn't wait to judge its buffer full

@@ -422,8 +422,13 @@ above, the transition included:
 
 - **Motion Blur**: a shutter angle (180° to start) and a number of samples
   (8 to start, 2 to 64). The clip is drawn at that many moments across the
-  shutter and averaged. While playing, the viewer draws 2 samples, or none
-  at Quarter quality. Paused frames, background renders and export use the
+  shutter and averaged. While playing, the viewer draws as many as frames
+  have room for: 2 to start, halved whenever frames take over 80% of
+  their time on screen to draw, and one more whenever they would still take
+  under half of it with one more, up to the clip's own count (the
+  compositor's `RenderMeter` keeps the smoothed load, `DrawingOptions`
+  the budget, which waits eight frames after each change). None at
+  Quarter quality. Paused frames, background renders and export use the
   full count, so a rendered stretch plays back fully blurred. **Motion Blur
   in Preview**, in the viewer's menu and remembered per Mac like the
   quality setting, turns it off in the viewer altogether.

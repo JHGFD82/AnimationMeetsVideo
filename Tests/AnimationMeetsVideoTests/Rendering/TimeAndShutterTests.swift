@@ -231,6 +231,48 @@ private let frame = CMTime(value: 1, timescale: 24)
         options.update(motionBlurInPreview: false)
         #expect(options.motionBlurSamples(wanted: 8) == 1)
     }
+
+    @Test func playingDrawsAsManyMotionBlurSamplesAsFramesHaveRoomFor() {
+        let options = DrawingOptions(), meter = RenderMeter()
+        options.update(isPlaying: true)
+        #expect(options.motionBlurSamples(wanted: 8) == 2)
+        /// `count` playing frames at 24 fps, each drawn in `share` of its time.
+        func play(_ count: Int, share: Double) {
+            for _ in 0..<count {
+                meter.record(renderSeconds: share / 24, frameSeconds: 1.0 / 24)
+                options.adapt(to: meter)
+            }
+        }
+        // Light frames raise the budget a sample at a time, settling
+        // between steps, up to what the clip asks for and no further.
+        play(DrawingOptions.settleFrames, share: 0.1)
+        #expect(options.motionBlurSamples(wanted: 8) == 3)
+        play(DrawingOptions.settleFrames * 20, share: 0.1)
+        #expect(options.motionBlurSamples(wanted: 8) == 8)
+        #expect(options.motionBlurSamples(wanted: 16) == 8)
+        // Heavy ones halve it.
+        play(DrawingOptions.settleFrames * 2, share: 1.5)
+        #expect(options.motionBlurSamples(wanted: 8) == 2)
+        play(DrawingOptions.settleFrames * 4, share: 1.5)
+        #expect(options.motionBlurSamples(wanted: 8) == 1)
+        // Paused frames and quarter size are as before.
+        options.update(isQuarterSize: true)
+        #expect(options.motionBlurSamples(wanted: 8) == 1)
+        options.update(isPlaying: false)
+        #expect(options.motionBlurSamples(wanted: 8) == 8)
+    }
+
+    @Test func onlyPlayingFramesCountTowardTheLoad() {
+        let meter = RenderMeter()
+        meter.record(renderSeconds: 1)
+        #expect(meter.load == nil)
+        meter.record(renderSeconds: 1.0 / 48, frameSeconds: 1.0 / 24)
+        meter.record(renderSeconds: 1.0 / 12, frameSeconds: 1.0 / 24)
+        let load = try? #require(meter.load)
+        #expect(load?.frames == 2)
+        #expect(abs((load?.share ?? 0) - (0.5 + (2 - 0.5) * RenderMeter.loadWeight)) < 1e-9)
+        #expect(meter.drain().frames == 3)
+    }
 }
 
 /// What Time and Shutter do to the composition built from real footage.

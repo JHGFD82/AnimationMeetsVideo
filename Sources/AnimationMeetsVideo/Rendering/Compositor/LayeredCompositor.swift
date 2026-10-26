@@ -22,7 +22,8 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
     /// How far past the frame, as a fraction of its size on each side,
     /// pictures that are moved off it are kept for later steps.
     let canvasMargin: Double
-    /// Told how long each frame took, when the viewer is watching.
+    /// Told how long each frame took, when the viewer is watching; how
+    /// heavy playing frames are sets how much the viewer draws.
     let meter: RenderMeter?
     /// What the viewer asks of drawing while it plays; nil to draw everything
     /// at full quality, as export does.
@@ -181,7 +182,14 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             }
             context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
             instruction.colorSpace.attach(to: output)
-            instruction.meter?.record(renderSeconds: CACurrentMediaTime() - started)
+            // A playing frame is measured against how long it is on screen,
+            // and the viewer draws later ones more or less by that.
+            let playing = instruction.options?.isPlaying == true
+            let frameSeconds = request.renderContext.videoComposition.frameDuration.seconds
+            if let meter = instruction.meter {
+                meter.record(renderSeconds: CACurrentMediaTime() - started, frameSeconds: playing ? frameSeconds : nil)
+                if playing { instruction.options?.adapt(to: meter) }
+            }
             request.finish(withComposedVideoFrame: output)
         }
     }
