@@ -232,6 +232,8 @@ struct TextOutline: Equatable, Sendable {
     /// place it.
     var followed: TextPath?
     var pathOffset = 0.0
+    /// Whether it runs along the path the other way, on its other side.
+    var flipped = false
     /// How the block strokes, its width 0 while its stroke is off, which a
     /// run with a stroke of its own is stroked with, at its own width
     /// where it has one.
@@ -270,6 +272,7 @@ struct TextOutline: Equatable, Sendable {
         )
         let amounts = laid.glyphs.map { glyph in animators.map { $0.amount(of: glyph, in: laid) } }
         let shifts = trackingShifts(laid, amounts: amounts)
+        let followed = flipped ? self.followed?.reversed() : self.followed
 
         var looks: [Look] = []
         var paths: [Look: CGMutablePath] = [:]
@@ -402,7 +405,7 @@ struct TextOutline: Equatable, Sendable {
     /// a new one joins without being listed here.
     var keyText: String {
         "h t \(String(describing: setting)) \(String(describing: animators)) \(String(format: "%.5f,%.5f", center.x, center.y))"
-            + (followed.map { " p\(String(format: "%.5f", pathOffset)) \($0.closed) \($0.points)" } ?? "")
+            + (followed.map { " p\(String(format: "%.5f", pathOffset)) \($0.closed) \(flipped) \($0.points)" } ?? "")
             + " g\(strokeGeometry?.keyText ?? "-") \(strokeColor ?? [])"
     }
 }

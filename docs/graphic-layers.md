@@ -389,19 +389,32 @@ Built (step 3a):
   stack (a Rectangle, Ellipse, Polygon or Star, not other text), from
   **Path Offset** pixels along it, which can be animated to run the words
   round. The outline's first subpath is flattened (`TextPath`, curves cut
-  into 24 pieces) in the frame's pixels, as that shape was drawn, before
-  any move below it. Each glyph's baseline middle goes at its distance
-  along the path, turned to the path's direction there, so the letters
-  stand on the side the outline's left hand is (outside a shape, whose
-  outlines Core Graphics draws clockwise on screen, except an ellipse's);
-  later lines run parallel to it. Left-aligned text starts at the offset;
-  centered text centers on the path's length, right-aligned ends at its
-  end. A closed path goes round again; past an open one's ends the
-  letters run on straight. Animators still apply, along the path.
-  Position and Anchor don't place text on a path; underlines and
-  strikethroughs follow it in pieces, one under each glyph. Not yet: flipping the
-  text to the other side or direction, and a path of its own (free paths,
-  step 2d).
+  into 24 pieces) in the frame's pixels. A closed outline is turned to
+  start at its topmost point and run clockwise on screen, whatever way
+  Core Graphics drew it (an ellipse from its right, counter-clockwise),
+  so text sits outside the shape and reads clockwise from its top, as in
+  Illustrator. Each glyph's baseline middle goes at its distance along
+  the path, turned to the path's direction there, standing on its
+  outside; later lines run parallel to it. **Flip** runs the text the
+  other way from the same start, on the other side: inside a shape.
+  Left-aligned text starts at the offset; centered text centers on the
+  path's length, right-aligned ends at its end. A closed path goes round
+  again; past an open one's ends the letters run on straight. Animators
+  still apply, along the path. Position and Anchor don't place text on a
+  path; underlines and strikethroughs follow it in pieces, one under each
+  glyph.
+  - **After moves.** A Transform between the shape and the text moves the
+    shape, and the text follows it where it went: the compositor keeps
+    the outline of the last shape it drew, moves it with every move after
+    it as it does the shapes it hasn't drawn yet, and maps it back into
+    the frame's pixels where the text is drawn
+    (`ShapeRendering.following`), as the Stroke effect follows the edges
+    above it. Only the outline moves: a Transform that scales the shape
+    up makes the path longer, not the letters bigger. Stack folding still
+    gives the text the outline as drawn, for its render key and wherever
+    no compositor draws it.
+  - **Its own path.** Text can't have a path of its own yet: that needs
+    free paths (step 2d), which aren't built, so it follows a shape's.
 - **Anchor** is a Paragraph choice of nine points (Top Left to Bottom
   Right, Middle at first): which point of the block, as wide as its wrap
   width or widest line and as tall as its lines, sits at the frame's

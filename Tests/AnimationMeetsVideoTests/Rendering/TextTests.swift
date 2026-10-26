@@ -548,6 +548,70 @@ extension DrawingFixture {
         #expect(line.place(at: 150).point == CGPoint(x: 150, y: 0))
     }
 
+    @Test func aClosedOutlineRunsClockwiseFromItsTop() throws {
+        // Core Graphics draws an ellipse from its right, counter-clockwise
+        // on screen; text runs from its top, clockwise, as in Illustrator.
+        let circle = try #require(TextPath(flattening: CGPath(ellipseIn: CGRect(x: 0, y: 0, width: 200, height: 200), transform: nil)))
+        let start = circle.place(at: 0), soon = circle.place(at: 20)
+        #expect(abs(start.point.x - 100) < 1 && abs(start.point.y) < 1)
+        // Heading right at the top, so going clockwise.
+        #expect(soon.point.x > start.point.x && abs(start.angle) < 0.1)
+        // A quarter of the way round, at the right.
+        let quarter = circle.place(at: circle.length / 4)
+        #expect(abs(quarter.point.x - 200) < 1 && abs(quarter.point.y - 100) < 1)
+        // A polygon drawn the other way is turned round too.
+        let backwards = CGMutablePath()
+        backwards.addLines(between: [CGPoint(x: 0, y: 100), CGPoint(x: 100, y: 100), CGPoint(x: 50, y: 0)])
+        backwards.closeSubpath()
+        let triangle = try #require(TextPath(flattening: backwards))
+        #expect(triangle.points.first == CGPoint(x: 50, y: 0))
+        #expect(triangle.points[1] == CGPoint(x: 100, y: 100))
+        // A rectangle already starts at its top left, clockwise.
+        let square = try #require(TextPath(flattening: CGPath(rect: CGRect(x: 0, y: 0, width: 100, height: 100), transform: nil)))
+        #expect(square.points.prefix(2) == [CGPoint(x: 0, y: 0), CGPoint(x: 100, y: 0)])
+    }
+
+    @Test func flippingRunsTheOtherWayOnTheOtherSide() throws {
+        let circle = try #require(TextPath(flattening: CGPath(ellipseIn: CGRect(x: 0, y: 0, width: 600, height: 600), transform: nil)))
+        let flipped = circle.reversed()
+        #expect(flipped.points.first == circle.points.first)
+        #expect(abs(flipped.length - circle.length) < 1e-6)
+        // From the top it heads left now.
+        #expect(flipped.place(at: 20).point.x < flipped.place(at: 0).point.x)
+        // Outside, the letters reach beyond the circle; flipped, inside it.
+        var outside = TextOutline(setting: setting("Around") { $0.align = .left }, center: .zero)
+        outside.followed = circle
+        var inside = outside
+        inside.flipped = true
+        let out = outside.path.boundingBoxOfPath, within = inside.path.boundingBoxOfPath
+        // Outside, a capital's height above the circle's top; flipped,
+        // hanging inside it, only round letters' overshoot above it.
+        #expect(out.minY < -50)
+        #expect(within.minY > -5 && within.maxY > 50)
+        #expect(outside.keyText != inside.keyText)
+    }
+
+    @Test func textFollowsAnOutlineWhereMovesHavePutIt() throws {
+        var text = Effect(kind: .text)
+        text.text = TextContent(string: "Along")
+        text.changeControl(.textOnPath) { $0.choice = OnOff.on.rawValue }
+        let line = TextPath(points: [.zero, CGPoint(x: 1000, y: 0)], closed: false)
+        let step = try #require(ShapeStep(text, at: .zero, center: .zero, followed: line))
+        // The outline was moved 30 pixels right after it was drawn; the
+        // text, drawn now, follows it there.
+        let outline = CGMutablePath()
+        outline.addLines(between: [.zero, CGPoint(x: 1000, y: 0)])
+        let moved = ShapeRendering.Edge(area: outline, transform: CGAffineTransform(translationX: 30, y: 0))
+        let following = ShapeRendering.following(step, outline: moved, current: .identity)
+        guard case .text(let followed) = following.outline else { Issue.record("Not text"); return }
+        #expect(followed.followed?.points.first == CGPoint(x: 30, y: 0))
+        // Shapes other than text, and text not on a path, are left as they are.
+        var plain = text
+        plain.changeControl(.textOnPath) { $0.choice = OnOff.off.rawValue }
+        let unmoved = try #require(ShapeStep(plain, at: .zero, center: .zero, followed: line))
+        #expect(ShapeRendering.following(unmoved, outline: moved, current: .identity) == unmoved)
+    }
+
     @Test func textFollowsAPathFromItsOffset() {
         var onLine = TextOutline(setting: setting("HHH") { $0.align = .left }, center: .zero)
         onLine.followed = TextPath(points: [CGPoint(x: 0, y: 500), CGPoint(x: 2000, y: 500)], closed: false)

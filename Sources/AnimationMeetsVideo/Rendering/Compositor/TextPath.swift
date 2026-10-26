@@ -66,8 +66,37 @@ struct TextPath: Equatable, Sendable {
             }
         }
         guard points.count >= 2 else { return nil }
+        if closed { points = Self.clockwiseFromTheTop(points) }
         self.init(points: points, closed: closed)
         guard length > 0 else { return nil }
+    }
+
+    /// A closed outline's points from its topmost point (the leftmost of
+    /// those level with it), going clockwise on screen, as Illustrator
+    /// sets type on a circle: from the top, round the outside. Core
+    /// Graphics draws a rectangle that way but an ellipse from its right,
+    /// the other way round.
+    private static func clockwiseFromTheTop(_ points: [CGPoint]) -> [CGPoint] {
+        var ring = points
+        if ring.count > 1, ring.first == ring.last { ring.removeLast() }
+        guard ring.count >= 3 else { return points }
+        // Twice the signed area, y down: above 0 runs clockwise on screen.
+        var area = 0.0
+        for index in ring.indices {
+            let a = ring[index], b = ring[(index + 1) % ring.count]
+            area += a.x * b.y - b.x * a.y
+        }
+        if area < 0 { ring.reverse() }
+        let top = ring.indices.min { (ring[$0].y, ring[$0].x) < (ring[$1].y, ring[$1].x) } ?? 0
+        return Array(ring[top...] + ring[..<top])
+    }
+
+    /// The same outline the other way round, from the same start: text on
+    /// it runs the other way, on its other side (Flip).
+    func reversed() -> TextPath {
+        guard closed, let first = points.first else { return TextPath(points: points.reversed(), closed: closed) }
+        // Closed: start where it did, the last point (its first again) dropped.
+        return TextPath(points: [first] + points.dropLast().dropFirst().reversed(), closed: true)
     }
 
     /// The point `distance` along the path and the direction it heads

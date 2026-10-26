@@ -63,6 +63,7 @@ struct ShapeStep: Equatable, Sendable {
             if let followed, effect.control(.textOnPath).map({ $0.enabled && $0.choice == OnOff.on.rawValue }) ?? false {
                 text.followed = followed
                 text.pathOffset = single(.pathOffset)
+                text.flipped = effect.control(.pathFlip).map { $0.enabled && $0.choice == OnOff.on.rawValue } ?? false
             }
             text.strokeGeometry = ShapeStroke(geometryOf: effect, at: time)
             if let color = effect.control(.stroke), color.enabled {

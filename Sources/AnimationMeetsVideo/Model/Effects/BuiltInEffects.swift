@@ -82,7 +82,7 @@ extension EffectKind {
     ]
     /// Whether text follows the outline of the shape above it, and where
     /// along it it starts.
-    static let pathControls: [ControlKind] = [.textOnPath, .pathOffset]
+    static let pathControls: [ControlKind] = [.textOnPath, .pathOffset, .pathFlip]
     static let openTypeControls: [ControlKind] = [
         .ligatures, .contextualAlternates, .figures, .fractions, .ordinals, .swash, .stylisticAlternates, .stylisticSet,
     ]
@@ -148,6 +148,7 @@ extension ControlKind {
     static let textAnchor = ControlKind(builtIn: "textAnchor")
     static let textOnPath = ControlKind(builtIn: "textOnPath")
     static let pathOffset = ControlKind(builtIn: "pathOffset")
+    static let pathFlip = ControlKind(builtIn: "pathFlip")
     static let ligatures = ControlKind(builtIn: "ligatures")
     static let contextualAlternates = ControlKind(builtIn: "contextualAlternates")
     static let figures = ControlKind(builtIn: "figures")
@@ -433,6 +434,8 @@ enum BuiltInEffects {
         // Path Offset pixels along it.
         ControlDefinition(.textOnPath, "On Path", .text, choice: OnOff.off),
         ControlDefinition(.pathOffset, "Path Offset", .text, defaults: [0], unit: " px"),
+        // The other side of the path, running the other way.
+        ControlDefinition(.pathFlip, "Flip", .text, choice: OnOff.off),
         // OpenType
         ControlDefinition(.ligatures, "Ligatures", .text, choice: TextLigatures.standard),
         ControlDefinition(.contextualAlternates, "Contextual Alternates", .text, choice: OnOff.on),

@@ -58,6 +58,20 @@ enum ShapeRendering {
             .transformed(by: CGAffineTransform(translationX: bounds.minX, y: bounds.minY))
     }
 
+    /// `shape`, if it is text on a path, following `outline` (the last shape
+    /// drawn before it) where that is now, after the moves since, in the
+    /// frame's pixels as a shape added now is drawn from: `current` is the
+    /// transform such a shape gets. Otherwise as it is.
+    static func following(_ shape: ShapeStep, outline: Edge?, current: CGAffineTransform) -> ShapeStep {
+        guard case .text(var text) = shape.outline, text.followed != nil, let outline else { return shape }
+        var toCurrent = outline.transform.concatenating(current.inverted())
+        guard let moved = outline.area.copy(using: &toCurrent), let path = TextPath(flattening: moved) else { return shape }
+        text.followed = path
+        var followed = shape
+        followed.outline = .text(text)
+        return followed
+    }
+
     /// The edges as one area, in the frame's pixels as a shape added now
     /// would be drawn from: `current` is the transform such a shape gets.
     /// Nil when there are none.

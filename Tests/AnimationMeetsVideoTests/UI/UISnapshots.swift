@@ -639,8 +639,18 @@ struct UISnapshots {
         animator.changeControl(.animatorPosition) { $0.number = AnimatedValue(ComponentValue(values: [0, -12])) }
         animator.changeControl(.animatorFill) { $0.enabled = true }
         animator.changeControl(.animatorStroke) { $0.enabled = true; $0.number = AnimatedValue(ComponentValue(values: [1, 1, 0.3, 1])) }
+        // From the top, clockwise round the outside, as in Illustrator.
+        text.changeControl(.textAlign) { $0.choice = TextAlign.left.rawValue }
+        // And flipped: inside, the other way round.
+        var inside = Effect(kind: .text)
+        inside.text = TextContent(string: "flipped inside")
+        inside.changeControl(.fontSize) { $0.setComponent(0, to: 36, at: .zero) }
+        inside.changeControl(.textAlign) { $0.choice = TextAlign.left.rawValue }
+        inside.changeControl(.textOnPath) { $0.choice = OnOff.on.rawValue }
+        inside.changeControl(.pathFlip) { $0.choice = OnOff.on.rawValue }
+        inside.changeControl(.fill) { $0.number = AnimatedValue(ComponentValue(values: [0.6, 0.9, 1, 1])) }
         let steps = StackFolding.steps(
-            effects: [circle, text, animator], anchorPoint: AnimatedValue(.zero), at: .zero, center: CGPoint(x: 350, y: 350)
+            effects: [circle, text, animator, inside], anchorPoint: AnimatedValue(.zero), at: .zero, center: CGPoint(x: 350, y: 350)
         )
         var paints: [(area: CGPath, color: [Double])] = []
         for case .shape(let shape) in steps { paints += shape.paints }
