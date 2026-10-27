@@ -432,6 +432,7 @@ extension TimelineView {
                         height: clipRowHeight(of: layer),
                         showsChannels: layer.kind != .video && showsChannels(of: layer),
                         visibleX: viewport.visibleContentX,
+                        expandedJoint: expandedJoint,
                         onSelectClip: { clip in host.dispatch(TimelineAction.selectClip(layer: layer.id, clip: clip)) },
                         resolveMove: { clip, pointer, start in resolveMove(clip, from: layer.id, pointer: pointer, to: start) },
                         onMoveClip: { clipID, target, newStart in host.dispatch(TimelineAction.moveClip(layer: layer.id, clip: clipID, toLayer: target, start: newStart)) },

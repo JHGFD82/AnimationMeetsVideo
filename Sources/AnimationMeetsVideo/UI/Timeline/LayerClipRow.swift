@@ -43,6 +43,9 @@ struct LayerClipRow: View {
     let showsChannels: Bool
     /// The on-screen part of the row, in its own x coordinates.
     let visibleX: ClosedRange<CGFloat>
+    /// The incoming clip of the joining transition whose footage is open,
+    /// drawn even out of view.
+    var expandedJoint: UUID? = nil
     let onSelectClip: (TimelineClip) -> Void
     /// Where a clip dragged with the pointer at a point in window
     /// coordinates, and asked to start at a time, lands.
@@ -175,6 +178,34 @@ struct LayerClipRow: View {
         }
     }
 
+    /// How far either side of the view clips are still drawn, so a scroll
+    /// or a rubber band's stretch doesn't show one arriving late.
+    static let cullMargin: CGFloat = 200
+
+    /// Whether any of the clip is on screen, or nearly: `visibleX` is the
+    /// on-screen part of a row laid out at `pixelsPerSecond`, in the row's
+    /// own (unscrolled) coordinates.
+    static func isVisible(_ clip: TimelineClip, pixelsPerSecond: CGFloat, in visibleX: ClosedRange<CGFloat>) -> Bool {
+        let start = CGFloat(clip.startOffset.seconds) * pixelsPerSecond
+        let end = CGFloat(clip.endOffset.seconds) * pixelsPerSecond
+        return end >= visibleX.lowerBound - cullMargin && start <= visibleX.upperBound + cullMargin
+    }
+
+    /// The clips drawn: those in view, and wherever they are, those being
+    /// moved (dragged, pushed aside, following a slip), the open joint's
+    /// and the selected one, which the keyboard and VoiceOver may be on.
+    /// A long timeline zoomed in has far more clips than show, and each is
+    /// a large view.
+    private var shownClips: [TimelineClip] {
+        let browser = browserPushed
+        let selected = selection?.layerID == layer.id ? selection?.timelineClipID : nil
+        return layer.clips.filter { clip in
+            Self.isVisible(clip, pixelsPerSecond: pixelsPerSecond, in: visibleX) || clip.id == liftedClipID || clip.id == expandedJoint || clip.id == selected
+                || pushed[clip.id] != nil || browser[clip.id] != nil
+                || followerShift.map { clip.startOffset >= $0.after } == true
+        }
+    }
+
     /// Conform Timeline to Clip, for clips showing pictures of a file.
     private func conformAction(for clip: TimelineClip, info: ResolvedClipInfo?) -> (() -> Void)? {
         guard case .media(let media)? = info, media.kind.hasPictures, clip.streams != .audio else { return nil }
@@ -217,8 +248,9 @@ struct LayerClipRow: View {
     }
 
     var body: some View {
+        let clips = shownClips
         ZStack(alignment: .topLeading) {
-            ForEach(layer.clips) { clip in
+            ForEach(clips) { clip in
                 let isSelected = selection?.layerID == layer.id && selection?.timelineClipID == clip.id
                 let isInGroup = groupSelected.contains(clip.id)
                 let info = project.resolvedInfo(for: clip)
@@ -313,7 +345,7 @@ struct LayerClipRow: View {
                 .zIndex(liftedClipID == clip.id ? 1 : 0)
             }
             // Transitions joining two clips sit over the cut, on top of both.
-            ForEach(layer.clips) { clip in
+            ForEach(clips) { clip in
                 if let joint = project.joint(at: clip.id, in: timelineID, layer: layer.id) {
                     let isSelected = selection?.layerID == layer.id && selection?.timelineClipID == clip.id
                         && selection?.transitionEdge == .leading
@@ -382,6 +414,7 @@ extension LayerClipRow: Equatable {
                 && lhs.groupSelected == rhs.groupSelected
                 && lhs.pixelsPerSecond == rhs.pixelsPerSecond && lhs.width == rhs.width && lhs.height == rhs.height
                 && lhs.showsChannels == rhs.showsChannels && lhs.visibleX == rhs.visibleX
+                && lhs.expandedJoint == rhs.expandedJoint
                 && lhs.pushed == rhs.pushed && lhs.tool == rhs.tool
                 && lhs.snapTolerance == rhs.snapTolerance
                 && lhs.showsVolumeLines == rhs.showsVolumeLines

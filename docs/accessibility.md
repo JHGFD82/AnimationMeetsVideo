@@ -79,7 +79,9 @@ playhead to the middle of the view when it lands out of view.
 ### Timeline
 
 - **Layers.** Each layer's clip row is a group named as the timeline shows
-  the layer, holding its clips.
+  the layer, holding its clips in view or nearly (and the selected one,
+  wherever it is): a row doesn't build the clips scrolled far out of view,
+  so scroll the timeline, or move the playhead, to reach those.
 - **Clips** read as their name and kind ("Interview, video clip"), then
   where they start and how long they are in the timeline's timecode, their
   transitions, and whether they carry their own sound. Pressing a clip
