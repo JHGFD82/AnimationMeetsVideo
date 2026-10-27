@@ -207,8 +207,8 @@ struct ClipBlockView: View {
                 transitionMarks(of: shown, liveX: liveX, drawnX: drawnX, drawnWidth: drawnWidth)
             }
             .overlay(alignment: .bottomLeading) {
-                if let progress = renderer?.progress(forClip: model.clip.id) {
-                    RenderProgressBar(progress: progress)
+                if let renderer {
+                    ClipRenderProgressView(cell: renderer.progressCell(forClip: model.clip.id))
                 }
             }
             .clipShape(shape)

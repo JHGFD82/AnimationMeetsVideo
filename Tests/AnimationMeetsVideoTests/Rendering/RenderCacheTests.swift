@@ -247,9 +247,14 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         scheduler.packageURL = sandbox.packageURL
         let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: t, forPreview: true)
 
+        // Asked for before the plan arrives, as a clip block may be.
+        let cell = scheduler.progressCell(forClip: top.clipID)
+        #expect(cell.value == nil)
+
         scheduler.setPlaying(true)
         scheduler.update(project: project, timelineID: t, segments: composed.segments)
         #expect(scheduler.progress(forClip: top.clipID) == 0)
+        #expect(cell.value == 0)
         try await Task.sleep(for: .milliseconds(600))
         #expect(scheduler.finishedCount == 0)
 
@@ -260,6 +265,8 @@ private func centerGray(of asset: AVAsset, videoComposition: AVVideoComposition?
         #expect(scheduler.finishedCount == 1)
         #expect(scheduler.pending.isEmpty)
         #expect(scheduler.progress(forClip: top.clipID) == nil)
+        #expect(cell.value == nil)
+        #expect(scheduler.progressCell(forClip: top.clipID) === cell)
         let key = try #require(composed.segments.first(where: \.needsRender)?.key)
         #expect(scheduler.cache?.file(for: key) != nil)
     }
