@@ -145,6 +145,11 @@ extension TimelineView {
                         .rubberBandStretch(zoomBand)
                         .rubberBandScroll(scrollBand, length: trackAreaWidth)
                         .clipped()
+                        // Clipping hides what is scrolled out of sight but
+                        // still lets it take clicks, and to the left that is
+                        // over the names: a transition's footage lane, as
+                        // wide as the timeline, hid the Done beside it.
+                        .contentShape(Rectangle())
                 }
                 .overlay(alignment: .topLeading) { layerDropIndicator(kind) }
                 .edgeAutoScroll(areaScroller(kind))
