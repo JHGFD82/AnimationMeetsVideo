@@ -107,7 +107,7 @@ private struct ExternalViewerContent: View {
             if isSynced {
                 ZStack {
                     Color.black.ignoresSafeArea()
-                    PlayerLayerView(player: sharedPlayback.player, still: sharedPlayback.cover)
+                    ViewerLayerView(display: sharedPlayback.display)
                         .ignoresSafeArea()
                     AnnotationOverlay(model: annotations)
                         .ignoresSafeArea()

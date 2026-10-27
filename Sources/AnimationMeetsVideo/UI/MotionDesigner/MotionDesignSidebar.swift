@@ -278,7 +278,7 @@ private struct MotionDesignMonitor: View {
     let session: MotionDesignSession
 
     var body: some View {
-        PlayerLayerView(player: session.playback.player, still: session.playback.cover)
+        ViewerLayerView(display: session.playback.display)
             .aspectRatio(aspect, contentMode: .fit)
             .frame(maxWidth: .infinity)
             .background(Design.Surface.well.color)

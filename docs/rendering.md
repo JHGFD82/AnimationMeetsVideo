@@ -49,10 +49,11 @@ per project:
   The player stays at the level it
   settled on when paused, so pressing play doesn't swap the composition
   and throw away what the player had buffered. Instead, once a paused
-  player has settled on a frame, that frame is drawn at full size
-  separately (`AVAssetImageGenerator`) and shown over the video until
-  playback or a scrub starts. Scrubbing shows the smaller size until it
-  stops. While Auto is below full, the menu shows ½ or ¼.
+  player has settled on a frame, that frame is drawn again at full size
+  from the frames the player decoded for it (`FrameRedrawer`, see "The
+  viewer's picture" below), and the smaller one is never shown. Scrubbing
+  shows the smaller size until it stops. While Auto is below full, the
+  menu shows ½ or ¼.
 
 Within a size, what a playing frame draws follows how heavy frames are:
 the compositor tells `RenderMeter` how long each playing frame took
@@ -82,6 +83,66 @@ Limits:
 - Changing size during playback swaps the composition, which can cause a
   brief hitch. Auto changes size during playback only to step down, and
   never on play.
+
+## The viewer's picture (implemented)
+
+One thing draws the viewer's picture, paused or playing: `ViewerDisplay`,
+a pixel buffer shown by a plain layer (and by the synced external
+display's, the same buffer). There is no `AVPlayerLayer` and nothing drawn
+over it, so nothing can show through, be handed over to, or differ from
+it. A picture stays until a newer one replaces it: a new player item, an
+emptied timeline or a slow frame never shows black in between.
+
+- **Where frames come from.** Every player item gets an
+  `AVPlayerItemVideoOutput` asking for the compositor's own pixel format
+  (8-bit BGRA for SDR timelines, half floats otherwise,
+  `ComposedTimeline.viewerPixelFormat`), so the frames it hands over are the
+  compositor's, unconverted, tagged with the timeline's colors. A display
+  link pulls the frame for each refresh while playing; paused, it looks for
+  a frame for a moment after a seek, a new item or a changed composition,
+  and otherwise waits for the output to say it has one.
+- **Frames drawn again.** The viewer's compositions keep the frames the
+  paused frame was drawn from (`SourceCapture`), armed for the paused time
+  only, since a paused player draws the next frames ahead and a playing one
+  needs none. `FrameRedrawer` composes that frame again from them with the
+  same Core Image options, into the same pixel format, tagged the same way,
+  so its picture is the compositor's: a value edit (see "Values without a
+  build") and the full-size paused frame under Auto are drawn this way and
+  put on screen in place of the output's frame with nothing else changing.
+- **Swapping the item.** The new item is seeked to the playhead and put in
+  the player, and the viewer keeps its picture until the new item's output
+  has a frame (`PlaybackModel.swap`); an output only gets frames from its
+  player's current item, so the item goes in first and the picture changes
+  once its frame is there. A paused player holds back a new item's first
+  picture until its sound is ready, which prerolling usually ends at once;
+  if it hasn't drawn after two seconds it is seeked where it is and
+  prerolled again (logged). Playing, the new item is started at an exact
+  host time (`setRate(_:time:atHostTime:)`) at the time the timeline has
+  reached by then, so the playhead neither falls behind nor jumps, and its
+  first frame fades in over the last one in 80 ms.
+- **When items are built and swapped.** `ViewerPipeline`, outside any
+  view, takes everything the viewer follows as events, in order, on one
+  loop. An edit that leaves the `StructureKey` the same never builds (see
+  "Values without a build"). One of structure asks for a build of the
+  latest project: there is one request, which a newer edit overwrites, and
+  one build at a time. A build is never cancelled by a newer edit, so
+  something always finishes; a result whose key is no longer the latest is
+  dropped and the latest built, so a burst of edits builds at most the
+  first and the last. A 75 ms pause before a build lets a burst land; it
+  only saves work. A build is swapped in only while no value drag is under
+  way, and one for renders alone only while paused. Another timeline
+  stops the build under way (`CompositionExporter` checks for cancellation
+  between its stages and clips) and builds the new one at once. The editor
+  only tells it what it shows (`ViewerPipeline.show`), once per edit; it
+  works out the keys itself, skips an edit the picture doesn't show (a
+  rename, a volume), and follows renders finishing, the package, motion
+  blur in the viewer, play and pause and value drags on its own. The
+  timeline below is drawn from a snapshot of what it shows
+  (`TimelineView.Snapshot`), so it isn't redrawn for an edit of another
+  timeline's values or a tick of the playhead.
+- **An emptied timeline** lets go of the player's item, and the viewer
+  says there are no clips over its last picture, so emptying and filling a
+  timeline again (an undo) shows no black.
 
 ## Render cache (implemented)
 
@@ -148,46 +209,38 @@ Limits:
   from the playhead, without waiting for quiet, a cool Mac or Low Power
   Mode to end, and tries the failed pieces again; playing, exporting, or
   any edit or scrub stops it, and rendering goes back to waiting. Each finished piece
-  rebuilds the viewer's composition so it is used at once. Rendering
-  only happens while paused, so the new player item is seeked to the
-  playhead before it is swapped in, and the viewer keeps showing the old
-  item's frame until the new one draws, so the picture doesn't blink.
-  That can take half a second or more, since a paused player holds back
-  a new item's first picture until its sound is ready. The player is
-  prerolled as soon as the new item is ready, which usually makes it draw
-  at once. If it still hasn't drawn after five seconds it is seeked to
-  where it is and prerolled again, and only if that fails too is the old
-  frame let go (both are logged), since an uncovered layer shows black
-  until the next play or scrub. A render that finishes just as play is
-  pressed waits for the next pause, since swapping the item mid-play
-  freezes the picture.
-- **Dragging a value.** While a value field is dragged
-  (`ProjectHistory.beginGesture`), a change to a clip's speed alone waits
-  for the mouse to be released, since retiming is judged by playing. Any
-  other change updates the viewer as it goes, as frames drawn at a size
-  the renderer keeps up with (`LiveGovernor`): a frame that takes over
-  0.1 s drops the next to half size and then quarter size (a quarter of
-  the pixels each step), and four fast frames in a row, ones that would
-  still fit at the larger size, bring it back up. Each drag starts at
-  full size, and the frame after it is full size. The player item is
-  swapped once, when the mouse is released.
-- **Values without a build.** A paused frame drawn from a build keeps
-  the decoded frames it was drawn from and the stretch's drawing
-  (`SourceCapture`). An edit that changes only values, which leaves the
-  project's `structure` the same (effect controls, anchor points, volume
-  and pan), is then drawn from those: each clip's new values go into the
-  drawing (`DrawClip.withValues`) and the one frame is composed again
-  off the main thread (`PlaybackModel.redrawLive`), about 6 ms on an HD
+  rebuilds the viewer's composition so it is used at once, swapped in as
+  any item is (see "The viewer's picture"). A render that finishes just as
+  play is pressed waits for the next pause, since a swap mid-play holds
+  the picture for a moment.
+- **Values without a build.** An edit that leaves the project's
+  `StructureKey` the same (effect controls and anchor points, which the
+  compositor takes, and volume and pan, which the sound taps read) never
+  builds anything, paused or playing. Its values go into `LiveValues`, the
+  player's own store, which the compositor reads for every frame it draws
+  and puts into each clip's drawing (`DrawClip.withValues`). Paused, the
+  frame on screen is drawn again from the frames it was drawn from
+  (`FrameRedrawer`, see "The viewer's picture"), about 6 ms on an HD
   timeline of three layers and a shape against about 46 ms to build and
-  draw. The timeline is built when the drag ends, or for an edit that
-  isn't a drag (a color well) once edits pause for 0.3 s, and renders
-  follow when it is idle. A moved playhead, a changed structure, playing,
-  or a rendered stretch under the playhead (which can't take new values)
-  builds as below; a build begun before such a frame doesn't draw over it. Such a frame is drawn into a surface tagged with the
-  timeline's colors as the compositor tags the player's frames
-  (`CoverPicture.frame`), so the screen color-matches it on the GPU as it
-  does the video; an image would be converted on the main thread each
-  time it is shown.
+  draw; with nothing to draw it from yet (the player paused on a frame it
+  drew while playing), the player is asked to draw it again, through the
+  compositor, which keeps it for the next edit. A stretch that plays from
+  a render holds the values it was made with, so the item draws every
+  stretch from its clips instead (`PlaybackModel.playWithoutRenders`):
+  only its video composition changes, so the sound plays on and the
+  picture stays until the new frame is there. A value drag does that when
+  it starts, so none of its steps waits on anything. The renderer's plan
+  is made again once value edits pause for 0.3 s, or when a drag ends,
+  without swapping the item, since its pieces are named for what they show;
+  a finished render then swaps in an item built with it, which shows the
+  same picture.
+- **Dragging a value.** While a value field is dragged
+  (`ProjectHistory.beginGesture`), each step is a write to `LiveValues` and
+  a frame drawn again. A change of structure during it (a clip's speed) is
+  built when the mouse is released, since retiming is judged by playing,
+  and no item is swapped before then. Nothing renders from the drag's start
+  until what follows its end (a build swapped in, or the renderer's plan
+  made again) is done.
 - **Clips' pictures kept between frames.** A clip's finished picture (put
   into the frame and run through its stack and transitions, before it is
   drawn over what is below) is drawn into memory and kept when a later
@@ -224,16 +277,9 @@ Limits:
   change of size stops it. It reaches only as far as it got before play
   was pressed, so it covers a heavy stretch's first seconds at once;
   background renders cover the rest once the timeline is idle.
-- **Following other edits.** Each change builds a new composition, and while paused the
-  frame under the playhead is drawn from it (`LiveFrameRenderer`, latest
-  request wins) and shown over the player. A build is never cancelled by
-  the next edit, only queued behind it, so something always finishes. The
-  player item is swapped once edits have paused for 0.3 s. The viewer
-  never uncovers a picture older than the one it replaces: when the item
-  swaps, the held frame is a copy of whatever is on screen (live frame or
-  full-size still), not the old video frame, and the old still stays
-  until its replacement is drawn. Any new source of pictures (a still, a
-  live frame) should go through `PlaybackModel.cover` for this reason.
+- **Following other edits.** An edit that changes the structure builds
+  a new composition, swapped in once it is built, playing or paused (see
+  "The viewer's picture").
 - **Drawing frames at once.** The viewer's compositor draws one frame at a
   time, in the order asked for, so a seek lets go of everything queued.
   Export and background renders, which draw without `DrawingOptions`,

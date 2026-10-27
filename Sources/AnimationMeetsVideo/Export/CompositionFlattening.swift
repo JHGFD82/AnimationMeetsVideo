@@ -58,6 +58,9 @@ extension CompositionExporter {
             var overlayNodes: [BuildNode] = [], ownNodes: [BuildNode] = [], underlayNodes: [BuildNode] = []
 
             for clip in clips {
+                // Media is loaded clip by clip; a build no longer wanted
+                // stops between them.
+                try Task.checkCancellation()
                 func stack(of clip: TimelineClip, edges: EdgeTransitions? = nil) -> ClipStack {
                     ClipStack(clip: clip, center: center, shift: offset, edges: edges, colorSpace: timeline.colorSpace, frameDuration: timeline.frameDuration)
                 }

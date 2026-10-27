@@ -787,3 +787,50 @@ struct TimelineView: View {
         }
     }
 }
+
+extension TimelineView: Equatable {
+    /// What the timeline draws from (the editor marks it `.equatable()`):
+    /// its own timeline as it is, values included, for its lanes and volume
+    /// lines; the rest of the project without values or this timeline's
+    /// clips (`EditingProject.structure(withoutClipsIn:)`), for the media,
+    /// nested timelines and layers' names it shows; the selection, the clip
+    /// it is asked to focus on, and the panels it toggles. Not the
+    /// playhead, which views of their own follow (`PlayheadState`), so a
+    /// tick of it, or an edit of another timeline's values, doesn't redraw
+    /// it. Its actions read the project as they act, not as it was drawn.
+    struct Snapshot: Equatable {
+        var timeline: Timeline
+        var context: EditingProject
+        var selection: TimelineSelection?
+        var focus: TimelineClipFocus?
+        var showsEffects: Bool
+        var showsEffectsLibrary: Bool
+        var showsSidePanel: Bool
+        var showsMeter: Bool
+        var beatTracks: [UUID: BeatTrack]
+    }
+
+    var snapshot: Snapshot {
+        Snapshot(
+            timeline: timeline, context: project.structure(withoutClipsIn: timelineID), selection: selection, focus: focus,
+            showsEffects: showsEffects, showsEffectsLibrary: showsEffectsLibrary, showsSidePanel: showsSidePanel,
+            showsMeter: showsMeter, beatTracks: beatTracks
+        )
+    }
+
+    nonisolated static func == (lhs: TimelineView, rhs: TimelineView) -> Bool {
+        MainActor.assumeIsolated {
+            guard lhs.playback === rhs.playback, lhs.playhead === rhs.playhead, lhs.effectsState === rhs.effectsState,
+                  lhs.timelineID == rhs.timelineID
+            else { return false }
+            // The same project draws the same; only another one is worth
+            // taking apart.
+            if lhs.project == rhs.project {
+                return lhs.selection == rhs.selection && lhs.focus == rhs.focus && lhs.showsEffects == rhs.showsEffects
+                    && lhs.showsEffectsLibrary == rhs.showsEffectsLibrary && lhs.showsSidePanel == rhs.showsSidePanel
+                    && lhs.showsMeter == rhs.showsMeter && lhs.beatTracks == rhs.beatTracks
+            }
+            return lhs.snapshot == rhs.snapshot
+        }
+    }
+}

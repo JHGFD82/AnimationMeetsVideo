@@ -80,3 +80,37 @@ extension CompositionKey {
         return neutral(timelines) == neutral(old.timelines)
     }
 }
+
+/// What the viewer's player item has to be built again for: the
+/// composition (`CompositionKey`) without what the compositor takes as each
+/// frame is drawn (`LiveValues`), which is every clip's effects' values and
+/// anchor point. Two projects with the same key play the same item, the
+/// values patched in; one that differs (a clip added, moved, trimmed or
+/// retimed, a transition, the layers' order, a replaced file, an effect
+/// added, removed or turned off, a pan moved off center) is built again.
+struct StructureKey: Equatable {
+    private var composition: CompositionKey
+
+    init(project: EditingProject) {
+        self.init(composition: CompositionKey(project: project))
+    }
+
+    init(composition key: CompositionKey) {
+        composition = key
+        for t in composition.timelines.indices {
+            for l in composition.timelines[t].layers.indices {
+                for c in composition.timelines[t].layers[l].clips.indices {
+                    composition.timelines[t].layers[l].clips[c].effects =
+                        composition.timelines[t].layers[l].clips[c].effects.map(Effect.bare)
+                    composition.timelines[t].layers[l].clips[c].anchorPoint = AnimatedValue(.zero)
+                }
+            }
+        }
+    }
+
+    /// Whether the only difference from `old` is clips' speed (and the
+    /// clips after them moving to follow it), which only playing shows.
+    func differsOnlyInSpeed(from old: StructureKey) -> Bool {
+        composition.differsOnlyInSpeed(from: old.composition)
+    }
+}
