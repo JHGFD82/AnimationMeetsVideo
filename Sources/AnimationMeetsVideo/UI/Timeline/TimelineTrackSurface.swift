@@ -40,7 +40,7 @@ extension TimelineView {
         // drag snaps, so moving it doesn't change what the rows compare.
         let snapKey = SnapKey(
             editCount: project.editCount, timelineID: timelineID, snapping: snapping,
-            pixelsPerSecond: viewport.pixelsPerSecond, markers: snapping ? drawnBeats(viewport) : []
+            pixelsPerSecond: viewport.pixelsPerSecond, beatMarkersVersion: beatMarkersVersion
         )
 
         VStack(alignment: .leading, spacing: 0) {
@@ -168,20 +168,23 @@ extension TimelineView {
             liveSnap.targets = key.snapping
                 ? derived.snapTargets(
                     of: project, in: timelineID, live: snapPlayhead,
-                    markers: key.markers, pixelsPerSecond: key.pixelsPerSecond
+                    markers: drawnBeats(pixelsPerSecond: key.pixelsPerSecond), markersVersion: key.beatMarkersVersion,
+                    pixelsPerSecond: key.pixelsPerSecond
                 ) : nil
         }
     }
 }
 
-/// What the snap targets are built from. The drawn beat markers are in
-/// it because choosing another beat layer changes them without an edit.
+/// What the snap targets are built from. The beat markers go by their
+/// version (`TimelineView.beatMarkersVersion`), since choosing another
+/// beat layer changes them without an edit, and comparing the markers
+/// themselves on every scroll step would cost a walk over every beat.
 private struct SnapKey: Equatable {
     var editCount: UInt64
     var timelineID: UUID
     var snapping: Bool
     var pixelsPerSecond: CGFloat
-    var markers: [CMTime]
+    var beatMarkersVersion: UInt64
 }
 
 /// The ruler, with the render status along its foot. It reads the zoom

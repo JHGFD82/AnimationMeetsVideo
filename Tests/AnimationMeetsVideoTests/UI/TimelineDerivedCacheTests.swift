@@ -50,24 +50,40 @@ struct TimelineDerivedCacheTests {
         let cache = TimelineDerivedCache()
         let live = LivePlayhead()
         let id = state.value.rootTimelineID
-        let first = cache.snapTargets(of: state.value, in: id, live: live, markers: [], pixelsPerSecond: 10)
+        let first = cache.snapTargets(of: state.value, in: id, live: live, markers: [], markersVersion: 1, pixelsPerSecond: 10)
         #expect(first.targets.map(\.time).contains(seconds(3)))
 
-        // Kept: a project with the same stamp but another section gets the
-        // targets already built.
+        // Kept: the same stamp, markers version and zoom get the targets
+        // already built, whatever the project or markers handed in.
         var sameStamp = state.value
         sameStamp.timelines[0].sections = []
-        #expect(cache.snapTargets(of: sameStamp, in: id, live: live, markers: [], pixelsPerSecond: 10) == first)
+        let kept = cache.snapTargets(of: sameStamp, in: id, live: live, markers: [seconds(9)], markersVersion: 1, pixelsPerSecond: 10)
+        #expect(kept == first)
 
         // Built again for new markers, a new zoom and a new edit.
-        let marked = cache.snapTargets(of: state.value, in: id, live: live, markers: [seconds(5)], pixelsPerSecond: 10)
+        let marked = cache.snapTargets(of: state.value, in: id, live: live, markers: [seconds(5)], markersVersion: 2, pixelsPerSecond: 10)
         #expect(marked.targets.map(\.time).contains(seconds(5)))
-        let zoomed = cache.snapTargets(of: sameStamp, in: id, live: live, markers: [seconds(5)], pixelsPerSecond: 20)
+        let zoomed = cache.snapTargets(of: sameStamp, in: id, live: live, markers: [seconds(5)], markersVersion: 2, pixelsPerSecond: 20)
         #expect(!zoomed.targets.map(\.time).contains(seconds(3)))
         let sectionID = try #require(state.value.timelines[0].sections.first?.id)
         state.value.deleteSection(sectionID, in: id)
-        let edited = cache.snapTargets(of: state.value, in: id, live: live, markers: [seconds(5)], pixelsPerSecond: 20)
+        let edited = cache.snapTargets(of: state.value, in: id, live: live, markers: [seconds(5)], markersVersion: 2, pixelsPerSecond: 20)
         #expect(!edited.targets.map(\.time).contains(seconds(3)))
+    }
+
+    @Test func keptSnapTargetsDontWorkOutTheMarkers() {
+        let state = project()
+        let cache = TimelineDerivedCache()
+        let live = LivePlayhead()
+        let id = state.value.rootTimelineID
+        var drawn = 0
+        func markers() -> [CMTime] {
+            drawn += 1
+            return []
+        }
+        _ = cache.snapTargets(of: state.value, in: id, live: live, markers: markers(), markersVersion: 1, pixelsPerSecond: 10)
+        _ = cache.snapTargets(of: state.value, in: id, live: live, markers: markers(), markersVersion: 1, pixelsPerSecond: 10)
+        #expect(drawn == 1)
     }
 
     @Test func invalidatingDropsWhatWasKept() {

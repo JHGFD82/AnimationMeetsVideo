@@ -19,10 +19,11 @@ final class TimelineDerivedCache {
     private struct SnapKey: Equatable {
         var editCount: UInt64
         var timelineID: UUID
+        /// The zoom, which thins the beat markers drawn.
         var pixelsPerSecond: CGFloat
-        /// The beat markers drawn, which the zoom thins and another beat
-        /// layer replaces without an edit.
-        var markers: [CMTime]
+        /// Which beat markers there are, which another beat layer changes
+        /// without an edit.
+        var markersVersion: UInt64
     }
 
     // Written as bodies read them, so not watched: a write would ask for
@@ -41,16 +42,22 @@ final class TimelineDerivedCache {
         return built
     }
 
+    /// `markers` are the beat markers drawn at `pixelsPerSecond`, and
+    /// `markersVersion` says which markers they were drawn from: the same
+    /// version and zoom are taken to give the same markers.
     func snapTargets(
         of project: EditingProject,
         in timelineID: UUID,
         live: LivePlayhead,
-        markers: [CMTime],
+        markers: @autoclosure () -> [CMTime],
+        markersVersion: UInt64,
         pixelsPerSecond: CGFloat
     ) -> SnapTargets {
-        let key = SnapKey(editCount: project.editCount, timelineID: timelineID, pixelsPerSecond: pixelsPerSecond, markers: markers)
+        let key = SnapKey(
+            editCount: project.editCount, timelineID: timelineID, pixelsPerSecond: pixelsPerSecond, markersVersion: markersVersion
+        )
         if project.editCount != 0, key == snapKey, let snapTargets, snapTargets.playhead === live { return snapTargets }
-        let built = project.snapTargets(in: timelineID, playhead: nil, live: live, markers: markers)
+        let built = project.snapTargets(in: timelineID, playhead: nil, live: live, markers: markers())
         snapKey = key
         snapTargets = built
         return built

@@ -99,6 +99,10 @@ struct TimelineView: View {
     /// depend on changes. The view's body runs on every playback tick and
     /// scroll, and a long song has thousands of beats to collect and sort.
     @State var beatMarkers: [BeatMarker] = []
+    /// Counts each time `beatMarkers` is worked out, for what is built
+    /// from them (the snap targets) to tell they changed without comparing
+    /// every beat. Read by `TimelineTrackSurface`, so not private.
+    @State var beatMarkersVersion: UInt64 = 0
     /// The layer whose header is being dragged, and how far.
     @State var layerDrag: (id: UUID, dy: CGFloat)?
     /// The height of the layer being resized when the drag began.
@@ -423,6 +427,7 @@ struct TimelineView: View {
             if new.clipID != nil, new.clipID != old.clipID, new.clipCount >= old.clipCount { fitToWindow() }
         }
         .onChange(of: beatMarkerKey, initial: true) { _, key in
+            defer { beatMarkersVersion &+= 1 }
             guard let id = key.layerID, let layer = timeline.layer(id: id) else {
                 beatMarkers = []
                 return
@@ -491,7 +496,12 @@ struct TimelineView: View {
     }
 
     func drawnBeats(_ viewport: TimelineViewport) -> [CMTime] {
-        BeatMarkerOverlay.drawnMarkers(beatMarkers, pixelsPerSecond: viewport.pixelsPerSecond).map(\.time)
+        drawnBeats(pixelsPerSecond: viewport.pixelsPerSecond)
+    }
+
+    /// The beat markers drawn, and so snapped to, at a zoom.
+    func drawnBeats(pixelsPerSecond: CGFloat) -> [CMTime] {
+        BeatMarkerOverlay.drawnMarkers(beatMarkers, pixelsPerSecond: pixelsPerSecond).map(\.time)
     }
 
     func snapTolerance(_ viewport: TimelineViewport) -> CMTime {
