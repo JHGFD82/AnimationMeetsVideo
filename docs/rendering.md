@@ -137,9 +137,11 @@ emptied timeline or a slow frame never shows black in between.
   works out the keys itself, skips an edit the picture doesn't show (a
   rename, a volume), and follows renders finishing, the package, motion
   blur in the viewer, play and pause and value drags on its own. The
-  timeline below is drawn from a snapshot of what it shows
-  (`TimelineView.Snapshot`), so it isn't redrawn for an edit of another
-  timeline's values or a tick of the playhead.
+  timeline below compares what it shows by edit stamps (`EditStamp`: every
+  write to `ProjectState` gets a number never given out before, and so does
+  each timeline it changed), so it isn't redrawn for a tick of the
+  playhead, and an edit of another timeline's values costs one comparison
+  of the project's structure rather than a redraw.
 - **An emptied timeline** lets go of the player's item, and the viewer
   says there are no clips over its last picture, so emptying and filling a
   timeline again (an undo) shows no black.

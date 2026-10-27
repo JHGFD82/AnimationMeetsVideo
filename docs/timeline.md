@@ -250,6 +250,15 @@ redraw every layer on every tick. The
 values shown in property rows and the inspector hold still while playing
 for the same reason.
 
+Scrolling and zooming redraw only the tracks: the zoom, the scroll and
+their rubber bands are kept in `TimelineViewportModel`, which only
+`TimelineTrackSurface` and the views it hands the viewport to read, so the
+header and the rest of `TimelineView` aren't built again for each step.
+Each layer's row builds only the clips in view or nearly, and those being
+moved, so a long timeline zoomed in costs what is on screen. What the rows
+compare and what edges snap to are worked out once per edit
+(`TimelineDerivedCache`), not on every redraw.
+
 Zoomed in, the view **follows the playhead** while playing: each time the
 playhead runs off the edge of the view, the view turns a page so it is
 just inside the left edge again (and starting playback with the playhead
