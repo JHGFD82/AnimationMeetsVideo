@@ -45,8 +45,9 @@ extension TimelineView {
            [53, 51, 117].contains(event.keyCode) || (event.keyCode == 0 && flags == .command) {
             return false
         }
-        // Escape lets go of whatever is selected.
-        if event.keyCode == 53, flags.isEmpty, !ValueDragSession.isActive, hasAnythingSelected {
+        // Escape lets go of whatever is selected, unless it is cancelling
+        // a drag.
+        if event.keyCode == 53, flags.isEmpty, !ValueDragSession.isActive, !DragEscape.isActive, hasAnythingSelected {
             clearSelection()
             return true
         }

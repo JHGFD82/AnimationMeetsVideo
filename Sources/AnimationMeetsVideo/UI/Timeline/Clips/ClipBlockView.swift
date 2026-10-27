@@ -64,8 +64,9 @@ struct ClipBlockView: View {
     @State private var isDropTarget = false
     /// Where the blade would cut, in the row's coordinates, while hovering.
     @State private var bladeX: CGFloat?
-    /// How far a slip drag in progress moves the footage.
-    @State private var slipDelta: CMTime?
+    /// The drag in progress, and what it last sent up, kept where writing
+    /// it doesn't redraw the block.
+    @State private var drag = ClipDragBook()
     /// Where the music point is being dragged to, until the edit lands.
     @State var musicPointDraft: CMTime?
     /// A transition's length while its inner side is dragged.
@@ -81,7 +82,6 @@ struct ClipBlockView: View {
     /// edges, so half of each is outside the block, where the timeline must
     /// not take a press for the start of a lasso.
     static let trimHandleWidth: CGFloat = 8
-    private let handleWidth = trimHandleWidth
     /// The band along the top of a clip showing pictures that holds its name.
     private static let labelBand: CGFloat = 18
     /// Narrower than this on screen, a clip is only its fill and outline:
@@ -231,6 +231,23 @@ struct ClipBlockView: View {
                     BlockShadow(shape: shape, lifted: isLifted)
                 }
             }
+            // The blade's line follows the pointer. Watched only with the
+            // blade out: tracking the pointer over every clip would run on
+            // each move across the timeline for nothing.
+            .overlay {
+                if model.tool == .blade {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onContinuousHover(coordinateSpace: .named(space)) { phase in
+                            guard case .active(let location) = phase else {
+                                setBladeX(nil)
+                                return
+                            }
+                            let time = bladeTime(atX: location.x)
+                            setBladeX(time > model.clip.startOffset && time < model.clip.endOffset ? time.seconds * model.pixelsPerSecond : nil)
+                        }
+                }
+            }
             .opacity(model.clip.enabled ? 1 : 0.45)
             .offset(y: isLifted ? -3 : 0)
             .confirmFlash(token: landedCount, color: Design.textOnColor)
@@ -266,113 +283,45 @@ struct ClipBlockView: View {
                 return true
             } isTargeted: { targeted in
                 // Whether this clip takes what is over it isn't known until
-                // the drop, so it lights for any drag it could take.
-                isDropTarget = targeted && (model.transitionsTaken != .none || model.acceptsEffects || model.acceptsSoundEffects)
+                // the drop, so it lights for any drag it could take, but not
+                // while it is the block being dragged.
+                let lit = targeted && !isLifted && !isTrimming
+                    && (model.transitionsTaken != .none || model.acceptsEffects || model.acceptsSoundEffects)
+                if isDropTarget != lit { isDropTarget = lit }
             }
             .contextMenu { ClipMenuHost(block: self, key: menuKey).equatable() }
-            .onContinuousHover(coordinateSpace: .named(space)) { phase in
-                guard model.tool == .blade, case .active(let location) = phase else {
-                    bladeX = nil
-                    return
-                }
-                let time = bladeTime(atX: location.x)
-                bladeX = time > model.clip.startOffset && time < model.clip.endOffset ? time.seconds * model.pixelsPerSecond : nil
-            }
+            // However short the clip, a press within a few points of it
+            // lands on it, to select or move it.
+            .contentShape(MinimumWidthRectangle(minWidth: Self.minimumHitWidth))
             .offset(x: drawnX)
             .offset(carry)
             .offset(arrival)
-            // Measured in window coordinates: the block moves (and resizes)
-            // as the preview changes, so in its own coordinates every
-            // one-frame step would shrink the translation by a frame and
-            // bounce the preview back to where it was.
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                    .onChanged { value in
-                        guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
-                        if !isLifted {
-                            isLifted = true
-                            handlers.onDragging(true)
-                            autoScroll?.begin()
-                        }
-                        previewMove(translation: value.translation, pointer: value.location)
-                        isCopying = CopyDragCursor.update()
-                        autoScroll?.track(pointerX: value.location.x) {
-                            previewMove(translation: value.translation, pointer: value.location)
-                        }
-                        autoScroll?.trackVertically(pointer: value.location) {
-                            previewMove(translation: value.translation, pointer: value.location)
-                        }
-                    }
-                    .onEnded { _ in
-                        autoScroll?.end()
-                        // Already where it lands, except over the new layer
-                        // place, from where it settles. Into another layer
-                        // it is a new block that arrives, from where this
-                        // one was let go (`ClipFlights`).
-                        if previewTarget?.layerID != nil || previewTarget?.newLayer != nil {
-                            ClipFlights.shared.depart(model.clip.id, from: drawnStart(liveX: liveX))
-                        }
-                        withAnimation(Design.Motion.respecting(Design.Motion.glide)) { carry = .zero }
-                        isLifted = false
-                        handlers.onDragging(false)
-                        handlers.onSnapIndicator(nil)
-                        let targetLayer = previewTarget?.layerID
-                        let copying = isCopying
-                        isCopying = false
-                        CopyDragCursor.end()
-                        if copying {
-                            // The clip itself doesn't change, so there is
-                            // no edit of it to wait for.
-                            if let kind = previewTarget?.newLayer, let start = previewTarget?.start {
-                                handlers.onCopy(start, nil, kind)
-                            } else if let preview, preview.startOffset != model.clip.startOffset || targetLayer != nil {
-                                handlers.onCopy(preview.startOffset, targetLayer, nil)
-                            }
-                            endDrop()
-                        } else if let kind = previewTarget?.newLayer, let start = previewTarget?.start {
-                            commitDrop { handlers.onMoveToNewLayer(kind, start) }
-                        } else if let preview, preview.startOffset != model.clip.startOffset || targetLayer != nil {
-                            commitDrop { handlers.onMove(preview.startOffset, targetLayer) }
-                        } else {
-                            endDrop()
-                        }
-                    },
-                // Only the arrow moves clips. Off means `.subviews`, not
-                // `.none`: `.none` also switches off every gesture already
-                // on this view, which let the slip gesture below disable
-                // this one and left clips impossible to move.
-                including: model.tool == .arrow ? .all : .subviews
-            )
-            // With the slip tool, dragging the clip slides its footage under
-            // it, like film under a window: right brings earlier frames in.
+            // The arrow moves the clip; the slip tool slides its footage
+            // under it, like film under a window: right brings earlier
+            // frames in. One gesture for both, which only begins past
+            // three points, so a click is left to the taps below and
+            // doesn't end a drag that never began. Measured in window
+            // coordinates: the block moves (and resizes) as the preview
+            // changes, so in its own coordinates every one-frame step
+            // would shrink the translation by a frame and bounce the
+            // preview back to where it was.
             .gesture(
                 DragGesture(minimumDistance: 3, coordinateSpace: .global)
-                    .onChanged { value in
-                        let delta = timeDelta(-value.translation.width)
-                        let slipped = handlers.resolveSlip(delta) ?? model.clip
-                        slipDelta = delta
-                        showPreview(slipped)
-                        handlers.onSlipDraft(slipped, false)
-                    }
-                    .onEnded { _ in
-                        let changed = preview.map { $0 != model.clip } ?? false
-                        handlers.onSlipDraft(nil, changed)
-                        if changed, let slipDelta {
-                            commitDrop { handlers.onSlip(slipDelta) }
-                        } else {
-                            endDrop()
-                        }
-                        slipDelta = nil
-                    },
-                including: model.tool == .slip ? .all : .subviews
+                    .onChanged { value in dragChanged(value) }
+                    .onEnded { _ in dragEnded(liveX: liveX) },
+                including: ClipDragBook.gestureMask(for: model.tool)
             )
             // A double-click on a nested timeline goes into it, except on
             // one of its transitions: the click selected that, and its
-            // details stay up, as on any other clip.
-            .simultaneousGesture(SpatialTapGesture(count: 2, coordinateSpace: .named(space)).onEnded { value in
-                guard model.tool == .arrow, transitionEdge(atX: value.location.x, liveX: liveX) == nil else { return }
-                handlers.onOpenNested?()
-            })
+            // details stay up, as on any other clip. Other clips don't
+            // watch for double-clicks at all.
+            .simultaneousGesture(
+                SpatialTapGesture(count: 2, coordinateSpace: .named(space)).onEnded { value in
+                    guard model.tool == .arrow, transitionEdge(atX: value.location.x, liveX: liveX) == nil else { return }
+                    handlers.onOpenNested?()
+                },
+                including: offered.openNested ? .all : .subviews
+            )
             // A click selects the clip, or the transition under it.
             .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(space)).onEnded { value in
                 if model.tool == .blade {
@@ -408,7 +357,15 @@ struct ClipBlockView: View {
         }
         .frame(height: model.height, alignment: .topLeading)
         .offset(y: previewTarget?.offsetY ?? 0)
-        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { frame in
+        // The block's frame is wanted once, to arrive from where a move
+        // from another layer let go of it, and while it is picked up, to
+        // leave from; not as the timeline scrolls, which moves every
+        // block's frame on every step. `frameBox` is a box, so recording
+        // it redraws nothing.
+        .onGeometryChange(for: CGRect.self, of: { proxy in
+            isLifted || !arrivalChecked ? proxy.frame(in: .global) : .null
+        }) { frame in
+            guard frame != .null else { return }
             frameBox.frame = frame
             // A clip moved here from another layer arrives from where it
             // was let go, as the block that was dragged is gone by now.
@@ -431,6 +388,7 @@ struct ClipBlockView: View {
         .accessibilityAction { handlers.onSelect() }
         .accessibilityActions { accessibilityEditActions }
         .onChange(of: model.clip.music) { _, _ in musicPointDraft = nil }
+        .onChange(of: model.tool) { _, _ in setBladeX(nil) }
         .onChange(of: model.clip) { _, _ in
             if pendingDrop != nil {
                 endDrop()
@@ -517,30 +475,177 @@ struct ClipBlockView: View {
         )
     }
 
+    /// The narrowest a clip is to a press: a shorter one takes presses a
+    /// little either side of it.
+    static let minimumHitWidth: CGFloat = 6
+
+    /// How wide each trim handle is on a clip `width` points wide: the
+    /// full width while that leaves room between them to grab the clip
+    /// and move it, and a quarter of the clip on a narrower one (two
+    /// points at least), so its middle still moves it.
+    static func trimHandleWidth(forClipWidth width: CGFloat) -> CGFloat {
+        width >= 3 * trimHandleWidth ? trimHandleWidth : max(2, width / 4)
+    }
+
+    private func setBladeX(_ x: CGFloat?) {
+        if bladeX != x { bladeX = x }
+    }
+
+    // MARK: Dragging
+
+    /// The block's drag moved: begins a move or slip, by the tool, on its
+    /// first move, then follows it.
+    private func dragChanged(_ value: DragGesture.Value) {
+        if drag.kind == nil {
+            guard let kind = ClipDragBook.Kind(tool: model.tool) else { return }
+            drag.begin(kind) { cancelDrag() }
+        }
+        guard !drag.isCancelled else { return }
+        switch drag.kind {
+        case .move: moveChanged(value)
+        case .slip: slipChanged(value)
+        case .trim, nil: break
+        }
+    }
+
+    private func dragEnded(liveX: CGFloat) {
+        defer { drag.finish() }
+        guard !drag.isCancelled else { return }
+        switch drag.kind {
+        case .move: moveEnded(liveX: liveX)
+        case .slip: slipEnded()
+        case .trim, nil: break
+        }
+    }
+
+    /// Escape during a move, trim or slip: the drag is dropped, and the
+    /// clip goes back to where it was with nothing edited. The button is
+    /// still down; the rest of the drag is ignored.
+    private func cancelDrag() {
+        drag.cancel()
+        drag.slipDelta = nil
+        autoScroll?.end()
+        CopyDragCursor.end()
+        if isCopying { isCopying = false }
+        if isLifted {
+            isLifted = false
+            handlers.onDragging(false)
+        }
+        if isTrimming { isTrimming = false }
+        sendSnapIndicator(nil)
+        sendTrimPreview(nil)
+        sendSlipDraft(nil, committing: false)
+        withAnimation(Design.Motion.respecting(Design.Motion.springBack)) {
+            if carry != .zero { carry = .zero }
+            endDrop()
+        }
+    }
+
+    private func moveChanged(_ value: DragGesture.Value) {
+        if !isLifted {
+            isLifted = true
+            handlers.onDragging(true)
+            autoScroll?.begin()
+        }
+        // Shift keeps the clip on its own layer: the pointer is taken to
+        // be on the row the drag began on.
+        let onOwnLayer = NSEvent.modifierFlags.contains(.shift)
+        let pointer = onOwnLayer ? CGPoint(x: value.location.x, y: value.startLocation.y) : value.location
+        let translation = onOwnLayer ? CGSize(width: value.translation.width, height: 0) : value.translation
+        let preview = { previewMove(translation: translation, pointer: pointer, onOwnLayer: onOwnLayer) }
+        preview()
+        let copying = CopyDragCursor.update()
+        if isCopying != copying { isCopying = copying }
+        autoScroll?.track(pointerX: value.location.x) {
+            if !drag.isCancelled { preview() }
+        }
+        if !onOwnLayer {
+            autoScroll?.trackVertically(pointer: value.location) {
+                if !drag.isCancelled { preview() }
+            }
+        }
+    }
+
+    private func moveEnded(liveX: CGFloat) {
+        autoScroll?.end()
+        // Already where it lands, except over the new layer place, from
+        // where it settles. Into another layer it is a new block that
+        // arrives, from where this one was let go (`ClipFlights`).
+        if previewTarget?.layerID != nil || previewTarget?.newLayer != nil {
+            ClipFlights.shared.depart(model.clip.id, from: drawnStart(liveX: liveX))
+        }
+        if carry != .zero {
+            withAnimation(Design.Motion.respecting(Design.Motion.glide)) { carry = .zero }
+        }
+        isLifted = false
+        handlers.onDragging(false)
+        sendSnapIndicator(nil)
+        let targetLayer = previewTarget?.layerID
+        let copying = isCopying
+        if isCopying { isCopying = false }
+        CopyDragCursor.end()
+        if copying {
+            // The clip itself doesn't change, so there is no edit of it to
+            // wait for.
+            if let kind = previewTarget?.newLayer, let start = previewTarget?.start {
+                handlers.onCopy(start, nil, kind)
+            } else if let preview, preview.startOffset != model.clip.startOffset || targetLayer != nil {
+                handlers.onCopy(preview.startOffset, targetLayer, nil)
+            }
+            endDrop()
+        } else if let kind = previewTarget?.newLayer, let start = previewTarget?.start {
+            commitDrop { handlers.onMoveToNewLayer(kind, start) }
+        } else if let preview, preview.startOffset != model.clip.startOffset || targetLayer != nil {
+            commitDrop { handlers.onMove(preview.startOffset, targetLayer) }
+        } else {
+            endDrop()
+        }
+    }
+
+    private func slipChanged(_ value: DragGesture.Value) {
+        let delta = timeDelta(-value.translation.width)
+        let slipped = handlers.resolveSlip(delta) ?? model.clip
+        drag.slipDelta = delta
+        showPreview(slipped)
+        sendSlipDraft(slipped, committing: false)
+    }
+
+    private func slipEnded() {
+        let changed = preview.map { $0 != model.clip } ?? false
+        sendSlipDraft(nil, committing: changed)
+        if changed, let slipDelta = drag.slipDelta {
+            commitDrop { handlers.onSlip(slipDelta) }
+        } else {
+            endDrop()
+        }
+        drag.slipDelta = nil
+    }
+
     /// Shows where a move drag `translation` long, with the pointer at
     /// `pointer` in window coordinates, would put the clip, and keeps the
     /// block under the pointer. Counts what the timeline has scrolled
-    /// under the drag.
-    private func previewMove(translation: CGSize, pointer: CGPoint) {
+    /// under the drag. `onOwnLayer`, it doesn't go onto another layer, or
+    /// a new one.
+    private func previewMove(translation: CGSize, pointer: CGPoint, onOwnLayer: Bool) {
         let across = translation.width + (autoScroll?.scrolled ?? 0)
         var proposed = CMTimeAdd(model.clip.startOffset, timeDelta(across))
         let snapped = handlers.snapSpan(proposed, model.clip.placedDuration)
         if let snapped { proposed = snapped.start }
-        handlers.onSnapIndicator(snapped?.target)
-        let target = handlers.resolveMove(proposed, pointer)
+        sendSnapIndicator(snapped?.target)
+        var target = handlers.resolveMove(proposed, pointer)
+        if onOwnLayer, target?.layerID != nil || target?.newLayer != nil { target = nil }
         var moved = model.clip
         moved.startOffset = target?.start ?? model.clip.startOffset
         showPreview(moved)
-        previewTarget = target?.layerID == nil && target?.newLayer == nil ? nil : target
-        handlers.onMovePreview(target)
+        let elsewhere = target?.layerID == nil && target?.newLayer == nil ? nil : target
+        if previewTarget != elsewhere { previewTarget = elsewhere }
+        sendMovePreview(target)
         // The block is drawn where it will land, on a frame and on the
         // layer's row, stepping from frame to frame rather than floating
         // with the pointer. Only over the place a new layer would go,
         // which has no row yet, does it follow the pointer up or down.
-        carry = CGSize(
-            width: 0,
-            height: target?.newLayer == nil ? 0 : translation.height - (previewTarget?.offsetY ?? 0)
-        )
+        let follow = CGSize(width: 0, height: target?.newLayer == nil ? 0 : translation.height - (elsewhere?.offsetY ?? 0))
+        if carry != follow { carry = follow }
     }
 
     /// Where the clip's start is drawn, in window coordinates: the block's
@@ -564,8 +669,8 @@ struct ClipBlockView: View {
 
     /// Sets the preview for a drag in progress.
     private func showPreview(_ clip: TimelineClip) {
-        pendingDrop = nil
-        preview = clip
+        if pendingDrop != nil { pendingDrop = nil }
+        if preview != clip { preview = clip }
     }
 
     /// Commits a drop and keeps showing the preview until the edited clip
@@ -583,37 +688,62 @@ struct ClipBlockView: View {
     }
 
     private func endDrop() {
-        pendingDrop = nil
-        preview = nil
-        previewTarget = nil
-        handlers.onMovePreview(nil)
+        if pendingDrop != nil { pendingDrop = nil }
+        if preview != nil { preview = nil }
+        if previewTarget != nil { previewTarget = nil }
+        sendMovePreview(nil)
+    }
+
+    // What a drag sends up, each only when it changed: these set state the
+    // whole timeline reads, and a drag sends on every pointer move.
+
+    private func sendSnapIndicator(_ time: CMTime?) {
+        if drag.snap.changes(to: time) { handlers.onSnapIndicator(time) }
+    }
+
+    private func sendMovePreview(_ target: ClipMovePreview?) {
+        if drag.movePreview.changes(to: target) { handlers.onMovePreview(target) }
+    }
+
+    private func sendTrimPreview(_ clip: TimelineClip?, frames: TrimPreviewFrames = .both) {
+        if drag.trimPreview.changes(to: clip.map { ClipDragBook.TrimDraft(clip: $0, frames: frames) }) {
+            handlers.onTrimPreview(clip, frames)
+        }
+    }
+
+    private func sendSlipDraft(_ clip: TimelineClip?, committing: Bool) {
+        if drag.slipDraft.changes(to: ClipDragBook.SlipDraft(clip: clip, committing: committing)) {
+            handlers.onSlipDraft(clip, committing)
+        }
     }
 
     func timeDelta(_ translation: CGFloat) -> CMTime {
         CMTime(seconds: Double(translation / model.pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
     }
 
+    // MARK: Trimming
+
     /// A trim drag of `edge` moved by `translation` points: previews it.
     private func trimChanged(_ edge: Edge, translation: CGFloat) {
-        isTrimming = true
+        if !isTrimming { isTrimming = true }
         var delta = timeDelta(translation + (autoScroll?.scrolled ?? 0))
         let edgeTime = edge == .leading ? model.clip.startOffset : model.clip.endOffset
         let snapped = handlers.snapTime(CMTimeAdd(edgeTime, delta))
         if let snapped { delta = CMTimeSubtract(snapped, edgeTime) }
-        handlers.onSnapIndicator(snapped)
+        sendSnapIndicator(snapped)
         let trimmed = switch edge {
         // The trim is in the source, which a retimed clip plays at its speed.
         case .leading: handlers.resolveTrimStart(model.clip.sourceTime(atTimelineTime: CMTimeAdd(model.clip.startOffset, delta))) ?? model.clip
         case .trailing: handlers.resolveTrimEnd(model.clip.sourceTime(atTimelineTime: CMTimeAdd(model.clip.endOffset, delta))) ?? model.clip
         }
         showPreview(trimmed)
-        handlers.onTrimPreview(trimmed, edge == .leading ? .first : .last)
+        sendTrimPreview(trimmed, frames: edge == .leading ? .first : .last)
     }
 
     /// A trim drag ended: commits it, or selects the clip when it was a click.
     private func trimEnded(_ edge: Edge) {
-        handlers.onSnapIndicator(nil)
-        handlers.onTrimPreview(nil, .both)
+        sendSnapIndicator(nil)
+        sendTrimPreview(nil)
         if let preview, preview != model.clip {
             commitDrop {
                 switch edge {
@@ -625,33 +755,52 @@ struct ClipBlockView: View {
             if !isTrimming { handlers.onSelect() }
             endDrop()
         }
-        isTrimming = false
+        if isTrimming { isTrimming = false }
     }
 
     private func trimHandle(edge: Edge, liveX: CGFloat, liveWidth: CGFloat) -> some View {
-        let handleX = edge == .leading ? liveX - handleWidth / 2 : liveX + liveWidth - handleWidth / 2
-        return Rectangle()
-            .fill(Color.clear)
-            .frame(width: handleWidth, height: model.height)
+        let width = Self.trimHandleWidth(forClipWidth: liveWidth)
+        let handleX = edge == .leading ? liveX - width / 2 : liveX + liveWidth - width / 2
+        return Color.clear
+            .frame(width: width, height: model.height)
             .contentShape(Rectangle())
             .offset(x: handleX)
             .gesture(
+                // From no distance, so a click on a handle still selects
+                // the clip (`trimEnded`); a trim begins past three points.
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
                         guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
-                        if !isTrimming { autoScroll?.begin() }
+                        if drag.kind == nil {
+                            drag.begin(.trim) { cancelDrag() }
+                            autoScroll?.begin()
+                        }
+                        guard !drag.isCancelled else { return }
                         trimChanged(edge, translation: value.translation.width)
                         autoScroll?.track(pointerX: value.location.x) {
-                            trimChanged(edge, translation: value.translation.width)
+                            if !drag.isCancelled { trimChanged(edge, translation: value.translation.width) }
                         }
                     }
                     .onEnded { _ in
+                        defer { drag.finish() }
+                        guard !drag.isCancelled else { return }
                         autoScroll?.end()
                         trimEnded(edge)
                     }
             )
             .pointerStyle(.columnResize)
     }
+}
+
+/// The frame's rectangle, widened about its middle to `minWidth` when it
+/// is narrower: the area a press on a very short clip lands in.
+private struct MinimumWidthRectangle: Shape {
+    let minWidth: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        Path(rect.insetBy(dx: min(0, (rect.width - minWidth) / 2), dy: 0))
+    }
+
 }
 
 extension ClipBlockView: Equatable {
