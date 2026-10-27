@@ -6,17 +6,17 @@ extension ClipBlockHandlers {
     /// Handlers that do nothing, but for those given.
     static func inert(
         onSelect: @escaping () -> Void = {},
-        onMove: @escaping (CMTime, UUID?) -> Void = { _, _ in },
+        onMove: @escaping (CMTime, UUID?) -> Bool = { _, _ in true },
         onBeatMatch: (() -> Void)? = nil
     ) -> ClipBlockHandlers {
         ClipBlockHandlers(
             onToggleInGroup: {}, onOpenNested: nil, resolveMove: { _, _ in nil },
             resolveTrimStart: { _ in nil }, resolveTrimEnd: { _ in nil }, onSelect: onSelect,
-            onMove: onMove, onMoveToNewLayer: { _, _ in }, onDragging: { _ in },
-            onMovePreview: { _ in }, onTrimStart: { _ in }, onTrimEnd: { _ in }, onTrimPreview: { _, _ in },
+            onMove: onMove, onMoveToNewLayer: { _, _ in true }, onDragging: { _ in },
+            onMovePreview: { _ in }, onTrimStart: { _ in true }, onTrimEnd: { _ in true }, onTrimPreview: { _, _ in },
             onSetTransition: { _, _ in }, onRemoveTransition: { _ in }, onSelectTransition: { _ in },
             onSetTransitionCurve: { _, _ in }, onDetachAudio: {}, snap: { $0 }, onBlade: { _ in },
-            resolveSlip: { _ in nil }, onSlip: { _ in }, onSlipDraft: { _, _ in }, snapTime: { _ in nil },
+            resolveSlip: { _ in nil }, onSlip: { _ in true }, onSlipDraft: { _, _ in }, snapTime: { _ in nil },
             snapSpan: { _, _ in nil }, onSnapIndicator: { _ in }, onSetTransitionDuration: { _, _ in },
             onAddEffect: { _ in }, onApplyPreset: { _ in }, onPasteEffects: {}, onClipboard: { _ in },
             onCopy: { _, _, _ in }, onDropFiles: { _, _ in }, onDropGenerator: { _, _ in },

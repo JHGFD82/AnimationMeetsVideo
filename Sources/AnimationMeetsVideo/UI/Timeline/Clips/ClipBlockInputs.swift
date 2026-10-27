@@ -80,14 +80,16 @@ struct ClipBlockHandlers {
     var resolveTrimStart: (CMTime) -> TimelineClip?
     var resolveTrimEnd: (CMTime) -> TimelineClip?
     var onSelect: () -> Void
-    var onMove: (CMTime, UUID?) -> Void
+    // The edits a drag lets go of say whether they were made: one that
+    // wasn't (it was refused) springs back at once, and says so.
+    var onMove: (CMTime, UUID?) -> Bool
     /// Onto a new layer of a kind, starting at a time.
-    var onMoveToNewLayer: (LayerKind, CMTime) -> Void
+    var onMoveToNewLayer: (LayerKind, CMTime) -> Bool
     var onDragging: (Bool) -> Void
     /// Hears where a move drag will land, and nil when it ends.
     var onMovePreview: (ClipMovePreview?) -> Void
-    var onTrimStart: (CMTime) -> Void
-    var onTrimEnd: (CMTime) -> Void
+    var onTrimStart: (CMTime) -> Bool
+    var onTrimEnd: (CMTime) -> Bool
     /// Hears each trim draft with the edge being dragged, for the viewer
     /// to show the frame there, then nil when the drag ends.
     var onTrimPreview: (TimelineClip?, TrimPreviewFrames) -> Void
@@ -101,7 +103,7 @@ struct ClipBlockHandlers {
     var onBlade: (CMTime) -> Void
     /// The clip after slipping by a time (positive plays later footage).
     var resolveSlip: (CMTime) -> TimelineClip?
-    var onSlip: (CMTime) -> Void
+    var onSlip: (CMTime) -> Bool
     /// Hears each slip draft, then nil when the drag ends (with whether the
     /// slip is being committed).
     var onSlipDraft: (TimelineClip?, Bool) -> Void

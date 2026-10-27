@@ -50,10 +50,11 @@ struct LayerClipRow: View {
     /// Where a clip dragged with the pointer at a point in window
     /// coordinates, and asked to start at a time, lands.
     let resolveMove: (TimelineClip, CGPoint, CMTime) -> ClipMovePreview?
+    // The clip edits a drag ends in say whether they were made.
     /// Moves a clip to a start time, and to another layer when given.
-    let onMoveClip: (UUID, UUID?, CMTime) -> Void
+    let onMoveClip: (UUID, UUID?, CMTime) -> Bool
     /// Moves a clip onto a new layer of a kind, at the top.
-    let onMoveClipToNewLayer: (UUID, LayerKind, CMTime) -> Void
+    let onMoveClipToNewLayer: (UUID, LayerKind, CMTime) -> Bool
     let onDraggingClip: (Bool) -> Void
     /// Clips on this layer moving aside for a clip being dragged, drawn
     /// where they will go until the move lands.
@@ -62,8 +63,8 @@ struct LayerClipRow: View {
     let onMovePreview: (ClipMovePreview?) -> Void
     let onDropScenes: ([MediaDragPayload], CMTime) -> Bool
     let onEditJoint: (UUID) -> Void
-    let onTrimClipStart: (UUID, CMTime) -> Void
-    let onTrimClipEnd: (UUID, CMTime) -> Void
+    let onTrimClipStart: (UUID, CMTime) -> Bool
+    let onTrimClipEnd: (UUID, CMTime) -> Bool
     /// The assets' scene scores, read as a trim is dragged (not compared
     /// in `==`), so its edge stops at a cut.
     let sceneTracks: () -> [UUID: ChangeScoreTrack]
@@ -77,7 +78,7 @@ struct LayerClipRow: View {
     let snap: (CMTime) -> CMTime
     let onBlade: (UUID, CMTime) -> Void
     /// Slips a clip's footage by a time (positive plays later footage).
-    let onSlip: (UUID, CMTime) -> Void
+    let onSlip: (UUID, CMTime) -> Bool
     /// What edges snap to, or nil with snapping off, read as a drag snaps
     /// (not compared in `==`, since it holds where every layer's clips are),
     /// and how close they must come.

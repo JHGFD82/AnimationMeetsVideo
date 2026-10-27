@@ -38,8 +38,8 @@ struct ClipBlockView: View {
     /// While moving: the layer the clip will land on, if not its own, and
     /// how far down that layer is.
     @State private var previewTarget: ClipMovePreview?
-    /// Counts drops, so a timeout from an earlier one can't clear a later
-    /// one's preview; nil when no drop is waiting for its edit.
+    /// Counts drops; nil when no drop is waiting for its edit to come back
+    /// down from the project.
     @State private var pendingDrop: Int?
     @State private var dropCount = 0
     @State private var isTrimming = false
@@ -71,9 +71,12 @@ struct ClipBlockView: View {
     @State var musicPointDraft: CMTime?
     /// A transition's length while its inner side is dragged.
     @State var transitionDraft: (edge: TransitionEdge, duration: CMTime)?
-    /// Counts edits that have come back down from the project, which is
-    /// what the block flashes to acknowledge. See `ConfirmFlash`.
-    @State private var landedCount = 0
+    /// Counts drops the block has flashed for: an edit that has come back
+    /// down from the project, or one that was refused. See `ConfirmFlash`.
+    @State private var flashCount = 0
+    /// Whether the last flash was for a refused edit, which flashes in the
+    /// warning colour.
+    @State private var flashRefused = false
     @Environment(RenderScheduler.self) private var renderer: RenderScheduler?
     /// Scrolls the timeline while a move or trim holds the pointer at an edge.
     @Environment(TimelineAutoScroll.self) private var autoScroll: TimelineAutoScroll?
@@ -250,7 +253,7 @@ struct ClipBlockView: View {
             }
             .opacity(model.clip.enabled ? 1 : 0.45)
             .offset(y: isLifted ? -3 : 0)
-            .confirmFlash(token: landedCount, color: Design.textOnColor)
+            .confirmFlash(token: flashCount, color: flashRefused ? Design.statusWarning : Design.textOnColor)
             .editorAnimation(Design.Motion.select, value: model.isSelected)
             .editorAnimation(Design.Motion.select, value: isLifted)
             .dropDestination(for: ClipDropPayload.self) { payloads, location in
@@ -393,7 +396,7 @@ struct ClipBlockView: View {
             if pendingDrop != nil {
                 endDrop()
                 // The edit you let go of has arrived: acknowledge it.
-                landedCount += 1
+                flash(refused: false)
             }
         }
     }
@@ -673,18 +676,25 @@ struct ClipBlockView: View {
         if preview != clip { preview = clip }
     }
 
-    /// Commits a drop and keeps showing the preview until the edited clip
-    /// arrives. If it never does (the edit was refused), the preview goes
-    /// after a moment.
-    private func commitDrop(_ commit: () -> Void) {
+    /// Commits a drop. Made, the preview stays up until the edited clip
+    /// comes back down from the project (`onChange(of: model.clip)`).
+    /// Refused, the clip springs back to where it was at once, flashing
+    /// in the warning colour with the alert sound, so it is clear the
+    /// edit didn't happen rather than that it was slow.
+    private func commitDrop(_ commit: () -> Bool) {
         dropCount += 1
-        let drop = dropCount
-        pendingDrop = drop
-        commit()
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(500))
-            if pendingDrop == drop { endDrop() }
+        pendingDrop = dropCount
+        guard commit() else {
+            withAnimation(Design.Motion.respecting(Design.Motion.springBack)) { endDrop() }
+            flash(refused: true)
+            NSSound.beep()
+            return
         }
+    }
+
+    private func flash(refused: Bool) {
+        if flashRefused != refused { flashRefused = refused }
+        flashCount += 1
     }
 
     private func endDrop() {
