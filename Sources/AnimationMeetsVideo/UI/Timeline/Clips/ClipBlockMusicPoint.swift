@@ -10,14 +10,14 @@ extension ClipBlockView {
     /// that plays on the song's moment (see `MusicAttachment`). Nil while
     /// it isn't attached, and for songs.
     func musicPointTime(of clip: TimelineClip) -> CMTime? {
-        guard onSetMusicPoint != nil, let music = clip.music else { return nil }
+        guard handlers.onSetMusicPoint != nil, let music = clip.music else { return nil }
         return clip.timelineTime(forSourceTime: clip.musicFrame(music.frame))
     }
 
     /// A time held to the clip's frames: from its first to its last.
     func clampedMusicPoint(_ time: CMTime) -> CMTime {
-        let last = CMTimeSubtract(clip.endOffset, Timeline.frameDuration(for: frameRate))
-        return CMTimeMaximum(clip.startOffset, CMTimeMinimum(snap(time), CMTimeMaximum(clip.startOffset, last)))
+        let last = CMTimeSubtract(model.clip.endOffset, Timeline.frameDuration(for: model.frameRate))
+        return CMTimeMaximum(model.clip.startOffset, CMTimeMinimum(handlers.snap(time), CMTimeMaximum(model.clip.startOffset, last)))
     }
 
     /// The music point, as a line through the clip at the frame tied to
@@ -29,27 +29,27 @@ extension ClipBlockView {
     @ViewBuilder
     func musicLinkMarks(of shown: TimelineClip) -> some View {
         if let time = musicPointDraft ?? musicPointTime(of: shown) {
-            let x = time.seconds * pixelsPerSecond
-            if x >= visibleX.lowerBound - 8, x <= visibleX.upperBound + 8 {
-                MusicLinkMark(height: height, pointAtTop: false, emphasized: isSelected)
+            let x = time.seconds * model.pixelsPerSecond
+            if x >= model.visibleX.lowerBound - 8, x <= model.visibleX.upperBound + 8 {
+                MusicLinkMark(height: model.height, pointAtTop: false, emphasized: model.isSelected)
                     .offset(x: x - MusicLinkMark.width / 2)
-                if isSelected, !isInGroup, tool == .arrow {
+                if model.isSelected, !model.isInGroup, model.tool == .arrow {
                     Color.clear
                         .frame(width: 14, height: 14)
                         .contentShape(Rectangle())
-                        .offset(x: x - 7, y: height - 14)
+                        .offset(x: x - 7, y: model.height - 14)
                         .gesture(
                             DragGesture(minimumDistance: 1, coordinateSpace: .named(space))
                                 .onChanged { value in
-                                    let time = CMTime(seconds: Double(max(0, value.location.x) / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
-                                    musicPointDraft = clampedMusicPoint(snapTime(time) ?? time)
+                                    let time = CMTime(seconds: Double(max(0, value.location.x) / model.pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
+                                    musicPointDraft = clampedMusicPoint(handlers.snapTime(time) ?? time)
                                 }
                                 .onEnded { _ in
                                     guard let draft = musicPointDraft else { return }
-                                    if draft == musicPointTime(of: clip) {
+                                    if draft == musicPointTime(of: model.clip) {
                                         musicPointDraft = nil
                                     } else {
-                                        onSetMusicPoint?(draft)
+                                        handlers.onSetMusicPoint?(draft)
                                     }
                                 }
                         )
@@ -57,9 +57,9 @@ extension ClipBlockView {
                 }
             }
         }
-        ForEach(Array(musicMarks.enumerated()), id: \.offset) { _, time in
-            MusicLinkMark(height: height, pointAtTop: true, emphasized: true)
-                .offset(x: time.seconds * pixelsPerSecond - MusicLinkMark.width / 2)
+        ForEach(Array(model.musicMarks.enumerated()), id: \.offset) { _, time in
+            MusicLinkMark(height: model.height, pointAtTop: true, emphasized: true)
+                .offset(x: time.seconds * model.pixelsPerSecond - MusicLinkMark.width / 2)
         }
     }
 }

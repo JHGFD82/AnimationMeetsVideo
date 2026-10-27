@@ -14,136 +14,20 @@ import SwiftUI
 /// neighbors) rather than following the pointer freely, and trimming adds
 /// a translucent, outlined ghost of the clip's extent before the trim.
 struct ClipBlockView: View {
-    let clip: TimelineClip
-    /// The timeline's rate: VoiceOver reads times as its timecode, and moves
-    /// and trims by its frames.
-    let frameRate: Double
-    let info: ResolvedClipInfo?
-    let typeColor: Color
-    /// Shows a sound badge, and offers to detach the sound.
-    let hasLinkedAudio: Bool
-    /// Draws the clip's sound behind its label when the layer is tall
-    /// enough; for clips that are sound alone.
-    let showsWaveform: Bool
-    /// Draws the waveform's channels apart, at any height.
-    let splitsChannels: Bool
-    /// Which transitions dropped from the panel it takes: of pictures, or
-    /// of sound on a clip that only makes sound.
-    let transitionsTaken: TransitionsTaken
-    /// Set when the clip's way in joins it to the clip before: that
-    /// transition is drawn over the cut by the row instead.
-    let joinedLead: CMTime?
-    let isSelected: Bool
-    /// Whether the clip is one of several picked together with a lasso, which
-    /// draw as selected and are copied, deleted and nested as one.
-    var isInGroup = false
-    /// Adds the clip to the clips picked together, or takes it out: the way to
-    /// pick several without a lasso.
-    let onToggleInGroup: () -> Void
-    /// For a nested timeline's clip: goes into the timeline it plays (a
-    /// double-click, the menu's Open Timeline).
-    var onOpenNested: (() -> Void)?
-    /// The transition selected on this clip, which shows its curve's points
-    /// when there is room.
-    let selectedTransition: TransitionEdge?
-    let pixelsPerSecond: CGFloat
-    let height: CGFloat
-    let visibleX: ClosedRange<CGFloat>
-    let resolveMove: (CMTime, CGPoint) -> ClipMovePreview?
-    let resolveTrimStart: (CMTime) -> TimelineClip?
-    let resolveTrimEnd: (CMTime) -> TimelineClip?
-    let onSelect: () -> Void
-    let onMove: (CMTime, UUID?) -> Void
-    /// Onto a new layer of a kind, starting at a time.
-    let onMoveToNewLayer: (LayerKind, CMTime) -> Void
-    let onDragging: (Bool) -> Void
-    /// Hears where a move drag will land, and nil when it ends.
-    let onMovePreview: (ClipMovePreview?) -> Void
-    let onTrimStart: (CMTime) -> Void
-    let onTrimEnd: (CMTime) -> Void
-    /// Hears each trim draft with the edge being dragged, for the viewer
-    /// to show the frame there, then nil when the drag ends.
-    let onTrimPreview: (TimelineClip?, TrimPreviewFrames) -> Void
-    let onSetTransition: (TransitionKind, TransitionEdge) -> Void
-    let onRemoveTransition: (TransitionEdge) -> Void
-    let onSelectTransition: (TransitionEdge) -> Void
-    let onSetTransitionCurve: (TransitionEdge, TransitionCurve) -> Void
-    let onDetachAudio: () -> Void
-    /// Arrow moves and trims, blade splits where clicked, slip changes the
-    /// footage a clip plays.
-    let tool: TimelineTool
-    let snap: (CMTime) -> CMTime
-    /// Splits the clip at a timeline time, from the blade.
-    let onBlade: (CMTime) -> Void
-    /// The clip after slipping by a time (positive plays later footage).
-    let resolveSlip: (CMTime) -> TimelineClip?
-    let onSlip: (CMTime) -> Void
-    /// Hears each slip draft, then nil when the drag ends (with whether the
-    /// slip is being committed).
-    let onSlipDraft: (TimelineClip?, Bool) -> Void
-    /// The snap target near a timeline time, if snapping is on.
-    let snapTime: (CMTime) -> CMTime?
-    /// Where a moved clip starting at a time and lasting a duration snaps
-    /// to, by whichever end is nearer a target, and that target.
-    let snapSpan: (CMTime, CMTime) -> (start: CMTime, target: CMTime)?
-    let onSnapIndicator: (CMTime?) -> Void
-    /// Sets a transition's length, from dragging its inner side.
-    let onSetTransitionDuration: (TransitionEdge, CMTime) -> Void
-    /// Clips with pictures take effects dragged from the effects panel.
-    let acceptsEffects: Bool
-    /// Clips with sound take sound effects.
-    var acceptsSoundEffects = false
-    /// How many effects are in the clip's stacks, picture and sound, for
-    /// its badge.
-    let effectCount: Int
-    /// Draws the clip's volume as a line across it.
-    let showsVolumeLine: Bool
-    /// For a nested clip: whether its layers are drawn into the timeline it
-    /// is placed in.
-    let passesThrough: Bool
-    let onAddEffect: (EffectKind) -> Void
-    /// Whether an effect of the clip has paste changes left to resolve.
-    let hasPasteChanges: Bool
-    let onApplyPreset: (String) -> Void
-    let onPasteEffects: () -> Void
-    let onClipboard: (ClipboardCommand) -> Void
-    /// An Option-drag: a copy goes where the drag would have moved the
-    /// clip (its start, and the layer if another, or a new layer's kind).
-    let onCopy: (CMTime, UUID?, LayerKind?) -> Void
-    /// Files from the Finder dropped on the clip go onto its layer there.
-    let onDropFiles: ([URL], CMTime) -> Void
-    /// A generator (text or a shape) from the browser dropped on a clip
-    /// that isn't one, and the time it lands at: it makes a clip of its
-    /// own on a new layer above, since it can't go into this clip.
-    let onDropGenerator: (EffectKind, CMTime) -> Void
-    let onSetPassThrough: (Bool) -> Void
-    /// Whether the clip makes sound, which a retimed clip's sound choice is for.
-    let playsSound: Bool
-    let onEditTime: ((inout ClipTime) -> Void) -> Void
-    let onEditClip: ((inout TimelineClip) -> Void) -> Void
-    /// Opens the beat match panel for the clip's song; nil for clips that
-    /// aren't on a Music layer.
-    var onBeatMatch: (() -> Void)? = nil
-    /// Removes the song's beat map; nil unless the clip's song has one.
-    var onRemoveBeats: (() -> Void)? = nil
-    /// Ties the clip to the music at the playhead; nil for clips on a Music
-    /// layer, which are the music.
-    var onAttachToMusic: (() -> Void)? = nil
-    /// Ties the frame playing at a timeline time inside the clip to the
-    /// music there, from dragging its music point; nil where
-    /// `onAttachToMusic` is.
-    var onSetMusicPoint: ((CMTime) -> Void)? = nil
-    /// For a song: the timeline times the selected clips are tied to it at,
-    /// marked on it to show what their music points hold on to.
-    var musicMarks: [CMTime] = []
-    /// Opens the motion designer on the clip, or on the clips picked with
-    /// it; nil for songs and clips that play backwards.
-    var onMotionDesign: (() -> Void)? = nil
-    /// For an adjustment clip: what it reaches, and the choices.
-    var reach: ReachMenu? = nil
-    /// Gives the timeline the clip's frame size, frame rate and colour
-    /// space; nil for clips without pictures of their own.
-    var onConformTimeline: (() -> Void)? = nil
+    let model: ClipBlockModel
+    /// Read as the block acts, not as it is drawn: see `ClipBlockHandlers`.
+    private let live: LiveClipHandlers
+    /// Which optional actions there were when this value was made, which
+    /// `==` compares; `live` already holds the newest handlers by then.
+    private let offered: ClipBlockHandlers.Offered
+
+    init(model: ClipBlockModel, handlers: LiveClipHandlers) {
+        self.model = model
+        live = handlers
+        offered = handlers.current.offered
+    }
+
+    var handlers: ClipBlockHandlers { live.current }
 
     /// The clip as it will be if the current drag ends now. After a drop
     /// it stays up until the edited clip comes back down from the project:
@@ -207,7 +91,7 @@ struct ClipBlockView: View {
 
     /// The clip as drawn: the drag preview, with any transition being resized.
     private var shownClip: TimelineClip {
-        var shown = preview ?? clip
+        var shown = preview ?? model.clip
         if let transitionDraft, var transition = shown.transition(at: transitionDraft.edge) {
             transition.duration = transitionDraft.duration
             shown.setTransition(transition, at: transitionDraft.edge)
@@ -217,17 +101,17 @@ struct ClipBlockView: View {
 
     var body: some View {
         let shown = shownClip
-        let baseX = clip.startOffset.seconds * pixelsPerSecond
-        let baseWidth = max(2, clip.placedDuration.seconds * pixelsPerSecond)
-        let liveX = shown.startOffset.seconds * pixelsPerSecond
-        let liveWidth = max(2, shown.placedDuration.seconds * pixelsPerSecond)
+        let baseX = model.clip.startOffset.seconds * model.pixelsPerSecond
+        let baseWidth = max(2, model.clip.placedDuration.seconds * model.pixelsPerSecond)
+        let liveX = shown.startOffset.seconds * model.pixelsPerSecond
+        let liveWidth = max(2, shown.placedDuration.seconds * model.pixelsPerSecond)
         let unionMinX = min(baseX, liveX)
         let unionMaxX = max(baseX + baseWidth, liveX + liveWidth)
         // Only the on-screen part of the block is drawn (with a little
         // spare so its clipped ends stay off-screen): zoomed far in, a clip
         // can be millions of points wide, and its name stays in view.
-        let drawnMinX = max(liveX, visibleX.lowerBound - 4)
-        let drawnMaxX = min(liveX + liveWidth, visibleX.upperBound + 4)
+        let drawnMinX = max(liveX, model.visibleX.lowerBound - 4)
+        let drawnMaxX = min(liveX + liveWidth, model.visibleX.upperBound + 4)
         let drawnX = drawnMaxX > drawnMinX ? drawnMinX : liveX
         let drawnWidth = drawnMaxX > drawnMinX ? drawnMaxX - drawnMinX : liveWidth
         // Only the ends that are really the clip's ends are rounded: a
@@ -237,8 +121,8 @@ struct ClipBlockView: View {
         // A video clip on a layer tall enough shows its footage under a band
         // of its colour that holds its name, so the name keeps its contrast.
         let pictures: MediaClip? = {
-            guard case .media(let media)? = info, media.kind.hasPictures,
-                  height - Self.labelBand >= ClipThumbnails.minimumHeight
+            guard case .media(let media)? = model.info, media.kind.hasPictures,
+                  model.height - Self.labelBand >= ClipThumbnails.minimumHeight
             else { return nil }
             return media
         }()
@@ -248,12 +132,12 @@ struct ClipBlockView: View {
                 // Where the clip was before this trim: an outline, so the
                 // distance you have taken off is readable as you drag.
                 RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                    .fill(typeColor.opacity(0.16))
+                    .fill(model.typeColor.opacity(0.16))
                     .overlay {
                         RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                            .strokeBorder(typeColor.opacity(0.9), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                            .strokeBorder(model.typeColor.opacity(0.9), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
                     }
-                    .frame(width: max(2, unionMaxX - unionMinX), height: height)
+                    .frame(width: max(2, unionMaxX - unionMinX), height: model.height)
                     .offset(x: unionMinX)
                     .allowsHitTesting(false)
             }
@@ -262,12 +146,12 @@ struct ClipBlockView: View {
                 // goes where the drag ends. Held at its own row while the
                 // block is drawn over another.
                 RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                    .fill(typeColor.opacity(0.35))
+                    .fill(model.typeColor.opacity(0.35))
                     .overlay {
                         RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                            .strokeBorder(typeColor.opacity(0.9), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                            .strokeBorder(model.typeColor.opacity(0.9), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
                     }
-                    .frame(width: baseWidth, height: height)
+                    .frame(width: baseWidth, height: model.height)
                     .offset(x: baseX, y: -(previewTarget?.offsetY ?? 0))
                     .allowsHitTesting(false)
             }
@@ -275,21 +159,21 @@ struct ClipBlockView: View {
                 // Where the clip will start: the drop line, a little taller
                 // than the row so it reads past the clips around it.
                 InsertionLine(axis: .vertical)
-                    .frame(height: height + 6)
+                    .frame(height: model.height + 6)
                     .offset(x: liveX - 3.5, y: -3)
                     .zIndex(1)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 ClipLabelRow(
-                    name: info?.name ?? "Unknown",
-                    isNestedTimeline: { if case .timeline = clip.source { true } else { false } }(),
-                    isAudioStream: clip.streams == .audio,
-                    hasLinkedAudio: hasLinkedAudio,
-                    soundMuted: playsSound && clip.soundMuted,
-                    effectCount: effectCount,
-                    hasPasteChanges: hasPasteChanges,
-                    passesThrough: passesThrough,
+                    name: model.info?.name ?? "Unknown",
+                    isNestedTimeline: { if case .timeline = model.clip.source { true } else { false } }(),
+                    isAudioStream: model.clip.streams == .audio,
+                    hasLinkedAudio: model.hasLinkedAudio,
+                    soundMuted: model.playsSound && model.clip.soundMuted,
+                    effectCount: model.effectCount,
+                    hasPasteChanges: model.hasPasteChanges,
+                    passesThrough: model.passesThrough,
                     timeHelp: shown.time.isDefault ? nil
                         : shown.isRetimed ? "Retimed: plays at \(NumericExpression.format(shown.speed(atSource: shown.trimStart), maxFractionDigits: 1))%" : "Time settings",
                     hasShutter: !shown.shutter.isOff
@@ -297,7 +181,7 @@ struct ClipBlockView: View {
                 .equatable()
                 // Where a retimed clip's speed is set, along the bar.
                 RetimeStrip(
-                    marks: RetimeMark.marks(of: shown), pixelsPerSecond: pixelsPerSecond,
+                    marks: RetimeMark.marks(of: shown), pixelsPerSecond: model.pixelsPerSecond,
                     inset: drawnX - liveX, width: drawnWidth
                 )
                 // The strip counts from the bar's edge, not the label's.
@@ -305,14 +189,14 @@ struct ClipBlockView: View {
             }
             .padding(.leading, drawnX > liveX ? Design.Space.step : Design.Space.close)
             .padding(.top, pictures == nil ? 0 : 2)
-            .frame(width: drawnWidth, height: height, alignment: pictures == nil ? .leading : .topLeading)
+            .frame(width: drawnWidth, height: model.height, alignment: pictures == nil ? .leading : .topLeading)
             .background {
-                Design.clipFill(typeColor, selected: isSelected)
+                Design.clipFill(model.typeColor, selected: model.isSelected)
                     .overlay(alignment: .bottomLeading) {
                         if let pictures {
                             ClipThumbnails(
-                                clip: shown, media: pictures, pixelsPerSecond: pixelsPerSecond,
-                                liveX: liveX, drawnX: drawnX, width: drawnWidth, height: height - Self.labelBand
+                                clip: shown, media: pictures, pixelsPerSecond: model.pixelsPerSecond,
+                                liveX: liveX, drawnX: drawnX, width: drawnWidth, height: model.height - Self.labelBand
                             )
                         }
                     }
@@ -323,15 +207,15 @@ struct ClipBlockView: View {
                 transitionMarks(of: shown, liveX: liveX, drawnX: drawnX, drawnWidth: drawnWidth)
             }
             .overlay(alignment: .bottomLeading) {
-                if let progress = renderer?.progress(forClip: clip.id) {
+                if let progress = renderer?.progress(forClip: model.clip.id) {
                     RenderProgressBar(progress: progress)
                 }
             }
             .clipShape(shape)
             .overlay {
                 shape.strokeBorder(
-                    isDropTarget ? Design.accent : isSelected ? Design.textOnColor.opacity(0.95) : typeColor.opacity(0.85),
-                    lineWidth: isDropTarget ? 2 : isSelected ? 1.5 : 1
+                    isDropTarget ? Design.accent : model.isSelected ? Design.textOnColor.opacity(0.95) : model.typeColor.opacity(0.85),
+                    lineWidth: isDropTarget ? 2 : model.isSelected ? 1.5 : 1
                 )
             }
             // The bevel: lit along the top, shaded along the bottom, so a
@@ -340,61 +224,61 @@ struct ClipBlockView: View {
             .overlay { shape.strokeBorder(Design.bevelEdgeStrong, lineWidth: 1) }
             // Turned off: still where it is, drawn faded and without colour,
             // since it plays as a gap.
-            .saturation(clip.enabled ? 1 : 0)
-            .opacity(clip.enabled ? 1 : 0.45)
+            .saturation(model.clip.enabled ? 1 : 0)
+            .opacity(model.clip.enabled ? 1 : 0.45)
             // Only the selected clip gets a shadow. A shadow under every
             // block would be both a rasterization pass per clip on a
             // timeline that redraws as you scrub, and the look of a stack
             // of cards rather than of blocks set into a track.
-            .shadow(color: .black.opacity(isSelected ? 0.55 : 0), radius: isSelected ? 6 : 0, y: 1)
+            .shadow(color: .black.opacity(model.isSelected ? 0.55 : 0), radius: model.isSelected ? 6 : 0, y: 1)
             // Picked up: raised and casting a longer shadow on the track, at
             // its own size, so where it sits is exactly where it will land.
             .shadow(color: .black.opacity(isLifted ? 0.5 : 0), radius: isLifted ? 10 : 0, y: isLifted ? 7 : 0)
             .offset(y: isLifted ? -3 : 0)
             .confirmFlash(token: landedCount, color: Design.textOnColor)
-            .editorAnimation(Design.Motion.select, value: isSelected)
+            .editorAnimation(Design.Motion.select, value: model.isSelected)
             .editorAnimation(Design.Motion.select, value: isLifted)
             .dropDestination(for: ClipDropPayload.self) { payloads, location in
                 guard let payload = payloads.first else { return false }
                 let files = payloads.compactMap(\.file)
                 if !files.isEmpty {
-                    onDropFiles(files, CMTime(seconds: max(0, Double((drawnX + location.x) / pixelsPerSecond)), preferredTimescale: 600))
+                    handlers.onDropFiles(files, CMTime(seconds: max(0, Double((drawnX + location.x) / model.pixelsPerSecond)), preferredTimescale: 600))
                     return true
                 }
-                if let generator = payload.generator, clip.source != .graphic {
-                    onDropGenerator(generator.kind, CMTime(seconds: max(0, Double((drawnX + location.x) / pixelsPerSecond)), preferredTimescale: 600))
+                if let generator = payload.generator, model.clip.source != .graphic {
+                    handlers.onDropGenerator(generator.kind, CMTime(seconds: max(0, Double((drawnX + location.x) / model.pixelsPerSecond)), preferredTimescale: 600))
                     return true
                 }
-                if let transition = payload.transition, transitionsTaken.takes(transition.kind) {
+                if let transition = payload.transition, model.transitionsTaken.takes(transition.kind) {
                     // The nearer end of the clip gets the transition.
                     let x = drawnX + location.x
-                    onSetTransition(transition.kind, x - liveX < liveWidth / 2 ? .leading : .trailing)
-                } else if let effect = payload.effect, effect.kind.isAudio ? acceptsSoundEffects : acceptsEffects {
-                    onAddEffect(effect.kind)
+                    handlers.onSetTransition(transition.kind, x - liveX < liveWidth / 2 ? .leading : .trailing)
+                } else if let effect = payload.effect, effect.kind.isAudio ? model.acceptsSoundEffects : model.acceptsEffects {
+                    handlers.onAddEffect(effect.kind)
                 } else if let generator = payload.generator {
                     // Joins a text or shape clip, below what it draws, so
                     // text can follow the path of a shape above it.
-                    onAddEffect(generator.kind)
-                } else if let preset = payload.preset, acceptsEffects || acceptsSoundEffects {
-                    onApplyPreset(preset.presetID)
+                    handlers.onAddEffect(generator.kind)
+                } else if let preset = payload.preset, model.acceptsEffects || model.acceptsSoundEffects {
+                    handlers.onApplyPreset(preset.presetID)
                 } else {
                     return false
                 }
-                onSelect()
+                handlers.onSelect()
                 return true
             } isTargeted: { targeted in
                 // Whether this clip takes what is over it isn't known until
                 // the drop, so it lights for any drag it could take.
-                isDropTarget = targeted && (transitionsTaken != .none || acceptsEffects || acceptsSoundEffects)
+                isDropTarget = targeted && (model.transitionsTaken != .none || model.acceptsEffects || model.acceptsSoundEffects)
             }
             .contextMenu { ClipMenuHost(block: self, key: menuKey).equatable() }
             .onContinuousHover(coordinateSpace: .named(space)) { phase in
-                guard tool == .blade, case .active(let location) = phase else {
+                guard model.tool == .blade, case .active(let location) = phase else {
                     bladeX = nil
                     return
                 }
                 let time = bladeTime(atX: location.x)
-                bladeX = time > clip.startOffset && time < clip.endOffset ? time.seconds * pixelsPerSecond : nil
+                bladeX = time > model.clip.startOffset && time < model.clip.endOffset ? time.seconds * model.pixelsPerSecond : nil
             }
             .offset(x: drawnX)
             .offset(carry)
@@ -409,7 +293,7 @@ struct ClipBlockView: View {
                         guard hypot(value.translation.width, value.translation.height) >= 3 else { return }
                         if !isLifted {
                             isLifted = true
-                            onDragging(true)
+                            handlers.onDragging(true)
                             autoScroll?.begin()
                         }
                         previewMove(translation: value.translation, pointer: value.location)
@@ -428,12 +312,12 @@ struct ClipBlockView: View {
                         // it is a new block that arrives, from where this
                         // one was let go (`ClipFlights`).
                         if previewTarget?.layerID != nil || previewTarget?.newLayer != nil {
-                            ClipFlights.shared.depart(clip.id, from: drawnStart(liveX: liveX))
+                            ClipFlights.shared.depart(model.clip.id, from: drawnStart(liveX: liveX))
                         }
                         withAnimation(Design.Motion.respecting(Design.Motion.glide)) { carry = .zero }
                         isLifted = false
-                        onDragging(false)
-                        onSnapIndicator(nil)
+                        handlers.onDragging(false)
+                        handlers.onSnapIndicator(nil)
                         let targetLayer = previewTarget?.layerID
                         let copying = isCopying
                         isCopying = false
@@ -442,15 +326,15 @@ struct ClipBlockView: View {
                             // The clip itself doesn't change, so there is
                             // no edit of it to wait for.
                             if let kind = previewTarget?.newLayer, let start = previewTarget?.start {
-                                onCopy(start, nil, kind)
-                            } else if let preview, preview.startOffset != clip.startOffset || targetLayer != nil {
-                                onCopy(preview.startOffset, targetLayer, nil)
+                                handlers.onCopy(start, nil, kind)
+                            } else if let preview, preview.startOffset != model.clip.startOffset || targetLayer != nil {
+                                handlers.onCopy(preview.startOffset, targetLayer, nil)
                             }
                             endDrop()
                         } else if let kind = previewTarget?.newLayer, let start = previewTarget?.start {
-                            commitDrop { onMoveToNewLayer(kind, start) }
-                        } else if let preview, preview.startOffset != clip.startOffset || targetLayer != nil {
-                            commitDrop { onMove(preview.startOffset, targetLayer) }
+                            commitDrop { handlers.onMoveToNewLayer(kind, start) }
+                        } else if let preview, preview.startOffset != model.clip.startOffset || targetLayer != nil {
+                            commitDrop { handlers.onMove(preview.startOffset, targetLayer) }
                         } else {
                             endDrop()
                         }
@@ -459,7 +343,7 @@ struct ClipBlockView: View {
                 // `.none`: `.none` also switches off every gesture already
                 // on this view, which let the slip gesture below disable
                 // this one and left clips impossible to move.
-                including: tool == .arrow ? .all : .subviews
+                including: model.tool == .arrow ? .all : .subviews
             )
             // With the slip tool, dragging the clip slides its footage under
             // it, like film under a window: right brings earlier frames in.
@@ -467,39 +351,39 @@ struct ClipBlockView: View {
                 DragGesture(minimumDistance: 3, coordinateSpace: .global)
                     .onChanged { value in
                         let delta = timeDelta(-value.translation.width)
-                        let slipped = resolveSlip(delta) ?? clip
+                        let slipped = handlers.resolveSlip(delta) ?? model.clip
                         slipDelta = delta
                         showPreview(slipped)
-                        onSlipDraft(slipped, false)
+                        handlers.onSlipDraft(slipped, false)
                     }
                     .onEnded { _ in
-                        let changed = preview.map { $0 != clip } ?? false
-                        onSlipDraft(nil, changed)
+                        let changed = preview.map { $0 != model.clip } ?? false
+                        handlers.onSlipDraft(nil, changed)
                         if changed, let slipDelta {
-                            commitDrop { onSlip(slipDelta) }
+                            commitDrop { handlers.onSlip(slipDelta) }
                         } else {
                             endDrop()
                         }
                         slipDelta = nil
                     },
-                including: tool == .slip ? .all : .subviews
+                including: model.tool == .slip ? .all : .subviews
             )
             // A double-click on a nested timeline goes into it, except on
             // one of its transitions: the click selected that, and its
             // details stay up, as on any other clip.
             .simultaneousGesture(SpatialTapGesture(count: 2, coordinateSpace: .named(space)).onEnded { value in
-                guard tool == .arrow, transitionEdge(atX: value.location.x, liveX: liveX) == nil else { return }
-                onOpenNested?()
+                guard model.tool == .arrow, transitionEdge(atX: value.location.x, liveX: liveX) == nil else { return }
+                handlers.onOpenNested?()
             })
             // A click selects the clip, or the transition under it.
             .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(space)).onEnded { value in
-                if tool == .blade {
+                if model.tool == .blade {
                     let time = bladeTime(atX: value.location.x)
-                    if time > clip.startOffset && time < clip.endOffset { onBlade(time) }
+                    if time > model.clip.startOffset && time < model.clip.endOffset { handlers.onBlade(time) }
                 } else if let edge = transitionEdge(atX: value.location.x, liveX: liveX) {
-                    onSelectTransition(edge)
+                    handlers.onSelectTransition(edge)
                 } else {
-                    onSelect()
+                    handlers.onSelect()
                 }
             })
 
@@ -507,24 +391,24 @@ struct ClipBlockView: View {
             // points of either side trims that edge instead of moving the
             // whole clip (SwiftUI resolves overlapping gestures to the
             // topmost hit-testable view at the touch point).
-            if tool == .arrow {
+            if model.tool == .arrow {
                 trimHandle(edge: .leading, liveX: liveX, liveWidth: liveWidth)
                 trimHandle(edge: .trailing, liveX: liveX, liveWidth: liveWidth)
             }
-            if tool == .arrow {
+            if model.tool == .arrow {
                 transitionSideHandles(of: shown, liveX: liveX)
             }
             musicLinkMarks(of: shown)
-            if tool == .blade, let bladeX {
+            if model.tool == .blade, let bladeX {
                 Rectangle()
                     .fill(Design.skim)
-                    .frame(width: 1.5, height: height)
+                    .frame(width: 1.5, height: model.height)
                     .shadow(color: .black.opacity(0.5), radius: 1.5)
                     .offset(x: bladeX - 0.75)
                     .allowsHitTesting(false)
             }
         }
-        .frame(height: height, alignment: .topLeading)
+        .frame(height: model.height, alignment: .topLeading)
         .offset(y: previewTarget?.offsetY ?? 0)
         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { frame in
             frameBox.frame = frame
@@ -532,8 +416,8 @@ struct ClipBlockView: View {
             // was let go, as the block that was dragged is gone by now.
             guard !arrivalChecked else { return }
             arrivalChecked = true
-            if let from = ClipFlights.shared.arrive(clip.id) {
-                let start = clip.startOffset.seconds * pixelsPerSecond
+            if let from = ClipFlights.shared.arrive(model.clip.id) {
+                let start = model.clip.startOffset.seconds * model.pixelsPerSecond
                 arrival = CGSize(width: from.x - (frame.minX + start), height: from.y - frame.minY)
                 DispatchQueue.main.async {
                     withAnimation(Design.Motion.respecting(Design.Motion.glide)) { arrival = .zero }
@@ -544,12 +428,12 @@ struct ClipBlockView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityName)
         .accessibilityValue(accessibilityDescription)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAddTraits(model.isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint("Selects the clip. Its actions move and trim it by a frame.")
-        .accessibilityAction { onSelect() }
+        .accessibilityAction { handlers.onSelect() }
         .accessibilityActions { accessibilityEditActions }
-        .onChange(of: clip.music) { _, _ in musicPointDraft = nil }
-        .onChange(of: clip) { _, _ in
+        .onChange(of: model.clip.music) { _, _ in musicPointDraft = nil }
+        .onChange(of: model.clip) { _, _ in
             if pendingDrop != nil {
                 endDrop()
                 // The edit you let go of has arrived: acknowledge it.
@@ -562,18 +446,18 @@ struct ClipBlockView: View {
     /// tall enough to read it.
     @ViewBuilder
     private func waveform(of shown: TimelineClip, drawnX: CGFloat, liveX: CGFloat, width: CGFloat) -> some View {
-        if showsWaveform, splitsChannels || ClipWaveform.strength(atHeight: height) > 0,
-           case .media(let media) = info, let url = media.url {
-            let sourceStart = shown.sourceTime(atTimelineTime: CMTimeAdd(shown.startOffset, CMTime(seconds: Double((drawnX - liveX) / pixelsPerSecond), preferredTimescale: 600)))
+        if model.showsWaveform, model.splitsChannels || ClipWaveform.strength(atHeight: model.height) > 0,
+           case .media(let media) = model.info, let url = media.url {
+            let sourceStart = shown.sourceTime(atTimelineTime: CMTimeAdd(shown.startOffset, CMTime(seconds: Double((drawnX - liveX) / model.pixelsPerSecond), preferredTimescale: 600)))
             ClipWaveform(
                 url: url,
                 fileStart: media.fileTime(forSourceTime: sourceStart).seconds,
                 // A retimed clip plays more or less of the file for each
                 // second of the timeline.
-                secondsPerPoint: shown.speed(atSource: shown.trimStart) / 100 / Double(pixelsPerSecond),
+                secondsPerPoint: shown.speed(atSource: shown.trimStart) / 100 / Double(model.pixelsPerSecond),
                 width: width,
-                height: height,
-                splitsChannels: splitsChannels
+                height: model.height,
+                splitsChannels: model.splitsChannels
             )
         }
     }
@@ -583,10 +467,10 @@ struct ClipBlockView: View {
     /// a faint line at 0 dB.
     @ViewBuilder
     private func volumeLine(of shown: TimelineClip, drawnX: CGFloat, liveX: CGFloat, width: CGFloat) -> some View {
-        if showsVolumeLine, width > 0 {
-            let first = CMTimeAdd(shown.trimStart, CMTime(seconds: Double((drawnX - liveX) / pixelsPerSecond), preferredTimescale: 600))
+        if model.showsVolumeLine, width > 0 {
+            let first = CMTimeAdd(shown.trimStart, CMTime(seconds: Double((drawnX - liveX) / model.pixelsPerSecond), preferredTimescale: 600))
             let volume = shown.volume
-            let pixels = pixelsPerSecond
+            let pixels = model.pixelsPerSecond
             Canvas { context, size in
                 let unity = VolumeLane.y(ofLevel: 0, height: size.height)
                 context.fill(Path(CGRect(x: 0, y: unity, width: size.width, height: 0.5)), with: .color(Design.textOnColor.opacity(0.35)))
@@ -600,7 +484,7 @@ struct ClipBlockView: View {
                 }
                 context.stroke(line, with: .color(Design.textOnColor.opacity(0.9)), lineWidth: 1.5)
             }
-            .frame(width: width, height: height)
+            .frame(width: width, height: model.height)
             .allowsHitTesting(false)
         }
     }
@@ -626,16 +510,16 @@ struct ClipBlockView: View {
     /// under the drag.
     private func previewMove(translation: CGSize, pointer: CGPoint) {
         let across = translation.width + (autoScroll?.scrolled ?? 0)
-        var proposed = CMTimeAdd(clip.startOffset, timeDelta(across))
-        let snapped = snapSpan(proposed, clip.placedDuration)
+        var proposed = CMTimeAdd(model.clip.startOffset, timeDelta(across))
+        let snapped = handlers.snapSpan(proposed, model.clip.placedDuration)
         if let snapped { proposed = snapped.start }
-        onSnapIndicator(snapped?.target)
-        let target = resolveMove(proposed, pointer)
-        var moved = clip
-        moved.startOffset = target?.start ?? clip.startOffset
+        handlers.onSnapIndicator(snapped?.target)
+        let target = handlers.resolveMove(proposed, pointer)
+        var moved = model.clip
+        moved.startOffset = target?.start ?? model.clip.startOffset
         showPreview(moved)
         previewTarget = target?.layerID == nil && target?.newLayer == nil ? nil : target
-        onMovePreview(target)
+        handlers.onMovePreview(target)
         // The block is drawn where it will land, on a frame and on the
         // layer's row, stepping from frame to frame rather than floating
         // with the pointer. Only over the place a new layer would go,
@@ -659,8 +543,8 @@ struct ClipBlockView: View {
 
     /// The timeline time the blade cuts at for `x` in the row: on a frame.
     private func bladeTime(atX x: CGFloat) -> CMTime {
-        let time = CMTime(seconds: Double(max(0, x) / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
-        return snap(snapTime(time) ?? time)
+        let time = CMTime(seconds: Double(max(0, x) / model.pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
+        return handlers.snap(handlers.snapTime(time) ?? time)
     }
 
     private enum Edge { case leading, trailing }
@@ -689,43 +573,43 @@ struct ClipBlockView: View {
         pendingDrop = nil
         preview = nil
         previewTarget = nil
-        onMovePreview(nil)
+        handlers.onMovePreview(nil)
     }
 
     func timeDelta(_ translation: CGFloat) -> CMTime {
-        CMTime(seconds: Double(translation / pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
+        CMTime(seconds: Double(translation / model.pixelsPerSecond), preferredTimescale: EditingProject.audioPlacementTimescale)
     }
 
     /// A trim drag of `edge` moved by `translation` points: previews it.
     private func trimChanged(_ edge: Edge, translation: CGFloat) {
         isTrimming = true
         var delta = timeDelta(translation + (autoScroll?.scrolled ?? 0))
-        let edgeTime = edge == .leading ? clip.startOffset : clip.endOffset
-        let snapped = snapTime(CMTimeAdd(edgeTime, delta))
+        let edgeTime = edge == .leading ? model.clip.startOffset : model.clip.endOffset
+        let snapped = handlers.snapTime(CMTimeAdd(edgeTime, delta))
         if let snapped { delta = CMTimeSubtract(snapped, edgeTime) }
-        onSnapIndicator(snapped)
+        handlers.onSnapIndicator(snapped)
         let trimmed = switch edge {
         // The trim is in the source, which a retimed clip plays at its speed.
-        case .leading: resolveTrimStart(clip.sourceTime(atTimelineTime: CMTimeAdd(clip.startOffset, delta))) ?? clip
-        case .trailing: resolveTrimEnd(clip.sourceTime(atTimelineTime: CMTimeAdd(clip.endOffset, delta))) ?? clip
+        case .leading: handlers.resolveTrimStart(model.clip.sourceTime(atTimelineTime: CMTimeAdd(model.clip.startOffset, delta))) ?? model.clip
+        case .trailing: handlers.resolveTrimEnd(model.clip.sourceTime(atTimelineTime: CMTimeAdd(model.clip.endOffset, delta))) ?? model.clip
         }
         showPreview(trimmed)
-        onTrimPreview(trimmed, edge == .leading ? .first : .last)
+        handlers.onTrimPreview(trimmed, edge == .leading ? .first : .last)
     }
 
     /// A trim drag ended: commits it, or selects the clip when it was a click.
     private func trimEnded(_ edge: Edge) {
-        onSnapIndicator(nil)
-        onTrimPreview(nil, .both)
-        if let preview, preview != clip {
+        handlers.onSnapIndicator(nil)
+        handlers.onTrimPreview(nil, .both)
+        if let preview, preview != model.clip {
             commitDrop {
                 switch edge {
-                case .leading: onTrimStart(preview.trimStart)
-                case .trailing: onTrimEnd(preview.trimEnd)
+                case .leading: handlers.onTrimStart(preview.trimStart)
+                case .trailing: handlers.onTrimEnd(preview.trimEnd)
                 }
             }
         } else {
-            if !isTrimming { onSelect() }
+            if !isTrimming { handlers.onSelect() }
             endDrop()
         }
         isTrimming = false
@@ -735,7 +619,7 @@ struct ClipBlockView: View {
         let handleX = edge == .leading ? liveX - handleWidth / 2 : liveX + liveWidth - handleWidth / 2
         return Rectangle()
             .fill(Color.clear)
-            .frame(width: handleWidth, height: height)
+            .frame(width: handleWidth, height: model.height)
             .contentShape(Rectangle())
             .offset(x: handleX)
             .gesture(
@@ -754,5 +638,18 @@ struct ClipBlockView: View {
                     }
             )
             .pointerStyle(.columnResize)
+    }
+}
+
+extension ClipBlockView: Equatable {
+    /// Whether the block would draw the same, so its row can skip drawing
+    /// it again (the row marks it `.equatable()`): the same model, the same
+    /// optional actions offered, the same handler box. The handlers
+    /// themselves aren't compared; the box holds the row's newest ones,
+    /// which the gestures of a block not drawn again read as they run.
+    nonisolated static func == (lhs: ClipBlockView, rhs: ClipBlockView) -> Bool {
+        MainActor.assumeIsolated {
+            lhs.live === rhs.live && lhs.offered == rhs.offered && lhs.model == rhs.model
+        }
     }
 }

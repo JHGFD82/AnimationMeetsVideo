@@ -1,15 +1,20 @@
 import CoreMedia
 import SwiftUI
 
-/// What an adjustment clip's menu offers to set its reach.
-struct ReachMenu {
+/// What an adjustment clip's menu offers to set its reach, which it sets
+/// through `ClipBlockHandlers.onSetReach`.
+struct ReachMenu: Equatable {
+    struct Option: Equatable, Identifiable {
+        var id: UUID
+        var name: String
+    }
+
     /// The layer it reaches down to; nil for every layer below.
     var current: UUID?
     /// The layers below its layer, which it can reach down to.
-    var options: [(id: UUID, name: String)]
+    var options: [Option]
     /// What it reaches, in words.
     var summary: String
-    let onChoose: (UUID?) -> Void
 }
 
 /// A clip block's context menu, built again only when what it offers
@@ -32,10 +37,7 @@ struct ClipMenuHost: View, Equatable {
         var acceptsEffects: Bool
         var acceptsSoundEffects: Bool
         var playsSound: Bool
-        var reachCurrent: UUID?
-        var reachSummary: String?
-        var reachOptions: [UUID]
-        var reachNames: [String]
+        var reach: ReachMenu?
         /// What the menu's Paste items are enabled by.
         var canPasteClip: Bool
         /// Whether the clip is one of several selected together.
@@ -54,82 +56,81 @@ struct ClipMenuHost: View, Equatable {
 extension ClipBlockView {
     var menuKey: ClipMenuHost.Key {
         ClipMenuHost.Key(
-            clip: clip, hasLinkedAudio: hasLinkedAudio, hasBeatMatch: onBeatMatch != nil, hasBeats: onRemoveBeats != nil, canFollowMusic: onAttachToMusic != nil,
-            canMotionDesign: onMotionDesign != nil, canConformTimeline: onConformTimeline != nil, passesThrough: passesThrough,
-            acceptsEffects: acceptsEffects, acceptsSoundEffects: acceptsSoundEffects, playsSound: playsSound,
-            reachCurrent: reach?.current, reachSummary: reach?.summary,
-            reachOptions: reach?.options.map(\.id) ?? [], reachNames: reach?.options.map(\.name) ?? [],
-            canPasteClip: EditorClipboard.shared.hasClips, inGroup: isInGroup, canPasteEffects: EditorClipboard.shared.canPasteEffects
+            clip: model.clip, hasLinkedAudio: model.hasLinkedAudio, hasBeatMatch: handlers.onBeatMatch != nil, hasBeats: handlers.onRemoveBeats != nil, canFollowMusic: handlers.onAttachToMusic != nil,
+            canMotionDesign: handlers.onMotionDesign != nil, canConformTimeline: handlers.onConformTimeline != nil, passesThrough: model.passesThrough,
+            acceptsEffects: model.acceptsEffects, acceptsSoundEffects: model.acceptsSoundEffects, playsSound: model.playsSound,
+            reach: model.reach,
+            canPasteClip: EditorClipboard.shared.hasClips, inGroup: model.isInGroup, canPasteEffects: EditorClipboard.shared.canPasteEffects
         )
     }
 
     @ViewBuilder
     var clipMenu: some View {
-        Button("Cut") { onClipboard(.cut) }
+        Button("Cut") { handlers.onClipboard(.cut) }
             .keyboardShortcut("x", modifiers: .command)
-        Button("Copy") { onClipboard(.copy) }
+        Button("Copy") { handlers.onClipboard(.copy) }
             .keyboardShortcut("c", modifiers: .command)
-        Button("Paste") { onClipboard(.paste) }
+        Button("Paste") { handlers.onClipboard(.paste) }
             .keyboardShortcut("v", modifiers: .command)
             .disabled(!EditorClipboard.shared.hasClips)
-        Button("Duplicate") { onClipboard(.duplicate) }
+        Button("Duplicate") { handlers.onClipboard(.duplicate) }
             .keyboardShortcut("d", modifiers: .command)
-        Button(isInGroup ? "Put Selection in New Timeline" : "Put in New Timeline") { onClipboard(.nest) }
+        Button(model.isInGroup ? "Put Selection in New Timeline" : "Put in New Timeline") { handlers.onClipboard(.nest) }
         Divider()
-        Button(clip.enabled ? "Turn Off" : "Turn On") { onEditClip { $0.enabled.toggle() } }
+        Button(model.clip.enabled ? "Turn Off" : "Turn On") { handlers.onEditClip { $0.enabled.toggle() } }
             .keyboardShortcut("v", modifiers: [])
-        if playsSound {
-            Button(clip.soundMuted ? "Unmute Sound" : "Mute Sound") { onEditClip { $0.soundMuted.toggle() } }
+        if model.playsSound {
+            Button(model.clip.soundMuted ? "Unmute Sound" : "Mute Sound") { handlers.onEditClip { $0.soundMuted.toggle() } }
         }
         Divider()
-        if let reach {
+        if let reach = model.reach {
             reachMenu(reach)
             Divider()
         }
-        if let transition = clip.transitionIn {
-            Button("Remove \(transition.kind.name) at Start") { onRemoveTransition(.leading) }
+        if let transition = model.clip.transitionIn {
+            Button("Remove \(transition.kind.name) at Start") { handlers.onRemoveTransition(.leading) }
         }
-        if let transition = clip.transitionOut {
-            Button("Remove \(transition.kind.name) at End") { onRemoveTransition(.trailing) }
+        if let transition = model.clip.transitionOut {
+            Button("Remove \(transition.kind.name) at End") { handlers.onRemoveTransition(.trailing) }
         }
-        if hasLinkedAudio {
-            if clip.transitionIn != nil || clip.transitionOut != nil { Divider() }
-            Button("Detach Audio", action: onDetachAudio)
+        if model.hasLinkedAudio {
+            if model.clip.transitionIn != nil || model.clip.transitionOut != nil { Divider() }
+            Button("Detach Audio", action: handlers.onDetachAudio)
         }
-        if let onBeatMatch {
+        if let onBeatMatch = handlers.onBeatMatch {
             Button("Beat Match…", action: onBeatMatch)
         }
-        if let onRemoveBeats {
+        if let onRemoveBeats = handlers.onRemoveBeats {
             Button("Remove Beats", action: onRemoveBeats)
         }
-        if case .timeline = clip.source {
-            if let onOpenNested { Button("Open Timeline", action: onOpenNested) }
-            Toggle("Pass Through", isOn: Binding(get: { passesThrough }, set: { onSetPassThrough($0) }))
+        if case .timeline = model.clip.source {
+            if let onOpenNested = handlers.onOpenNested { Button("Open Timeline", action: onOpenNested) }
+            Toggle("Pass Through", isOn: Binding(get: { model.passesThrough }, set: { handlers.onSetPassThrough($0) }))
         }
-        if let onAttachToMusic {
+        if let onAttachToMusic = handlers.onAttachToMusic {
             Divider()
-            Toggle("Follow Music", isOn: Binding(get: { clip.followsMusic }, set: { follows in onEditClip { $0.followsMusic = follows } }))
+            Toggle("Follow Music", isOn: Binding(get: { model.clip.followsMusic }, set: { follows in handlers.onEditClip { $0.followsMusic = follows } }))
             Button("Attach to Music at Playhead", action: onAttachToMusic)
         }
-        if let onMotionDesign {
-            Button(isInGroup ? "Motion Designer for Selection…" : "Motion Designer…", action: onMotionDesign)
+        if let onMotionDesign = handlers.onMotionDesign {
+            Button(model.isInGroup ? "Motion Designer for Selection…" : "Motion Designer…", action: onMotionDesign)
         }
-        if acceptsEffects || acceptsSoundEffects {
+        if model.acceptsEffects || model.acceptsSoundEffects {
             Divider()
-            Button("Paste Effects", action: onPasteEffects)
+            Button("Paste Effects", action: handlers.onPasteEffects)
                 .disabled(!EditorClipboard.shared.canPasteEffects)
         }
-        if let piece = clip.footagePiece {
+        if let piece = model.clip.footagePiece {
             Divider()
             Button("Show in Clips Browser") { NotificationCenter.default.post(name: .revealInBrowser, object: piece) }
                 .keyboardShortcut("f", modifiers: .shift)
-            if let onConformTimeline {
+            if let onConformTimeline = handlers.onConformTimeline {
                 Button("Conform Timeline to Clip", action: onConformTimeline)
                     .help("Give the timeline this clip's frame size, frame rate and SDR or HDR colour space")
             }
             Divider()
             timeMenu
-            if acceptsEffects { shutterMenu }
+            if model.acceptsEffects { shutterMenu }
         }
     }
 
@@ -138,14 +139,14 @@ extension ClipBlockView {
     func reachMenu(_ reach: ReachMenu) -> some View {
         Menu("Reach: \(reach.summary)") {
             Button {
-                reach.onChoose(nil)
+                handlers.onSetReach(nil)
             } label: {
                 if reach.current == nil { Image(systemName: "checkmark") }
                 Text("All Layers Below")
             }
-            ForEach(reach.options, id: \.id) { option in
+            ForEach(reach.options) { option in
                 Button {
-                    reach.onChoose(option.id)
+                    handlers.onSetReach(option.id)
                 } label: {
                     if reach.current == option.id { Image(systemName: "checkmark") }
                     Text("Down to \(option.name)")
@@ -161,40 +162,40 @@ extension ClipBlockView {
         Menu("Speed") {
             ForEach([25.0, 50, 100, 200, 400], id: \.self) { percent in
                 Button {
-                    onEditTime { $0.speed = AnimatedValue(percent) }
+                    handlers.onEditTime { $0.speed = AnimatedValue(percent) }
                 } label: {
-                    if !clip.time.speed.isAnimated, clip.time.speed.value == percent { Image(systemName: "checkmark") }
+                    if !model.clip.time.speed.isAnimated, model.clip.time.speed.value == percent { Image(systemName: "checkmark") }
                     Text(percent == 100 ? "Normal (100%)" : "\(Int(percent))%")
                 }
             }
-            if clip.time.speed.isAnimated {
+            if model.clip.time.speed.isAnimated {
                 Divider()
-                Button("Remove Speed Ramp") { onEditTime { $0.speed = AnimatedValue(100) } }
+                Button("Remove Speed Ramp") { handlers.onEditTime { $0.speed = AnimatedValue(100) } }
             }
         }
-        if acceptsEffects {
+        if model.acceptsEffects {
             Menu("Frame Blending") {
                 ForEach(FrameBlending.allCases) { mode in
                     Button {
-                        onEditTime { $0.frameBlending = mode }
+                        handlers.onEditTime { $0.frameBlending = mode }
                     } label: {
-                        if clip.time.frameBlending == mode { Image(systemName: "checkmark") }
+                        if model.clip.time.frameBlending == mode { Image(systemName: "checkmark") }
                         Text(mode.name)
                     }
                 }
             }
             Toggle("Echo", isOn: Binding(
-                get: { clip.time.echo != nil },
-                set: { on in onEditTime { $0.echo = on ? Echo(count: 4, delay: CMTime(value: 1, timescale: 12), decay: 0.6) : nil } }
+                get: { model.clip.time.echo != nil },
+                set: { on in handlers.onEditTime { $0.echo = on ? Echo(count: 4, delay: CMTime(value: 1, timescale: 12), decay: 0.6) : nil } }
             ))
         }
-        if playsSound {
+        if model.playsSound {
             Menu("Sound at Other Speeds") {
                 ForEach(SoundMode.allCases) { mode in
                     Button {
-                        onEditTime { $0.sound = mode }
+                        handlers.onEditTime { $0.sound = mode }
                     } label: {
-                        if clip.time.sound == mode { Image(systemName: "checkmark") }
+                        if model.clip.time.sound == mode { Image(systemName: "checkmark") }
                         Text(mode.name)
                     }
                 }
@@ -207,12 +208,12 @@ extension ClipBlockView {
     var shutterMenu: some View {
         Menu("Shutter") {
             Toggle("Motion Blur", isOn: Binding(
-                get: { clip.shutter.motionBlur != nil },
-                set: { on in onEditClip { $0.shutter.motionBlur = on ? MotionBlur() : nil } }
+                get: { model.clip.shutter.motionBlur != nil },
+                set: { on in handlers.onEditClip { $0.shutter.motionBlur = on ? MotionBlur() : nil } }
             ))
             Toggle("Trails", isOn: Binding(
-                get: { clip.shutter.trails != nil },
-                set: { on in onEditClip { $0.shutter.trails = on ? Trails(count: 4, delay: CMTime(value: 1, timescale: 12), decay: 0.6) : nil } }
+                get: { model.clip.shutter.trails != nil },
+                set: { on in handlers.onEditClip { $0.shutter.trails = on ? Trails(count: 4, delay: CMTime(value: 1, timescale: 12), decay: 0.6) : nil } }
             ))
         }
     }
@@ -222,7 +223,7 @@ extension ClipBlockView {
         let current = transition.curve.preset
         ForEach(TransitionCurve.Preset.allCases) { preset in
             Button {
-                onSetTransitionCurve(edge, TransitionCurve(preset: preset))
+                handlers.onSetTransitionCurve(edge, TransitionCurve(preset: preset))
             } label: {
                 if current == preset {
                     Label(preset.name, systemImage: "checkmark")
@@ -233,6 +234,6 @@ extension ClipBlockView {
             .help(preset.detail)
         }
         Divider()
-        Button("Remove \(transition.kind.name)") { onRemoveTransition(edge) }
+        Button("Remove \(transition.kind.name)") { handlers.onRemoveTransition(edge) }
     }
 }

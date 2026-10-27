@@ -6,12 +6,12 @@ import SwiftUI
 extension ClipBlockView {
     /// The end whose transition covers `x` (in the clip's row), if any.
     func transitionEdge(atX x: CGFloat, liveX: CGFloat) -> TransitionEdge? {
-        let durations = clip.effectiveTransitionDurations(lead: joinedLead ?? .zero)
-        let end = liveX + clip.placedDuration.seconds * pixelsPerSecond
-        if clip.transitionIn != nil, joinedLead == nil, x >= liveX, x <= liveX + durations.leading.seconds * pixelsPerSecond {
+        let durations = model.clip.effectiveTransitionDurations(lead: model.joinedLead ?? .zero)
+        let end = liveX + model.clip.placedDuration.seconds * model.pixelsPerSecond
+        if model.clip.transitionIn != nil, model.joinedLead == nil, x >= liveX, x <= liveX + durations.leading.seconds * model.pixelsPerSecond {
             return .leading
         }
-        if clip.transitionOut != nil, x <= end, x >= end - durations.trailing.seconds * pixelsPerSecond {
+        if model.clip.transitionOut != nil, x <= end, x >= end - durations.trailing.seconds * model.pixelsPerSecond {
             return .trailing
         }
         return nil
@@ -21,12 +21,12 @@ extension ClipBlockView {
     /// shaped by their curves, in the block's drawn coordinates. A selected
     /// one wide enough on screen shows its curve's points to edit.
     func transitionMarks(of shown: TimelineClip, liveX: CGFloat, drawnX: CGFloat, drawnWidth: CGFloat) -> some View {
-        let durations = shown.effectiveTransitionDurations(lead: joinedLead ?? .zero)
-        let liveEnd = liveX + shown.placedDuration.seconds * pixelsPerSecond
-        let leadingWidth = durations.leading.seconds * pixelsPerSecond
-        let trailingWidth = durations.trailing.seconds * pixelsPerSecond
+        let durations = shown.effectiveTransitionDurations(lead: model.joinedLead ?? .zero)
+        let liveEnd = liveX + shown.placedDuration.seconds * model.pixelsPerSecond
+        let leadingWidth = durations.leading.seconds * model.pixelsPerSecond
+        let trailingWidth = durations.trailing.seconds * model.pixelsPerSecond
         return ZStack(alignment: .topLeading) {
-            if let transition = shown.transitionIn, joinedLead == nil, leadingWidth > 0 {
+            if let transition = shown.transitionIn, model.joinedLead == nil, leadingWidth > 0 {
                 transitionMark(transition, edge: .leading, width: leadingWidth)
                     .offset(x: liveX - drawnX)
             }
@@ -35,26 +35,26 @@ extension ClipBlockView {
                     .offset(x: liveEnd - trailingWidth - drawnX)
             }
         }
-        .frame(width: drawnWidth, height: height, alignment: .topLeading)
+        .frame(width: drawnWidth, height: model.height, alignment: .topLeading)
         .clipped()
     }
 
     private func transitionMark(_ transition: ClipTransition, edge: TransitionEdge, width: CGFloat) -> some View {
-        let isSelected = selectedTransition == edge
+        let isSelected = model.selectedTransition == edge
         return ZStack(alignment: .topLeading) {
             TransitionMark(kind: transition.kind, curve: transition.curve, edge: edge, isSelected: isSelected)
-                .frame(width: width, height: height)
+                .frame(width: width, height: model.height)
                 .contextMenu { transitionMenu(transition, edge: edge) }
-            if isSelected, !transition.kind.isAudio, width >= curveEditingWidth, height >= 30 {
+            if isSelected, !transition.kind.isAudio, width >= curveEditingWidth, model.height >= 30 {
                 TransitionCurveEditor(
                     curve: transition.curve,
                     edge: edge,
-                    size: CGSize(width: width, height: height),
-                    onChange: { onSetTransitionCurve(edge, $0) }
+                    size: CGSize(width: width, height: model.height),
+                    onChange: { handlers.onSetTransitionCurve(edge, $0) }
                 )
             }
         }
-        .frame(width: width, height: height, alignment: .topLeading)
+        .frame(width: width, height: model.height, alignment: .topLeading)
     }
 
     /// The inner side of each transition on the clip's own ends (not one
@@ -62,20 +62,20 @@ extension ClipBlockView {
     /// side staying at the clip's end.
     @ViewBuilder
     func transitionSideHandles(of shown: TimelineClip, liveX: CGFloat) -> some View {
-        let durations = shown.effectiveTransitionDurations(lead: joinedLead ?? .zero)
-        let liveEnd = liveX + shown.placedDuration.seconds * pixelsPerSecond
-        if let transition = clip.transitionIn, joinedLead == nil, durations.leading > .zero {
-            transitionSideHandle(.leading, transition: transition, atX: liveX + durations.leading.seconds * pixelsPerSecond)
+        let durations = shown.effectiveTransitionDurations(lead: model.joinedLead ?? .zero)
+        let liveEnd = liveX + shown.placedDuration.seconds * model.pixelsPerSecond
+        if let transition = model.clip.transitionIn, model.joinedLead == nil, durations.leading > .zero {
+            transitionSideHandle(.leading, transition: transition, atX: liveX + durations.leading.seconds * model.pixelsPerSecond)
         }
-        if let transition = clip.transitionOut, durations.trailing > .zero {
-            transitionSideHandle(.trailing, transition: transition, atX: liveEnd - durations.trailing.seconds * pixelsPerSecond)
+        if let transition = model.clip.transitionOut, durations.trailing > .zero {
+            transitionSideHandle(.trailing, transition: transition, atX: liveEnd - durations.trailing.seconds * model.pixelsPerSecond)
         }
     }
 
     private func transitionSideHandle(_ edge: TransitionEdge, transition: ClipTransition, atX x: CGFloat) -> some View {
         Rectangle()
             .fill(Color.clear)
-            .frame(width: 6, height: height)
+            .frame(width: 6, height: model.height)
             .contentShape(Rectangle())
             .offset(x: x - 3)
             .gesture(
@@ -83,11 +83,11 @@ extension ClipBlockView {
                     .onChanged { value in
                         // Inward is longer for a way in, shorter for a way out.
                         let delta = timeDelta(edge == .leading ? value.translation.width : -value.translation.width)
-                        let duration = snap(CMTimeAdd(transition.duration, delta))
+                        let duration = handlers.snap(CMTimeAdd(transition.duration, delta))
                         if duration > .zero { transitionDraft = (edge, duration) }
                     }
                     .onEnded { _ in
-                        if let transitionDraft { onSetTransitionDuration(edge, transitionDraft.duration) }
+                        if let transitionDraft { handlers.onSetTransitionDuration(edge, transitionDraft.duration) }
                         transitionDraft = nil
                     }
             )

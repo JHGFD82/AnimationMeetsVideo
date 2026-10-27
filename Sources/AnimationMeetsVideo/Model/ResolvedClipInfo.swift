@@ -2,7 +2,7 @@ import CoreMedia
 import Foundation
 
 /// What a `TimelineClip` resolves to, for display and playback.
-enum ResolvedClipInfo {
+enum ResolvedClipInfo: Equatable {
     case media(MediaClip)
     case timeline(Timeline)
     case adjustment

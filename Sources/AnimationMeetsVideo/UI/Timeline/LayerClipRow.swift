@@ -137,6 +137,8 @@ struct LayerClipRow: View {
     @State private var followerShift: FollowerShift?
     /// The clip lifted by a move drag, drawn above its neighbors.
     @State private var liftedClipID: UUID?
+    /// Each clip's handlers, which its block reads as it acts.
+    @State private var handlerStore = LiveClipHandlerStore()
 
     /// Clips moving aside for media dragged from the browser over this
     /// layer. Only the layer under the drag reads where the pointer is, so
@@ -241,9 +243,105 @@ struct LayerClipRow: View {
         guard clip.source == .adjustment, let timeline = project.timeline(id: timelineID) else { return nil }
         return ReachMenu(
             current: clip.reach,
-            options: project.reachOptions(below: layer, in: timeline).map { ($0.id, project.displayName(of: $0, in: timeline)) },
-            summary: project.reachDescription(of: clip, in: timeline),
-            onChoose: { bottom in onSetReach(clip.id, bottom) }
+            options: project.reachOptions(below: layer, in: timeline).map { .init(id: $0.id, name: project.displayName(of: $0, in: timeline)) },
+            summary: project.reachDescription(of: clip, in: timeline)
+        )
+    }
+
+    /// What a clip's block draws from, which decides whether it is drawn
+    /// again (`ClipBlockView.==`).
+    private func blockModel(for clip: TimelineClip) -> ClipBlockModel {
+        let isSelected = selection?.layerID == layer.id && selection?.timelineClipID == clip.id
+        let isInGroup = groupSelected.contains(clip.id)
+        let info = project.resolvedInfo(for: clip)
+        return ClipBlockModel(
+            clip: clip,
+            frameRate: frameRate,
+            info: info,
+            typeColor: layer.kind == .music ? Design.ClipTone.music.color : Design.ClipTone.of(info, streams: clip.streams).color,
+            hasLinkedAudio: project.canDetachAudio(clip),
+            showsWaveform: project.isAudioOnly(clip),
+            splitsChannels: showsChannels,
+            transitionsTaken: project.transitionsTaken(by: clip),
+            joinedLead: project.joinedLead(of: clip, among: layer.clips),
+            isSelected: isSelected || isInGroup,
+            isInGroup: isInGroup,
+            selectedTransition: isSelected ? selection?.transitionEdge : nil,
+            pixelsPerSecond: pixelsPerSecond,
+            height: height,
+            visibleX: visibleX,
+            tool: tool,
+            acceptsEffects: project.hasEffectStack(clip),
+            acceptsSoundEffects: project.playsAudio(clip),
+            effectCount: clip.effects.count + clip.audioEffects.count,
+            showsVolumeLine: showsVolumeLines && project.playsAudio(clip),
+            passesThrough: clip.passThrough,
+            hasPasteChanges: project.hasUnresolvedPasteChanges(clip),
+            playsSound: project.playsAudio(clip),
+            musicMarks: musicMarks[clip.id] ?? [],
+            reach: reachMenu(for: clip)
+        )
+    }
+
+    /// What a clip's block does. Made anew each time the row is drawn and
+    /// put in the clip's `LiveClipHandlers`, which the block reads as it
+    /// acts, so these act with what the row last saw even when the block
+    /// itself wasn't drawn again.
+    private func blockHandlers(for clip: TimelineClip) -> ClipBlockHandlers {
+        ClipBlockHandlers(
+            onToggleInGroup: { onToggleGroup(clip.id) },
+            onOpenNested: nestedOpener(for: clip),
+            resolveMove: { start, pointer in resolveMove(clip, pointer, start) },
+            resolveTrimStart: {
+                project.resolvedTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: $0, sceneTracks: sceneTracks())
+            },
+            resolveTrimEnd: {
+                project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: $0, sceneTracks: sceneTracks())
+            },
+            onSelect: { onSelectClip(clip) },
+            onMove: { newStart, targetLayerID in onMoveClip(clip.id, targetLayerID, newStart) },
+            onMoveToNewLayer: { kind, start in onMoveClipToNewLayer(clip.id, kind, start) },
+            onDragging: { dragging in
+                liftedClipID = dragging ? clip.id : nil
+                onDraggingClip(dragging)
+            },
+            onMovePreview: onMovePreview,
+            onTrimStart: { newTrimStart in onTrimClipStart(clip.id, newTrimStart) },
+            onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) },
+            onTrimPreview: onTrimPreview,
+            onSetTransition: { kind, edge in onSetTransition(clip.id, kind, edge) },
+            onRemoveTransition: { edge in onRemoveTransition(clip.id, edge) },
+            onSelectTransition: { edge in onSelectTransition(clip, edge) },
+            onSetTransitionCurve: { edge, curve in onSetTransitionCurve(clip.id, edge, curve) },
+            onDetachAudio: { onDetachAudio(clip.id) },
+            snap: snap,
+            onBlade: { time in onBlade(clip.id, time) },
+            resolveSlip: { project.resolvedSlip(of: clip.id, in: timelineID, layer: layer.id, by: $0) },
+            onSlip: { delta in onSlip(clip.id, delta) },
+            onSlipDraft: { draft, committing in slipDraft(of: clip, draft, committing: committing) },
+            snapTime: { liveSnap.targets?.nearest(to: $0, within: snapTolerance, excluding: clip.id) },
+            snapSpan: { start, duration in
+                liveSnap.targets?.snappedStart(start, duration: duration, within: snapTolerance, excluding: clip.id)
+            },
+            onSnapIndicator: onSnapIndicator,
+            onSetTransitionDuration: { edge, duration in onSetTransitionDuration(clip.id, edge, duration) },
+            onAddEffect: { kind in onAddEffect(clip.id, kind) },
+            onApplyPreset: { onApplyPreset(clip.id, $0) },
+            onPasteEffects: { onPasteEffects(clip.id) },
+            onClipboard: { onClipboard(clip.id, $0) },
+            onCopy: { start, target, kind in onCopyClip(clip.id, start, target, kind) },
+            onDropFiles: onDropFiles,
+            onDropGenerator: onDropGenerator,
+            onSetPassThrough: { onSetPassThrough(clip.id, $0) },
+            onEditTime: { change in onEditTime(clip.id, change) },
+            onEditClip: { change in onEditClip(clip.id, change) },
+            onSetReach: { bottom in onSetReach(clip.id, bottom) },
+            onBeatMatch: beatMatchAction(for: clip),
+            onRemoveBeats: removeBeatsAction(for: clip),
+            onAttachToMusic: layer.kind == .music ? nil : { onAttachToMusic(clip.id, nil) },
+            onSetMusicPoint: layer.kind == .music ? nil : { time in onAttachToMusic(clip.id, time) },
+            onMotionDesign: layer.kind == .music || clip.isReversed ? nil : { onMotionDesign(clip.id) },
+            onConformTimeline: conformAction(for: clip, info: project.resolvedInfo(for: clip))
         )
     }
 
@@ -251,89 +349,11 @@ struct LayerClipRow: View {
         let clips = shownClips
         ZStack(alignment: .topLeading) {
             ForEach(clips) { clip in
-                let isSelected = selection?.layerID == layer.id && selection?.timelineClipID == clip.id
-                let isInGroup = groupSelected.contains(clip.id)
-                let info = project.resolvedInfo(for: clip)
-                let joinedLead = project.joinedLead(of: clip, among: layer.clips)
                 ClipBlockView(
-                    clip: clip,
-                    frameRate: frameRate,
-                    info: info,
-                    typeColor: layer.kind == .music ? Design.ClipTone.music.color : Design.ClipTone.of(info, streams: clip.streams).color,
-                    hasLinkedAudio: project.canDetachAudio(clip),
-                    showsWaveform: project.isAudioOnly(clip),
-                    splitsChannels: showsChannels,
-                    transitionsTaken: project.transitionsTaken(by: clip),
-                    joinedLead: joinedLead,
-                    isSelected: isSelected || isInGroup,
-                    isInGroup: isInGroup,
-                    onToggleInGroup: { onToggleGroup(clip.id) },
-                    onOpenNested: nestedOpener(for: clip),
-                    selectedTransition: isSelected ? selection?.transitionEdge : nil,
-                    pixelsPerSecond: pixelsPerSecond,
-                    height: height,
-                    visibleX: visibleX,
-                    resolveMove: { start, pointer in resolveMove(clip, pointer, start) },
-                    resolveTrimStart: {
-                        project.resolvedTrimStart(of: clip.id, in: timelineID, layer: layer.id, to: $0, sceneTracks: sceneTracks())
-                    },
-                    resolveTrimEnd: {
-                        project.resolvedTrimEnd(of: clip.id, in: timelineID, layer: layer.id, to: $0, sceneTracks: sceneTracks())
-                    },
-                    onSelect: { onSelectClip(clip) },
-                    onMove: { newStart, targetLayerID in onMoveClip(clip.id, targetLayerID, newStart) },
-                    onMoveToNewLayer: { kind, start in onMoveClipToNewLayer(clip.id, kind, start) },
-                    onDragging: { dragging in
-                        liftedClipID = dragging ? clip.id : nil
-                        onDraggingClip(dragging)
-                    },
-                    onMovePreview: onMovePreview,
-                    onTrimStart: { newTrimStart in onTrimClipStart(clip.id, newTrimStart) },
-                    onTrimEnd: { newTrimEnd in onTrimClipEnd(clip.id, newTrimEnd) },
-                    onTrimPreview: onTrimPreview,
-                    onSetTransition: { kind, edge in onSetTransition(clip.id, kind, edge) },
-                    onRemoveTransition: { edge in onRemoveTransition(clip.id, edge) },
-                    onSelectTransition: { edge in onSelectTransition(clip, edge) },
-                    onSetTransitionCurve: { edge, curve in onSetTransitionCurve(clip.id, edge, curve) },
-                    onDetachAudio: { onDetachAudio(clip.id) },
-                    tool: tool,
-                    snap: snap,
-                    onBlade: { time in onBlade(clip.id, time) },
-                    resolveSlip: { project.resolvedSlip(of: clip.id, in: timelineID, layer: layer.id, by: $0) },
-                    onSlip: { delta in onSlip(clip.id, delta) },
-                    onSlipDraft: { draft, committing in slipDraft(of: clip, draft, committing: committing) },
-                    snapTime: { liveSnap.targets?.nearest(to: $0, within: snapTolerance, excluding: clip.id) },
-                    snapSpan: { start, duration in
-                        liveSnap.targets?.snappedStart(start, duration: duration, within: snapTolerance, excluding: clip.id)
-                    },
-                    onSnapIndicator: onSnapIndicator,
-                    onSetTransitionDuration: { edge, duration in onSetTransitionDuration(clip.id, edge, duration) },
-                    acceptsEffects: project.hasEffectStack(clip),
-                    acceptsSoundEffects: project.playsAudio(clip),
-                    effectCount: clip.effects.count + clip.audioEffects.count,
-                    showsVolumeLine: showsVolumeLines && project.playsAudio(clip),
-                    passesThrough: clip.passThrough,
-                    onAddEffect: { kind in onAddEffect(clip.id, kind) },
-                    hasPasteChanges: project.hasUnresolvedPasteChanges(clip),
-                    onApplyPreset: { onApplyPreset(clip.id, $0) },
-                    onPasteEffects: { onPasteEffects(clip.id) },
-                    onClipboard: { onClipboard(clip.id, $0) },
-                    onCopy: { start, target, kind in onCopyClip(clip.id, start, target, kind) },
-                    onDropFiles: onDropFiles,
-                    onDropGenerator: onDropGenerator,
-                    onSetPassThrough: { onSetPassThrough(clip.id, $0) },
-                    playsSound: project.playsAudio(clip),
-                    onEditTime: { change in onEditTime(clip.id, change) },
-                    onEditClip: { change in onEditClip(clip.id, change) },
-                    onBeatMatch: beatMatchAction(for: clip),
-                    onRemoveBeats: removeBeatsAction(for: clip),
-                    onAttachToMusic: layer.kind == .music ? nil : { onAttachToMusic(clip.id, nil) },
-                    onSetMusicPoint: layer.kind == .music ? nil : { time in onAttachToMusic(clip.id, time) },
-                    musicMarks: musicMarks[clip.id] ?? [],
-                    onMotionDesign: layer.kind == .music || clip.isReversed ? nil : { onMotionDesign(clip.id) },
-                    reach: reachMenu(for: clip),
-                    onConformTimeline: conformAction(for: clip, info: info)
+                    model: blockModel(for: clip),
+                    handlers: handlerStore.box(for: clip.id, holding: blockHandlers(for: clip))
                 )
+                .equatable()
                 .offset(x: shiftX(of: clip))
                 // Clips glide to where they are put, in whichever layer
                 // they are: aside as a drag makes room, and along as an
@@ -370,7 +390,10 @@ struct LayerClipRow: View {
                 }
             }
         }
-        .onChange(of: layer.clips) { _, _ in followerShift = nil }
+        .onChange(of: layer.clips) { _, clips in
+            followerShift = nil
+            handlerStore.keep(only: Set(clips.map(\.id)))
+        }
         // offset() shifts rendering without changing the size a view reports
         // to its parent, so without an explicit width here the row would
         // size itself to its (un-offset) widest clip rather than spanning
