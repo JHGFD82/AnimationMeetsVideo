@@ -18,66 +18,17 @@ struct TimelineView: View {
     /// would build the whole timeline again: the views that show it read it
     /// through `PlayheadReader`, and actions through `playheadTime`.
     let playhead: PlayheadState
-    let onScrub: (CMTime) -> Void
-    let onSelectClip: (UUID, TimelineClip) -> Void
-    let onRenameLayer: (UUID, String?) -> Void
-    let onMoveLayer: (UUID, Int) -> Void
-    /// Moves a layer to a place among the layers of its kind, after
-    /// dragging its header.
-    let onMoveLayerTo: (UUID, Int) -> Void
-    /// Layer, clip, the layer it moves to if another, and its new start.
-    let onMoveClip: (UUID, UUID, UUID?, CMTime) -> Void
-    /// Layer, clip and the kind of new layer, at the top, to move it onto.
-    let onMoveClipToNewLayer: (UUID, UUID, LayerKind, CMTime) -> Void
-    /// Scenes dropped on a layer at a time, or with no layer, onto a new
-    /// layer of the given kind (the asset's default kind when nil).
-    let onDropScenes: ([MediaDragPayload], UUID?, CMTime, LayerKind?) -> Bool
-    /// Files dragged in from the Finder: imported, then placed as media
-    /// dropped there would be, onto the layer if given, else onto a new
-    /// layer of the kind.
-    let onDropFiles: ([URL], UUID?, CMTime, LayerKind?) -> Void
-    let onApplyJointEdit: (UUID, UUID, JointEdit) -> Void
-    let onTrimClipStart: (UUID, UUID, CMTime) -> Void
-    let onTrimClipEnd: (UUID, UUID, CMTime) -> Void
-    /// The assets' scene scores (`AssetAnalysis.tracks`), read as a trim is
-    /// dragged so its edge stops at a cut.
-    let sceneTracks: () -> [UUID: ChangeScoreTrack]
-    let onEditVolume: (UUID, (inout AnimatedValue<Double>) -> Void) -> Void
-    let onSetTransition: (UUID, UUID, TransitionKind, TransitionEdge) -> Void
-    let onRemoveTransition: (UUID, UUID, TransitionEdge) -> Void
-    let onSelectTransition: (UUID, TimelineClip, TransitionEdge) -> Void
-    let onSetTransitionCurve: (UUID, UUID, TransitionEdge, TransitionCurve) -> Void
-    /// Detaches the sound of the given clips on a layer, or of all its
-    /// linked clips when nil.
-    let onDetachAudio: (UUID, Set<UUID>?) -> Void
-    /// A layer was selected, which clears any clip selection.
-    let onSelectLayer: () -> Void
-    /// Goes into a nested timeline, from its clip.
-    let onOpenTimeline: (UUID) -> Void
-    let onDeleteClip: (UUID, UUID) -> Void
-    let onDeleteLayer: (UUID) -> Void
-    /// Layer, clip and the timeline time to split it at, from the blade.
-    let onBladeClip: (UUID, UUID, CMTime) -> Void
-    /// Layer, clip and how far to slip its footage (positive plays later footage).
-    let onSlipClip: (UUID, UUID, CMTime) -> Void
-    /// The clip as a slip drag would leave it, for the viewer to show its
-    /// first and last frames; nil when the drag ends.
-    let onTrimPreview: (TimelineClip?, TrimPreviewFrames) -> Void
-    let onSetTransitionDuration: (UUID, UUID, TransitionEdge, CMTime) -> Void
-    /// Applies a change to the project, for the section lane.
-    let onEditProject: ((inout EditingProject) -> Void) -> Void
-    /// The project as it is now, for what runs later than the redraw that
-    /// made it: the Edit menu keeps its commands while what they act on
-    /// is unchanged, and `project` in them would be as it was then.
-    let readProject: () -> EditingProject
+    /// Carries out what the timeline asks for: its edits, and what it
+    /// changes beyond itself (see `TimelineAction`).
+    let host: any TimelineHost
     @Binding var showsEffectsLibrary: Bool
     @Binding var showsSidePanel: Bool
-    /// Whether the effects panel is shown, and the way to show or hide it.
+    /// Whether the effects panel is shown (`TimelineAction.setShowsEffects`
+    /// shows or hides it).
     /// A value, not a binding: the binding the surface makes for it at each
     /// redraw counts as changed every time, and redrew the timeline twice
     /// per edit.
     let showsEffects: Bool
-    let setShowsEffects: (Bool) -> Void
     @Binding var showsMeter: Bool
     /// What is selected in the effects panel, which gets the Delete key
     /// while it has something selected.
@@ -508,27 +459,27 @@ struct TimelineView: View {
                 selectedSectionID = id
                 selectedLayerID = nil
                 groupSelection = []
-                onSelectLayer()
+                host.dispatch(.selectLayer)
             },
             onCreate: { start, end in
                 var created: UUID?
-                onEditProject { created = $0.addSection(in: timelineID, from: start, to: end) }
+                host.dispatch(.editProject { created = $0.addSection(in: timelineID, from: start, to: end) })
                 return created
             },
-            onMove: { id, start in onEditProject { $0.moveSection(id, in: timelineID, to: start) } },
+            onMove: { id, start in host.dispatch(.editProject { $0.moveSection(id, in: timelineID, to: start) }) },
             resolveCopy: { id, start in project.resolvedSectionCopy(id, in: timelineID, to: start) },
             onCopy: { id, start in
                 var copied: UUID?
-                onEditProject { copied = $0.copySection(id, in: timelineID, to: start) }
+                host.dispatch(.editProject { copied = $0.copySection(id, in: timelineID, to: start) })
                 if let copied {
                     selectedSectionID = copied
                     selectedLayerID = nil
                 }
             },
-            onSetEdge: { id, edge, time in onEditProject { $0.setSectionEdge(id, edge: edge, in: timelineID, to: time) } },
-            onRename: { id, name in onEditProject { $0.renameSection(id, in: timelineID, to: name) } },
+            onSetEdge: { id, edge, time in host.dispatch(.editProject { $0.setSectionEdge(id, edge: edge, in: timelineID, to: time) }) },
+            onRename: { id, name in host.dispatch(.editProject { $0.renameSection(id, in: timelineID, to: name) }) },
             onDelete: { id in
-                onEditProject { $0.deleteSection(id, in: timelineID) }
+                host.dispatch(.editProject { $0.deleteSection(id, in: timelineID) })
                 if selectedSectionID == id { selectedSectionID = nil }
             },
             onSnapIndicator: { viewportModel.snapIndicator = $0 }
@@ -559,10 +510,10 @@ struct TimelineView: View {
     /// Puts an adjustment layer at the top of the stack and selects its clip.
     private func addAdjustmentLayer() {
         var created: (layerID: UUID, clipID: UUID)?
-        onEditProject { created = $0.addAdjustmentLayer(to: timelineID, from: .zero) }
+        host.dispatch(.editProject { created = $0.addAdjustmentLayer(to: timelineID, from: .zero) })
         // Selection goes by ID; the view hasn't seen the new clip yet.
         if let created {
-            onSelectClip(created.layerID, TimelineClip(id: created.clipID, source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: .zero))
+            host.dispatch(.selectClip(layer: created.layerID, clip: TimelineClip(id: created.clipID, source: .adjustment, startOffset: .zero, trimStart: .zero, trimEnd: .zero)))
         }
     }
 
@@ -577,13 +528,13 @@ struct TimelineView: View {
     /// new layer at the top for nil.
     func addGenerator(_ kind: EffectKind, onLayer layerID: UUID?, at start: CMTime) {
         var created: (layerID: UUID, clipID: UUID)?
-        onEditProject { project in
+        host.dispatch(.editProject { project in
             created = if let layerID {
                 project.addGenerator(kind, to: timelineID, onLayer: layerID, at: start)
             } else {
                 project.addShapeLayer(kind, to: timelineID, from: start)
             }
-        }
+        })
         select(created, at: start)
     }
 
@@ -592,7 +543,7 @@ struct TimelineView: View {
     func addGenerator(_ kind: EffectKind, above layerID: UUID, at start: CMTime) {
         let index = timeline.layers.firstIndex(id: layerID) ?? 0
         var created: (layerID: UUID, clipID: UUID)?
-        onEditProject { created = $0.addShapeLayer(kind, to: timelineID, at: index, from: start) }
+        host.dispatch(.editProject { created = $0.addShapeLayer(kind, to: timelineID, at: index, from: start) })
         select(created, at: start)
     }
 
@@ -600,12 +551,12 @@ struct TimelineView: View {
     /// hasn't seen the new clip yet.
     private func select(_ created: (layerID: UUID, clipID: UUID)?, at start: CMTime) {
         guard let created else { return }
-        onSelectClip(created.layerID, TimelineClip(id: created.clipID, source: .graphic, startOffset: start, trimStart: .zero, trimEnd: .zero))
+        host.dispatch(.selectClip(layer: created.layerID, clip: TimelineClip(id: created.clipID, source: .graphic, startOffset: start, trimStart: .zero, trimEnd: .zero)))
     }
 
     func deleteLayer(_ id: UUID) {
         if selectedLayerID == id { selectedLayerID = nil }
-        onDeleteLayer(id)
+        host.dispatch(.deleteLayer(id))
     }
 
     /// Conform Timeline to Clip: the timeline takes the clip's frame size,
@@ -615,7 +566,7 @@ struct TimelineView: View {
         let timelineID = timelineID
         Task { @MainActor in
             let size = await MediaFile.pictureSize(of: media)
-            onEditProject { $0.conformTimeline(timelineID, to: media, frameSize: size) }
+            host.dispatch(.editProject { $0.conformTimeline(timelineID, to: media, frameSize: size) })
         }
     }
 }
@@ -638,6 +589,7 @@ extension TimelineView: Equatable {
         MainActor.assumeIsolated {
             lhs.playback === rhs.playback
                 && lhs.playhead === rhs.playhead
+                && lhs.host === rhs.host
                 && lhs.effectsState === rhs.effectsState
                 && lhs.timelineID == rhs.timelineID
                 && lhs.selection == rhs.selection

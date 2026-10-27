@@ -198,6 +198,6 @@ extension TimelineView {
         let snapped = snapping
             ? project.snapTargets(in: timelineID, playhead: nil, markers: drawnBeats(viewport)).nearest(to: time, within: snapTolerance(viewport))
             : nil
-        onScrub(timeline.snappedToFrame(snapped ?? time))
+        host.dispatch(.scrub(timeline.snappedToFrame(snapped ?? time)))
     }
 }

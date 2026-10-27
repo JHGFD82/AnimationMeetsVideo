@@ -75,6 +75,8 @@ struct TimelineEditorSurface<Library: View>: View {
     @AppStorage(Preferences.showsAudioMeter) private var showsMeter = false
     /// The graph editors this surface has open, one HUD per parameter.
     @State private var graphs = KeyframeGraphHUDs()
+    /// Carries out what the timeline asks for (`TimelineHost`).
+    @State private var timelineHost = SurfaceTimelineHost<Library>()
 
     /// How many effects the selected clip has, to notice one being applied.
     private struct AppliedEffects: Equatable {
@@ -374,7 +376,11 @@ struct TimelineEditorSurface<Library: View>: View {
             graphs.onTogglePlayback = { playback.togglePlayback() }
             graphs.playback = playback
         }
-        .onDisappear { graphs.closeAll() }
+        .onDisappear {
+            graphs.closeAll()
+            // It holds this surface, whose state holds it.
+            timelineHost.surface = nil
+        }
         .onChange(of: timelineID) { _, newValue in
             if newValue != trailTarget { trail = project.containingTimelines(of: newValue) }
             trailTarget = nil
@@ -428,6 +434,9 @@ struct TimelineEditorSurface<Library: View>: View {
 
     @ViewBuilder
     private var timelineView: some View {
+        // The host acts through this surface as it is now: its bindings,
+        // and what it was given at this redraw (the timeline, the analysis).
+        let _ = timelineHost.surface = self
         if let timeline {
             TimelineView(
                 project: project,
@@ -438,84 +447,10 @@ struct TimelineEditorSurface<Library: View>: View {
                 beatClicks: playback.beatClicks,
                 playback: playback,
                 playhead: playhead,
-                onScrub: { time in scrub(to: time) },
-                onSelectClip: { layerID, clip in
-                    selection = TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clip.id)
-                },
-                onRenameLayer: { layerID, name in project.renameLayer(layerID, in: timelineID, to: name) },
-                onMoveLayer: { layerID, offset in project.moveLayer(layerID, in: timelineID, by: offset) },
-                onMoveLayerTo: { layerID, position in project.moveLayer(layerID, in: timelineID, toPositionInKind: position) },
-                onMoveClip: { layerID, clipID, targetLayerID, newStart in
-                    project.moveClip(clipID, in: timelineID, layer: layerID, onto: targetLayerID, to: newStart)
-                    if let targetLayerID, selection?.timelineClipID == clipID,
-                       project.timeline(id: timelineID)?.layer(id: targetLayerID)?.clips.contains(where: { $0.id == clipID }) == true {
-                        selection?.layerID = targetLayerID
-                    }
-                },
-                onMoveClipToNewLayer: { layerID, clipID, kind, start in
-                    if let newLayer = project.moveClipToNewLayer(clipID, in: timelineID, layer: layerID, kind: kind, at: start),
-                       selection?.timelineClipID == clipID {
-                        selection?.layerID = newLayer
-                    }
-                },
-                onDropScenes: { payloads, layerID, time, kind in dropScenes(payloads, onLayer: layerID, at: time, kind: kind) },
-                onDropFiles: { urls, layerID, time, kind in dropFiles(urls, onLayer: layerID, at: time, kind: kind) },
-                onApplyJointEdit: { layerID, clipID, edit in
-                    project.applyJointEdit(edit, at: clipID, in: timelineID, layer: layerID)
-                },
-                onTrimClipStart: { layerID, clipID, newTrimStart in
-                    project.trimClipStart(clipID, in: timelineID, layer: layerID, to: newTrimStart, sceneTracks: analysis.tracks)
-                },
-                onTrimClipEnd: { layerID, clipID, newTrimEnd in
-                    project.trimClipEnd(clipID, in: timelineID, layer: layerID, to: newTrimEnd, sceneTracks: analysis.tracks)
-                },
-                sceneTracks: { [analysis] in analysis.tracks },
-                onEditVolume: { layerID, change in
-                    project.editVolume(of: layerID, in: timelineID, change)
-                },
-                onSetTransition: { layerID, clipID, kind, edge in
-                    project.setTransition(kind, at: edge, of: clipID, in: timelineID, layer: layerID)
-                },
-                onRemoveTransition: { layerID, clipID, edge in
-                    project.removeTransition(at: edge, of: clipID, in: timelineID, layer: layerID)
-                },
-                onSelectTransition: { layerID, clip, edge in
-                    selection = TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clip.id, transitionEdge: edge)
-                },
-                onSetTransitionCurve: { layerID, clipID, edge, curve in
-                    project.setTransitionCurve(curve, at: edge, of: clipID, in: timelineID, layer: layerID)
-                },
-                onDetachAudio: { layerID, clipIDs in
-                    project.detachAudio(of: clipIDs, in: timelineID, layer: layerID)
-                },
-                onSelectLayer: { selection = nil },
-                onOpenTimeline: { enterTimeline($0) },
-                onDeleteClip: { layerID, clipID in
-                    project.deleteClip(clipID, in: timelineID, layer: layerID)
-                    selection = nil
-                },
-                onDeleteLayer: { layerID in
-                    project.deleteLayer(layerID, in: timelineID)
-                    if selection?.layerID == layerID { selection = nil }
-                },
-                onBladeClip: { layerID, clipID, time in
-                    project.split(clipID, in: timelineID, layer: layerID, atTimelineTime: time)
-                },
-                onSlipClip: { layerID, clipID, delta in
-                    project.slipClip(clipID, in: timelineID, layer: layerID, by: delta)
-                },
-                onTrimPreview: { clip, frames in showTrimPreview(of: clip, frames: frames) },
-                onSetTransitionDuration: { layerID, clipID, edge, duration in
-                    project.setTransitionDuration(duration, at: edge, of: clipID, in: timelineID, layer: layerID)
-                },
-                onEditProject: { change in change(&project) },
-                readProject: { project },
+                host: timelineHost,
                 showsEffectsLibrary: $showsEffectsLibrary,
                 showsSidePanel: $showsSidePanel,
                 showsEffects: showsSidePanel && sideTab == .effects,
-                setShowsEffects: { on in
-                    if on { showsSidePanel = true; sideTab = .effects } else { sideTab = .inspector }
-                },
                 showsMeter: $showsMeter,
                 effectsState: effectsState,
                 focus: clipFocus
@@ -531,14 +466,14 @@ struct TimelineEditorSurface<Library: View>: View {
     /// drop time, if it all fits and the layer is the right kind; otherwise,
     /// or dropped elsewhere, onto new layers at the top, of `kind` or each
     /// asset's default kind.
-    private func dropScenes(_ payloads: [MediaDragPayload], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind? = nil) -> Bool {
+    fileprivate func dropScenes(_ payloads: [MediaDragPayload], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind? = nil) -> Bool {
         place(payloads.flatMap(\.pieces), onLayer: layerID, at: time, kind: kind)
     }
 
     /// Files dragged in from the Finder are imported into the library, then
     /// placed whole as media dropped there would be. A kind they don't all
     /// suit gives way to each file's own.
-    private func dropFiles(_ urls: [URL], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind?) {
+    fileprivate func dropFiles(_ urls: [URL], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind?) {
         let timelineID = timelineID
         Task {
             guard let imported = await MediaImportFlow.importDropped(
@@ -566,6 +501,77 @@ struct TimelineEditorSurface<Library: View>: View {
         selection = TimelineSelection(timelineID: timelineID, layerID: firstClip.layerID, timelineClipID: firstClip.clipID)
         return true
     }
+
+    /// What the timeline asks for, as its closures did one by one.
+    fileprivate func handle(_ action: TimelineAction) {
+        switch action {
+        case .scrub(let time):
+            scrub(to: time)
+        case .selectClip(let layerID, let clip):
+            selection = TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clip.id)
+        case .renameLayer(let layerID, let name):
+            project.renameLayer(layerID, in: timelineID, to: name)
+        case .moveLayer(let layerID, let offset):
+            project.moveLayer(layerID, in: timelineID, by: offset)
+        case .moveLayerTo(let layerID, let position):
+            project.moveLayer(layerID, in: timelineID, toPositionInKind: position)
+        case .moveClip(let layerID, let clipID, let targetLayerID, let newStart):
+            project.moveClip(clipID, in: timelineID, layer: layerID, onto: targetLayerID, to: newStart)
+            if let targetLayerID, selection?.timelineClipID == clipID,
+               project.timeline(id: timelineID)?.layer(id: targetLayerID)?.clips.contains(where: { $0.id == clipID }) == true {
+                selection?.layerID = targetLayerID
+            }
+        case .moveClipToNewLayer(let layerID, let clipID, let kind, let start):
+            if let newLayer = project.moveClipToNewLayer(clipID, in: timelineID, layer: layerID, kind: kind, at: start),
+               selection?.timelineClipID == clipID {
+                selection?.layerID = newLayer
+            }
+        case .applyJointEdit(let layerID, let clipID, let edit):
+            project.applyJointEdit(edit, at: clipID, in: timelineID, layer: layerID)
+        case .trimClipStart(let layerID, let clipID, let newTrimStart):
+            project.trimClipStart(clipID, in: timelineID, layer: layerID, to: newTrimStart, sceneTracks: analysis.tracks)
+        case .trimClipEnd(let layerID, let clipID, let newTrimEnd):
+            project.trimClipEnd(clipID, in: timelineID, layer: layerID, to: newTrimEnd, sceneTracks: analysis.tracks)
+        case .editVolume(let layerID, let change):
+            project.editVolume(of: layerID, in: timelineID, change)
+        case .setTransition(let layerID, let clipID, let kind, let edge):
+            project.setTransition(kind, at: edge, of: clipID, in: timelineID, layer: layerID)
+        case .removeTransition(let layerID, let clipID, let edge):
+            project.removeTransition(at: edge, of: clipID, in: timelineID, layer: layerID)
+        case .selectTransition(let layerID, let clip, let edge):
+            selection = TimelineSelection(timelineID: timelineID, layerID: layerID, timelineClipID: clip.id, transitionEdge: edge)
+        case .setTransitionCurve(let layerID, let clipID, let edge, let curve):
+            project.setTransitionCurve(curve, at: edge, of: clipID, in: timelineID, layer: layerID)
+        case .setTransitionDuration(let layerID, let clipID, let edge, let duration):
+            project.setTransitionDuration(duration, at: edge, of: clipID, in: timelineID, layer: layerID)
+        case .detachAudio(let layerID, let clipIDs):
+            project.detachAudio(of: clipIDs, in: timelineID, layer: layerID)
+        case .selectLayer:
+            selection = nil
+        case .openTimeline(let id):
+            enterTimeline(id)
+        case .deleteClip(let layerID, let clipID):
+            project.deleteClip(clipID, in: timelineID, layer: layerID)
+            selection = nil
+        case .deleteLayer(let layerID):
+            project.deleteLayer(layerID, in: timelineID)
+            if selection?.layerID == layerID { selection = nil }
+        case .bladeClip(let layerID, let clipID, let time):
+            project.split(clipID, in: timelineID, layer: layerID, atTimelineTime: time)
+        case .slipClip(let layerID, let clipID, let delta):
+            project.slipClip(clipID, in: timelineID, layer: layerID, by: delta)
+        case .trimPreview(let clip, let frames):
+            showTrimPreview(of: clip, frames: frames)
+        case .editProject(let change):
+            change(&project)
+        case .setShowsEffects(let on):
+            if on { showsSidePanel = true; sideTab = .effects } else { sideTab = .inspector }
+        }
+    }
+
+    fileprivate var sceneTracks: [UUID: ChangeScoreTrack] { analysis.tracks }
+
+    fileprivate var currentProject: EditingProject { project }
 
     // MARK: -
 
@@ -646,6 +652,35 @@ struct TimelineEditorSurface<Library: View>: View {
         playback.mixCurves.replace(with: MixCurves.of(project))
         graphs.update(project: project)
         if drew { pipeline?.endHeld(source(of: project)) }
+    }
+}
+
+/// The surface's side of its timeline: what the timeline asks for, done
+/// through the surface as it was last drawn (`TimelineEditorSurface.handle`).
+/// One object for the surface's life, so the timeline, which compares it
+/// by identity, isn't redrawn because the surface was.
+@MainActor
+private final class SurfaceTimelineHost<Library: View>: TimelineHost {
+    var surface: TimelineEditorSurface<Library>?
+
+    func dispatch(_ action: TimelineAction) {
+        surface?.handle(action)
+    }
+
+    func dropScenes(_ payloads: [MediaDragPayload], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind?) -> Bool {
+        surface?.dropScenes(payloads, onLayer: layerID, at: time, kind: kind) ?? false
+    }
+
+    func dropFiles(_ urls: [URL], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind?) {
+        surface?.dropFiles(urls, onLayer: layerID, at: time, kind: kind)
+    }
+
+    func sceneTracks() -> [UUID: ChangeScoreTrack] {
+        surface?.sceneTracks ?? [:]
+    }
+
+    func readProject() -> EditingProject {
+        surface?.currentProject ?? .empty
     }
 }
 

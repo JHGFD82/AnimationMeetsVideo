@@ -113,6 +113,27 @@ extension TimelineView {
         layer.kind.isAudio && project.layerPlaysAudio(layer)
     }
 
+    // MARK: - Actions
+
+    // The host's actions as the closures the rows take, typed, so the
+    // rows' long initializers don't have to infer them.
+
+    private var scrubAction: (CMTime) -> Void {
+        { [host] time in host.dispatch(.scrub(time)) }
+    }
+
+    private var openTimelineAction: (UUID) -> Void {
+        { [host] id in host.dispatch(.openTimeline(id)) }
+    }
+
+    private var sceneTracksAction: () -> [UUID: ChangeScoreTrack] {
+        { [host] in host.sceneTracks() }
+    }
+
+    private var trimPreviewAction: (TimelineClip?, TrimPreviewFrames) -> Void {
+        { [host] clip, frames in host.dispatch(.trimPreview(clip, frames)) }
+    }
+
     // MARK: - Areas
 
     /// One area: its layers' names beside their tracks, scrolling up and
@@ -137,7 +158,7 @@ extension TimelineView {
                             viewFrame: { geometryStore.headerColumns[kind] ?? .zero },
                             isAudio: { project.mediaClip(id: $0)?.kind == .audio },
                             onHover: { hover in if hover != newLayerHover { newLayerHover = hover } },
-                            onDrop: { payloads, kind in _ = onDropScenes(payloads, nil, playheadTime, kind) }
+                            onDrop: { payloads, kind in _ = host.dropScenes(payloads, onLayer: nil, at: playheadTime, kind: kind) }
                         ))
                     layerTracks(kind, areaHeight: height, viewport: viewport, structure: structure)
                         .overlay(alignment: .topLeading) { focusHighlight(kind, pixelsPerSecond: viewport.pixelsPerSecond) }
@@ -192,11 +213,11 @@ extension TimelineView {
                         onToggleExpanded: { toggleExpanded(layer) },
                         isAudioExpanded: project.layerHasLinkedAudio(layer) ? showsLinkedAudio(of: layer) : nil,
                         onToggleAudio: { toggleLinkedAudio(layer) },
-                        onDetachAudio: { onDetachAudio(layer.id, nil) },
+                        onDetachAudio: { host.dispatch(TimelineAction.detachAudio(layer: layer.id, clips: nil)) },
                         isChannelsExpanded: canShowChannels(of: layer) ? showsChannels(of: layer) : nil,
                         onToggleChannels: { toggleChannels(layer) },
-                        onRename: { name in onRenameLayer(layer.id, name) },
-                        onMove: { offset in onMoveLayer(layer.id, offset) },
+                        onRename: { name in host.dispatch(TimelineAction.renameLayer(layer.id, name)) },
+                        onMove: { offset in host.dispatch(TimelineAction.moveLayer(layer.id, offset)) },
                         onDragChanged: { dy in dragLayer(layer, by: dy) },
                         onDragEnded: { dy in endLayerDrag(layer.id, dy: dy + areaScroller(layer.kind).scrolled) },
                         isSelected: selectedLayerID == layer.id,
@@ -204,45 +225,13 @@ extension TimelineView {
                             selectedLayerID = layer.id
                             selectedSectionID = nil
                             groupSelection = []
-                            onSelectLayer()
+                            host.dispatch(TimelineAction.selectLayer)
                         },
                         onDelete: { deleteLayer(layer.id) }
                     )
                     .equatable()
                     if let joint = shownJoint(in: layer) {
-                        HStack {
-                            Label(joint.transition.kind.isAudio ? "Transition audio" : "Transition video", systemImage: "square.on.square.dashed")
-                                .font(Design.Typeface.label)
-                                .foregroundStyle(Design.textSecondary)
-                            Spacer()
-                            Button("Done") { expandedJoint = nil }
-                                .controlSize(.small)
-                        }
-                        .padding(.leading, 30)
-                        .padding(.trailing, 8)
-                        .frame(height: TransitionFootageLane.height)
-                        if jointHasSound(joint) {
-                            HStack {
-                                Label("Transition audio", systemImage: "waveform")
-                                    .font(Design.Typeface.label)
-                                    .foregroundStyle(Design.textSecondary)
-                                Spacer()
-                                Menu(joint.transition.audioCrossfade?.name ?? "Project (\(project.jointAudioCrossfade.name))") {
-                                    TransitionSoundLane.choices(
-                                        selected: joint.transition.audioCrossfade, project: project.jointAudioCrossfade,
-                                        onSet: { onApplyJointEdit(layer.id, joint.incoming.id, .soundCrossfade($0)) }
-                                    )
-                                }
-                                .menuStyle(.borderlessButton)
-                                .controlSize(.small)
-                                .fixedSize()
-                                .help("The shape the two clips' sound crossfades with. Its timing follows the transition.")
-                                .accessibilityLabel("Sound crossfade shape")
-                            }
-                            .padding(.leading, 30)
-                            .padding(.trailing, 8)
-                            .frame(height: TransitionSoundLane.height)
-                        }
+                        jointHeader(joint, on: layer)
                     }
                     if showsLinkedAudio(of: layer) {
                         Label("Linked audio", systemImage: "waveform")
@@ -251,23 +240,11 @@ extension TimelineView {
                             .padding(.leading, 30)
                             .frame(height: audioLaneHeight(of: layer), alignment: .leading)
                             .contextMenu {
-                                Button("Detach Audio") { onDetachAudio(layer.id, nil) }
+                                Button("Detach Audio") { host.dispatch(TimelineAction.detachAudio(layer: layer.id, clips: nil)) }
                             }
                     }
                     if showsVolume(of: layer) {
-                        AudioPropertyRow(
-                            value: layer.volume,
-                            playhead: PlayheadTime(playhead) { timeline.snappedToFrame($0) },
-                            onEdit: { change in onEditVolume(layer.id, change) },
-                            onSeek: onScrub,
-                            onShowGraph: graphs.map { graphs in
-                                { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
-                            },
-                            held: { projectState?.held?.timeline(id: timelineID)?.layer(id: layer.id)?.volume }
-                        )
-                        .padding(.leading, 30)
-                        .padding(.trailing, 8)
-                        .frame(height: VolumeLane.height)
+                        volumeHeader(of: layer)
                     }
                     separator
                 }
@@ -296,6 +273,66 @@ extension TimelineView {
             }
             Color.clear.frame(height: newLayerRowHeight)
         }
+    }
+
+    /// What an open joint shows beside its footage, and its sound when it
+    /// has some: what they are, and the sound's crossfade.
+    @ViewBuilder
+    private func jointHeader(_ joint: TransitionJoint, on layer: TimelineLayer) -> some View {
+        HStack {
+            Label(joint.transition.kind.isAudio ? "Transition audio" : "Transition video", systemImage: "square.on.square.dashed")
+                .font(Design.Typeface.label)
+                .foregroundStyle(Design.textSecondary)
+            Spacer()
+            Button("Done") { expandedJoint = nil }
+                .controlSize(.small)
+        }
+        .padding(.leading, 30)
+        .padding(.trailing, 8)
+        .frame(height: TransitionFootageLane.height)
+        if jointHasSound(joint) {
+            HStack {
+                Label("Transition audio", systemImage: "waveform")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textSecondary)
+                Spacer()
+                Menu(joint.transition.audioCrossfade?.name ?? "Project (\(project.jointAudioCrossfade.name))") {
+                    TransitionSoundLane.choices(
+                        selected: joint.transition.audioCrossfade, project: project.jointAudioCrossfade,
+                        onSet: { host.dispatch(TimelineAction.applyJointEdit(layer: layer.id, clip: joint.incoming.id, JointEdit.soundCrossfade($0))) }
+                    )
+                }
+                .menuStyle(.borderlessButton)
+                .controlSize(.small)
+                .fixedSize()
+                .help("The shape the two clips' sound crossfades with. Its timing follows the transition.")
+                .accessibilityLabel("Sound crossfade shape")
+            }
+            .padding(.leading, 30)
+            .padding(.trailing, 8)
+            .frame(height: TransitionSoundLane.height)
+        }
+    }
+
+    /// The layer volume's row in the names column.
+    private func volumeHeader(of layer: TimelineLayer) -> some View {
+        AudioPropertyRow(
+            value: layer.volume,
+            playhead: PlayheadTime(playhead) { timeline.snappedToFrame($0) },
+            // The host applies the change before `dispatch` returns, so
+            // the action needn't keep it.
+            onEdit: { change in
+                withoutActuallyEscaping(change) { host.dispatch(TimelineAction.editVolume(layer: layer.id, $0)) }
+            },
+            onSeek: scrubAction,
+            onShowGraph: graphs.map { graphs in
+                { graphs.show(ParameterKey(timelineID: timelineID, parameter: .layerVolume(layerID: layer.id))) }
+            },
+            held: { projectState?.held?.timeline(id: timelineID)?.layer(id: layer.id)?.volume }
+        )
+        .padding(.leading, 30)
+        .padding(.trailing, 8)
+        .frame(height: VolumeLane.height)
     }
 
     /// Resizes a layer from its names-column divider, `dy` from where the
@@ -389,83 +426,89 @@ extension TimelineView {
                         selection: selection,
                         groupSelected: groupSelection.isEmpty ? [] : groupSelection.intersection(layer.clips.map(\.id)),
                         onToggleGroup: { toggleInGroup($0) },
-                        onOpenTimeline: onOpenTimeline,
+                        onOpenTimeline: openTimelineAction,
                         pixelsPerSecond: pixelsPerSecond,
                         width: contentWidth,
                         height: clipRowHeight(of: layer),
                         showsChannels: layer.kind != .video && showsChannels(of: layer),
                         visibleX: viewport.visibleContentX,
-                        onSelectClip: { clip in onSelectClip(layer.id, clip) },
+                        onSelectClip: { clip in host.dispatch(TimelineAction.selectClip(layer: layer.id, clip: clip)) },
                         resolveMove: { clip, pointer, start in resolveMove(clip, from: layer.id, pointer: pointer, to: start) },
-                        onMoveClip: { clipID, target, newStart in onMoveClip(layer.id, clipID, target, newStart) },
+                        onMoveClip: { clipID, target, newStart in host.dispatch(TimelineAction.moveClip(layer: layer.id, clip: clipID, toLayer: target, start: newStart)) },
                         onMoveClipToNewLayer: { clipID, kind, start in
                             newLayerHover = nil
-                            onMoveClipToNewLayer(layer.id, clipID, kind, start)
+                            host.dispatch(TimelineAction.moveClipToNewLayer(layer: layer.id, clip: clipID, kind: kind, start: start))
                         },
                         onDraggingClip: { dragging in draggingClipLayerID = dragging ? layer.id : nil },
                         pushed: pushedClips.flatMap { $0.layerID == layer.id ? $0.clips : nil } ?? [:],
                         onMovePreview: { preview in showMovePreview(preview, from: layer.id) },
-                        onDropScenes: { payloads, time in onDropScenes(payloads, layer.id, time, nil) },
+                        onDropScenes: { payloads, time in host.dropScenes(payloads, onLayer: layer.id, at: time, kind: nil) },
                         onEditJoint: { clipID in
                             expandedJoint = clipID
                             if let clip = layer.clips.first(id: clipID) {
-                                onSelectTransition(layer.id, clip, .leading)
+                                host.dispatch(TimelineAction.selectTransition(layer: layer.id, clip: clip, .leading))
                             }
                         },
-                        onTrimClipStart: { clipID, newStart in onTrimClipStart(layer.id, clipID, newStart) },
-                        onTrimClipEnd: { clipID, newEnd in onTrimClipEnd(layer.id, clipID, newEnd) },
-                        sceneTracks: sceneTracks,
-                        onSetTransition: { clipID, kind, edge in onSetTransition(layer.id, clipID, kind, edge) },
-                        onRemoveTransition: { clipID, edge in onRemoveTransition(layer.id, clipID, edge) },
-                        onSelectTransition: { clip, edge in onSelectTransition(layer.id, clip, edge) },
-                        onSetTransitionCurve: { clipID, edge, curve in onSetTransitionCurve(layer.id, clipID, edge, curve) },
-                        onDetachAudio: { clipID in onDetachAudio(layer.id, [clipID]) },
+                        onTrimClipStart: { clipID, newStart in host.dispatch(TimelineAction.trimClipStart(layer: layer.id, clip: clipID, newStart)) },
+                        onTrimClipEnd: { clipID, newEnd in host.dispatch(TimelineAction.trimClipEnd(layer: layer.id, clip: clipID, newEnd)) },
+                        sceneTracks: sceneTracksAction,
+                        onSetTransition: { clipID, kind, edge in host.dispatch(TimelineAction.setTransition(layer: layer.id, clip: clipID, kind, edge)) },
+                        onRemoveTransition: { clipID, edge in host.dispatch(TimelineAction.removeTransition(layer: layer.id, clip: clipID, edge)) },
+                        onSelectTransition: { clip, edge in host.dispatch(TimelineAction.selectTransition(layer: layer.id, clip: clip, edge)) },
+                        onSetTransitionCurve: { clipID, edge, curve in host.dispatch(TimelineAction.setTransitionCurve(layer: layer.id, clip: clipID, edge, curve)) },
+                        onDetachAudio: { clipID in host.dispatch(TimelineAction.detachAudio(layer: layer.id, clips: [clipID])) },
                         tool: tool,
                         snap: { timeline.snappedToFrame($0) },
-                        onBlade: { clipID, time in onBladeClip(layer.id, clipID, time) },
-                        onSlip: { clipID, delta in onSlipClip(layer.id, clipID, delta) },
+                        onBlade: { clipID, time in host.dispatch(TimelineAction.bladeClip(layer: layer.id, clip: clipID, at: time)) },
+                        onSlip: { clipID, delta in host.dispatch(TimelineAction.slipClip(layer: layer.id, clip: clipID, by: delta)) },
                         liveSnap: liveSnap,
                         snapTolerance: snapTolerance,
                         onSnapIndicator: { viewportModel.snapIndicator = $0 },
-                        onTrimPreview: onTrimPreview,
-                        onApplyJointEdit: { clipID, edit in onApplyJointEdit(layer.id, clipID, edit) },
-                        onSetTransitionDuration: { clipID, edge, duration in onSetTransitionDuration(layer.id, clipID, edge, duration) },
+                        onTrimPreview: trimPreviewAction,
+                        onApplyJointEdit: { clipID, edit in host.dispatch(TimelineAction.applyJointEdit(layer: layer.id, clip: clipID, edit)) },
+                        onSetTransitionDuration: { clipID, edge, duration in host.dispatch(TimelineAction.setTransitionDuration(layer: layer.id, clip: clipID, edge, duration)) },
                         onAddEffect: { clipID, kind in
-                            onEditProject { $0.addEffect(kind, toClip: clipID, in: timelineID) }
+                            host.dispatch(TimelineAction.editProject { $0.addEffect(kind, toClip: clipID, in: timelineID) })
                         },
                         onApplyPreset: { clipID, presetID in
                             guard let preset = try? PresetStore.read(PresetStore.fileURL(presetID)) else { return }
-                            onEditProject { $0.paste(preset.bundle, ontoClip: clipID, in: timelineID) }
+                            host.dispatch(TimelineAction.editProject { $0.paste(preset.bundle, ontoClip: clipID, in: timelineID) })
                         },
                         onPasteEffects: { clipID in
                             let clipboard = EditorClipboard.shared
-                            onEditProject { project in
+                            host.dispatch(TimelineAction.editProject { project in
                                 // Effects are added to what the clip has; its
                                 // time and shutter are replaced if different.
                                 if let bundle = clipboard.effects { project.paste(bundle, ontoClip: clipID, in: timelineID) }
                                 if let source = clipboard.clip?.clip { project.pasteTimeAndShutter(of: source, ontoClip: clipID, in: timelineID) }
-                            }
+                            })
                         },
                         onClipboard: { clipID, command in clipboard(command, layerID: layer.id, clipID: clipID) },
                         onCopyClip: { clipID, start, target, kind in copyClip(clipID, from: layer.id, to: start, onto: target, newLayer: kind) },
-                        onDropFiles: { urls, time in onDropFiles(urls, layer.id, time, layer.kind) },
+                        onDropFiles: { urls, time in host.dropFiles(urls, onLayer: layer.id, at: time, kind: layer.kind) },
                         onDropGenerator: { kind, time in addGenerator(kind, above: layer.id, at: time) },
                         onSetPassThrough: { clipID, value in
-                            onEditProject { $0.editClip(clipID, in: timelineID) { $0.passThrough = value } }
+                            host.dispatch(TimelineAction.editProject { $0.editClip(clipID, in: timelineID) { $0.passThrough = value } })
                         },
                         showsVolumeLines: showsVolumeLines(of: layer),
+                        // The host applies an edit before `dispatch`
+                        // returns, so it needn't keep `change`.
                         onEditTime: { clipID, change in
-                            onEditProject { $0.editTime(ofClip: clipID, in: timelineID, layer: layer.id, change) }
+                            withoutActuallyEscaping(change) { change in
+                                host.dispatch(TimelineAction.editProject { $0.editTime(ofClip: clipID, in: timelineID, layer: layer.id, change) })
+                            }
                         },
                         onEditClip: { clipID, change in
-                            onEditProject { $0.editClip(clipID, in: timelineID, change) }
+                            withoutActuallyEscaping(change) { change in
+                                host.dispatch(TimelineAction.editProject { $0.editClip(clipID, in: timelineID, change) })
+                            }
                         },
                         onSetReach: { clipID, bottom in
-                            onEditProject { $0.setReach(ofClip: clipID, in: timelineID, toLayer: bottom) }
+                            host.dispatch(TimelineAction.editProject { $0.setReach(ofClip: clipID, in: timelineID, toLayer: bottom) })
                         },
                         onAttachToMusic: { clipID, at in
                             let time = at ?? livePlayheadTime
-                            onEditProject { $0.attachToMusic(clipID, in: timelineID, at: time) }
+                            host.dispatch(TimelineAction.editProject { $0.attachToMusic(clipID, in: timelineID, at: time) })
                         },
                         musicMarks: layer.kind == .music ? selectedMusicMarks : [:],
                         onMotionDesign: { clipID in
@@ -496,9 +539,9 @@ extension TimelineView {
                                 copy.applyJointEdit(edit, at: joint.incoming.id, in: timelineID, layer: layer.id)
                                 return copy.joint(at: joint.incoming.id, in: timelineID, layer: layer.id)
                             },
-                            onCommit: { edit in onApplyJointEdit(layer.id, joint.incoming.id, edit) },
+                            onCommit: { edit in host.dispatch(TimelineAction.applyJointEdit(layer: layer.id, clip: joint.incoming.id, edit)) },
                             tool: tool,
-                            onTrimPreview: onTrimPreview
+                            onTrimPreview: trimPreviewAction
                         )
                         if jointHasSound(joint) {
                             TransitionSoundLane(
@@ -506,7 +549,7 @@ extension TimelineView {
                                 projectCrossfade: project.jointAudioCrossfade,
                                 pixelsPerSecond: pixelsPerSecond,
                                 width: contentWidth,
-                                onSetCrossfade: { onApplyJointEdit(layer.id, joint.incoming.id, .soundCrossfade($0)) }
+                                onSetCrossfade: { host.dispatch(TimelineAction.applyJointEdit(layer: layer.id, clip: joint.incoming.id, JointEdit.soundCrossfade($0))) }
                             )
                         }
                     }
@@ -519,8 +562,8 @@ extension TimelineView {
                             height: audioLaneHeight(of: layer),
                             showsChannels: showsChannels(of: layer),
                             visibleX: viewport.visibleContentX,
-                            onSelectClip: { clip in onSelectClip(layer.id, clip) },
-                            onDetachAudio: { clipID in onDetachAudio(layer.id, [clipID]) }
+                            onSelectClip: { clip in host.dispatch(TimelineAction.selectClip(layer: layer.id, clip: clip)) },
+                            onDetachAudio: { clipID in host.dispatch(TimelineAction.detachAudio(layer: layer.id, clips: [clipID])) }
                         )
                     }
                     if showsVolume(of: layer) {
@@ -532,10 +575,10 @@ extension TimelineView {
                                 width: contentWidth,
                                 visibleX: viewport.visibleContentX,
                                 snap: { timeline.snappedToFrame($0) },
-                                onSeek: onScrub,
-                                onMove: { from, to, copy in onEditVolume(layer.id) { $0.moveKeyframe(at: from, to: to, copying: copy) } },
-                                onDelete: { time in onEditVolume(layer.id) { $0.removeKeyframe(at: time) } },
-                                onEase: { time, preset in onEditVolume(layer.id) { $0.applyEase(preset, at: time) } }
+                                onSeek: scrubAction,
+                                onMove: { from, to, copy in host.dispatch(TimelineAction.editVolume(layer: layer.id) { $0.moveKeyframe(at: from, to: to, copying: copy) }) },
+                                onDelete: { time in host.dispatch(TimelineAction.editVolume(layer: layer.id) { $0.removeKeyframe(at: time) }) },
+                                onEase: { time, preset in host.dispatch(TimelineAction.editVolume(layer: layer.id) { $0.applyEase(preset, at: time) }) }
                             )
                         }
                     }
@@ -549,7 +592,7 @@ extension TimelineView {
             // Fills the rest of the area, so media dropped anywhere below the
             // layers (or in an empty area) gets a new layer of its kind.
             NewLayerDropRow(height: max(newLayerRowHeight, areaHeight - layersHeight(kind)), kind: kind) { payloads, x in
-                onDropScenes(payloads, nil, CMTime(seconds: max(0, Double(x / pixelsPerSecond)), preferredTimescale: 600), kind)
+                host.dropScenes(payloads, onLayer: nil, at: CMTime(seconds: max(0, Double(x / pixelsPerSecond)), preferredTimescale: 600), kind: kind)
             }
         }
         .frame(width: contentWidth, alignment: .topLeading)
@@ -563,7 +606,7 @@ extension TimelineView {
             let time = CMTime(seconds: max(0, Double(location.x / pixelsPerSecond)), preferredTimescale: 600)
             let files = payloads.compactMap(\.file)
             if !files.isEmpty {
-                onDropFiles(files, nil, time, kind)
+                host.dropFiles(files, onLayer: nil, at: time, kind: kind)
                 return true
             }
             guard kind == .video, let generator = payloads.first?.generator?.kind else { return false }

@@ -15,7 +15,7 @@ extension TimelineView {
             return true
         }
         if let selectedSectionID, timeline.sections.contains(where: { $0.id == selectedSectionID }) {
-            onEditProject { $0.deleteSection(selectedSectionID, in: timelineID) }
+            host.dispatch(.editProject { $0.deleteSection(selectedSectionID, in: timelineID) })
             self.selectedSectionID = nil
             return true
         }
@@ -25,9 +25,9 @@ extension TimelineView {
         }
         guard let selection, selection.timelineID == timelineID else { return false }
         if let edge = selection.transitionEdge {
-            onRemoveTransition(selection.layerID, selection.timelineClipID, edge)
+            host.dispatch(.removeTransition(layer: selection.layerID, clip: selection.timelineClipID, edge))
         } else {
-            onDeleteClip(selection.layerID, selection.timelineClipID)
+            host.dispatch(.deleteClip(layer: selection.layerID, clip: selection.timelineClipID))
         }
         return true
     }
@@ -85,7 +85,7 @@ extension TimelineView {
         default: break
         }
         if key == "e", flags == .shift {
-            setShowsEffects(!showsEffects)
+            host.dispatch(.setShowsEffects(!showsEffects))
             return true
         }
         if key == "n", !flags.contains(.shift) {
@@ -121,7 +121,7 @@ extension TimelineView {
         if ids.isEmpty, let selection, selection.timelineID == timelineID { ids = [selection.timelineClipID] }
         guard !ids.isEmpty else { return false }
         var changed = false
-        onEditProject { changed = $0.toggleEnabled(ofClips: ids, in: timelineID) }
+        host.dispatch(.editProject { changed = $0.toggleEnabled(ofClips: ids, in: timelineID) })
         return changed
     }
 
@@ -184,7 +184,7 @@ extension TimelineView {
     func parkPlayhead(at time: CMTime) {
         playback.player.pause()
         let parked = timeline.snappedToFrame(CMTimeMinimum(CMTimeMaximum(.zero, time), timeline.duration))
-        onScrub(parked)
+        host.dispatch(.scrub(parked))
         reveal(parked)
     }
 
@@ -218,7 +218,7 @@ extension TimelineView {
             return false
         }
         let distance = CMTimeMultiply(timeline.frameDuration, multiplier: Int32(clamping: frames))
-        onMoveClip(selection.layerID, clip.id, nil, CMTimeMaximum(.zero, CMTimeAdd(clip.startOffset, distance)))
+        host.dispatch(.moveClip(layer: selection.layerID, clip: clip.id, toLayer: nil, start: CMTimeMaximum(.zero, CMTimeAdd(clip.startOffset, distance))))
         return true
     }
 
@@ -233,7 +233,7 @@ extension TimelineView {
         var chosen = groupSelection
         if chosen.isEmpty, let selection, selection.timelineID == timelineID { chosen = [selection.timelineClipID] }
         let targets = timeline.clipsToSplit(at: time, selected: chosen, everyClip: everyClip)
-        for target in targets { onBladeClip(target.layerID, target.clipID, time) }
+        for target in targets { host.dispatch(.bladeClip(layer: target.layerID, clip: target.clipID, at: time)) }
         return !targets.isEmpty
     }
 
@@ -254,13 +254,13 @@ extension TimelineView {
            let clip = project.clipAndLayer(selection.timelineClipID, in: timelineID)?.clip {
             var copy = clip
             if copy.easeKeyframes(atTimelineTime: time, preset) {
-                onEditProject { $0.editClip(clip.id, in: timelineID) { $0 = copy } }
+                host.dispatch(.editProject { $0.editClip(clip.id, in: timelineID) { $0 = copy } })
                 eased = true
             }
         }
         for layer in layers {
             if showsVolume(of: layer), layer.volume.keyframe(at: time) != nil {
-                onEditVolume(layer.id) { $0.applyEase(preset, at: time) }
+                host.dispatch(.editVolume(layer: layer.id) { $0.applyEase(preset, at: time) })
                 eased = true
             }
         }
