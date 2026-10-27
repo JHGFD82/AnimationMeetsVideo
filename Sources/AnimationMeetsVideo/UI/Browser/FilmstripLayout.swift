@@ -171,16 +171,24 @@ struct FilmstripLayout: Equatable {
     }
 }
 
+/// A stretch of a strip, in seconds into it: a picked range, or a used part.
+struct SecondsSpan: Hashable {
+    var start: Double
+    var end: Double
+
+    func contains(_ seconds: Double) -> Bool { seconds >= start && seconds <= end }
+}
+
 extension FilmstripLayout {
     /// `spans` in order, joined where they overlap or touch, leaving out
     /// empty ones: what a strip underlines as used.
-    static func joined(_ spans: [(start: Double, end: Double)]) -> [(start: Double, end: Double)] {
-        var joined: [(start: Double, end: Double)] = []
-        for (a, b) in spans.filter({ $0.end > $0.start }).sorted(by: { $0.start < $1.start }) {
-            if let last = joined.last, a <= last.end + 1e-6 {
-                joined[joined.count - 1].end = max(last.end, b)
+    static func joined(_ spans: [SecondsSpan]) -> [SecondsSpan] {
+        var joined: [SecondsSpan] = []
+        for span in spans.filter({ $0.end > $0.start }).sorted(by: { $0.start < $1.start }) {
+            if let last = joined.last, span.start <= last.end + 1e-6 {
+                joined[joined.count - 1].end = max(last.end, span.end)
             } else {
-                joined.append((a, b))
+                joined.append(span)
             }
         }
         return joined

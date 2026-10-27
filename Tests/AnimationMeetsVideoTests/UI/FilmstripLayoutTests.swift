@@ -79,7 +79,7 @@ import Testing
     /// What a strip underlines: spans in order, joined where they overlap
     /// or touch, empty ones left out.
     @Test func usedSpansAreJoined() {
-        let joined = FilmstripLayout.joined([(6, 9), (2, 5), (4, 6), (15, 16), (12, 12)])
+        let joined = FilmstripLayout.joined([(6, 9), (2, 5), (4, 6), (15, 16), (12, 12)].map { SecondsSpan(start: $0, end: $1) })
         #expect(joined.map(\.start) == [2, 15])
         #expect(joined.map(\.end) == [9, 16])
     }

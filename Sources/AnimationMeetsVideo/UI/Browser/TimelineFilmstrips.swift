@@ -49,7 +49,7 @@ struct TimelineFilmstrips: View {
     /// Each has an ID of its own, so the lazy stack keeps them apart.
     private enum Line: Identifiable {
         case title(Timeline)
-        case strip(Timeline, FilmstripLayout, row: Int, used: [(start: Double, end: Double)])
+        case strip(Timeline, FilmstripLayout, row: Int, used: [SecondsSpan])
 
         var id: String {
             switch self {
@@ -129,9 +129,9 @@ struct TimelineFilmstrips: View {
 
     /// What other timelines embed of `timeline`, in seconds into it, joined
     /// where they overlap.
-    private func usedSeconds(of timeline: Timeline) -> [(start: Double, end: Double)] {
+    private func usedSeconds(of timeline: Timeline) -> [SecondsSpan] {
         FilmstripLayout.joined(project.usedRanges(ofTimeline: timeline.id).map {
-            (max(0, $0.start.seconds), min(timeline.duration.seconds, $0.end.seconds))
+            SecondsSpan(start: max(0, $0.start.seconds), end: min(timeline.duration.seconds, $0.end.seconds))
         })
     }
 
@@ -230,14 +230,14 @@ struct TimelineFilmstrips: View {
     // MARK: - Strips
 
     private func strip(
-        _ timeline: Timeline, preview: TimelinePreview?, layout: FilmstripLayout, row: Int, used: [(start: Double, end: Double)]
+        _ timeline: Timeline, preview: TimelinePreview?, layout: FilmstripLayout, row: Int, used: [SecondsSpan]
     ) -> some View {
         let rowTop = CGFloat(row) * layout.rowPitch
         let range = picked.range?.item == timeline.id ? picked.range : nil
         return FilmstripStrip(
             layout: layout, row: row,
             isSelected: picked.contains(timeline.id) && range == nil,
-            range: range.map { ($0.start, $0.end) },
+            range: range.map { SecondsSpan(start: $0.start, end: $0.end) },
             used: used,
             durationText: row == 0 ? timecode(timeline.duration.seconds, timeline) : nil,
             picture: { cell in
