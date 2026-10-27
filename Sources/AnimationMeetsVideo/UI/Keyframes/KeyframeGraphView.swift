@@ -12,15 +12,15 @@ import SwiftUI
 /// with Option it moves alone. A handle dragged onto its keyframe goes,
 /// leaving that side linear. Option-click a point to switch it between
 /// linear and bezier (Easy Ease); Option-drag one pulls a handle out of a
-/// linear side, the side the drag heads to. Click elsewhere to move the
-/// playhead there; double-click to add a keyframe. The buttons and the
-/// right-click menu apply ease presets to the selected keyframe, or to the
-/// one at the playhead.
+/// linear side, the side the drag heads to. Escape cancels a drag. Click
+/// elsewhere to move the playhead there; double-click to add a keyframe,
+/// or select the one there. The buttons and the right-click menu apply
+/// ease presets to the selected keyframe, or to the one at the playhead.
 ///
 /// The sliders under the graph zoom values and time, each step by the same
 /// ratio wherever the zoom is, time no further out than the clip; pinching
 /// zooms time about the pointer (values with Option), and scrolling moves
-/// the view. The legend's chips show or hide each
+/// the view, one way per swipe. The legend's chips show or hide each
 /// component, and Separate Scales draws each on its own scale. Linked with
 /// other graphs in one panel (`link`), time is theirs together: zooming or
 /// scrolling it in one moves them all. The panel then has one time slider
@@ -43,10 +43,20 @@ struct KeyframeGraphView: View {
     /// Lets go of `committed` if its edit never lands; the last one only.
     @State private var commitFallback: Task<Void, Never>?
     @State private var drag: Drag?
+    /// Escape cancelled the drag in progress: the rest of it does nothing.
+    @State private var dragCancelled = false
     @State private var ownSelected: CMTime?
     @State private var viewport = KeyframeGraphViewport()
     /// The pinch's magnification when it last changed the zoom.
     @State private var lastMagnification: CGFloat?
+    /// What the pinch zooms, chosen as it starts: values with Option, else
+    /// time.
+    @State private var pinchAxis: Axis?
+    /// The way a trackpad swipe scrolls, chosen by its first movement, so a
+    /// diagonal swipe through time doesn't drift the values.
+    @State private var scrollAxis: Axis?
+    @State private var lastScrollPhase: ScrollInputPhase?
+    @FocusState private var isFocused: Bool
     /// The zooms' edges: past them the plot stretches and springs back.
     @State private var timeBand = RubberBandZoom()
     @State private var valueBand = RubberBandZoom()
@@ -61,6 +71,14 @@ struct KeyframeGraphView: View {
         /// bezier; a drag pulls a handle out of the side it heads to.
         case pull(CMTime)
         case scrub
+
+        /// The keyframe it is, if it is one.
+        var keyframeTime: CMTime? {
+            switch self {
+            case .keyframe(let time, _), .pull(let time): time
+            case .handle, .scrub: nil
+            }
+        }
     }
 
     /// Closer than this on screen, a dragged handle goes and its side turns
@@ -74,6 +92,13 @@ struct KeyframeGraphView: View {
         var layout: KeyframeGraphLayout
         var original: AnimatedValue<ComponentValue>
         var segments: [KeyframeGraphLayout.Segment]
+        /// Where a dragged keyframe is now, selected when the drag ends.
+        var movedTo: CMTime?
+        /// The way Shift keeps the drag to, chosen once it has gone far
+        /// enough to tell.
+        var lockedAxis: Axis?
+        /// The selection before the drag, which Escape puts back.
+        var selectedBefore: CMTime?
     }
 
     private static let palette: [Color] = [Design.statusDanger, Design.statusDone, Design.accent, Design.keyframe]
@@ -144,7 +169,12 @@ struct KeyframeGraphView: View {
                 }
             }
             .background(Color.black.opacity(0.2))
-            .onChange(of: stored) { _, _ in committed = nil }
+            .onChange(of: stored) { _, stored in
+                committed = nil
+                // An undo, or an edit elsewhere, can take the selected
+                // keyframe away.
+                if drag == nil, let time = selected, stored.keyframe(at: time) == nil { selected = nil }
+            }
             .onChange(of: link?.fits) { _, _ in fitValues() }
         } else {
             Text("This layer is no longer on the timeline.")
@@ -192,6 +222,8 @@ struct KeyframeGraphView: View {
     /// the marks alone, and the playhead (its own line) neither.
     private func graph(_ c: Context, layout: KeyframeGraphLayout) -> some View {
         let shown = visible(c.value.value.values.count)
+        // A dragged keyframe is marked, with its handles, where it is now.
+        let marked = drag?.movedTo ?? selected
         let timecodes = [layout.times.lowerBound, layout.times.upperBound].map { seconds in
             let time = c.axis.timelineTime(atKey: CMTime(seconds: seconds, preferredTimescale: ParameterTimeAxis.timescale))
             return CMTimeMaximum(time, .zero).timecode(frameRate: c.timeline.frameRate)
@@ -203,8 +235,8 @@ struct KeyframeGraphView: View {
         .equatable()
         .overlay {
             Marks(
-                value: c.value, offset: c.offset, layout: layout, shown: shown, selected: selected,
-                handles: handles(c, layout: layout, selected: selected, shown: shown)
+                value: c.value, offset: c.offset, layout: layout, shown: shown, selected: marked,
+                handles: handles(c, layout: layout, selected: marked, shown: shown)
             )
             .equatable()
         }
@@ -212,15 +244,18 @@ struct KeyframeGraphView: View {
         .contentShape(Rectangle())
         .gesture(dragGesture(c, layout: layout))
         .simultaneousGesture(SpatialTapGesture(count: 2).onEnded { tap in
+            // Only ever adds, so a stray double-click can't delete.
             let time = c.axis.snapped(layout.seconds(atX: tap.location.x))
-            edit { $0.toggleKeyframe(at: time) }
+            if c.value.keyframe(at: time) == nil { addKeyframe(at: time) }
             selected = time
         })
         .simultaneousGesture(MagnifyGesture()
             .onChanged { pinch in
+                let axis = pinchAxis ?? (NSEvent.modifierFlags.contains(.option) ? .vertical : .horizontal)
+                pinchAxis = axis
                 let factor = pinch.magnification / (lastMagnification ?? 1)
                 lastMagnification = pinch.magnification
-                if NSEvent.modifierFlags.contains(.option) {
+                if axis == .vertical {
                     let fraction = Double((layout.plot.maxY - pinch.startLocation.y) / layout.plot.height)
                     zoomValues(by: factor, around: fraction.clamped(between: 0, and: 1), pinching: true)
                 } else {
@@ -229,6 +264,7 @@ struct KeyframeGraphView: View {
             }
             .onEnded { _ in
                 lastMagnification = nil
+                pinchAxis = nil
                 endTimePinch()
                 valueBand.endPinch()
             })
@@ -241,6 +277,17 @@ struct KeyframeGraphView: View {
                     selected = nil
                 }
             }
+        }
+        .focusable()
+        .focused($isFocused)
+        .focusEffectDisabled()
+        .onKeyPress(.escape) {
+            guard let current = drag else { return .ignored }
+            draft = nil
+            drag = nil
+            dragCancelled = true
+            selected = current.selectedBefore
+            return .handled
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(key.parameter.name) graph")
@@ -352,29 +399,52 @@ struct KeyframeGraphView: View {
         }
     }
 
-    /// Scrolling across moves time; up and down moves values.
+    /// Scrolling across moves time; up and down moves values. A swipe
+    /// moves only the way it started.
     private func scrolled(_ scroll: GraphInput.Scroll, _ c: Context, layout: KeyframeGraphLayout) {
+        let axis = scrollAxis(of: scroll)
+        let dx = axis == .vertical ? 0 : scroll.dx
+        let dy = axis == .horizontal ? 0 : scroll.dy
         let padded = c.padded
         // Also without movement across, so a lift lets go of the edge.
-        if scroll.dx != 0 || scroll.phase == .lifted, let link = shared {
+        if dx != 0 || scroll.phase == .lifted, let link = shared {
             let project = hud.project
             var band = link.timeScrollBand
-            band.scroll(by: -scroll.dx, phase: scroll.phase) { points in
+            band.scroll(by: -dx, phase: scroll.phase) { points in
                 link.panTimes(byPoints: points, across: layout.plot.width, in: project)
             }
             link.timeScrollBand = band
-        } else if scroll.dx != 0 || scroll.phase == .lifted {
+        } else if dx != 0 || scroll.phase == .lifted {
             let fit = c.fit
-            // Toward later times is against the scroll's scroll.dx.
-            timeScrollBand.scroll(by: -scroll.dx, phase: scroll.phase) { points in
+            // Toward later times is against the scroll's dx.
+            timeScrollBand.scroll(by: -dx, phase: scroll.phase) { points in
                 let before = viewport.shownTimes(fit: fit, span: padded).lowerBound
                 viewport.panTimes(by: Double(points) * layout.secondsPerPoint, fit: fit, span: padded)
                 return CGFloat((viewport.shownTimes(fit: fit, span: padded).lowerBound - before) / layout.secondsPerPoint)
             }
         }
-        if scroll.dy != 0 {
-            viewport.valuePan += Double(scroll.dy / layout.plot.height) / viewport.valueZoom
+        if dy != 0 {
+            viewport.valuePan += Double(dy / layout.plot.height) / viewport.valueZoom
         }
+    }
+
+    /// The one way a trackpad swipe scrolls: the way it first moves most,
+    /// kept through its momentum until the next swipe. A wheel's turns go
+    /// both ways (nil).
+    private func scrollAxis(of scroll: GraphInput.Scroll) -> Axis? {
+        var axis = scrollAxis
+        switch scroll.phase {
+        case .wheel: axis = nil
+        case .touching where lastScrollPhase != .touching: axis = nil
+        case .momentum where lastScrollPhase == nil || lastScrollPhase == .wheel: axis = nil
+        default: break
+        }
+        if axis == nil, scroll.phase != .wheel, scroll.dx != 0 || scroll.dy != 0 {
+            axis = abs(scroll.dx) > abs(scroll.dy) ? .horizontal : .vertical
+        }
+        scrollAxis = axis
+        lastScrollPhase = scroll.phase
+        return axis
     }
 
     // MARK: - Toolbar
@@ -586,8 +656,10 @@ struct KeyframeGraphView: View {
 
     private func target(at point: CGPoint, _ c: Context, layout: KeyframeGraphLayout) -> Target {
         let shown = visible(c.value.value.values.count)
-        if let handle = handles(c, layout: layout, selected: selected, shown: shown).first(where: { Self.distance($0.point, point) < Self.reach }) {
-            return .handle(segment: handle.segment, outgoing: handle.outgoing)
+        var handle: (handle: Handle, distance: CGFloat)?
+        for candidate in handles(c, layout: layout, selected: selected, shown: shown) {
+            let d = Self.distance(candidate.point, point)
+            if d < Self.reach, d < handle?.distance ?? .infinity { handle = (candidate, d) }
         }
         var nearest: (target: Target, distance: CGFloat)?
         for keyframe in c.value.keyframes {
@@ -600,79 +672,124 @@ struct KeyframeGraphView: View {
                 }
             }
         }
-        if case .keyframe(let time, _) = nearest?.target, NSEvent.modifierFlags.contains(.option) {
+        // A handle just clear of its keyframe takes the click only when
+        // clearly nearer, so the keyframe under it stays easy to take.
+        if let handle, handle.distance < (nearest?.distance ?? .infinity) - 2 {
+            return .handle(segment: handle.handle.segment, outgoing: handle.handle.outgoing)
+        }
+        guard let nearest else { return .scrub }
+        if case .keyframe(let time, _) = nearest.target, NSEvent.modifierFlags.contains(.option) {
             return .pull(time)
         }
-        return nearest?.target ?? .scrub
+        return nearest.target
+    }
+
+    /// Whether a drag has gone far enough to be one rather than a click.
+    private static func moved(_ translation: CGSize) -> Bool {
+        abs(translation.width) >= 2 || abs(translation.height) >= 2
     }
 
     private func dragGesture(_ c: Context, layout: KeyframeGraphLayout) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { gesture in
+                guard !dragCancelled else { return }
                 if drag == nil {
                     link?.active = key
+                    isFocused = true
                     let target = target(at: gesture.startLocation, c, layout: layout)
-                    drag = Drag(target: target, layout: layout, original: c.value, segments: c.segments)
-                    if case .keyframe(let time, _) = target { selected = time }
-                    if case .pull(let time) = target { selected = time }
+                    drag = Drag(target: target, layout: layout, original: c.value, segments: c.segments, selectedBefore: selected)
+                    if let time = target.keyframeTime { selected = time }
                     if case .scrub = target { selected = nil }
                 }
-                guard let drag else { return }
-                switch drag.target {
+                guard let current = drag else { return }
+                switch current.target {
                 case .scrub:
-                    hud.onSeek(c.axis.timelineTime(atKey: c.axis.snapped(drag.layout.seconds(atX: gesture.location.x))))
+                    hud.onSeek(c.axis.timelineTime(atKey: c.axis.snapped(current.layout.seconds(atX: gesture.location.x))))
                 case .keyframe(let time, let component):
-                    guard abs(gesture.translation.width) >= 2 || abs(gesture.translation.height) >= 2 else { return }
-                    draft = movedKeyframe(time, component: component, by: gesture.translation, drag: drag, c)
+                    guard Self.moved(gesture.translation) else { return }
+                    let (dx, dy) = constrained(gesture.translation)
+                    let toward = dx == 0 ? time : c.axis.snapped(time.seconds + Double(dx) * current.layout.secondsPerPoint)
+                    let moved = movedKeyframe(time, component: component, toward: toward, dy: dy, in: current.original, layout: current.layout, c)
+                    draft = moved.value
+                    drag?.movedTo = moved.time
                 case .handle(let segment, let outgoing):
+                    guard Self.moved(gesture.translation) else { return }
                     let alone = NSEvent.modifierFlags.contains(.option)
-                    draft = movedHandle(segment, outgoing: outgoing, to: gesture.location, alone: alone, drag: drag, c)
+                    draft = movedHandle(segment, outgoing: outgoing, to: gesture.location, alone: alone, drag: current, c)
                 case .pull(let time):
                     // The side the drag heads to; nothing until it heads somewhere.
                     guard abs(gesture.translation.width) >= 2 else { return }
                     let outgoing = gesture.translation.width > 0
-                    let keyframes = drag.original.keyframes
+                    let keyframes = current.original.keyframes
                     guard let index = keyframes.firstIndex(where: { $0.time == time }) else { return }
                     let segment = outgoing ? index : index - 1
                     guard segment >= 0, segment < keyframes.count - 1 else { return }
-                    draft = movedHandle(segment, outgoing: outgoing, to: gesture.location, alone: true, drag: drag, c)
+                    draft = movedHandle(segment, outgoing: outgoing, to: gesture.location, alone: true, drag: current, c)
                 }
             }
             .onEnded { gesture in
-                if case .pull(let time) = drag?.target,
-                   abs(gesture.translation.width) < 2, abs(gesture.translation.height) < 2 {
+                defer {
+                    draft = nil
+                    drag = nil
+                }
+                if dragCancelled {
+                    dragCancelled = false
+                    return
+                }
+                // A scrub only seeks; it leaves nothing to save.
+                guard let current = drag, current.target != .scrub else { return }
+                if case .pull(let time) = current.target, !Self.moved(gesture.translation) {
                     // Option-click: linear becomes bezier, and bezier linear.
                     edit { $0.toggleBezier(at: time) }
-                } else if let draft, draft != drag?.original {
+                } else if let draft, draft != current.original {
                     commit(draft)
+                    if let movedTo = current.movedTo { selected = movedTo }
                 }
-                draft = nil
-                drag = nil
             }
     }
 
-    /// The keyframes with one moved by a drag: in time, on frames and
-    /// between its neighbors, and in the dragged component's value.
-    private func movedKeyframe(_ time: CMTime, component: Int, by translation: CGSize, drag: Drag, _ c: Context) -> AnimatedValue<ComponentValue> {
-        var result = drag.original
-        guard let index = result.keyframes.firstIndex(where: { $0.time == time }) else { return result }
-        let layout = drag.layout
-        var dx = translation.width, dy = translation.height
-        if NSEvent.modifierFlags.contains(.shift) {
-            if abs(dx) > abs(dy) { dy = 0 } else { dx = 0 }
+    /// A keyframe drag's movement across and up, which Shift keeps to one
+    /// way: the way it moves most once it has gone four points, kept for
+    /// the rest of the drag while Shift is down.
+    private func constrained(_ translation: CGSize) -> (dx: CGFloat, dy: CGFloat) {
+        let dx = translation.width, dy = translation.height
+        guard NSEvent.modifierFlags.contains(.shift) else {
+            if drag?.lockedAxis != nil { drag?.lockedAxis = nil }
+            return (dx, dy)
         }
+        var axis = drag?.lockedAxis
+        if axis == nil, max(abs(dx), abs(dy)) >= 4 {
+            axis = abs(dx) > abs(dy) ? .horizontal : .vertical
+            drag?.lockedAxis = axis
+        }
+        switch axis ?? (abs(dx) > abs(dy) ? .horizontal : .vertical) {
+        case .horizontal: return (dx, 0)
+        case .vertical: return (0, dy)
+        }
+    }
+
+    /// `original` with the keyframe at `time` moved toward `newTime`, kept
+    /// on frames and between its neighbors, and its `component` value
+    /// moved `dy` points down the plot; with the time it lands on.
+    private func movedKeyframe(
+        _ time: CMTime, component: Int, toward newTime: CMTime, dy: CGFloat, in original: AnimatedValue<ComponentValue>,
+        layout: KeyframeGraphLayout, _ c: Context
+    ) -> (value: AnimatedValue<ComponentValue>, time: CMTime) {
+        var result = original
+        guard let index = result.keyframes.firstIndex(where: { $0.time == time }) else { return (result, time) }
         let frame = c.axis.keyTime(atTimeline: c.axis.timelineTime(atKey: time) + c.timeline.frameDuration) - time
-        var newTime = dx == 0 ? time : c.axis.snapped(time.seconds + Double(dx) * layout.secondsPerPoint)
+        var newTime = newTime
         if index > 0 { newTime = CMTimeMaximum(newTime, CMTimeAdd(result.keyframes[index - 1].time, frame)) }
         if index < result.keyframes.count - 1 { newTime = CMTimeMinimum(newTime, CMTimeSubtract(result.keyframes[index + 1].time, frame)) }
-        var moved = result.keyframes[index].value
-        let shown = moved.values[component] + c.offset[component]
-        let newShown = layout.value(atY: layout.y(shown, component: component) + dy, component: component)
-        moved.values[component] = key.parameter.clamped(newShown - c.offset[component], index: component)
+        if dy != 0 {
+            var moved = result.keyframes[index].value
+            let shown = moved.values[component] + c.offset[component]
+            let newShown = layout.value(atY: layout.y(shown, component: component) + dy, component: component)
+            moved.values[component] = key.parameter.clamped(newShown - c.offset[component], index: component)
+            result.set(moved, at: time)
+        }
         result.moveKeyframe(at: time, to: newTime)
-        result.set(moved, at: newTime)
-        selected = newTime
-        return result
+        return (result, newTime)
     }
 
     /// The keyframes with one side's ease set from a handle dragged to
@@ -726,6 +843,12 @@ struct KeyframeGraphView: View {
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
             if committed == value { committed = nil }
+        }
+    }
+
+    private func addKeyframe(at time: CMTime) {
+        edit { value in
+            if value.keyframe(at: time) == nil { value.toggleKeyframe(at: time) }
         }
     }
 

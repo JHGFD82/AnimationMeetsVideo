@@ -145,9 +145,16 @@ window.
   goes linear (`AnimatedValue.toggleBezier`).
 - **Drag a keyframe** to move it in time (on frames, never past a
   neighbor) and in that component's value; Shift keeps the drag to
-  whichever direction it moves most.
+  whichever direction it has moved most once it has gone four points,
+  for the rest of the drag. A keyframe or handle moves only once the drag
+  has gone two points, so a click selects without editing. **Escape**
+  cancels a drag, leaving the keyframes as they were.
+- Where a handle and its keyframe are both in reach (8 points), the
+  keyframe takes the click unless the handle is more than 2 points
+  nearer.
 - **Click elsewhere** to move the playhead there, and drag to scrub.
-  **Double-click** to add a keyframe there (or remove the one there).
+  **Double-click** to add a keyframe there, or select the one already
+  there; a double-click never deletes.
 - The **preset buttons** along the top, and the right-click menu (with
   **Delete Keyframe**), act on the selected keyframe, or else the one at
   the playhead.
@@ -169,8 +176,11 @@ panel's `KeyframeGraphViewport`:
   The Tape Scrubber's dial, which these used to be drawn as, is now the
   main timeline's alone.
 - **Pinch** zooms time about where the pinch started, or values with
-  Option. **Scrolling** moves the view: across in time, inside the clip,
-  and up and down in value.
+  Option, chosen as the pinch starts. **Scrolling** moves the view:
+  across in time, inside the clip, and up and down in value. A trackpad
+  swipe moves only the way it first moved most, through its momentum,
+  so a diagonal swipe through time doesn't drift the values; a mouse
+  wheel moves both ways.
 - **Components.** With more than one, each has a chip in the toolbar (its
   color, name and value) that shows or hides its line and points; at
   least one stays shown, and hidden ones leave the fit. **Separate
