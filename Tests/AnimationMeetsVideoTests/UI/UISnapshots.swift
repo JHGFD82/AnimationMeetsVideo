@@ -242,6 +242,26 @@ struct UISnapshots {
         )
     }
 
+    /// The Effects Library's transitions, the Audio ones last.
+    @Test func transitionsPanel() throws {
+        try SnapshotSupport.render(
+            TransitionsPanel().preferredColorScheme(.dark),
+            "transitions-panel", size: CGSize(width: 320, height: 1100)
+        )
+    }
+
+    /// Timeline Settings for a timeline with a teal preview background.
+    @Test func timelineSettings() async throws {
+        var project = EditingProject.empty
+        let timelineID = project.rootTimelineID
+        project.updateTimeline(timelineID) { $0.previewBackground = [0.1, 0.5, 0.55] }
+        try await SnapshotSupport.render(
+            TimelineSettingsSheet(mode: .edit(timelineID), project: .constant(project), isPresented: .constant(true))
+                .preferredColorScheme(.dark),
+            "timeline-settings", size: CGSize(width: 520, height: 520), settle: .milliseconds(200)
+        )
+    }
+
     /// The Timelines tab: Main embeds Chorus, which embeds Logo; Outtakes
     /// is embedded nowhere. Main is the one open.
     @Test func timelinesList() throws {

@@ -348,6 +348,10 @@ struct TimelinesList: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 2)
         .selectedRow(isSelected)
+        // Inside the press below: on the outside, the press's drag gesture
+        // takes the mouse first and the timeline never starts a drag.
+        .contentShape(Rectangle())
+        .draggable(Self.dragPayload(from: timeline.id, picked: picked, order: order, in: project))
         // On the press, with the system's click count and keys: a tap
         // gesture for the single click waits to rule out a double-click,
         // and quick clicks were lost (see `onMouseDown`).
@@ -364,7 +368,6 @@ struct TimelinesList: View {
             }
         }
         .help(isActive ? "The timeline open in the editor" : "Double-click to open in the editor")
-        .draggable(Self.dragPayload(from: timeline.id, picked: picked, order: order, in: project))
         .contextMenu { menu(timeline.id, order: order) }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)

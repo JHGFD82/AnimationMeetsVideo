@@ -13,10 +13,11 @@ extension TimelineView {
         return project.joint(at: id, in: timelineID, layer: layer.id)
     }
 
-    /// Whether an open joint has a sound lane: either clip's sound is still
-    /// attached to its picture. Detached sound takes no transitions.
+    /// Whether an open joint has a sound lane, to choose how the sound
+    /// crossfades: either clip's sound is still attached to its picture. A
+    /// transition of sound has its kind's shape, and no lane.
     private func jointHasSound(_ joint: TransitionJoint) -> Bool {
-        project.playsAudio(joint.outgoing) || project.playsAudio(joint.incoming)
+        !joint.transition.kind.isAudio && (project.playsAudio(joint.outgoing) || project.playsAudio(joint.incoming))
     }
 
     /// The height of what an expanded transition opens under its layer:
@@ -145,6 +146,11 @@ extension TimelineView {
                         .rubberBandStretch(zoomBand)
                         .rubberBandScroll(scrollBand, length: trackAreaWidth)
                         .clipped()
+                        // Clipping hides what is scrolled out of sight but
+                        // still lets it take clicks, and to the left that is
+                        // over the names: a transition's footage lane, as
+                        // wide as the timeline, hid the Done beside it.
+                        .contentShape(Rectangle())
                 }
                 .overlay(alignment: .topLeading) { layerDropIndicator(kind) }
                 .edgeAutoScroll(areaScroller(kind))
@@ -203,7 +209,7 @@ extension TimelineView {
                     .equatable()
                     if let joint = shownJoint(in: layer) {
                         HStack {
-                            Label("Transition video", systemImage: "square.on.square.dashed")
+                            Label(joint.transition.kind.isAudio ? "Transition audio" : "Transition video", systemImage: "square.on.square.dashed")
                                 .font(Design.Typeface.label)
                                 .foregroundStyle(Design.textSecondary)
                             Spacer()

@@ -129,6 +129,24 @@ private struct Sandbox {
         #expect(restored.pan == saved.pan)
     }
 
+    @Test func roundTripKeepsATimelinesPreviewBackground() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.cleanUp() }
+        var (project, _, _) = sandbox.makeProject()
+        let timelineID = project.rootTimelineID
+        project.updateTimeline(timelineID) { $0.previewBackground = [0.25, 0.5, 0.75] }
+
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        var loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.project.timeline(id: timelineID)?.previewBackground == [0.25, 0.5, 0.75])
+
+        // Off, it isn't written.
+        project.updateTimeline(timelineID) { $0.previewBackground = nil }
+        try await ProjectStore.save(project, to: sandbox.packageURL)
+        loaded = try await ProjectStore.load(from: sandbox.packageURL, importMedia: Sandbox.stubImporter)
+        #expect(loaded.project.timeline(id: timelineID)?.previewBackground == nil)
+    }
+
     @Test func roundTripKeepsAnEffectsInput() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.cleanUp() }

@@ -64,6 +64,53 @@ extension DrawingFixture {
         #expect(outside < 10)
     }
 
+    @Test func thePreviewBackgroundShowsOnlyInTheViewer() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        // A white box in the middle; green behind it in the viewer.
+        let shape = try fixture.addShape()
+        fixture.setControl(.fill, [1, 1, 1, 1], ofClip: shape.clipID)
+        fixture.project.updateTimeline(fixture.timelineID) { $0.previewBackground = [0, 0.6, 0] }
+
+        let viewer = try await fixture.build(forPreview: true)
+        // About 0.6 (the frame read back is converted from Rec. 709).
+        let behind = try await grayLevel(of: viewer, at: second, x: 0.1, y: 0.1)
+        #expect((140...180).contains(behind), "\(behind)")
+        #expect(try await grayLevel(of: viewer, at: second) > 245)
+        // Exported, the frame is over black as ever.
+        let export = try await fixture.build()
+        #expect(try await grayLevel(of: export, at: second, x: 0.1, y: 0.1) < 10)
+        #expect(try await grayLevel(of: export, at: second) > 245)
+    }
+
+    @Test func aMovedShapeTurnsAboutItself() async throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        // 20 by 20, its middle 40 pixels right of the frame's, at (104, 36).
+        let shape = try fixture.addShape()
+        fixture.setControl(.shapeSize, [20, 20], ofClip: shape.clipID)
+        fixture.setControl(.shapePosition, [40, 0], ofClip: shape.clipID)
+        var scale = Effect(kind: .transform, controls: [EffectControl(kind: .scale)])
+        scale.controls[0].number = AnimatedValue(ComponentValue(values: [50, 50]))
+        fixture.project.editClip(shape.clipID, in: fixture.timelineID) { $0.effects.append(scale) }
+        func level(_ x: Double, of composed: ComposedTimeline) async throws -> Int {
+            try await grayLevel(of: composed, at: second, x: (x + 0.5) / 128, y: 36.5 / 72)
+        }
+
+        // Halved about its own middle, the anchor at (0, 0): 99 to 109.
+        var composed = try await fixture.build()
+        #expect(try await level(104, of: composed) > 220)
+        #expect(try await level(108, of: composed) > 220)
+        #expect(try await level(97, of: composed) < 10)
+        #expect(try await level(111, of: composed) < 10)
+        // The anchor is still an offset from there: 10 pixels right, it
+        // halves toward 114, to 104 to 114.
+        fixture.project.editClip(shape.clipID, in: fixture.timelineID) { $0.anchorPoint = AnimatedValue(Vector2(x: 10, y: 0)) }
+        composed = try await fixture.build()
+        #expect(try await level(102, of: composed) < 10)
+        #expect(try await level(112, of: composed) > 220)
+    }
+
     @Test func anEllipseLeavesTheCornersOfItsBounds() async throws {
         var rectangle = try DrawingFixture()
         defer { rectangle.cleanUp() }

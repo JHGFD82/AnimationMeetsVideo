@@ -49,7 +49,9 @@ struct LayerMediaDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         let time = time(info)
-        session.target(nil)
+        // A drag SwiftUI started (a timeline's name) has no end of its own
+        // to tell the session.
+        session.end()
         let providers = info.itemProviders(for: [.text])
         guard !providers.isEmpty else { return false }
         let onDrop = onDrop

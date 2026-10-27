@@ -19,7 +19,7 @@ struct ProjectSettingsView: View {
     @State private var jointAudioCrossfade = AudioCrossfade.sCurve
 
     private static let importNote = "The import dialog starts with this choice and can still change it for one import. Off, imported files stay where they are and the project refers to them in place."
-    private static let crossfadeNote = "How the sound of two clips crossfades under a transition joining them, while it is attached to their pictures. A transition can choose its own; detached sound is faded by hand."
+    private static let crossfadeNote = "How the sound of two clips crossfades under a transition joining them, while it is attached to their pictures. A transition can choose its own; detached sound takes the Audio transitions."
 
     var body: some View {
         SheetFrame(

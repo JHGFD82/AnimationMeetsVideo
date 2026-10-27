@@ -196,7 +196,8 @@ extension ProjectStore {
                         id: section.id, name: section.name,
                         start: ProjectFile.TimeEntry(section.start), end: ProjectFile.TimeEntry(section.end)
                     )
-                }
+                },
+                previewBackground: timeline.previewBackground
             )
         }
 

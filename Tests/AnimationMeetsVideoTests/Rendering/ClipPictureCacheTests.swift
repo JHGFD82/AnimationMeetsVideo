@@ -84,6 +84,22 @@ private let frame = CMTime(value: 1, timescale: 24)
         #expect(same(frame, try harness.draw([dragged, below])))
     }
 
+    @Test func aKeptPictureIsTheRightWayUp() throws {
+        var harness = CompositorHarness()
+        // Light at the top, dark at the bottom.
+        try harness.addPicture(track: 1) { _, y in y < 0.5 ? SIMD4(0.8, 0.8, 0.8, 1) : SIMD4(0.1, 0.1, 0.1, 1) }
+        let clip = CompositorHarness.clip(track: 1, effects: [exposure(0.5)])
+        let drawn = try harness.draw([clip])
+        #expect(harness.pixel(drawn, x: 8, y: 1).x > harness.pixel(drawn, x: 8, y: 6).x)
+        // Kept as it is drawn, then taken.
+        let kept = ClipPictureCache()
+        let keeping = try harness.draw([clip], kept: kept, keeping: .all)
+        let taken = try harness.draw([clip], kept: kept, keeping: .all)
+        #expect(kept.counts.hits == 1)
+        #expect(same(drawn, keeping))
+        #expect(same(drawn, taken))
+    }
+
     @Test func aClipThatDependsOnWhatIsBelowOrNeedsNoDrawingIsntKept() throws {
         var harness = CompositorHarness()
         try harness.addSolid(track: 1, SIMD4(0.2, 0.3, 0.4, 1))

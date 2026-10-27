@@ -233,7 +233,7 @@ struct InspectorPanel: View {
                 }
 
                 InspectorGroup("Arrange") {
-                    if project.hasLinkedAudio(timelineClip) {
+                    if project.canDetachAudio(timelineClip) {
                         Button("Detach audio") {
                             project.detachAudio(of: [timelineClip.id], in: timelineID, layer: selection.layerID)
                         }
@@ -305,17 +305,20 @@ struct InspectorPanel: View {
                 TransitionSettingsControls(transition: transition, videos: project.clips.filter { $0.kind == .video }) { options in
                     project.setTransitionOptions(options, at: edge, of: clip.id, in: timelineID, layer: selection.layerID)
                 }
-                Menu("Curve: \(transition.curve.preset?.name ?? "Custom")") {
-                    ForEach(TransitionCurve.Preset.allCases) { preset in
-                        Button("\(preset.name) — \(preset.detail)") {
-                            project.setTransitionCurve(
-                                TransitionCurve(preset: preset),
-                                at: edge, of: clip.id, in: timelineID, layer: selection.layerID
-                            )
+                // A transition of sound fades with its kind's shape instead.
+                if !transition.kind.isAudio {
+                    Menu("Curve: \(transition.curve.preset?.name ?? "Custom")") {
+                        ForEach(TransitionCurve.Preset.allCases) { preset in
+                            Button("\(preset.name) — \(preset.detail)") {
+                                project.setTransitionCurve(
+                                    TransitionCurve(preset: preset),
+                                    at: edge, of: clip.id, in: timelineID, layer: selection.layerID
+                                )
+                            }
                         }
                     }
+                    .help("Select the transition on the timeline and zoom in to edit its curve's points")
                 }
-                .help("Select the transition on the timeline and zoom in to edit its curve's points")
             }
         }
     }

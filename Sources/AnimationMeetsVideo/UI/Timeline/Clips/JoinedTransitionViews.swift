@@ -48,7 +48,7 @@ struct JoinedTransitionBridge: View {
                 .font(Design.Typeface.micro)
                 .foregroundStyle(Design.textOnColor.opacity(0.9))
                 .frame(width: width, height: height)
-            if isSelected, width >= curveEditingWidth, height >= 30 {
+            if isSelected, !transition.kind.isAudio, width >= curveEditingWidth, height >= 30 {
                 TransitionCurveEditor(curve: transition.curve, edge: .leading, size: CGSize(width: width, height: height), onChange: onSetCurve)
             }
             sideHandle(atX: 0, outward: -1)

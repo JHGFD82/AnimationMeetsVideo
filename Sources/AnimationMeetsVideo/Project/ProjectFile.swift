@@ -875,6 +875,8 @@ struct ProjectFile: Codable {
         var layers: [LayerEntry]
         /// Absent while the timeline has no sections.
         var sections: [SectionEntry]?
+        /// Red, green and blue; absent for black.
+        var previewBackground: [Double]?
     }
 
     struct SectionEntry: Codable {
@@ -1226,6 +1228,7 @@ extension ProjectFile {
             .optional("sections", .array(.object(object([
                 .required("id", .uuid), .required("name", .string), .required("start", .time), .required("end", .time),
             ])))),
+            .optional("previewBackground", .numbers(count: 3)),
         ]))
         let sceneEdits = JSONShape.object(object([
             .optional("sensitivity", .number),

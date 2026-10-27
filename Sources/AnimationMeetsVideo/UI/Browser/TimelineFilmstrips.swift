@@ -167,6 +167,10 @@ struct TimelineFilmstrips: View {
                 .truncationMode(.tail)
         }
         .contentShape(Rectangle())
+        // Dragged by its name, as from the list: onto the timeline, or onto
+        // an effect that takes an input. Inside the press below, whose drag
+        // gesture would otherwise take the mouse first.
+        .draggable(TimelinesList.dragPayload(from: timeline.id, picked: picked, order: order, in: project))
         .onMouseDown { clicks in
             focused = true
             cursor = timeline.id
@@ -180,9 +184,6 @@ struct TimelineFilmstrips: View {
                 if clicks == 2 { onOpen(timeline.id) }
             }
         }
-        // Dragged by its name, as from the list: onto the timeline, or onto
-        // an effect that takes an input.
-        .draggable(TimelinesList.dragPayload(from: timeline.id, picked: picked, order: order, in: project))
         .contextMenu { menu(timeline.id) }
         .help(isActive ? "The timeline open in the editor" : "Double-click to open in the editor")
         .accessibilityElement(children: .combine)

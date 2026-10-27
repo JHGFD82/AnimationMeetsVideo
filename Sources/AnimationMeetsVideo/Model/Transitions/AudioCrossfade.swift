@@ -3,7 +3,8 @@ import Foundation
 /// How the sound of two clips crossfades under a transition joining them,
 /// when the sound is still attached to their pictures. Its timing is the
 /// transition's, as the picture's is; only the shape of the two fades is
-/// its own. Detached sound takes no transitions, so it is faded by hand.
+/// its own. Detached sound takes the Audio transitions, each of which
+/// fades with one of these (`TransitionKind.soundShape`).
 ///
 /// A transition can choose one (`ClipTransition.audioCrossfade`); one that
 /// doesn't follows the project's (`EditingProject.jointAudioCrossfade`),

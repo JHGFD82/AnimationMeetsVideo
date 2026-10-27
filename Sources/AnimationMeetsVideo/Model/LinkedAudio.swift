@@ -5,21 +5,23 @@ import Foundation
 
 extension EditingProject {
     /// Whether the clip draws pictures: video it hasn't had its picture
-    /// taken from, stills, nested timelines and shapes.
+    /// taken from, stills, nested timelines that aren't their detached
+    /// sound, and shapes.
     func playsVideo(_ clip: TimelineClip) -> Bool {
         switch resolvedInfo(for: clip.source) {
         case .media(let media): media.kind.hasPictures && clip.streams != .audio
-        case .timeline, .adjustment, .graphic: true
+        case .timeline: clip.streams != .audio
+        case .adjustment, .graphic: true
         case nil: false
         }
     }
 
     /// Whether the clip makes sound: audio files, videos with sound whose
-    /// audio wasn't detached, and nested timelines.
+    /// audio wasn't detached, and nested timelines whose audio wasn't.
     func playsAudio(_ clip: TimelineClip) -> Bool {
         switch resolvedInfo(for: clip.source) {
         case .media(let media): media.hasAudio && clip.streams != .video
-        case .timeline: true
+        case .timeline: clip.streams != .video
         case .adjustment, .graphic, nil: false
         }
     }
@@ -31,11 +33,34 @@ extension EditingProject {
         return media.kind == .video && media.hasAudio && clip.streams == .videoAndAudio
     }
 
+    /// Whether `detachAudio` can take the clip's sound apart from its
+    /// picture: a video clip's linked sound, or a nested timeline's, when
+    /// anything in it makes sound.
+    func canDetachAudio(_ clip: TimelineClip) -> Bool {
+        if hasLinkedAudio(clip) { return true }
+        guard case .timeline(let nestedID) = clip.source, clip.streams == .videoAndAudio else { return false }
+        var visited: Set<UUID> = []
+        return timelineMakesSound(nestedID, visited: &visited)
+    }
+
+    /// Whether a clip in the timeline, or in one nested in it, makes sound.
+    private func timelineMakesSound(_ timelineID: UUID, visited: inout Set<UUID>) -> Bool {
+        guard visited.insert(timelineID).inserted, let timeline = timeline(id: timelineID) else { return false }
+        for layer in timeline.layers {
+            for clip in layer.clips where playsAudio(clip) {
+                guard case .timeline(let nestedID) = clip.source else { return true }
+                if timelineMakesSound(nestedID, visited: &visited) { return true }
+            }
+        }
+        return false
+    }
+
     func layerHasLinkedAudio(_ layer: TimelineLayer) -> Bool {
         layer.clips.contains { hasLinkedAudio($0) }
     }
 
-    /// Separates the sound from video clips on a layer: the clips keep only
+    /// Separates the sound from video clips and nested timelines on a layer
+    /// (`canDetachAudio`): the clips keep only
     /// their picture, and their sound goes onto a new layer just below with
     /// the same timing and trims, so it plays exactly as before but can be
     /// moved, trimmed or deleted on its own. `clipIDs` limits it to those
@@ -51,7 +76,7 @@ extension EditingProject {
         var audioClips: [TimelineClip] = []
         for cIndex in timelines[tIndex].layers[lIndex].clips.indices {
             let clip = timelines[tIndex].layers[lIndex].clips[cIndex]
-            guard clipIDs?.contains(clip.id) ?? true, hasLinkedAudio(clip) else { continue }
+            guard clipIDs?.contains(clip.id) ?? true, canDetachAudio(clip) else { continue }
             timelines[tIndex].layers[lIndex].clips[cIndex].streams = .video
             timelines[tIndex].layers[lIndex].clips[cIndex].soundMuted = false
             // The picture keeps its effects and the sound takes its own.

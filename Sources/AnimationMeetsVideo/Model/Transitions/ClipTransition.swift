@@ -15,6 +15,9 @@ enum TransitionCategory: String, CaseIterable, Identifiable {
     case threeD
     /// The pictures themselves are blurred, distorted or broken up.
     case stylized
+    /// Sound alone: a sound clip fades in and out, and two crossfade at a
+    /// joined cut. They go on clips that make sound and draw no picture.
+    case audio
 
     var id: Self { self }
 
@@ -25,6 +28,7 @@ enum TransitionCategory: String, CaseIterable, Identifiable {
         case .moves: "Moves"
         case .threeD: "3D"
         case .stylized: "Stylized"
+        case .audio: "Audio"
         }
     }
 }
@@ -66,6 +70,9 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     case ripple
     case glitch
     case morph
+    case crossfade
+    case equalPowerCrossfade
+    case linearCrossfade
 
     var id: Self { self }
 
@@ -96,8 +103,26 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .ripple: "Ripple"
         case .glitch: "Glitch"
         case .morph: "Morph"
+        case .crossfade: "Crossfade"
+        case .equalPowerCrossfade: "Equal Power"
+        case .linearCrossfade: "Linear"
         }
     }
+
+    /// The shape an audio transition fades its sound with, at an open end
+    /// as at a joined cut; nil for the transitions of pictures, whose
+    /// sound fades as `AudioFade` says.
+    var soundShape: AudioCrossfade? {
+        switch self {
+        case .crossfade: .sCurve
+        case .equalPowerCrossfade: .equalPower
+        case .linearCrossfade: .linear
+        default: nil
+        }
+    }
+
+    /// Whether it is a transition of sound, for clips with no picture.
+    var isAudio: Bool { category == .audio }
 
     var category: TransitionCategory {
         switch self {
@@ -106,6 +131,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .slide, .push, .split, .zoom, .crossZoom, .spin: .moves
         case .flip, .cube, .pageCurl: .threeD
         case .pixelate, .ripple, .glitch, .morph: .stylized
+        case .crossfade, .equalPowerCrossfade, .linearCrossfade: .audio
         }
     }
 
@@ -123,6 +149,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .dipToColor: [.color]
         case .blurDissolve: [.amount]
         case .crossDissolve, .filmDissolve, .additiveDissolve, .channelDissolve, .zoom, .spin: []
+        case .crossfade, .equalPowerCrossfade, .linearCrossfade: []
         }
     }
 
@@ -156,7 +183,7 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     var defaultCurve: TransitionCurve {
         switch category {
         case .moves, .threeD: TransitionCurve(preset: .easyEase)
-        case .dissolves, .wipes, .stylized: .linear
+        case .dissolves, .wipes, .stylized, .audio: .linear
         }
     }
 
@@ -187,6 +214,9 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .ripple: "drop.circle"
         case .glitch: "tv.badge.wifi"
         case .morph: "wand.and.rays"
+        case .crossfade: "waveform.path"
+        case .equalPowerCrossfade: "speaker.wave.2"
+        case .linearCrossfade: "line.diagonal"
         }
     }
 
@@ -203,6 +233,8 @@ enum TransitionKind: String, CaseIterable, Identifiable {
         case .pixelate, .ripple, .glitch, .morph: true
         case .dipToColor, .additiveDissolve, .channelDissolve, .blurDissolve: true
         case .iris, .clockWipe, .blinds, .grid, .matteWipe: true
+        // Sound alone: the picture is left as it is.
+        case .crossfade, .equalPowerCrossfade, .linearCrossfade: false
         }
     }
 
@@ -303,11 +335,32 @@ extension TimelineClip {
 
 // MARK: - Editing
 
+/// Which transitions a clip takes: those of pictures on a clip that draws
+/// one, those of sound (`TransitionKind.isAudio`) on a clip that only
+/// makes sound, and none on the rest.
+enum TransitionsTaken: Equatable {
+    case none, picture, sound
+
+    func takes(_ kind: TransitionKind) -> Bool {
+        switch self {
+        case .none: false
+        case .picture: !kind.isAudio
+        case .sound: kind.isAudio
+        }
+    }
+}
+
 extension EditingProject {
+    func transitionsTaken(by clip: TimelineClip) -> TransitionsTaken {
+        if playsVideo(clip) { return .picture }
+        return playsAudio(clip) ? .sound : .none
+    }
+
     /// Puts a transition on one end of a clip. One already there keeps its
     /// length and curve and only changes kind; a new one is a second long,
     /// or shorter to fit beside the transition at the other end, with its
-    /// kind's default curve. Only clips with pictures take transitions.
+    /// kind's default curve. A clip takes only the transitions it can play
+    /// (`transitionsTaken`): of pictures, or of sound for sound alone.
     ///
     /// Dropped where two clips on a layer meet, it joins them: it becomes
     /// the incoming clip's way in, centered on the cut as far as the spare
@@ -317,7 +370,7 @@ extension EditingProject {
         guard let timeline = timeline(id: timelineID),
               let layer = timeline.layer(id: layerID),
               var clip = layer.clips.first(id: clipID),
-              playsVideo(clip)
+              transitionsTaken(by: clip).takes(kind)
         else {
             return
         }
@@ -764,6 +817,9 @@ struct EdgeTransitions: Sendable {
         let entering = edge == .leading
         let direction = transition.options.direction
         switch transition.kind {
+        case .crossfade, .equalPowerCrossfade, .linearCrossfade:
+            // A transition of sound leaves the picture as it is.
+            break
         case .crossDissolve:
             effect.opacity *= v
         case .filmDissolve:

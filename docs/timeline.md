@@ -547,7 +547,16 @@ in the inspector) splits them: the clips keep only their picture
 (`streams = .video`), and copies with the same timing and trims, playing
 only the sound (`streams = .audio`), go onto a new sound layer. From
 then on the two are ordinary clips: the sound is colored as audio, moves
-freely off the frame grid, carries the beats, and takes no transitions.
+freely off the frame grid, carries the beats, and takes only the Audio
+transitions (see [transitions.md](transitions.md#sound)).
+
+A **nested timeline's** clip detaches the same way, from its menu, the
+layer header or the inspector, when anything in it makes sound
+(`EditingProject.canDetachAudio`): the clip keeps the nested timeline's
+picture, drawn with its sound silenced, and a copy on the new sound layer
+plays only its sound, drawing nothing (`CompositionFlattening` honors
+`streams` for nested clips as for media). It has no linked audio lane,
+which shows a file's waveform.
 
 **Mute Sound** (in the clip's menu, for any clip that makes sound) keeps
 the sound where it is and silences it (`soundMuted`): it is left out of
@@ -622,8 +631,9 @@ clip and the reach of its joints, and drawn there by groups that share
 those clips, one above the layer for its frames before the cut and one
 below for the frames under its neighbor's transition.
 
-There are 25 kinds in five groups (dissolves, wipes, moves, 3D,
-stylized); what each does, its settings (set in the inspector under the
+There are 25 kinds of picture in five groups (dissolves, wipes, moves,
+3D, stylized), and three of sound (Audio) for clips with no picture;
+what each does, its settings (set in the inspector under the
 transition's length) and how it is drawn are in
 [transitions.md](transitions.md). A wipe or slide acts in the frame of
 the timeline the clip is on, after the clip's effect stack.
@@ -848,12 +858,33 @@ VoiceOver action do the same. The header bar then shows a **breadcrumb**
 before the timeline's name: the timelines gone through to get here,
 outermost first, each a button that goes back out to it (`trail` in
 `TimelineEditorSurface`). Opening a timeline another way, from the
-browser's Timelines tab, starts the trail over.
+browser's Timelines tab, starts the trail over at the timelines it is
+inside, as the tab lists it (`EditingProject.containingTimelines`), so a
+nested timeline always has a way back out to the one that holds it.
 
 The header only shows the open timeline's name: timelines are opened
 (double-click) and renamed in the Timelines tab (see docs/browser.md). A
 second display's own timeline, when it is independent, keeps its own
 trail.
+
+## Preview background
+
+Timeline Settings has a **Background**: a checkbox and a color well. On,
+the viewer shows that color wherever nothing is drawn, instead of black,
+to see what is transparent: a title over nothing, the edges of a key, a
+fade from nothing. It is the viewer's alone (`Timeline.previewBackground`,
+saved as `previewBackground`, red, green and blue in the timeline's
+encoded values, only while it is on). Exports, renders and the timeline
+nested in another draw over black as before.
+
+In the viewer the frame is drawn over transparency and then put over the
+color (`LayeredInstruction.background`), as After Effects shows a
+composition's background: it shows where export shows black, and no
+blend mode or transition mixes with it. Renders are drawn over black for
+export, so a timeline with a background plays in the viewer from its
+clips, never its renders (`ViewerSource.playsRenders`); they are still
+planned and made for export, and a stretch heavy enough to need one plays
+as it would before it was rendered.
 
 ## Not implemented yet
 

@@ -19,6 +19,10 @@ struct ViewerSource {
     var isHeld = false
 
     var timeline: Timeline? { project.timeline(id: timelineID) }
+    /// Whether the viewer plays stretches from their renders. Not with a
+    /// preview background: renders are drawn over black, for export, and
+    /// would hide it. They are still planned and made for export.
+    var playsRenders: Bool { !isPartial && timeline?.previewBackground == nil }
     var hasContent: Bool { timeline?.layers.contains { !$0.clips.isEmpty } ?? false }
 }
 
@@ -188,7 +192,7 @@ final class ViewerPipeline {
         self.init(player: playback, renderer: renderer) { [weak playback] source, cache in
             try await CompositionExporter.buildComposedTimeline(
                 for: source.project, timelineID: source.timelineID, forPreview: true, meter: playback?.meter,
-                options: playback?.drawingOptions, cache: source.isPartial ? nil : cache
+                options: playback?.drawingOptions, cache: source.playsRenders ? cache : nil
             )
         }
         follow({ playback.isPlaying }) { $0.send(.playbackStateChanged(isPlaying: $1)) }
@@ -309,6 +313,8 @@ final class ViewerPipeline {
             if planStale, ready == nil { schedulePlan(after: .zero) }
             advance()
         case .renderFinished:
+            // A viewer that doesn't play renders has nothing to take up.
+            if let latest, !latest.source.playsRenders { return }
             if isPlaying {
                 rebuildsWhenPaused = true
             } else {

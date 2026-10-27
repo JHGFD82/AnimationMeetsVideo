@@ -164,8 +164,9 @@ enum TransitionRenderer {
                 return mix(leaving, arriving, p)
             }
             return mix(a, b, p)
-        case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom, .spin:
-            // Drawn on the clip alone by the compositor; never asked for.
+        case .crossDissolve, .filmDissolve, .wipe, .slide, .zoom, .spin, .crossfade, .equalPowerCrossfade, .linearCrossfade:
+            // Drawn on the clip alone by the compositor, or for sound not
+            // drawn at all; never asked for.
             return mix(a, b, p)
         }
     }

@@ -43,6 +43,47 @@ private func videoWithSound(url: URL? = nil, duration: Double = 10) -> MediaClip
         #expect(project.detachAudio(in: timelineID, layer: ids.layerID) == nil)
     }
 
+    /// A nested timeline playing a tone, embedded in Main and detached: its
+    /// picture stays, its sound moves below and plays once, as loud.
+    @Test func aNestedTimelinesSoundDetaches() async throws {
+        let tone = try AudioMixSupport.tone(amplitude: 0.25, seconds: 1)
+        defer { try? FileManager.default.removeItem(at: tone) }
+        var (project, _, _) = try AudioMixSupport.project(playing: tone)
+        let inner = project.rootTimelineID
+        let main = project.addTimeline(name: "Main", frameSize: CGSize(width: 64, height: 36), frameRate: 24, colorSpace: .rec709)
+        project.rootTimelineID = main
+        let embedded = project.embedTimeline(inner, intoTimeline: main)
+        let layerID = try #require(embedded?.layerID)
+        let nested = try #require(project.timeline(id: main)?.layer(id: layerID)?.clips.first)
+        #expect(project.canDetachAudio(nested))
+        #expect(!project.hasLinkedAudio(nested))
+        let before = try await AudioMixSupport.loudest(of: project)
+
+        let detached = project.detachAudio(in: main, layer: layerID)
+        let soundLayerID = try #require(detached)
+        let layers = try #require(project.timeline(id: main)?.layers)
+        #expect(layers.map(\.id) == [layerID, soundLayerID])
+        let picture = layers[0].clips[0], sound = layers[1].clips[0]
+        #expect(picture.source == .timeline(inner) && sound.source == .timeline(inner))
+        #expect(project.playsVideo(picture) && !project.playsAudio(picture))
+        #expect(project.playsAudio(sound) && !project.playsVideo(sound))
+        #expect(!project.canDetachAudio(picture) && !project.canDetachAudio(sound))
+
+        // Played once: had the picture clip kept its sound, twice as loud.
+        let after = try await AudioMixSupport.loudest(of: project)
+        #expect(abs(after.x - before.x) < 0.01 && before.x > 0.2)
+    }
+
+    @Test func aNestedTimelineWithoutSoundHasNothingToDetach() throws {
+        var project = EditingProject.empty
+        let inner = project.rootTimelineID
+        _ = project.addShapeLayer(.rectangle, to: inner, duration: seconds(2))
+        let main = project.addTimeline(name: "Main", frameSize: CGSize(width: 64, height: 36), frameRate: 24, colorSpace: .rec709)
+        let embedded = project.embedTimeline(inner, intoTimeline: main)
+        let clip = try #require(embedded.flatMap { project.timeline(id: main)?.layer(id: $0.layerID)?.clips.first })
+        #expect(!project.canDetachAudio(clip))
+    }
+
     @Test func detachingMutedSoundPlaysItOnTheSoundLayer() throws {
         var project = EditingProject.empty
         let imported = project.importClip(videoWithSound(), intoTimeline: project.rootTimelineID)

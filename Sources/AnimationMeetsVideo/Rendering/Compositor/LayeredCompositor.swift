@@ -35,16 +35,22 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
     /// Which clips' finished pictures are kept for later frames (see
     /// `ClipPictureCache`).
     let keeping: ClipPictureCache.Keeping
+    /// The viewer's background (`Timeline.previewBackground`): the frame is
+    /// drawn over transparency and then over this color, so it shows where
+    /// export shows black, never blending with the clips. Nil over black.
+    let background: [Double]?
 
     init(
         timeRange: CMTimeRange, clips: [DrawClip], passthrough: CMPersistentTrackID = kCMPersistentTrackID_Invalid,
         renderSize: CGSize, colorSpace: ProjectColorSpace, canvasMargin: Double = EditingProject.defaultCanvasMargin,
         meter: RenderMeter? = nil, options: DrawingOptions? = nil, capture: SourceCapture? = nil,
-        keeping: ClipPictureCache.Keeping = .trails
+        keeping: ClipPictureCache.Keeping = .trails, background: [Double]? = nil
     ) {
         self.timeRange = timeRange
         self.clips = clips
-        passthroughTrackID = passthrough
+        self.background = background
+        // A picture passed through as it is would cover the background.
+        passthroughTrackID = background == nil ? passthrough : kCMPersistentTrackID_Invalid
         self.renderSize = renderSize
         self.colorSpace = colorSpace
         self.canvasMargin = canvasMargin
@@ -61,7 +67,7 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
         LayeredInstruction(
             timeRange: timeRange, clips: clips, passthrough: passthroughTrackID, renderSize: renderSize,
             colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options, capture: capture,
-            keeping: keeping ?? self.keeping
+            keeping: keeping ?? self.keeping, background: background
         )
     }
 }
@@ -277,8 +283,16 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             keeping: instruction.keeping,
             source: frame
         )
-        let black = CIImage(color: .black).cropped(to: bounds)
-        return drawing.draw(instruction.clips, frame: renderSize, over: black, outer: .identity).cropped(to: bounds)
+        guard let rgb = instruction.background, rgb.count == 3 else {
+            let black = CIImage(color: .black).cropped(to: bounds)
+            return drawing.draw(instruction.clips, frame: renderSize, over: black, outer: .identity).cropped(to: bounds)
+        }
+        // In the timeline's encoded values, as fills are: the context
+        // converts nothing.
+        let background = CIImage(color: CIColor(red: rgb[0], green: rgb[1], blue: rgb[2])).cropped(to: bounds)
+        let clear = CIImage(color: .clear).cropped(to: bounds)
+        return drawing.draw(instruction.clips, frame: renderSize, over: clear, outer: .identity)
+            .composited(over: background).cropped(to: bounds)
     }
 
     /// White where the picture is bright enough to show through by now,
