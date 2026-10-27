@@ -129,12 +129,18 @@ struct UISnapshots {
         try render("beat-match-2-draw")
         session.finishDrawing()
         try render("beat-match-3-mark")
-        session.addBeat(at: 8.25, position: 1)
+        // Placed by ear a little late, so the fill snaps it.
+        session.addBeat(at: 8.256, position: 1)
+        for _ in 0..<100 where session.provisionalTempo == nil { try await Task.sleep(for: .milliseconds(50)) }
+        try render("beat-match-3-anchor")
         session.addBeat(at: 16.25, position: 1)
         session.fillSelected()
         for _ in 0..<100 where session.isFilling { try await Task.sleep(for: .milliseconds(50)) }
         session.selectBeat(step: 1)
         try render("beat-match-4-filled")
+        // The anchor the fill snapped: how far, and Undo Snap.
+        session.selectedBeat = session.map.sections[0].beats.first { $0.heardTime != nil }?.time
+        try SnapshotSupport.render(BeatMatchView(session: session, onConfirm: {}, onCancel: {}), "beat-match-4-snapped", size: CGSize(width: 1300, height: 900))
 
         // Started over on a song that had beats: Remove Beats.
         var matched = song

@@ -165,6 +165,9 @@ struct BeatMatchView: View {
                     if let message = session.message {
                         SheetCallout(.warning, message)
                     }
+                    ForEach(session.fillHints, id: \.self) { hint in
+                        SheetCallout(.info, hint)
+                    }
                     switch session.step {
                     case .chooseMode: modeChoice
                     case .drawSections: drawingControls
@@ -650,7 +653,23 @@ struct BeatMatchView: View {
                 .font(Design.Typeface.label)
                 .foregroundStyle(Design.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if let heard = beat.heardTime {
+                let moved = CMTimeSubtract(beat.time, heard).seconds * 1000
+                Text("Snapped \(String(format: "%.1f", abs(moved))) ms \(moved > 0 ? "later" : "earlier") onto its onset.")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if beat.isPinned, !beat.snapsToOnset {
+                Text("Kept where you placed it: fills don't snap it.")
+                    .font(Design.Typeface.label)
+                    .foregroundStyle(Design.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             HStack(spacing: Design.Space.close) {
+                if beat.heardTime != nil {
+                    Button("Undo Snap", action: session.undoSnap)
+                        .help("Put the beat back where you placed it; fills then leave it there")
+                }
                 if beat.isPinned {
                     Button("Unpin", action: session.unpinSelected)
                         .help("Let reanalysis move this beat again")
