@@ -462,30 +462,18 @@ struct ClipBlockView: View {
         }
     }
 
-    /// The clip's volume as a line across the drawn part of the block, as
-    /// on the layer volume lane: mute at the bottom, +6 dB at the top, and
-    /// a faint line at 0 dB.
+    /// The clip's volume as a line across the drawn part of the block.
     @ViewBuilder
     private func volumeLine(of shown: TimelineClip, drawnX: CGFloat, liveX: CGFloat, width: CGFloat) -> some View {
         if model.showsVolumeLine, width > 0 {
-            let first = CMTimeAdd(shown.trimStart, CMTime(seconds: Double((drawnX - liveX) / model.pixelsPerSecond), preferredTimescale: 600))
-            let volume = shown.volume
-            let pixels = model.pixelsPerSecond
-            Canvas { context, size in
-                let unity = VolumeLane.y(ofLevel: 0, height: size.height)
-                context.fill(Path(CGRect(x: 0, y: unity, width: size.width, height: 0.5)), with: .color(Design.textOnColor.opacity(0.35)))
-                var line = Path()
-                var x: CGFloat = 0
-                while x <= size.width + 2 {
-                    let time = CMTimeAdd(first, CMTime(seconds: Double(x / pixels), preferredTimescale: 600))
-                    let point = CGPoint(x: x, y: VolumeLane.y(ofLevel: volume.value(at: time), height: size.height))
-                    if line.isEmpty { line.move(to: point) } else { line.addLine(to: point) }
-                    x += 2
-                }
-                context.stroke(line, with: .color(Design.textOnColor.opacity(0.9)), lineWidth: 1.5)
-            }
-            .frame(width: width, height: model.height)
-            .allowsHitTesting(false)
+            VolumeLineView(
+                volume: shown.volume,
+                firstSeconds: shown.trimStart.seconds + Double((drawnX - liveX) / model.pixelsPerSecond),
+                pixelsPerSecond: model.pixelsPerSecond,
+                width: width,
+                height: model.height
+            )
+            .equatable()
         }
     }
 
