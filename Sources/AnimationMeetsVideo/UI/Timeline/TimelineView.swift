@@ -384,6 +384,10 @@ struct TimelineView: View {
         .onChange(of: timeline.version, initial: true) { _, _ in
             configureAutoScroll()
         }
+        // Set up again on coming back, and let go of on leaving: its
+        // closures hold this view (`TimelineAutoScroll.detach`).
+        .onAppear { configureAutoScroll() }
+        .onDisappear { autoScroll.detach() }
         .onChange(of: TimingKey(timeline), initial: true) { old, new in
             keepZoomThroughRetiming(from: old, to: new)
         }

@@ -378,8 +378,12 @@ struct TimelineEditorSurface<Library: View>: View {
         }
         .onDisappear {
             graphs.closeAll()
-            // It holds this surface, whose state holds it.
+            // These hold this surface, whose state holds them: kept, they
+            // would keep it, and the project, alive.
             timelineHost.surface = nil
+            graphs.onEdit = { _ in }
+            graphs.onSeek = { _ in }
+            graphs.onTogglePlayback = {}
         }
         .onChange(of: timelineID) { _, newValue in
             if newValue != trailTarget { trail = project.containingTimelines(of: newValue) }
@@ -659,28 +663,40 @@ struct TimelineEditorSurface<Library: View>: View {
 /// through the surface as it was last drawn (`TimelineEditorSurface.handle`).
 /// One object for the surface's life, so the timeline, which compares it
 /// by identity, isn't redrawn because the surface was.
+///
+/// Not observable: the surface sets `surface` as it draws, and a watched
+/// write there would ask for another redraw each time.
 @MainActor
 private final class SurfaceTimelineHost<Library: View>: TimelineHost {
+    /// The surface as last drawn; nil once it has disappeared, which lets
+    /// go of it (its state holds this host, so holding it would keep both).
     var surface: TimelineEditorSurface<Library>?
 
+    /// The surface to act through. A timeline whose surface has gone asks
+    /// for nothing: it is gone too.
+    private var current: TimelineEditorSurface<Library>? {
+        assert(surface != nil, "The timeline acted after its editor surface disappeared")
+        return surface
+    }
+
     func dispatch(_ action: TimelineAction) {
-        surface?.handle(action)
+        current?.handle(action)
     }
 
     func dropScenes(_ payloads: [MediaDragPayload], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind?) -> Bool {
-        surface?.dropScenes(payloads, onLayer: layerID, at: time, kind: kind) ?? false
+        current?.dropScenes(payloads, onLayer: layerID, at: time, kind: kind) ?? false
     }
 
     func dropFiles(_ urls: [URL], onLayer layerID: UUID?, at time: CMTime, kind: LayerKind?) {
-        surface?.dropFiles(urls, onLayer: layerID, at: time, kind: kind)
+        current?.dropFiles(urls, onLayer: layerID, at: time, kind: kind)
     }
 
     func sceneTracks() -> [UUID: ChangeScoreTrack] {
-        surface?.sceneTracks ?? [:]
+        current?.sceneTracks ?? [:]
     }
 
     func readProject() -> EditingProject {
-        surface?.currentProject ?? .empty
+        current?.currentProject ?? .empty
     }
 }
 
