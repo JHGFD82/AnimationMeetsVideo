@@ -45,7 +45,7 @@ extension TimelineView {
     /// `kind`, and is selected. The clip itself stays.
     func copyClip(_ clipID: UUID, from layerID: UUID, to start: CMTime, onto target: UUID?, newLayer kind: LayerKind?) {
         var placed: (layerID: UUID, clip: TimelineClip)?
-        onEditProject { project in
+        host.dispatch(.editProject { project in
             guard let bundle = project.clipBundle(clipID, in: timelineID) else { return }
             let pasted = if let kind {
                 project.paste(bundle, in: timelineID, newLayer: kind, at: start)
@@ -54,8 +54,8 @@ extension TimelineView {
             }
             guard let pasted, let clip = project.clipAndLayer(pasted.clipID, in: timelineID)?.clip else { return }
             placed = (pasted.layerID, clip)
-        }
-        if let placed { onSelectClip(placed.layerID, placed.clip) }
+        })
+        if let placed { host.dispatch(.selectClip(layer: placed.layerID, clip: placed.clip)) }
     }
 
     /// Cuts, copies or duplicates a clip, or pastes the copied clip at the
@@ -69,31 +69,31 @@ extension TimelineView {
         if command != .paste, let clipID, groupSelection.contains(clipID) { return groupClipboard(command) }
         switch command {
         case .copy, .cut:
-            let project = readProject()
+            let project = host.readProject()
             guard let layerID, let clipID, let bundle = project.clipBundle(clipID, in: timelineID) else { return }
             EditorClipboard.shared.copy(clip: bundle, effects: project.bundle(ofEffects: nil, fromClip: clipID, in: timelineID))
-            if command == .cut { onDeleteClip(layerID, clipID) }
+            if command == .cut { host.dispatch(.deleteClip(layer: layerID, clip: clipID)) }
         case .paste:
             guard let bundle = EditorClipboard.shared.clip else { return }
             var placed: (layerID: UUID, clip: TimelineClip)?
-            onEditProject { project in
+            host.dispatch(.editProject { project in
                 guard let pasted = project.paste(bundle, in: timelineID, onto: layerID, at: playheadTime),
                       let clip = project.clipAndLayer(pasted.clipID, in: timelineID)?.clip
                 else { return }
                 placed = (pasted.layerID, clip)
-            }
+            })
             guard let placed else { return NSSound.beep() }
-            onSelectClip(placed.layerID, placed.clip)
+            host.dispatch(.selectClip(layer: placed.layerID, clip: placed.clip))
             parkPlayhead(at: placed.clip.endOffset)
         case .nest:
             if let clipID { nest([clipID]) }
         case .duplicate:
             guard let layerID, let clipID else { return }
             var copy: TimelineClip?
-            onEditProject { project in
+            host.dispatch(.editProject { project in
                 copy = project.duplicateClip(clipID, in: timelineID).flatMap { project.clipAndLayer($0, in: timelineID)?.clip }
-            }
-            if let copy { onSelectClip(layerID, copy) }
+            })
+            if let copy { host.dispatch(.selectClip(layer: layerID, clip: copy)) }
         }
     }
 }

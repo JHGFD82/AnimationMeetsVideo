@@ -256,7 +256,7 @@ extension TimelineView {
             groupSelection = []
             selectedLayerID = nil
             selectedSectionID = nil
-            onSelectClip(single.layerID, single.clip)
+            host.dispatch(.selectClip(layer: single.layerID, clip: single.clip))
         } else if ids.count < 2 {
             clearSelection()
         } else {
@@ -269,7 +269,7 @@ extension TimelineView {
         groupSelection = ids
         selectedLayerID = nil
         selectedSectionID = nil
-        onSelectLayer()
+        host.dispatch(.selectLayer)
     }
 
     /// Adds a clip to the clips picked together, or takes it out; a clip
@@ -295,7 +295,7 @@ extension TimelineView {
         groupSelection = []
         selectedLayerID = nil
         selectedSectionID = nil
-        onSelectLayer()
+        host.dispatch(.selectLayer)
     }
 
     /// Whether anything is selected in this timeline for `clearSelection`
@@ -311,14 +311,14 @@ extension TimelineView {
         let ids = groupSelection
         switch command {
         case .copy, .cut:
-            guard let group = readProject().clipGroup(ids, in: timelineID) else { return }
+            guard let group = host.readProject().clipGroup(ids, in: timelineID) else { return }
             EditorClipboard.shared.copy(group: group)
             if command == .cut { deleteGroup() }
         case .paste:
             pasteGroup()
         case .duplicate:
             var copies: [(layerID: UUID, clipID: UUID)] = []
-            onEditProject { copies = $0.duplicateClips(ids, in: timelineID) }
+            host.dispatch(.editProject { copies = $0.duplicateClips(ids, in: timelineID) })
             if !copies.isEmpty { groupSelection = Set(copies.map(\.clipID)) }
         case .nest:
             nest(ids)
@@ -330,7 +330,7 @@ extension TimelineView {
     func pasteGroup() {
         guard let group = EditorClipboard.shared.group else { return }
         var placed: [(layerID: UUID, clipID: UUID)] = []
-        onEditProject { placed = $0.paste(group, in: timelineID, at: playheadTime) }
+        host.dispatch(.editProject { placed = $0.paste(group, in: timelineID, at: playheadTime) })
         guard !placed.isEmpty else { return NSSound.beep() }
         pickTogether(Set(placed.map(\.clipID)))
         parkPlayhead(at: CMTimeAdd(playheadTime, CMTimeSubtract(group.end, group.start)))
@@ -338,7 +338,7 @@ extension TimelineView {
 
     func deleteGroup() {
         let ids = groupSelection
-        onEditProject { $0.deleteClips(ids, in: timelineID) }
+        host.dispatch(.editProject { $0.deleteClips(ids, in: timelineID) })
         groupSelection = []
     }
 
@@ -346,15 +346,15 @@ extension TimelineView {
     /// as one clip, selected.
     func nest(_ ids: Set<UUID>) {
         var nested: (timelineID: UUID, layerID: UUID, clipID: UUID)?
-        onEditProject { project in
+        host.dispatch(.editProject { project in
             nested = project.nestClips(ids, in: timelineID, named: project.newNestedTimelineName())
-        }
+        })
         guard let nested else { return NSSound.beep() }
         groupSelection = []
-        if let clip = readProject().clipAndLayer(nested.clipID, in: timelineID)?.clip {
+        if let clip = host.readProject().clipAndLayer(nested.clipID, in: timelineID)?.clip {
             selectedLayerID = nil
             selectedSectionID = nil
-            onSelectClip(nested.layerID, clip)
+            host.dispatch(.selectClip(layer: nested.layerID, clip: clip))
         }
     }
 }

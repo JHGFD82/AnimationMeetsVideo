@@ -17,8 +17,16 @@ struct BeatTrack: Equatable, Sendable {
     /// The typical tempo, from the median gap between the beats; 0 exactly
     /// when no beat was found, otherwise positive. Finite, and stays so when saved as a 32-bit float.
     let beatsPerMinute: Double
+    /// Which track this is, new for each one made, so a view can tell a
+    /// track it has from one found since without comparing every beat. Not
+    /// compared by `==`.
+    let id = UUID()
 
     var isEmpty: Bool { times.isEmpty }
+
+    static func == (lhs: BeatTrack, rhs: BeatTrack) -> Bool {
+        lhs.timescale == rhs.timescale && lhs.times == rhs.times && lhs.beatsPerMinute == rhs.beatsPerMinute
+    }
 
     /// Throws `BeatTrackError.invalidData` unless the values meet the
     /// invariants documented on the properties.

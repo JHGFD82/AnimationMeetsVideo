@@ -91,6 +91,17 @@ final class TimelineAutoScroll {
         onScroll = nil
     }
 
+    /// Lets go of what the timeline set, as it goes away. Its closures hold
+    /// the timeline, whose state holds this, so kept they would keep both
+    /// alive, and the project with them.
+    func detach() {
+        end()
+        scrollBy = { _ in 0 }
+        trackSpan = { 0...0 }
+        areaScrollers = [:]
+        areaAt = { _ in nil }
+    }
+
     /// How far to scroll this step with the pointer at `x`: zero away from
     /// the edges, negative near the left.
     private func step(at x: CGFloat) -> CGFloat {

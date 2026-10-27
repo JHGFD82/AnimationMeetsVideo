@@ -57,9 +57,9 @@ extension TimelineView {
             if copying {
                 // The place counts the layers left in, the original among
                 // them, which is above the line when dragged down.
-                onEditProject { $0.duplicateLayer(id, in: timelineID, toPositionInKind: position + (dy > 0 ? 1 : 0)) }
+                host.dispatch(.editProject { $0.duplicateLayer(id, in: timelineID, toPositionInKind: position + (dy > 0 ? 1 : 0)) })
             } else if position != areaLayers(kind).firstIndex(id: id) {
-                onMoveLayerTo(id, position)
+                host.dispatch(.moveLayerTo(id, position))
             }
         }
         layerDrag = nil
@@ -73,7 +73,7 @@ extension TimelineView {
     func resolveMove(_ clip: TimelineClip, from layerID: UUID, pointer: CGPoint, to start: CMTime) -> ClipMovePreview? {
         // Where the clips are now, not as the row that asked was drawn: a
         // row isn't drawn again when the clips of other layers move.
-        let live = readProject()
+        let live = host.readProject()
         func liveLayer(_ layer: TimelineLayer) -> TimelineLayer { live.timeline(id: timelineID)?.layer(id: layer.id) ?? layer }
         let rows = geometryStore.layerRows
         guard let fromRow = rows[layerID], let fromLayer = timeline.layer(id: layerID) else { return nil }
@@ -113,7 +113,7 @@ extension TimelineView {
 
     /// The area whose empty space, below its layers, is under the pointer.
     func emptyAreaKind(at pointer: CGPoint) -> LayerKind? {
-        guard let kind = areaLayout.shown.first(where: { geometryStore.areas[$0]?.contains(pointer) == true }) else { return nil }
+        guard let kind = shownAreaLayout.shown.first(where: { geometryStore.areas[$0]?.contains(pointer) == true }) else { return nil }
         let onLayer = areaLayers(kind).contains { geometryStore.layerRows[$0.id]?.contains(pointer) == true }
         return onLayer ? nil : kind
     }

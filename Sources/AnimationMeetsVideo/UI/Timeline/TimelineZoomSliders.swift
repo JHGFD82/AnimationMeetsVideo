@@ -8,6 +8,9 @@ struct TimelineZoomSliders: View {
     @Binding var horizontal: Double
     /// 0 is the shortest layers; 1 the tallest.
     @Binding var vertical: Double
+    /// Whether the layer height slider is being dragged: true as a drag
+    /// starts, false as it ends.
+    var onEditingChanged: (Bool) -> Void = { _ in }
 
     var body: some View {
         HStack(spacing: Design.Space.step) {
@@ -17,8 +20,23 @@ struct TimelineZoomSliders: View {
             )
             ZoomSlider(
                 fraction: $vertical, label: "Layer height", axis: .vertical,
-                help: "Layer height in every shown area (pinch up and down, or Option-pinch)"
+                help: "Layer height in every shown area (pinch up and down, or Option-pinch)",
+                onEditingChanged: onEditingChanged
             )
         }
+    }
+}
+
+/// A timeline's zoom sliders, their time binding made in this body rather
+/// than the header's. The binding reads the zoom and the scroll, and
+/// SwiftUI reads a binding as it compares the views it is handed to, so
+/// made in the header it built the whole header again on every scroll step.
+struct TimelineHeaderZoomSliders: View {
+    let timeline: TimelineView
+    let vertical: Binding<Double>
+    let onEditingChanged: (Bool) -> Void
+
+    var body: some View {
+        TimelineZoomSliders(horizontal: timeline.zoomFractionBinding, vertical: vertical, onEditingChanged: onEditingChanged)
     }
 }

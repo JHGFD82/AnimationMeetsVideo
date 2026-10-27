@@ -19,6 +19,16 @@ struct Timeline: Identifiable, Equatable {
     /// viewer draws it: exports, renders and the timeline nested in another
     /// draw over black and transparency as before.
     var previewBackground: [Double]?
+    var versionStamp = EditStamp()
+
+    /// The `EditingProject.editCount` of the last edit that changed this
+    /// timeline: equal nonzero versions mean equal timelines, and an edit
+    /// of another timeline leaves it alone. 0 for one never edited in a
+    /// `ProjectState`. Not compared by `==`.
+    var version: UInt64 {
+        get { versionStamp.count }
+        set { versionStamp = EditStamp(count: newValue) }
+    }
 
     /// Up to the end of the last clip or section, whichever is later.
     var duration: CMTime {
