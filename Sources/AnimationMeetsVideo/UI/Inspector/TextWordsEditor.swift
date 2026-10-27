@@ -15,11 +15,18 @@ struct TextWordsEditor: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
+        let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
-        guard let textView = scroll.documentView as? NSTextView else { return scroll }
+        let textView = WordsTextView(frame: .zero)
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = .width
+        textView.textContainer?.widthTracksTextView = true
+        scroll.documentView = textView
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.allowsUndo = true
@@ -44,6 +51,37 @@ struct TextWordsEditor: NSViewRepresentable {
         let length = (content.string as NSString).length
         let clamped = NSRange(location: min(selection.location, length), length: max(0, min(selection.length, length - min(selection.location, length))))
         if textView.selectedRange() != clamped { textView.setSelectedRange(clamped) }
+    }
+
+    /// The text view, which selects a line by triple-click without its
+    /// line break.
+    final class WordsTextView: NSTextView {
+        override func selectionRange(forProposedRange proposedCharRange: NSRange, granularity: NSSelectionGranularity) -> NSRange {
+            let range = super.selectionRange(forProposedRange: proposedCharRange, granularity: granularity)
+            guard granularity == .selectByParagraph else { return range }
+            return TextWordsEditor.withoutLineBreak(range, in: string as NSString)
+        }
+    }
+
+    /// A paragraph selected whole (triple-clicked) without the line break
+    /// ending it, so typing over the line keeps it a line of its own rather
+    /// than joining the next. A selection of several lines keeps the break
+    /// after the last, as does one of the break alone.
+    static func withoutLineBreak(_ range: NSRange, in string: NSString) -> NSRange {
+        guard range.length > 1, NSMaxRange(range) <= string.length else { return range }
+        let breaks = CharacterSet.newlines
+        var end = NSMaxRange(range)
+        // A CR LF ends a line as one break.
+        if end >= 2, string.substring(with: NSRange(location: end - 2, length: 2)) == "\r\n" {
+            end -= 2
+        } else if let last = string.substring(with: NSRange(location: end - 1, length: 1)).unicodeScalars.first, breaks.contains(last) {
+            end -= 1
+        } else {
+            return range
+        }
+        let line = NSRange(location: range.location, length: end - range.location)
+        guard line.length > 0, string.rangeOfCharacter(from: breaks, options: [], range: line).location == NSNotFound else { return range }
+        return line
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
