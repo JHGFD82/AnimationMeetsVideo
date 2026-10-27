@@ -532,6 +532,33 @@ private func seconds(_ value: Double) -> CMTime {
         #expect(onlyY.values[1].upperBound < 10)
     }
 
+    @Test func valueTicksFallOnRoundNumbers() {
+        #expect(KeyframeGraphLayout.ticks(in: 0...100) == [0, 25, 50, 75, 100])
+        #expect(KeyframeGraphLayout.ticks(in: -3...7) == [-2.5, 0, 2.5, 5])
+        // Small steps are exact multiples, not a sum that drifts.
+        #expect(KeyframeGraphLayout.ticks(in: 0.03...0.47) == [0.1, 0.2, 0.30000000000000004, 0.4])
+        for range in [0.0...1, -1234.5...987, 0.001...0.0013, 540...545] {
+            let ticks = KeyframeGraphLayout.ticks(in: range)
+            #expect((2...6).contains(ticks.count))
+            #expect(ticks.allSatisfy(range.contains))
+        }
+        #expect(KeyframeGraphLayout.ticks(in: 5...5) == [5])
+        // Any zoom: 2 to 6, on a round step.
+        for exponent in stride(from: -6.0, through: 6, by: 0.37) {
+            for start in [-7.3, 0, 0.61, 1234.5] {
+                let length = pow(10, exponent)
+                let range = (start * length)...(start * length + length)
+                let ticks = KeyframeGraphLayout.ticks(in: range)
+                #expect((2...6).contains(ticks.count), "\(range): \(ticks.count)")
+                if ticks.count > 1 {
+                    let step = ticks[1] - ticks[0]
+                    let mantissa = step / pow(10, log10(step).rounded(.down))
+                    #expect([1, 2, 2.5, 5, 10].contains { abs($0 - mantissa) < 1e-6 }, "\(range): step \(step)")
+                }
+            }
+        }
+    }
+
     @Test func givenTimesAreShownAsTheyAre() {
         var value = AnimatedValue(0.0)
         value.setAnimated(true, at: seconds(1))

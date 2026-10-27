@@ -195,6 +195,38 @@ struct KeyframeGraphLayout: Equatable {
         zip(value.keyframes, value.keyframes.dropFirst()).map { ($0, $1) }
     }
 
+    /// Round values to label `range` at, about four steps apart, each step
+    /// 1, 2, 2.5 or 5 times a power of ten: never fewer than 2 nor more
+    /// than 6 (a range of no length has just its one value).
+    static func ticks(in range: ClosedRange<Double>) -> [Double] {
+        let length = range.upperBound - range.lowerBound
+        guard length > 0, length.isFinite else { return [range.lowerBound] }
+        func multiples(of step: Double) -> [Double] {
+            let first = (range.lowerBound / step).rounded(.up), last = (range.upperBound / step).rounded(.down)
+            guard last >= first else { return [] }
+            // Exact multiples, not a running sum, so 0.1 steps don't drift.
+            return (0...Int(last - first)).map { (first + Double($0)) * step }
+        }
+        let rough = length / 4
+        var power = pow(10, log10(rough).rounded(.down))
+        let mantissas = [1, 2, 2.5, 5]
+        var index = (0..<mantissas.count).min { abs(log(mantissas[$0] * power / rough)) < abs(log(mantissas[$1] * power / rough)) } ?? 0
+        var ticks = multiples(of: mantissas[index] * power)
+        // The step nearest a quarter usually gives 3 to 6; past that, the
+        // next step up, or below 2 (it can't, but for safety), half.
+        while ticks.count > 6 {
+            index += 1
+            if index == mantissas.count { index = 0; power *= 10 }
+            ticks = multiples(of: mantissas[index] * power)
+        }
+        var step = mantissas[index] * power
+        while ticks.count < 2, step > length * 1e-9 {
+            step /= 2
+            ticks = multiples(of: step)
+        }
+        return ticks
+    }
+
     func x(_ seconds: Double) -> CGFloat {
         plot.minX + plot.width * CGFloat((seconds - times.lowerBound) / (times.upperBound - times.lowerBound))
     }

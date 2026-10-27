@@ -187,9 +187,26 @@ struct KeyframeGraphView: View {
         if let shared { shared.timeBand.endPinch() } else { timeBand.endPinch() }
     }
 
+    /// The curves under the marks, each drawn by a view of its own that
+    /// redraws only when what it shows changes: a new selection redraws
+    /// the marks alone, and the playhead (its own line) neither.
     private func graph(_ c: Context, layout: KeyframeGraphLayout) -> some View {
-        Canvas { context, _ in
-            draw(c, layout: layout, in: &context)
+        let shown = visible(c.value.value.values.count)
+        let timecodes = [layout.times.lowerBound, layout.times.upperBound].map { seconds in
+            let time = c.axis.timelineTime(atKey: CMTime(seconds: seconds, preferredTimescale: ParameterTimeAxis.timescale))
+            return CMTimeMaximum(time, .zero).timecode(frameRate: c.timeline.frameRate)
+        }
+        return Curves(
+            value: c.value, offset: c.offset, layout: layout, shown: shown, separateScales: viewport.separateScales,
+            parameter: key.parameter, span: c.axis.span, timecodes: timecodes
+        )
+        .equatable()
+        .overlay {
+            Marks(
+                value: c.value, offset: c.offset, layout: layout, shown: shown, selected: selected,
+                handles: handles(c, layout: layout, selected: selected, shown: shown)
+            )
+            .equatable()
         }
         .overlay { GraphPlayheadLine(playback: hud.playback, parked: hud.playhead, axis: c.axis, layout: layout) }
         .contentShape(Rectangle())
@@ -471,89 +488,17 @@ struct KeyframeGraphView: View {
 
     // MARK: - Drawing
 
-    private func color(_ component: Int, of count: Int) -> Color {
-        count == 1 ? Design.keyframe : Self.palette[component % Self.palette.count]
+    fileprivate static func color(_ component: Int, of count: Int) -> Color {
+        count == 1 ? Design.keyframe : palette[component % palette.count]
     }
 
     private func visible(_ count: Int) -> [Int] {
         (0..<count).filter { !viewport.hidden.contains($0) }
     }
 
-    private func draw(_ c: Context, layout: KeyframeGraphLayout, in context: inout GraphicsContext) {
-        let plot = layout.plot
-        let count = c.value.value.values.count
-        let shownComponents = visible(count)
-        // The values the axis is labelled in: the one scale, or with
-        // separate scales the first shown component's, in its color.
-        let labelled = shownComponents.first ?? 0
-        let labelColor = viewport.separateScales && count > 1 ? color(labelled, of: count) : Design.textTertiary
-
-        context.drawLayer { layer in
-            layer.clip(to: Path(CGRect(x: 0, y: plot.minY - 6, width: plot.maxX + 14, height: plot.height + 30)))
-            for step in 0...4 {
-                let range = layout.values[labelled]
-                let shown = range.lowerBound + (range.upperBound - range.lowerBound) * Double(step) / 4
-                let y = layout.y(shown, component: labelled)
-                layer.fill(Path(CGRect(x: plot.minX, y: y, width: plot.width, height: 0.5)), with: .color(.white.opacity(0.08)))
-                layer.draw(
-                    Text(key.parameter.label(shown, component: labelled)).font(Design.Typeface.numericScale).foregroundStyle(labelColor),
-                    at: CGPoint(x: plot.minX - 6, y: y), anchor: .trailing
-                )
-            }
-            for (seconds, anchor) in [(layout.times.lowerBound, UnitPoint.topLeading), (layout.times.upperBound, .topTrailing)] {
-                let time = c.axis.timelineTime(atKey: CMTime(seconds: seconds, preferredTimescale: ParameterTimeAxis.timescale))
-                layer.draw(
-                    Text(CMTimeMaximum(time, .zero).timecode(frameRate: c.timeline.frameRate))
-                        .font(Design.Typeface.numericScale).foregroundStyle(Design.textTertiary),
-                    at: CGPoint(x: layout.x(seconds), y: plot.maxY + 4), anchor: anchor
-                )
-            }
-            // The clip's ends, where its keyframes stop playing.
-            for edge in [c.axis.span.lowerBound, c.axis.span.upperBound] where layout.times.contains(edge) {
-                layer.fill(Path(CGRect(x: layout.x(edge) - 0.5, y: plot.minY, width: 1, height: plot.height)), with: .color(.white.opacity(0.18)))
-            }
-        }
-
-        context.clip(to: Path(plot.insetBy(dx: -6, dy: -6)))
-        // The curves, a point every two points across.
-        for component in shownComponents {
-            var line = Path()
-            var x = plot.minX
-            while x <= plot.maxX {
-                let shown = c.value.value(atSeconds: layout.seconds(atX: x)).values[component] + c.offset[component]
-                let point = CGPoint(x: x, y: layout.y(shown, component: component))
-                if line.isEmpty { line.move(to: point) } else { line.addLine(to: point) }
-                x += 2
-            }
-            context.stroke(line, with: .color(color(component, of: count)), lineWidth: 1.5)
-        }
-
-        for handle in handles(c, layout: layout, selected: selected, shown: shownComponents) {
-            var stem = Path()
-            stem.move(to: handle.anchor)
-            stem.addLine(to: handle.point)
-            context.stroke(stem, with: .color(.white.opacity(0.6)), lineWidth: 1)
-            context.fill(Path(ellipseIn: CGRect(x: handle.point.x - 3.5, y: handle.point.y - 3.5, width: 7, height: 7)), with: .color(.white))
-        }
-
-        for keyframe in c.value.keyframes {
-            let isSelected = keyframe.time == selected
-            for component in shownComponents {
-                let center = CGPoint(
-                    x: layout.x(keyframe.time.seconds),
-                    y: layout.y(keyframe.value.values[component] + c.offset[component], component: component)
-                )
-                let rect = CGRect(x: center.x - 5, y: center.y - 5, width: 10, height: 10)
-                let mark = KeyframeMarkShape(easedIn: keyframe.easeIn != nil, easedOut: keyframe.easeOut != nil, holds: keyframe.hold).path(in: rect)
-                context.fill(mark, with: .color(isSelected ? Design.keyframe : Design.textSecondary))
-                context.stroke(mark, with: .color(.black.opacity(0.5)), lineWidth: 0.5)
-            }
-        }
-    }
-
     // MARK: - Handles
 
-    private struct Handle {
+    fileprivate struct Handle: Equatable {
         var segment: Int
         var outgoing: Bool
         /// The component it is drawn against.
@@ -787,6 +732,158 @@ struct KeyframeGraphView: View {
     private func edit(_ change: @escaping (inout AnimatedValue<ComponentValue>) -> Void) {
         let key = key
         hud.onEdit { $0.editComponents(of: key, change) }
+    }
+}
+
+// MARK: - Layers
+
+extension KeyframeGraphView {
+    /// The grid, its labels, the clip's ends and the curves: everything
+    /// that stays put while the selection changes.
+    fileprivate struct Curves: View, Equatable {
+        let value: AnimatedValue<ComponentValue>
+        let offset: [Double]
+        let layout: KeyframeGraphLayout
+        /// The components drawn, which the viewport doesn't hide.
+        let shown: [Int]
+        let separateScales: Bool
+        let parameter: AnimatedParameter
+        /// The clip's ends, in the parameter's time.
+        let span: ClosedRange<Double>
+        /// The timecodes at the plot's left and right.
+        let timecodes: [String]
+
+        var body: some View {
+            Canvas { context, _ in draw(in: &context) }
+        }
+
+        private func draw(in context: inout GraphicsContext) {
+            let plot = layout.plot
+            let count = value.value.values.count
+            let colors = (0..<count).map { KeyframeGraphView.color($0, of: count) }
+            // The values the axis is labelled in: the one scale, or with
+            // separate scales the first shown component's, in its color.
+            let labelled = shown.first ?? 0
+            let labelColor = separateScales && count > 1 ? colors[labelled] : Design.textTertiary
+            let ticks = KeyframeGraphLayout.ticks(in: layout.values[labelled])
+            let tickLabels = ticks.map { tick in
+                context.resolve(Text(parameter.label(tick, component: labelled)).font(Design.Typeface.numericScale).foregroundStyle(labelColor))
+            }
+            let labelHeight = tickLabels.map { $0.measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).height }.max() ?? 0
+            let timeLabels = timecodes.map { context.resolve(Text($0).font(Design.Typeface.numericScale).foregroundStyle(Design.textTertiary)) }
+
+            context.drawLayer { layer in
+                layer.clip(to: Path(CGRect(x: 0, y: plot.minY - 6, width: plot.maxX + 14, height: plot.height + 30)))
+                // A label too close to the last one drawn is left out, its
+                // line kept: a squashed plot has room for fewer.
+                var lastLabelY: CGFloat?
+                for (tick, label) in zip(ticks, tickLabels) {
+                    let y = layout.y(tick, component: labelled)
+                    layer.fill(Path(CGRect(x: plot.minX, y: y, width: plot.width, height: 0.5)), with: .color(.white.opacity(0.08)))
+                    if let lastLabelY, abs(y - lastLabelY) < labelHeight { continue }
+                    layer.draw(label, at: CGPoint(x: plot.minX - 6, y: y), anchor: .trailing)
+                    lastLabelY = y
+                }
+                for (label, (seconds, anchor)) in zip(timeLabels, [(layout.times.lowerBound, UnitPoint.topLeading), (layout.times.upperBound, .topTrailing)]) {
+                    layer.draw(label, at: CGPoint(x: layout.x(seconds), y: plot.maxY + 4), anchor: anchor)
+                }
+                // The clip's ends, where its keyframes stop playing.
+                for edge in [span.lowerBound, span.upperBound] where layout.times.contains(edge) {
+                    layer.fill(Path(CGRect(x: layout.x(edge) - 0.5, y: plot.minY, width: 1, height: plot.height)), with: .color(.white.opacity(0.18)))
+                }
+            }
+
+            context.clip(to: Path(plot.insetBy(dx: -6, dy: -6)))
+            for (component, line) in zip(shown, curves()) {
+                context.stroke(line, with: .color(colors[component]), lineWidth: 1.5)
+            }
+        }
+
+        /// A line per shown component, read once per point across for them
+        /// all: sampled between keyframes, every two points or so; straight
+        /// where the value holds, before the first and after the last.
+        private func curves() -> [Path] {
+            var lines = shown.map { _ in Path() }
+            func add(_ seconds: Double, _ values: [Double]) {
+                let x = layout.x(seconds)
+                for (line, component) in shown.enumerated() {
+                    let point = CGPoint(x: x, y: layout.y(values[component] + offset[component], component: component))
+                    if lines[line].isEmpty { lines[line].move(to: point) } else { lines[line].addLine(to: point) }
+                }
+            }
+            let start = layout.times.lowerBound, end = layout.times.upperBound
+            guard let first = value.keyframes.first, let last = value.keyframes.last else {
+                add(start, value.value.values)
+                add(end, value.value.values)
+                return lines
+            }
+            // Fewer samples on a very wide plot.
+            let step = Double(max(2, layout.plot.width / 400)) * layout.secondsPerPoint
+            if start < first.time.seconds { add(start, first.value.values) }
+            for (from, to) in KeyframeGraphLayout.segments(of: value) {
+                let a = max(from.time.seconds, start), b = min(to.time.seconds, end)
+                guard a <= b else { continue }
+                if from.hold {
+                    // Flat to the next keyframe, which then starts its own.
+                    add(a, from.value.values)
+                    add(b, from.value.values)
+                    continue
+                }
+                var seconds = a
+                while step > 0, seconds < b {
+                    add(seconds, value.value(atSeconds: seconds).values)
+                    seconds += step
+                }
+                add(b, value.value(atSeconds: b).values)
+            }
+            if end > last.time.seconds {
+                add(max(last.time.seconds, start), last.value.values)
+                add(end, last.value.values)
+            }
+            return lines
+        }
+    }
+
+    /// The selected keyframe's handles and every keyframe's mark.
+    fileprivate struct Marks: View, Equatable {
+        let value: AnimatedValue<ComponentValue>
+        let offset: [Double]
+        let layout: KeyframeGraphLayout
+        let shown: [Int]
+        let selected: CMTime?
+        let handles: [Handle]
+
+        var body: some View {
+            Canvas { context, _ in draw(in: &context) }
+                .allowsHitTesting(false)
+        }
+
+        private func draw(in context: inout GraphicsContext) {
+            context.clip(to: Path(layout.plot.insetBy(dx: -6, dy: -6)))
+            for handle in handles {
+                var stem = Path()
+                stem.move(to: handle.anchor)
+                stem.addLine(to: handle.point)
+                context.stroke(stem, with: .color(.white.opacity(0.6)), lineWidth: 1)
+                context.fill(Path(ellipseIn: CGRect(x: handle.point.x - 3.5, y: handle.point.y - 3.5, width: 7, height: 7)), with: .color(.white))
+            }
+            // A mark of each kind, made once and moved to each point.
+            var marks: [Int: Path] = [:]
+            for keyframe in value.keyframes {
+                let kind = (keyframe.easeIn != nil ? 1 : 0) | (keyframe.easeOut != nil ? 2 : 0) | (keyframe.hold ? 4 : 0)
+                let mark = marks[kind] ?? KeyframeMarkShape(easedIn: keyframe.easeIn != nil, easedOut: keyframe.easeOut != nil, holds: keyframe.hold)
+                    .path(in: CGRect(x: -5, y: -5, width: 10, height: 10))
+                marks[kind] = mark
+                let fill = keyframe.time == selected ? Design.keyframe : Design.textSecondary
+                let x = layout.x(keyframe.time.seconds)
+                for component in shown {
+                    let y = layout.y(keyframe.value.values[component] + offset[component], component: component)
+                    let placed = mark.applying(CGAffineTransform(translationX: x, y: y))
+                    context.fill(placed, with: .color(fill))
+                    context.stroke(placed, with: .color(.black.opacity(0.5)), lineWidth: 0.5)
+                }
+            }
+        }
     }
 }
 
