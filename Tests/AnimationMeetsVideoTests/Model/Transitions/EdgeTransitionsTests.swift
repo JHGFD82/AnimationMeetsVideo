@@ -28,6 +28,33 @@ private func ntscFrames(_ count: Int64) -> CMTime {
         values.forEach(expectMatchesFormatter)
     }
 
+    /// Negative zero, and a negative value that rounds to zero, keep their
+    /// sign, as the formatter on this platform prints them.
+    @Test func fiveDecimalsKeepsTheSignOfAZero() {
+        for value in [-0.0, -0.000004999] {
+            #expect(String(format: "%.5f", value) == "-0.00000")
+            #expect(TransitionFrame.fiveDecimals(value) == "-0.00000")
+            #expect(TransitionFrame.fiveDecimals(value) == String(format: "%.5f", value))
+        }
+        #expect(TransitionFrame.fiveDecimals(0.0) == "0.00000")
+    }
+
+    /// The settings' text is kept by the bits of each number: 0 and -0
+    /// are equal settings but print differently, and NaN equals nothing.
+    @Test func keptSettingsTextTellsZeroFromNegativeZero() {
+        func text(centerX: Double, amount: Double = 0.5) -> String {
+            var options = TransitionOptions()
+            options.center = CGPoint(x: centerX, y: 0.5)
+            options.amount = amount
+            return TransitionFrame.optionsKey(options)
+        }
+        for _ in 0..<2 {
+            #expect(text(centerX: 0) == "right 0.0000,0.0000,0.0000 0.0000,0.5000 circle 8 random 0.5000 noise")
+            #expect(text(centerX: -0.0) == "right 0.0000,0.0000,0.0000 -0.0000,0.5000 circle 8 random 0.5000 noise")
+            #expect(text(centerX: 0.5, amount: .nan) == "right 0.0000,0.0000,0.0000 0.5000,0.5000 circle 8 random nan noise")
+        }
+    }
+
     /// The values most likely to be rounded the wrong way without the
     /// formatter: a half of the last decimal and a hair either side, for
     /// every last decimal from 0 to 1, both signs.

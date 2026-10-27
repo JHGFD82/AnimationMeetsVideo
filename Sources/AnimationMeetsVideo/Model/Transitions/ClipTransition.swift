@@ -1,6 +1,7 @@
 import CoreGraphics
 import CoreMedia
 import Foundation
+import os
 
 /// The groups the transitions panel shows its kinds in, by what a kind
 /// does to the pictures.
@@ -714,18 +715,6 @@ struct EdgeTransitions: Sendable {
         let duration: CMTime
         let curve: TransitionCurve
         let options: TransitionOptions
-        /// `TransitionFrame.optionsKey(_:)` of `options`, which every frame's
-        /// key ends with; nil for a kind that makes no `TransitionFrame`,
-        /// one that doesn't draw from two pictures.
-        let optionsKey: String?
-
-        init(kind: TransitionKind, duration: CMTime, curve: TransitionCurve, options: TransitionOptions) {
-            self.kind = kind
-            self.duration = duration
-            self.curve = curve
-            self.options = options
-            optionsKey = kind.drawsTwoPictures ? TransitionFrame.optionsKey(options) : nil
-        }
     }
 
     let start: CMTime
@@ -836,20 +825,17 @@ struct EdgeTransitions: Sendable {
     func transitionFrame(at time: CMTime) -> TransitionFrame? {
         guard drawsTwoPictures else { return nil }
         // Each edge is bound only once a frame is known to be in it: a
-        // `Placed` holds strings and arrays, and binding one retains them.
-        // Only a transition drawn from two pictures has an options key.
-        if leadingDrawsTwoPictures, let elapsed = leadingElapsed(at: time), let leading, let optionsKey = leading.optionsKey {
+        // `Placed` holds its curve's points, and binding one retains them.
+        if leadingDrawsTwoPictures, let elapsed = leadingElapsed(at: time), let leading {
             return TransitionFrame(
                 kind: leading.kind, options: leading.options,
-                progress: leading.curve.value(at: max(elapsed, 0)), entering: true,
-                optionsKey: optionsKey
+                progress: leading.curve.value(at: max(elapsed, 0)), entering: true
             )
         }
-        if trailingDrawsTwoPictures, let elapsed = trailingElapsed(at: time), let trailing, let optionsKey = trailing.optionsKey {
+        if trailingDrawsTwoPictures, let elapsed = trailingElapsed(at: time), let trailing {
             return TransitionFrame(
                 kind: trailing.kind, options: trailing.options,
-                progress: trailing.curve.value(at: min(elapsed, 1)), entering: false,
-                optionsKey: optionsKey
+                progress: trailing.curve.value(at: min(elapsed, 1)), entering: false
             )
         }
         return nil
@@ -992,30 +978,70 @@ struct TransitionFrame: Equatable, Sendable {
     /// True on a way in, where the picture after is the clip over what's
     /// under it; false on a way out, where it is what's under the clip.
     let entering: Bool
-    /// `optionsKey(options)`, worked out once per transition rather than
-    /// for every frame.
-    let optionsKey: String
-
-    init(kind: TransitionKind, options: TransitionOptions, progress: Double, entering: Bool) {
-        self.init(kind: kind, options: options, progress: progress, entering: entering, optionsKey: Self.optionsKey(options))
-    }
-
-    init(kind: TransitionKind, options: TransitionOptions, progress: Double, entering: Bool, optionsKey: String) {
-        self.kind = kind
-        self.options = options
-        self.progress = progress
-        self.entering = entering
-        self.optionsKey = optionsKey
-    }
 
     /// Everything that decides how it draws, for the render cache's key.
     /// It names cached renders on disk, so its text must not change.
     var key: String {
-        "\(kind.rawValue) \(Self.fiveDecimals(progress)) \(entering) \(optionsKey)"
+        "\(kind.rawValue) \(Self.fiveDecimals(progress)) \(entering) \(Self.optionsKey(options))"
     }
 
-    /// The part of `key` that a transition's settings decide.
-    static func optionsKey(_ o: TransitionOptions) -> String {
+    /// The part of `key` that a transition's settings decide. Making it
+    /// takes several `String(format:)` calls and every frame of a
+    /// transition shares it, so those of the settings seen lately are
+    /// kept; a frame itself carries no string.
+    static func optionsKey(_ options: TransitionOptions) -> String {
+        let identity = OptionsIdentity(options: options)
+        if let known = optionsKeys.withLock({ $0[identity] }) { return known }
+        let key = formattedOptionsKey(options)
+        optionsKeys.withLock { keys in
+            // A project uses few; this only stops them piling up.
+            if keys.count >= optionsKeyLimit { keys.removeAll(keepingCapacity: true) }
+            keys[identity] = key
+        }
+        return key
+    }
+
+    private static let optionsKeyLimit = 256
+    private static let optionsKeys = OSAllocatedUnfairLock(initialState: [OptionsIdentity: String]())
+
+    /// Settings told apart as their text tells them apart: each number by
+    /// its bits. `TransitionOptions`' own == can't be used, since it takes
+    /// 0 and -0 to be equal, which print differently, and NaN to equal
+    /// nothing, not even itself.
+    private struct OptionsIdentity: Hashable, Sendable {
+        let options: TransitionOptions
+
+        private var bits: (UInt64, UInt64, UInt64, UInt64, UInt64, UInt64) {
+            let o = options
+            return (
+                o.color.red.bitPattern, o.color.green.bitPattern, o.color.blue.bitPattern,
+                Double(o.center.x).bitPattern, Double(o.center.y).bitPattern, o.amount.bitPattern
+            )
+        }
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            let a = lhs.options, b = rhs.options
+            return lhs.bits == rhs.bits && a.direction == b.direction && a.shape == b.shape
+                && a.count == b.count && a.order == b.order && a.matte == b.matte
+        }
+
+        func hash(into hasher: inout Hasher) {
+            let (red, green, blue, x, y, amount) = bits
+            hasher.combine(red)
+            hasher.combine(green)
+            hasher.combine(blue)
+            hasher.combine(x)
+            hasher.combine(y)
+            hasher.combine(amount)
+            hasher.combine(options.direction)
+            hasher.combine(options.shape)
+            hasher.combine(options.count)
+            hasher.combine(options.order)
+            hasher.combine(options.matte)
+        }
+    }
+
+    private static func formattedOptionsKey(_ o: TransitionOptions) -> String {
         let center = String(format: "%.4f,%.4f", Double(o.center.x), Double(o.center.y))
         let color = String(format: "%.4f,%.4f,%.4f", o.color.red, o.color.green, o.color.blue)
         let matte: String

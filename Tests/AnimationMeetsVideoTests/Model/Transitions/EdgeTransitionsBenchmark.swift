@@ -75,6 +75,7 @@ struct EdgeTransitionsBenchmark {
           effect(at:)           \(String(format: "%8.1f", effect.nanoseconds)) ns per frame
           transitionFrame(at:)  \(String(format: "%8.1f", transitionFrame.nanoseconds)) ns per frame
           TransitionFrame.key   \(String(format: "%8.1f", key.nanoseconds)) ns per key
+          TransitionFrame stride \(MemoryLayout<TransitionFrame>.stride) bytes
           (checksums \(effect.checksum) \(transitionFrame.checksum) \(key.checksum))
         """)
     }
