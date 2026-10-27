@@ -710,10 +710,21 @@ extension EditingProject {
 struct EdgeTransitions: Sendable {
     /// One of the clip's transitions as it plays.
     struct Placed: Sendable {
-        var kind: TransitionKind
-        var duration: CMTime
-        var curve: TransitionCurve
-        var options: TransitionOptions
+        let kind: TransitionKind
+        let duration: CMTime
+        let curve: TransitionCurve
+        let options: TransitionOptions
+        /// `TransitionFrame.optionsKey(_:)` of `options`, which every frame's
+        /// key ends with.
+        let optionsKey: String
+
+        init(kind: TransitionKind, duration: CMTime, curve: TransitionCurve, options: TransitionOptions) {
+            self.kind = kind
+            self.duration = duration
+            self.curve = curve
+            self.options = options
+            optionsKey = TransitionFrame.optionsKey(options)
+        }
     }
 
     let start: CMTime
@@ -743,6 +754,7 @@ struct EdgeTransitions: Sendable {
     /// the others are drawn from two pictures, or are sound alone.
     private let leadingChangesPicture: Bool
     private let trailingChangesPicture: Bool
+    private let changesPicture: Bool
     private let frameRect: CGRect
     private let halfWidth: CGFloat
     private let halfHeight: CGFloat
@@ -782,6 +794,7 @@ struct EdgeTransitions: Sendable {
         trailingInverseDuration = trailing.map { 1 / $0.duration.seconds } ?? 0
         leadingChangesPicture = leading.map { !$0.kind.drawsTwoPictures && !$0.kind.isAudio } ?? false
         trailingChangesPicture = trailing.map { !$0.kind.drawsTwoPictures && !$0.kind.isAudio } ?? false
+        changesPicture = leadingChangesPicture || trailingChangesPicture
         frameRect = CGRect(origin: .zero, size: frameSize)
         halfWidth = frameSize.width / 2
         halfHeight = frameSize.height / 2
@@ -816,16 +829,19 @@ struct EdgeTransitions: Sendable {
     /// on a way in from what's under the clip to the clip over it, on a way
     /// out the other way round.
     func transitionFrame(at time: CMTime) -> TransitionFrame? {
+        guard drawsTwoPictures else { return nil }
         if let leading, leading.kind.drawsTwoPictures, let elapsed = leadingElapsed(at: time) {
             return TransitionFrame(
                 kind: leading.kind, options: leading.options,
-                progress: leading.curve.value(at: max(elapsed, 0)), entering: true
+                progress: leading.curve.value(at: max(elapsed, 0)), entering: true,
+                optionsKey: leading.optionsKey
             )
         }
         if let trailing, trailing.kind.drawsTwoPictures, let elapsed = trailingElapsed(at: time) {
             return TransitionFrame(
                 kind: trailing.kind, options: trailing.options,
-                progress: trailing.curve.value(at: min(elapsed, 1)), entering: false
+                progress: trailing.curve.value(at: min(elapsed, 1)), entering: false,
+                optionsKey: trailing.optionsKey
             )
         }
         return nil
@@ -838,6 +854,9 @@ struct EdgeTransitions: Sendable {
     /// `transitionFrame`.
     func effect(at time: CMTime) -> Effect {
         var effect = Effect()
+        // Wipes and film dissolves change the picture, so neither needs
+        // anything below when there are none.
+        guard changesPicture else { return effect }
         if let leading, leadingChangesPicture, let elapsed = leadingElapsed(at: time) {
             apply(leading, visibility: leading.curve.value(at: elapsed), edge: .leading, to: &effect)
         }
@@ -957,18 +976,38 @@ struct LumaReveal: Equatable, Sendable {
 
 /// A transition drawn from two whole pictures, at one moment.
 struct TransitionFrame: Equatable, Sendable {
-    var kind: TransitionKind
-    var options: TransitionOptions
+    let kind: TransitionKind
+    let options: TransitionOptions
     /// How far it has got: at 0 only the picture before shows, at 1 only
     /// the picture after.
-    var progress: Double
+    let progress: Double
     /// True on a way in, where the picture after is the clip over what's
     /// under it; false on a way out, where it is what's under the clip.
-    var entering: Bool
+    let entering: Bool
+    /// `optionsKey(options)`, worked out once per transition rather than
+    /// for every frame.
+    let optionsKey: String
+
+    init(kind: TransitionKind, options: TransitionOptions, progress: Double, entering: Bool) {
+        self.init(kind: kind, options: options, progress: progress, entering: entering, optionsKey: Self.optionsKey(options))
+    }
+
+    init(kind: TransitionKind, options: TransitionOptions, progress: Double, entering: Bool, optionsKey: String) {
+        self.kind = kind
+        self.options = options
+        self.progress = progress
+        self.entering = entering
+        self.optionsKey = optionsKey
+    }
 
     /// Everything that decides how it draws, for the render cache's key.
+    /// It names cached renders on disk, so its text must not change.
     var key: String {
-        let o = options
+        "\(kind.rawValue) \(Self.fiveDecimals(progress)) \(entering) \(optionsKey)"
+    }
+
+    /// The part of `key` that a transition's settings decide.
+    static func optionsKey(_ o: TransitionOptions) -> String {
         let center = String(format: "%.4f,%.4f", Double(o.center.x), Double(o.center.y))
         let color = String(format: "%.4f,%.4f,%.4f", o.color.red, o.color.green, o.color.blue)
         let matte: String
@@ -976,6 +1015,23 @@ struct TransitionFrame: Equatable, Sendable {
         case .noise: matte = "noise"
         case .clip(let id): matte = id.uuidString
         }
-        return "\(kind.rawValue) \(String(format: "%.5f", progress)) \(entering) \(o.direction.rawValue) \(color) \(center) \(o.shape.rawValue) \(o.count) \(o.order.rawValue) \(String(format: "%.4f", o.amount)) \(matte)"
+        return "\(o.direction.rawValue) \(color) \(center) \(o.shape.rawValue) \(o.count) \(o.order.rawValue) \(String(format: "%.4f", o.amount)) \(matte)"
+    }
+
+    /// `String(format: "%.5f", value)`, without the formatter. That rounds
+    /// the double's exact value, which scaling by 100 000 can nudge across
+    /// a half; values that close to a half, and those too large for an
+    /// `Int` of digits, go to the formatter itself.
+    static func fiveDecimals(_ value: Double) -> String {
+        let scaled = abs(value) * 100_000
+        guard scaled < 1e9, abs(scaled - scaled.rounded(.down) - 0.5) > 1e-6 else {
+            return String(format: "%.5f", value)
+        }
+        let n = Int(scaled.rounded())
+        let fraction = String(n % 100_000)
+        let padding = String(repeating: "0", count: 5 - fraction.count)
+        // Like the formatter, a negative value that rounds to zero keeps its
+        // sign, as does negative zero.
+        return "\(value.sign == .minus ? "-" : "")\(n / 100_000).\(padding)\(fraction)"
     }
 }
