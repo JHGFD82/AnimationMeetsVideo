@@ -228,7 +228,7 @@ struct EditorView: View {
             project = refreshed
             return
         }
-        if refreshed.refreshKeyframing() {
+        if refreshed.refreshKeyframing(after: oldValue) {
             project = refreshed
             return
         }

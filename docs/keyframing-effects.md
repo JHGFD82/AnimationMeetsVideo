@@ -228,8 +228,12 @@ In order, each step usable on its own:
    - **Making keyframes** happens at once whenever the effect is edited
      (`EditingProject.editEffect`), on the main thread. Every kind samples
      each timeline frame of the range as heard (`KeyframeSampling`) and is
-     reduced by Tolerance; Time Step is reduced only where it is exactly
-     straight, so its holds survive. Kept keyframes are linear. Over a
+     reduced by Tolerance; Time Step keeps a keyframe at each side of every
+     jump (`KeyframeGenerators.steps`), so its holds survive, or, on one
+     component of several, is reduced only where it is exactly straight.
+     Kept keyframes are linear. Each setting is read once for the whole
+     range, at every sample when it is keyframed, and the curves are held
+     flat, every sample's components one after another. Over a
      target that holds still, Oscillator and Beat Keys instead write a
      keyframe per event (`KeyframeSignal.events`), as an animator would:
      a sine's peaks and troughs with Easy Ease, a triangle's linear, a
@@ -256,7 +260,9 @@ In order, each step usable on its own:
      have no downbeats. A layer with no beats yet gets a note.
    - **Overshoot** adds, after each of the base's keyframes in the range, a
      damped spring set going at the speed the curve arrived (ω = √(k/m),
-     decay c/2m), summed over keyframes so a new one never jumps.
+     decay c/2m), summed over keyframes so a new one never jumps. A bounce
+     is left out once its decay has brought it under a millionth of its
+     push (`bounceLength`).
    - Keyframing effects are no-ops to the compositor and the sound taps,
      and have no animated ranges. They go only in the picture's stack, so
      a clip with no pictures can't have one yet.
@@ -283,9 +289,13 @@ In order, each step usable on its own:
    run, written as hexadecimal): `readPrint`, of what it read (the clip's
    start, trim and speed curve, the frame rate, its range and, for Beat
    Keys, the layer's beats), and `writtenPrint`, of the target as it left
-   it. After every edit the editor runs `refreshKeyframing()` before the
-   edit is recorded for undo, so the new keyframes are part of the same
-   step and undoing never sets it off again: an effect whose read print no
+   it. After every edit the editor runs `refreshKeyframing(after:)` before
+   the edit is recorded for undo, so the new keyframes are part of the same
+   step and undoing never sets it off again. It looks only in the timelines
+   the edit changed, or everywhere when it changed something outside them
+   (the media); opening a project and analysis arriving check every
+   timeline (`refreshKeyframing()`). Making the same keyframes again
+   writes nothing, so it doesn't count as an edit. An effect whose read print no
    longer matches makes its keyframes again by itself, unless the target no
    longer matches its written print. Then it was edited by hand, and the
    panel shows Regenerate (losing the edits) and Keep Edits (taking what it

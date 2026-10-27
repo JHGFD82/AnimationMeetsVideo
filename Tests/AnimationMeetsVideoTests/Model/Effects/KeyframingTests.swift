@@ -519,3 +519,43 @@ private struct KeyframingFixture {
         #expect(abs(f.value(.rotation, at: 1) - 10) < 0.1)
     }
 }
+
+/// Keyframing effects made again only where an edit could have changed
+/// what they read, and only when the result differs.
+@Suite struct KeyframingRefreshTests {
+    @Test func aNumbersKeyframesPrintTheSameWithoutAnArrayForEach() {
+        let speed = AnimatedValue(100.0, keyframes: [
+            Keyframe(time: seconds(1), value: 50, easeIn: .easy, generatedBy: UUID()),
+            Keyframe(time: seconds(2), value: 125.5, easeOut: .easy, hold: true),
+        ])
+        var plain = KeyframingPrint(), arrayed = KeyframingPrint()
+        plain.add(speed)
+        arrayed.add(speed) { [$0] }
+        #expect(plain.value == arrayed.value)
+    }
+
+    @Test func makingTheSameKeyframesAgainChangesNothing() {
+        var f = KeyframingFixture()
+        let id = f.add(.wiggler)
+        let before = f.project
+        let changed = f.project.regenerateKeyframes(ofEffect: id, onClip: f.clipID, in: f.timelineID)
+        #expect(!changed)
+        #expect(f.project == before)
+    }
+
+    @Test func anEditRefreshesOnlyTheTimelinesItChanged() throws {
+        var f = KeyframingFixture()
+        let id = f.add(.oscillator)
+        let old = f.project
+        #expect(f.project.timelinesChanged(since: old) == [])
+        f.project.editClip(f.clipID, in: f.timelineID) { $0.trimEnd = seconds(3) }
+        #expect(f.project.timelinesChanged(since: old) == [f.timelineID])
+        let refreshed = f.project.refreshKeyframing(after: old)
+        #expect(refreshed)
+        #expect(f.project.keyframingFreshness(of: f.effect(id), in: f.clip, of: f.project.timeline(id: f.timelineID)!) == .current)
+        // A change outside the timelines, which they may read, refreshes them all.
+        var media = f.project
+        media.name += " 2"
+        #expect(media.timelinesChanged(since: f.project) == nil)
+    }
+}

@@ -242,6 +242,25 @@ struct KeyframingPrint {
     }
 }
 
+extension KeyframingPrint {
+    /// A number and its keyframes, as `add(animated) { [$0] }` adds them,
+    /// without an array for each value.
+    mutating func add(_ animated: AnimatedValue<Double>) {
+        add(animated.value)
+        add(UInt64(animated.keyframes.count))
+        for keyframe in animated.keyframes {
+            add(keyframe.time)
+            add(keyframe.value)
+            add(keyframe.easeIn?.influence ?? -1)
+            add(keyframe.easeIn?.speed ?? -1)
+            add(keyframe.easeOut?.influence ?? -1)
+            add(keyframe.easeOut?.speed ?? -1)
+            add(UInt64(keyframe.hold ? 1 : 0))
+            add(keyframe.generatedBy)
+        }
+    }
+}
+
 // MARK: - Targets
 
 extension TimelineClip {
@@ -266,13 +285,14 @@ extension TimelineClip {
         }
     }
 
-    /// A component limited to what the target allows.
-    func clamped(_ component: Double, index: Int, of target: KeyframingTarget) -> Double {
+    /// What limits a target's components (a component and its index in,
+    /// the limited one out), looked up once for many.
+    func clamp(for target: KeyframingTarget) -> (Double, Int) -> Double {
         switch target {
-        case .volume: return AudioLevel.clamped(component)
+        case .volume: return { component, _ in AudioLevel.clamped(component) }
         case .control(let effectID, let controlID):
-            guard let control = effect(id: effectID)?.controls.first(id: controlID) else { return component }
-            return control.kind.clamped(component, index: index)
+            guard let kind = effect(id: effectID)?.controls.first(id: controlID)?.kind else { return { component, _ in component } }
+            return { kind.clamped($0, index: $1) }
         }
     }
 }
@@ -297,10 +317,21 @@ extension EditingProject {
     }
 
     /// Whether a Keyframing effect can write to its target: the target is
-    /// still there and below it.
+    /// still there and below it, one of `keyframingTargets`.
     func keyframingTargetIsReachable(_ effect: Effect, in clip: TimelineClip) -> Bool {
         guard let target = effect.keyframing?.target, let index = clip.effects.index(of: effect.id) else { return false }
-        return keyframingTargets(forEffectAt: index, in: clip).contains(target)
+        switch target {
+        case .volume:
+            return playsAudio(clip)
+        case .control(let effectID, let controlID):
+            func holds(_ effects: ArraySlice<Effect>) -> Bool {
+                effects.contains { effect in
+                    effect.id == effectID && !effect.kind.isKeyframing
+                        && effect.controls.contains { $0.id == controlID && !$0.kind.isChoice }
+                }
+            }
+            return holds(clip.effects[(index + 1)...]) || (playsAudio(clip) && holds(clip.audioEffects[...]))
+        }
     }
 
     /// What a target is called in the effects panel: "Transform · Position"
@@ -314,14 +345,20 @@ extension EditingProject {
             return "\(effect.displayName) · \(control.kind.name)"
         }
     }
+
+    /// The timeline the clip with ID `clipID` is in.
+    func timeline(holdingClip clipID: UUID) -> Timeline? {
+        timelines.first { $0.layers.contains { $0.clips.contains { $0.id == clipID } } }
+    }
 }
 
 // MARK: - Reading
 
 extension EditingProject {
     /// Why a Keyframing effect writes nothing, if it doesn't. It is dimmed
-    /// then, and what it wrote stays.
-    func keyframingNote(for effect: Effect, in clip: TimelineClip) -> EffectNote? {
+    /// then, and what it wrote stays. `timeline` is the clip's, looked up
+    /// when not given.
+    func keyframingNote(for effect: Effect, in clip: TimelineClip, of timeline: Timeline? = nil) -> EffectNote? {
         guard let setup = effect.keyframing, setup.target != nil else {
             return EffectNote(text: "Choose a control below it to write keyframes to.", dims: true)
         }
@@ -332,12 +369,12 @@ extension EditingProject {
             guard let source = setup.audioSource else {
                 return EffectNote(text: "Choose what it listens to.", dims: true)
             }
-            if let timeline = timelines.first(where: { $0.layers.contains { $0.clips.contains { $0.id == clip.id } } }) {
+            if let timeline = timeline ?? self.timeline(holdingClip: clip.id) {
                 let heard = heardClips(source, in: timeline)
                 if heard.isEmpty {
                     return EffectNote(text: "Nothing it listens to plays sound from a file in this timeline.", dims: true)
                 }
-                if heard.contains(where: { SpectrogramStore.shared.spectrogram(for: $0.url) == nil }) {
+                if heard.contains(where: { !SpectrogramStore.shared.hasSpectrogram(for: $0.url) }) {
                     return EffectNote(text: "Reading the sound…", dims: false)
                 }
             }
@@ -346,8 +383,8 @@ extension EditingProject {
             guard let layerID = setup.beatLayer else {
                 return EffectNote(text: "Choose a Sound or Music layer whose beats it follows.", dims: true)
             }
-            let timeline = timelines.first { $0.layers.contains { $0.clips.contains { $0.id == clip.id } } }
-            if let layer = timeline?.layer(id: layerID), !layerHasBeats(layer, tracks: DetectedBeats.shared.tracks) {
+            if let layer = (timeline ?? self.timeline(holdingClip: clip.id))?.layer(id: layerID),
+               !layerHasBeats(layer, tracks: DetectedBeats.shared.tracks) {
                 return EffectNote(text: "That layer has no beats yet: confirm a beat map in Beat Match, or wait for its beats to be found.", dims: true)
             }
         }
@@ -388,10 +425,12 @@ extension KeyframingSetup {
 
 extension EditingProject {
     /// The fingerprint of what a Keyframing effect reads, as things are.
-    func keyframingReadPrint(of effect: Effect, in clip: TimelineClip, of timeline: Timeline) -> UInt64 {
+    /// `tracks` are the detected beats, read from `DetectedBeats` when not
+    /// given.
+    func keyframingReadPrint(of effect: Effect, in clip: TimelineClip, of timeline: Timeline, tracks: [UUID: BeatTrack]? = nil) -> UInt64 {
         var fingerprint = KeyframingPrint()
         for time in [clip.startOffset, clip.trimStart, clip.trimEnd, timeline.frameDuration] { fingerprint.add(time) }
-        fingerprint.add(clip.time.speed) { [$0] }
+        fingerprint.add(clip.time.speed)
         if let range = effect.keyframing?.range {
             fingerprint.add(range.start)
             fingerprint.add(range.end)
@@ -400,7 +439,7 @@ extension EditingProject {
             addHeard(source, in: timeline, to: &fingerprint)
         }
         if effect.kind == .beatKeys, let layer = effect.keyframing?.beatLayer.flatMap({ timeline.layer(id: $0) }) {
-            for beat in beatMarkers(in: layer, tracks: DetectedBeats.shared.tracks) {
+            for beat in beatMarkers(in: layer, tracks: tracks ?? DetectedBeats.shared.tracks) {
                 fingerprint.add(beat.time)
                 fingerprint.add(UInt64(beat.position ?? 0))
             }
@@ -411,12 +450,23 @@ extension EditingProject {
     /// Whether a Keyframing effect's keyframes match what it reads now.
     /// One that is off, can't reach its target or hasn't written is
     /// current: there is nothing to make again.
-    func keyframingFreshness(of effect: Effect, in clip: TimelineClip, of timeline: Timeline) -> KeyframingFreshness {
-        guard effect.enabled, let setup = effect.keyframing, let read = setup.readPrint, let target = setup.target,
-              keyframingTargetIsReachable(effect, in: clip), let number = clip.number(of: target),
-              read != keyframingReadPrint(of: effect, in: clip, of: timeline)
-        else { return .current }
-        return Self.fingerprint(of: number) == setup.writtenPrint ? .outOfDate : .outOfDateWithEdits
+    func keyframingFreshness(
+        of effect: Effect, in clip: TimelineClip, of timeline: Timeline, tracks: [UUID: BeatTrack]? = nil
+    ) -> KeyframingFreshness {
+        keyframingCheck(of: effect, in: clip, of: timeline, tracks: tracks).freshness
+    }
+
+    /// Its freshness, and the fingerprint of what it reads when that was
+    /// needed to tell.
+    private func keyframingCheck(
+        of effect: Effect, in clip: TimelineClip, of timeline: Timeline, tracks: [UUID: BeatTrack]?
+    ) -> (freshness: KeyframingFreshness, read: UInt64?) {
+        guard effect.enabled, let setup = effect.keyframing, let made = setup.readPrint, let target = setup.target,
+              keyframingTargetIsReachable(effect, in: clip), let number = clip.number(of: target)
+        else { return (.current, nil) }
+        let read = keyframingReadPrint(of: effect, in: clip, of: timeline, tracks: tracks)
+        guard read != made else { return (.current, read) }
+        return (Self.fingerprint(of: number) == setup.writtenPrint ? .outOfDate : .outOfDateWithEdits, read)
     }
 
     static func fingerprint(of number: AnimatedValue<ComponentValue>) -> UInt64 {
@@ -427,22 +477,78 @@ extension EditingProject {
 
     /// Makes the keyframes of every Keyframing effect that is out of date
     /// again, leaving those with hand edits for the person to decide.
-    /// Returns whether anything changed. Run after each edit, so the new
-    /// keyframes are part of the same undo step.
+    /// Returns whether anything changed. For when anything may have
+    /// changed under them: a project opening, undo, analysis arriving.
     @discardableResult
     mutating func refreshKeyframing() -> Bool {
-        let before = self
-        for timeline in timelines {
-            for layer in timeline.layers {
-                for clip in layer.clips {
-                    for effect in clip.effects where effect.kind.isKeyframing
-                        && keyframingFreshness(of: effect, in: clip, of: timeline) == .outOfDate {
-                        regenerateKeyframes(ofEffect: effect.id, onClip: clip.id, in: timeline.id)
+        let tracks = DetectedBeats.shared.tracks
+        var changed = false
+        for timelineID in timelines.map(\.id) {
+            changed = refreshKeyframing(in: timelineID, clips: nil, tracks: tracks) || changed
+        }
+        return changed
+    }
+
+    /// The same in one timeline, or for only `clips` of it. An effect reads
+    /// other clips of its timeline (a layer's beats, the mix's sound), so
+    /// an edit to one clip can leave another's out of date: give `clips`
+    /// only when nothing else changed.
+    @discardableResult
+    mutating func refreshKeyframing(in timelineID: UUID, clips: Set<UUID>? = nil) -> Bool {
+        refreshKeyframing(in: timelineID, clips: clips, tracks: DetectedBeats.shared.tracks)
+    }
+
+    /// The same after an edit that made this project from `old`: in the
+    /// timelines it changed, or everywhere when it changed something
+    /// outside them (the media, which they read). Run after each edit, so
+    /// the new keyframes are part of the same undo step.
+    @discardableResult
+    mutating func refreshKeyframing(after old: EditingProject) -> Bool {
+        guard let edited = timelinesChanged(since: old) else { return refreshKeyframing() }
+        guard !edited.isEmpty else { return false }
+        let tracks = DetectedBeats.shared.tracks
+        var changed = false
+        for timelineID in edited {
+            changed = refreshKeyframing(in: timelineID, clips: nil, tracks: tracks) || changed
+        }
+        return changed
+    }
+
+    /// The timelines that differ from `old`'s, or nil when something
+    /// outside them differs too.
+    func timelinesChanged(since old: EditingProject) -> [UUID]? {
+        var outside = self, oldOutside = old
+        outside.timelines = []
+        oldOutside.timelines = []
+        guard outside == oldOutside else { return nil }
+        return timelines.filter { timeline in
+            guard let before = old.timeline(id: timeline.id) else { return true }
+            // Equal nonzero versions are equal timelines.
+            if timeline.version != 0, timeline.version == before.version { return false }
+            return timeline != before
+        }.map(\.id)
+    }
+
+    private mutating func refreshKeyframing(in timelineID: UUID, clips: Set<UUID>?, tracks: [UUID: BeatTrack]) -> Bool {
+        // Each effect is checked against the timeline as it was before any
+        // of them made their keyframes again.
+        guard let timeline = timeline(id: timelineID) else { return false }
+        var changed = false
+        for layer in timeline.layers {
+            for clip in layer.clips where clips?.contains(clip.id) ?? true {
+                for effect in clip.effects where effect.kind.isKeyframing {
+                    let check = keyframingCheck(of: effect, in: clip, of: timeline, tracks: tracks)
+                    guard check.freshness == .outOfDate else { continue }
+                    // What it reads now is what it read for the check, until
+                    // another effect here has written.
+                    let read = changed ? nil : check.read
+                    if regenerateKeyframes(ofEffect: effect.id, onClip: clip.id, in: timelineID, tracks: tracks, readPrint: read) {
+                        changed = true
                     }
                 }
             }
         }
-        return self != before
+        return changed
     }
 
     /// Keeps a Keyframing effect's hand-edited keyframes, taking what it
@@ -461,15 +567,24 @@ extension EditingProject {
     /// Makes the keyframes of the Keyframing effect `effectID` again from
     /// its settings, replacing those it wrote before. Does nothing while it
     /// is off or its target can't be reached, leaving what it wrote.
-    mutating func regenerateKeyframes(ofEffect effectID: UUID, onClip clipID: UUID, in timelineID: UUID) {
+    /// Returns whether anything changed. `tracks` are the detected beats,
+    /// read from `DetectedBeats` when not given; `readPrint`, when given,
+    /// is what it reads, worked out already.
+    @discardableResult
+    mutating func regenerateKeyframes(
+        ofEffect effectID: UUID, onClip clipID: UUID, in timelineID: UUID,
+        tracks: [UUID: BeatTrack]? = nil, readPrint: UInt64? = nil
+    ) -> Bool {
         guard let (clip, _) = clipAndLayer(clipID, in: timelineID), let timeline = timeline(id: timelineID),
               let effect = clip.effects.first(id: effectID), effect.enabled,
               var setup = effect.keyframing, let target = setup.target,
               keyframingTargetIsReachable(effect, in: clip), let current = clip.number(of: target)
-        else { return }
+        else { return false }
+        // Only Beat Keys, which follow a layer, read the beats.
+        let tracks = tracks ?? (setup.beatLayer != nil ? DetectedBeats.shared.tracks : [:])
         let base = setup.base ?? Self.removingKeyframes(of: effectID, from: current)
         setup.base = base
-        setup.readPrint = keyframingReadPrint(of: effect, in: clip, of: timeline)
+        setup.readPrint = readPrint ?? keyframingReadPrint(of: effect, in: clip, of: timeline, tracks: tracks)
         var heard: [[Double]]?
         if effect.kind == .audioKeys {
             let range = Self.writtenRange(setup, of: clip)
@@ -480,22 +595,26 @@ extension EditingProject {
                 // what is there, and take it as what was written, so the
                 // sound arriving makes the keyframes rather than asking.
                 setup.writtenPrint = Self.fingerprint(of: current)
+                guard setup != effect.keyframing else { return false }
                 editClip(clipID, in: timelineID) { clip in
                     if let index = clip.effects.index(of: effectID) { clip.effects[index].keyframing = setup }
                 }
-                return
+                return true
             }
         }
         let written = Self.generated(
             effect, setup: setup, base: base, target: target, clip: clip, timeline: timeline,
-            beats: setup.beatLayer.flatMap { layerID in timeline.layer(id: layerID).map { beatMarkers(in: $0, tracks: DetectedBeats.shared.tracks) } } ?? [],
+            beats: setup.beatLayer.flatMap { timeline.layer(id: $0) }.map { beatMarkers(in: $0, tracks: tracks) } ?? [],
             heard: heard
         )
         setup.writtenPrint = Self.fingerprint(of: written)
+        // Making the same again leaves the document and the undo stack alone.
+        guard written != current || setup != effect.keyframing else { return false }
         editClip(clipID, in: timelineID) { clip in
             clip.setNumber(written, of: target)
             if let index = clip.effects.index(of: effectID) { clip.effects[index].keyframing = setup }
         }
+        return true
     }
 
     /// Puts a Keyframing effect's target back as it was before the effect
@@ -542,48 +661,61 @@ extension EditingProject {
         let range = writtenRange(setup, of: clip)
         guard range.duration > .zero else { return base }
         let sampling = KeyframeSampling(clip: clip, range: range, frame: timeline.frameDuration)
-        let baseSamples = sampling.sources.map { base.value(at: $0).values }
-        guard let width = baseSamples.first?.count, width > 0 else { return base }
+        let (baseSamples, width) = base.flatValues(at: sampling.sources)
+        guard width > 0 else { return base }
+        let count = sampling.sources.count
         let components = setup.component.map { $0 < width ? [$0] : [] } ?? Array(0..<width)
-        let signal = KeyframeSignal(effect: effect, sampling: sampling, base: base, baseSamples: baseSamples, beats: beats, heard: heard)
+        let signal = KeyframeSignal(
+            effect: effect, sampling: sampling, base: base, baseSamples: baseSamples, width: width, beats: beats, heard: heard
+        )
 
+        // Each sample's components one after another.
         var samples = baseSamples
         if effect.kind.reshapesTarget {
             let shaped = signal.reshaped()
-            for k in samples.indices { for c in components { samples[k][c] = shaped[k][c] } }
+            for k in 0..<count { for c in components { samples[k * width + c] = shaped[k * width + c] } }
         } else {
-            for k in samples.indices {
+            for k in 0..<count {
                 for c in components {
                     let made = signal.value(at: k, component: c)
                     switch setup.combine {
-                    case .replace: samples[k][c] = made
-                    case .add: samples[k][c] += made
-                    case .multiply: samples[k][c] *= 1 + made / 100
+                    case .replace: samples[k * width + c] = made
+                    case .add: samples[k * width + c] += made
+                    case .multiply: samples[k * width + c] *= 1 + made / 100
                     }
                 }
             }
         }
-        for k in samples.indices { for c in components { samples[k][c] = clip.clamped(samples[k][c], index: c, of: target) } }
+        let clamp = clip.clamp(for: target)
+        for k in 0..<count { for c in components { samples[k * width + c] = clamp(samples[k * width + c], c) } }
+        func value(at k: Int) -> ComponentValue { ComponentValue(values: Array(samples[(k * width)..<((k + 1) * width)])) }
 
         // A wave or a train of pulses over a target that holds still gets a
         // keyframe at each peak, beat or turn, eased as an animator would
-        // key it; anything else is every frame, thinned to the tolerance.
+        // key it; a Time Step that holds every component one at each side
+        // of each jump; anything else is every frame, thinned to the
+        // tolerance.
         var keyframes: [Keyframe<ComponentValue>]
         if !base.isAnimated, let events = signal.events() {
             keyframes = events.map {
                 Keyframe(
-                    time: sampling.sources[$0.index], value: ComponentValue(values: samples[$0.index]),
+                    time: sampling.sources[$0.index], value: value(at: $0.index),
                     easeIn: $0.easeIn, easeOut: $0.easeOut, generatedBy: effect.id
                 )
             }
         } else {
-            let tolerance: [Double] = effect.kind == .timeStep
-                ? Array(repeating: 1e-9, count: width)
-                : KeyframeGenerators.tolerances(samples, percent: signal.number(.tolerance, at: 0, default: 0.5))
-            let kept = KeyframeGenerators.reduced(times: sampling.sources.map(\.seconds), samples: samples, tolerance: tolerance)
-            keyframes = kept.map {
-                Keyframe(time: sampling.sources[$0], value: ComponentValue(values: samples[$0]), generatedBy: effect.id)
+            let kept: [Int]
+            if effect.kind == .timeStep, components.count == width {
+                kept = KeyframeGenerators.steps(samples, components: width)
+            } else {
+                // A Time Step on one component holds it to within next to
+                // nothing, while the others follow their own curve.
+                let tolerance = effect.kind == .timeStep
+                    ? Array(repeating: 1e-9, count: width)
+                    : KeyframeGenerators.tolerances(samples, components: width, percent: signal.tolerance)
+                kept = KeyframeGenerators.reduced(times: sampling.sourceSeconds, samples: samples, tolerance: tolerance)
             }
+            keyframes = kept.map { Keyframe(time: sampling.sources[$0], value: value(at: $0), generatedBy: effect.id) }
         }
         // Outside the range the target keeps its own keyframes, or its value
         // from a frame past each end, so the generated ones don't hold on.
@@ -601,7 +733,7 @@ extension TimelineClip {
     /// Unmarks the keyframes `effectID` wrote on `target`, so they are
     /// plain keyframes no effect will replace.
     mutating func releaseKeyframes(of effectID: UUID, on target: KeyframingTarget) {
-        guard let number = number(of: target) else { return }
+        guard let number = number(of: target), number.keyframes.contains(where: { $0.generatedBy == effectID }) else { return }
         let released = AnimatedValue(number.value, keyframes: number.keyframes.map { keyframe in
             var plain = keyframe
             if plain.generatedBy == effectID { plain.generatedBy = nil }
@@ -619,6 +751,8 @@ extension TimelineClip {
 struct KeyframeSampling {
     /// The source time of each sample.
     var sources: [CMTime]
+    /// The same in seconds.
+    var sourceSeconds: [Double]
     /// The timeline time of each sample.
     var timelineTimes: [CMTime]
     /// Seconds since the first sample, in the timeline's time.
@@ -638,6 +772,8 @@ struct KeyframeSampling {
         let end = CMTimeMaximum(a, b)
         frameSeconds = frame.seconds
         var times: [CMTime] = []
+        let frames = CMTimeSubtract(end, start).seconds / frame.seconds
+        if frames.isFinite, frames >= 0, frames < Double(Int32.max) { times.reserveCapacity(Int(frames) + 2) }
         var k: Int32 = 0
         while true {
             let time = CMTimeAdd(start, CMTimeMultiply(frame, multiplier: k))
@@ -649,7 +785,9 @@ struct KeyframeSampling {
         if let last = times.last, CMTimeSubtract(end, last).seconds > 1e-6 { times.append(end) }
         let start = start
         timelineTimes = times
-        sources = times.map { Self.clamp(clip.sourceTime(atTimelineTime: $0), to: range) }
+        let sources = times.map { Self.clamp(clip.sourceTime(atTimelineTime: $0), to: range) }
+        self.sources = sources
+        sourceSeconds = sources.map(\.seconds)
         let elapsed = times.map { CMTimeSubtract($0, start).seconds }
         self.elapsed = elapsed
         let outside = [CMTimeSubtract(start, frame), CMTimeAdd(end, frame)].map { clip.sourceTime(atTimelineTime: $0) }
@@ -666,126 +804,291 @@ struct KeyframeSampling {
     var duration: Double { elapsed.last ?? 0 }
 }
 
-/// What one Keyframing effect makes at each sample.
-private struct KeyframeSignal {
-    let effect: Effect
-    let sampling: KeyframeSampling
-    let base: AnimatedValue<ComponentValue>
-    let baseSamples: [[Double]]
-    /// Phase in cycles at each sample, for the kinds with a frequency.
-    private var cycles: [Double] = []
-    /// Beat Keys' chosen beats.
-    private var pulses: [KeyframeGenerators.Pulse] = []
-    /// Audio Keys' output at each sample, before Combine.
-    private var listened: [Double] = []
-
-    init(
-        effect: Effect, sampling: KeyframeSampling, base: AnimatedValue<ComponentValue>, baseSamples: [[Double]],
-        beats: [BeatMarker], heard: [[Double]]?
-    ) {
-        self.effect = effect
-        self.sampling = sampling
-        self.base = base
-        self.baseSamples = baseSamples
-        switch effect.kind {
-        case .wiggler: cycles = integratedPhase(.wiggleFrequency, default: 2)
-        case .oscillator: cycles = integratedPhase(.oscillatorFrequency, default: 1)
-        case .beatKeys: pulses = chosenPulses(beats)
-        case .audioKeys: listened = heard.map(listen) ?? []
-        default: break
+extension AnimatedValue where Value == ComponentValue {
+    /// Component `c` of what `reading` gives, as `value(of:)` makes it,
+    /// without making the rest; nil past its components.
+    @inline(__always)
+    func component(_ c: Int, of reading: Reading) -> Double? {
+        switch reading {
+        case .value:
+            return c < value.values.count ? value.values[c] : nil
+        case .keyframe(let index):
+            let values = keyframes[index].value.values
+            return c < values.count ? values[c] : nil
+        case .blend(let next, let progress):
+            let from = keyframes[next - 1].value.values, to = keyframes[next].value.values
+            guard c < from.count, c < to.count else { return nil }
+            return Double.interpolate(from[c], to[c], fraction: progress)
         }
     }
 
-    /// A pair setting at sample `k`, or `fallback`.
-    func pair(_ kind: ControlKind, at k: Int) -> (Double, Double) {
-        let values = effect.control(kind).flatMap { $0.enabled ? $0.values(at: sampling.sources[k]) : nil } ?? kind.defaultValues
-        return values.count >= 2 ? (values[0], values[1]) : (kind.defaultValues[0], kind.defaultValues[1])
+    /// The values at each of `times`, as `value(at:)` gives them, held flat:
+    /// each one's components one after another, as many as the first's
+    /// (`width`).
+    func flatValues(at times: [CMTime]) -> (samples: [Double], width: Int) {
+        let readings = readings(at: times)
+        guard let first = readings.first else { return ([], 0) }
+        let width = value(of: first).values.count
+        var samples: [Double] = []
+        samples.reserveCapacity(readings.count * width)
+        for reading in readings {
+            for c in 0..<width { samples.append(component(c, of: reading) ?? 0) }
+        }
+        return (samples, width)
+    }
+}
+
+/// A number setting of a Keyframing effect, read once for every sample:
+/// its first component, at each sample when it is keyframed. Where the
+/// effect lacks it, or it is off, the caller's fallback stands.
+private struct NumberSetting {
+    private let isOn: Bool
+    private let fixed: Double?
+    /// Empty unless it is keyframed.
+    private let sampled: [Double?]
+    private let count: Int
+
+    init(_ control: EffectControl?, sampling: KeyframeSampling) {
+        count = sampling.sources.count
+        guard let control, control.enabled else {
+            (isOn, fixed, sampled) = (false, nil, [])
+            return
+        }
+        isOn = true
+        if control.isAnimated {
+            let number = control.number
+            fixed = nil
+            sampled = number.readings(at: sampling.sources).map { number.component(0, of: $0) }
+        } else {
+            fixed = control.number.value.values.first
+            sampled = []
+        }
+    }
+
+    /// Its value at sample `k`.
+    @inline(__always)
+    func at(_ k: Int, default fallback: Double) -> Double {
+        guard isOn, k >= 0, k < count else { return fallback }
+        return (sampled.isEmpty ? fixed : sampled[k]) ?? fallback
+    }
+}
+
+/// A setting of two numbers (a range), read once for every sample: at
+/// each sample when it is keyframed. The control's defaults where the
+/// effect lacks it or it is off.
+private struct PairSetting {
+    private let fixed: (Double, Double)
+    /// Empty unless it is keyframed.
+    private let sampled: [(Double, Double)]
+
+    init(_ kind: ControlKind, of effect: Effect, sampling: KeyframeSampling) {
+        let defaults = (kind.defaultValues[0], kind.defaultValues[1])
+        guard let control = effect.control(kind), control.enabled else {
+            (fixed, sampled) = (defaults, [])
+            return
+        }
+        if control.isAnimated {
+            let number = control.number
+            fixed = defaults
+            sampled = number.readings(at: sampling.sources).map { reading in
+                guard let low = number.component(0, of: reading), let high = number.component(1, of: reading) else { return defaults }
+                return (low, high)
+            }
+        } else {
+            let values = control.number.value.values
+            fixed = values.count >= 2 ? (values[0], values[1]) : defaults
+            sampled = []
+        }
+    }
+
+    /// Its values at sample `k`.
+    @inline(__always)
+    func at(_ k: Int) -> (Double, Double) { sampled.isEmpty ? fixed : sampled[k] }
+}
+
+/// What one Keyframing effect makes at each sample. Its settings are read
+/// once, when it is made, for every sample.
+private struct KeyframeSignal {
+    /// A Wiggler's settings.
+    private struct Wiggle {
+        let magnitude: NumberSetting
+        /// Phase in cycles at each sample.
+        let cycles: [Double]
+        let octaves: Int
+        /// The noise each component follows.
+        let streams: [UInt64]
+        let smooth: Bool
+    }
+
+    /// A reshaping kind's settings.
+    private enum Reshaping {
+        case smooth(window: Int)
+        case step(hold: Int)
+        case loop(LoopMode, LoopSide)
+        case overshoot(stiffness: Double, damping: Double, mass: Double)
+    }
+
+    let kind: EffectKind
+    let sampling: KeyframeSampling
+    let base: AnimatedValue<ComponentValue>
+    /// The target at each sample, each sample's `width` components one
+    /// after another.
+    let baseSamples: [Double]
+    let width: Int
+    /// How closely, in percent of each component's range, the keyframes
+    /// kept follow what it makes.
+    let tolerance: Double
+    /// An Oscillator's, Beat Keys' or Audio Keys' output at each sample,
+    /// before Combine; the same for every component.
+    private let made: [Double]
+    private let wiggle: Wiggle?
+    /// An Oscillator's wave, and where in its cycle each sample is.
+    private let wave: OscillatorWave
+    private let positions: [Double]
+    /// Beat Keys' chosen beats, what it does on each, and its decay at
+    /// each sample, in seconds.
+    private let pulses: [KeyframeGenerators.Pulse]
+    private let beatShape: BeatShape
+    private let decays: [Double]
+    private let reshaping: Reshaping?
+
+    init(
+        effect: Effect, sampling: KeyframeSampling, base: AnimatedValue<ComponentValue>, baseSamples: [Double], width: Int,
+        beats: [BeatMarker], heard: [[Double]]?
+    ) {
+        kind = effect.kind
+        self.sampling = sampling
+        self.base = base
+        self.baseSamples = baseSamples
+        self.width = width
+        func number(_ kind: ControlKind) -> NumberSetting { NumberSetting(effect.control(kind), sampling: sampling) }
+        tolerance = number(.tolerance).at(0, default: 0.5)
+        wave = effect.choice(.wave, as: OscillatorWave.self) ?? .sine
+        beatShape = effect.choice(.beatShape, as: BeatShape.self) ?? .pulse
+        var made: [Double] = [], wiggle: Wiggle?, positions: [Double] = []
+        var pulses: [KeyframeGenerators.Pulse] = [], decays: [Double] = [], reshaping: Reshaping?
+        switch effect.kind {
+        case .wiggler:
+            let together = effect.choice(.wiggleDimensions, as: WiggleDimensions.self) == .together
+            let seed = UInt64(max(number(.seed).at(0, default: 1), 0))
+            wiggle = Wiggle(
+                magnitude: number(.magnitude),
+                cycles: Self.integratedPhase(number(.wiggleFrequency), default: 2, sampling: sampling),
+                octaves: Int(number(.octaves).at(0, default: 1)),
+                streams: (0..<width).map { KeyframeGenerators.hash(seed &* 31 &+ UInt64(together ? 0 : $0)) },
+                smooth: effect.choice(.wiggleType, as: WiggleType.self) != .jagged
+            )
+        case .oscillator:
+            let cycles = Self.integratedPhase(number(.oscillatorFrequency), default: 1, sampling: sampling)
+            let phase = number(.phase), amplitude = number(.amplitude), fade = number(.fade)
+            positions = cycles.indices.map { cycles[$0] + phase.at($0, default: 0) / 360 }
+            let wave = wave
+            made = positions.indices.map { k in
+                let envelope = KeyframeGenerators.fadeEnvelope(
+                    elapsed: sampling.elapsed[k], total: sampling.duration, fade: fade.at(k, default: 0)
+                )
+                return amplitude.at(k, default: 10) * envelope * KeyframeGenerators.wave(wave, at: positions[k])
+            }
+        case .beatKeys:
+            let decay = number(.decay)
+            decays = sampling.elapsed.indices.map { decay.at($0, default: 250) / 1000 }
+            pulses = Self.chosenPulses(beats, of: effect, sampling: sampling, number: number)
+            made = KeyframeGenerators.beatSignals(at: sampling.elapsed, pulses: pulses, shape: beatShape, decays: decays)
+        case .audioKeys:
+            made = heard.map { Self.listen($0, effect: effect, sampling: sampling, number: number) } ?? []
+        case .smoother:
+            reshaping = .smooth(window: Int(number(.smoothing).at(0, default: 5)))
+        case .timeStep:
+            reshaping = .step(hold: max(Int(number(.hold).at(0, default: 2)), 1))
+        case .looper:
+            reshaping = .loop(
+                effect.choice(.loopMode, as: LoopMode.self) ?? .cycle, effect.choice(.loopSide, as: LoopSide.self) ?? .after
+            )
+        case .overshoot:
+            reshaping = .overshoot(
+                stiffness: number(.stiffness).at(0, default: 200), damping: number(.damping).at(0, default: 8),
+                mass: number(.mass).at(0, default: 1)
+            )
+        default:
+            break
+        }
+        (self.made, self.wiggle, self.positions, self.pulses, self.decays, self.reshaping)
+            = (made, wiggle, positions, pulses, decays, reshaping)
     }
 
     /// Audio Keys' steps: the range's level, between the box's bottom and
     /// top, followed with attack and release, along the curve, onto the
     /// output range.
-    private func listen(_ heard: [[Double]]) -> [Double] {
+    private static func listen(
+        _ heard: [[Double]], effect: Effect, sampling: KeyframeSampling, number: (ControlKind) -> NumberSetting
+    ) -> [Double] {
+        let frequencies = PairSetting(.frequencyRange, of: effect, sampling: sampling)
+        let levels = PairSetting(.levelRange, of: effect, sampling: sampling)
+        let output = PairSetting(.outputRange, of: effect, sampling: sampling)
+        let attack = number(.keyAttack), release = number(.keyRelease)
         let positions = sampling.sources.indices.map { k -> Double in
             guard k < heard.count else { return 0 }
-            let frequencies = pair(.frequencyRange, at: k), levels = pair(.levelRange, at: k)
+            let frequencies = frequencies.at(k), levels = levels.at(k)
             let level = AudioKeysMath.level(of: heard[k], from: frequencies.0, to: frequencies.1)
             return AudioKeysMath.normalized(level, floor: levels.0, ceiling: levels.1)
         }
         let followed = AudioKeysMath.envelope(
             positions, elapsed: sampling.elapsed,
-            attack: { number(.keyAttack, at: $0, default: 0) / 1000 }, release: { number(.keyRelease, at: $0, default: 200) / 1000 }
+            attack: positions.indices.map { attack.at($0, default: 0) / 1000 },
+            release: positions.indices.map { release.at($0, default: 200) / 1000 }
         )
         let curve = effect.choice(.keyCurve, as: KeyCurve.self) ?? .linear
         return followed.indices.map { k in
-            let output = pair(.outputRange, at: k)
+            let output = output.at(k)
             return output.0 + (output.1 - output.0) * AudioKeysMath.shaped(followed[k], curve)
         }
     }
 
-    /// A number setting at sample `k` (its first component).
-    func number(_ kind: ControlKind, at k: Int, default fallback: Double) -> Double {
-        guard let control = effect.control(kind), control.enabled, sampling.sources.indices.contains(k) else { return fallback }
-        return control.values(at: sampling.sources[k]).first ?? fallback
-    }
-
     /// The phase at each sample of a frequency that may be keyframed: the
     /// sum of how many cycles each frame before it played.
-    private func integratedPhase(_ kind: ControlKind, default fallback: Double) -> [Double] {
+    private static func integratedPhase(_ frequency: NumberSetting, default fallback: Double, sampling: KeyframeSampling) -> [Double] {
         var phase = 0.0
         return sampling.elapsed.indices.map { k in
             if k > 0 {
-                phase += number(kind, at: k - 1, default: fallback) * (sampling.elapsed[k] - sampling.elapsed[k - 1])
+                phase += frequency.at(k - 1, default: fallback) * (sampling.elapsed[k] - sampling.elapsed[k - 1])
             }
             return phase
         }
     }
 
-    private func chosenPulses(_ beats: [BeatMarker]) -> [KeyframeGenerators.Pulse] {
+    /// The beats Beat Keys follows from the start of the range, up to the
+    /// first past its end, which a ramp or alternation heads for.
+    private static func chosenPulses(
+        _ beats: [BeatMarker], of effect: Effect, sampling: KeyframeSampling, number: (ControlKind) -> NumberSetting
+    ) -> [KeyframeGenerators.Pulse] {
         let start = sampling.start
         let downbeatsOnly = effect.choice(.beatSelection, as: BeatSelection.self) == .downbeats
-        let candidates = beats.filter { $0.time >= start && (!downbeatsOnly || $0.isDownbeat) }
-        let every = max(Int(number(.everyBeats, at: 0, default: 1)), 1)
-        let offset = max(Int(number(.beatOffset, at: 0, default: 0)), 0)
-        let accent = number(.accent, at: 0, default: 50) / 100
-        return candidates.enumerated().compactMap { index, beat in
-            guard index >= offset, (index - offset) % every == 0 else { return nil }
+        let every = max(Int(number(.everyBeats).at(0, default: 1)), 1)
+        let offset = max(Int(number(.beatOffset).at(0, default: 0)), 0)
+        let accent = number(.accent).at(0, default: 50) / 100
+        let peak = number(.peak)
+        var pulses: [KeyframeGenerators.Pulse] = []
+        var index = 0
+        for beat in beats where beat.time >= start && (!downbeatsOnly || beat.isDownbeat) {
+            defer { index += 1 }
+            guard index >= offset, (index - offset) % every == 0 else { continue }
             let elapsed = CMTimeSubtract(beat.time, start).seconds
             let k = min(sampling.elapsed.lowerBound(of: elapsed) { $0 }, sampling.elapsed.count - 1)
-            let peak = number(.peak, at: max(k, 0), default: 10)
-            return KeyframeGenerators.Pulse(time: elapsed, height: beat.isDownbeat && !downbeatsOnly ? peak * (1 + accent) : peak)
+            let height = peak.at(max(k, 0), default: 10)
+            pulses.append(KeyframeGenerators.Pulse(time: elapsed, height: beat.isDownbeat && !downbeatsOnly ? height * (1 + accent) : height))
+            if elapsed > sampling.duration { break }
         }
+        return pulses
     }
 
     /// A signal kind's value at sample `k` for component `c`.
+    @inline(__always)
     func value(at k: Int, component c: Int) -> Double {
-        let elapsed = sampling.elapsed[k]
-        switch effect.kind {
-        case .wiggler:
-            let together = effect.choice(.wiggleDimensions, as: WiggleDimensions.self) == .together
-            let smooth = effect.choice(.wiggleType, as: WiggleType.self) != .jagged
-            let seed = UInt64(max(number(.seed, at: 0, default: 1), 0))
-            let stream = KeyframeGenerators.hash(seed &* 31 &+ UInt64(together ? 0 : c))
-            let octaves = Int(number(.octaves, at: 0, default: 1))
-            return number(.magnitude, at: k, default: 10)
-                * KeyframeGenerators.fractalNoise(cycles[k], octaves: octaves, stream: stream, smooth: smooth)
-        case .oscillator:
-            let wave = effect.choice(.wave, as: OscillatorWave.self) ?? .sine
-            let phase = number(.phase, at: k, default: 0) / 360
-            let envelope = KeyframeGenerators.fadeEnvelope(
-                elapsed: elapsed, total: sampling.duration, fade: number(.fade, at: k, default: 0)
-            )
-            return number(.amplitude, at: k, default: 10) * envelope * KeyframeGenerators.wave(wave, at: cycles[k] + phase)
-        case .audioKeys:
-            return k < listened.count ? listened[k] : 0
-        case .beatKeys:
-            return KeyframeGenerators.beatSignal(
-                at: elapsed, pulses: pulses, shape: effect.choice(.beatShape, as: BeatShape.self) ?? .pulse,
-                decay: number(.decay, at: k, default: 250) / 1000
-            )
-        default:
-            return 0
+        if let wiggle {
+            return wiggle.magnitude.at(k, default: 10)
+                * KeyframeGenerators.fractalNoise(wiggle.cycles[k], octaves: wiggle.octaves, stream: wiggle.streams[c], smooth: wiggle.smooth)
         }
+        return k < made.count ? made[k] : 0
     }
 
     /// A keyframe at one of a signal's events: which sample, and how the
@@ -803,17 +1106,15 @@ private struct KeyframeSignal {
     func events() -> [Event]? {
         let count = sampling.sources.count
         guard count > 1 else { return nil }
-        var events: [Int: Event] = [:]
+        var events = [Event?](repeating: nil, count: count)
         func add(_ index: Int, in easeIn: KeyframeEase? = nil, out easeOut: KeyframeEase? = nil) {
             guard index >= 0, index < count else { return }
             events[index] = Event(index: index, easeIn: easeIn, easeOut: easeOut)
         }
-        switch effect.kind {
+        switch kind {
         case .oscillator:
-            let wave = effect.choice(.wave, as: OscillatorWave.self) ?? .sine
             // Where in its cycle each sample is; a peak or trough falls at
             // a quarter or three quarters, a jump at a half or a whole.
-            let positions = cycles.indices.map { cycles[$0] + number(.phase, at: $0, default: 0) / 360 }
             for k in 1..<count {
                 switch wave {
                 case .sine, .triangle:
@@ -838,20 +1139,20 @@ private struct KeyframeSignal {
                 }
             }
         case .beatKeys:
-            let shape = effect.choice(.beatShape, as: BeatShape.self) ?? .pulse
+            // The sample at or after each beat.
+            let starts = pulses.map { pulse in sampling.elapsed.lowerBound(of: pulse.time) { $0 } }
             for (n, pulse) in pulses.enumerated() {
-                let at = sampling.elapsed.lowerBound(of: pulse.time) { $0 }
+                let at = starts[n]
                 guard at < count else { continue }
-                let next = n + 1 < pulses.count ? sampling.elapsed.lowerBound(of: pulses[n + 1].time) { $0 } : count
+                let next = n + 1 < pulses.count ? starts[n + 1] : count
                 add(at - 1)
-                switch shape {
+                switch beatShape {
                 case .ramp:
                     add(at)
                     add(next - 1)
                 case .pulse, .step, .alternate:
                     add(at, out: .easy)
-                    let decay = number(.decay, at: at, default: 250) / 1000
-                    let settled = sampling.elapsed.lowerBound(of: pulse.time + decay) { $0 }
+                    let settled = sampling.elapsed.lowerBound(of: pulse.time + decays[at]) { $0 }
                     if settled < next - 1 { add(settled, in: .easy) }
                 }
             }
@@ -860,84 +1161,100 @@ private struct KeyframeSignal {
         }
         add(0, out: events[0]?.easeOut)
         add(count - 1, in: events[count - 1]?.easeIn)
-        return events.values.sorted { $0.index < $1.index }
+        return events.compactMap { $0 }
     }
 
     /// For the kinds that reshape the target: its new value at every
-    /// sample.
-    func reshaped() -> [[Double]] {
-        switch effect.kind {
-        case .smoother:
-            return KeyframeGenerators.smoothed(baseSamples, width: Int(number(.smoothing, at: 0, default: 5)))
-        case .timeStep:
-            let hold = max(Int(number(.hold, at: 0, default: 2)), 1)
-            return baseSamples.indices.map { baseSamples[$0 / hold * hold] }
-        case .looper:
-            return looped()
-        case .overshoot:
-            return bounced()
-        default:
+    /// sample, held as `baseSamples` is.
+    func reshaped() -> [Double] {
+        switch reshaping {
+        case .smooth(let window):
+            return KeyframeGenerators.smoothed(baseSamples, components: width, width: window)
+        case .step(let hold):
+            var samples = baseSamples
+            for k in 0..<(baseSamples.count / width) {
+                let held = k / hold * hold
+                for c in 0..<width { samples[k * width + c] = baseSamples[held * width + c] }
+            }
+            return samples
+        case .loop(let mode, let side):
+            return looped(mode: mode, side: side)
+        case .overshoot(let stiffness, let damping, let mass):
+            return bounced(stiffness: stiffness, damping: damping, mass: mass)
+        case nil:
             return baseSamples
         }
     }
 
-    private func looped() -> [[Double]] {
+    private func looped(mode: LoopMode, side: LoopSide) -> [Double] {
         guard let span = base.animatedRange, span.lowerBound < span.upperBound else { return baseSamples }
-        let mode = effect.choice(.loopMode, as: LoopMode.self) ?? .cycle
-        let side = effect.choice(.loopSide, as: LoopSide.self) ?? .after
         let start = span.lowerBound.seconds, end = span.upperBound.seconds
         let first = base.value(atSeconds: start).values, last = base.value(atSeconds: end).values
-        let step = sampling.frameSeconds
-        return sampling.sources.indices.map { k in
-            let time = sampling.sources[k].seconds
+        // Continue: on in a straight line, at the speed of its last (or
+        // first) frame.
+        var slopeAfter: [Double] = [], slopeBefore: [Double] = []
+        if mode == .continue {
+            let step = sampling.frameSeconds
+            let insideAfter = base.value(atSeconds: end - step).values, insideBefore = base.value(atSeconds: start + step).values
+            slopeAfter = last.indices.map { c in (last[c] - insideAfter[c]) / step }
+            slopeBefore = first.indices.map { c in (first[c] - insideBefore[c]) / step }
+        }
+        var samples = baseSamples
+        for k in 0..<(baseSamples.count / width) {
+            let time = sampling.sourceSeconds[k]
             let isAfter = time > end, isBefore = time < start
-            guard (isAfter && side != .before) || (isBefore && side != .after) else { return baseSamples[k] }
+            guard (isAfter && side != .before) || (isBefore && side != .after) else { continue }
             if mode == .continue {
-                // On in a straight line, at the speed of its last (or first)
-                // frame.
                 let edge = isAfter ? end : start
-                let inside = base.value(atSeconds: isAfter ? end - step : start + step).values
-                let at = isAfter ? last : first
-                return at.indices.map { c in at[c] + (at[c] - inside[c]) / step * abs(time - edge) }
+                let at = isAfter ? last : first, slope = isAfter ? slopeAfter : slopeBefore
+                for c in 0..<width { samples[k * width + c] = at[c] + slope[c] * abs(time - edge) }
+                continue
             }
             let read = KeyframeGenerators.loopRead(time, start: start, end: end, mode: mode)
             let value = base.value(atSeconds: read.time).values
-            guard mode == .offset else { return value }
-            return value.indices.map { c in value[c] + read.cycles * (last[c] - first[c]) }
+            for c in 0..<width {
+                samples[k * width + c] = mode == .offset ? value[c] + read.cycles * (last[c] - first[c]) : value[c]
+            }
         }
+        return samples
     }
 
-    private func bounced() -> [[Double]] {
-        let stiffness = number(.stiffness, at: 0, default: 200)
-        let damping = number(.damping, at: 0, default: 8)
-        let mass = number(.mass, at: 0, default: 1)
+    private func bounced(stiffness: Double, damping: Double, mass: Double) -> [Double] {
         guard let firstSource = sampling.sources.first, let lastSource = sampling.sources.last else { return baseSamples }
         // Each keyframe in the range sets off a bounce at the speed the
-        // curve arrived at it, in the timeline's time.
+        // curve arrived at it, in the timeline's time, in the order they
+        // start.
         let kicks: [(elapsed: Double, velocity: [Double])] = base.keyframes.compactMap { keyframe in
             guard keyframe.time > firstSource, keyframe.time <= lastSource else { return nil }
             let k = sampling.sources.lowerBound(of: keyframe.time) { $0 }
             guard k > 0, k < sampling.sources.count else { return nil }
             let dt = sampling.elapsed[k] - sampling.elapsed[k - 1]
             guard dt > 0 else { return nil }
-            let arriving = base.value(at: keyframe.time).values
-            let before = baseSamples[k - 1]
-            let velocity = arriving.indices.map { c in (arriving[c] - (c < before.count ? before[c] : arriving[c])) / dt }
+            let arriving = keyframe.value.values
+            let velocity = arriving.indices.map { c in
+                (arriving[c] - (c < width ? baseSamples[(k - 1) * width + c] : arriving[c])) / dt
+            }
             let fraction = sampling.sources[k] == sampling.sources[k - 1] ? 0
-                : (keyframe.time.seconds - sampling.sources[k - 1].seconds) / (sampling.sources[k].seconds - sampling.sources[k - 1].seconds)
+                : (keyframe.time.seconds - sampling.sourceSeconds[k - 1]) / (sampling.sourceSeconds[k] - sampling.sourceSeconds[k - 1])
             return (sampling.elapsed[k - 1] + dt * fraction, velocity)
-        }
-        return baseSamples.indices.map { k in
-            var value = baseSamples[k]
-            for kick in kicks {
-                for c in value.indices where c < kick.velocity.count {
-                    value[c] += KeyframeGenerators.bounce(
-                        elapsed: sampling.elapsed[k] - kick.elapsed, velocity: kick.velocity[c],
+        }.sorted { $0.elapsed < $1.elapsed }
+        let lasts = KeyframeGenerators.bounceLength(damping: damping, mass: mass)
+        var samples = baseSamples
+        // Kicks before this one have settled.
+        var settled = 0
+        for k in 0..<(baseSamples.count / width) {
+            let elapsed = sampling.elapsed[k]
+            while settled < kicks.count, elapsed - kicks[settled].elapsed > lasts { settled += 1 }
+            for kick in kicks[settled...] {
+                guard kick.elapsed < elapsed else { break }
+                for c in 0..<min(width, kick.velocity.count) {
+                    samples[k * width + c] += KeyframeGenerators.bounce(
+                        elapsed: elapsed - kick.elapsed, velocity: kick.velocity[c],
                         stiffness: stiffness, damping: damping, mass: mass
                     )
                 }
             }
-            return value
         }
+        return samples
     }
 }

@@ -115,11 +115,11 @@ extension EditingProject {
             fingerprint.add(SpectrogramStore.shared.spectrogram(for: heard.url)?.fingerprint ?? 1)
             fingerprint.add(heard.asset.alignmentOffset)
             for time in [heard.clip.startOffset, heard.clip.trimStart, heard.clip.trimEnd] { fingerprint.add(time) }
-            fingerprint.add(heard.clip.time.speed) { [$0] }
-            fingerprint.add(heard.clip.volume) { [$0] }
+            fingerprint.add(heard.clip.time.speed)
+            fingerprint.add(heard.clip.volume)
             add(heard.clip.audioEffects)
             if heard.layer.kind.isAudio {
-                fingerprint.add(heard.layer.volume) { [$0] }
+                fingerprint.add(heard.layer.volume)
                 add(heard.layer.audioEffects)
             }
         }
@@ -171,10 +171,15 @@ enum AudioKeysMath {
     /// `values` followed with a rise and a fall time constant (seconds),
     /// so a hit comes in fast and lingers. 0 follows at once.
     static func envelope(_ values: [Double], elapsed: [Double], attack: (Int) -> Double, release: (Int) -> Double) -> [Double] {
+        envelope(values, elapsed: elapsed, attack: values.indices.map(attack), release: values.indices.map(release))
+    }
+
+    /// The same, with the time constants at each value.
+    static func envelope(_ values: [Double], elapsed: [Double], attack: [Double], release: [Double]) -> [Double] {
         var level = 0.0
         return values.indices.map { k in
             let dt = k > 0 ? elapsed[k] - elapsed[k - 1] : 0
-            let constant = values[k] > level ? attack(k) : release(k)
+            let constant = values[k] > level ? attack[k] : release[k]
             level += (values[k] - level) * (constant > 0 && k > 0 ? 1 - exp(-dt / constant) : 1)
             return level
         }
