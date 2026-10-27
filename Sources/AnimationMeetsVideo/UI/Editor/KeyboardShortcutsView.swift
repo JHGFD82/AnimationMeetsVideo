@@ -37,7 +37,7 @@ struct KeyboardShortcutsView: View {
             Shortcut(keys: "⌫", does: "Delete the selection"),
             Shortcut(keys: "⌘A", does: "Pick every clip of the timeline"),
             Shortcut(keys: "⌘X ⌘C ⌘V ⌘D", does: "Cut, copy, paste at the playhead, duplicate"),
-            Shortcut(keys: "Esc", does: "Select nothing"),
+            Shortcut(keys: "Esc", does: "Select nothing; cancel a clip move, trim or slip in progress"),
         ]),
         Group(title: "Tools and view", shortcuts: [
             Shortcut(keys: "A B Y", does: "Arrow, blade and slip tools"),
