@@ -427,12 +427,13 @@ struct TimelineView: View {
             if new.clipID != nil, new.clipID != old.clipID, new.clipCount >= old.clipCount { fitToWindow() }
         }
         .onChange(of: beatMarkerKey, initial: true) { _, key in
-            defer { beatMarkersVersion &+= 1 }
-            guard let id = key.layerID, let layer = timeline.layer(id: id) else {
-                beatMarkers = []
-                return
-            }
-            beatMarkers = project.beatMarkers(in: layer, tracks: beatTracks)
+            let markers = key.layerID.flatMap { timeline.layer(id: $0) }.map { project.beatMarkers(in: $0, tracks: beatTracks) } ?? []
+            // The key changes with every edit, which mostly leaves the
+            // beats where they were; a new version would redraw the
+            // timeline for nothing.
+            guard markers != beatMarkers else { return }
+            beatMarkers = markers
+            beatMarkersVersion &+= 1
         }
         .onChange(of: beatMarkers, initial: true) { _, markers in
             beatClicks.beats = markers.map { BeatClickPlayer.Tick(time: $0.time, isDownbeat: $0.isDownbeat) }
