@@ -126,7 +126,8 @@ extension ProjectStore {
                 sections: (entry.sections ?? [])
                     .map { TimelineSection(id: $0.id, name: $0.name, start: $0.start.time, end: $0.end.time) }
                     .filter { $0.end > $0.start }
-                    .sorted { $0.start < $1.start }
+                    .sorted { $0.start < $1.start },
+                previewBackground: entry.previewBackground.map { $0.map { $0.clamped(between: 0, and: 1) } }
             )
         }
 

@@ -857,6 +857,25 @@ The header only shows the open timeline's name: timelines are opened
 second display's own timeline, when it is independent, keeps its own
 trail.
 
+## Preview background
+
+Timeline Settings has a **Background**: a checkbox and a color well. On,
+the viewer shows that color wherever nothing is drawn, instead of black,
+to see what is transparent: a title over nothing, the edges of a key, a
+fade from nothing. It is the viewer's alone (`Timeline.previewBackground`,
+saved as `previewBackground`, red, green and blue in the timeline's
+encoded values, only while it is on). Exports, renders and the timeline
+nested in another draw over black as before.
+
+In the viewer the frame is drawn over transparency and then put over the
+color (`LayeredInstruction.background`), as After Effects shows a
+composition's background: it shows where export shows black, and no
+blend mode or transition mixes with it. Renders are drawn over black for
+export, so a timeline with a background plays in the viewer from its
+clips, never its renders (`ViewerSource.playsRenders`); they are still
+planned and made for export, and a stretch heavy enough to need one plays
+as it would before it was rendered.
+
 ## Not implemented yet
 
 - A larger graph editor for curves on short transitions.

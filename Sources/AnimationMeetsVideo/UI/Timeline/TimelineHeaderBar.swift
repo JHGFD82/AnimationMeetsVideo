@@ -94,6 +94,8 @@ struct TimelineSettingsSheet: View {
     @State private var heightText: String = "1080"
     @State private var frameRateText: String = "24"
     @State private var colorSpace: ProjectColorSpace = .rec709
+    @State private var hasBackground = false
+    @State private var background = CGColor(srgbRed: 0.5, green: 0.5, blue: 0.5, alpha: 1)
 
     private static let arithmeticNote = "Fields take arithmetic: 1920/2 becomes 960."
 
@@ -158,6 +160,19 @@ struct TimelineSettingsSheet: View {
                     .labelsHidden()
                     .frame(width: 180)
                 }
+                SheetRow("Background") {
+                    HStack(spacing: Design.Space.step) {
+                        Toggle("Preview background", isOn: $hasBackground)
+                            .labelsHidden()
+                            .toggleStyle(.checkbox)
+                            .help("Show a color in the viewer where nothing is drawn, instead of black")
+                        ColorPicker("Background color", selection: $background, supportsOpacity: false)
+                            .labelsHidden()
+                            .disabled(!hasBackground)
+                            .accessibilityLabel("Preview background color")
+                    }
+                }
+                SheetNote("The background is only shown in the viewer, to see what is transparent. Exports are drawn over black.")
             }
         } actions: {
             Button("Cancel") { isPresented = false }
@@ -198,6 +213,19 @@ struct TimelineSettingsSheet: View {
         heightText = String(Int(timeline.frameSize.height))
         frameRateText = String(format: "%g", timeline.frameRate)
         colorSpace = timeline.colorSpace
+        if let rgb = timeline.previewBackground, rgb.count == 3 {
+            hasBackground = true
+            background = CGColor(srgbRed: rgb[0], green: rgb[1], blue: rgb[2], alpha: 1)
+        }
+    }
+
+    /// The background as saved: red, green and blue, or nil while it is off.
+    private var pickedBackground: [Double]? {
+        guard hasBackground, let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let srgb = background.converted(to: space, intent: .defaultIntent, options: nil),
+              let parts = srgb.components, parts.count >= 3
+        else { return nil }
+        return parts.prefix(3).map { Double($0).clamped(between: 0, and: 1) }
     }
 
     private func save() {
@@ -217,6 +245,9 @@ struct TimelineSettingsSheet: View {
                 frameRate: frameRate,
                 colorSpace: colorSpace
             )
+            if let background = pickedBackground {
+                project.updateTimeline(newID) { $0.previewBackground = background }
+            }
             onCreate?(newID)
         case .edit(let id):
             project.updateTimelineSettings(
@@ -226,6 +257,10 @@ struct TimelineSettingsSheet: View {
                 frameRate: frameRate,
                 colorSpace: colorSpace
             )
+            let background = pickedBackground
+            if project.timeline(id: id)?.previewBackground != background {
+                project.updateTimeline(id) { $0.previewBackground = background }
+            }
         }
         isPresented = false
     }

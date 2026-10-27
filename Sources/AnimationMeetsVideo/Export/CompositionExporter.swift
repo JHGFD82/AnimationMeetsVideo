@@ -258,7 +258,8 @@ enum CompositionExporter {
             forPreview: forPreview,
             canvasMargin: canvasMargin,
             meter: meter,
-            options: options
+            options: options,
+            background: timeline.previewBackground
         )
         // The same timeline drawing every stretch from its clips, which the
         // composition still holds the tracks of, for a drag to follow
@@ -272,7 +273,8 @@ enum CompositionExporter {
             forPreview: forPreview,
             canvasMargin: canvasMargin,
             meter: meter,
-            options: options
+            options: options,
+            background: timeline.previewBackground
         )
         return ComposedTimeline(
             composition: composition, videoComposition: videoComposition,

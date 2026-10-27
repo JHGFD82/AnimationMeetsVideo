@@ -280,7 +280,7 @@ extension CompositionExporter {
     }
 
     /// The per-stretch drawing instructions. Gaps are stretches with
-    /// nothing to draw, which render black.
+    /// nothing to draw, which render black, or `background` in the viewer.
     static func buildVideoComposition(
         plan: [PlannedRange],
         hasPictures: Bool,
@@ -290,7 +290,8 @@ extension CompositionExporter {
         forPreview: Bool,
         canvasMargin: Double,
         meter: RenderMeter?,
-        options: DrawingOptions?
+        options: DrawingOptions?,
+        background: [Double]? = nil
     ) -> AVMutableVideoComposition? {
         guard hasPictures else { return nil }
 
@@ -303,7 +304,8 @@ extension CompositionExporter {
         videoComposition.instructions = plan.map { planned in
             LayeredInstruction(
                 timeRange: planned.range, clips: planned.clips, passthrough: planned.passthrough ?? kCMPersistentTrackID_Invalid,
-                renderSize: renderSize, colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options
+                renderSize: renderSize, colorSpace: colorSpace, canvasMargin: canvasMargin, meter: meter, options: options,
+                background: forPreview ? background : nil
             )
         }
         return videoComposition

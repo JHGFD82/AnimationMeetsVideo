@@ -14,6 +14,11 @@ struct Timeline: Identifiable, Equatable {
     var colorSpace: ProjectColorSpace
     /// Named stretches of time, in order, not overlapping.
     var sections: [TimelineSection] = []
+    /// What the viewer shows where nothing is drawn, as red, green and blue
+    /// (0...1, the timeline's encoded values); nil for black. Only the
+    /// viewer draws it: exports, renders and the timeline nested in another
+    /// draw over black and transparency as before.
+    var previewBackground: [Double]?
 
     /// Up to the end of the last clip or section, whichever is later.
     var duration: CMTime {
