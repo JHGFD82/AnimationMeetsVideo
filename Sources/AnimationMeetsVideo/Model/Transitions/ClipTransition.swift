@@ -182,10 +182,12 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     /// gently; fades and wipes run evenly.
     var defaultCurve: TransitionCurve {
         switch category {
-        case .moves, .threeD: TransitionCurve(preset: .easyEase)
+        case .moves, .threeD: Self.easyEaseCurve
         case .dissolves, .wipes, .stylized, .audio: .linear
         }
     }
+
+    private static let easyEaseCurve = TransitionCurve(preset: .easyEase)
 
     var systemImage: String {
         switch self {
@@ -243,24 +245,25 @@ enum TransitionKind: String, CaseIterable, Identifiable {
     func options(replacing previous: ClipTransition) -> TransitionOptions {
         guard previous.kind != self else { return previous.options }
         var options = defaultOptions
-        let shared = Set(settings).intersection(previous.kind.settings)
+        // Each kind has at most two settings, too few to be worth a set.
+        let mine = settings, theirs = previous.kind.settings
+        func shared(_ setting: TransitionSetting) -> Bool { mine.contains(setting) && theirs.contains(setting) }
         let old = previous.options
-        if shared.contains(.direction) { options.direction = old.direction }
-        if shared.contains(.color) { options.color = old.color }
-        if shared.contains(.center) { options.center = old.center }
-        if shared.contains(.shape) { options.shape = old.shape }
-        if shared.contains(.count) { options.count = old.count }
-        if shared.contains(.order) { options.order = old.order }
-        if shared.contains(.amount) { options.amount = old.amount }
-        if shared.contains(.matte) { options.matte = old.matte }
+        if shared(.direction) { options.direction = old.direction }
+        if shared(.color) { options.color = old.color }
+        if shared(.center) { options.center = old.center }
+        if shared(.shape) { options.shape = old.shape }
+        if shared(.count) { options.count = old.count }
+        if shared(.order) { options.order = old.order }
+        if shared(.amount) { options.amount = old.amount }
+        if shared(.matte) { options.matte = old.matte }
         return options
     }
 
     /// Every name a saved kind may have: this version's, and the
     /// directional ones of before (`saved`).
-    static var savedNames: [String] {
+    static let savedNames: [String] =
         allCases.map(\.rawValue) + ["wipeLeft", "wipeRight", "wipeUp", "wipeDown", "slideLeft", "slideRight"]
-    }
 
     /// Reads a saved kind, including those saved before a wipe's or
     /// slide's direction became a setting (`"wipeLeft"` is a wipe to the
@@ -586,7 +589,12 @@ extension EditingProject {
     /// it joins; nil when it joins none, or there is no spare footage.
     func joinedLead(of clip: TimelineClip, among clips: [TimelineClip]) -> CMTime? {
         guard let transition = clip.transitionIn, let previous = predecessor(joining: clip, among: clips) else { return nil }
-        let spare = spareFootage(outgoing: previous, incoming: clip)
+        return joinedLead(of: transition, previous: previous, spare: spareFootage(outgoing: previous, incoming: clip))
+    }
+
+    /// `joinedLead` for a way in whose clip before and spare footage are
+    /// already known.
+    private func joinedLead(of transition: ClipTransition, previous: TimelineClip, spare: (tail: CMTime, head: CMTime)) -> CMTime? {
         guard spare.tail > .zero || spare.head > .zero else { return nil }
         return CMTimeMaximum(.zero, CMTimeMinimum(CMTimeMinimum(transition.lead, spare.head), CMTimeMinimum(previous.placedDuration, transition.duration)))
     }
@@ -594,15 +602,19 @@ extension EditingProject {
     /// The joint at the start of `incomingID`, if its way in joins it to
     /// the clip before.
     func joint(at incomingID: UUID, in timelineID: UUID, layer layerID: UUID) -> TransitionJoint? {
-        guard let layer = timeline(id: timelineID)?.layer(id: layerID),
+        timeline(id: timelineID).flatMap { joint(at: incomingID, in: $0, layer: layerID) }
+    }
+
+    private func joint(at incomingID: UUID, in timeline: Timeline, layer layerID: UUID) -> TransitionJoint? {
+        guard let layer = timeline.layer(id: layerID),
               let incoming = layer.clips.first(id: incomingID),
               let transition = incoming.transitionIn,
-              let outgoing = predecessor(joining: incoming, among: layer.clips),
-              let lead = joinedLead(of: incoming, among: layer.clips)
+              let outgoing = predecessor(joining: incoming, among: layer.clips)
         else {
             return nil
         }
         let spare = spareFootage(outgoing: outgoing, incoming: incoming)
+        guard let lead = joinedLead(of: transition, previous: outgoing, spare: spare) else { return nil }
         return TransitionJoint(
             layerID: layerID, outgoing: outgoing, incoming: incoming, transition: transition,
             lead: lead, spareTail: spare.tail, spareHead: spare.head
@@ -610,8 +622,8 @@ extension EditingProject {
     }
 
     mutating func applyJointEdit(_ edit: JointEdit, at incomingID: UUID, in timelineID: UUID, layer layerID: UUID) {
-        guard let joint = joint(at: incomingID, in: timelineID, layer: layerID),
-              let timeline = timeline(id: timelineID)
+        guard let timeline = timeline(id: timelineID),
+              let joint = joint(at: incomingID, in: timeline, layer: layerID)
         else {
             return
         }
@@ -680,9 +692,13 @@ extension EditingProject {
         else {
             return
         }
-        for (index, clip) in timelines[tIndex].layers[lIndex].clips.enumerated() {
-            if clip.id == outgoing.id { timelines[tIndex].layers[lIndex].clips[index] = outgoing }
-            if clip.id == incoming.id { timelines[tIndex].layers[lIndex].clips[index] = incoming }
+        // Written through in place: a copy of the clips taken out and put
+        // back would share the layer's storage and copy it all on write.
+        if let index = timelines[tIndex].layers[lIndex].clips.firstIndex(id: outgoing.id) {
+            timelines[tIndex].layers[lIndex].clips[index] = outgoing
+        }
+        if let index = timelines[tIndex].layers[lIndex].clips.firstIndex(id: incoming.id) {
+            timelines[tIndex].layers[lIndex].clips[index] = incoming
         }
     }
 }
@@ -700,18 +716,41 @@ struct EdgeTransitions: Sendable {
         var options: TransitionOptions
     }
 
-    var start: CMTime
-    var end: CMTime
-    var leading: Placed?
-    var trailing: Placed?
+    let start: CMTime
+    let end: CMTime
+    let leading: Placed?
+    let trailing: Placed?
     /// Where the way in starts: before the clip when it joins the clip
     /// before, by `lead`.
-    var leadingStart: CMTime
+    let leadingStart: CMTime
     /// The frame of the timeline the clip is on.
-    var frameSize: CGSize
+    let frameSize: CGSize
+
+    let hasWipe: Bool
+    let hasLumaReveal: Bool
+    let drawsTwoPictures: Bool
+
+    // Worked out once, as these are read for every frame drawn. The ends
+    // of each transition stay times, so whether a frame is in one is
+    // decided exactly; the fraction passed inside it is in seconds.
+    private let leadingEnd: CMTime
+    private let trailingStart: CMTime
+    private let leadingStartSeconds: Double
+    private let endSeconds: Double
+    private let leadingInverseDuration: Double
+    private let trailingInverseDuration: Double
+    /// Whether each transition changes the clip's own picture (`apply`);
+    /// the others are drawn from two pictures, or are sound alone.
+    private let leadingChangesPicture: Bool
+    private let trailingChangesPicture: Bool
+    private let frameRect: CGRect
+    private let halfWidth: CGFloat
+    private let halfHeight: CGFloat
 
     init?(clip: TimelineClip, frameSize: CGSize, lead: CMTime = .zero) {
         let durations = clip.effectiveTransitionDurations(lead: lead)
+        var leading: Placed?
+        var trailing: Placed?
         if let transition = clip.transitionIn, CMTimeAdd(durations.leading, lead) > .zero {
             leading = Placed(
                 kind: transition.kind, duration: CMTimeAdd(durations.leading, lead),
@@ -722,10 +761,44 @@ struct EdgeTransitions: Sendable {
             trailing = Placed(kind: transition.kind, duration: durations.trailing, curve: transition.curve, options: transition.options)
         }
         guard leading != nil || trailing != nil else { return nil }
+        self.leading = leading
+        self.trailing = trailing
+        let end = clip.endOffset
+        let leadingStart = CMTimeSubtract(clip.startOffset, lead)
         start = clip.startOffset
-        end = clip.endOffset
-        leadingStart = CMTimeSubtract(clip.startOffset, lead)
+        self.end = end
+        self.leadingStart = leadingStart
         self.frameSize = frameSize
+
+        hasWipe = leading?.kind == .wipe || trailing?.kind == .wipe
+        hasLumaReveal = leading?.kind == .filmDissolve || trailing?.kind == .filmDissolve
+        drawsTwoPictures = leading?.kind.drawsTwoPictures == true || trailing?.kind.drawsTwoPictures == true
+
+        leadingEnd = leading.map { CMTimeAdd(leadingStart, $0.duration) } ?? leadingStart
+        trailingStart = trailing.map { CMTimeSubtract(end, $0.duration) } ?? end
+        leadingStartSeconds = leadingStart.seconds
+        endSeconds = end.seconds
+        leadingInverseDuration = leading.map { 1 / $0.duration.seconds } ?? 0
+        trailingInverseDuration = trailing.map { 1 / $0.duration.seconds } ?? 0
+        leadingChangesPicture = leading.map { !$0.kind.drawsTwoPictures && !$0.kind.isAudio } ?? false
+        trailingChangesPicture = trailing.map { !$0.kind.drawsTwoPictures && !$0.kind.isAudio } ?? false
+        frameRect = CGRect(origin: .zero, size: frameSize)
+        halfWidth = frameSize.width / 2
+        halfHeight = frameSize.height / 2
+    }
+
+    /// The fraction of the way in passed at `time`, when it is before the
+    /// way in's end.
+    private func leadingElapsed(at time: CMTime) -> Double? {
+        guard time < leadingEnd else { return nil }
+        return (time.seconds - leadingStartSeconds) * leadingInverseDuration
+    }
+
+    /// The fraction of the way out passed at `time`, when it is after the
+    /// way out's start.
+    private func trailingElapsed(at time: CMTime) -> Double? {
+        guard time > trailingStart else { return nil }
+        return 1 - (endSeconds - time.seconds) * trailingInverseDuration
     }
 
     /// What the transitions do to the clip at `time`, in its timeline's
@@ -738,63 +811,41 @@ struct EdgeTransitions: Sendable {
         var lumaReveal: LumaReveal?
     }
 
-    var hasWipe: Bool {
-        [leading?.kind, trailing?.kind].contains { $0 == .wipe }
-    }
-
-    var hasLumaReveal: Bool {
-        leading?.kind == .filmDissolve || trailing?.kind == .filmDissolve
-    }
-
-    var drawsTwoPictures: Bool {
-        [leading?.kind, trailing?.kind].contains { $0?.drawsTwoPictures == true }
-    }
-
     /// The transition drawn from two whole pictures playing at `time`, if
     /// any. Its progress runs from the picture before to the picture after:
     /// on a way in from what's under the clip to the clip over it, on a way
     /// out the other way round.
     func transitionFrame(at time: CMTime) -> TransitionFrame? {
-        if let leading, leading.kind.drawsTwoPictures {
-            let elapsed = CMTimeSubtract(time, leadingStart).seconds / leading.duration.seconds
-            if elapsed < 1 {
-                return TransitionFrame(
-                    kind: leading.kind, options: leading.options,
-                    progress: leading.curve.value(at: max(elapsed, 0)), entering: true
-                )
-            }
+        if let leading, leading.kind.drawsTwoPictures, let elapsed = leadingElapsed(at: time) {
+            return TransitionFrame(
+                kind: leading.kind, options: leading.options,
+                progress: leading.curve.value(at: max(elapsed, 0)), entering: true
+            )
         }
-        if let trailing, trailing.kind.drawsTwoPictures {
-            let elapsed = 1 - CMTimeSubtract(end, time).seconds / trailing.duration.seconds
-            if elapsed > 0 {
-                return TransitionFrame(
-                    kind: trailing.kind, options: trailing.options,
-                    progress: trailing.curve.value(at: min(elapsed, 1)), entering: false
-                )
-            }
+        if let trailing, trailing.kind.drawsTwoPictures, let elapsed = trailingElapsed(at: time) {
+            return TransitionFrame(
+                kind: trailing.kind, options: trailing.options,
+                progress: trailing.curve.value(at: min(elapsed, 1)), entering: false
+            )
         }
         return nil
     }
 
     /// Each transition's curve maps the fraction of its length that has
     /// passed to how far it has got; a way in shows more of the clip as it
-    /// goes, a way out less.
+    /// goes, a way out less. Transitions that leave the clip's own picture
+    /// alone are skipped, so a frame works out each curve once, here or in
+    /// `transitionFrame`.
     func effect(at time: CMTime) -> Effect {
         var effect = Effect()
-        if let leading {
-            let elapsed = CMTimeSubtract(time, leadingStart).seconds / leading.duration.seconds
-            if elapsed < 1 {
-                apply(leading, visibility: leading.curve.value(at: elapsed), edge: .leading, to: &effect)
-            }
+        if let leading, leadingChangesPicture, let elapsed = leadingElapsed(at: time) {
+            apply(leading, visibility: leading.curve.value(at: elapsed), edge: .leading, to: &effect)
         }
-        if let trailing {
-            let elapsed = 1 - CMTimeSubtract(end, time).seconds / trailing.duration.seconds
-            if elapsed > 0 {
-                apply(trailing, visibility: 1 - trailing.curve.value(at: elapsed), edge: .trailing, to: &effect)
-            }
+        if let trailing, trailingChangesPicture, let elapsed = trailingElapsed(at: time) {
+            apply(trailing, visibility: 1 - trailing.curve.value(at: elapsed), edge: .trailing, to: &effect)
         }
         if hasWipe, effect.visibleRect == nil {
-            effect.visibleRect = CGRect(origin: .zero, size: frameSize)
+            effect.visibleRect = frameRect
         }
         return effect
     }
@@ -833,7 +884,7 @@ struct EdgeTransitions: Sendable {
             // the clip as it comes in and covers it as it leaves.
             let forward = direction == .right || direction == .down
             let shownFromStart = entering == forward
-            var rect = CGRect(origin: .zero, size: frameSize)
+            var rect = frameRect
             if direction.isHorizontal {
                 rect.size.width = width * v
                 if !shownFromStart { rect.origin.x = width * (1 - v) }
@@ -855,23 +906,28 @@ struct EdgeTransitions: Sendable {
             // itself is placed as usual.
             break
         case .zoom:
+            // Scaled about the frame's center.
             let scale = max(v, 0.001)
             effect.transform = effect.transform.concatenating(
-                CGAffineTransform(translationX: -width / 2, y: -height / 2)
-                    .concatenating(CGAffineTransform(scaleX: scale, y: scale))
-                    .concatenating(CGAffineTransform(translationX: width / 2, y: height / 2))
+                CGAffineTransform(
+                    a: scale, b: 0, c: 0, d: scale,
+                    tx: halfWidth * (1 - scale), ty: halfHeight * (1 - scale)
+                )
             )
             effect.opacity *= v
         case .spin:
             // One turn about the frame's center while growing and fading,
-            // clockwise both ways.
+            // clockwise both ways: turned, then scaled, then moved back so
+            // the center stays put.
             let scale = max(v, 0.001)
             let angle = (entering ? -1 : 1) * 2 * Double.pi * (1 - v)
+            let cosine = scale * cos(angle), sine = scale * sin(angle)
             effect.transform = effect.transform.concatenating(
-                CGAffineTransform(translationX: -width / 2, y: -height / 2)
-                    .concatenating(CGAffineTransform(rotationAngle: angle))
-                    .concatenating(CGAffineTransform(scaleX: scale, y: scale))
-                    .concatenating(CGAffineTransform(translationX: width / 2, y: height / 2))
+                CGAffineTransform(
+                    a: cosine, b: sine, c: -sine, d: cosine,
+                    tx: halfWidth - (cosine * halfWidth - sine * halfHeight),
+                    ty: halfHeight - (sine * halfWidth + cosine * halfHeight)
+                )
             )
             effect.opacity *= v
         }
