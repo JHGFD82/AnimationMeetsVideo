@@ -30,6 +30,33 @@ struct ComposedTimeline: @unchecked Sendable {
     /// frame request checks this first.
     var hasPictures: Bool { !composition.tracks(withMediaType: .video).isEmpty }
 
+    /// The same timeline with every stretch keeping the frame `capture` is
+    /// armed for (see `SourceCapture`), for the viewer to draw it again
+    /// with new values. Both video compositions are copied; this one is
+    /// left as it is.
+    func capturing(into capture: SourceCapture) -> ComposedTimeline {
+        func copy(_ videoComposition: AVMutableVideoComposition?) -> AVMutableVideoComposition? {
+            guard let copy = videoComposition?.mutableCopy() as? AVMutableVideoComposition else { return videoComposition }
+            copy.instructions = copy.instructions.map { instruction in
+                (instruction as? LayeredInstruction).map { $0.drawing($0.clips, capture: capture) } ?? instruction
+            }
+            return copy
+        }
+        var result = self
+        result.videoComposition = copy(videoComposition)
+        result.unrenderedVideoComposition = copy(unrenderedVideoComposition)
+        return result
+    }
+
+    /// The pixel format the viewer's compositor draws this timeline in:
+    /// 8-bit for SDR timelines (`SDRLayeredCompositor`), half floats
+    /// otherwise. The viewer's video output asks for the same, so the
+    /// frames it hands over are the compositor's own, unconverted, and the
+    /// same as a frame drawn again from them (`FrameRedrawer`).
+    var viewerPixelFormat: OSType {
+        (videoComposition?.customVideoCompositorClass as? LayeredCompositor.Type)?.pixelFormat ?? kCVPixelFormatType_32BGRA
+    }
+
     /// The video composition drawn at `scale` of the timeline's frame size,
     /// for the viewer. Only one built for preview can be drawn smaller: its
     /// instructions keep the frame size and scale into whatever size the

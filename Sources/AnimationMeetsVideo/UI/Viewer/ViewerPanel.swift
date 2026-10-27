@@ -39,12 +39,16 @@ struct ViewerPanel: View {
                 // one with nothing behind it, so the composition's own
                 // frame edge stays visible even on a black frame.
                 Design.Surface.well.color
-                if hasContent {
-                    picture { ViewerPicture(playback: playback, frameRate: frameRate) }
-                } else {
-                    picture { MetalPreviewView() }
-                    ContentUnavailableView("No clips yet", systemImage: "film",
-                                           description: Text("Import media into the Clips list (⌘I), then drag a scene onto the timeline."))
+                // Always there, emptied timeline or not: the picture it shows
+                // stays until a newer one replaces it, so a timeline emptied
+                // and filled again (an undo) never shows black between.
+                picture { ViewerPicture(playback: playback, frameRate: frameRate) }
+                if !hasContent {
+                    ZStack {
+                        Design.Surface.well.color
+                        ContentUnavailableView("No clips yet", systemImage: "film",
+                                               description: Text("Import media into the Clips list (⌘I), then drag a scene onto the timeline."))
+                    }
                 }
                 if let skim, skim.isActive {
                     SkimPicture(skim: skim)
@@ -181,7 +185,7 @@ private struct ViewerPicture: View {
     let frameRate: Double
 
     var body: some View {
-        PlayerLayerView(player: playback.player, still: playback.cover)
+        ViewerLayerView(display: playback.display)
             .accessibilityElement()
             .accessibilityLabel("Viewer")
             .accessibilityValue(playback.currentTime.timecode(frameRate: frameRate))

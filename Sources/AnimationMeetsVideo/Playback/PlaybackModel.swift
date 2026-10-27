@@ -23,18 +23,18 @@ final class PlaybackModel {
     /// player binds as the item is replaced, before the seek, and binds
     /// again when this changes.
     private(set) var itemSwaps = 0
-    /// The project's structure (`EditingProject.structure`) the player's
-    /// item was built from, and whether any of it plays from a render. A
-    /// drag of values alone can be drawn over what plays when the structure
-    /// is the same and none of it is a render (`LiveValues`).
-    @ObservationIgnored private(set) var playedStructure: EditingProject?
+    /// The structure (`StructureKey`) of the project the player's item was
+    /// built from, and whether any of it plays from a render. An edit that
+    /// leaves the key the same is drawn by the item as it is, with the
+    /// edit's values (`showValues`); a render, which holds the values it
+    /// was made with, gives way to the clips it was made from.
+    @ObservationIgnored private(set) var playedKey: StructureKey?
     @ObservationIgnored private(set) var playedUsesRenders = false
     /// The size the viewer is asked to draw at.
     var quality: PreviewQuality {
         didSet {
             UserDefaults.standard.set(quality.rawValue, forKey: Self.qualityKey)
             applyLevel()
-            refreshStill()
         }
     }
     /// Whether the viewer draws motion blur at all. Off, frames are drawn
@@ -46,7 +46,7 @@ final class PlaybackModel {
         }
     }
     /// What the compositor is asked while it plays (see `DrawingOptions`).
-    let drawingOptions = DrawingOptions()
+    let drawingOptions = DrawingOptions(liveValues: LiveValues())
     /// The size it is drawing at now, which Auto changes while playing.
     private(set) var level: PreviewLevel = .full
     /// Hears from the compositor how long each frame took.
@@ -67,18 +67,24 @@ final class PlaybackModel {
     @ObservationIgnored private var isHoldingTape = false
     /// The device the sound plays out of, as last routed.
     @ObservationIgnored private var outputUID: String?
-    /// The paused frame drawn at full size, shown over the player while it
-    /// draws smaller. Auto keeps playing's level while paused, so pressing
-    /// play doesn't swap the composition; this is what keeps paused frames
-    /// sharp. Nil while playing, scrubbing, or drawing at full size.
-    private(set) var still: CGImage?
-    /// The paused frame drawn from the newest edit, while the player still
-    /// holds the composition from before it. Shown over everything until
-    /// the player item is swapped, so the viewer follows a drag without
-    /// swapping the item at every step.
-    private(set) var liveFrame: CoverPicture?
-    /// What the viewer shows over the player, if anything.
-    var cover: CoverPicture? { liveFrame ?? still.map(CoverPicture.image) }
+    /// The viewer's picture, its one painter (see `ViewerDisplay`).
+    let display = ViewerDisplay()
+    /// The project's values, which the compositor draws every frame with,
+    /// paused or playing (see `LiveValues`); this player's own, so another
+    /// window's player can follow another project.
+    var liveValues: LiveValues { drawingOptions.liveValues }
+    /// What the paused frame was drawn from, for drawing it again with new
+    /// values, or at full size while Auto plays smaller.
+    @ObservationIgnored private let capture = SourceCapture()
+    @ObservationIgnored private let redrawer = FrameRedrawer()
+    /// Bumped whenever a frame being drawn again stops being wanted (a
+    /// seek, play, a new item), so it isn't shown when it is done.
+    @ObservationIgnored private var redrawToken = 0
+    /// The first frame of an item swapped in while playing fades in.
+    @ObservationIgnored private var fadesNextFrame = false
+    /// Set while an item is swapped in while playing, which pauses the
+    /// player for a moment that isn't a pause.
+    @ObservationIgnored private var isSwapping = false
 
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
@@ -90,11 +96,8 @@ final class PlaybackModel {
     @ObservationIgnored private var composed: ComposedTimeline?
     @ObservationIgnored private var frameRate: Double = 0
     @ObservationIgnored private var sampling: Task<Void, Never>?
-    @ObservationIgnored private var stillTask: Task<Void, Never>?
-    @ObservationIgnored private let liveRenderer = LiveFrameRenderer()
     /// Draws the paused playhead's neighborhood ahead of playback.
     @ObservationIgnored private let prerenderer = PlayheadPrerenderer()
-    @ObservationIgnored private var liveGovernor = LiveGovernor()
     @ObservationIgnored private var preferencesTask: Task<Void, Never>?
     @ObservationIgnored private var deviceObservation: DeviceListObservation?
 
@@ -113,7 +116,8 @@ final class PlaybackModel {
         motionBlurInPreview = blur
         drawingOptions.update(motionBlurInPreview: blur)
         beatClicks = BeatClickPlayer(player: player)
-        liveRenderer.onFrame = { [weak self] image, seconds, interactive in self?.receiveLiveFrame(image, seconds: seconds, interactive: interactive) }
+        redrawer.onFrame = { [weak self] buffer, token in self?.receiveRedrawn(buffer, token: token) }
+        display.onOutputFrame = { [weak self] buffer, time in self?.receiveOutputFrame(buffer, at: time) }
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(value: 1, timescale: 30),
             queue: .main
@@ -125,14 +129,21 @@ final class PlaybackModel {
                 self.currentTime = time
             }
         }
-        statusObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
-            let playing = player.timeControlStatus != .paused
-            Task { @MainActor in self?.playStateChanged(playing) }
+        // The state as it is when this runs, not when it was observed: a
+        // swap while playing pauses for a moment, which is over by then.
+        statusObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] _, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.playStateChanged(self.player.timeControlStatus != .paused)
+            }
         }
-        // Each new item is prerolled once it can be.
+        // Each new item is prerolled once it can be, and shown.
         itemObservation = player.observe(\.currentItem, options: [.initial, .new]) { [weak self] player, _ in
             let item = player.currentItem
-            Task { @MainActor in self?.watchStatus(of: item) }
+            Task { @MainActor in
+                self?.watchStatus(of: item)
+                self?.display.follow(item)
+            }
         }
         // The Settings window writes the same defaults; follow it.
         preferencesTask = Task { [weak self] in
@@ -207,17 +218,29 @@ final class PlaybackModel {
         else { return false }
         playedUsesRenders = false
         item.videoComposition = composed.videoComposition(scaledBy: level.scale, withoutRenders: true)
+        // Paused, the player draws its frame again from the clips.
+        if !isPlaying { display.wake() }
         return true
     }
 
-    func prepare(_ item: AVPlayerItem, with composed: ComposedTimeline, structure: EditingProject, frameRate: Double) {
+    /// Readies `item`, built from `composed`, to be swapped in (`swap`):
+    /// its compositions at the current level, keeping what the paused frame
+    /// is drawn from (`SourceCapture`), and the video output the viewer
+    /// shows its frames through, in the compositor's own format.
+    func prepare(_ item: AVPlayerItem, with composed: ComposedTimeline, key: StructureKey, frameRate: Double) {
+        let composed = composed.capturing(into: capture)
         self.composed = composed
+        item.add(AVPlayerItemVideoOutput(pixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: composed.viewerPixelFormat,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: any Sendable],
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+        ]))
         prerenderer.cancel()
         // Pictures kept for a project of another structure are found by
         // values that no longer say everything about them (a replaced
         // file, a changed package); an edit of values alone keeps them.
-        if playedStructure != structure { drawingOptions.pictures.removeAll() }
-        playedStructure = structure
+        if playedKey != key { drawingOptions.pictures.removeAll() }
+        playedKey = key
         playedUsesRenders = !composed.cachedKeys.isEmpty
         self.frameRate = frameRate
         item.videoComposition = composed.videoComposition(scaledBy: level.scale)
@@ -225,127 +248,174 @@ final class PlaybackModel {
         mixMeter.reset()
         scrubAudio.setComposition(composed, curves: mixCurves)
         tapeScrub.setComposition(composed, curves: mixCurves)
-        // The old still stays until the new one is drawn (or turns out not
-        // to be needed): clearing it here would uncover the player's
-        // smaller picture for a moment on every rebuild.
-        refreshStill()
     }
 
-    /// Draws the paused frame from `composed`, the newest edit, over the
-    /// viewer. Does nothing while playing or seeking, which show the
-    /// player itself.
-    ///
-    /// With `interactive` (a value is being dragged) the frame is drawn
-    /// at a size the renderer keeps up with, stepping down to a quarter
-    /// of the pixels when frames take too long and back up when they
-    /// don't (`LiveGovernor`); the frame after the drag is full size.
-    ///
-    /// `structure` is that of the project `composed` was built from
-    /// (`EditingProject.structure`): the frame then keeps what it was drawn
-    /// from, so a later edit of values alone can be drawn without a build
-    /// (`redrawLive`).
-    func showLive(_ composed: ComposedTimeline, interactive: Bool = false, structure: EditingProject? = nil) {
-        guard !isPlaying, !isSeeking, player.currentItem != nil else { return }
-        if !interactive { liveGovernor.reset() }
-        let scale = interactive ? min(level.scale, liveGovernor.level.scale) : level.scale
-        liveRenderer.submit(.init(
-            composed: composed, scale: scale, time: player.currentTime(), interactive: interactive, structure: structure
-        ))
-    }
+    // MARK: The paused frame
 
-    /// Draws the paused frame again with `project`'s values, from the frame
-    /// last drawn from a build, when only values have changed since
-    /// (`structure` is `project.structure`). Then only the clips' new values
-    /// are drawn, in a few milliseconds, with nothing built or decoded, as
-    /// a drag of a value wants. False when it can't (playing, the playhead
-    /// moved, the structure changed, a render shows there): the timeline
-    /// is to be built as usual.
-    func redrawLive(_ project: EditingProject, structure: EditingProject, interactive: Bool) -> Bool {
-        liveRedrawNeedsScene = false
-        guard !isPlaying, !isSeeking, player.currentItem != nil,
-              liveRenderer.redraw(with: project, structure: structure, time: player.currentTime(), interactive: interactive)
-        else {
-            liveRedrawNeedsScene = !isPlaying && !isSeeking && player.currentItem != nil && liveRenderer.refusal == .needsScene
-            return false
-        }
-        liveRedraws += 1
-        return true
-    }
-
-    /// Whether the last refused `redrawLive` could be drawn given a scene to
-    /// draw from (`showLive` with a composition built without the renders)
-    /// rather than needing the timeline built again.
-    @ObservationIgnored private(set) var liveRedrawNeedsScene = false
-
-    /// How many frames `redrawLive` has drawn, so a build begun before one
-    /// doesn't put its older picture over it.
-    @ObservationIgnored private(set) var liveRedraws = 0
-
-    private func receiveLiveFrame(_ picture: CoverPicture, seconds: Double, interactive: Bool) {
-        guard !isPlaying, !isSeeking else { return }
-        if interactive { liveGovernor.record(seconds: seconds) }
-        // An edit is under way: what the player holds is about to go, and
-        // the frames drawn ahead with it.
+    /// The project's values changed while its structure didn't: the
+    /// compositor draws every frame with `clips` (see `LiveValues`), playing
+    /// or paused, so nothing is built. Paused, the frame on screen is drawn
+    /// again from what it was drawn from, in a few milliseconds; where that
+    /// can't take values (a render under the playhead, which holds the
+    /// values it was made with) the item draws from its clips instead,
+    /// which the player shows in a moment. Until then the last picture
+    /// stays.
+    func showValues(_ clips: [UUID: TimelineClip]) {
+        liveValues.clips = clips
         prerenderer.cancel()
-        liveFrame = picture
-        // A still of what was edited away mustn't show once this goes.
-        clearStill()
+        if isPlaying {
+            playWithoutRenders()
+            return
+        }
+        if redrawPausedFrame() || playWithoutRenders() { return }
+        refreshPlayerFrame()
     }
 
-    /// Lets go of the live frame, so the player shows. Done by playing and
-    /// scrubbing, and when there is nothing to show.
-    func clearLive() {
-        liveRenderer.cancel()
-        guard !coversSwap else { return }
-        if liveFrame != nil { liveFrame = nil }
+    /// Draws the paused frame again from what it was drawn from, with the
+    /// project's values, at the timeline's full size. False when there is
+    /// nothing to draw it from (it wasn't drawn since the player paused
+    /// there) or a picture in it can't take the values.
+    @discardableResult
+    private func redrawPausedFrame() -> Bool {
+        guard !isPlaying, player.currentItem != nil, let recorded = capture.recorded else { return false }
+        let values = liveValues.clips
+        guard FrameRedrawer.canDraw(recorded, values: values) else { return false }
+        redrawToken += 1
+        return redrawer.redraw(.init(recorded: recorded, values: values, size: recorded.instruction.renderSize, token: redrawToken))
     }
 
-    /// Whether a picture of the frame being played covers the viewer while
-    /// the item is swapped (`coverSwap`), which `clearLive` leaves alone.
-    @ObservationIgnored private var coversSwap = false
-
-    /// Covers the viewer with the frame playing now, drawn from the item
-    /// about to be replaced, so the swap doesn't show black while the new
-    /// item's first frame is made. The layer only hands out its own frame
-    /// while paused. Call `uncoverSwap` once the new item plays.
-    func coverSwap() async {
-        guard let composed, composed.hasPictures, isPlaying else { return }
-        let generator = AVAssetImageGenerator(asset: composed.composition)
-        generator.videoComposition = composed.videoComposition(scaledBy: level.scale)
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.05, preferredTimescale: 600)
-        guard let image = try? await generator.image(at: player.currentTime()).image else { return }
-        coversSwap = true
-        liveFrame = .image(image)
+    /// Has the paused player draw its frame again, through its compositor,
+    /// which draws it with the project's values and keeps what it drew it
+    /// from for the next edit.
+    private func refreshPlayerFrame() {
+        guard !isPlaying, let item = player.currentItem, let videoComposition = item.videoComposition else { return }
+        capture.arm(at: player.currentTime())
+        item.videoComposition = videoComposition.mutableCopy() as? AVVideoComposition
+        display.wake()
     }
 
-    /// Lets go of the cover once the new item is playing and has had a
-    /// moment to draw (or after at most a second).
-    func uncoverSwap() {
-        guard coversSwap else { return }
-        Task { @MainActor [weak self] in
-            for _ in 0..<30 {
-                try? await Task.sleep(for: .milliseconds(30))
-                guard let self else { return }
-                if self.player.timeControlStatus == .playing, self.player.currentItem?.status == .readyToPlay { break }
+    /// A frame from the current item's output. Playing, it is shown as it
+    /// is. Paused while Auto draws smaller, it is drawn again at full size
+    /// first, so paused frames are sharp, and the smaller one never shows;
+    /// not while scrubbing, which wants every frame at once.
+    private func receiveOutputFrame(_ buffer: CVPixelBuffer, at time: CMTime) {
+        if isPlaying || isSwapping {
+            display.show(buffer, fade: fadesNextFrame)
+            fadesNextFrame = false
+            return
+        }
+        if !isSeeking, level != .full, redrawPausedFrame() { return }
+        display.show(buffer)
+    }
+
+    private func receiveRedrawn(_ buffer: CVPixelBuffer, token: Int) {
+        guard token == redrawToken, !isPlaying, !isSwapping else { return }
+        prerenderer.cancel()
+        display.show(buffer)
+    }
+
+    /// Lets go of a frame being drawn again: one of where the player was.
+    private func dropRedraw() {
+        redrawer.cancel()
+        redrawToken += 1
+    }
+
+    // MARK: Swapping items
+
+    /// Puts `item`, readied by `prepare`, in the player at `time`, and
+    /// returns once the viewer shows its frame, or has waited long enough.
+    /// The viewer's picture stays as it was until then: an output only gets
+    /// frames from its player's current item, so the item goes in first,
+    /// and the picture changes once its frame is there.
+    ///
+    /// Playing, it plays on from where the timeline has reached by then,
+    /// started at an exact host time (`setRate(_:time:atHostTime:)`), so
+    /// however long the new item takes to be ready the playhead doesn't
+    /// fall behind or jump; its first frame fades in over the last one.
+    /// Returns whether its frame was shown.
+    @discardableResult
+    func swap(to item: AVPlayerItem, at time: CMTime, playing: Bool) async -> Bool {
+        dropRedraw()
+        prerenderer.cancel()
+        if playing {
+            isSwapping = true
+            defer {
+                isSwapping = false
+                playStateChanged(player.timeControlStatus != .paused)
             }
-            try? await Task.sleep(for: .milliseconds(100))
-            self?.coversSwap = false
-            self?.clearLive()
+            let clock = CMClockGetHostTimeClock()
+            let anchorHost = CMClockGetTime(clock)
+            let anchor = player.currentTime()
+            capture.arm(at: nil)
+            player.rate = 0
+            player.replaceCurrentItem(with: item)
+            display.follow(item)
+            await Self.ready(item)
+            let lead = CMTime(value: 1, timescale: 10)
+            let host = CMClockGetTime(clock)
+            let start = CMTimeAdd(CMTimeAdd(anchor, CMTimeSubtract(host, anchorHost)), lead)
+            fadesNextFrame = true
+            if item.status == .readyToPlay, player.status == .readyToPlay {
+                player.setRate(1, time: start, atHostTime: CMTimeAdd(host, lead))
+            } else {
+                await player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero)
+                player.play()
+            }
+            itemSwaps += 1
+            return await display.firstFrame(of: item, within: .seconds(2))
+        }
+        _ = await item.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        capture.arm(at: time)
+        player.replaceCurrentItem(with: item)
+        display.follow(item)
+        if CMTimeCompare(item.currentTime(), time) != 0 {
+            await player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+        if await display.firstFrame(of: item, within: .seconds(2)) { return true }
+        // A paused player holds back a new item's first picture until its
+        // sound is ready, which prerolling usually ends at once; if it still
+        // hasn't drawn, it is seeked where it is and prerolled again.
+        guard player.currentItem === item else { return false }
+        NSLog("Viewer: a swapped-in item hadn't drawn after 2 s; seeking it to redraw")
+        await player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        if player.rate == 0, player.status == .readyToPlay, item.status == .readyToPlay { _ = await player.preroll(atRate: 1) }
+        return await display.firstFrame(of: item, within: .seconds(3))
+    }
+
+    /// Lets the player's item go, for a timeline with nothing to play. The
+    /// viewer's picture stays, under what says so.
+    func clearItem() {
+        dropRedraw()
+        prerenderer.cancel()
+        capture.arm(at: nil)
+        if player.rate != 0 { player.pause() }
+        player.replaceCurrentItem(with: nil)
+        composed = nil
+        playedKey = nil
+        playedUsesRenders = false
+    }
+
+    /// Waits until `item` is ready to play or has failed, for at most two
+    /// seconds.
+    private static func ready(_ item: AVPlayerItem) async {
+        for _ in 0..<200 where item.status == .unknown {
+            try? await Task.sleep(for: .milliseconds(10))
         }
     }
 
     private func playStateChanged(_ playing: Bool) {
-        guard playing != isPlaying else { return }
+        guard !isSwapping, playing != isPlaying else { return }
         // The periodic ticks only come every 30th of a second; the parked
         // playhead should land exactly where playing stopped. Not while a
         // seek is in flight: its target is already set, and the player
         // hasn't reached it yet.
         if !playing, !isSeeking, !playerIsSkimmed { currentTime = player.currentTime() }
         isPlaying = playing
+        display.isPlaying = playing
         if playing {
             prerenderer.cancel()
-            clearLive()
+            dropRedraw()
+            capture.arm(at: nil)
             // Playing lets go of the scrub engine and its device.
             scrubAudio.stop()
             if isTapeScrubbing { stopTape() }
@@ -360,10 +430,11 @@ final class PlaybackModel {
             governor.stopPlaying()
         }
         applyLevel()
-        if playing {
-            clearStill()
-        } else {
-            refreshStill()
+        if !playing {
+            // The frame it stopped on was drawn while playing, which keeps
+            // nothing; drawn smaller, it is drawn again at full size.
+            capture.arm(at: player.currentTime())
+            if level != .full { refreshPlayerFrame() }
             prerollIfPaused()
         }
     }
@@ -399,39 +470,11 @@ final class PlaybackModel {
         if let item = player.currentItem, let composed {
             item.videoComposition = composed.videoComposition(scaledBy: wanted.scale, withoutRenders: !playedUsesRenders)
         }
-        refreshStill()
+        // Paused, the player draws the frame again at the new size, which
+        // is drawn at full size if it is smaller.
+        if !isPlaying { capture.arm(at: player.currentTime()) }
+        display.wake()
         prerollIfPaused()
-    }
-
-    /// Draws the paused frame at full size when Auto is drawing smaller,
-    /// once the player has settled on it.
-    private func refreshStill() {
-        stillTask?.cancel()
-        guard !isPlaying, !isSeeking, quality == .auto, level != .full,
-              let composed, composed.hasPictures, let videoComposition = composed.videoComposition,
-              player.currentItem != nil
-        else {
-            clearStill()
-            return
-        }
-        let time = player.currentTime()
-        stillTask = Task { [weak self] in
-            let generator = AVAssetImageGenerator(asset: composed.composition)
-            generator.videoComposition = videoComposition
-            generator.requestedTimeToleranceBefore = .zero
-            generator.requestedTimeToleranceAfter = .zero
-            let image = try? await generator.image(at: time).image
-            guard let self, !Task.isCancelled, !self.isPlaying, !self.isSeeking,
-                  CMTimeCompare(self.player.currentTime(), time) == 0
-            else { return }
-            self.still = image
-        }
-    }
-
-    private func clearStill() {
-        stillTask?.cancel()
-        stillTask = nil
-        if still != nil { still = nil }
     }
 
     @ObservationIgnored private var isSeeking = false
@@ -491,8 +534,9 @@ final class PlaybackModel {
     private func show(_ time: CMTime) {
         pendingSeek = time
         prerenderer.cancel()
-        clearLive()
-        clearStill()
+        dropRedraw()
+        capture.arm(at: time)
+        display.wake()
         guard !isSeeking else { return }
         isSeeking = true
         Task { await drainSeeks() }
@@ -509,7 +553,8 @@ final class PlaybackModel {
         }
         isSeeking = false
         if skimTime == nil { playerIsSkimmed = false }
-        refreshStill()
+        // Settled: the frame is drawn at full size if it was drawn smaller.
+        if !isPlaying, level != .full { redrawPausedFrame() }
         prerollIfPaused()
     }
 

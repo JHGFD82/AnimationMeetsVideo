@@ -1450,6 +1450,16 @@ struct UISnapshots {
         )
     }
 
+    /// The viewer of a timeline with no clips: what says so covers the
+    /// picture, which stays under it for when clips come back.
+    @Test func emptyViewer() throws {
+        let viewer = ViewerPanel(
+            playback: PlaybackModel(), hasContent: false, frameSize: CGSize(width: 1920, height: 1080),
+            frameRate: 24, buildError: nil, trimPreview: TrimPreviewModel()
+        )
+        try SnapshotSupport.render(viewer.preferredColorScheme(.dark), "empty-viewer", size: CGSize(width: 800, height: 520))
+    }
+
     /// Two shape layers, the upper clip turned off (V): faded and without
     /// colour, where it was.
     @Test func disabledClip() throws {

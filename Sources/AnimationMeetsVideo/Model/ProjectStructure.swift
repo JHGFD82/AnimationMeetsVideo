@@ -38,7 +38,7 @@ extension EditingProject {
     }
 }
 
-private extension Effect {
+extension Effect {
     /// The effect without its controls' values.
     static func bare(_ effect: Effect) -> Effect {
         var effect = effect

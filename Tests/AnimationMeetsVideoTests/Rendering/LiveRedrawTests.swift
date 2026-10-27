@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreGraphics
 import CoreMedia
 import CoreVideo
@@ -5,47 +6,61 @@ import Foundation
 import Testing
 @testable import AnimationMeetsVideo
 
-/// The viewer's paused frame drawn again with new values from what the last
-/// build decoded (`LiveFrameRenderer.redraw`), as dragging a value does.
+/// The viewer's paused frame drawn again with new values from what the
+/// player's compositor drew it from (`SourceCapture`, `FrameRedrawer`), as
+/// a value edit does.
 @MainActor @Suite struct LiveRedrawTests {
-    /// The encoded green level (0...255) at a point of `picture`, as
-    /// fractions from the top left: the bytes as drawn, without any color
-    /// conversion, so an image and a frame compare as the compositor drew
-    /// them.
-    private func level(_ picture: CoverPicture, x: Double, y: Double) throws -> Int {
-        switch picture {
-        case .image(let image):
-            let data = try #require(image.dataProvider?.data as Data?)
-            let px = min(image.width - 1, Int(Double(image.width) * x)), py = min(image.height - 1, Int(Double(image.height) * y))
-            #expect(image.bitsPerPixel == 32)
-            let alphaFirst = [CGImageAlphaInfo.first, .premultipliedFirst, .noneSkipFirst].contains(image.alphaInfo)
-            let little = image.bitmapInfo.contains(.byteOrder32Little)
-            // Green is second from the alpha end in ARGB and RGBA alike.
-            let green = alphaFirst == little ? 1 : 2
-            return Int(data[py * image.bytesPerRow + px * 4 + green])
-        case .frame(let buffer):
-            #expect(CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_32BGRA)
-            CVPixelBufferLockBaseAddress(buffer, .readOnly)
-            defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-            let base = try #require(CVPixelBufferGetBaseAddress(buffer)).assumingMemoryBound(to: UInt8.self)
-            let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
-            let px = min(width - 1, Int(Double(width) * x)), py = min(height - 1, Int(Double(height) * y))
-            return Int(base[py * CVPixelBufferGetBytesPerRow(buffer) + px * 4 + 1])
-        }
+    /// The encoded green level (0...255) at a point of a frame, as fractions
+    /// from the top left: the bytes as drawn, without any color conversion.
+    private func level(_ buffer: CVPixelBuffer, x: Double, y: Double) throws -> Int {
+        #expect(CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_32BGRA)
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        let base = try #require(CVPixelBufferGetBaseAddress(buffer)).assumingMemoryBound(to: UInt8.self)
+        let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
+        let px = min(width - 1, Int(Double(width) * x)), py = min(height - 1, Int(Double(height) * y))
+        return Int(base[py * CVPixelBufferGetBytesPerRow(buffer) + px * 4 + 1])
     }
 
-    /// The next frame the renderer draws.
-    private func nextFrame(_ renderer: LiveFrameRenderer, _ start: () -> Void) async throws -> CoverPicture {
-        let frame: CoverPicture? = await withCheckedContinuation { continuation in
+    /// The same for an image the compositor drew.
+    private func level(_ image: CGImage, x: Double, y: Double) throws -> Int {
+        let data = try #require(image.dataProvider?.data as Data?)
+        let px = min(image.width - 1, Int(Double(image.width) * x)), py = min(image.height - 1, Int(Double(image.height) * y))
+        #expect(image.bitsPerPixel == 32)
+        let alphaFirst = [CGImageAlphaInfo.first, .premultipliedFirst, .noneSkipFirst].contains(image.alphaInfo)
+        let little = image.bitmapInfo.contains(.byteOrder32Little)
+        // Green is second from the alpha end in ARGB and RGBA alike.
+        let green = alphaFirst == little ? 1 : 2
+        return Int(data[py * image.bytesPerRow + px * 4 + green])
+    }
+
+    /// The frame at `time` as the compositor draws it, which keeps it in
+    /// `capture` when that is armed for it.
+    @discardableResult
+    private func draw(_ composed: ComposedTimeline, at time: CMTime, capture: SourceCapture? = nil) async throws -> CGImage {
+        let composed = capture.map { composed.capturing(into: $0) } ?? composed
+        let generator = AVAssetImageGenerator(asset: composed.composition)
+        generator.videoComposition = composed.videoComposition
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        return try await generator.image(at: time).image
+    }
+
+    /// The next frame the redrawer draws for `request`.
+    private func redraw(_ redrawer: FrameRedrawer, _ request: FrameRedrawer.Request) async throws -> CVPixelBuffer {
+        let frame: HandedOver<CVPixelBuffer>? = await withCheckedContinuation { continuation in
             var resumed = false
-            renderer.onFrame = { image, _, _ in
+            redrawer.onFrame = { buffer, _ in
                 guard !resumed else { return }
                 resumed = true
-                continuation.resume(returning: image)
+                continuation.resume(returning: HandedOver(value: buffer))
             }
-            start()
+            if !redrawer.redraw(request) {
+                resumed = true
+                continuation.resume(returning: nil)
+            }
         }
-        return try #require(frame)
+        return try #require(frame).value
     }
 
     /// Footage under a shape layer of a gray box, the shape's fill `gray`.
@@ -57,70 +72,68 @@ import Testing
         return (fixture, shape.clipID)
     }
 
-    @Test func aValueEditIsDrawnFromTheLastBuild() async throws {
+    @Test func aValueEditIsDrawnFromTheCapturedFrame() async throws {
         var (fixture, shape) = try await fixture()
         defer { fixture.cleanUp() }
         let time = CMTime(seconds: 1, preferredTimescale: 600)
-        let renderer = LiveFrameRenderer()
         let built = try await fixture.build(forPreview: true)
-        let first = try await nextFrame(renderer) {
-            renderer.submit(.init(composed: built, scale: 1, time: time, structure: fixture.project.structure))
-        }
+        let capture = SourceCapture()
+        capture.arm(at: time)
+        let first = try await draw(built, at: time, capture: capture)
         #expect(try level(first, x: 0.5, y: 0.5) > 180)
+        let recorded = try #require(capture.recorded)
+        #expect(recorded.pixelFormat == built.viewerPixelFormat)
 
         // Darker, drawn without a build.
         fixture.setControl(.fill, [0.2, 0.2, 0.2, 1], ofClip: shape)
-        var redrawn: Bool?
-        let second = try await nextFrame(renderer) {
-            redrawn = renderer.redraw(with: fixture.project, structure: fixture.project.structure, time: time, interactive: true)
-        }
-        #expect(redrawn == true)
-        guard case .frame = second else { Issue.record("not drawn as a frame"); return }
+        let redrawer = FrameRedrawer()
+        let second = try await redraw(redrawer, .init(
+            recorded: recorded, values: fixture.project.clipsByID, size: recorded.instruction.renderSize, token: 1
+        ))
         let fast = try level(second, x: 0.5, y: 0.5)
         #expect(fast < 80)
 
         // The same as a build of the edit draws.
-        let rebuilt = try await fixture.build(forPreview: true)
-        let check = LiveFrameRenderer()
-        let full = try await nextFrame(check) { check.submit(.init(composed: rebuilt, scale: 1, time: time)) }
+        let full = try await draw(try await fixture.build(forPreview: true), at: time)
         #expect(abs(try level(full, x: 0.5, y: 0.5) - fast) < 4)
         #expect(abs(try level(full, x: 0.1, y: 0.1) - level(second, x: 0.1, y: 0.1)) < 4)
     }
 
-    @Test func aStructuralEditOrAnotherMomentNeedsABuild() async throws {
-        var (fixture, shape) = try await fixture()
+    /// A paused player draws the frames after the paused one ahead; only the
+    /// one armed for is kept.
+    @Test func onlyTheArmedFrameIsKept() async throws {
+        let (fixture, _) = try await fixture()
         defer { fixture.cleanUp() }
         let time = CMTime(seconds: 1, preferredTimescale: 600)
-        let renderer = LiveFrameRenderer()
         let built = try await fixture.build(forPreview: true)
-        _ = try await nextFrame(renderer) {
-            renderer.submit(.init(composed: built, scale: 1, time: time, structure: fixture.project.structure))
-        }
-        let elsewhere = CMTime(seconds: 0.5, preferredTimescale: 600)
-        #expect(!renderer.redraw(with: fixture.project, structure: fixture.project.structure, time: elsewhere, interactive: false))
-        fixture.project.editClip(shape, in: fixture.timelineID) { $0.startOffset = CMTime(seconds: 0.25, preferredTimescale: 600) }
-        #expect(!renderer.redraw(with: fixture.project, structure: fixture.project.structure, time: time, interactive: false))
+        let capture = SourceCapture()
+        try await draw(built, at: time, capture: capture)
+        #expect(capture.recorded == nil)
+
+        capture.arm(at: time)
+        try await draw(built, at: CMTime(seconds: 1.5, preferredTimescale: 600), capture: capture)
+        #expect(capture.recorded == nil)
+        try await draw(built, at: time, capture: capture)
+        let recorded = try #require(capture.recorded)
+        #expect(CMTimeCompare(recorded.time, time) <= 0)
+
+        // Armed again for the same moment, it keeps it; for another, not.
+        capture.arm(at: time)
+        #expect(capture.recorded != nil)
+        capture.arm(at: CMTime(seconds: 0.5, preferredTimescale: 600))
+        #expect(capture.recorded == nil)
     }
 
-    /// The background renderer bakes the stretch under the playhead into a
-    /// file two seconds after an edit; a scene drawn from a build that uses it
-    /// can't take the next drag's values, and says it needs a scene, which a
-    /// build without the renders gives it.
-    @Test func aRenderedStretchNeedsASceneBuiltWithoutTheRenders() async throws {
+    /// A rendered stretch holds the values it was made with, so its frame
+    /// can't be drawn again with others; drawn from its clips (the
+    /// composition's own unrendered drawing), it can.
+    @Test func aRenderedStretchIsDrawnFromItsClipsForValues() async throws {
         var fixture = try DrawingFixture()
         defer { fixture.cleanUp() }
         _ = try await fixture.addClip(luma: 40)
         let top = try await fixture.addClip(luma: 220)
         fixture.setTransform([(.opacity, [50])], ofClip: top.clipID)
         let time = CMTime(seconds: 1, preferredTimescale: 600)
-        // What a drag does: a value of the effect that is there, not a new effect.
-        func setOpacity(_ percent: Double, in fixture: inout DrawingFixture) {
-            fixture.project.editClip(top.clipID, in: fixture.timelineID) { clip in
-                for index in clip.effects[0].controls.indices where clip.effects[0].controls[index].kind == .opacity {
-                    clip.effects[0].controls[index].number = AnimatedValue(ComponentValue(values: [percent]))
-                }
-            }
-        }
 
         let root = FileManager.default.temporaryDirectory.appending(path: "amv-redraw-\(UUID().uuidString).amv", directoryHint: .isDirectory)
         try ProjectStore.preparePackage(at: root)
@@ -133,37 +146,21 @@ import Testing
         let withRenders = try await CompositionExporter.buildComposedTimeline(
             for: fixture.project, timelineID: fixture.timelineID, forPreview: true, cache: cache
         )
+        let values = fixture.project.clipsByID
 
-        let renderer = LiveFrameRenderer()
-        _ = try await nextFrame(renderer) {
-            renderer.submit(.init(composed: withRenders, scale: 1, time: time, structure: fixture.project.structure))
-        }
-        setOpacity(20, in: &fixture)
-        #expect(!renderer.redraw(with: fixture.project, structure: fixture.project.structure, time: time, interactive: true))
-        #expect(renderer.refusal == .needsScene)
+        let capture = SourceCapture()
+        capture.arm(at: time)
+        try await draw(withRenders, at: time, capture: capture)
+        let rendered = try #require(capture.recorded)
+        #expect(!FrameRedrawer.canDraw(rendered, values: values))
+        #expect(FrameRedrawer.canDraw(rendered, values: nil))
 
-        // Built without the renders, the same drag is drawn.
-        let live = try await fixture.build(forPreview: true)
-        _ = try await nextFrame(renderer) {
-            renderer.submit(.init(composed: live, scale: 1, time: time, structure: fixture.project.structure))
-        }
-        setOpacity(80, in: &fixture)
-        #expect(renderer.redraw(with: fixture.project, structure: fixture.project.structure, time: time, interactive: true))
-        #expect(renderer.refusal == nil)
-    }
-
-    @Test func aStructuralEditIsNotASceneToBuild() async throws {
-        var (fixture, shape) = try await fixture()
-        defer { fixture.cleanUp() }
-        let time = CMTime(seconds: 1, preferredTimescale: 600)
-        let renderer = LiveFrameRenderer()
-        let built = try await fixture.build(forPreview: true)
-        _ = try await nextFrame(renderer) {
-            renderer.submit(.init(composed: built, scale: 1, time: time, structure: fixture.project.structure))
-        }
-        fixture.project.editClip(shape, in: fixture.timelineID) { $0.startOffset = CMTime(seconds: 0.25, preferredTimescale: 600) }
-        #expect(!renderer.redraw(with: fixture.project, structure: fixture.project.structure, time: time, interactive: true))
-        #expect(renderer.refusal == .structureChanged)
+        var unrendered = withRenders
+        unrendered.videoComposition = try #require(withRenders.unrenderedVideoComposition)
+        let again = SourceCapture()
+        again.arm(at: time)
+        try await draw(unrendered, at: time, capture: again)
+        #expect(FrameRedrawer.canDraw(try #require(again.recorded), values: values))
     }
 
     /// The frames the player plays are drawn with a held drag's values

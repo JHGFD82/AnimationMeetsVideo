@@ -1,26 +1,24 @@
 import Foundation
 
-/// The values of a value drag held to one side of the project
-/// (`ProjectState.hold`), for the compositor to draw the viewer's playing
-/// frames with. What plays was built before the drag, with its values in
-/// the instructions; while this holds clips, each frame the viewer draws
-/// patches those clips' effects and anchor points in
-/// (`DrawClip.withValues`), so a drag can be seen as it plays, as it is
-/// when paused, without building the timeline again. Export never reads it.
-/// The compositor reads the one its frames' `DrawingOptions` name: the
-/// viewer's is `shared`, which the editor sets.
+/// The project's values, for the compositor to draw the viewer's frames
+/// with: every clip's effects and anchor point, as they are now. The
+/// player's item was built with the values of the time it was built; each
+/// frame the viewer draws patches the clips' values from here
+/// (`DrawClip.withValues`), paused or playing, so an edit of values alone
+/// (`StructureKey` unchanged) is seen without building anything. Export
+/// never reads it. The compositor reads the one its frames'
+/// `DrawingOptions` name: each player's own (`PlaybackModel.liveValues`).
 ///
-/// Only values: a drag that changes the project's structure, or a stretch
-/// of the timeline that plays from a render, can't follow (see
-/// `TimelineEditorSurface.drawHeld`).
+/// Only values: a stretch of the timeline that plays from a render holds
+/// the values it was made with and draws as it is (see
+/// `PlaybackModel.playWithoutRenders`).
 final class LiveValues: @unchecked Sendable {
     static let shared = LiveValues()
 
     private let lock = NSLock()
     private var held: [UUID: TimelineClip]?
 
-    /// Every clip of the project with the drag so far, by ID; nil once
-    /// the drag's values are in what plays.
+    /// Every clip of the project by ID; nil to draw what was built.
     var clips: [UUID: TimelineClip]? {
         get { lock.withLock { held } }
         set { lock.withLock { held = newValue } }

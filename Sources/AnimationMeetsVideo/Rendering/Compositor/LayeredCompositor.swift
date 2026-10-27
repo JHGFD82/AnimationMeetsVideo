@@ -67,21 +67,52 @@ final class LayeredInstruction: NSObject, AVVideoCompositionInstructionProtocol,
 }
 
 /// The decoded frames one frame of the viewer was drawn from, by track, with
-/// the stretch's instruction and the size it was drawn at, kept so the frame
-/// can be drawn again with new values. Written by the compositor's queue,
-/// read after the frame is done.
+/// the stretch's instruction, its time, and the size and pixel format it was
+/// drawn in, kept so the frame can be drawn again with new values
+/// (`FrameRedrawer`). Written by the compositor's queue, read after the
+/// frame is done.
+///
+/// Only the frame at the time it is armed for is kept: a paused player
+/// draws the frames after it ahead (prerolling), which would otherwise
+/// take its place, and a playing one has no use for any.
 final class SourceCapture: @unchecked Sendable {
     struct Recorded {
         var instruction: LayeredInstruction
         var frames: [CMPersistentTrackID: CVPixelBuffer]
         var size: CGSize
+        /// The composition time the frame was drawn for.
+        var time: CMTime
+        /// The format the compositor drew into, which a frame drawn again
+        /// is drawn into too, so the two are the same picture.
+        var pixelFormat: OSType
     }
 
     private let lock = NSLock()
     private var drawn: Recorded?
+    private var armed: CMTime?
 
-    func record(_ instruction: LayeredInstruction, frames: [CMPersistentTrackID: CVPixelBuffer], size: CGSize) {
-        lock.withLock { drawn = Recorded(instruction: instruction, frames: frames, size: size) }
+    /// Keeps the frame showing `time` once it is drawn, and lets go of what
+    /// was kept for another time; nil keeps nothing.
+    func arm(at time: CMTime?) {
+        lock.withLock {
+            armed = time
+            if let drawn, let time, drawn.time == time { return }
+            drawn = nil
+        }
+    }
+
+    /// Whether the frame drawn for `time`, `frameDuration` long, is the one
+    /// armed for.
+    func wants(_ time: CMTime, frameDuration: CMTime) -> Bool {
+        lock.withLock {
+            guard let armed else { return false }
+            let end = frameDuration.isNumeric && frameDuration > .zero ? CMTimeAdd(time, frameDuration) : time
+            return CMTimeCompare(time, armed) <= 0 && (CMTimeCompare(armed, end) < 0 || time == armed)
+        }
+    }
+
+    func record(_ instruction: LayeredInstruction, frames: [CMPersistentTrackID: CVPixelBuffer], size: CGSize, time: CMTime, pixelFormat: OSType) {
+        lock.withLock { drawn = Recorded(instruction: instruction, frames: frames, size: size, time: time, pixelFormat: pixelFormat) }
     }
 
     var recorded: Recorded? { lock.withLock { drawn } }
@@ -175,14 +206,18 @@ class LayeredCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             }
             let started = CACurrentMediaTime()
             let size = request.renderContext.size
-            if let capture = instruction.capture {
+            if let capture = instruction.capture,
+               capture.wants(request.compositionTime, frameDuration: request.renderContext.videoComposition.frameDuration) {
                 // Every frame it may draw, kept for drawing it again.
                 var frames: [CMPersistentTrackID: CVPixelBuffer] = [:]
                 for value in instruction.requiredSourceTrackIDs ?? [] {
                     guard let id = (value as? NSNumber)?.int32Value else { continue }
                     frames[id] = request.sourceFrame(byTrackID: id)
                 }
-                capture.record(instruction, frames: frames, size: size)
+                capture.record(
+                    instruction, frames: frames, size: size, time: request.compositionTime,
+                    pixelFormat: CVPixelBufferGetPixelFormatType(output)
+                )
             }
             // A value drag held to one side of the project is seen as the
             // viewer plays (see `LiveValues`).
