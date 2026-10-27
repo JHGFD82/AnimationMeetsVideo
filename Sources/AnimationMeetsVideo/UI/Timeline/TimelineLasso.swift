@@ -30,12 +30,16 @@ struct LassoMonitor: NSViewRepresentable {
     let onDown: (CGPoint, NSEvent.ModifierFlags) -> Bool
     let onDrag: (CGPoint) -> Void
     let onUp: (CGPoint) -> Void
+    /// A right-click, or Control-click, at a point: heard before the
+    /// context menu it opens.
+    var onSecondaryDown: (CGPoint) -> Void = { _ in }
 
     func makeNSView(context: Context) -> MonitorView {
         let view = MonitorView()
         view.onDown = onDown
         view.onDrag = onDrag
         view.onUp = onUp
+        view.onSecondaryDown = onSecondaryDown
         return view
     }
 
@@ -43,6 +47,7 @@ struct LassoMonitor: NSViewRepresentable {
         view.onDown = onDown
         view.onDrag = onDrag
         view.onUp = onUp
+        view.onSecondaryDown = onSecondaryDown
     }
 
     static func dismantleNSView(_ view: MonitorView, coordinator: ()) {
@@ -53,6 +58,7 @@ struct LassoMonitor: NSViewRepresentable {
         var onDown: ((CGPoint, NSEvent.ModifierFlags) -> Bool)?
         var onDrag: ((CGPoint) -> Void)?
         var onUp: ((CGPoint) -> Void)?
+        var onSecondaryDown: ((CGPoint) -> Void)?
         private var monitor: Any?
         private var following = false
 
@@ -62,7 +68,7 @@ struct LassoMonitor: NSViewRepresentable {
             super.viewDidMoveToWindow()
             stopMonitoring()
             guard window != nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown]) { [weak self] event in
                 // Local monitors run on the main thread.
                 nonisolated(unsafe) let event = event
                 MainActor.assumeIsolated { self?.handle(event) }
@@ -76,9 +82,14 @@ struct LassoMonitor: NSViewRepresentable {
             else { return }
             // Window coordinates, top left origin, as SwiftUI's global space.
             let point = CGPoint(x: event.locationInWindow.x, y: height - event.locationInWindow.y)
+            let local = convert(event.locationInWindow, from: nil)
             switch event.type {
+            case .rightMouseDown:
+                if bounds.contains(local) { onSecondaryDown?(point) }
+            case .leftMouseDown where event.modifierFlags.contains(.control):
+                // The Mac's other right-click, which opens the menu too.
+                if bounds.contains(local) { onSecondaryDown?(point) }
             case .leftMouseDown:
-                let local = convert(event.locationInWindow, from: nil)
                 following = bounds.contains(local)
                     && onDown?(point, event.modifierFlags.intersection(.deviceIndependentFlagsMask)) == true
             case .leftMouseDragged:
@@ -168,6 +179,24 @@ extension TimelineView {
         }
     }
 
+    /// A right-click on a clip selects it, as in other editors, before its
+    /// menu opens, so the menu is plainly about the clip it was opened on.
+    /// One already selected, or picked with others, is left as it is, so
+    /// the menu can act on the whole selection.
+    private func selectClipForMenu(at point: CGPoint, pixelsPerSecond: CGFloat) {
+        guard point.x >= geometryStore.namesColumn.maxX else { return }
+        for layer in timeline.layers where geometryStore.layerRows[layer.id]?.contains(point) == true {
+            guard let clip = layer.clips.first(where: {
+                frame(of: $0, on: layer, pixelsPerSecond: pixelsPerSecond)?.contains(point) == true
+            }) else { continue }
+            let selected = selection?.timelineClipID == clip.id && selection?.transitionEdge == nil
+            if !selected, !groupSelection.contains(clip.id) {
+                host.dispatch(.selectClip(layer: layer.id, clip: clip))
+            }
+            return
+        }
+    }
+
     /// The clips a lasso covers, with their layers.
     private func lassoHits(_ rect: CGRect, pixelsPerSecond: CGFloat) -> [(layerID: UUID, clip: TimelineClip)] {
         timeline.layers.flatMap { layer in
@@ -224,7 +253,8 @@ extension TimelineView {
                 fadeLasso()
                 let hits = lassoHits(drag.rect, pixelsPerSecond: pixelsPerSecond)
                 finishLasso(Set(hits.map(\.clip.id)).union(drag.kept), single: hits.count == 1 && drag.kept.isEmpty ? hits[0] : nil)
-            }
+            },
+            onSecondaryDown: { point in selectClipForMenu(at: point, pixelsPerSecond: pixelsPerSecond) }
         )
     }
 

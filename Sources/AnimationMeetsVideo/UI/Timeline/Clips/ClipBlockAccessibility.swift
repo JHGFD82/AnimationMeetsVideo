@@ -20,11 +20,14 @@ extension ClipBlockView {
         return "\(model.info?.name ?? "Unknown"), \(kind)"
     }
 
-    /// Where it is and what it carries, read after its name.
+    /// Where it is and what it carries, read after its name. Made each
+    /// time the block is drawn, as a drag draws it at every step, so the
+    /// timecodes, the costly part, are kept while they read the same.
     var accessibilityDescription: String {
+        let times = timecodes.timecodes(of: model.clip, frameRate: model.frameRate)
         var parts = [
-            "starts at \(model.clip.startOffset.timecode(frameRate: model.frameRate))",
-            "\(model.clip.placedDuration.timecode(frameRate: model.frameRate)) long",
+            "starts at \(times.start)",
+            "\(times.duration) long",
         ]
         if let transition = model.clip.transitionIn { parts.append("\(transition.kind.name) at the start") }
         if let transition = model.clip.transitionOut { parts.append("\(transition.kind.name) at the end") }
@@ -96,5 +99,28 @@ extension ClipBlockView {
                 Button("Reach down to \(option.name)") { handlers.onSetReach(option.id) }
             }
         }
+    }
+}
+
+/// A clip's start and length as timecode, for VoiceOver, kept while
+/// they are the same. In a box, so keeping them redraws nothing.
+@MainActor
+final class ClipTimecodeCache {
+    private struct Key: Equatable {
+        var start: CMTime
+        var duration: CMTime
+        var frameRate: Double
+    }
+
+    private var key: Key?
+    private var value = (start: "", duration: "")
+
+    func timecodes(of clip: TimelineClip, frameRate: Double) -> (start: String, duration: String) {
+        let key = Key(start: clip.startOffset, duration: clip.placedDuration, frameRate: frameRate)
+        if key != self.key {
+            self.key = key
+            value = (clip.startOffset.timecode(frameRate: frameRate), clip.placedDuration.timecode(frameRate: frameRate))
+        }
+        return value
     }
 }

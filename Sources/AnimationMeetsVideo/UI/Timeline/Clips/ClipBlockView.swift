@@ -67,6 +67,9 @@ struct ClipBlockView: View {
     /// The drag in progress, and what it last sent up, kept where writing
     /// it doesn't redraw the block.
     @State private var drag = ClipDragBook()
+    /// The timecodes VoiceOver reads, made again only when they change
+    /// (`accessibilityDescription`).
+    @State var timecodes = ClipTimecodeCache()
     /// Where the music point is being dragged to, until the edit lands.
     @State var musicPointDraft: CMTime?
     /// A transition's length while its inner side is dragged.
@@ -296,6 +299,7 @@ struct ClipBlockView: View {
             // However short the clip, a press within a few points of it
             // lands on it, to select or move it.
             .contentShape(MinimumWidthRectangle(minWidth: Self.minimumHitWidth))
+            .pointerStyle(pointerStyle)
             .offset(x: drawnX)
             .offset(carry)
             .offset(arrival)
@@ -514,6 +518,18 @@ struct ClipBlockView: View {
     /// points at least), so its middle still moves it.
     static func trimHandleWidth(forClipWidth width: CGFloat) -> CGFloat {
         width >= 3 * trimHandleWidth ? trimHandleWidth : max(2, width / 4)
+    }
+
+    /// The pointer over the block: an open hand with the arrow, closed
+    /// while the clip is carried (but for an Option-drag, which shows the
+    /// copy pointer); the resize arrows with the slip tool, which slides
+    /// the footage sideways. The trim handles show their own.
+    private var pointerStyle: PointerStyle? {
+        switch model.tool {
+        case .arrow: isLifted ? (isCopying ? nil : .grabActive) : .grabIdle
+        case .slip: .columnResize
+        case .blade: nil
+        }
     }
 
     private func setBladeX(_ x: CGFloat?) {
