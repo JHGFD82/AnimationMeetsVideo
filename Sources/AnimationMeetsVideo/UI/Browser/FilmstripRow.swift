@@ -171,6 +171,11 @@ struct FilmstripThumbnail: View {
     let time: CMTime
     let height: CGFloat
     var keepsPictureWhileLoading = false
+    /// Off, no picture is read: the one shown stays, or one already kept
+    /// for this time is shown, until it is on again. For a clip being
+    /// dragged, whose pictures would otherwise be read and decoded under
+    /// the drag.
+    var loads = true
     @State private var loaded: (key: String, image: NSImage)?
 
     private var key: String { "\(url?.path ?? "")|\(time.value)/\(time.timescale)|\(height)" }
@@ -182,11 +187,15 @@ struct FilmstripThumbnail: View {
                 Image(nsImage: loaded.image)
                     .resizable()
                     .scaledToFit()
+            } else if !loads, let url, let kept = FrameThumbnails.cached(url: url, time: time, height: height) {
+                Image(nsImage: kept)
+                    .resizable()
+                    .scaledToFit()
             }
         }
-        .task(id: key) {
+        .task(id: loads ? key : nil) {
             let key = key
-            guard let url, let image = await FrameThumbnails.image(url: url, time: time, height: height) else { return }
+            guard loads, let url, let image = await FrameThumbnails.image(url: url, time: time, height: height) else { return }
             loaded = (key, image)
         }
     }

@@ -189,7 +189,7 @@ struct ClipBlockView: View {
                             ClipThumbnails(
                                 clip: shown, media: pictures, pixelsPerSecond: model.pixelsPerSecond,
                                 liveX: liveX, drawnX: drawnX, width: drawnWidth, height: model.height - Self.labelBand,
-                                enabled: model.clip.enabled
+                                enabled: model.clip.enabled, loads: !isLifted && !isTrimming
                             )
                         }
                     }
@@ -434,18 +434,44 @@ struct ClipBlockView: View {
     private func waveform(of shown: TimelineClip, drawnX: CGFloat, liveX: CGFloat, width: CGFloat) -> some View {
         if model.showsWaveform, model.splitsChannels || ClipWaveform.strength(atHeight: model.height) > 0,
            case .media(let media) = model.info, let url = media.url {
-            let sourceStart = shown.sourceTime(atTimelineTime: CMTimeAdd(shown.startOffset, CMTime(seconds: Double((drawnX - liveX) / model.pixelsPerSecond), preferredTimescale: 600)))
             ClipWaveform(
                 url: url,
-                fileStart: media.fileTime(forSourceTime: sourceStart).seconds,
-                // A retimed clip plays more or less of the file for each
-                // second of the timeline.
-                secondsPerPoint: shown.speed(atSource: shown.trimStart) / 100 / Double(model.pixelsPerSecond),
+                fileTimes: Self.waveformFileTimes(of: shown, media: media, pixelsPerSecond: model.pixelsPerSecond, inset: drawnX - liveX, width: width),
                 width: width,
                 height: model.height,
-                splitsChannels: model.splitsChannels
+                splitsChannels: model.splitsChannels,
+                // Not read under a drag; it is read once let go.
+                loads: !isLifted && !isTrimming
             )
         }
+    }
+
+    /// How far apart a clip whose speed changes is anchored to its file.
+    static let waveformAnchorStep: CGFloat = 16
+
+    /// Which file time each point across the drawn part of `clip` plays,
+    /// `inset` points after its start and `width` wide. At one speed it is
+    /// a straight line; a clip whose speed changes along it (more than one
+    /// retime mark) is anchored where each speed is set and every
+    /// `waveformAnchorStep` points between, so its sound is drawn as far
+    /// as it plays, not at its first speed throughout.
+    nonisolated static func waveformFileTimes(
+        of clip: TimelineClip, media: MediaClip, pixelsPerSecond: CGFloat, inset: CGFloat, width: CGFloat
+    ) -> WaveformFileTimes {
+        func fileSeconds(atX x: CGFloat) -> Double {
+            let along = CMTime(seconds: Double((inset + x) / pixelsPerSecond), preferredTimescale: 48_000)
+            return media.fileTime(forSourceTime: clip.sourceTime(atTimelineTime: CMTimeAdd(clip.startOffset, along))).seconds
+        }
+        let marks = RetimeMark.marks(of: clip)
+        guard marks.count > 1 else {
+            // A retimed clip plays more or less of the file for each second
+            // of the timeline.
+            let speed = clip.speed(atSource: clip.trimStart) / 100
+            return .linear(start: fileSeconds(atX: 0), secondsPerPoint: speed / Double(pixelsPerSecond))
+        }
+        var xs = Array(stride(from: CGFloat(0), to: width, by: waveformAnchorStep)) + [width]
+        xs += marks.map { CGFloat($0.seconds) * pixelsPerSecond - inset }.filter { $0 > 0 && $0 < width }
+        return WaveformFileTimes(anchors: xs.map { .init(x: $0, seconds: fileSeconds(atX: $0)) })
     }
 
     /// The clip's volume as a line across the drawn part of the block.

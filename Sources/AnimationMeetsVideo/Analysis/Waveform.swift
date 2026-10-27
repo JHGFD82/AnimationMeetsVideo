@@ -179,6 +179,11 @@ final class WaveformCache {
         return nil
     }
 
+    /// The file's waveform if it has been read, without starting a read.
+    func loadedWaveform(for url: URL) -> Waveform? {
+        waveforms[url]
+    }
+
     /// Forgets every waveform, for when a file was swapped under the same
     /// path.
     func invalidateAll() {
