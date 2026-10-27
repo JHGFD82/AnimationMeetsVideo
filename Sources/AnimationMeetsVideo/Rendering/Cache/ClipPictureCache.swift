@@ -176,11 +176,12 @@ final class ClipPictureCache: @unchecked Sendable {
         guard CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_64RGBAHalf, attributes as CFDictionary, &buffer) == kCVReturnSuccess,
               let buffer
         else { return nil }
-        // Drawn with its bottom left at the buffer's, and finished before
+        // A picture made from a pixel buffer takes its first row as the
+        // top, so the top is drawn into the first row; finished before
         // anything reads it.
         let destination = CIRenderDestination(pixelBuffer: buffer)
         destination.colorSpace = nil
-        destination.isFlipped = false
+        destination.isFlipped = true
         let placed = picture.cropped(to: extent).transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY))
         guard (try? Self.context.startTask(toRender: placed, to: destination).waitUntilCompleted()) != nil else { return nil }
         let kept = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
