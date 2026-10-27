@@ -94,6 +94,7 @@ struct NewLayerDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         let kind = hover(info)?.hovered
         onHover(nil)
+        MediaDragSession.shared.end()
         guard let kind else { return false }
         let providers = info.itemProviders(for: [.text])
         guard !providers.isEmpty else { return false }
