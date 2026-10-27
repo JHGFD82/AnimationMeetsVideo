@@ -248,8 +248,8 @@ struct TimelineView: View {
                 PlayheadReader(playhead: playhead) { parked in
                     PlayheadTimecode(playback: playback, parked: parked, frameRate: timeline.frameRate)
                 }
-                TimelineZoomSliders(
-                    horizontal: zoomFractionBinding,
+                TimelineHeaderZoomSliders(
+                    timeline: self,
                     vertical: Binding(
                         get: { shownAreaLayout.shownLayerHeightFraction },
                         set: {

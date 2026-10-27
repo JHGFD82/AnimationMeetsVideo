@@ -26,3 +26,17 @@ struct TimelineZoomSliders: View {
         }
     }
 }
+
+/// A timeline's zoom sliders, their time binding made in this body rather
+/// than the header's. The binding reads the zoom and the scroll, and
+/// SwiftUI reads a binding as it compares the views it is handed to, so
+/// made in the header it built the whole header again on every scroll step.
+struct TimelineHeaderZoomSliders: View {
+    let timeline: TimelineView
+    let vertical: Binding<Double>
+    let onEditingChanged: (Bool) -> Void
+
+    var body: some View {
+        TimelineZoomSliders(horizontal: timeline.zoomFractionBinding, vertical: vertical, onEditingChanged: onEditingChanged)
+    }
+}
