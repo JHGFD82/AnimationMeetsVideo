@@ -120,6 +120,26 @@ emptied timeline or a slow frame never shows black in between.
   host time (`setRate(_:time:atHostTime:)`) at the time the timeline has
   reached by then, so the playhead neither falls behind nor jumps, and its
   first frame fades in over the last one in 80 ms.
+- **When items are built and swapped.** `ViewerPipeline`, outside any
+  view, takes everything the viewer follows as events, in order, on one
+  loop. An edit that leaves the `StructureKey` the same never builds (see
+  "Values without a build"). One of structure asks for a build of the
+  latest project: there is one request, which a newer edit overwrites, and
+  one build at a time. A build is never cancelled by a newer edit, so
+  something always finishes; a result whose key is no longer the latest is
+  dropped and the latest built, so a burst of edits builds at most the
+  first and the last. A 75 ms pause before a build lets a burst land; it
+  only saves work. A build is swapped in only while no value drag is under
+  way, and one for renders alone only while paused. Another timeline
+  stops the build under way (`CompositionExporter` checks for cancellation
+  between its stages and clips) and builds the new one at once. The editor
+  only tells it what it shows (`ViewerPipeline.show`), once per edit; it
+  works out the keys itself, skips an edit the picture doesn't show (a
+  rename, a volume), and follows renders finishing, the package, motion
+  blur in the viewer, play and pause and value drags on its own. The
+  timeline below is drawn from a snapshot of what it shows
+  (`TimelineView.Snapshot`), so it isn't redrawn for an edit of another
+  timeline's values or a tick of the playhead.
 - **An emptied timeline** lets go of the player's item, and the viewer
   says there are no clips over its last picture, so emptying and filling a
   timeline again (an undo) shows no black.
@@ -258,11 +278,8 @@ emptied timeline or a slow frame never shows black in between.
   was pressed, so it covers a heavy stretch's first seconds at once;
   background renders cover the rest once the timeline is idle.
 - **Following other edits.** An edit that changes the structure builds
-  a new composition, swapped in once it is built (see "The viewer's
-  picture"); while playing, a run of edits swaps once, when they have
-  paused for 0.3 s, since every swap holds the picture for a moment. A
-  build is never cancelled by the next edit, only queued behind it, so
-  something always finishes.
+  a new composition, swapped in once it is built, playing or paused (see
+  "The viewer's picture").
 - **Drawing frames at once.** The viewer's compositor draws one frame at a
   time, in the order asked for, so a seek lets go of everything queued.
   Export and background renders, which draw without `DrawingOptions`,

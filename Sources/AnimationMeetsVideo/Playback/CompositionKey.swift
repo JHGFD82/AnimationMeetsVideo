@@ -92,7 +92,11 @@ struct StructureKey: Equatable {
     private var composition: CompositionKey
 
     init(project: EditingProject) {
-        composition = CompositionKey(project: project)
+        self.init(composition: CompositionKey(project: project))
+    }
+
+    init(composition key: CompositionKey) {
+        composition = key
         for t in composition.timelines.indices {
             for l in composition.timelines[t].layers.indices {
                 for c in composition.timelines[t].layers[l].clips.indices {

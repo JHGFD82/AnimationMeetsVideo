@@ -135,6 +135,14 @@ final class ViewerPipeline {
     /// The structure last shown (`show`), to tell an edit of values from one
     /// of structure as it is sent; `.some(nil)` for an empty timeline.
     @ObservationIgnored private var shownKey: StructureKey??
+    /// What was last shown, to skip an edit the picture doesn't show (a
+    /// rename, a volume) and notice files gone or back.
+    @ObservationIgnored private var shownComposition: CompositionKey?
+    @ObservationIgnored private var shownOffline: Set<UUID> = []
+    /// What the editor's pipeline follows of its player, its renderer and
+    /// the app, so the editor needn't (`follow`).
+    @ObservationIgnored private var followers: [AnyObject] = []
+    @ObservationIgnored private var notificationTasks: [Task<Void, Never>] = []
     @ObservationIgnored private var latest: Request?
     @ObservationIgnored private var generation = 0
     /// The newest generation whose build was started.
@@ -172,7 +180,10 @@ final class ViewerPipeline {
         }
     }
 
-    /// The editor's pipeline: `playback`'s items, built for the viewer.
+    /// The editor's pipeline: `playback`'s items, built for the viewer. It
+    /// follows on its own what changes them besides the project: renders
+    /// finishing, the package, motion blur in the viewer, play and pause,
+    /// and value gestures.
     convenience init(playback: PlaybackModel, renderer: RenderScheduler?) {
         self.init(player: playback, renderer: renderer) { [weak playback] source, cache in
             try await CompositionExporter.buildComposedTimeline(
@@ -180,16 +191,41 @@ final class ViewerPipeline {
                 options: playback?.drawingOptions, cache: source.isPartial ? nil : cache
             )
         }
+        follow({ playback.isPlaying }) { $0.send(.playbackStateChanged(isPlaying: $1)) }
+        follow({ playback.motionBlurInPreview }) { pipeline, _ in pipeline.send(.drawingOptionsChanged) }
+        if let renderer {
+            follow({ renderer.finishedCount }) { pipeline, _ in pipeline.send(.renderFinished) }
+            follow({ renderer.packageURL }) { pipeline, _ in pipeline.send(.packageURLChanged) }
+        }
+        for (name, event) in [(Notification.Name.valueGestureDidBegin, Event.gestureBegan), (.valueGestureDidEnd, .gestureEnded)] {
+            notificationTasks.append(Task { [weak self] in
+                for await _ in NotificationCenter.default.notifications(named: name) {
+                    self?.send(event)
+                }
+            })
+        }
     }
 
     deinit {
         continuation.finish()
+        for task in notificationTasks { task.cancel() }
+    }
+
+    /// Sends what `changed` makes of each new value of `read`.
+    private func follow<Value: Equatable>(_ read: @escaping () -> Value, _ changed: @escaping (ViewerPipeline, Value) -> Void) {
+        followers.append(Follower(read: read) { [weak self] value in
+            guard let self else { return }
+            changed(self, value)
+        })
     }
 
     func send(_ event: Event) {
         switch event {
         case .structureChanged(let key, _): shownKey = .some(key)
-        case .timelineChanged(let source, _), .appeared(let source, _): shownKey = .some(Self.key(of: source))
+        case .timelineChanged(let source, _), .appeared(let source, _):
+            shownKey = .some(Self.key(of: source))
+            shownComposition = source.hasContent ? CompositionKey(project: source.project) : nil
+            shownOffline = source.offlineMedia
         default: break
         }
         eventsSent += 1
@@ -199,7 +235,14 @@ final class ViewerPipeline {
     /// Shows `source`: an edit of its values, or of its structure, as its
     /// `StructureKey` says.
     func show(_ source: ViewerSource) {
-        let key = Self.key(of: source)
+        let composition = source.hasContent ? CompositionKey(project: source.project) : nil
+        let offlineChanged = source.offlineMedia != shownOffline
+        shownOffline = source.offlineMedia
+        defer { if offlineChanged { send(.offlineMediaChanged) } }
+        // Nothing the picture shows changed.
+        if !source.isHeld, let composition, composition == shownComposition, shownKey != nil { return }
+        if !source.isHeld { shownComposition = composition }
+        let key = composition.map(StructureKey.init(composition:))
         if let key, shownKey == .some(key) {
             send(.valuesChanged(source))
         } else if !source.isHeld {
@@ -216,6 +259,16 @@ final class ViewerPipeline {
         guard let key = Self.key(of: source), shownKey == .some(key) else { return false }
         send(.valuesChanged(source))
         return true
+    }
+
+    /// A held drag ended: the picture goes back to `source`'s values, the
+    /// project's, whether the drag's last value went into it or, cancelled,
+    /// none did.
+    func endHeld(_ source: ViewerSource) {
+        var source = source
+        source.isHeld = true
+        guard let key = Self.key(of: source), shownKey == .some(key) else { return }
+        send(.valuesChanged(source))
     }
 
     private static func key(of source: ViewerSource) -> StructureKey? {
@@ -480,5 +533,35 @@ extension PlaybackModel: ViewerPlayer {
         let item = AVPlayerItem(asset: composed.composition)
         prepare(item, with: composed, key: key, frameRate: frameRate)
         return await swap(to: item, at: time, playing: isPlaying)
+    }
+}
+
+/// Calls `changed` with each new value of `read`, an observable value, on
+/// the main actor.
+@MainActor
+private final class Follower<Value: Equatable> {
+    private let read: () -> Value
+    private let changed: (Value) -> Void
+    private var last: Value
+
+    init(read: @escaping () -> Value, changed: @escaping (Value) -> Void) {
+        self.read = read
+        self.changed = changed
+        last = read()
+        track()
+    }
+
+    private func track() {
+        withObservationTracking { _ = read() } onChange: { [weak self] in
+            Task { @MainActor in self?.fire() }
+        }
+    }
+
+    private func fire() {
+        let now = read()
+        track()
+        guard now != last else { return }
+        last = now
+        changed(now)
     }
 }

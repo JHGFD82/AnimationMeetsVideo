@@ -136,7 +136,11 @@ struct TimelineEditorSurface<Library: View>: View {
         return project.showing(upTo: showing.effectID, ofClip: showing.clipID, in: timelineID)
     }
 
-    private var compositionKey: CompositionKey { CompositionKey(project: viewedProject) }
+    /// What the viewer shows besides the project.
+    private struct ViewerInputs: Equatable {
+        var showUpTo: EffectsPanelState.ShowUpTo?
+        var offlineMedia: Set<UUID>
+    }
 
     private func send(_ event: ViewerPipeline.Event) {
         pipeline?.send(event)
@@ -342,14 +346,6 @@ struct TimelineEditorSurface<Library: View>: View {
                 sideTab = .effects
             }
         }
-        // A value drag: the viewer follows it with the item as it is, and
-        // swaps nothing until it ends (see `ViewerPipeline`).
-        .onReceive(NotificationCenter.default.publisher(for: .valueGestureDidBegin)) { _ in
-            send(.gestureBegan)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .valueGestureDidEnd)) { _ in
-            send(.gestureEnded)
-        }
         .onChange(of: project, initial: true) { _, project in
             graphs.update(project: project)
             // Volumes aren't part of the composition: the player's audio
@@ -364,6 +360,9 @@ struct TimelineEditorSurface<Library: View>: View {
             TimelinePreviews.shared.projectChanged(project)
             // Show Up to Here lets go of an effect that is gone.
             if effectsState.showUpTo != nil, partialView == nil { effectsState.showUpTo = nil }
+            // The viewer works out what the edit changed (see
+            // `ViewerPipeline.show`).
+            showProject()
         }
         .onAppear {
             playhead.liveTime = { [playback] in playback.isPlaying ? playback.player.currentTime() : nil }
@@ -384,13 +383,15 @@ struct TimelineEditorSurface<Library: View>: View {
             playheadTime = .zero
             send(.timelineChanged(source(of: project), at: .zero))
         }
-        .onChange(of: compositionKey) { _, _ in
+        .onChange(of: ViewerInputs(showUpTo: partialView, offlineMedia: offlineMedia)) { _, _ in
             showProject()
         }
     }
 
-    /// What the viewer follows besides the project: the playhead, play and
-    /// pause, renders, the package and the drawing options.
+    /// The playhead, which the graphs and the renderer start from, and
+    /// where playing stopped. What else the viewer follows (renders, the
+    /// package, motion blur, play and pause, value gestures) its pipeline
+    /// follows on its own.
     private func followingViewer(_ content: some View) -> some View {
         content
         // Wherever it stops, playing or scrubbing, is where rendering starts.
@@ -415,26 +416,8 @@ struct TimelineEditorSurface<Library: View>: View {
             // Its time, not the player's: a seek just asked for (stepping a
             // frame pauses, then seeks) is there at once.
             if !playing { playheadTime = playback.currentTime }
-            send(.playbackStateChanged(isPlaying: playing))
-        }
-        // A finished render plays once the item is rebuilt with it.
-        // Renders only run while paused, but one can finish just as play
-        // is pressed.
-        .onChange(of: renderer?.finishedCount) { _, _ in
-            send(.renderFinished)
         }
         .messageAlert("Import Failed", message: $dropError)
-        .onChange(of: renderer?.packageURL) { _, _ in
-            send(.packageURLChanged)
-        }
-        // Motion blur on or off in the viewer redraws what it shows.
-        .onChange(of: playback.motionBlurInPreview) { _, _ in
-            send(.drawingOptionsChanged)
-        }
-        // The file check found media gone or back.
-        .onChange(of: offlineMedia) { _, _ in
-            send(.offlineMediaChanged)
-        }
         .onAppear {
             if pipeline == nil { pipeline = ViewerPipeline(playback: playback, renderer: renderer) }
             send(.appeared(source(of: project), at: playheadTime))
@@ -535,6 +518,7 @@ struct TimelineEditorSurface<Library: View>: View {
                 effectsState: effectsState,
                 focus: clipFocus
             )
+            .equatable()
         } else {
             ContentUnavailableView("No Timeline Selected", systemImage: "timeline.selection")
         }
@@ -644,7 +628,7 @@ struct TimelineEditorSurface<Library: View>: View {
         playback.mixCurves.replace(with: MixCurves.of(held))
         graphs.update(project: held)
         let key = CompositionKey(project: viewed(held))
-        let before = previous.map { CompositionKey(project: self.viewed($0)) } ?? compositionKey
+        let before = CompositionKey(project: viewed(previous ?? project))
         // Retiming waits for the mouse to be released; volume and pan need
         // no picture.
         guard key != before, !key.differsOnlyInSpeed(from: before) else { return false }
@@ -659,7 +643,7 @@ struct TimelineEditorSurface<Library: View>: View {
     private func heldDragEnded(drew: Bool) {
         playback.mixCurves.replace(with: MixCurves.of(project))
         graphs.update(project: project)
-        if drew { pipeline?.show(source(of: project)) }
+        if drew { pipeline?.endHeld(source(of: project)) }
     }
 }
 

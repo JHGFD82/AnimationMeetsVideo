@@ -357,6 +357,21 @@ import Testing
         #expect(h.pipeline.phase == .idle)
     }
 
+    /// A rename or a volume changes nothing the picture shows: nothing is
+    /// drawn, planned or built.
+    @Test func anEditThePictureDoesntShowIsIgnored() async throws {
+        var h = Harness()
+        h.builder.gate.open()
+        h.pipeline.send(.appeared(h.source(), at: .zero))
+        try await eventually { h.player.swapped.count == 1 }
+        let layer = h.project.timeline(id: h.timelineID)!.layers[0].id
+        h.project.renameLayer(layer, in: h.timelineID, to: "Renamed")
+        h.pipeline.show(h.source())
+        try await settle(h)
+        #expect(h.player.shownValues == 0)
+        #expect(h.pipeline.buildsStarted == 1)
+    }
+
     @Test func aHeldStepOfStructureIsLetGo() async throws {
         var h = Harness()
         h.builder.gate.open()
