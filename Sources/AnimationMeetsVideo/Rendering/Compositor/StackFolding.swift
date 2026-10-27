@@ -139,13 +139,29 @@ struct LookStep: Equatable, Sendable {
 }
 
 enum StackFolding {
+    /// Where the anchor point is in the frame at source time `time`: its
+    /// offset from the middle of the picture, `center`. A shape or text
+    /// clip's picture is its drawing, so there the offset is from the
+    /// middle of its first shape (the frame's middle plus that shape's
+    /// Position), and a shape moved by its Position still turns about
+    /// itself.
+    static func anchor(effects: [Effect], anchorPoint: AnimatedValue<Vector2>, at time: CMTime, center: CGPoint) -> CGPoint {
+        let offset = anchorPoint.value(at: time)
+        var origin = center
+        if let shape = effects.first(where: { $0.enabled && $0.kind.drawsShape }),
+           let position = shape.control(.shapePosition), position.enabled {
+            let values = position.values(at: time)
+            if values.count == 2 { origin = CGPoint(x: center.x + values[0], y: center.y + values[1]) }
+        }
+        return CGPoint(x: origin.x + offset.x, y: origin.y + offset.y)
+    }
+
     /// The placement the stack's Transform effects give the fitted picture
     /// at source time `time`, as if nothing but them were in it.
     /// `center` is the center of the picture, where the anchor point's
-    /// offset is measured from.
+    /// offset is measured from (see `anchor`).
     static func fold(effects: [Effect], anchorPoint: AnimatedValue<Vector2>, at time: CMTime, center: CGPoint) -> FoldedPlacement {
-        let offset = anchorPoint.value(at: time)
-        var placement = FoldedPlacement(anchor: CGPoint(x: center.x + offset.x, y: center.y + offset.y))
+        var placement = FoldedPlacement(anchor: anchor(effects: effects, anchorPoint: anchorPoint, at: time, center: center))
         for effect in effects where effect.enabled && effect.kind == .transform {
             for control in effect.controls {
                 placement.apply(control, movesAnchor: effect.movesAnchor, at: time)
@@ -157,8 +173,7 @@ enum StackFolding {
     /// The steps to draw for the stack at source time `time`: nothing while
     /// every control is at its default.
     static func steps(effects: [Effect], anchorPoint: AnimatedValue<Vector2>, at time: CMTime, center: CGPoint) -> [ResolvedStep] {
-        let offset = anchorPoint.value(at: time)
-        var placement = FoldedPlacement(anchor: CGPoint(x: center.x + offset.x, y: center.y + offset.y))
+        var placement = FoldedPlacement(anchor: anchor(effects: effects, anchorPoint: anchorPoint, at: time, center: center))
         var colors: [ColorOp] = []
         var steps: [ResolvedStep] = []
         // What has built up becomes steps; the anchor keeps its place in the

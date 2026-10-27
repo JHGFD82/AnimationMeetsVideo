@@ -70,7 +70,11 @@ an effect. It is the point that scale and rotation turn about, given as an
 offset from the center of the clip's picture, in timeline pixels at 100%
 scale. Its default is (0, 0), the center. Because it is relative to the
 fitted picture, not to the media's pixels, replacing the media with a
-different resolution keeps it in place. It can be keyframed.
+different resolution keeps it in place. It can be keyframed. A shape or
+text clip's picture is its drawing, so there the offset is from the
+middle of its first shape (the frame's middle plus that shape's
+Position): a shape moved by its own Position still scales and turns
+about itself.
 
 ### Source time
 

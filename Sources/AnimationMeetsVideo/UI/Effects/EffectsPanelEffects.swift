@@ -52,7 +52,9 @@ extension EffectsPanel {
                 onEase: { time, preset in editClip(clip.id) { $0.anchorPoint.applyEase(preset, at: time) } }
             )
         )
-        .help("Where scale and rotation turn about, from the center of the picture. It is the top of the stack, so it applies to every step.")
+        .help(clip.source == .graphic
+              ? "Where scale and rotation turn about, from the middle of the first shape. It is the top of the stack, so it applies to every step."
+              : "Where scale and rotation turn about, from the center of the picture. It is the top of the stack, so it applies to every step.")
     }
 
     // MARK: Effects
