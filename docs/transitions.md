@@ -1,8 +1,9 @@
 # Transitions
 
-Status: **implemented**. 25 kinds in five categories, each with the
-settings it needs, drawn the same in the viewer, background renders and
-export. How transitions are placed, joined across cuts, resized and
+Status: **implemented**. 25 kinds of picture in five categories, each
+with the settings it needs, drawn the same in the viewer, background
+renders and export, and three of sound in a sixth (see
+[Sound](#sound)). How transitions are placed, joined across cuts, resized and
 curved is in [timeline.md](timeline.md#transitions); this document covers
 what each kind does and how it's drawn.
 
@@ -149,6 +150,25 @@ and after is its layers drawn over that.
 
 The clip's sound fades in and out under its transitions, and crossfades
 at a joined cut; see [audio.md](audio.md#under-transitions).
+
+The **Audio** category holds transitions of sound alone, for clips that
+make sound and draw no picture: audio files, detached sound, and a
+nested timeline's detached sound (`TransitionsTaken`). A clip with a
+picture takes only the other five categories, and a sound clip only
+these. Each fades its sound with one shape (`TransitionKind.soundShape`,
+an `AudioCrossfade`), at an open end from or to silence as at a joined
+cut, where the two clips' sounds crossfade over their spare sound as
+pictures do over spare footage:
+
+- **Crossfade**: an S-curve, easing each sound out and in.
+- **Equal Power**: each side 3 dB down at the middle, so two
+  different sounds stay as loud throughout.
+- **Linear**: the gain changes at a steady rate.
+
+Their shape takes the place of a curve, so they have no curve to edit,
+and an expanded joint of them has no sound lane to pick another shape.
+They draw nothing: dropped on a clip with a picture by a paste, they
+leave it as it is.
 
 ### Limits
 

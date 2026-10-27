@@ -45,7 +45,7 @@ extension ClipBlockView {
             TransitionMark(kind: transition.kind, curve: transition.curve, edge: edge, isSelected: isSelected)
                 .frame(width: width, height: height)
                 .contextMenu { transitionMenu(transition, edge: edge) }
-            if isSelected, width >= curveEditingWidth, height >= 30 {
+            if isSelected, !transition.kind.isAudio, width >= curveEditingWidth, height >= 30 {
                 TransitionCurveEditor(
                     curve: transition.curve,
                     edge: edge,

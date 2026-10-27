@@ -6,9 +6,9 @@ import SwiftUI
 /// and the incoming clip's rising across the transition, drawn in the
 /// shape they crossfade with. The timing is the transition's, set in the
 /// footage lane above; only the shape is chosen here (its menu, or the
-/// picker beside the lane's name). Sound detached from its picture takes
-/// no transitions, so a joint only has this lane while the sound is
-/// attached.
+/// picker beside the lane's name). A joint only has this lane while the
+/// sound is attached: detached sound takes the Audio transitions, whose
+/// kind is their shape.
 struct TransitionSoundLane: View {
     let joint: TransitionJoint
     /// The project's shape, which the transition follows when it has none.

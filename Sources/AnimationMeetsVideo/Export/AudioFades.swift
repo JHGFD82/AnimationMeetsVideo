@@ -60,9 +60,10 @@ extension EditingProject {
         var fades: [AudioFade] = []
         var head = CMTime.zero, tail = CMTime.zero
         func fade(from start: CMTime, for length: CMTime, rising: Bool, _ transition: ClipTransition, joined: Bool) {
+            // A transition of sound has its shape at either kind of end.
             fades.append(AudioFade(
                 start: start.seconds, end: CMTimeAdd(start, length).seconds, rising: rising, curve: transition.curve,
-                crossfade: joined ? transition.audioCrossfade ?? jointAudioCrossfade : nil
+                crossfade: transition.kind.soundShape ?? (joined ? transition.audioCrossfade ?? jointAudioCrossfade : nil)
             ))
         }
 

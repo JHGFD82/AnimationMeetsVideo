@@ -242,6 +242,14 @@ struct UISnapshots {
         )
     }
 
+    /// The Effects Library's transitions, the Audio ones last.
+    @Test func transitionsPanel() throws {
+        try SnapshotSupport.render(
+            TransitionsPanel().preferredColorScheme(.dark),
+            "transitions-panel", size: CGSize(width: 320, height: 1100)
+        )
+    }
+
     /// Timeline Settings for a timeline with a teal preview background.
     @Test func timelineSettings() async throws {
         var project = EditingProject.empty

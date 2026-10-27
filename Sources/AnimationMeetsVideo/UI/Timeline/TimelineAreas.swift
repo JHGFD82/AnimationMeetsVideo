@@ -13,10 +13,11 @@ extension TimelineView {
         return project.joint(at: id, in: timelineID, layer: layer.id)
     }
 
-    /// Whether an open joint has a sound lane: either clip's sound is still
-    /// attached to its picture. Detached sound takes no transitions.
+    /// Whether an open joint has a sound lane, to choose how the sound
+    /// crossfades: either clip's sound is still attached to its picture. A
+    /// transition of sound has its kind's shape, and no lane.
     private func jointHasSound(_ joint: TransitionJoint) -> Bool {
-        project.playsAudio(joint.outgoing) || project.playsAudio(joint.incoming)
+        !joint.transition.kind.isAudio && (project.playsAudio(joint.outgoing) || project.playsAudio(joint.incoming))
     }
 
     /// The height of what an expanded transition opens under its layer:
@@ -208,7 +209,7 @@ extension TimelineView {
                     .equatable()
                     if let joint = shownJoint(in: layer) {
                         HStack {
-                            Label("Transition video", systemImage: "square.on.square.dashed")
+                            Label(joint.transition.kind.isAudio ? "Transition audio" : "Transition video", systemImage: "square.on.square.dashed")
                                 .font(Design.Typeface.label)
                                 .foregroundStyle(Design.textSecondary)
                             Spacer()

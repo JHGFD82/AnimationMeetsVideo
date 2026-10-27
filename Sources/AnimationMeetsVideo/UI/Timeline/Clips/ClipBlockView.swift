@@ -27,8 +27,9 @@ struct ClipBlockView: View {
     let showsWaveform: Bool
     /// Draws the waveform's channels apart, at any height.
     let splitsChannels: Bool
-    /// Clips with pictures take transitions dropped from the panel.
-    let acceptsTransitions: Bool
+    /// Which transitions dropped from the panel it takes: of pictures, or
+    /// of sound on a clip that only makes sound.
+    let transitionsTaken: TransitionsTaken
     /// Set when the clip's way in joins it to the clip before: that
     /// transition is drawn over the cut by the row instead.
     let joinedLead: CMTime?
@@ -364,7 +365,7 @@ struct ClipBlockView: View {
                     onDropGenerator(generator.kind, CMTime(seconds: max(0, Double((drawnX + location.x) / pixelsPerSecond)), preferredTimescale: 600))
                     return true
                 }
-                if let transition = payload.transition, acceptsTransitions {
+                if let transition = payload.transition, transitionsTaken.takes(transition.kind) {
                     // The nearer end of the clip gets the transition.
                     let x = drawnX + location.x
                     onSetTransition(transition.kind, x - liveX < liveWidth / 2 ? .leading : .trailing)
@@ -384,7 +385,7 @@ struct ClipBlockView: View {
             } isTargeted: { targeted in
                 // Whether this clip takes what is over it isn't known until
                 // the drop, so it lights for any drag it could take.
-                isDropTarget = targeted && (acceptsTransitions || acceptsEffects || acceptsSoundEffects)
+                isDropTarget = targeted && (transitionsTaken != .none || acceptsEffects || acceptsSoundEffects)
             }
             .contextMenu { ClipMenuHost(block: self, key: menuKey).equatable() }
             .onContinuousHover(coordinateSpace: .named(space)) { phase in

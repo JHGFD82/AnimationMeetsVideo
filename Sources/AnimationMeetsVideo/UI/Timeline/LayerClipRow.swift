@@ -231,7 +231,7 @@ struct LayerClipRow: View {
                     hasLinkedAudio: project.canDetachAudio(clip),
                     showsWaveform: project.isAudioOnly(clip),
                     splitsChannels: showsChannels,
-                    acceptsTransitions: project.playsVideo(clip),
+                    transitionsTaken: project.transitionsTaken(by: clip),
                     joinedLead: joinedLead,
                     isSelected: isSelected || isInGroup,
                     isInGroup: isInGroup,

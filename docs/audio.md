@@ -205,8 +205,13 @@ alone, rather than 3 dB down.
   `EditingProject.jointAudioCrossfade`), and a transition can choose its
   own (`ClipTransition.audioCrossfade`). The timing is always the
   transition's: lengthening or moving it moves the sound's crossfade with
-  the picture's. This is for sound still attached to its picture; detached
-  sound takes no transitions, and is faded by hand.
+  the picture's. This is for sound still attached to its picture.
+- Sound on its own (an audio file, detached sound) takes the **Audio**
+  transitions instead: Crossfade, Equal Power and Linear,
+  each fading with its one shape (S-Curve, Equal Power,
+  Linear) at an open end as at a joined cut, where the two sounds
+  crossfade over their spare sound (see
+  [transitions.md](transitions.md#sound)).
 
 Each fade is a stage of the clip's track (`MixStage.fade`, in root time),
 so a nested timeline's clip fades all the sound inside it, and a clip with

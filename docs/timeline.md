@@ -547,7 +547,8 @@ in the inspector) splits them: the clips keep only their picture
 (`streams = .video`), and copies with the same timing and trims, playing
 only the sound (`streams = .audio`), go onto a new sound layer. From
 then on the two are ordinary clips: the sound is colored as audio, moves
-freely off the frame grid, carries the beats, and takes no transitions.
+freely off the frame grid, carries the beats, and takes only the Audio
+transitions (see [transitions.md](transitions.md#sound)).
 
 A **nested timeline's** clip detaches the same way, from its menu, the
 layer header or the inspector, when anything in it makes sound
@@ -630,8 +631,9 @@ clip and the reach of its joints, and drawn there by groups that share
 those clips, one above the layer for its frames before the cut and one
 below for the frames under its neighbor's transition.
 
-There are 25 kinds in five groups (dissolves, wipes, moves, 3D,
-stylized); what each does, its settings (set in the inspector under the
+There are 25 kinds of picture in five groups (dissolves, wipes, moves,
+3D, stylized), and three of sound (Audio) for clips with no picture;
+what each does, its settings (set in the inspector under the
 transition's length) and how it is drawn are in
 [transitions.md](transitions.md). A wipe or slide acts in the frame of
 the timeline the clip is on, after the clip's effect stack.

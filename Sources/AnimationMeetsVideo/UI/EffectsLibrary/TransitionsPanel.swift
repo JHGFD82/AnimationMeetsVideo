@@ -61,7 +61,7 @@ struct TransitionsPanel: View {
             }
             .sunken(.sunken)
 
-            Text("Drag one onto the start or end of a clip.")
+            Text("Drag one onto the start or end of a clip; Audio ones onto a sound clip.")
                 .font(Design.Typeface.label)
                 .foregroundStyle(Design.textTertiary)
                 .padding(.horizontal, Design.Space.group)
@@ -98,7 +98,7 @@ private struct TransitionTile: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .editorAnimation(Design.Motion.select, value: isHovering)
-        .help("\(kind.name): drag onto the start or end of a clip")
+        .help(kind.isAudio ? "\(kind.name): drag onto the start or end of a sound clip" : "\(kind.name): drag onto the start or end of a clip")
         .accessibilityElement(children: .combine)
     }
 }
