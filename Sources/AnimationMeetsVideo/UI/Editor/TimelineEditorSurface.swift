@@ -38,7 +38,8 @@ struct TimelineEditorSurface<Library: View>: View {
     /// header's breadcrumb offers to go back to.
     @State private var trail: [UUID] = []
     /// The timeline the last step into or out of a nested one chose, to
-    /// tell it from one chosen another way (the menu), which starts over.
+    /// tell it from one chosen another way (the browser, the menu), whose
+    /// trail is the timelines it is inside.
     @State private var trailTarget: UUID?
 
     private var playheadTime: CMTime {
@@ -365,6 +366,7 @@ struct TimelineEditorSurface<Library: View>: View {
             showProject()
         }
         .onAppear {
+            trail = project.containingTimelines(of: timelineID)
             playhead.liveTime = { [playback] in playback.isPlaying ? playback.player.currentTime() : nil }
             let project = $project
             graphs.onEdit = { change in change(&project.wrappedValue) }
@@ -374,7 +376,7 @@ struct TimelineEditorSurface<Library: View>: View {
         }
         .onDisappear { graphs.closeAll() }
         .onChange(of: timelineID) { _, newValue in
-            if newValue != trailTarget { trail = [] }
+            if newValue != trailTarget { trail = project.containingTimelines(of: newValue) }
             trailTarget = nil
             if selection?.timelineID != newValue {
                 selection = nil

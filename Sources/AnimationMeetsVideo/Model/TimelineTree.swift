@@ -20,6 +20,33 @@ extension EditingProject {
         return found
     }
 
+    /// The timelines `timelineID` is inside, outermost first, as the
+    /// Timelines tab lists it: each nested timeline under the timeline
+    /// nearest the top that embeds it. Empty for a timeline nothing
+    /// embeds. The breadcrumb of a timeline opened other than from its clip.
+    func containingTimelines(of timelineID: UUID) -> [UUID] {
+        // Breadth first from the top, so each goes to its shallowest
+        // parent; claiming each once also stops a cycle.
+        let top = topLevelTimelines
+        var claimed = Set(top)
+        var parents: [UUID: UUID] = [:]
+        var queue = top[...]
+        while let parent = queue.popFirst() {
+            for child in embeddedTimelines(in: parent) where !claimed.contains(child) {
+                claimed.insert(child)
+                parents[child] = parent
+                queue.append(child)
+            }
+        }
+        var path: [UUID] = []
+        var current = timelineID
+        while let parent = parents[current] {
+            path.insert(parent, at: 0)
+            current = parent
+        }
+        return path
+    }
+
     /// `timelineID` and every timeline its picture or sound is drawn from,
     /// however deep: those it embeds as clips, and those its clips' effects
     /// take as inputs. A preview of it changes only when one of these does.

@@ -40,6 +40,12 @@ import Testing
         #expect(sceneNode.timelineID == scene)
         #expect(sceneNode.children?.map(\.timelineID) == [detail])
         #expect(nodes[1].children == nil)
+
+        // Opened from the browser, each is inside the ones it is listed under.
+        #expect(project.containingTimelines(of: detail) == [main, scene])
+        #expect(project.containingTimelines(of: scene) == [main])
+        #expect(project.containingTimelines(of: main).isEmpty)
+        #expect(project.containingTimelines(of: loose).isEmpty)
     }
 
     /// Detail is embedded in both Main and Scene, which Main embeds too: it

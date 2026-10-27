@@ -848,7 +848,9 @@ VoiceOver action do the same. The header bar then shows a **breadcrumb**
 before the timeline's name: the timelines gone through to get here,
 outermost first, each a button that goes back out to it (`trail` in
 `TimelineEditorSurface`). Opening a timeline another way, from the
-browser's Timelines tab, starts the trail over.
+browser's Timelines tab, starts the trail over at the timelines it is
+inside, as the tab lists it (`EditingProject.containingTimelines`), so a
+nested timeline always has a way back out to the one that holds it.
 
 The header only shows the open timeline's name: timelines are opened
 (double-click) and renamed in the Timelines tab (see docs/browser.md). A
