@@ -58,8 +58,8 @@ final class KeyframeGraphLink: Identifiable {
     func bounds(in project: EditingProject) -> (fit: ClosedRange<Double>, span: ClosedRange<Double>, frame: Double)? {
         var fit: ClosedRange<Double>?, span: ClosedRange<Double>?, frame = 1.0 / 24
         func onTimeline(_ range: ClosedRange<Double>, _ axis: ParameterTimeAxis) -> ClosedRange<Double> {
-            let a = axis.timelineTime(atKey: CMTime(seconds: range.lowerBound, preferredTimescale: 240_000)).seconds
-            let b = axis.timelineTime(atKey: CMTime(seconds: range.upperBound, preferredTimescale: 240_000)).seconds
+            let a = axis.timelineTime(atKey: CMTime(seconds: range.lowerBound, preferredTimescale: ParameterTimeAxis.timescale)).seconds
+            let b = axis.timelineTime(atKey: CMTime(seconds: range.upperBound, preferredTimescale: ParameterTimeAxis.timescale)).seconds
             return min(a, b)...max(a, b)
         }
         func union(_ a: ClosedRange<Double>?, _ b: ClosedRange<Double>) -> ClosedRange<Double> {
@@ -86,8 +86,8 @@ final class KeyframeGraphLink: Identifiable {
     /// graphs' and the moments between only nearly do.
     func keyTimes(for axis: ParameterTimeAxis, in project: EditingProject) -> ClosedRange<Double>? {
         guard let shown = shownTimes(in: project) else { return nil }
-        let a = axis.keyTime(atTimeline: CMTime(seconds: shown.lowerBound, preferredTimescale: 240_000)).seconds
-        let b = axis.keyTime(atTimeline: CMTime(seconds: shown.upperBound, preferredTimescale: 240_000)).seconds
+        let a = axis.keyTime(atTimeline: CMTime(seconds: shown.lowerBound, preferredTimescale: ParameterTimeAxis.timescale)).seconds
+        let b = axis.keyTime(atTimeline: CMTime(seconds: shown.upperBound, preferredTimescale: ParameterTimeAxis.timescale)).seconds
         return a < b ? a...b : (a - 1e-3)...(a + 1e-3)
     }
 

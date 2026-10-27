@@ -532,6 +532,17 @@ private func seconds(_ value: Double) -> CMTime {
         #expect(onlyY.values[1].upperBound < 10)
     }
 
+    @Test func givenTimesAreShownAsTheyAre() {
+        var value = AnimatedValue(0.0)
+        value.setAnimated(true, at: seconds(1))
+        value.set(50, at: seconds(3))
+        let shown = KeyframeGraphLayout(
+            value.asComponents, offset: [0], size: CGSize(width: 400, height: 200), viewport: KeyframeGraphViewport(),
+            span: 0...10, frame: 1.0 / 24, times: 2...2.5
+        )
+        #expect(shown.times == 2...2.5)
+    }
+
     @Test func optionClickSwitchesBetweenLinearAndBezier() {
         var value = AnimatedValue(0.0)
         value.setAnimated(true, at: seconds(0))

@@ -262,6 +262,9 @@ struct ParameterTimeAxis {
     var span: ClosedRange<Double>
     let frameDuration: CMTime
 
+    /// The timescale plain seconds are turned into times on.
+    static let timescale: CMTimeScale = 240_000
+
     func keyTime(atTimeline time: CMTime) -> CMTime {
         clip?.sourceTime(atTimelineTime: time) ?? time
     }
@@ -273,7 +276,7 @@ struct ParameterTimeAxis {
     /// The parameter's time nearest `seconds` that plays on a frame of the
     /// timeline, so keyframes land where the playhead can stop.
     func snapped(_ seconds: Double) -> CMTime {
-        let timeline = timelineTime(atKey: CMTime(seconds: seconds, preferredTimescale: 240_000))
+        let timeline = timelineTime(atKey: CMTime(seconds: seconds, preferredTimescale: Self.timescale))
         let frame = CMTimeMaximum(.zero, CMTimeMultiply(frameDuration, multiplier: Int32((timeline.seconds / frameDuration.seconds).rounded())))
         return keyTime(atTimeline: frame)
     }

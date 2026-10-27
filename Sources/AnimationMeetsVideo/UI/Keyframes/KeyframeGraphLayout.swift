@@ -107,18 +107,23 @@ struct KeyframeGraphLayout: Equatable {
     /// Lays `value` (shown with `offset` added) out in `size` as `viewport`
     /// says, time going no further than `span`, the parameter's own: a
     /// clip's trimmed range, padded a little so points at its ends show.
-    /// A graph linked with others shows the `shared` times instead, which
-    /// may reach past its span.
+    /// Given `times`, it shows those instead: a graph linked with others
+    /// shows their shared times, which may reach past its span, and a
+    /// graph that already has its shown times saves working them out.
     init(_ value: AnimatedValue<ComponentValue>, offset: [Double], size: CGSize, viewport: KeyframeGraphViewport,
-         span: ClosedRange<Double>, frame: Double, shared: ClosedRange<Double>? = nil) {
+         span: ClosedRange<Double>, frame: Double, times shownTimes: ClosedRange<Double>? = nil) {
         let insets = Self.insets
         plot = CGRect(
             x: insets.leading, y: insets.top,
             width: max(1, size.width - insets.leading - insets.trailing),
             height: max(1, size.height - insets.top - insets.bottom)
         )
-        let padded = Self.padded(span)
-        times = shared ?? viewport.shownTimes(fit: Self.fitTimes(value, span: padded, frame: frame), span: padded)
+        if let shownTimes {
+            times = shownTimes
+        } else {
+            let padded = Self.padded(span)
+            times = viewport.shownTimes(fit: Self.fitTimes(value, span: padded, frame: frame), span: padded)
+        }
         let count = value.value.values.count
         let shown = (0..<count).filter { !viewport.hidden.contains($0) }
         if viewport.separateScales {
@@ -183,7 +188,10 @@ struct KeyframeGraphLayout: Equatable {
         return (low - pad)...(high + pad)
     }
 
-    static func segments(of value: AnimatedValue<ComponentValue>) -> [(from: Keyframe<ComponentValue>, to: Keyframe<ComponentValue>)] {
+    /// Two neighboring keyframes and the curve between them.
+    typealias Segment = (from: Keyframe<ComponentValue>, to: Keyframe<ComponentValue>)
+
+    static func segments(of value: AnimatedValue<ComponentValue>) -> [Segment] {
         zip(value.keyframes, value.keyframes.dropFirst()).map { ($0, $1) }
     }
 
