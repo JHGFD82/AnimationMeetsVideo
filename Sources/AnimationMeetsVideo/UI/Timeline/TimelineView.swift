@@ -85,31 +85,18 @@ struct TimelineView: View {
     /// A clip to zoom to and light up, from Find All (`TimelineClipFocus`).
     var focus: TimelineClipFocus? = nil
 
-    /// The chosen zoom, or nil while the whole timeline is fitted to the
-    /// window. Kept in points per second, not relative to the fit, so
-    /// moving a clip past the end doesn't rescale everything.
     /// Records takes onto the timeline from the header's record button.
     @State var recorder = AudioRecorder()
     @State var showingRecord = false
     @State var recordError: String?
 
-    @State var zoomedPixelsPerSecond: CGFloat?
-    /// The time zoom's edge: a zoom past the fit or the closest stretches
-    /// the tracks and springs back.
-    @State var zoomBand = RubberBandZoom()
-    /// The sideways scroll's edge: past the start or end of the timeline
-    /// the tracks slide on and spring back. Time zooms, so it bounces;
-    /// the areas scroll up and down in system scroll views, which do too.
-    @State var scrollBand = RubberBandScroll()
-    /// The same for a vertical pinch's layer height, in the area it pinched.
-    @State var layerHeightBand = RubberBandZoom()
-    @State var layerHeightBandKind: LayerKind?
-    @State var scrollX: CGFloat = 0
+    /// The zoom, the scroll and their edges, which only the tracks follow
+    /// (see `TimelineViewportModel`).
+    @State var viewportModel = TimelineViewportModel()
     /// The last `focus` shown, so a redraw doesn't zoom to it again.
     @State var shownFocusID: UUID?
     /// The focus whose clip is lit, until its light has faded.
     @State var highlightedFocus: TimelineClipFocus?
-    @State var trackAreaWidth: CGFloat = 800
     /// Layers showing their volume under their clips.
     @State var volumeRevealed: Set<UUID> = []
     /// Layers showing their video clips' linked audio.
@@ -121,7 +108,7 @@ struct TimelineView: View {
     /// height (its vertical zoom).
     @AppStorage(Preferences.timelineAreaLayout) var areaLayout = TimelineAreaLayout()
     /// Area heights when a drag of the boundary between two areas began.
-    @State private var boundaryDragStart: [LayerKind: CGFloat]?
+    @State var boundaryDragStart: [LayerKind: CGFloat]?
     @State var geometryStore = TimelineGeometryStore()
     /// The editor's active panel; Delete goes to the effects panel only
     /// while it is the active one.
@@ -143,7 +130,7 @@ struct TimelineView: View {
     /// The chosen layer's markers, worked out again only when what they
     /// depend on changes. The view's body runs on every playback tick and
     /// scroll, and a long song has thousands of beats to collect and sort.
-    @State private var beatMarkers: [BeatMarker] = []
+    @State var beatMarkers: [BeatMarker] = []
     /// The layer whose header is being dragged, and how far.
     @State var layerDrag: (id: UUID, dy: CGFloat)?
     /// The height of the layer being resized when the drag began.
@@ -173,7 +160,7 @@ struct TimelineView: View {
     @State var selectedSectionID: UUID?
     @AppStorage(Preferences.snapping) var snapping = true
     /// Whether the view pages along with the playhead while playing.
-    @AppStorage(Preferences.followsPlayhead) private var followsPlayhead = true
+    @AppStorage(Preferences.followsPlayhead) var followsPlayhead = true
     /// Whether the viewer shows the frame under the pointer as it moves
     /// over the timeline (`skim(atX:viewport:)`).
     @AppStorage(Preferences.timelineSkimming) private var skimming = true
@@ -182,11 +169,9 @@ struct TimelineView: View {
     @Environment(BeatMatchController.self) private var beatMatch: BeatMatchController?
     @Environment(MotionDesignController.self) var motionDesign: MotionDesignController?
     @Environment(RenderScheduler.self) var renderer: RenderScheduler?
-    /// Where a drag in progress snapped, drawn as a line across the layers.
-    @State var snapIndicator: CMTime?
     /// The playhead that drags snap to, brought up to date at each redraw
     /// (see `SnapTargets.playhead`).
-    @State private var snapPlayhead = LivePlayhead()
+    @State var snapPlayhead = LivePlayhead()
     /// Read for the layer volume row during a drag held to one side of the project.
     @Environment(ProjectState.self) var projectState: ProjectState?
     /// What edges snap to, read as a drag snaps: a row isn't redrawn when
@@ -199,7 +184,7 @@ struct TimelineView: View {
     @AppStorage(ClickToneSettings.frequencyKey) private var beatClickFrequency = ClickToneSettings.defaultFrequency
     @AppStorage(ClickToneSettings.volumeKey) private var beatClickVolume = ClickToneSettings.defaultVolume
 
-    private let rulerHeight: CGFloat = 28
+    let rulerHeight: CGFloat = 28
     /// Two points: the groove between layers is a dark cut with a lit edge
     /// under it, which needs a row of pixels each. The header column and
     /// the track area both lay this out, so layer positions stay aligned.
@@ -245,18 +230,12 @@ struct TimelineView: View {
         )
     }
     func viewport(width: CGFloat) -> TimelineViewport {
-        TimelineViewport(
-            durationSeconds: timeline.duration.seconds,
-            frameRate: timeline.frameRate,
-            width: width,
-            requestedPixelsPerSecond: zoomedPixelsPerSecond,
-            requestedScrollX: scrollX
-        )
+        viewportModel.viewport(durationSeconds: timeline.duration.seconds, frameRate: timeline.frameRate, width: width)
     }
 
     /// The viewport as last laid out, for actions that start outside the
     /// layout pass (buttons, keys, the slider).
-    var currentViewport: TimelineViewport { viewport(width: trackAreaWidth) }
+    var currentViewport: TimelineViewport { viewport(width: viewportModel.trackAreaWidth) }
 
     var playheadTime: CMTime { playhead.time }
 
@@ -414,187 +393,12 @@ struct TimelineView: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerBarHeight = $0 }
 
             GeometryReader { geometry in
-                let viewport = viewport(width: geometry.size.width - labelColumnWidth)
-                let scrollbarHeight = viewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
-                let shownAreas = areaLayout.shown
-                let railHeight = rulerHeight + (areaLayout.showsSections ? SectionLane.height : 0) + separatorHeight
-                // Whatever height the timeline is given goes to the areas,
-                // split by their shares: a taller timeline shows more
-                // layers, it doesn't make them taller.
-                let areasAvailable = max(0, geometry.size.height - railHeight - scrollbarHeight
-                    - CGFloat(shownAreas.count) * AreaTitleBar.height)
-                let areaHeights = areaLayout.heights(splitting: areasAvailable)
-                let trackHeight = max(railHeight, geometry.size.height - scrollbarHeight)
-                // Built once per layout, not once per area: it walks every
-                // clip and beat. The playhead is read as a drag snaps, so
-                // moving it doesn't change what the rows compare.
-                let _ = snapPlayhead.source = { [playhead] in playhead.time }
-                let snapTargets = snapping
-                    ? project.snapTargets(in: timelineID, playhead: nil, live: snapPlayhead, markers: drawnBeats(viewport)) : nil
-                let _ = liveSnap.targets = snapTargets
-                // Once for every area's rows, which compare it to skip
-                // redrawing; without where this timeline's clips are, which
-                // a row's actions read as they act (`liveSnap`, `resolveMove`).
-                let structure = project.structure(withoutClipsIn: timelineID)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    // The time rail: the ruler and the sections under it
-                    // are one raised assembly, lit along its top, and the
-                    // only part of the timeline that stands proud of the
-                    // track area below.
-                    VStack(spacing: 0) {
-                        HStack(spacing: 0) {
-                            TimelineColumnHeaderRow(height: rulerHeight)
-                                .frame(width: labelColumnWidth, alignment: .leading)
-                            TimelineRuler(duration: timeline.duration, frameRate: timeline.frameRate, viewport: viewport)
-                                .frame(width: viewport.width, height: rulerHeight)
-                                .overlay(alignment: .bottom) { RenderStatusStrip(viewport: viewport) }
-                                .rubberBandStretch(zoomBand)
-                                .rubberBandScroll(scrollBand, length: trackAreaWidth)
-                                .clipped()
-                                .contentShape(Rectangle())
-                                .gesture(scrubGesture(in: viewport))
-                                // To VoiceOver the ruler is the playhead:
-                                // adjusting it steps a frame.
-                                .accessibilityHidden(true)
-                                .overlay {
-                                    PlayheadAccessibilityElement(playhead: playhead, frameRate: timeline.frameRate) {
-                                        stepPlayhead(byFrames: $0)
-                                    }
-                                }
-                        }
-                        if areaLayout.showsSections {
-                            HStack(spacing: 0) {
-                                Text("Sections")
-                                    .font(Design.Typeface.micro)
-                                    .foregroundStyle(Design.textTertiary)
-                                    .padding(.leading, Design.Space.step)
-                                    .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
-                                sectionLane(viewport: viewport, targets: snapTargets)
-                                    .rubberBandStretch(zoomBand)
-                                    .rubberBandScroll(scrollBand, length: trackAreaWidth)
-                                    .clipped()
-                            }
-                        }
-                    }
-                    .background(Design.Surface.raised.color)
-                    .overlay(alignment: .top) { Design.bevelLight.frame(height: 1) }
-                    Groove()
-
-                    // Video, sound and music, top to bottom, each with its
-                    // own title bar (which resizes it against the area
-                    // above) and its own vertical scrolling.
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(shownAreas) { kind in
-                            AreaTitleBar(
-                                kind: kind,
-                                layerCount: areaLayers(kind).count,
-                                labelColumnWidth: labelColumnWidth,
-                                isResizable: kind != shownAreas.first,
-                                onResize: { dy in
-                                    let start = boundaryDragStart ?? areaHeights
-                                    boundaryDragStart = start
-                                    areaLayout.moveBoundary(above: kind, by: dy, from: start, available: areasAvailable)
-                                },
-                                onResizeEnded: { boundaryDragStart = nil }
-                            )
-                            area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, structure: structure)
-                        }
-                    }
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .overlay(alignment: .topLeading) {
-                        if let newLayerHover {
-                            NewLayerZone(hover: newLayerHover)
-                                .frame(width: labelColumnWidth)
-                                .frame(maxHeight: .infinity)
-                        }
-                    }
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-                        var column = frame
-                        column.size.width = labelColumnWidth
-                        geometryStore.namesColumn = column
-                    }
-                    .overlay {
-                        if shownAreas.isEmpty {
-                            Text("Every area is hidden. Show one in View Options.")
-                                .font(Design.Typeface.label)
-                                .foregroundStyle(Design.textTertiary)
-                        }
-                    }
-
-                    // Right under the layers, and only while there is
-                    // something to scroll to.
-                    if scrollbarHeight > 0 {
-                        HStack(spacing: 0) {
-                            Color.clear.frame(width: labelColumnWidth)
-                            TimelineScrollbar(viewport: viewport) { scrollX = $0 }
-                        }
-                    }
-                }
-                .frame(maxHeight: .infinity, alignment: .top)
-                .overlay(alignment: .topLeading) {
-                    ZStack(alignment: .topLeading) {
-                        if !beatMarkers.isEmpty {
-                            BeatMarkerOverlay(markers: beatMarkers, viewport: viewport, rulerHeight: rulerHeight, height: trackHeight)
-                        }
-                        // The playhead and the snap line move far more
-                        // often than anything else here, so they are Core
-                        // Animation layers rather than SwiftUI shapes.
-                        PlayheadReader(playhead: playhead) { parked in
-                            LivePlayheadRail(
-                                playback: playback,
-                                parked: parked,
-                                viewport: viewport,
-                                onLeaveView: followsPlayhead && !viewport.isFitted ? { time in page(to: time) } : nil,
-                                snapX: snapIndicator.map { viewport.x(atSeconds: $0.seconds) },
-                                height: trackHeight
-                            )
-                        }
-                        TimelineSkimLine(playback: playback, viewport: viewport, height: trackHeight)
-                    }
-                    .frame(width: viewport.width, height: trackHeight, alignment: .topLeading)
-                    .rubberBandStretch(zoomBand)
-                    .rubberBandScroll(scrollBand, length: trackAreaWidth)
-                    .clipped()
-                    .offset(x: labelColumnWidth)
-                    .allowsHitTesting(false)
-                }
-                .background(
-                    TimelineInputMonitor(
-                        onMagnify: { factor, axis, x, pointer in
-                            switch axis {
-                            case .horizontal:
-                                guard x >= labelColumnWidth else { return }
-                                zoom(viewport, by: factor, aboutX: x - labelColumnWidth, pinching: true)
-                            case .vertical:
-                                zoomLayerHeight(by: factor, at: pointer)
-                            }
-                        },
-                        onScroll: { deltaX, deltaY, flags, x, phase in
-                            guard x >= labelColumnWidth else { return false }
-                            if flags.contains(.option) {
-                                zoom(viewport, by: exp(deltaY * 0.01), aboutX: x - labelColumnWidth)
-                                return true
-                            }
-                            // Also without movement, so a lift lets go of the edge.
-                            scrollTracks(by: deltaX, phase: phase, width: viewport.width)
-                            return false
-                        },
-                        onMagnifyEnded: {
-                            zoomBand.endPinch()
-                            layerHeightBand.endPinch()
-                        },
-                        onHover: { x in skim(atX: x, viewport: viewport) }
-                    )
-                )
-                .background(lassoMonitor(viewport: viewport))
-                .overlay { lassoOverlay }
-                .onChange(of: viewport.width, initial: true) { _, width in trackAreaWidth = width }
+                TimelineTrackSurface(parent: self, geometry: geometry)
             }
         }
-        .rubberBandSettling($zoomBand)
-        .rubberBandSettling($scrollBand)
-        .rubberBandSettling($layerHeightBand)
+        .rubberBandSettling(viewportModel, \.zoomBand)
+        .rubberBandSettling(viewportModel, \.scrollBand)
+        .rubberBandSettling(viewportModel, \.layerHeightBand)
         // Turned off from the menu, with the pointer still over the tracks.
         .onChange(of: skimming) { _, skimming in
             if !skimming { playback.endSkim() }
@@ -648,8 +452,7 @@ struct TimelineView: View {
         .onChange(of: beatClickFrequency, initial: true) { _, hertz in beatClicks.frequency = hertz }
         .onChange(of: beatClickVolume, initial: true) { _, volume in beatClicks.volume = Float(volume) }
         .onChange(of: timelineID) { _, _ in
-            zoomedPixelsPerSecond = nil
-            scrollX = 0
+            viewportModel.reset()
             expandedJoint = nil
             groupSelection = []
             highlightedFocus = nil
@@ -663,7 +466,7 @@ struct TimelineView: View {
 
     // MARK: - Sections and layers
 
-    private func sectionLane(viewport: TimelineViewport, targets: SnapTargets?) -> some View {
+    func sectionLane(viewport: TimelineViewport, targets: SnapTargets?) -> some View {
         let tolerance = snapTolerance(viewport)
         return SectionLane(
             sections: timeline.sections,
@@ -699,7 +502,7 @@ struct TimelineView: View {
                 onEditProject { $0.deleteSection(id, in: timelineID) }
                 if selectedSectionID == id { selectedSectionID = nil }
             },
-            onSnapIndicator: { snapIndicator = $0 }
+            onSnapIndicator: { viewportModel.snapIndicator = $0 }
         )
     }
 

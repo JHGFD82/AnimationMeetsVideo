@@ -143,8 +143,8 @@ extension TimelineView {
                         .overlay(alignment: .topLeading) { focusHighlight(kind, pixelsPerSecond: viewport.pixelsPerSecond) }
                         .offset(x: -viewport.scrollX)
                         .frame(width: viewport.width, alignment: .topLeading)
-                        .rubberBandStretch(zoomBand)
-                        .rubberBandScroll(scrollBand, length: trackAreaWidth)
+                        .rubberBandStretch(viewportModel.zoomBand)
+                        .rubberBandScroll(viewportModel.scrollBand, length: viewportModel.trackAreaWidth)
                         .clipped()
                         // Clipping hides what is scrolled out of sight but
                         // still lets it take clicks, and to the left that is
@@ -165,7 +165,9 @@ extension TimelineView {
         }
         .frame(height: height)
         // A vertical pinch past the layer heights stretches this area.
-        .rubberBandStretch(layerHeightBandKind == kind ? layerHeightBand : RubberBandZoom(), axis: .vertical)
+        .rubberBandStretch(
+            viewportModel.layerHeightBandKind == kind ? viewportModel.layerHeightBand : RubberBandZoom(), axis: .vertical
+        )
         .clipped()
         .sunken(.sunken)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
@@ -424,7 +426,7 @@ extension TimelineView {
                         onSlip: { clipID, delta in onSlipClip(layer.id, clipID, delta) },
                         liveSnap: liveSnap,
                         snapTolerance: snapTolerance,
-                        onSnapIndicator: { snapIndicator = $0 },
+                        onSnapIndicator: { viewportModel.snapIndicator = $0 },
                         onTrimPreview: onTrimPreview,
                         onApplyJointEdit: { clipID, edit in onApplyJointEdit(layer.id, clipID, edit) },
                         onSetTransitionDuration: { clipID, edge, duration in onSetTransitionDuration(layer.id, clipID, edge, duration) },

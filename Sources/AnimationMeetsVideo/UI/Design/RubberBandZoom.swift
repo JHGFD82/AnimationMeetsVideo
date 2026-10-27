@@ -114,6 +114,28 @@ extension View {
     func rubberBandSettling<Band: RubberBand>(_ band: Binding<Band>) -> some View {
         modifier(RubberBandSettling(band: band))
     }
+
+    /// The same for a band kept in an observable model, read and written
+    /// through `keyPath`: only the modifier follows the band, not the view
+    /// it is applied to.
+    func rubberBandSettling<Model: AnyObject & Observable, Band: RubberBand>(
+        _ model: Model, _ keyPath: ReferenceWritableKeyPath<Model, Band>
+    ) -> some View {
+        modifier(RubberBandModelSettling(model: model, keyPath: keyPath))
+    }
+}
+
+/// `RubberBandSettling` for a band in a model.
+private struct RubberBandModelSettling<Model: AnyObject & Observable, Band: RubberBand>: ViewModifier {
+    let model: Model
+    let keyPath: ReferenceWritableKeyPath<Model, Band>
+
+    func body(content: Content) -> some View {
+        content.modifier(RubberBandSettling(band: Binding(
+            get: { model[keyPath: keyPath] },
+            set: { model[keyPath: keyPath] = $0 }
+        )))
+    }
 }
 
 /// A view's edge, pushed past and springing back: a zoom's
