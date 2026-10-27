@@ -85,3 +85,30 @@ import Testing
         #expect(abs(late) < 0.01)
     }
 }
+
+@Suite struct KeyframeGeneratorSequenceTests {
+    @Test func beatSignalsInOrderMatchEachOnItsOwn() {
+        let pulses = [0.3, 0.8, 0.8, 1.45, 2.0, 2.6].enumerated().map { KeyframeGenerators.Pulse(time: $1, height: Double($0) * 1.7 + 2) }
+        let times = (0..<80).map { Double($0) / 24 } + [1.0, 0.2]
+        let decays = times.indices.map { 0.1 + Double($0 % 7) * 0.05 }
+        for shape in BeatShape.allCases {
+            let walked = KeyframeGenerators.beatSignals(at: times, pulses: pulses, shape: shape, decays: decays)
+            let each = times.indices.map { KeyframeGenerators.beatSignal(at: times[$0], pulses: pulses, shape: shape, decay: decays[$0]) }
+            #expect(walked == each)
+        }
+    }
+
+    @Test func stepsKeepBothSidesOfEachJump() {
+        // Two components, held for three samples at a time.
+        let samples: [Double] = (0..<10).flatMap { k -> [Double] in [Double(k / 3), 5] }
+        #expect(KeyframeGenerators.steps(samples, components: 2) == [0, 2, 3, 5, 6, 8, 9])
+        #expect(KeyframeGenerators.steps([1, 1, 1, 1], components: 1) == [0, 3])
+    }
+
+    @Test func aBounceIsLeftOutOnceItHasSettled() {
+        let length = KeyframeGenerators.bounceLength(damping: 8, mass: 1)
+        let after = KeyframeGenerators.bounce(elapsed: length, velocity: 100, stiffness: 200, damping: 8, mass: 1)
+        #expect(abs(after) < 100e-6)
+        #expect(KeyframeGenerators.bounceLength(damping: 0, mass: 1) == .infinity)
+    }
+}

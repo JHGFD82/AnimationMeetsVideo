@@ -234,13 +234,26 @@ final class SpectrogramStore: @unchecked Sendable {
             if let spectrogram = spectrograms[url] { return (spectrogram, false) }
             return (nil, loading.insert(url).inserted)
         }
-        if start {
-            Task.detached(priority: .utility) {
-                let made = (try? await Spectrogram.read(url: url)) ?? Spectrogram(levels: [])
-                self.set(made, for: url)
-            }
-        }
+        if start { read(url) }
         return found
+    }
+
+    /// Whether the file's spectrogram is ready, without handing it over;
+    /// the read starts on the first ask, as for `spectrogram(for:)`.
+    func hasSpectrogram(for url: URL) -> Bool {
+        let (found, start) = lock.withLock { () -> (Bool, Bool) in
+            if spectrograms[url] != nil { return (true, false) }
+            return (false, loading.insert(url).inserted)
+        }
+        if start { read(url) }
+        return found
+    }
+
+    private func read(_ url: URL) {
+        Task.detached(priority: .utility) {
+            let made = (try? await Spectrogram.read(url: url)) ?? Spectrogram(levels: [])
+            self.set(made, for: url)
+        }
     }
 
     /// Stores a spectrogram and tells the editor.

@@ -60,7 +60,7 @@ extension EditingProject {
             return EffectNote(text: "Its kernel doesn't compile, so it leaves the picture as it is. \(problem)", dims: true)
         }
 
-        if effect.kind.isKeyframing { return keyframingNote(for: effect, in: clip) }
+        if effect.kind.isKeyframing { return keyframingNote(for: effect, in: clip, of: timeline) }
         if effect.kind == .text, effect.text?.string.isEmpty ?? true {
             return EffectNote(text: "It has no words to draw. Type them in the inspector.", dims: true)
         }

@@ -81,18 +81,61 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
     }
 
     func value(at time: CMTime) -> Value {
-        guard let first = keyframes.first, let last = keyframes.last else { return value }
-        if time <= first.time { return first.value }
-        if time >= last.time { return last.value }
-        let next = keyframes.lowerBound(of: time) { $0.time }
+        value(of: reading(at: time))
+    }
+
+    /// Where `value(at:)` takes its value from at a time.
+    enum Reading {
+        /// The single value: there are no keyframes.
+        case value
+        /// One keyframe's value.
+        case keyframe(Int)
+        /// Keyframe `next - 1`'s value blended toward keyframe `next`'s by
+        /// `progress`.
+        case blend(next: Int, progress: Double)
+    }
+
+    /// Where `value(at:)` reads at each of `times`. Times that only grow
+    /// walk the keyframes alongside them rather than searching for each.
+    func readings(at times: [CMTime]) -> [Reading] {
+        var next: Int?
+        return times.map { time in
+            let reading = reading(at: time, after: next)
+            if case .blend(let found, _) = reading { next = found }
+            return reading
+        }
+    }
+
+    /// The value a reading gives.
+    func value(of reading: Reading) -> Value {
+        switch reading {
+        case .value: value
+        case .keyframe(let index): keyframes[index].value
+        case .blend(let next, let progress): Value.interpolate(keyframes[next - 1].value, keyframes[next].value, fraction: progress)
+        }
+    }
+
+    /// `hint`, when given, is the keyframe the last reading blended toward:
+    /// one at or past it is looked for from there on.
+    private func reading(at time: CMTime, after hint: Int? = nil) -> Reading {
+        guard let first = keyframes.first, let last = keyframes.last else { return .value }
+        if time <= first.time { return .keyframe(0) }
+        if time >= last.time { return .keyframe(keyframes.count - 1) }
+        var next: Int
+        if let hint, keyframes[hint - 1].time < time {
+            // The first keyframe at or after `time`; the last one is.
+            next = hint
+            while keyframes[next].time < time { next += 1 }
+        } else {
+            next = keyframes.lowerBound(of: time) { $0.time }
+        }
         let before = keyframes[next - 1]
         let after = keyframes[next]
-        if before.hold, time < after.time { return before.value }
+        if before.hold, time < after.time { return .keyframe(next - 1) }
         let span = CMTimeSubtract(after.time, before.time).seconds
-        guard span > 0 else { return after.value }
+        guard span > 0 else { return .keyframe(next) }
         let fraction = CMTimeSubtract(time, before.time).seconds / span
-        let progress = KeyframeEase.progress(fraction, leaving: before.easeOut, arriving: after.easeIn)
-        return Value.interpolate(before.value, after.value, fraction: progress)
+        return .blend(next: next, progress: KeyframeEase.progress(fraction, leaving: before.easeOut, arriving: after.easeIn))
     }
 
     /// The value at a time given as plain seconds, which is not cut to a

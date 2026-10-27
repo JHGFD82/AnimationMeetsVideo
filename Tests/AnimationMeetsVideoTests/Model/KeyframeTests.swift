@@ -568,3 +568,19 @@ private func seconds(_ value: Double) -> CMTime {
         #expect(abs(frames - frames.rounded()) < 1e-6)
     }
 }
+
+@Suite struct AnimatedValueReadingTests {
+    @Test func readingInOrderGivesWhatReadingEachDoes() {
+        let value = AnimatedValue(0.0, keyframes: [
+            Keyframe(time: seconds(1), value: 3, easeOut: .easy),
+            Keyframe(time: seconds(2), value: -7.3, easeIn: .easy, hold: true),
+            Keyframe(time: seconds(2.5), value: 11),
+            Keyframe(time: seconds(4), value: 0.1),
+        ])
+        let times = (0..<300).map { CMTime(value: CMTimeValue($0 * 10 - 20), timescale: 600) }
+        #expect(value.readings(at: times).map { value.value(of: $0) } == times.map { value.value(at: $0) })
+        // Out of order too.
+        let shuffled = times.reversed() + times.shuffled()
+        #expect(value.readings(at: shuffled).map { value.value(of: $0) } == shuffled.map { value.value(at: $0) })
+    }
+}
