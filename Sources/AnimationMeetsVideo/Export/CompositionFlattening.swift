@@ -321,9 +321,20 @@ extension CompositionExporter {
                         offset: CMTimeAdd(offset, shift),
                         outerVolume: [clipVolume] + fadeStages + volume,
                         rootClipID: owner,
-                        silent: silent || clip.soundMuted,
+                        // Its picture alone, once its sound is detached.
+                        silent: silent || clip.soundMuted || clip.streams == .video,
                         hosts: &inner
                     )
+                    // Its detached sound alone: the tracks' sound, and
+                    // nothing drawn.
+                    if clip.streams == .audio {
+                        for host in inner {
+                            for placement in host.placements { placement.includesVideo = false }
+                            host.placements = host.placements.filter(\.includesAudio)
+                        }
+                        nestedHosts += inner.filter { !$0.placements.isEmpty }
+                        continue
+                    }
                     nestedHosts += inner
                     guard !children.isEmpty else { continue }
                     /// The nested timeline drawn over `range` of this

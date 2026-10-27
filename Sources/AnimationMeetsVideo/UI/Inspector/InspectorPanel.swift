@@ -233,7 +233,7 @@ struct InspectorPanel: View {
                 }
 
                 InspectorGroup("Arrange") {
-                    if project.hasLinkedAudio(timelineClip) {
+                    if project.canDetachAudio(timelineClip) {
                         Button("Detach audio") {
                             project.detachAudio(of: [timelineClip.id], in: timelineID, layer: selection.layerID)
                         }

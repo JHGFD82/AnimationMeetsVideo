@@ -549,6 +549,14 @@ only the sound (`streams = .audio`), go onto a new sound layer. From
 then on the two are ordinary clips: the sound is colored as audio, moves
 freely off the frame grid, carries the beats, and takes no transitions.
 
+A **nested timeline's** clip detaches the same way, from its menu, the
+layer header or the inspector, when anything in it makes sound
+(`EditingProject.canDetachAudio`): the clip keeps the nested timeline's
+picture, drawn with its sound silenced, and a copy on the new sound layer
+plays only its sound, drawing nothing (`CompositionFlattening` honors
+`streams` for nested clips as for media). It has no linked audio lane,
+which shows a file's waveform.
+
 **Mute Sound** (in the clip's menu, for any clip that makes sound) keeps
 the sound where it is and silences it (`soundMuted`): it is left out of
 playback, the meter and exports, keeps its volume and effects, and its

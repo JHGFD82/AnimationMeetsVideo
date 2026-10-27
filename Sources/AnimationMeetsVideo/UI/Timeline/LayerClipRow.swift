@@ -228,7 +228,7 @@ struct LayerClipRow: View {
                     frameRate: frameRate,
                     info: info,
                     typeColor: layer.kind == .music ? Design.ClipTone.music.color : Design.ClipTone.of(info, streams: clip.streams).color,
-                    hasLinkedAudio: project.hasLinkedAudio(clip),
+                    hasLinkedAudio: project.canDetachAudio(clip),
                     showsWaveform: project.isAudioOnly(clip),
                     splitsChannels: showsChannels,
                     acceptsTransitions: project.playsVideo(clip),
