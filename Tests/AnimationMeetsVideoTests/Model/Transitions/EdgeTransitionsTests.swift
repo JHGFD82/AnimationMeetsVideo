@@ -28,6 +28,31 @@ private func ntscFrames(_ count: Int64) -> CMTime {
         values.forEach(expectMatchesFormatter)
     }
 
+    /// The values most likely to be rounded the wrong way without the
+    /// formatter: a half of the last decimal and a hair either side, for
+    /// every last decimal from 0 to 1, both signs.
+    @Test func fiveDecimalsMatchesTheFormatterAtEveryHalf() {
+        for n in 0...100_000 {
+            let half = (Double(n) + 0.5) / 100_000
+            for value in [half, half.nextUp, half.nextDown] {
+                expectMatchesFormatter(value)
+                expectMatchesFormatter(-value)
+            }
+        }
+    }
+
+    /// The formatter is the slow way; it should only be needed close to a
+    /// half. The values are spread evenly over -2...2 by the golden ratio,
+    /// unlike a stride's, which (0.0000137 being 1.37 last decimals) puts
+    /// every hundredth value on a half.
+    @Test func fiveDecimalsRarelyNeedsTheFormatter() {
+        let golden = (5.0.squareRoot() - 1) / 2
+        let values = (0..<300_000).map { -2 + 4 * (Double($0) * golden).truncatingRemainder(dividingBy: 1) }
+        values.forEach(expectMatchesFormatter)
+        let fast = values.filter { TransitionFrame.fiveDecimalsWithoutFormatter($0) != nil }.count
+        #expect(Double(fast) >= 0.99 * Double(values.count), "\(fast) of \(values.count)")
+    }
+
     @Test func fiveDecimalsMatchesTheFormatterOverASweep() {
         // An awkward step lands everywhere between the decimals.
         for value in stride(from: -2.0, through: 2.0, by: 0.0000137) { expectMatchesFormatter(value) }
@@ -51,6 +76,88 @@ private func ntscFrames(_ count: Int64) -> CMTime {
         options.amount = 0.3
         let frame = TransitionFrame(kind: .blinds, options: options, progress: 0.123456, entering: false)
         #expect(frame.key == "blinds 0.12346 false left 0.2500,0.5000,1.0000 0.1250,0.7500 circle 12 random 0.3000 noise")
+    }
+
+    private static func options(_ change: (inout TransitionOptions) -> Void) -> TransitionOptions {
+        var options = TransitionOptions()
+        change(&options)
+        return options
+    }
+
+    private static let matteID = UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF")!
+
+    /// Keys name cached renders on disk; these were printed by the key as
+    /// it was before it was cached in parts (e2661da), so a change to any
+    /// part of one leaves those files behind.
+    private static let goldenKeys: [(frame: TransitionFrame, key: String)] = [
+        (
+            TransitionFrame(kind: .matteWipe, options: options { $0.matte = .clip(matteID) }, progress: 0.25, entering: true),
+            "matteWipe 0.25000 true right 0.0000,0.0000,0.0000 0.5000,0.5000 circle 8 random 0.5000 6F9619FF-8B86-D011-B42D-00C04FC964FF"
+        ),
+        (
+            TransitionFrame(kind: .matteWipe, options: options { $0.matte = .noise; $0.amount = 0.8 }, progress: 0.73125, entering: false),
+            "matteWipe 0.73125 false right 0.0000,0.0000,0.0000 0.5000,0.5000 circle 8 random 0.8000 noise"
+        ),
+        (
+            TransitionFrame(
+                kind: .dipToColor, options: options { $0.color = TransitionColor(red: 0.12345, green: 0.5, blue: 0.987654) },
+                progress: 1.0 / 3, entering: true
+            ),
+            "dipToColor 0.33333 true right 0.1235,0.5000,0.9877 0.5000,0.5000 circle 8 random 0.5000 noise"
+        ),
+        (
+            TransitionFrame(
+                kind: .crossZoom, options: options { $0.center = CGPoint(x: 0.2, y: 0.85); $0.amount = 0.65 },
+                progress: 0.999995, entering: false
+            ),
+            "crossZoom 0.99999 false right 0.0000,0.0000,0.0000 0.2000,0.8500 circle 8 random 0.6500 noise"
+        ),
+        (
+            TransitionFrame(kind: .blinds, options: options { $0.direction = .down; $0.count = 12 }, progress: 0, entering: true),
+            "blinds 0.00000 true down 0.0000,0.0000,0.0000 0.5000,0.5000 circle 12 random 0.5000 noise"
+        ),
+        (
+            TransitionFrame(kind: .iris, options: options { $0.shape = .diamond; $0.center = CGPoint(x: 0.3, y: 0.4) }, progress: 1, entering: true),
+            "iris 1.00000 true right 0.0000,0.0000,0.0000 0.3000,0.4000 diamond 8 random 0.5000 noise"
+        ),
+        (
+            TransitionFrame(kind: .grid, options: options { $0.order = .diagonal; $0.count = 5 }, progress: 0.5, entering: false),
+            "grid 0.50000 false right 0.0000,0.0000,0.0000 0.5000,0.5000 circle 5 diagonal 0.5000 noise"
+        ),
+        (
+            TransitionFrame(kind: .pageCurl, options: options { $0.direction = .up }, progress: -0.0000001, entering: true),
+            "pageCurl -0.00000 true up 0.0000,0.0000,0.0000 0.5000,0.5000 circle 8 random 0.5000 noise"
+        ),
+        (
+            TransitionFrame(
+                kind: .ripple, options: options { $0.center = CGPoint(x: 0.0001, y: 0.99995); $0.amount = 0.33333 },
+                progress: 1.0000049, entering: false
+            ),
+            "ripple 1.00000 false right 0.0000,0.0000,0.0000 0.0001,1.0000 circle 8 random 0.3333 noise"
+        ),
+        (
+            TransitionFrame(kind: .morph, options: TransitionKind.morph.defaultOptions, progress: 0.000005, entering: true),
+            "morph 0.00001 true right 0.0000,0.0000,0.0000 0.5000,0.5000 circle 8 random 1.0000 noise"
+        ),
+    ]
+
+    @Test func keysMatchThoseOfCachedRenders() {
+        for (frame, key) in Self.goldenKeys {
+            #expect(frame.key == key)
+        }
+    }
+
+    /// A frame a clip's transitions make carries the options key worked
+    /// out when they were placed; it must read as one made afresh.
+    @Test func aPlacedTransitionsKeyMatchesAFreshOne() throws {
+        let options = Self.options { $0.matte = .clip(Self.matteID); $0.amount = 0.8 }
+        var clip = TimelineClip(source: .media(UUID()), startOffset: .zero, trimStart: .zero, trimEnd: CMTime(value: 4, timescale: 1))
+        clip.transitionIn = ClipTransition(kind: .matteWipe, duration: CMTime(value: 1, timescale: 1), options: options)
+        let edges = try #require(EdgeTransitions(clip: clip, frameSize: CGSize(width: 100, height: 50)))
+        let placed = try #require(edges.transitionFrame(at: CMTime(value: 1, timescale: 4)))
+        let fresh = TransitionFrame(kind: .matteWipe, options: options, progress: placed.progress, entering: true)
+        #expect(placed.key == fresh.key)
+        #expect(placed.key == "matteWipe 0.25000 true right 0.0000,0.0000,0.0000 0.5000,0.5000 circle 8 random 0.8000 6F9619FF-8B86-D011-B42D-00C04FC964FF")
     }
 }
 

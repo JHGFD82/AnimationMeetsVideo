@@ -715,15 +715,16 @@ struct EdgeTransitions: Sendable {
         let curve: TransitionCurve
         let options: TransitionOptions
         /// `TransitionFrame.optionsKey(_:)` of `options`, which every frame's
-        /// key ends with.
-        let optionsKey: String
+        /// key ends with; nil for a kind that makes no `TransitionFrame`,
+        /// one that doesn't draw from two pictures.
+        let optionsKey: String?
 
         init(kind: TransitionKind, duration: CMTime, curve: TransitionCurve, options: TransitionOptions) {
             self.kind = kind
             self.duration = duration
             self.curve = curve
             self.options = options
-            optionsKey = TransitionFrame.optionsKey(options)
+            optionsKey = kind.drawsTwoPictures ? TransitionFrame.optionsKey(options) : nil
         }
     }
 
@@ -755,6 +756,8 @@ struct EdgeTransitions: Sendable {
     private let leadingChangesPicture: Bool
     private let trailingChangesPicture: Bool
     private let changesPicture: Bool
+    private let leadingDrawsTwoPictures: Bool
+    private let trailingDrawsTwoPictures: Bool
     private let frameRect: CGRect
     private let halfWidth: CGFloat
     private let halfHeight: CGFloat
@@ -795,6 +798,8 @@ struct EdgeTransitions: Sendable {
         leadingChangesPicture = leading.map { !$0.kind.drawsTwoPictures && !$0.kind.isAudio } ?? false
         trailingChangesPicture = trailing.map { !$0.kind.drawsTwoPictures && !$0.kind.isAudio } ?? false
         changesPicture = leadingChangesPicture || trailingChangesPicture
+        leadingDrawsTwoPictures = leading?.kind.drawsTwoPictures == true
+        trailingDrawsTwoPictures = trailing?.kind.drawsTwoPictures == true
         frameRect = CGRect(origin: .zero, size: frameSize)
         halfWidth = frameSize.width / 2
         halfHeight = frameSize.height / 2
@@ -830,18 +835,21 @@ struct EdgeTransitions: Sendable {
     /// out the other way round.
     func transitionFrame(at time: CMTime) -> TransitionFrame? {
         guard drawsTwoPictures else { return nil }
-        if let leading, leading.kind.drawsTwoPictures, let elapsed = leadingElapsed(at: time) {
+        // Each edge is bound only once a frame is known to be in it: a
+        // `Placed` holds strings and arrays, and binding one retains them.
+        // Only a transition drawn from two pictures has an options key.
+        if leadingDrawsTwoPictures, let elapsed = leadingElapsed(at: time), let leading, let optionsKey = leading.optionsKey {
             return TransitionFrame(
                 kind: leading.kind, options: leading.options,
                 progress: leading.curve.value(at: max(elapsed, 0)), entering: true,
-                optionsKey: leading.optionsKey
+                optionsKey: optionsKey
             )
         }
-        if let trailing, trailing.kind.drawsTwoPictures, let elapsed = trailingElapsed(at: time) {
+        if trailingDrawsTwoPictures, let elapsed = trailingElapsed(at: time), let trailing, let optionsKey = trailing.optionsKey {
             return TransitionFrame(
                 kind: trailing.kind, options: trailing.options,
                 progress: trailing.curve.value(at: min(elapsed, 1)), entering: false,
-                optionsKey: trailing.optionsKey
+                optionsKey: optionsKey
             )
         }
         return nil
@@ -857,10 +865,10 @@ struct EdgeTransitions: Sendable {
         // Wipes and film dissolves change the picture, so neither needs
         // anything below when there are none.
         guard changesPicture else { return effect }
-        if let leading, leadingChangesPicture, let elapsed = leadingElapsed(at: time) {
+        if leadingChangesPicture, let elapsed = leadingElapsed(at: time), let leading {
             apply(leading, visibility: leading.curve.value(at: elapsed), edge: .leading, to: &effect)
         }
-        if let trailing, trailingChangesPicture, let elapsed = trailingElapsed(at: time) {
+        if trailingChangesPicture, let elapsed = trailingElapsed(at: time), let trailing {
             apply(trailing, visibility: 1 - trailing.curve.value(at: elapsed), edge: .trailing, to: &effect)
         }
         if hasWipe, effect.visibleRect == nil {
@@ -1018,15 +1026,28 @@ struct TransitionFrame: Equatable, Sendable {
         return "\(o.direction.rawValue) \(color) \(center) \(o.shape.rawValue) \(o.count) \(o.order.rawValue) \(String(format: "%.4f", o.amount)) \(matte)"
     }
 
-    /// `String(format: "%.5f", value)`, without the formatter. That rounds
-    /// the double's exact value, which scaling by 100 000 can nudge across
-    /// a half; values that close to a half, and those too large for an
-    /// `Int` of digits, go to the formatter itself.
+    /// `String(format: "%.5f", value)`, mostly without the formatter.
     static func fiveDecimals(_ value: Double) -> String {
+        fiveDecimalsWithoutFormatter(value) ?? String(format: "%.5f", value)
+    }
+
+    /// `fiveDecimals` worked out with integers, or nil where that can't be
+    /// sure of matching the formatter.
+    ///
+    /// "%.5f" rounds the exact value of `value` × 10⁵ to a whole number,
+    /// halves to even. Here that product is first rounded to a double,
+    /// which moves it by at most half an ulp: under 2⁻⁵³ × 10⁹ ≈ 1.2e-7
+    /// while it is below 10⁹. Taking off its whole part and then 0.5 is
+    /// exact (both subtractions are of numbers within a factor of two of
+    /// each other, or the result is over 0.25 from a half anyway), so the
+    /// distance to a half is known to within that error. A product more
+    /// than 1e-6 from a half, over eight times the error, rounds the way
+    /// the exact one does. Those closer, exact halves among them, and
+    /// products of 10⁹ or more or not finite, are left to the formatter:
+    /// about two values in a million in 0...1.
+    static func fiveDecimalsWithoutFormatter(_ value: Double) -> String? {
         let scaled = abs(value) * 100_000
-        guard scaled < 1e9, abs(scaled - scaled.rounded(.down) - 0.5) > 1e-6 else {
-            return String(format: "%.5f", value)
-        }
+        guard scaled < 1e9, abs(scaled - scaled.rounded(.down) - 0.5) > 1e-6 else { return nil }
         let n = Int(scaled.rounded())
         let fraction = String(n % 100_000)
         let padding = String(repeating: "0", count: 5 - fraction.count)
