@@ -84,6 +84,9 @@ struct ClipBlockView: View {
     private let handleWidth = trimHandleWidth
     /// The band along the top of a clip showing pictures that holds its name.
     private static let labelBand: CGFloat = 18
+    /// Narrower than this on screen, a clip is only its fill and outline:
+    /// its name, pictures, sound and marks couldn't be read.
+    static let detailWidth: CGFloat = 24
     let space = "clipBlock"
     /// How wide a transition must be drawn before its curve can be edited
     /// on the clip; zoom in to get there.
@@ -126,6 +129,10 @@ struct ClipBlockView: View {
             else { return nil }
             return media
         }()
+        let showsDetail = drawnWidth >= Self.detailWidth
+        // Turned off: still where it is, drawn faded and grey, since it
+        // plays as a gap.
+        let tone = model.clip.enabled ? model.typeColor : model.typeColor.greyed()
 
         ZStack(alignment: .topLeading) {
             if isTrimming {
@@ -164,47 +171,34 @@ struct ClipBlockView: View {
                     .zIndex(1)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                ClipLabelRow(
-                    name: model.info?.name ?? "Unknown",
-                    isNestedTimeline: { if case .timeline = model.clip.source { true } else { false } }(),
-                    isAudioStream: model.clip.streams == .audio,
-                    hasLinkedAudio: model.hasLinkedAudio,
-                    soundMuted: model.playsSound && model.clip.soundMuted,
-                    effectCount: model.effectCount,
-                    hasPasteChanges: model.hasPasteChanges,
-                    passesThrough: model.passesThrough,
-                    timeHelp: shown.time.isDefault ? nil
-                        : shown.isRetimed ? "Retimed: plays at \(NumericExpression.format(shown.speed(atSource: shown.trimStart), maxFractionDigits: 1))%" : "Time settings",
-                    hasShutter: !shown.shutter.isOff
-                )
-                .equatable()
-                // Where a retimed clip's speed is set, along the bar.
-                RetimeStrip(
-                    marks: RetimeMark.marks(of: shown), pixelsPerSecond: model.pixelsPerSecond,
-                    inset: drawnX - liveX, width: drawnWidth
-                )
-                // The strip counts from the bar's edge, not the label's.
-                .padding(.leading, -(drawnX > liveX ? Design.Space.step : Design.Space.close))
+            ZStack(alignment: .topLeading) {
+                if showsDetail {
+                    label(of: shown, drawnX: drawnX, liveX: liveX, drawnWidth: drawnWidth)
+                        .padding(.leading, drawnX > liveX ? Design.Space.step : Design.Space.close)
+                        .padding(.top, pictures == nil ? 0 : 2)
+                }
             }
-            .padding(.leading, drawnX > liveX ? Design.Space.step : Design.Space.close)
-            .padding(.top, pictures == nil ? 0 : 2)
             .frame(width: drawnWidth, height: model.height, alignment: pictures == nil ? .leading : .topLeading)
             .background {
-                Design.clipFill(model.typeColor, selected: model.isSelected)
+                Design.clipFill(model.typeColor, selected: model.isSelected, enabled: model.clip.enabled)
                     .overlay(alignment: .bottomLeading) {
-                        if let pictures {
+                        if showsDetail, let pictures {
                             ClipThumbnails(
                                 clip: shown, media: pictures, pixelsPerSecond: model.pixelsPerSecond,
-                                liveX: liveX, drawnX: drawnX, width: drawnWidth, height: model.height - Self.labelBand
+                                liveX: liveX, drawnX: drawnX, width: drawnWidth, height: model.height - Self.labelBand,
+                                enabled: model.clip.enabled
                             )
                         }
                     }
-                    .overlay(alignment: .leading) { waveform(of: shown, drawnX: drawnX, liveX: liveX, width: drawnWidth) }
-                    .overlay(alignment: .leading) { volumeLine(of: shown, drawnX: drawnX, liveX: liveX, width: drawnWidth) }
+                    .overlay(alignment: .leading) {
+                        if showsDetail { waveform(of: shown, drawnX: drawnX, liveX: liveX, width: drawnWidth) }
+                    }
+                    .overlay(alignment: .leading) {
+                        if showsDetail { volumeLine(of: shown, drawnX: drawnX, liveX: liveX, width: drawnWidth) }
+                    }
             }
             .overlay(alignment: .topLeading) {
-                transitionMarks(of: shown, liveX: liveX, drawnX: drawnX, drawnWidth: drawnWidth)
+                if showsDetail { transitionMarks(of: shown, liveX: liveX, drawnX: drawnX, drawnWidth: drawnWidth) }
             }
             .overlay(alignment: .bottomLeading) {
                 if let renderer {
@@ -212,28 +206,32 @@ struct ClipBlockView: View {
                 }
             }
             .clipShape(shape)
+            // The outline, and the bevel inside it: lit along the top,
+            // shaded along the bottom, so a clip reads as a block sitting
+            // in the track rather than as a coloured rectangle painted on
+            // it. One overlay for both, so one layer.
             .overlay {
-                shape.strokeBorder(
-                    isDropTarget ? Design.accent : model.isSelected ? Design.textOnColor.opacity(0.95) : model.typeColor.opacity(0.85),
-                    lineWidth: isDropTarget ? 2 : model.isSelected ? 1.5 : 1
-                )
+                ZStack {
+                    shape.strokeBorder(
+                        isDropTarget ? Design.accent : model.isSelected ? Design.textOnColor.opacity(0.95) : tone.opacity(0.85),
+                        lineWidth: isDropTarget ? 2 : model.isSelected ? 1.5 : 1
+                    )
+                    shape.strokeBorder(Design.bevelEdgeStrong, lineWidth: 1)
+                }
             }
-            // The bevel: lit along the top, shaded along the bottom, so a
-            // clip reads as a block sitting in the track rather than as a
-            // coloured rectangle painted on it.
-            .overlay { shape.strokeBorder(Design.bevelEdgeStrong, lineWidth: 1) }
-            // Turned off: still where it is, drawn faded and without colour,
-            // since it plays as a gap.
-            .saturation(model.clip.enabled ? 1 : 0)
+            // Only a selected or picked-up clip casts a shadow, drawn from
+            // its outline alone (see `BlockShadow`), behind it: a shadow
+            // modifier on the block would draw all of it, pictures and
+            // sound included, offscreen to cast one, on every clip,
+            // whether it showed or not. Picked up, it is raised and casts
+            // a longer one on the track, at its own size, so where it sits
+            // is exactly where it will land.
+            .background {
+                if model.isSelected || isLifted {
+                    BlockShadow(shape: shape, lifted: isLifted)
+                }
+            }
             .opacity(model.clip.enabled ? 1 : 0.45)
-            // Only the selected clip gets a shadow. A shadow under every
-            // block would be both a rasterization pass per clip on a
-            // timeline that redraws as you scrub, and the look of a stack
-            // of cards rather than of blocks set into a track.
-            .shadow(color: .black.opacity(model.isSelected ? 0.55 : 0), radius: model.isSelected ? 6 : 0, y: 1)
-            // Picked up: raised and casting a longer shadow on the track, at
-            // its own size, so where it sits is exactly where it will land.
-            .shadow(color: .black.opacity(isLifted ? 0.5 : 0), radius: isLifted ? 10 : 0, y: isLifted ? 7 : 0)
             .offset(y: isLifted ? -3 : 0)
             .confirmFlash(token: landedCount, color: Design.textOnColor)
             .editorAnimation(Design.Motion.select, value: model.isSelected)
@@ -442,6 +440,33 @@ struct ClipBlockView: View {
         }
     }
 
+    /// The clip's name and badges, and a retimed clip's speeds along it.
+    private func label(of shown: TimelineClip, drawnX: CGFloat, liveX: CGFloat, drawnWidth: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ClipLabelRow(
+                name: model.info?.name ?? "Unknown",
+                isNestedTimeline: { if case .timeline = model.clip.source { true } else { false } }(),
+                isAudioStream: model.clip.streams == .audio,
+                hasLinkedAudio: model.hasLinkedAudio,
+                soundMuted: model.playsSound && model.clip.soundMuted,
+                effectCount: model.effectCount,
+                hasPasteChanges: model.hasPasteChanges,
+                passesThrough: model.passesThrough,
+                timeHelp: shown.time.isDefault ? nil
+                    : shown.isRetimed ? "Retimed: plays at \(NumericExpression.format(shown.speed(atSource: shown.trimStart), maxFractionDigits: 1))%" : "Time settings",
+                hasShutter: !shown.shutter.isOff
+            )
+            .equatable()
+            // Where a retimed clip's speed is set, along the bar.
+            RetimeStrip(
+                marks: RetimeMark.marks(of: shown), pixelsPerSecond: model.pixelsPerSecond,
+                inset: drawnX - liveX, width: drawnWidth
+            )
+            // The strip counts from the bar's edge, not the label's.
+            .padding(.leading, -(drawnX > liveX ? Design.Space.step : Design.Space.close))
+        }
+    }
+
     /// The sound of the drawn part of the clip, faded, once the layer is
     /// tall enough to read it.
     @ViewBuilder
@@ -639,5 +664,26 @@ extension ClipBlockView: Equatable {
         MainActor.assumeIsolated {
             lhs.live === rhs.live && lhs.offered == rhs.offered && lhs.model == rhs.model
         }
+    }
+}
+
+/// The shadow a selected or picked-up block casts on the track, outside
+/// it only: cast by a solid copy of its outline whose inside is then
+/// cleared, so the block's own translucent fill isn't darkened from below.
+/// It composites two shapes, where a shadow on the block would draw the
+/// whole block, its pictures and sound included, to cast one.
+private struct BlockShadow<S: Shape>: View {
+    let shape: S
+    let lifted: Bool
+
+    var body: some View {
+        ZStack {
+            shape.fill(.black.opacity(0.75))
+                .shadow(color: .black.opacity(lifted ? 0.5 : 0.55), radius: lifted ? 10 : 6, y: lifted ? 7 : 1)
+            shape.fill(.black).blendMode(.destinationOut)
+        }
+        .compositingGroup()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

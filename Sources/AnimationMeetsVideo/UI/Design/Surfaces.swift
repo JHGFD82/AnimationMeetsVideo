@@ -100,8 +100,13 @@ extension Design {
     /// brighter fill only managed 3.3:1, so it is shaded by a fifth, the
     /// same as laying 20% black over it. It stays brighter than unselected,
     /// and the selected outline still marks it.
-    static func clipFill(_ tone: Color, selected: Bool) -> LinearGradient {
-        LinearGradient(
+    ///
+    /// A clip turned off is drawn in `tone.greyed()`, here and in its
+    /// outline, rather than through a saturation filter over the whole
+    /// block, which costs a compositing pass even when it does nothing.
+    static func clipFill(_ tone: Color, selected: Bool, enabled: Bool = true) -> LinearGradient {
+        let tone = enabled ? tone : tone.greyed()
+        return LinearGradient(
             colors: selected
                 ? [tone.darkened(to: 0.786).opacity(0.936), tone.darkened(to: 0.725).opacity(0.728)]
                 : [tone.opacity(0.62), tone.opacity(0.4)],
@@ -206,6 +211,16 @@ private struct SelectionOutline: ViewModifier {
                     .opacity(isSelected ? 1 : 0)
                     .decorative()
             }
+    }
+}
+
+extension Color {
+    /// This color as the grey of the same lightness (Rec. 709 luma), for
+    /// what is turned off.
+    func greyed() -> Color {
+        guard let srgb = NSColor(self).usingColorSpace(.sRGB) else { return self }
+        let luma = 0.2126 * srgb.redComponent + 0.7152 * srgb.greenComponent + 0.0722 * srgb.blueComponent
+        return Color(.sRGB, white: luma, opacity: srgb.alphaComponent)
     }
 }
 
