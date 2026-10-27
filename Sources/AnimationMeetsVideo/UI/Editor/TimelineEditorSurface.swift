@@ -46,18 +46,12 @@ struct TimelineEditorSurface<Library: View>: View {
         nonmutating set { playhead.time = newValue }
     }
     @State private var trimPreview = TrimPreviewModel()
-    @State private var buildTask: Task<Void, Never>?
-    /// Where the player item rebuild is. Edits that arrive while one is
-    /// building wait their turn (see `rebuildPlayerItem`).
-    @State private var buildPhase: BuildPhase = .idle
-    @State private var rebuildQueued = false
-    @State private var buildID = UUID()
-    @State private var buildError: String?
+    /// Turns what the surface shows into the viewer's player items (see
+    /// `ViewerPipeline`); made when the surface appears, with its player
+    /// and renderer.
+    @State private var pipeline: ViewerPipeline?
     /// Why a file dragged in from the Finder couldn't be imported.
     @State private var dropError: String?
-    /// A render finished while playing; its rebuild waits for a pause,
-    /// since swapping the item mid-play freezes the picture.
-    @State private var renderRebuildPending = false
     /// As tall as the person makes it, not as tall as its layers need: its
     /// areas share whatever height it has and scroll the rest.
     @AppStorage(Preferences.timelineHeight) private var timelineHeight: Double = 280
@@ -81,18 +75,6 @@ struct TimelineEditorSurface<Library: View>: View {
     /// The graph editors this surface has open, one HUD per parameter.
     @State private var graphs = KeyframeGraphHUDs()
 
-    /// A value is being dragged: a change of structure meanwhile is built
-    /// when it ends (`rebuildDeferred`), and nothing renders until then.
-    @State private var isGesturing = false
-    @State private var rebuildDeferred = false
-    /// Values were edited since the renderer's plan was made, so its pieces
-    /// are named for the old ones (`refreshRenderPlan`).
-    @State private var renderPlanStale = false
-    @State private var renderPlanTask: Task<Void, Never>?
-    /// The renderer waits from a gesture's start until what follows its
-    /// end (a build swapped in, or the plan made again) is done.
-    @State private var rendererHeld = false
-
     /// How many effects the selected clip has, to notice one being applied.
     private struct AppliedEffects: Equatable {
         var clipID: UUID
@@ -102,12 +84,6 @@ struct TimelineEditorSurface<Library: View>: View {
     private var appliedEffects: AppliedEffects? {
         selectedTimelineClip.map { AppliedEffects(clipID: $0.id, count: $0.effects.count + $0.audioEffects.count) }
     }
-
-    private enum BuildPhase { case idle, building, settling }
-
-    /// How long edits must pause before the player item is swapped. Until
-    /// then the viewer shows frames drawn from each edit (`showValues`).
-    private let settleDelay = Duration.milliseconds(300)
 
     private let minTimelineHeight: CGFloat = 140
     private let minTopAreaHeight: CGFloat = 220
@@ -162,6 +138,23 @@ struct TimelineEditorSurface<Library: View>: View {
 
     private var compositionKey: CompositionKey { CompositionKey(project: viewedProject) }
 
+    private func send(_ event: ViewerPipeline.Event) {
+        pipeline?.send(event)
+    }
+
+    private func showProject() {
+        pipeline?.show(source(of: project))
+    }
+
+    /// What the viewer is asked to show of `project` (the real one, or a
+    /// held drag's).
+    private func source(of project: EditingProject, held: Bool = false) -> ViewerSource {
+        ViewerSource(
+            project: viewed(project), renderProject: project, timelineID: timelineID,
+            isPartial: partialView != nil, offlineMedia: offlineMedia, isHeld: held
+        )
+    }
+
     /// What the viewer's banner says while Show Up to Here is on.
     private var partialBanner: String? {
         guard let showing = partialView,
@@ -201,6 +194,10 @@ struct TimelineEditorSurface<Library: View>: View {
     }
 
     var body: some View {
+        followingViewer(editor)
+    }
+
+    private var editor: some View {
         GeometryReader { geometry in
             let maxTimelineHeight = max(minTimelineHeight, geometry.size.height - minTopAreaHeight)
             let resolvedTimelineHeight = CGFloat(timelineHeight).clamped(between: minTimelineHeight, and: maxTimelineHeight)
@@ -232,7 +229,7 @@ struct TimelineEditorSurface<Library: View>: View {
                         hasContent: timeline?.layers.contains { !$0.clips.isEmpty } ?? false,
                         frameSize: timeline?.frameSize ?? CGSize(width: 16, height: 9),
                         frameRate: timeline?.frameRate ?? 24,
-                        buildError: buildError,
+                        buildError: pipeline?.buildError,
                         offlineNotice: offlineNotice,
                         trimPreview: trimPreview,
                         banner: partialBanner,
@@ -345,30 +342,13 @@ struct TimelineEditorSurface<Library: View>: View {
                 sideTab = .effects
             }
         }
-        // While a value is dragged the viewer follows it with the frames it
-        // has (`showValues`), and a change of structure (speed) is built
-        // when the mouse is released. A stretch playing from a render, which
-        // can't take new values, gives way to its clips at the start, so no
-        // step of the drag waits on anything. Nothing renders in the
-        // background meanwhile, though the pointer may rest, nor until what
-        // follows the drag is done: a render would compete with its frames.
+        // A value drag: the viewer follows it with the item as it is, and
+        // swaps nothing until it ends (see `ViewerPipeline`).
         .onReceive(NotificationCenter.default.publisher(for: .valueGestureDidBegin)) { _ in
-            isGesturing = true
-            rendererHeld = true
-            renderer?.setInteracting(true)
-            playback.playWithoutRenders()
+            send(.gestureBegan)
         }
         .onReceive(NotificationCenter.default.publisher(for: .valueGestureDidEnd)) { _ in
-            isGesturing = false
-            renderer?.noteActivity()
-            if rebuildDeferred {
-                rebuildDeferred = false
-                rebuildPlayerItem()
-            } else if renderPlanStale {
-                rebuildPlayerItem(swapsItem: false)
-            } else {
-                releaseRenderer()
-            }
+            send(.gestureEnded)
         }
         .onChange(of: project, initial: true) { _, project in
             graphs.update(project: project)
@@ -402,31 +382,17 @@ struct TimelineEditorSurface<Library: View>: View {
             }
             playback.player.pause()
             playheadTime = .zero
-            rebuildPlayerItem(resetPosition: true)
+            send(.timelineChanged(source(of: project), at: .zero))
         }
         .onChange(of: compositionKey) { _, _ in
-            renderer?.noteActivity()
-            let viewed = viewedProject
-            if StructureKey(project: viewed) == playback.playedKey {
-                // Only values changed (a drag, typed, undone): the item
-                // draws them as it is, paused or playing, with nothing
-                // built (`LiveValues`). The renderer's plan is made again
-                // once the edits pause, since its pieces are named for
-                // what they show.
-                playback.showValues(viewed.clipsByID)
-                if buildPhase != .idle { rebuildPlayerItem() }
-                renderPlanStale = true
-                if !isGesturing { refreshRenderPlan() }
-                return
-            }
-            playback.liveValues.clips = viewed.clipsByID
-            if isGesturing {
-                // Built when the mouse is released.
-                rebuildDeferred = true
-            } else {
-                rebuildPlayerItem()
-            }
+            showProject()
         }
+    }
+
+    /// What the viewer follows besides the project: the playhead, play and
+    /// pause, renders, the package and the drawing options.
+    private func followingViewer(_ content: some View) -> some View {
+        content
         // Wherever it stops, playing or scrubbing, is where rendering starts.
         // The tape scrubber moves the player while paused; the parked
         // playhead goes with it.
@@ -449,36 +415,29 @@ struct TimelineEditorSurface<Library: View>: View {
             // Its time, not the player's: a seek just asked for (stepping a
             // frame pauses, then seeks) is there at once.
             if !playing { playheadTime = playback.currentTime }
-            renderer?.setPlaying(playing)
-            if !playing, renderRebuildPending {
-                renderRebuildPending = false
-                rebuildPlayerItem()
-            }
+            send(.playbackStateChanged(isPlaying: playing))
         }
         // A finished render plays once the item is rebuilt with it.
         // Renders only run while paused, but one can finish just as play
         // is pressed.
         .onChange(of: renderer?.finishedCount) { _, _ in
-            if playback.isPlaying {
-                renderRebuildPending = true
-            } else {
-                rebuildPlayerItem()
-            }
+            send(.renderFinished)
         }
         .messageAlert("Import Failed", message: $dropError)
         .onChange(of: renderer?.packageURL) { _, _ in
-            rebuildPlayerItem()
+            send(.packageURLChanged)
         }
         // Motion blur on or off in the viewer redraws what it shows.
         .onChange(of: playback.motionBlurInPreview) { _, _ in
-            rebuildPlayerItem()
+            send(.drawingOptionsChanged)
         }
         // The file check found media gone or back.
         .onChange(of: offlineMedia) { _, _ in
-            rebuildPlayerItem()
+            send(.offlineMediaChanged)
         }
         .onAppear {
-            rebuildPlayerItem(resetPosition: true)
+            if pipeline == nil { pipeline = ViewerPipeline(playback: playback, renderer: renderer) }
+            send(.appeared(source(of: project), at: playheadTime))
         }
     }
 
@@ -684,21 +643,12 @@ struct TimelineEditorSurface<Library: View>: View {
     private func drawHeld(_ held: EditingProject, after previous: EditingProject?) -> Bool {
         playback.mixCurves.replace(with: MixCurves.of(held))
         graphs.update(project: held)
-        let viewed = viewed(held)
-        let key = CompositionKey(project: viewed)
+        let key = CompositionKey(project: viewed(held))
         let before = previous.map { CompositionKey(project: self.viewed($0)) } ?? compositionKey
-        // Retiming waits for the mouse to be released (see
-        // `onChange(of: compositionKey)`); volume and pan need no picture.
+        // Retiming waits for the mouse to be released; volume and pan need
+        // no picture.
         guard key != before, !key.differsOnlyInSpeed(from: before) else { return false }
-        renderer?.noteActivity()
-        // What plays was built before the drag, with its values in it; the
-        // compositor draws every frame with the drag's instead, paused or
-        // playing, when only values changed. Letting the drag go would
-        // write every step to the project.
-        if StructureKey(project: viewed) == playback.playedKey {
-            playback.showValues(viewed.clipsByID)
-            return true
-        }
+        if pipeline?.showHeld(source(of: held, held: true)) == true { return true }
         projectState?.letGo()
         return false
     }
@@ -709,163 +659,7 @@ struct TimelineEditorSurface<Library: View>: View {
     private func heldDragEnded(drew: Bool) {
         playback.mixCurves.replace(with: MixCurves.of(project))
         graphs.update(project: project)
-        if drew { playback.showValues(viewedProject.clipsByID) }
-    }
-
-    /// Makes the renderer's plan again once value edits have paused for
-    /// `settleDelay`: the item draws the edits as it is, but the pieces to
-    /// render are named for what they show. Nothing is swapped.
-    private func refreshRenderPlan() {
-        renderPlanTask?.cancel()
-        let delay = settleDelay
-        renderPlanTask = Task {
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled, renderPlanStale, !isGesturing else { return }
-            rebuildPlayerItem(swapsItem: false)
-        }
-    }
-
-    /// Lets the renderer go back to work after a gesture, once what
-    /// followed it is done.
-    private func releaseRenderer() {
-        guard rendererHeld, !isGesturing else { return }
-        rendererHeld = false
-        renderer?.setInteracting(false)
-    }
-
-    /// Rebuilds the player item from the current project. Keeps the
-    /// position and play state the player has when the build *finishes*,
-    /// not when it started, so edits made during playback don't jump back.
-    ///
-    /// A rebuild is never cancelled by the next edit, or a fast drag would
-    /// cancel every build before it finished and nothing would draw until
-    /// the drag ended. An edit that arrives during a build is queued and
-    /// built when the current one is done. Paused, a finished build is
-    /// swapped in at once; the viewer keeps its picture until the new
-    /// item's frame is there (`PlaybackModel.swap`). Playing, it is swapped
-    /// once edits have paused for `settleDelay`.
-    ///
-    /// Without `swapsItem` it only makes the renderer's plan again, for
-    /// values edited since (`refreshRenderPlan`); a build that swaps the
-    /// item does that too.
-    private func rebuildPlayerItem(resetPosition: Bool = false, swapsItem: Bool = true) {
-        if resetPosition {
-            buildTask?.cancel()
-            buildTask = nil
-            buildID = UUID()
-            buildPhase = .idle
-            rebuildQueued = false
-        }
-        guard let timeline, timeline.layers.contains(where: { !$0.clips.isEmpty }) else {
-            buildTask?.cancel()
-            buildTask = nil
-            buildID = UUID()
-            buildPhase = .idle
-            rebuildQueued = false
-            playback.clearItem()
-            buildError = nil
-            renderer?.update(project: project, timelineID: timelineID, segments: [])
-            renderPlanStale = false
-            releaseRenderer()
-            return
-        }
-        switch buildPhase {
-        case .building:
-            rebuildQueued = true
-            return
-        case .settling:
-            // Waiting out the delay with an item built: this edit replaces it.
-            buildTask?.cancel()
-        case .idle:
-            break
-        }
-        let project = self.viewedProject
-        let isPartial = partialView != nil
-        let realProject = self.project
-        let tID = timelineID
-        let player = playback.player
-        let playback = playback
-        let frameRate = timeline.frameRate
-        let renderer = renderer
-        let id = UUID()
-        buildID = id
-        buildPhase = .building
-        rebuildQueued = false
-        renderPlanTask?.cancel()
-        renderPlanTask = nil
-        renderPlanStale = false
-        /// Ends this build, starting the queued one if there is one. A
-        /// build replaced since it began leaves things to its successor.
-        func finish() {
-            guard buildID == id else { return }
-            buildTask = nil
-            buildPhase = .idle
-            if rebuildQueued {
-                rebuildQueued = false
-                rebuildPlayerItem()
-            } else {
-                releaseRenderer()
-            }
-        }
-        buildTask = Task {
-            do {
-                let composed = try await CompositionExporter.buildComposedTimeline(
-                    for: project, timelineID: tID, forPreview: true, meter: playback.meter, options: playback.drawingOptions,
-                    cache: isPartial ? nil : renderer?.cache
-                )
-                guard buildID == id else { return }
-                // A clip cut short isn't what renders are for.
-                renderer?.update(project: realProject, timelineID: tID, segments: isPartial ? [] : composed.segments)
-                guard swapsItem else {
-                    buildError = nil
-                    finish()
-                    return
-                }
-                let wasPaused = player.timeControlStatus == .paused
-                if wasPaused, isGesturing, !resetPosition {
-                    // The item is swapped when the drag ends.
-                    rebuildDeferred = true
-                    finish()
-                    return
-                }
-                if !wasPaused, !resetPosition {
-                    // Playing: every swap stalls the player while the new
-                    // item is readied, so a run of edits (a slider dragged
-                    // across a clip's own-mix threshold) swaps once, when it
-                    // has paused, and not after every step.
-                    buildPhase = .settling
-                    if rebuildQueued {
-                        finish()
-                        return
-                    }
-                    try await Task.sleep(for: settleDelay)
-                    guard buildID == id else { return }
-                    buildPhase = .building
-                }
-                let item = AVPlayerItem(asset: composed.composition)
-                playback.prepare(item, with: composed, key: StructureKey(project: project), frameRate: frameRate)
-                // The viewer keeps its picture until the new item's frame
-                // is there (`PlaybackModel.swap`).
-                let playing = !resetPosition && player.timeControlStatus != .paused
-                let resumeTime = resetPosition ? playheadTime : player.currentTime()
-                await playback.swap(to: item, at: resumeTime, playing: playing)
-                guard buildID == id else { return }
-                buildError = nil
-                finish()
-            } catch is CancellationError {
-                finish()
-            } catch {
-                if buildID == id {
-                    if let compositionError = error as? CompositionError, case .emptyTimeline = compositionError {
-                        playback.clearItem()
-                        buildError = nil
-                    } else {
-                        buildError = error.localizedDescription
-                    }
-                }
-                finish()
-            }
-        }
+        if drew { pipeline?.show(source(of: project)) }
     }
 }
 

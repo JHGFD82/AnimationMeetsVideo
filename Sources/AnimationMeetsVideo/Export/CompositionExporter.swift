@@ -93,8 +93,12 @@ enum CompositionExporter {
             throw CompositionError.missingFont(font)
         }
 
+        // A build no longer wanted (the viewer moved to another timeline)
+        // stops at each stage rather than finishing for nothing.
+        try Task.checkCancellation()
         // Matte wipes' maps are read before drawing starts.
         await MatteMaps.shared.load(for: project)
+        try Task.checkCancellation()
         let window = CMTimeRange(start: .zero, duration: length)
         var hosts: [TrackHost] = []
         let nodes = try await $skipsMissingMedia.withValue(forPreview) {
@@ -122,6 +126,7 @@ enum CompositionExporter {
         let panned = Set(mix.pan.keys)
 
         for host in hosts {
+            try Task.checkCancellation()
             var videoTrack: AVMutableCompositionTrack?
             var audioTrack: AVMutableCompositionTrack?
             let pans = host.volume.contains { $0.fade == nil && panned.contains($0.id) }
@@ -228,6 +233,7 @@ enum CompositionExporter {
             throw CompositionError.emptyTimeline
         }
 
+        try Task.checkCancellation()
         var plan = planRanges(
             tree: tree, overallDuration: composition.duration, allowsPassthrough: !forPreview,
             frameSize: timeline.frameSize, frameRate: timeline.frameRate, colorSpace: timeline.colorSpace,
@@ -242,6 +248,7 @@ enum CompositionExporter {
             )
         }
 
+        try Task.checkCancellation()
         let videoComposition = Self.buildVideoComposition(
             plan: plan,
             hasPictures: !tree.isEmpty,
