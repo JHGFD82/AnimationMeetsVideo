@@ -52,7 +52,7 @@ struct AssetStatusLine: View {
                 .help(problem.detail)
                 .accessibilityHint(problem.detail)
         } else if let beats = analysis.beats[clip.id], !beats.isEmpty {
-            Text(ClipsTab.tempoText(beats))
+            Text(ClipsTabModel.tempoText(beats))
                 .font(Design.Typeface.numericMicro)
                 .foregroundStyle(Design.textTertiary)
         }

@@ -320,6 +320,54 @@ struct UISnapshots {
         try SnapshotSupport.render(UsesFinderView(finder: finder), "uses-finder", size: CGSize(width: 620, height: 260))
     }
 
+    /// The Clips tab: a video under its name as five scenes (the fourth
+    /// set by hand), the second and third underlined where Main uses them,
+    /// then a song as one clip, a thumbnail each.
+    @Test func clipsTab() async throws {
+        let movie = FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-clips-\(UUID().uuidString).mov")
+        defer { try? FileManager.default.removeItem(at: movie) }
+        try await writeMovie(to: movie, segments: [(90, 24), (200, 24), (120, 24), (230, 24)])
+        var footage = MediaClip(
+            name: "Skate.mov", kind: .video, url: movie, duration: CMTime(value: 4, timescale: 1),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        footage.sceneEdits.manualCuts = [CMTime(value: 60, timescale: 24)]
+        var scores = [UInt8](repeating: 2, count: 96)
+        scores[0] = 0
+        for frame in [24, 48, 72] { scores[frame] = 200 }
+        let track = ChangeScoreTrack(timescale: 24, times: (0..<96).map(Int64.init), scores: scores)
+        let song = try SnapshotSupport.clickSong(named: "clips-tab-song")
+        var project = EditingProject.empty
+        project.addMedia(footage)
+        project.addMedia(song)
+        _ = project.addPieces(
+            [MediaPiece(assetID: footage.id, start: CMTime(value: 30, timescale: 24), end: CMTime(value: 54, timescale: 24))],
+            intoTimeline: project.rootTimelineID
+        )
+        let access = ProjectAccess()
+        access.value = project
+        let analysis = AssetAnalysis()
+        // Scores are kept only with the file they were read from.
+        let stamp = try #require(FileStamp(url: movie))
+        analysis.reset(tracks: [footage.id: track], sources: AnalysisSources(scores: [footage.id: stamp]))
+
+        let defaults = try #require(UserDefaults(suiteName: "amv-snapshot-clips-tab"))
+        defaults.set(ThumbnailInterval.all.rawValue, forKey: Preferences.thumbnailInterval)
+        defaults.set(ThumbnailSize.small.rawValue, forKey: Preferences.thumbnailSize)
+        let size = CGSize(width: 300, height: 520)
+        try await SnapshotSupport.render(
+            ClipsTab(
+                access: access, activeTimelineID: project.rootTimelineID, selection: .constant(nil), analysis: analysis,
+                replacement: MediaReplacementController(), packageURL: nil, revealing: .constant(nil), onImport: {}
+            )
+            .defaultAppStorage(defaults)
+            .frame(width: size.width, height: size.height)
+            .background(Design.Surface.base.color)
+            .preferredColorScheme(.dark),
+            "clips-tab", size: size, settle: .seconds(2)
+        )
+    }
+
     /// The Timelines tab as filmstrips: Main embeds a dark-then-bright
     /// Chorus for its first two seconds, so Chorus is underlined there.
     /// Each strip's frames are made from its own timeline.

@@ -160,6 +160,13 @@ Pro, so a long clip takes more rows rather than a wider panel.
 - Scenes are found once for each change to what they come from (the
   asset's edits, the sensitivity, the scores) and remembered
   (`SceneCoverageCache`), not found again on every redraw.
+- The list itself (each asset's clips, what the timelines use of them,
+  and the lines they are drawn as) is worked out again only when what it
+  comes from changes: the media, the sort, the sensitivity, the scores,
+  the timelines, the width (in 4-point steps) or the thumbnail settings
+  (`ClipsTabModel`, kept by `Memo`). Picking, skimming and dragging out a
+  range redraw only the rows whose clip or pick changed (`ClipTitleRow`
+  and `ClipStripRow` are Equatable).
 - Thumbnails are made as they scroll into view, at the size drawn, and
   kept in memory only. Nothing is written to disk: small frames are cheap
   to make again, and storing them would go against keeping per-asset data
@@ -232,7 +239,9 @@ loses the keyboard.
   dragged to change the range's length, snapping to frames; the pointer
   becomes the resize cursor over them. A range belongs to one clip;
   making one clears any other selection. A press must move a few points
-  before it picks a range, so a slightly unsteady click is still a click.
+  before it picks a range, so a slightly unsteady click is still a click,
+  and a range dragged out shorter than a frame picks the whole clip
+  instead (sound, which has no frame rate, counts thirty frames a second).
 - **Clicking** a clip outside its range selects the whole clip again,
   dropping the range. Clicking inside the range keeps it.
 - **Command- or Shift-clicking** another clip while one has a range
@@ -242,9 +251,10 @@ loses the keyboard.
   **Shift-F** with the clip selected, as Final Cut's Reveal in Browser)
   switches the browser to its Clips tab, picks the footage the clip plays
   and scrolls to it: the whole clip or scene when the timeline clip plays
-  all of it, a range of it when only part, and every scene from first to
-  last when it plays across several (`ClipsTab.reveal`, through the
-  `revealInBrowser` notification).
+  all of it (to within half a frame), a range of it when only part, and
+  every scene from first to last when it plays across several
+  (`ClipsTab.reveal` and `ClipsTabInteraction.revealSelection`, through
+  the `revealInBrowser` notification).
 
 ## Dragging
 

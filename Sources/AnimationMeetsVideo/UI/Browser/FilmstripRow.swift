@@ -5,22 +5,31 @@ import SwiftUI
 /// One row of a clip's filmstrip: its thumbnails (or, for sound, its
 /// waveform), the selection, a picked range with its handles, a red line
 /// under what timelines use, and on the first row the clip's duration in a
-/// shaded box.
-struct FilmstripRow: View {
+/// shaded box. Equatable, so a row whose clip and picks are unchanged isn't
+/// drawn again when the list is (`detection` compares as the same object).
+struct FilmstripRow: View, Equatable {
     let entry: BrowserEntry
     let layout: FilmstripLayout
     let row: Int
     var isSelected = false
     /// A picked range, in seconds into the clip.
-    var range: (start: Double, end: Double)?
+    var range: SecondsSpan?
     /// What the project's timelines use of the clip, in seconds into it.
-    var used: [(start: Double, end: Double)] = []
+    var used: [SecondsSpan] = []
     /// The duration, shown on the first row only.
     var durationText: String?
     /// For the first row of a video shown whole: the analysis whose scene
     /// detection shows across its top while the scenes are being found
     /// (`SceneDetectionBar`, which reads it, so progress redraws only that).
     var detection: AssetAnalysis?
+
+    nonisolated static func == (lhs: FilmstripRow, rhs: FilmstripRow) -> Bool {
+        MainActor.assumeIsolated {
+            lhs.entry == rhs.entry && lhs.layout == rhs.layout && lhs.row == rhs.row && lhs.isSelected == rhs.isSelected
+                && lhs.range == rhs.range && lhs.used == rhs.used && lhs.durationText == rhs.durationText
+                && lhs.detection === rhs.detection
+        }
+    }
 
     var body: some View {
         FilmstripStrip(
@@ -61,9 +70,9 @@ struct FilmstripStrip<Picture: View, Top: View>: View {
     let row: Int
     var isSelected = false
     /// A picked range, in seconds into the strip.
-    var range: (start: Double, end: Double)?
+    var range: SecondsSpan?
     /// What is used, in seconds into the strip.
-    var used: [(start: Double, end: Double)] = []
+    var used: [SecondsSpan] = []
     /// The duration, shown on the first row only.
     var durationText: String?
     let picture: (FilmstripLayout.Cell) -> Picture
