@@ -15,6 +15,9 @@ struct ZoomSlider: View {
     var axis: Axis = .horizontal
     let help: String
     var width: CGFloat = ZoomSlider.width
+    /// Whether the slider is being dragged: true as a drag starts, false
+    /// as it ends.
+    var onEditingChanged: (Bool) -> Void = { _ in }
 
     /// The same in every view, so a drag along it feels the same.
     static let width: CGFloat = 84
@@ -25,7 +28,7 @@ struct ZoomSlider: View {
                 .font(Design.Typeface.micro)
                 .foregroundStyle(Design.textTertiary)
                 .accessibilityHidden(true)
-            Slider(value: $fraction, in: 0...1)
+            Slider(value: $fraction, in: 0...1, onEditingChanged: onEditingChanged)
                 .controlSize(.mini)
                 .frame(width: width)
                 .accessibilityLabel(label)

@@ -8,6 +8,9 @@ struct TimelineZoomSliders: View {
     @Binding var horizontal: Double
     /// 0 is the shortest layers; 1 the tallest.
     @Binding var vertical: Double
+    /// Whether the layer height slider is being dragged: true as a drag
+    /// starts, false as it ends.
+    var onEditingChanged: (Bool) -> Void = { _ in }
 
     var body: some View {
         HStack(spacing: Design.Space.step) {
@@ -17,7 +20,8 @@ struct TimelineZoomSliders: View {
             )
             ZoomSlider(
                 fraction: $vertical, label: "Layer height", axis: .vertical,
-                help: "Layer height in every shown area (pinch up and down, or Option-pinch)"
+                help: "Layer height in every shown area (pinch up and down, or Option-pinch)",
+                onEditingChanged: onEditingChanged
             )
         }
     }

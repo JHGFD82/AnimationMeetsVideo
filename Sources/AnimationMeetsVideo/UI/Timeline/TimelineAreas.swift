@@ -57,7 +57,7 @@ extension TimelineView {
     /// Linked audio is shown under video, at a little over half its height,
     /// or tall enough for two channels when they're shown apart.
     private func audioLaneHeight(of layer: TimelineLayer) -> CGFloat {
-        let lane = max(22, (areaLayout.height(of: layer.id, kind: layer.kind) * 0.6).rounded())
+        let lane = max(22, (shownAreaLayout.height(of: layer.id, kind: layer.kind) * 0.6).rounded())
         return showsChannels(of: layer) ? max(lane, Self.channelBandHeight) * 2 : lane
     }
 
@@ -87,7 +87,7 @@ extension TimelineView {
     /// layers are always `adjustmentRowHeight`.
     func clipRowHeight(of layer: TimelineLayer) -> CGFloat {
         if layer.isAdjustment { return Self.adjustmentRowHeight }
-        let height = areaLayout.height(of: layer.id, kind: layer.kind)
+        let height = shownAreaLayout.height(of: layer.id, kind: layer.kind)
         guard layer.kind != .video, showsChannels(of: layer) else { return height }
         return max(height, Self.channelBandHeight) * 2
     }

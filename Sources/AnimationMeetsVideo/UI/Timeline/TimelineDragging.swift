@@ -113,7 +113,7 @@ extension TimelineView {
 
     /// The area whose empty space, below its layers, is under the pointer.
     func emptyAreaKind(at pointer: CGPoint) -> LayerKind? {
-        guard let kind = areaLayout.shown.first(where: { geometryStore.areas[$0]?.contains(pointer) == true }) else { return nil }
+        guard let kind = shownAreaLayout.shown.first(where: { geometryStore.areas[$0]?.contains(pointer) == true }) else { return nil }
         let onLayer = areaLayers(kind).contains { geometryStore.layerRows[$0.id]?.contains(pointer) == true }
         return onLayer ? nil : kind
     }

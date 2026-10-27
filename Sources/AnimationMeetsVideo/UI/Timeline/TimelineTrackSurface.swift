@@ -21,14 +21,14 @@ extension TimelineView {
         let trackWidth = geometry.size.width - labelColumnWidth
         let viewport = viewport(width: trackWidth)
         let scrollbarHeight = viewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
-        let shownAreas = areaLayout.shown
-        let railHeight = rulerHeight + (areaLayout.showsSections ? SectionLane.height : 0) + separatorHeight
+        let shownAreas = shownAreaLayout.shown
+        let railHeight = rulerHeight + (shownAreaLayout.showsSections ? SectionLane.height : 0) + separatorHeight
         // Whatever height the timeline is given goes to the areas,
         // split by their shares: a taller timeline shows more
         // layers, it doesn't make them taller.
         let areasAvailable = max(0, geometry.size.height - railHeight - scrollbarHeight
             - CGFloat(shownAreas.count) * AreaTitleBar.height)
-        let areaHeights = areaLayout.heights(splitting: areasAvailable)
+        let areaHeights = shownAreaLayout.heights(splitting: areasAvailable)
         let trackHeight = max(railHeight, geometry.size.height - scrollbarHeight)
         // Once for every area's rows, which compare it to skip
         // redrawing; without where this timeline's clips are, which
@@ -54,7 +54,7 @@ extension TimelineView {
                         .frame(width: labelColumnWidth, alignment: .leading)
                     TimelineRulerLane(parent: self, width: trackWidth)
                 }
-                if areaLayout.showsSections {
+                if shownAreaLayout.showsSections {
                     HStack(spacing: 0) {
                         Text("Sections")
                             .font(Design.Typeface.micro)
@@ -82,9 +82,14 @@ extension TimelineView {
                         onResize: { dy in
                             let start = boundaryDragStart ?? areaHeights
                             boundaryDragStart = start
-                            areaLayout.moveBoundary(above: kind, by: dy, from: start, available: areasAvailable)
+                            var layout = liveAreaLayout ?? areaLayout
+                            layout.moveBoundary(above: kind, by: dy, from: start, available: areasAvailable)
+                            liveAreaLayout = layout
                         },
-                        onResizeEnded: { boundaryDragStart = nil }
+                        onResizeEnded: {
+                            boundaryDragStart = nil
+                            commitLiveAreaLayout()
+                        }
                     )
                     area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, structure: structure)
                 }
@@ -149,6 +154,7 @@ extension TimelineView {
                 onMagnifyEnded: {
                     viewportModel.zoomBand.endPinch()
                     viewportModel.layerHeightBand.endPinch()
+                    commitLiveAreaLayout()
                 },
                 onHover: { x in skim(atX: x, viewport: viewport) }
             )

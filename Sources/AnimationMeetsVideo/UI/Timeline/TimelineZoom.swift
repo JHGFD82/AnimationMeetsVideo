@@ -19,16 +19,19 @@ extension TimelineView {
     /// shrink, and no other area's do. Past the shortest or tallest layers
     /// the area stretches instead (`layerHeightBand`).
     func zoomLayerHeight(by factor: CGFloat, at pointer: CGPoint, pinching: Bool = true) {
-        guard let kind = areaLayout.shown.first(where: { geometryStore.areas[$0]?.contains(pointer) == true }) else { return }
+        guard let kind = shownAreaLayout.shown.first(where: { geometryStore.areas[$0]?.contains(pointer) == true }) else { return }
         if viewportModel.layerHeightBandKind != kind { viewportModel.layerHeightBand = RubberBandZoom() }
         viewportModel.layerHeightBandKind = kind
         let area = geometryStore.areas[kind] ?? .zero
         let anchor = area.height > 0 ? (pointer.y - area.minY) / area.height : 0.5
         var band = viewportModel.layerHeightBand
+        // Kept to one side until the pinch ends (`commitLiveAreaLayout`).
         band.zoom(by: Double(factor), about: anchor, pinching: pinching) { factor in
-            let before = areaLayout.layerHeight(kind)
-            areaLayout.setLayerHeight(kind, before * CGFloat(factor))
-            return Double(areaLayout.layerHeight(kind) / before)
+            var layout = liveAreaLayout ?? areaLayout
+            let before = layout.layerHeight(kind)
+            layout.setLayerHeight(kind, before * CGFloat(factor))
+            liveAreaLayout = layout
+            return Double(layout.layerHeight(kind) / before)
         }
         viewportModel.layerHeightBand = band
     }
@@ -105,7 +108,7 @@ extension TimelineView {
         }
         autoScroll.areaScrollers = areaScrollers
         autoScroll.areaAt = { pointer in
-            areaLayout.shown.first { geometryStore.areas[$0]?.contains(pointer) == true }
+            shownAreaLayout.shown.first { geometryStore.areas[$0]?.contains(pointer) == true }
         }
     }
 

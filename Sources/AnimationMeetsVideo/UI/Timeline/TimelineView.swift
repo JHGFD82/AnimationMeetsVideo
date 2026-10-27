@@ -107,6 +107,23 @@ struct TimelineView: View {
     /// Which areas show, how they share the height, and each one's layer
     /// height (its vertical zoom).
     @AppStorage(Preferences.timelineAreaLayout) var areaLayout = TimelineAreaLayout()
+    /// The layout while a boundary drag, the layer height slider or a
+    /// vertical pinch is under way, written to `areaLayout` (and so to the
+    /// defaults) once, when it ends; nil otherwise.
+    @State var liveAreaLayout: TimelineAreaLayout?
+    /// Whether the layer height slider is being dragged. A change without a
+    /// drag (VoiceOver, the keyboard) has no end to wait for.
+    @State private var isDraggingLayerHeight = false
+
+    /// The layout as shown: the one a gesture is changing, if any.
+    var shownAreaLayout: TimelineAreaLayout { liveAreaLayout ?? areaLayout }
+
+    /// Keeps what a gesture did to the layout, now that it has ended.
+    func commitLiveAreaLayout() {
+        guard let liveAreaLayout else { return }
+        areaLayout = liveAreaLayout
+        self.liveAreaLayout = nil
+    }
     /// Area heights when a drag of the boundary between two areas began.
     @State var boundaryDragStart: [LayerKind: CGFloat]?
     @State var geometryStore = TimelineGeometryStore()
@@ -283,9 +300,17 @@ struct TimelineView: View {
                 TimelineZoomSliders(
                     horizontal: zoomFractionBinding,
                     vertical: Binding(
-                        get: { areaLayout.shownLayerHeightFraction },
-                        set: { areaLayout.setShownLayerHeightFraction($0) }
-                    )
+                        get: { shownAreaLayout.shownLayerHeightFraction },
+                        set: {
+                            var layout = liveAreaLayout ?? areaLayout
+                            layout.setShownLayerHeightFraction($0)
+                            if isDraggingLayerHeight { liveAreaLayout = layout } else { areaLayout = layout }
+                        }
+                    ),
+                    onEditingChanged: { editing in
+                        isDraggingLayerHeight = editing
+                        if !editing { commitLiveAreaLayout() }
+                    }
                 )
                 // Grouped by what they act on: the view, editing, then
                 // which panels are open.
@@ -315,7 +340,7 @@ struct TimelineView: View {
                     Toggle(isOn: $areaLayout.showsSections) {
                         Image(systemName: "rectangle.split.3x1")
                     }
-                    .help(areaLayout.showsSections ? "Hide the sections row" : "Show the sections row")
+                    .help(shownAreaLayout.showsSections ? "Hide the sections row" : "Show the sections row")
                     .accessibilityLabel("Sections row")
                 }
                 .buttonStyle(.icon)
