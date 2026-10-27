@@ -1,5 +1,6 @@
 import AppKit
 import CoreMedia
+import Observation
 import SwiftUI
 
 /// One parameter's keyframes as a value graph, for its HUD panel: a line
@@ -14,8 +15,11 @@ import SwiftUI
 /// linear and bezier (Easy Ease); Option-drag one pulls a handle out of a
 /// linear side, the side the drag heads to. Escape cancels a drag. Click
 /// elsewhere to move the playhead there; double-click to add a keyframe,
-/// or select the one there. The buttons and the right-click menu apply
-/// ease presets to the selected keyframe, or to the one at the playhead.
+/// or select the one there. The arrow keys move the selected keyframe a
+/// frame or a point at a time (ten with Shift), and Delete deletes it.
+/// The buttons act on the selected keyframe, or the one at the playhead;
+/// the right-click menu on the keyframe under the pointer, or else the
+/// same.
 ///
 /// The sliders under the graph zoom values and time, each step by the same
 /// ratio wherever the zoom is, time no further out than the clip; pinching
@@ -56,6 +60,7 @@ struct KeyframeGraphView: View {
     /// diagonal swipe through time doesn't drift the values.
     @State private var scrollAxis: Axis?
     @State private var lastScrollPhase: ScrollInputPhase?
+    @State private var pointer = GraphPointer()
     @FocusState private var isFocused: Bool
     /// The zooms' edges: past them the plot stretches and springs back.
     @State private var timeBand = RubberBandZoom()
@@ -240,6 +245,7 @@ struct KeyframeGraphView: View {
             )
             .equatable()
         }
+        .overlay { HoverRing(pointer: pointer) { drag == nil ? hit(at: $0, c, layout: layout).point : nil } }
         .overlay { GraphPlayheadLine(playback: hud.playback, parked: hud.playhead, axis: c.axis, layout: layout) }
         .contentShape(Rectangle())
         .gesture(dragGesture(c, layout: layout))
@@ -268,19 +274,49 @@ struct KeyframeGraphView: View {
                 endTimePinch()
                 valueBand.endPinch()
             })
-        .contextMenu {
-            if let target = presetTarget(c) {
-                KeyframeEaseMenuItems { preset in edit { $0.applyEase(preset, at: target) } }
-                Divider()
-                Button("Delete Keyframe", role: .destructive) {
-                    edit { $0.removeKeyframe(at: target) }
-                    selected = nil
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let location):
+                pointer.location = location
+                let target = hit(at: location, c, layout: layout).target
+                if pointer.keyframe != target.keyframeTime { pointer.keyframe = target.keyframeTime }
+                if target != .scrub {
+                    NSCursor.pointingHand.set()
+                } else {
+                    (layout.plot.contains(location) ? NSCursor.resizeLeftRight : NSCursor.arrow).set()
                 }
+            case .ended:
+                leaveHover()
             }
+        }
+        // The panel hides with the app, which may not end the hover.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in leaveHover() }
+        .contextMenu {
+            GraphMenu(
+                pointer: pointer, fallback: { presetTarget(c) },
+                onEase: { preset, time in
+                    selected = time
+                    edit { $0.applyEase(preset, at: time) }
+                },
+                onDelete: deleteKeyframe(at:),
+                onAdd: { addKeyframeAtPlayhead(c) }
+            )
         }
         .focusable()
         .focused($isFocused)
         .focusEffectDisabled()
+        .onDeleteCommand { if let time = presetTarget(c) { deleteKeyframe(at: time) } }
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
+            guard drag == nil, let time = selected, c.value.keyframe(at: time) != nil else { return .ignored }
+            let steps = press.modifiers.contains(.shift) ? 10 : 1
+            switch press.key {
+            case .leftArrow: nudge(time, frames: -steps, points: 0, c, layout: layout)
+            case .rightArrow: nudge(time, frames: steps, points: 0, c, layout: layout)
+            case .upArrow: nudge(time, frames: 0, points: CGFloat(steps), c, layout: layout)
+            default: nudge(time, frames: 0, points: -CGFloat(steps), c, layout: layout)
+            }
+            return .handled
+        }
         .onKeyPress(.escape) {
             guard let current = drag else { return .ignored }
             draft = nil
@@ -289,12 +325,53 @@ struct KeyframeGraphView: View {
             selected = current.selectedBefore
             return .handled
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("\(key.parameter.name) graph")
         .accessibilityValue("\(c.value.keyframes.count) keyframes")
         .accessibilityHint(shared == nil
                            ? "The sliders below zoom; the buttons above ease the selected keyframe or the one at the playhead"
                            : "The sliders zoom; the buttons at the top of the panel ease its selected keyframe or the one at the playhead")
+        .accessibilityChildren {
+            ForEach(Array(c.value.keyframes.enumerated()), id: \.offset) { _, keyframe in
+                keyframeElement(keyframe, c, layout: layout, shown: shown)
+            }
+        }
+        .accessibilityAction(named: "Add keyframe at playhead") { addKeyframeAtPlayhead(c) }
+    }
+
+    /// A keyframe for VoiceOver: its time and values; pressing it selects
+    /// it, and its actions are the menu's and the arrow keys'.
+    private func keyframeElement(_ keyframe: Keyframe<ComponentValue>, _ c: Context, layout: KeyframeGraphLayout, shown: [Int]) -> some View {
+        let names = key.parameter.componentNames
+        let values = keyframe.value.values.indices.map { index in
+            let label = key.parameter.label(keyframe.value.values[index] + c.offset[index], component: index)
+            return names.count > 1 ? "\(names[index]) \(label)" : label
+        }
+        let timecode = c.axis.timelineTime(atKey: keyframe.time).timecode(frameRate: c.timeline.frameRate)
+        let component = shown.first ?? 0
+        let point = CGPoint(
+            x: layout.x(keyframe.time.seconds),
+            y: layout.y(keyframe.value.values[component] + c.offset[component], component: component)
+        )
+        return Rectangle()
+            .frame(width: 10, height: 10)
+            .position(point)
+            .accessibilityLabel("Keyframe at \(timecode), \(values.joined(separator: ", "))")
+            .accessibilityAddTraits(keyframe.time == selected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { selected = keyframe.time }
+            .accessibilityAdjustableAction { direction in
+                nudge(keyframe.time, frames: direction == .increment ? 1 : -1, points: 0, c, layout: layout)
+            }
+            .accessibilityActions {
+                ForEach(KeyframeEase.Preset.allCases) { preset in
+                    Button(preset.name) { edit { $0.applyEase(preset, at: keyframe.time) } }
+                }
+                Button("Move a frame earlier") { nudge(keyframe.time, frames: -1, points: 0, c, layout: layout) }
+                Button("Move a frame later") { nudge(keyframe.time, frames: 1, points: 0, c, layout: layout) }
+                Button("Raise value") { nudge(keyframe.time, frames: 0, points: 1, c, layout: layout) }
+                Button("Lower value") { nudge(keyframe.time, frames: 0, points: -1, c, layout: layout) }
+                Button("Delete") { deleteKeyframe(at: keyframe.time) }
+            }
     }
 
     // MARK: - Zooming and scrolling
@@ -655,33 +732,38 @@ struct KeyframeGraphView: View {
     }
 
     private func target(at point: CGPoint, _ c: Context, layout: KeyframeGraphLayout) -> Target {
+        hit(at: point, c, layout: layout).target
+    }
+
+    /// What a click at `point` would take, and where that is drawn.
+    private func hit(at point: CGPoint, _ c: Context, layout: KeyframeGraphLayout) -> (target: Target, point: CGPoint?) {
         let shown = visible(c.value.value.values.count)
         var handle: (handle: Handle, distance: CGFloat)?
         for candidate in handles(c, layout: layout, selected: selected, shown: shown) {
             let d = Self.distance(candidate.point, point)
             if d < Self.reach, d < handle?.distance ?? .infinity { handle = (candidate, d) }
         }
-        var nearest: (target: Target, distance: CGFloat)?
+        var nearest: (target: Target, point: CGPoint, distance: CGFloat)?
         for keyframe in c.value.keyframes {
             let x = layout.x(keyframe.time.seconds)
             for component in shown {
                 let at = CGPoint(x: x, y: layout.y(keyframe.value.values[component] + c.offset[component], component: component))
                 let d = Self.distance(at, point)
                 if d < Self.reach, d < nearest?.distance ?? .infinity {
-                    nearest = (.keyframe(keyframe.time, component: component), d)
+                    nearest = (.keyframe(keyframe.time, component: component), at, d)
                 }
             }
         }
         // A handle just clear of its keyframe takes the click only when
         // clearly nearer, so the keyframe under it stays easy to take.
         if let handle, handle.distance < (nearest?.distance ?? .infinity) - 2 {
-            return .handle(segment: handle.handle.segment, outgoing: handle.handle.outgoing)
+            return (.handle(segment: handle.handle.segment, outgoing: handle.handle.outgoing), handle.handle.point)
         }
-        guard let nearest else { return .scrub }
+        guard let nearest else { return (.scrub, nil) }
         if case .keyframe(let time, _) = nearest.target, NSEvent.modifierFlags.contains(.option) {
-            return .pull(time)
+            return (.pull(time), nearest.point)
         }
-        return nearest.target
+        return (nearest.target, nearest.point)
     }
 
     /// Whether a drag has gone far enough to be one rather than a click.
@@ -696,6 +778,8 @@ struct KeyframeGraphView: View {
                 if drag == nil {
                     link?.active = key
                     isFocused = true
+                    pointer.location = nil
+                    NSCursor.arrow.set()
                     let target = target(at: gesture.startLocation, c, layout: layout)
                     drag = Drag(target: target, layout: layout, original: c.value, segments: c.segments, selectedBefore: selected)
                     if let time = target.keyframeTime { selected = time }
@@ -792,6 +876,23 @@ struct KeyframeGraphView: View {
         return (result, newTime)
     }
 
+    /// Moves the keyframe at `time` `frames` frames along and its first
+    /// shown component's value `points` up the plot, as a drag would, in
+    /// one edit, and selects it where it lands: the arrow keys' and
+    /// VoiceOver's way to drag it.
+    private func nudge(_ time: CMTime, frames: Int, points: CGFloat, _ c: Context, layout: KeyframeGraphLayout) {
+        guard drag == nil else { return }
+        var toward = time
+        if frames != 0 {
+            let moved = CMTimeAdd(c.axis.timelineTime(atKey: time), CMTimeMultiply(c.timeline.frameDuration, multiplier: Int32(frames)))
+            toward = c.axis.snapped(c.axis.keyTime(atTimeline: moved).seconds)
+        }
+        let component = visible(c.value.value.values.count).first ?? 0
+        let moved = movedKeyframe(time, component: component, toward: toward, dy: -points, in: c.value, layout: layout, c)
+        selected = moved.time
+        if moved.value != c.value { commit(moved.value) }
+    }
+
     /// The keyframes with one side's ease set from a handle dragged to
     /// `location`. Unless `alone`, the keyframe's other handle, if that
     /// side is eased, swings to stay on one line through the keyframe with
@@ -830,6 +931,12 @@ struct KeyframeGraphView: View {
         return result
     }
 
+    private func leaveHover() {
+        pointer.location = nil
+        pointer.keyframe = nil
+        NSCursor.arrow.set()
+    }
+
     // MARK: - Editing
 
     /// Saves keyframes the graph made, drawing them until the project has
@@ -850,6 +957,17 @@ struct KeyframeGraphView: View {
         edit { value in
             if value.keyframe(at: time) == nil { value.toggleKeyframe(at: time) }
         }
+    }
+
+    private func addKeyframeAtPlayhead(_ c: Context) {
+        let time = c.axis.keyTime(atTimeline: c.timeline.snappedToFrame(hud.playhead))
+        addKeyframe(at: time)
+        selected = time
+    }
+
+    private func deleteKeyframe(at time: CMTime) {
+        edit { $0.removeKeyframe(at: time) }
+        selected = nil
     }
 
     private func edit(_ change: @escaping (inout AnimatedValue<ComponentValue>) -> Void) {
@@ -1008,6 +1126,53 @@ extension KeyframeGraphView {
             }
         }
     }
+
+    /// A ring round what a click under the pointer would take. It follows
+    /// the pointer alone, so the graph doesn't redraw as it moves.
+    fileprivate struct HoverRing: View {
+        let pointer: GraphPointer
+        /// Where the point a click at a location takes is drawn.
+        let ring: (CGPoint) -> CGPoint?
+
+        var body: some View {
+            let point = pointer.location.flatMap(ring)
+            Canvas { context, _ in
+                guard let point else { return }
+                context.stroke(Path(ellipseIn: CGRect(x: point.x - 7, y: point.y - 7, width: 14, height: 14)), with: .color(.white), lineWidth: 1)
+            }
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// The right-click menu: eases and Delete for the keyframe under the
+    /// pointer, or else the selected one or the one at the playhead; with
+    /// none, a keyframe to add at the playhead.
+    fileprivate struct GraphMenu: View {
+        let pointer: GraphPointer
+        let fallback: () -> CMTime?
+        let onEase: (KeyframeEase.Preset, CMTime) -> Void
+        let onDelete: (CMTime) -> Void
+        let onAdd: () -> Void
+
+        var body: some View {
+            if let time = pointer.keyframe ?? fallback() {
+                KeyframeEaseMenuItems { onEase($0, time) }
+                Divider()
+                Button("Delete Keyframe", role: .destructive) { onDelete(time) }
+            } else {
+                Button("Add Keyframe at Playhead", action: onAdd)
+            }
+        }
+    }
+}
+
+/// Where the pointer is over a graph, and the keyframe a click there would
+/// take, kept apart from the graph's state so that following the pointer
+/// redraws only what shows it.
+@MainActor @Observable
+private final class GraphPointer {
+    var location: CGPoint?
+    var keyframe: CMTime?
 }
 
 /// Which keyframe the ease presets act on, and the presets: on a graph's

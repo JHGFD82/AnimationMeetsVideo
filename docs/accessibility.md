@@ -104,6 +104,19 @@ playhead to the middle of the view when it lands out of view.
   ("Position X") and their value; pressing one opens it for typing
   (`NumericField`'s `accessibilityName`).
 
+### Keyframe graph editor
+
+- **The graph** reads as its parameter and keyframe count, and holds an
+  element per keyframe ("Keyframe at 00:00:02:00, X 400 px, Y 60 px").
+  Pressing one selects it; adjusting it moves it a frame; its actions are
+  the ease presets, a frame earlier or later, raise or lower its value,
+  and Delete. The graph's own action adds a keyframe at the playhead.
+- Its **keys** (arrows, Delete, Escape) are listed in
+  [layer-transforms.md](layer-transforms.md#graph-editor).
+- The component chips, zoom sliders and Fit button read as controls. In a
+  linked panel each graph's name is a button that has the panel's presets
+  act on that graph, and reads as selected while they do.
+
 ### Elsewhere
 
 - The **viewer** reads as an image whose value is the playhead's timecode.
@@ -168,7 +181,8 @@ the snap line's arrival.
 - **Applying transitions** from the panel without a pointer: tiles are
   dragged onto clips, with no action to apply one to the selected clip.
 - **Transition curves** can only be shaped by dragging their points.
-- **Keyframe graph editor** panels: VoiceOver reads the graph as one element (its parameter and keyframe count), the component chips, and the zoom sliders and Fit button, but can't move keyframes or handles. In a linked panel each graph's name is a button that has the panel's presets act on that graph, and reads as selected while they do.
+- **Keyframe graph editor** handles (the bezier ease) can only be shaped
+  by dragging; the presets are the keyboard's and VoiceOver's way to ease.
 - **Sections and keyframes** can't be moved or resized from the keyboard,
   only selected, renamed, eased and deleted.
 - **Times read as timecode**, which can be wordy ("00:00:05:12"); a choice

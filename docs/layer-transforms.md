@@ -151,13 +151,19 @@ window.
   cancels a drag, leaving the keyframes as they were.
 - Where a handle and its keyframe are both in reach (8 points), the
   keyframe takes the click unless the handle is more than 2 points
-  nearer.
+  nearer. Over the graph, a white ring marks what a click would take and
+  the pointer is a hand; over empty plot it is a left-right arrow.
 - **Click elsewhere** to move the playhead there, and drag to scrub.
   **Double-click** to add a keyframe there, or select the one already
   there; a double-click never deletes.
-- The **preset buttons** along the top, and the right-click menu (with
-  **Delete Keyframe**), act on the selected keyframe, or else the one at
-  the playhead.
+- **Keys**, once the graph has been clicked: ← and → move the selected
+  keyframe a frame (ten with Shift), as a drag would; ↑ and ↓ move its
+  first shown component's value a point on screen (ten with Shift);
+  **Delete** deletes the selected keyframe, or the one at the playhead.
+- The **preset buttons** along the top act on the selected keyframe, or
+  else the one at the playhead. The right-click menu (with **Delete
+  Keyframe**) acts on the keyframe under the pointer, or else the same;
+  with no keyframe to act on it offers **Add Keyframe at Playhead**.
 
 The graph starts fitted to the keyframes, their curves and their handles
 (`KeyframeGraphLayout`), and keeps its scale while a drag is in progress,
