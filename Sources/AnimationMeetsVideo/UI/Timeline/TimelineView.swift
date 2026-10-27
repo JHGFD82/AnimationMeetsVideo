@@ -177,6 +177,8 @@ struct TimelineView: View {
     /// What edges snap to, read as a drag snaps: a row isn't redrawn when
     /// another layer's clips move, so it can't be handed them.
     @State var liveSnap = LiveSnapTargets()
+    /// The project's structure and snap targets, kept until an edit.
+    @State var derived = TimelineDerivedCache()
 
     /// How close, on screen, an edge must come to a target to snap to it.
     private let snapDistance: CGFloat = 8
@@ -203,24 +205,16 @@ struct TimelineView: View {
             .map { (id: $0.id, name: project.displayName(of: $0, in: timeline)) }
     }
 
-    /// Everything `EditingProject.beatMarkers` reads for the chosen layer.
-    private struct BeatMarkerInputs: Equatable {
-        var layer: TimelineLayer?
-        var tracks: [UUID: BeatTrack] = [:]
-        var offsets: [UUID: CMTime] = [:]
-        var maps: [UUID: BeatMap] = [:]
+    /// Everything `EditingProject.beatMarkers` reads for the chosen layer,
+    /// by version: the project's edit, and which beat track each asset has.
+    private struct BeatMarkerKey: Equatable {
+        var layerID: UUID?
+        var editCount: UInt64
+        var trackIDs: [UUID: UUID]
     }
 
-    private var beatMarkerInputs: BeatMarkerInputs {
-        guard let id = chosenBeatLayerID, let layer = timeline.layer(id: id) else { return BeatMarkerInputs() }
-        var inputs = BeatMarkerInputs(layer: layer)
-        for clip in layer.clips {
-            guard case .media(let assetID) = clip.source else { continue }
-            inputs.tracks[assetID] = beatTracks[assetID]
-            inputs.offsets[assetID] = project.mediaClip(id: assetID)?.alignmentOffset
-            inputs.maps[assetID] = project.mediaClip(id: assetID)?.beatMap
-        }
-        return inputs
+    private var beatMarkerKey: BeatMarkerKey {
+        BeatMarkerKey(layerID: chosenBeatLayerID, editCount: project.editCount, trackIDs: beatTracks.mapValues(\.id))
     }
 
     private var beatLayerSelection: Binding<UUID?> {
@@ -411,9 +405,15 @@ struct TimelineView: View {
         .environment(autoScroll)
         // Again whenever the timeline changes: the closures read its
         // length, through this view's copy of it.
-        .onChange(of: timeline, initial: true) { old, new in
+        .onChange(of: timeline.version, initial: true) { _, _ in
             configureAutoScroll()
+        }
+        .onChange(of: TimingKey(timeline), initial: true) { old, new in
             keepZoomThroughRetiming(from: old, to: new)
+        }
+        // The drags' snapping reads where the playhead is now.
+        .onChange(of: ObjectIdentifier(playhead), initial: true) { _, _ in
+            snapPlayhead.source = { [playhead] in playhead.time }
         }
         .onChange(of: selection) { _, newValue in
             if newValue != nil {
@@ -424,9 +424,9 @@ struct TimelineView: View {
         }
         // Clips gone from the timeline (deleted, moved to another timeline)
         // are no longer picked.
-        .onChange(of: timeline) { _, new in
+        .onChange(of: timeline.version) { _, _ in
             guard !groupSelection.isEmpty else { return }
-            let present = Set(new.layers.flatMap(\.clips).map(\.id))
+            let present = Set(timeline.layers.flatMap(\.clips).map(\.id))
             if !groupSelection.isSubset(of: present) { groupSelection.formIntersection(present) }
         }
         // A song dragged in as the only thing on the timeline: show all of
@@ -442,8 +442,12 @@ struct TimelineView: View {
         .onChange(of: soleMusic) { old, new in
             if new.clipID != nil, new.clipID != old.clipID, new.clipCount >= old.clipCount { fitToWindow() }
         }
-        .onChange(of: beatMarkerInputs, initial: true) { _, inputs in
-            beatMarkers = inputs.layer.map { project.beatMarkers(in: $0, tracks: inputs.tracks) } ?? []
+        .onChange(of: beatMarkerKey, initial: true) { _, key in
+            guard let id = key.layerID, let layer = timeline.layer(id: id) else {
+                beatMarkers = []
+                return
+            }
+            beatMarkers = project.beatMarkers(in: layer, tracks: beatTracks)
         }
         .onChange(of: beatMarkers, initial: true) { _, markers in
             beatClicks.beats = markers.map { BeatClickPlayer.Tick(time: $0.time, isDownbeat: $0.isDownbeat) }
@@ -466,13 +470,13 @@ struct TimelineView: View {
 
     // MARK: - Sections and layers
 
-    func sectionLane(viewport: TimelineViewport, targets: SnapTargets?) -> some View {
+    func sectionLane(viewport: TimelineViewport) -> some View {
         let tolerance = snapTolerance(viewport)
         return SectionLane(
             sections: timeline.sections,
             viewport: viewport,
             selectedID: selectedSectionID,
-            snap: { time, owner in targets?.nearest(to: time, within: tolerance, excluding: owner) },
+            snap: { [liveSnap] time, owner in liveSnap.targets?.nearest(to: time, within: tolerance, excluding: owner) },
             resolveMove: { id, start in project.resolvedSectionMove(id, in: timelineID, to: start) },
             resolveEdge: { id, edge, time in project.resolvedSectionEdge(id, edge: edge, in: timelineID, to: time) },
             onSelect: { id in
@@ -601,39 +605,34 @@ extension TimelineView: Equatable {
     /// playhead, which views of their own follow (`PlayheadState`), so a
     /// tick of it, or an edit of another timeline's values, doesn't redraw
     /// it. Its actions read the project as they act, not as it was drawn.
-    struct Snapshot: Equatable {
-        var timeline: Timeline
-        var context: EditingProject
-        var selection: TimelineSelection?
-        var focus: TimelineClipFocus?
-        var showsEffects: Bool
-        var showsEffectsLibrary: Bool
-        var showsSidePanel: Bool
-        var showsMeter: Bool
-        var beatTracks: [UUID: BeatTrack]
-    }
-
-    var snapshot: Snapshot {
-        Snapshot(
-            timeline: timeline, context: project.structure(withoutClipsIn: timelineID), selection: selection, focus: focus,
-            showsEffects: showsEffects, showsEffectsLibrary: showsEffectsLibrary, showsSidePanel: showsSidePanel,
-            showsMeter: showsMeter, beatTracks: beatTracks
-        )
-    }
-
+    ///
+    /// The project and its timeline go by their edit stamps (`EditStamp`)
+    /// rather than by what they hold; only an edit that left this timeline
+    /// as it was is worth taking the rest of the project apart for.
     nonisolated static func == (lhs: TimelineView, rhs: TimelineView) -> Bool {
         MainActor.assumeIsolated {
-            guard lhs.playback === rhs.playback, lhs.playhead === rhs.playhead, lhs.effectsState === rhs.effectsState,
-                  lhs.timelineID == rhs.timelineID
-            else { return false }
-            // The same project draws the same; only another one is worth
-            // taking apart.
-            if lhs.project == rhs.project {
-                return lhs.selection == rhs.selection && lhs.focus == rhs.focus && lhs.showsEffects == rhs.showsEffects
-                    && lhs.showsEffectsLibrary == rhs.showsEffectsLibrary && lhs.showsSidePanel == rhs.showsSidePanel
-                    && lhs.showsMeter == rhs.showsMeter && lhs.beatTracks == rhs.beatTracks
-            }
-            return lhs.snapshot == rhs.snapshot
+            lhs.playback === rhs.playback
+                && lhs.playhead === rhs.playhead
+                && lhs.effectsState === rhs.effectsState
+                && lhs.timelineID == rhs.timelineID
+                && lhs.selection == rhs.selection
+                && lhs.focus == rhs.focus
+                && lhs.showsEffects == rhs.showsEffects
+                && lhs.showsEffectsLibrary == rhs.showsEffectsLibrary
+                && lhs.showsSidePanel == rhs.showsSidePanel
+                && lhs.showsMeter == rhs.showsMeter
+                && lhs.beatTracks.keys == rhs.beatTracks.keys
+                && lhs.beatTracks.allSatisfy { rhs.beatTracks[$0.key]?.id == $0.value.id }
+                && drawsSameProject(lhs, rhs)
         }
+    }
+
+    private static func drawsSameProject(_ lhs: TimelineView, _ rhs: TimelineView) -> Bool {
+        let (left, right) = (lhs.project, rhs.project)
+        if left.editCount != 0, left.editCount == right.editCount { return true }
+        let stamped = lhs.timeline.version != 0 && rhs.timeline.version != 0
+        if stamped, lhs.timeline.version != rhs.timeline.version { return false }
+        if !stamped, lhs.timeline != rhs.timeline { return false }
+        return left.structure(withoutClipsIn: lhs.timelineID) == right.structure(withoutClipsIn: rhs.timelineID)
     }
 }

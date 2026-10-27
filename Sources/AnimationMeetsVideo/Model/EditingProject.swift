@@ -24,6 +24,16 @@ struct EditingProject: Identifiable, Equatable {
     /// How attached sound crossfades under transitions joining two clips
     /// that don't choose their own shape (see `AudioCrossfade`).
     var jointAudioCrossfade = AudioCrossfade.sCurve
+    var editStamp = EditStamp()
+
+    /// Set anew on every edit (`ProjectState` stamps what is written to
+    /// it), from a count shared by every project, so equal nonzero counts
+    /// mean equal projects; 0 for a project that was never edited there.
+    /// Not compared by `==`.
+    var editCount: UInt64 {
+        get { editStamp.count }
+        set { editStamp = EditStamp(count: newValue) }
+    }
 
     /// Half a frame on each side: twice the frame's area.
     static let defaultCanvasMargin = 0.5

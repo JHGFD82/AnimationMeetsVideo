@@ -120,12 +120,10 @@ extension TimelineView {
     /// Retiming a clip can change the timeline's length enormously (a
     /// crawling clip), and a fitted view would rescale to match. Time edits
     /// pin the zoom the view had instead, until Fit is chosen.
-    func keepZoomThroughRetiming(from old: Timeline, to new: Timeline) {
-        guard viewportModel.zoomedPixelsPerSecond == nil, old.id == new.id, old.duration != new.duration else { return }
-        func times(_ timeline: Timeline) -> [UUID: ClipTime] {
-            Dictionary(timeline.layers.flatMap(\.clips).map { ($0.id, $0.time) }, uniquingKeysWith: { first, _ in first })
-        }
-        guard times(old) != times(new) else { return }
+    func keepZoomThroughRetiming(from old: TimingKey, to new: TimingKey) {
+        guard viewportModel.zoomedPixelsPerSecond == nil, old.timelineID == new.timelineID, old.duration != new.duration,
+              old.clipTimes != new.clipTimes
+        else { return }
         viewportModel.zoomedPixelsPerSecond = TimelineViewport(
             durationSeconds: old.duration.seconds,
             frameRate: old.frameRate,
@@ -133,6 +131,23 @@ extension TimelineView {
             requestedPixelsPerSecond: nil,
             requestedScrollX: 0
         ).pixelsPerSecond
+    }
+
+    /// What `keepZoomThroughRetiming` compares: the timeline's length and
+    /// frame rate, which set the fitted zoom, and its clips' times, so a
+    /// length changed by a section alone doesn't pin the zoom.
+    struct TimingKey: Equatable {
+        var timelineID: UUID
+        var duration: CMTime
+        var frameRate: Double
+        var clipTimes: [UUID: ClipTime]
+
+        init(_ timeline: Timeline) {
+            timelineID = timeline.id
+            duration = timeline.duration
+            frameRate = timeline.frameRate
+            clipTimes = Dictionary(timeline.layers.flatMap(\.clips).map { ($0.id, $0.time) }, uniquingKeysWith: { first, _ in first })
+        }
     }
 
     /// What decides whether to fit the timeline to a song dragged in: the

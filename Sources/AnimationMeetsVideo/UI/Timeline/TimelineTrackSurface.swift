@@ -30,17 +30,18 @@ extension TimelineView {
             - CGFloat(shownAreas.count) * AreaTitleBar.height)
         let areaHeights = areaLayout.heights(splitting: areasAvailable)
         let trackHeight = max(railHeight, geometry.size.height - scrollbarHeight)
-        // Built once per layout, not once per area: it walks every
-        // clip and beat. The playhead is read as a drag snaps, so
-        // moving it doesn't change what the rows compare.
-        let _ = snapPlayhead.source = { [playhead] in playhead.time }
-        let snapTargets = snapping
-            ? project.snapTargets(in: timelineID, playhead: nil, live: snapPlayhead, markers: drawnBeats(viewport)) : nil
-        let _ = liveSnap.targets = snapTargets
         // Once for every area's rows, which compare it to skip
         // redrawing; without where this timeline's clips are, which
         // a row's actions read as they act (`liveSnap`, `resolveMove`).
-        let structure = project.structure(withoutClipsIn: timelineID)
+        // Kept until the project is edited.
+        let structure = derived.structure(of: project, withoutClipsIn: timelineID)
+        // What edges snap to, built once per edit or zoom, not once per
+        // area: it walks every clip and beat. The playhead is read as a
+        // drag snaps, so moving it doesn't change what the rows compare.
+        let snapKey = SnapKey(
+            editCount: project.editCount, timelineID: timelineID, snapping: snapping,
+            pixelsPerSecond: viewport.pixelsPerSecond, markers: snapping ? drawnBeats(viewport) : []
+        )
 
         VStack(alignment: .leading, spacing: 0) {
             // The time rail: the ruler and the sections under it
@@ -60,7 +61,7 @@ extension TimelineView {
                             .foregroundStyle(Design.textTertiary)
                             .padding(.leading, Design.Space.step)
                             .frame(width: labelColumnWidth, height: SectionLane.height, alignment: .leading)
-                        TimelineSectionLane(parent: self, width: trackWidth, targets: snapTargets)
+                        TimelineSectionLane(parent: self, width: trackWidth)
                     }
                 }
             }
@@ -155,7 +156,26 @@ extension TimelineView {
         .background(lassoMonitor(viewport: viewport))
         .overlay { lassoOverlay }
         .onChange(of: geometry.size.width - labelColumnWidth, initial: true) { _, width in viewportModel.trackAreaWidth = width }
+        // Here rather than in `TimelineView`'s body, which would follow
+        // the zoom to read it.
+        .onChange(of: snapKey, initial: true) { _, key in
+            liveSnap.targets = key.snapping
+                ? derived.snapTargets(
+                    of: project, in: timelineID, live: snapPlayhead,
+                    markers: key.markers, pixelsPerSecond: key.pixelsPerSecond
+                ) : nil
+        }
     }
+}
+
+/// What the snap targets are built from. The drawn beat markers are in
+/// it because choosing another beat layer changes them without an edit.
+private struct SnapKey: Equatable {
+    var editCount: UInt64
+    var timelineID: UUID
+    var snapping: Bool
+    var pixelsPerSecond: CGFloat
+    var markers: [CMTime]
 }
 
 /// The ruler, with the render status along its foot. It reads the zoom
@@ -190,11 +210,10 @@ struct TimelineRulerLane: View {
 struct TimelineSectionLane: View {
     let parent: TimelineView
     let width: CGFloat
-    let targets: SnapTargets?
 
     var body: some View {
         let model = parent.viewportModel
-        parent.sectionLane(viewport: parent.viewport(width: width), targets: targets)
+        parent.sectionLane(viewport: parent.viewport(width: width))
             .rubberBandStretch(model.zoomBand)
             .rubberBandScroll(model.scrollBand, length: model.trackAreaWidth)
             .clipped()

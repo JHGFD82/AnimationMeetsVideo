@@ -48,17 +48,22 @@ final class ProjectState {
 
     init(_ project: EditingProject) {
         committed = project
+        committed.stampEdit(since: nil)
     }
 
     /// The project. Read during a drag, it is the project from before it.
     var value: EditingProject {
         get { isCapturing ? stepResult ?? committed : committed }
         set {
+            // Every write is an edit, which views tell by its stamp
+            // rather than by comparing projects (see `EditStamp`).
+            var stamped = newValue
+            stamped.stampEdit(since: value)
             if isCapturing {
-                held = newValue
-                stepResult = newValue
+                held = stamped
+                stepResult = stamped
             } else {
-                committed = newValue
+                committed = stamped
             }
         }
     }
