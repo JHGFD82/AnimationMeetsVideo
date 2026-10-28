@@ -118,15 +118,13 @@ struct EffectRegistry: Sendable {
 
     /// This registry with the person's package at `url` read again as
     /// `read`, nil for one removed, and the package added or changed, whose
-    /// kernel is to be compiled. A new package is added. A changed one
-    /// replaces the one installed when effects made with that one can be
-    /// drawn with it (`EffectPackage.keepsValues`); a control it no longer
-    /// has stays in those effects, from `retiredControls`, until they are
-    /// saved, and one it adds is at its default, as a deleted control is.
-    /// One removed, or whose ID changed, is no longer listed, and effects
-    /// of it already in open projects draw as they did (`retiredEffects`).
-    /// One that can no longer be read joins the problems, the one installed
-    /// before staying in use.
+    /// kernel is to be compiled. A new package is added, and a changed one
+    /// replaces the one installed; effects of it in open projects are then
+    /// fitted to it (`EditingProject.fitPackageEffects`). One removed, or
+    /// whose ID changed, is no longer listed, and effects of it already in
+    /// open projects draw as they did (`retiredEffects`). One that can no
+    /// longer be read joins the problems, the one installed before staying
+    /// in use.
     func reloading(_ url: URL, as read: Result<EffectPackage, any Error>?) -> (registry: EffectRegistry, changed: EffectPackage?) {
         let url = url.standardizedFileURL
         let installed = effects.lazy.compactMap(\.package).first { $0.url.standardizedFileURL == url }
@@ -140,21 +138,7 @@ struct EffectRegistry: Sendable {
             problem = error.localizedDescription
         case .success(let package)?:
             if let installed, installed.id == package.id {
-                if installed.contentHash == package.contentHash {
-                    break
-                } else if installed.keepsValues(of: package) {
-                    changed = package
-                } else {
-                    // Before this can replace it, the values effects hold of
-                    // a control both have would need conforming to the new
-                    // definition's count and options where they are read:
-                    // `PackageLookRenderer.Values` (`center` indexes a point's
-                    // two numbers, and vector expressions a vector's) and
-                    // `EffectControl.setComponent` and the effects panel's
-                    // rows, which index by the effect's own values.
-                    problem = "A control it keeps holds values of another size or choices now, or it reads other pictures, "
-                        + "which takes effect when the app is opened again."
-                }
+                if installed.contentHash != package.contentHash { changed = package }
             } else if effect(named: package.id) != nil {
                 // The one installed from here, under its old ID, stays.
                 problem = EffectRegistryError.taken(package.id).localizedDescription
@@ -178,13 +162,23 @@ struct EffectRegistry: Sendable {
     }
 
     /// Reloads the package at `url` in the registry in use (see
-    /// `reloading`), returning the package added or changed.
-    static func reload(_ url: URL, as read: Result<EffectPackage, any Error>?) -> EffectPackage? {
+    /// `reloading`), returning the package added or changed, and the one
+    /// of its ID it replaced.
+    static func reload(_ url: URL, as read: Result<EffectPackage, any Error>?) -> Reload {
         installed.withLock { registry in
             let reloaded = registry.reloading(url, as: read)
+            let replaced = reloaded.changed.flatMap { registry.effect(named: $0.id)?.package }
             registry = reloaded.registry
-            return reloaded.changed
+            return Reload(changed: reloaded.changed, replaced: replaced)
         }
+    }
+
+    /// What reloading a package changed.
+    struct Reload: Sendable {
+        /// The package added or changed, whose kernel is to be compiled.
+        var changed: EffectPackage?
+        /// The version of it installed before, for one changed.
+        var replaced: EffectPackage?
     }
 
     /// Puts `packages` beside the built-in effects, replacing any installed

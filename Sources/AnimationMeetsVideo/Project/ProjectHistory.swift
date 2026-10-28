@@ -146,7 +146,9 @@ final class ProjectHistory {
     }
 
     private func apply(_ snapshot: EditingProject, name: String?) {
-        let snapshot = relocated(snapshot)
+        // Taken before a package changed while the app ran, perhaps.
+        var snapshot = relocated(snapshot)
+        snapshot.fitPackageEffects()
         let current = baseline
         baseline = snapshot
         lastRecordedAt = nil

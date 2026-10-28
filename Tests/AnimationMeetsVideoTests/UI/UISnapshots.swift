@@ -1091,7 +1091,7 @@ struct UISnapshots {
         let added = project.addShapeLayer(.rectangle, to: timelineID)
         let shape = try #require(added)
         let saved = JSONValue.object(["id": .string(UUID().uuidString), "kind": .string("com.example.glow"), "controls": .array([])])
-        let glow = Effect.missing(MissingEffect(kind: "com.example.glow", reason: .notInstalled, saved: saved), id: UUID(), enabled: true)
+        let glow = Effect.missing(MissingEffect(kind: "com.example.glow", saved: saved), id: UUID(), enabled: true)
         var off = glow.duplicated()
         off.enabled = false
         project.editClip(shape.clipID, in: timelineID) { $0.effects += [glow, off] }

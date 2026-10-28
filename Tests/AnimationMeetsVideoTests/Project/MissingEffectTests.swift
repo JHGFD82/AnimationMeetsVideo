@@ -80,7 +80,7 @@ import Testing
 
         let effect = try #require(clip.effects.last)
         #expect(effect.kind == .missing)
-        #expect(effect.missing?.reason == .notInstalled && effect.missing?.kind == "com.example.glow")
+        #expect(effect.missing?.kind == "com.example.glow")
         #expect(effect.displayName == "Glow")
         #expect(effect.isNoOp && effect.controls.isEmpty)
         let layer = try #require(project.clipAndLayer(clipID, in: project.rootTimelineID)?.layer)
@@ -109,7 +109,7 @@ import Testing
         }
     }
 
-    @Test func anEffectSavedByANewerPackageIsMissingToo() async throws {
+    @Test func anEffectSavedWithAControlItsPackageLacksOpensAndHoldsIt() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         var newer = glow
         newer["futureSetting"] = nil
@@ -118,13 +118,59 @@ import Testing
             ["id": UUID().uuidString, "kind": "sparkle", "value": "lots"],
         ]
         let clipID = try await project(with: [newer])
-        try await EffectRegistry.$override.withValue(EffectRegistry.withBuiltIns([try glowPackage()])) {
+        let package = try glowPackage()
+        try await EffectRegistry.$override.withValue(EffectRegistry.withBuiltIns([package])) {
             let (project, clip) = try await open(clipID)
             let effect = try #require(clip.effects.last)
-            #expect(effect.missing?.reason == .needsNewerVersion)
-            #expect(effect.displayName == "com.example.glow")
+            // Opened with the package's controls, Sparkle held and noted.
+            #expect(effect.missing == nil && effect.kind == package.kind)
+            let radius = try #require(package.kind.controlKind(savedAs: "radius"))
+            #expect(effect.control(radius)?.values(at: .zero) == [40])
+            #expect(effect.packageChanges.held.keys.sorted() == ["sparkle"])
+            #expect(effect.packageChanges.note == "Saved with a control this package no longer has: `sparkle`; saving leaves it out.")
+            // Saved, Sparkle is left out.
             try await ProjectStore.save(project, to: packageURL)
-            #expect(NSDictionary(dictionary: try savedEffects(clipID).last!) == NSDictionary(dictionary: newer))
+            let saved = try #require(try savedEffects(clipID).last?["controls"] as? [[String: Any]])
+            #expect(saved.map { $0["kind"] as? String } == ["radius"])
+        }
+    }
+
+    @Test func aValueSavedAtAnotherSizeIsResetOnOpening() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        var older = glow
+        older["futureSetting"] = nil
+        older["controls"] = [["id": UUID().uuidString, "kind": "radius", "value": [1, 2, 3]]]
+        let clipID = try await project(with: [older])
+        let package = try glowPackage()
+        try await EffectRegistry.$override.withValue(EffectRegistry.withBuiltIns([package])) {
+            let effect = try #require(try await open(clipID).clip.effects.last)
+            let radius = try #require(package.kind.controlKind(savedAs: "radius"))
+            #expect(effect.control(radius)?.values(at: .zero) == radius.defaultValues)
+            #expect(effect.packageChanges.note == "`radius` was reset: it is now one number.")
+        }
+    }
+
+    @Test func aMalformedControlIsStillRefusedWithWhereItIs() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let package = try glowPackage()
+        for (control, problem) in [
+            (["enabled": "yes"], "Expected true or false"),
+            (["colour": 1], "Unknown key \"colour\""),
+            (["value": nil, "keyframes": 3] as [String: Any?], "Expected a list"),
+        ] as [([String: Any?], String)] {
+            var effect = glow
+            effect["futureSetting"] = nil
+            var entry: [String: Any] = ["id": UUID().uuidString, "kind": "radius", "value": 40]
+            for (key, value) in control { entry[key] = value }
+            effect["controls"] = [entry]
+            let clipID = try await project(with: [effect])
+            await EffectRegistry.$override.withValue(EffectRegistry.withBuiltIns([package])) {
+                await #expect {
+                    _ = try await open(clipID)
+                } throws: { error in
+                    error.localizedDescription.contains(problem) && error.localizedDescription.contains(".controls[0]")
+                }
+            }
         }
     }
 

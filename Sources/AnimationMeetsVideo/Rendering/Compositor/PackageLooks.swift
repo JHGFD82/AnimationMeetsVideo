@@ -310,7 +310,14 @@ enum PackageLookRenderer {
             case _ where extra[name] != nil: return [extra[name]!]
             default:
                 guard let definition = definition(name) else { return [0] }
-                return step.numbers[definition.kind] ?? definition.defaultValues
+                let numbers = step.numbers[definition.kind] ?? definition.defaultValues
+                // Read by position (`center`, vector expressions), so a value
+                // of another count would read a neighbor's or past the end.
+                assert(
+                    definition.isCurve || numbers.count == definition.defaultValues.count,
+                    "\(definition.kind.rawValue) holds \(numbers.count) numbers, not \(definition.defaultValues.count): it wasn't fitted (Effect.fitToPackage)"
+                )
+                return numbers
             }
         }
 

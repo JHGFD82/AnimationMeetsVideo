@@ -459,6 +459,10 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     mutating func setComponent(_ index: Int, to newValue: Double, at time: CMTime) {
         guard newValue.isFinite, !kind.isChoice else { return }
         var values = number.value(at: time).values
+        assert(
+            kind.definition.isCurve || kind.definition.effectKind.definition.package == nil || values.count == kind.defaultValues.count,
+            "\(kind.rawValue) holds \(values.count) numbers, not its package's \(kind.defaultValues.count): it wasn't fitted (Effect.fitToPackage)"
+        )
         guard values.indices.contains(index) else { return }
         let old = values[index]
         values[index] = kind.clamped(newValue, index: index)
@@ -500,6 +504,9 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// For an effect whose package isn't installed, of kind `.missing`:
     /// what it was saved as, kept to be written back.
     var missing: MissingEffect?
+    /// For a package's effect: what fitting its controls to its package as
+    /// it now is couldn't keep (`fitToPackage`).
+    var packageChanges = PackageControlChanges()
 
     init(id: UUID = UUID(), kind: EffectKind, name: String? = nil, controls: [EffectControl]? = nil) {
         self.id = id

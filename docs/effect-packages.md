@@ -317,9 +317,12 @@ What to know:
 
 - **The ID needs a dot**, reverse-DNS style, and never changes: projects
   save the effect under it.
-- **Never rename or remove a control** once a package is used. An effect
-  saved with a control its package doesn't list loads as missing, as if
-  saved by a newer version. Leave one that is no longer needed, unused.
+- **Renaming or removing a control loses its values** in projects that
+  use the package: an effect saved with a control its package doesn't
+  list opens without it, says so, and leaves it out when saved (see
+  [Changing one while the app runs](#changing-one-while-the-app-runs)).
+  Changing a control's size or options resets its value. Once a package
+  is shared, leave a control that is no longer needed, unused.
 - **Raise `version`** when a control is added or a picture changes, so
   others can tell versions apart. Render caches follow the files
   themselves, so an edit never shows a stale frame either way.
@@ -389,34 +392,42 @@ again. Replacing an installed package takes effect as editing one does
 
 ### Changing one while the app runs
 
-The app watches the Effects folder with FSEvents
+The app watches the person's Effects folder with FSEvents
 (`EffectFolderWatcher`, `EffectPackageStatus.startWatching`), making it
-first if there is none yet. FSEvents sees a change anywhere inside a
-package; each package changed is read again
+first if there is none yet; the packages that ship with the app, in its
+bundle, aren't watched. FSEvents sees a change anywhere inside a
+package. Each package changed is read again
 (`EffectPackageStatus.reload`) once it has gone 0.3 s without changing,
-so an editor's save and rename into place read it once, and reloads run
-one after another so an older read never lands after a newer one. Only
-the packages changed are read, and one whose files' modification dates
-are as when it was last read isn't read again. The app's own writes
+so an editor's save and rename into place read it once. Reloads run one
+after another, so an older read never lands after a newer one. Only the
+packages changed are read, and one whose files' modification dates are
+as when it was last read isn't read again. The app's own writes
 (making, copying or installing one) are read once and found installed
 as they are. What a read finds (`EffectRegistry.reloading`):
 
 - **A new package** is installed, as one opened from Finder is.
 - **A changed package** replaces the one installed, and its kernel is
-  compiled again, when each control both versions have holds values of
-  the same size and choices of the same options, and it reads the same
-  pictures (`EffectPackage.keepsValues`). Controls only one version has
-  don't matter: an effect already made keeps one the package dropped,
-  shown and edited as before, until it is saved, which leaves it out;
-  and one the package added is at its default, as a deleted control
-  is. The viewer draws again at once: the composition's key holds the
-  content hash of each of the person's packages its clips use, and
-  render keys hold it too.
-- **A changed package whose controls change size or choices, or whose
-  pictures change**, stays as it was, listed under "Can't Be Used" with
-  why, until the app is opened again: the values effects hold would
-  need conforming where they are read first (a comment at the check in
-  `EffectRegistry.reloading` names the places).
+  compiled again. Its effects in every open project are fitted to it
+  (`ProjectSession.fitPackageEffects`, not an undo step), as a project
+  read from a file is (see [Missing effects](#missing-effects)):
+  - a control it **added** is added to them at its default;
+  - a control it **removed** is held, noted, and left out when the
+    project is saved;
+  - a control whose values **changed size** goes back to its new
+    default, noted ("`offset` was reset: it is now 2 numbers");
+  - a choice whose **options changed** keeps its option if it is still
+    offered, and otherwise goes back to the default;
+  - a change to the **pictures** it reads needs nothing: the renderer
+    takes them from the package each time it draws.
+
+  Undo fits each step it restores the same way, as does pasting an
+  effect copied before the change, so an old value never reaches the
+  renderer. The renderer, which reads a control's numbers by position,
+  asserts that their count is the control's, naming the control, so a
+  value that missed fitting traps in a debug build rather than reading
+  its neighbor's. The viewer draws again at once: the composition's key
+  holds the content hash of each of the person's packages its clips use,
+  and render keys hold it too.
 - **A package that can no longer be read** is listed under "Can't Be
   Used" with its problem, and the version installed before stays in use.
 - **A package removed, or whose ID changed**, is no longer listed, and
@@ -424,12 +435,10 @@ as they are. What a read finds (`EffectRegistry.reloading`):
   projects draw and edit as they did, and their note in the effects
   panel says so; saved, they open as missing.
 
-Effects keep working because the registry keeps the definitions of the
-effects and controls it stops listing (`retiredEffects` and
-`retiredControls`), so looking up a kind in an open project never fails
-for a package changed under it. A project saved with a control its
-package doesn't list still opens that effect as missing, as below: only
-controls dropped while the app ran are left out on saving.
+Effects keep working through all of this because the registry keeps the
+definitions of the effects and controls it stops listing
+(`retiredEffects` and `retiredControls`), so looking up a kind in an
+open project never fails for a package changed under it.
 
 ## Pictures besides the clip's
 
@@ -619,11 +628,28 @@ and isn't installed loads as a **missing effect**:
   with, as nothing in it can be read: pasting it at another moment, or
   into a preset, doesn't move them.
 
-A saved effect with a control its installed package doesn't list was
-saved by a newer version of the package, and loads as missing in the
-same way, its note saying it needs a newer version. A control the
-package lists that the saved effect lacks was deleted, as for built-in
-effects.
+A saved effect whose package is installed opens with the package's
+controls as they now are, however they changed since it was saved
+(`Effect.fitToPackage`). The project's shape check takes any control
+and any value in a package effect, since a control the package no longer
+lists, or a value of another size or kind, is what changing the package
+leaves; what no change to a package explains (an unknown key, `enabled`
+that isn't true or false, keyframes that aren't a list) is still
+refused with where it is. A value of the wrong size in a hand-edited
+file can't be told from one a package change left, so it is reset too,
+and the next save writes the default.
+
+- A saved control the package doesn't list (removed, renamed, or one a
+  newer version added) is held on the effect as saved, never drawn, and
+  its note in the effects panel says so ("Saved with a control this
+  package no longer has: `glow`; saving leaves it out."). Saving the
+  project leaves it out.
+- A saved value of another count than the control now has goes back to
+  its default ("`offset` was reset: it is now 2 numbers."), and a choice
+  no longer among the options to the default option. A saved control
+  that doesn't read at all is reset the same way.
+- A control the package lists that the saved effect lacks was deleted,
+  as for built-in effects.
 
 A `kind` without a dot that the app doesn't know is still refused, as
 today: it is a typo or a built-in kind of a newer app. So is a package's
@@ -631,7 +657,7 @@ kind in a sound's stack, since package effects are all pictures'.
 
 Inside the app a missing effect is an `Effect` of the hidden kind
 `missing`, which `EffectKind.all` leaves out, holding a `MissingEffect`:
-the kind it was saved as, why it is missing, and the saved JSON.
+the kind it was saved as and the saved JSON.
 
 ## Render keys and caches
 

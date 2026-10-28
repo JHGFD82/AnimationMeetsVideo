@@ -1,3 +1,4 @@
+import CoreImage
 import Foundation
 import Synchronization
 import Testing
@@ -62,36 +63,88 @@ import Testing
             project.editClip(shape.clipID, in: project.rootTimelineID) { $0.effects.append(Effect(kind: installed.kind)) }
         }
         try EffectRegistry.$override.withValue(reloaded) {
-            let effect = try #require(project.clipAndLayer(shape.clipID, in: project.rootTimelineID)?.clip.effects.last)
-            // The effect made before keeps Strength, looked up as it was,
-            // and lacks Glow, at its default, as a deleted control.
-            #expect(effect.controls.map(\.kind) == [strength])
-            #expect(strength.name == "Strength" && effect.missingControlKinds.map(\.savedName) == ["glow"])
+            // Before it is fitted, Strength is still looked up as it was.
+            let stale = try #require(project.clipAndLayer(shape.clipID, in: project.rootTimelineID)?.clip.effects.last)
+            #expect(stale.controls.map(\.kind) == [strength] && strength.name == "Strength")
             #expect(!reloaded.addable.contains(where: { $0.rawValue == strength.rawValue }))
+
+            // Fitted, as an open project is: Strength is held, and Glow,
+            // which the package gained, added at its default.
+            let fitted = project.fitPackageEffects(newSince: ["com.example.tint": installed])
+            #expect(fitted)
+            let effect = try #require(project.clipAndLayer(shape.clipID, in: project.rootTimelineID)?.clip.effects.last)
+            #expect(effect.controls.map(\.kind.savedName) == ["glow"] && effect.controls[0].values(at: .zero) == [0.5])
+            #expect(effect.packageChanges.held.keys.sorted() == ["strength"])
+            #expect(effect.packageChanges.note == "Saved with a control this package no longer has: `strength`; saving leaves it out.")
             // Saved, Strength is left out.
-            let entry = ProjectFile.EffectEntry(effect)
-            #expect(entry.controls.isEmpty)
+            #expect(ProjectFile.EffectEntry(effect).controls.map(\.kind) == ["glow"])
+            // Fitted again (as undo does), nothing more changes.
+            let again = project.fitPackageEffects()
+            #expect(!again)
         }
     }
 
-    @Test func aPackageWhoseValuesChangedSizeWaitsForTheNextLaunch() throws {
+    @Test func aNumberThatBecomesTwoIsResetInOpenProjects() throws {
         defer { try? FileManager.default.removeItem(at: folder) }
         let url = try write()
         let installed = try EffectPackageStore.read(url)
         let running = EffectRegistry.withBuiltIns([installed])
-        // Strength becomes two numbers.
-        let pair: [[String: Any]] = [["id": "strength", "name": "Strength", "type": "vector", "components": ["A", "B"], "default": [1, 1]]]
-        try write(controls: pair, kernel: kernel().replacingOccurrences(of: "float strength", with: "float2 strength"))
+        let strength = ControlKind(package: "com.example.tint", control: "strength")
+        var project = EditingProject.empty
+        let created = project.addShapeLayer(.rectangle, to: project.rootTimelineID)
+        let shape = try #require(created)
+        try EffectRegistry.$override.withValue(running) {
+            var effect = Effect(kind: installed.kind)
+            effect.changeControl(strength) { $0.setComponent(0, to: 0.25, at: .zero) }
+            project.editClip(shape.clipID, in: project.rootTimelineID) { $0.effects.append(effect) }
+        }
 
+        // Strength becomes two numbers, while the project uses it.
+        let pair: [[String: Any]] = [["id": "strength", "name": "Strength", "type": "vector", "components": ["A", "B"], "default": [1, 2]]]
+        try write(controls: pair, kernel: kernel().replacingOccurrences(of: "float strength", with: "float2 strength"))
         let (reloaded, changed) = running.reloading(url, as: read(url))
-        #expect(changed == nil)
-        #expect(reloaded.effect(named: "com.example.tint")?.package?.contentHash == installed.contentHash)
-        #expect(reloaded.problems.map(\.message) == [
-            "A control it keeps holds values of another size or choices now, or it reads other pictures, which takes effect when the app is opened again.",
-        ])
-        // Put back as it was, the problem goes.
-        try write()
-        #expect(reloaded.reloading(url, as: read(url)).registry.problems.isEmpty)
+        #expect(changed != nil && reloaded.problems.isEmpty)
+
+        try EffectRegistry.$override.withValue(reloaded) {
+            let fitted = project.fitPackageEffects(newSince: ["com.example.tint": installed])
+            #expect(fitted)
+            let clip = try #require(project.clipAndLayer(shape.clipID, in: project.rootTimelineID)?.clip)
+            let effect = try #require(clip.effects.last)
+            #expect(effect.control(strength)?.values(at: .zero) == [1, 2])
+            #expect(effect.packageChanges.note == "`strength` was reset: it is now 2 numbers.")
+            // And it draws, its value read at the new count.
+            let step = try #require(LookStep(effect, at: .zero))
+            #expect(step.numbers[strength] == [1, 2])
+            let frame = CGRect(x: 0, y: 0, width: 4, height: 4)
+            _ = LookRenderer.apply(step, to: CIImage(color: .red).cropped(to: frame), over: frame, canvas: frame, frame: frame, scale: 1, space: .rec709)
+        }
+    }
+
+    @Test func aChoiceKeepsAnOptionStillOffered() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        func choice(_ options: [String], default value: String) -> [[String: Any]] {
+            [["id": "mode", "name": "Mode", "type": "choice", "default": value, "options": options.map { ["id": $0, "name": $0] }]]
+        }
+        let choiceKernel = kernel().replacingOccurrences(of: "float strength", with: "float mode")
+        let url = try write(controls: choice(["soft", "hard", "wild"], default: "soft"), arguments: ["index(mode)"], kernel: choiceKernel)
+        let installed = try EffectPackageStore.read(url)
+        let mode = ControlKind(package: "com.example.tint", control: "mode")
+        var effects = try EffectRegistry.$override.withValue(EffectRegistry.withBuiltIns([installed])) {
+            try ["hard", "wild"].map { picked in
+                var effect = Effect(kind: installed.kind)
+                effect.changeControl(mode) { $0.choice = picked }
+                return try #require(Optional(effect))
+            }
+        }
+        // Wild is no longer offered.
+        try write(controls: choice(["soft", "hard"], default: "soft"), arguments: ["index(mode)"], kernel: choiceKernel)
+        let reloaded = EffectRegistry.withBuiltIns([try EffectPackageStore.read(url)])
+        EffectRegistry.$override.withValue(reloaded) {
+            for index in effects.indices { effects[index].fitToPackage(newSince: installed) }
+        }
+        #expect(effects.map { $0.control(mode)?.choice } == ["hard", "soft"])
+        #expect(effects[0].packageChanges.isEmpty)
+        #expect(effects[1].packageChanges.note == "`mode` was reset: \"wild\" isn't one of its options now.")
     }
 
     @Test func aNewPackageIsAddedAndABrokenOneListed() throws {
@@ -250,11 +303,12 @@ private final class RegistryBox: Sendable {
 
     var current: EffectRegistry { registry.withLock { $0 } }
 
-    func reload(_ url: URL, as read: Result<EffectPackage, any Error>?) -> EffectPackage? {
+    func reload(_ url: URL, as read: Result<EffectPackage, any Error>?) -> EffectRegistry.Reload {
         registry.withLock { registry in
             let reloaded = registry.reloading(url, as: read)
+            let replaced = reloaded.changed.flatMap { registry.effect(named: $0.id)?.package }
             registry = reloaded.registry
-            return reloaded.changed
+            return EffectRegistry.Reload(changed: reloaded.changed, replaced: replaced)
         }
     }
 }

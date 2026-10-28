@@ -144,6 +144,8 @@ extension EditingProject {
         var pasted: [Effect] = []
         for item in items {
             var effect = item.effect.duplicated()
+            // Copied before its package changed, perhaps.
+            effect.fitToPackage()
             newIDs[item.effect.id] = effect.id
             effect.input = nil
             effect.pasteChanges = []

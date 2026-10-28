@@ -402,6 +402,16 @@ struct ProjectFile: Codable {
         }
     }
 
+    /// A package effect's control as read, or nil for one that doesn't
+    /// read as a control.
+    struct LossyControlEntry: Decodable {
+        var entry: ControlEntry?
+
+        init(from decoder: Decoder) throws {
+            entry = try? ControlEntry(from: decoder)
+        }
+    }
+
     /// One control of an effect: its value, or its keyframes when animated.
     struct ControlEntry: Codable {
         var id: UUID
@@ -702,9 +712,6 @@ struct ProjectFile: Codable {
         /// An effect from a package, as it was read; for a missing effect,
         /// what is written back.
         var saved: JSONValue?
-        /// Whether its controls couldn't all be read, as a newer version of
-        /// its package may save them.
-        var controlsUnread = false
 
         private enum CodingKeys: String, CodingKey {
             case id, kind, name, enabled, movesAnchor, against, input, keyframing, text, pasteChanges, inputName, againstName, controls
@@ -763,9 +770,9 @@ struct ProjectFile: Codable {
             inputName = try container.decodeIfPresent(String.self, forKey: .inputName)
             againstName = try container.decodeIfPresent(String.self, forKey: .againstName)
             if fromPackage {
-                let read = try? container.decode([ControlEntry].self, forKey: .controls)
-                controls = read ?? []
-                controlsUnread = read == nil
+                // Each on its own, so one that doesn't read is held rather
+                // than losing the rest.
+                controls = (try? container.decode([LossyControlEntry].self, forKey: .controls))?.compactMap(\.entry) ?? []
             } else {
                 controls = try container.decode([ControlEntry].self, forKey: .controls)
             }
@@ -794,14 +801,9 @@ struct ProjectFile: Codable {
 
         var effect: Effect? {
             if let saved {
-                // From a package: missing when it isn't installed, or doesn't
-                // list a control the effect was saved with.
-                func missing(_ reason: MissingEffect.Reason) -> Effect {
-                    .missing(MissingEffect(kind: kind, reason: reason, saved: saved), id: id, enabled: enabled ?? true)
-                }
-                guard let installed = EffectKind(rawValue: kind) else { return missing(.notInstalled) }
-                if controlsUnread || controls.contains(where: { installed.controlKind(savedAs: $0.kind) == nil }) {
-                    return missing(.needsNewerVersion)
+                // From a package: missing when it isn't installed.
+                guard EffectKind(rawValue: kind) != nil else {
+                    return .missing(MissingEffect(kind: kind, saved: saved), id: id, enabled: enabled ?? true)
                 }
             }
             guard let kind = EffectKind(rawValue: kind) else { return nil }
@@ -825,6 +827,22 @@ struct ProjectFile: Codable {
             if kind.isKeyframing { effect.keyframing = keyframing?.setup ?? KeyframingSetup() }
             if kind == .text { effect.text = text?.content ?? TextContent() }
             effect.pasteChanges = (pasteChanges ?? []).compactMap(\.change)
+            if let saved, case .array(let entries)? = saved["controls"] {
+                // A saved control that didn't read as one of the package's,
+                // as one a newer version or an earlier edit of it saved, is
+                // held as saved until the effect is saved again.
+                let read = Set(effect.controls.map(\.id.uuidString))
+                for entry in entries where !read.contains(entry["id"]?.string ?? "") {
+                    let name = entry["kind"]?.string ?? "?"
+                    if let listed = kind.controlKind(savedAs: name) {
+                        effect.controls.append(EffectControl(kind: listed, enabled: listed.startsEnabled))
+                        effect.packageChanges.reset[name] = "its saved value couldn't be read"
+                    } else {
+                        effect.packageChanges.held[name] = entry
+                    }
+                }
+                effect.fitToPackage()
+            }
             return effect
         }
     }
@@ -1142,11 +1160,18 @@ extension ProjectFile {
                 for name in Equalizer.legacyNames { controls[name] = legacy }
             }
             if kind.definition.package != nil {
-                // Another version of the package may save controls this one
-                // doesn't list; such an effect loads as missing.
-                let other = JSONObjectShape(fields: [.required("id", .uuid), .required("kind", .string)], allowsOtherKeys: true)
-                let others = JSONOtherTags(accepts: { _ in true }, shape: other)
-                fields.append(.required("controls", .array(.taggedOr(key: "kind", noun: "control kind", controls, others: others))))
+                // Any control, and any value, checked only for being one:
+                // reading fits them to the package as it now is
+                // (`Effect.fitToPackage`), since a control the package no
+                // longer lists, or a value of another size or kind, is just
+                // what changing the package leaves. What no change to a
+                // package explains, as an unknown key or keyframes that
+                // aren't a list, is still refused with where it is.
+                let saved = object([
+                    .required("id", .uuid), .required("kind", .string), .optional("enabled", .bool), .optional("linked", .bool),
+                    .optional("squircle", .bool), .optional("value", .any), .optional("keyframes", .array(keyframe(.any))),
+                ], oneOf: [["value", "keyframes"]])
+                fields.append(.required("controls", .array(.object(saved))))
             } else {
                 fields.append(.required("controls", .array(.tagged(key: "kind", noun: "control kind", controls))))
             }

@@ -61,6 +61,7 @@ extension EditingProject {
                 dims: false
             )
         }
+        if let note = effect.packageChanges.note { return EffectNote(text: note, dims: false) }
         guard effect.enabled else { return nil }
         if let package = effect.kind.definition.package, let problem = PackageKernels.knownProblem(for: package) {
             return EffectNote(text: "Its kernel doesn't compile, so it leaves the picture as it is. \(problem)", dims: true)

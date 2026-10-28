@@ -46,13 +46,13 @@ final class EffectPackageStatus {
     /// Each package's files and when they changed, as last read, so a
     /// change event that changed none of them reads nothing again.
     @ObservationIgnored private var stamps: [URL: [String: Date]] = [:]
-    /// Puts a package read again into the registry, returning the one added
-    /// or changed (`EffectRegistry.reload`); a test's own registry instead.
-    @ObservationIgnored private let reloadIntoRegistry: @Sendable (URL, Result<EffectPackage, any Error>?) -> EffectPackage?
+    /// Puts a package read again into the registry (`EffectRegistry.reload`);
+    /// a test's own registry instead.
+    @ObservationIgnored private let reloadIntoRegistry: @Sendable (URL, Result<EffectPackage, any Error>?) -> EffectRegistry.Reload
 
     init(
         kernelProblems: [String: String] = [:],
-        reloadingInto reload: @escaping @Sendable (URL, Result<EffectPackage, any Error>?) -> EffectPackage? = EffectRegistry.reload
+        reloadingInto reload: @escaping @Sendable (URL, Result<EffectPackage, any Error>?) -> EffectRegistry.Reload = EffectRegistry.reload
     ) {
         self.kernelProblems = kernelProblems
         reloadIntoRegistry = reload
@@ -173,8 +173,9 @@ final class EffectPackageStatus {
     }
 
     /// Reads the package at `url` again, if it is still there, and puts
-    /// what it finds in the registry (`EffectRegistry.reloading`),
-    /// compiling the kernel of one added or changed.
+    /// what it finds in the registry (`EffectRegistry.reloading`): the
+    /// effects of one changed in open projects are fitted to it, and the
+    /// kernel of one added or changed compiled.
     private func reloadNow(_ url: URL) async {
         await packagesInstalled()
         let url = url.standardizedFileURL
@@ -191,9 +192,12 @@ final class EffectPackageStatus {
         if case .failure(let error)? = read {
             NSLog("The effect package \(url.lastPathComponent) can't be used: \(error.localizedDescription)")
         }
-        let changed = reloadIntoRegistry(url, read)
+        let reload = reloadIntoRegistry(url, read)
+        if let changed = reload.changed, let replaced = reload.replaced {
+            for session in ProjectWindows.shared.sessions { session.fitPackageEffects(newSince: [changed.id: replaced]) }
+        }
         revision += 1
-        if let changed { await compile([changed], priority: .userInitiated) }
+        if let changed = reload.changed { await compile([changed], priority: .userInitiated) }
     }
 
     /// When each file directly in the package at `url` last changed, by

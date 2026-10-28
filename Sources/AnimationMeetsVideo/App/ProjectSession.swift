@@ -66,6 +66,17 @@ final class ProjectSession {
 
     var hasUnsavedChanges: Bool { project != savedProject }
 
+    /// Fits the project's package effects to their packages as they now
+    /// are, adding controls gained since `old` (`fitPackageEffects`), for a
+    /// package changed while the app runs. Not an undo step: undo fits what
+    /// it restores itself. Saving then leaves out what they no longer have.
+    func fitPackageEffects(newSince old: [String: EffectPackage]) {
+        var fitted = project
+        guard fitted.fitPackageEffects(newSince: old) else { return }
+        history.adopt { $0.fitPackageEffects(newSince: old) }
+        project = fitted
+    }
+
     /// No project yet: the window shows the start sheet.
     var isEmpty: Bool { projectURL == nil }
 
