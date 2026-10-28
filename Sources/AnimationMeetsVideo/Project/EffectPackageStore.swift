@@ -12,8 +12,9 @@ struct EffectPackageProblem: Identifiable, Equatable, Sendable {
 }
 
 /// The person's packages as the app runs: installed at launch, away from
-/// the main thread; and their kernels compiled in the background, and which
-/// don't compile, and why, for the effects library. The packages that
+/// the main thread; their kernels compiled in the background, and which
+/// don't compile, and why, for the effects library; and the Effects folder
+/// watched, so a package changed there is read again. The packages that
 /// couldn't be read or installed are the registry's `problems`.
 @MainActor
 @Observable
@@ -34,18 +35,37 @@ final class EffectPackageStatus {
     /// by ID, so a compile that finishes after a newer one's doesn't put
     /// back what it found.
     @ObservationIgnored private var compiling: [String: String] = [:]
+    /// The reloads asked for, one after another, so an older read of a
+    /// package never lands after a newer one.
+    @ObservationIgnored private var reloading: Task<Void, Never>?
+    @ObservationIgnored private var watcher: EffectFolderWatcher?
+    /// The reload waiting for each package's changes to settle, put off
+    /// again by each change, so an editor's save of a file and its rename
+    /// into place reads the package once.
+    @ObservationIgnored private var settling: [URL: Task<Void, Never>] = [:]
+    /// Each package's files and when they changed, as last read, so a
+    /// change event that changed none of them reads nothing again.
+    @ObservationIgnored private var stamps: [URL: [String: Date]] = [:]
+    /// Puts a package read again into the registry, returning the one added
+    /// or changed (`EffectRegistry.reload`); a test's own registry instead.
+    @ObservationIgnored private let reloadIntoRegistry: @Sendable (URL, Result<EffectPackage, any Error>?) -> EffectPackage?
 
-    init(kernelProblems: [String: String] = [:]) {
+    init(
+        kernelProblems: [String: String] = [:],
+        reloadingInto reload: @escaping @Sendable (URL, Result<EffectPackage, any Error>?) -> EffectPackage? = EffectRegistry.reload
+    ) {
         self.kernelProblems = kernelProblems
+        reloadIntoRegistry = reload
     }
 
     /// Reads the person's packages in `folder` and installs them in the
-    /// background (`EffectPackageStore.installAtLaunch`). Called once at
-    /// launch; `packagesInstalled` waits for it.
+    /// background (`EffectPackageStore.installAtLaunch`), then watches the
+    /// folder. Called once at launch; `packagesInstalled` waits for it.
     func installAtLaunch(from folder: URL = EffectPackageStore.defaultFolder) {
         launch = Task {
             await EffectPackageStore.installAtLaunch(from: folder)
             revision += 1
+            startWatching(folder)
         }
     }
 
@@ -61,6 +81,11 @@ final class EffectPackageStatus {
     func install(_ url: URL) async throws -> EffectPackage {
         await packagesInstalled()
         let package = try EffectPackageStore.read(url)
+        // Already installed when the folder's watcher read it first.
+        if let installed = EffectRegistry.current.effect(named: package.id)?.package,
+           installed.url.standardizedFileURL == url.standardizedFileURL, installed.contentHash == package.contentHash {
+            return installed
+        }
         try EffectRegistry.add(package)
         revision += 1
         await compile([package], priority: .userInitiated)
@@ -107,6 +132,79 @@ final class EffectPackageStatus {
         }
     }
 
+    // MARK: Reloading
+
+    /// Watches `folder` for packages changed, added or removed in it, and
+    /// reads each again (`reload`). Does nothing if it is watching already.
+    func startWatching(_ folder: URL = EffectPackageStore.defaultFolder) {
+        guard watcher == nil else { return }
+        watcher = EffectFolderWatcher(folder: folder, latency: 0.1) { [weak self] urls in self?.settle(urls) }
+    }
+
+    /// Reloads each of `urls` once it has gone 0.3 s without changing.
+    private func settle(_ urls: [URL]) {
+        for url in urls {
+            settling[url]?.cancel()
+            settling[url] = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled, let self else { return }
+                settling[url] = nil
+                queueReload([url])
+            }
+        }
+    }
+
+    /// Reads the package at `url` again, for one changed, added or removed
+    /// while the app runs, and installs what changed (see
+    /// `EffectRegistry.reloading`), after any reload asked for before.
+    func reload(_ url: URL) async {
+        await queueReload([url]).value
+    }
+
+    @discardableResult
+    private func queueReload(_ urls: [URL]) -> Task<Void, Never> {
+        let previous = reloading
+        let task = Task {
+            await previous?.value
+            for url in urls { await reloadNow(url) }
+        }
+        reloading = task
+        return task
+    }
+
+    /// Reads the package at `url` again, if it is still there, and puts
+    /// what it finds in the registry (`EffectRegistry.reloading`),
+    /// compiling the kernel of one added or changed.
+    private func reloadNow(_ url: URL) async {
+        await packagesInstalled()
+        let url = url.standardizedFileURL
+        // An event that changed none of its files, such as a second for one
+        // save, reads nothing again. The app's own writes (making, copying
+        // or installing one) read it once, and find it installed as it is.
+        let stamp = Self.stamp(of: url)
+        guard stamp == nil || stamp != stamps[url] else { return }
+        stamps[url] = stamp
+        var read: Result<EffectPackage, any Error>?
+        if stamp != nil {
+            read = await Task.detached(priority: .userInitiated) { Result { try EffectPackageStore.read(url) } }.value
+        }
+        if case .failure(let error)? = read {
+            NSLog("The effect package \(url.lastPathComponent) can't be used: \(error.localizedDescription)")
+        }
+        let changed = reloadIntoRegistry(url, read)
+        revision += 1
+        if let changed { await compile([changed], priority: .userInitiated) }
+    }
+
+    /// When each file directly in the package at `url` last changed, by
+    /// name; nil when there is no package there.
+    nonisolated private static func stamp(of url: URL) -> [String: Date]? {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.contentModificationDateKey])
+        else { return nil }
+        return Dictionary(uniqueKeysWithValues: files.map { file in
+            (file.lastPathComponent, (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+        })
+    }
 }
 
 struct EffectPackageLibrary: Sendable {

@@ -200,6 +200,23 @@ struct EffectPackage: Sendable {
         return definition
     }
 
+    /// Whether effects made with this package can be drawn and edited
+    /// with `other` in its place: each control both have holds values of
+    /// the same size, and choices of the same options, and it reads the
+    /// same pictures. Controls only one has don't matter: an effect keeps
+    /// one `other` drops until it is saved, and is at the default of one
+    /// it adds, as for a deleted control.
+    func keepsValues(of other: EffectPackage) -> Bool {
+        let theirs = Dictionary(uniqueKeysWithValues: other.controls.map { ($0.kind, $0) })
+        return takesInput == other.takesInput && readsAgainst == other.readsAgainst && generates == other.generates
+            && pictures.map(\.source) == other.pictures.map(\.source)
+            && controls.allSatisfy { mine in
+                guard let their = theirs[mine.kind] else { return true }
+                return mine.defaultValues.count == their.defaultValues.count && mine.isColor == their.isColor
+                    && mine.isCurve == their.isCurve && mine.choiceOptions.map(\.id) == their.choiceOptions.map(\.id)
+            }
+    }
+
     /// FNV-1a over the manifest and the kernel source, in hex.
     static func contentHash(_ manifest: Data, _ source: String) -> String {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325

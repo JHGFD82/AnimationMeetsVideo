@@ -367,6 +367,9 @@ struct TimelineEditorSurface<Library: View>: View {
             // `ViewerPipeline.show`).
             showProject()
         }
+        // A package changed in the Effects folder draws again, its content
+        // hash in the composition's key.
+        .onChange(of: EffectPackageStatus.shared.revision) { showProject() }
         .onAppear {
             trail = project.containingTimelines(of: timelineID)
             playhead.liveTime = { [playback] in playback.isPlaying ? playback.player.currentTime() : nil }

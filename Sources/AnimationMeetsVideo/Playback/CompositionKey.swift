@@ -18,6 +18,10 @@ struct CompositionKey: Equatable {
     /// The crossfade shape of joined cuts whose transitions don't choose
     /// one: it is in the fades the tracks are built with.
     var jointAudioCrossfade: AudioCrossfade
+    /// The person's packages whose looks the clips use, as ID and content
+    /// hash, so a package changed while the app runs builds the picture
+    /// again with its new kernel.
+    var packages: [String] = []
 
     init(project: EditingProject) {
         jointAudioCrossfade = project.jointAudioCrossfade
@@ -55,6 +59,20 @@ struct CompositionKey: Equatable {
         media = project.clips.map {
             Media(id: $0.id, path: $0.url?.path, offset: $0.alignmentOffset, stamp: $0.acceptedStamp)
         }
+        // Only the person's packages, whose IDs have a dot, change as the
+        // app runs.
+        let registry = EffectRegistry.current
+        var used = Set<String>()
+        for timeline in project.timelines {
+            for layer in timeline.layers {
+                for clip in layer.clips {
+                    for effect in clip.effects where effect.kind.rawValue.contains(".") {
+                        if let package = registry.effect(named: effect.kind.rawValue)?.package { used.insert(package.id + "#" + package.contentHash) }
+                    }
+                }
+            }
+        }
+        packages = used.sorted()
     }
 }
 
@@ -64,7 +82,9 @@ extension CompositionKey {
     /// frames play when, which only playing shows, so a drag of it doesn't
     /// need the picture updated as it goes.
     func differsOnlyInSpeed(from old: CompositionKey) -> Bool {
-        guard timelines.count == old.timelines.count, media == old.media, jointAudioCrossfade == old.jointAudioCrossfade else { return false }
+        guard timelines.count == old.timelines.count, media == old.media, jointAudioCrossfade == old.jointAudioCrossfade,
+              packages == old.packages
+        else { return false }
         func neutral(_ timelines: [Timeline]) -> [Timeline] {
             timelines.map { timeline in
                 var copy = timeline
