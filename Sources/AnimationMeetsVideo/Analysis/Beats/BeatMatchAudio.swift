@@ -136,13 +136,21 @@ struct BeatMatchAudio: Sendable {
         var source = ReaderSource(reader: reader, output: output)
         let seconds = duration.isFinite && duration > 0 ? duration : 0
         var timed = TimedSamples(longestGap: Int64(seconds.clamped(between: 60, and: 24 * 3600) * rate), sampleRate: rate) { feed($0) }
+        // Reported only as it moves on a percent: a buffer is a few
+        // milliseconds of song, and each report is a hop to the main thread.
+        var reported = -1.0
         do {
             while true {
                 if isCancelled() { throw CancellationError() }
                 guard let buffer = source.next() else { break }
                 let presentation = CMSampleBufferGetPresentationTimeStamp(buffer)
                 try timed.append(BeatDetector.pcmSamples(of: buffer, sampleRate: rate), at: presentation)
-                if seconds > 0 { progress((presentation.seconds / seconds).clamped(between: 0, and: 1)) }
+                guard seconds > 0 else { continue }
+                let fraction = (presentation.seconds / seconds).clamped(between: 0, and: 1)
+                if fraction - reported >= 0.01 {
+                    reported = fraction
+                    progress(fraction)
+                }
             }
             if isCancelled() { throw CancellationError() }
             try source.checkCompleted()
