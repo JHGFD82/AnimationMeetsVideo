@@ -18,12 +18,14 @@ and the beats they confirm are what the timeline uses.
   floating panel for the clip's asset. While it is open the main window is
   darkened and wholly inactive: no clicks, hovering, skimming, scrolling
   or pinching reach it (`WindowInputBlock`), and a click on it brings the
-  panel back. The panel plays the song on its own.
+  panel back. The panel plays the song on its own: only its audio, so a
+  video's picture is never decoded.
 - The person marks one tempo for the whole song, or switches to
   **sections** at the start. Either way the result is a **beat map**: the
   song's beats, each with its place in the measure, saved with the project.
 - The panel works on a draft with its own undo (⌘Z and ⇧⌘Z, or the
-  footer's buttons). **Confirm**, offered once a section has its beats
+  footer's buttons), of the last 100 steps; nudges of one beat in a row,
+  each soon after the last, are one step. **Confirm**, offered once a section has its beats
   filled, puts it on the
   timeline as one undo step there, and turns on that song's beat markers
   (the view options' picker chooses its Music layer). **Cancel**, or the
@@ -87,7 +89,11 @@ step.
    From the keyboard (and VoiceOver), ← → move the selected anchor by
    1 ms, ⌥ by one sample of the file, and ⇧ by 10 ms; there are no nudge
    buttons. A loop toggle repeats the
-   two bars around the selected anchor.
+   two bars around the selected anchor: a boundary observer at the loop's
+   end jumps back, installed only while a loop plays. A loop whose end
+   lies past the song's audio jumps back `loopEndMargin` (20 ms) short of
+   where the audio ends: the player pauses at the end of its item, and
+   that pause would take the loop down before it could jump back.
 3. **Confirm.** The number of beats between the anchors comes from a rough
    tempo estimate. Dividing the time between the anchors by that number
    gives the exact period. The panel shows the tempo with two decimals; the
@@ -347,6 +353,30 @@ the pinned one), and wraps positions into the measure.
   points apart, then only downbeats, then the first beat of every 2nd,
   4th… measure. Snapping uses what is drawn. Detected beats have no
   measures, so they keep thinning by powers of two as before. **Built.**
+
+## Decisions
+
+Settled, with the reasons, so they aren't proposed again:
+
+- **The beat list is the saved record, not a tempo formula.** A section
+  could be stored as a start, a tempo and a phase, with its beats worked
+  out from them, but only a click-track section is an exact grid. A
+  section played live (`intent`) has each beat snapped onto the onset
+  heard there, off the grid, and a ramp's beats are fitted to the music,
+  not drawn from a curve. A formula would lose both; pinning every beat
+  to keep them is the beat list again. Beats are in time order within a
+  section, so finding one is a binary search.
+- **The onset curve's 2.9 ms hop and the whole song's samples are
+  kept on purpose.** The waveform zooms down to single samples, which
+  takes the samples themselves (the coarser levels are only for zoomed
+  out), and beats are placed within a few milliseconds, which a curve at
+  100–200 Hz couldn't do.
+- **The panel plays the song with `AVPlayer`**, of an audio-only
+  composition, rather than through the tick's `AVAudioEngine`. The
+  player gives the chosen output device, seeking and latency matching;
+  the tick lands on the beat already, scheduled at host times taken from
+  the player item's timebase, and MIDI taps are placed through that same
+  timebase.
 
 ## Building it
 

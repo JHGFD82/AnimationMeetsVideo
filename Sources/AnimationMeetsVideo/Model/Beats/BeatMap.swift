@@ -114,6 +114,17 @@ struct BeatSection: Identifiable, Equatable, Sendable {
         CMTimeCompare(time, start) >= 0 && CMTimeCompare(time, end) < 0
     }
 
+    /// The index of the beat at exactly `time`, found by halving, since
+    /// the beats are in time order.
+    func beatIndex(at time: CMTime) -> Int? {
+        var low = 0, high = beats.count
+        while low < high {
+            let middle = (low + high) / 2
+            if CMTimeCompare(beats[middle].time, time) < 0 { low = middle + 1 } else { high = middle }
+        }
+        return low < beats.count && CMTimeCompare(beats[low].time, time) == 0 ? low : nil
+    }
+
     /// Keeps the beats in time order with no two at the same time, and the
     /// beat count and positions in range.
     mutating func normalize() {

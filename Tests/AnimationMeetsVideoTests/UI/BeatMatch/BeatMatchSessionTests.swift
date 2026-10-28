@@ -69,6 +69,149 @@ import Testing
         #expect(ranges(session) == [[0, 12], [12, 15]])
     }
 
+    /// Runs `change` as one event's worth of undo, as the app's events
+    /// group them, for a session whose manager doesn't group by event.
+    private func step(_ session: BeatMatchSession, _ change: () -> Void) {
+        session.undoManager.beginUndoGrouping()
+        change()
+        session.undoManager.endUndoGrouping()
+    }
+
+    @Test func nudgesInARowUndoAsOneStep() throws {
+        let session = try session("beat-match-session-nudge")
+        defer { session.end() }
+        session.undoManager.groupsByEvent = false
+        func step(_ change: () -> Void) { self.step(session, change) }
+        step { session.chooseOneTempo() }
+        step { session.addBeat(at: 8, position: 1) }
+        let placed = try #require(session.selectedBeat)
+        step { session.nudgeSelected(by: 0.001) }
+        // The nudges after the first register nothing; in the app no group
+        // opens for them, so none is opened here.
+        session.nudgeSelected(by: 0.001)
+        session.nudgeSelected(by: 0.001)
+        #expect(abs(try #require(session.selectedBeat).seconds - (placed.seconds + 0.003)) < 1e-4)
+        session.undo()
+        #expect(session.selectedBeat == nil)
+        #expect(session.map.beat(at: placed) != nil)
+        session.redo()
+        let nudged = try #require(session.map.sections.first?.beats.first?.time)
+        #expect(abs(nudged.seconds - (placed.seconds + 0.003)) < 1e-4)
+
+        // Another edit in between starts a new step.
+        session.selectedBeat = nudged
+        step { session.nudgeSelected(by: 0.001) }
+        step { session.setSelectedPosition(2) }
+        step { session.nudgeSelected(by: 0.001) }
+        session.undo()
+        #expect(session.map.beat(at: CMTimeAdd(nudged, CMTime(value: 48, timescale: 48_000))) != nil)
+    }
+
+    /// Nudging opens no undo group of its own, so undoing in the middle of
+    /// a run, with the event's group still open as in the app, undoes it.
+    @Test func undoDuringARunOfNudgesUndoesTheRun() throws {
+        let session = try session("beat-match-session-nudge-undo")
+        defer { session.end() }
+        session.undoManager.groupsByEvent = false
+        step(session) { session.chooseOneTempo() }
+        step(session) { session.addBeat(at: 8, position: 1) }
+        let placed = try #require(session.selectedBeat)
+        session.undoManager.beginUndoGrouping()
+        session.nudgeSelected(by: 0.001)
+        session.nudgeSelected(by: 0.001)
+        session.undoManager.endUndoGrouping()
+        // Within the run, as a held key's next press would be.
+        session.undo()
+        #expect(session.map.beat(at: placed) != nil)
+        #expect(session.canUndo && session.canRedo)
+        // The run is over: a nudge now is a step of its own.
+        session.selectedBeat = placed
+        step(session) { session.nudgeSelected(by: 0.001) }
+        session.undo()
+        #expect(session.map.beat(at: placed) != nil)
+        session.undo()
+        #expect(session.map.sections.first?.beats.isEmpty == true)
+    }
+
+    @Test func aFillAfterNudgesIsAStepOfItsOwn() async throws {
+        let session = try session("beat-match-session-nudge-fill")
+        defer { session.end() }
+        for _ in 0..<200 where session.audio == nil { try await Task.sleep(for: .milliseconds(50)) }
+        session.undoManager.groupsByEvent = false
+        step(session) { session.chooseOneTempo() }
+        step(session) { session.addBeat(at: 8.25, position: 1) }
+        step(session) { session.addBeat(at: 16.25, position: 1) }
+        let placed = try #require(session.selectedBeat)
+        step(session) { session.nudgeSelected(by: 0.001) }
+        session.nudgeSelected(by: 0.001)
+        let nudged = try #require(session.selectedBeat)
+        // The fill lands in an event of its own, after the nudges.
+        session.undoManager.beginUndoGrouping()
+        session.fillSelected()
+        for _ in 0..<100 where session.isFilling { try await Task.sleep(for: .milliseconds(50)) }
+        session.undoManager.endUndoGrouping()
+        #expect(session.map.sections.first?.isConfirmed == true)
+
+        session.undo()
+        #expect(session.map.sections.first?.isConfirmed == false)
+        #expect(session.map.beat(at: nudged) != nil)
+        session.undo()
+        #expect(session.map.beat(at: placed) != nil)
+        #expect(session.map.beat(at: nudged) == nil)
+    }
+
+    @Test func theLoopIsWatchedOnlyWhileOnePlays() throws {
+        let session = try session("beat-match-session-loop")
+        defer { session.end() }
+        session.chooseOneTempo()
+        session.addBeat(at: 8, position: 1)
+        let beat = try #require(session.selectedBeat)
+        // The player's status, as if it had started.
+        session.playingChanged(true)
+        #expect(!session.isWatchingLoop)
+        session.isLooping = true
+        #expect(session.isWatchingLoop)
+        let first = try #require(session.watchedLoop)
+
+        // What the loop is worked out from changing moves the watch.
+        session.nudgeSelected(by: 0.01)
+        let nudged = try #require(session.watchedLoop)
+        #expect(nudged != first)
+        session.setBeatsPerMeasure(3)
+        #expect(try #require(session.watchedLoop).upperBound - nudged.upperBound < 0)
+        session.selectedBeat = nil
+        #expect(!session.isWatchingLoop)
+        session.selectedBeat = CMTimeAdd(beat, CMTime(value: 480, timescale: 48_000))
+        #expect(session.isWatchingLoop)
+
+        session.isLooping = false
+        #expect(!session.isWatchingLoop && session.watchedLoop == nil)
+        session.isLooping = true
+        session.playingChanged(false)
+        #expect(!session.isWatchingLoop)
+        session.playingChanged(true)
+        #expect(session.isWatchingLoop)
+        session.end()
+        #expect(!session.isWatchingLoop && session.watchedLoop == nil)
+    }
+
+    @Test func aLoopPastTheSongsEndJumpsBackJustShortOfIt() async throws {
+        let session = try session("beat-match-session-loop-end")
+        defer { session.end() }
+        for _ in 0..<200 where session.audio == nil { try await Task.sleep(for: .milliseconds(50)) }
+        session.chooseOneTempo()
+        session.addBeat(at: 39.5, position: 1)
+        session.playingChanged(true)
+        session.isLooping = true
+        // The song's audio runs its whole duration, so its end is the end.
+        let end = session.duration.seconds
+        let loop = try #require(session.watchedLoop)
+        let unclamped = try #require(session.loopRange)
+        #expect(unclamped.upperBound > end)
+        #expect(abs(loop.upperBound - (end - BeatMatchSession.loopEndMargin)) < 1e-3)
+        #expect(loop.lowerBound == unclamped.lowerBound)
+    }
+
     @Test func confirmWaitsForAFilledSectionAndFillingLeavesTheView() async throws {
         let session = try session("beat-match-session-confirm")
         defer { session.end() }
