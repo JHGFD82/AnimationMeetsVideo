@@ -107,7 +107,14 @@ final class BeatMatchSession: SecondsViewport {
     @ObservationIgnored private var filling: Task<(map: BeatMap, report: BeatFitting.FillReport), Error>?
     @ObservationIgnored private var estimating: Task<Void, Never>?
     /// The section and anchor `provisionalTempo` is for.
-    @ObservationIgnored private var estimated: [AnyHashable]?
+    @ObservationIgnored private var estimated: ProvisionalKey?
+
+    private struct ProvisionalKey: Hashable {
+        var sectionID: UUID
+        var pin: CMTime
+        var start: CMTime
+        var end: CMTime
+    }
 
     init(asset: MediaClip, url: URL) {
         assetID = asset.id
@@ -465,7 +472,7 @@ final class BeatMatchSession: SecondsViewport {
         }
         let pins = BeatFitting.distinctPins(of: section, sampleRate: audio.sampleRate)
         guard pins.count == 1, let pin = pins.first else { return clearProvisionalTempo() }
-        let key: [AnyHashable] = [section.id, pin.time.value, pin.time.timescale, section.start.seconds, section.end.seconds]
+        let key = ProvisionalKey(sectionID: section.id, pin: pin.time, start: section.start, end: section.end)
         guard key != estimated else { return }
         estimated = key
         estimating?.cancel()
