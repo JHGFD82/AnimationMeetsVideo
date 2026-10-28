@@ -24,10 +24,23 @@ final class RenderScheduler {
     }
 
     /// The viewed timeline's segments, in order.
-    private(set) var segments: [RenderSegment] = []
+    private(set) var segments: [RenderSegment] = [] {
+        didSet { refreshClipProgress() }
+    }
     /// Keys whose render is in the cache.
-    private(set) var rendered: Set<String> = []
-    private(set) var active: ActiveRender?
+    private(set) var rendered: Set<String> = [] {
+        didSet { refreshClipProgress() }
+    }
+    private(set) var active: ActiveRender? {
+        didSet {
+            // As a render goes on only its own clips' progress changes.
+            if let active, active.key == oldValue?.key {
+                refreshClipProgress(ofSegmentsKeyed: active.key)
+            } else {
+                refreshClipProgress()
+            }
+        }
+    }
     private(set) var finishedCount = 0
 
     /// The package whose cache is used; nil stops rendering.
@@ -71,7 +84,12 @@ final class RenderScheduler {
     @ObservationIgnored private var job: Task<Void, Error>?
     /// Keys that couldn't be rendered, with why, so they aren't tried again
     /// and again; shown on the timeline until `renderNow` tries them again.
-    private(set) var failed: [String: String] = [:]
+    private(set) var failed: [String: String] = [:] {
+        didSet { refreshClipProgress() }
+    }
+    /// The progress of each clip a view has asked about, by clip. Not
+    /// watched itself: each cell is, by the one view that reads it.
+    @ObservationIgnored private var clipProgress: [UUID: ClipRenderProgress] = [:]
     /// Set by `renderNow`: render without waiting for the timeline to be
     /// quiet, until it is all rendered or something is edited or played.
     private(set) var isForced = false
@@ -172,6 +190,49 @@ final class RenderScheduler {
         return done / total
     }
 
+    /// `progress(forClip:)` kept up to date in a cell of its own. A view
+    /// reading `progress(forClip:)` watches every segment's state, and so
+    /// is redrawn as any clip's render goes on; reading this cell, it is
+    /// redrawn only when the clip's own progress changes.
+    func progressCell(forClip clipID: UUID) -> ClipRenderProgress {
+        if let cell = clipProgress[clipID] { return cell }
+        let cell = ClipRenderProgress(value: progress(forClip: clipID))
+        clipProgress[clipID] = cell
+        return cell
+    }
+
+    /// Works out every cell's progress again, in one pass over the segments.
+    private func refreshClipProgress() {
+        guard !clipProgress.isEmpty else { return }
+        var totals: [UUID: (total: Double, done: Double)] = [:]
+        for segment in segments where segment.needsRender {
+            let length = segment.range.duration.seconds
+            let done: Double = switch state(of: segment) {
+            case .rendered: length
+            case .rendering(let fraction): length * fraction
+            default: 0
+            }
+            for clipID in segment.clipIDs where clipProgress[clipID] != nil {
+                totals[clipID, default: (0, 0)].total += length
+                totals[clipID, default: (0, 0)].done += done
+            }
+        }
+        for (clipID, cell) in clipProgress {
+            let sum = totals[clipID]
+            cell.update(sum.flatMap { $0.total > 0 && $0.done < $0.total ? $0.done / $0.total : nil })
+        }
+    }
+
+    /// Works out again the cells of the clips in the segments with `key`.
+    private func refreshClipProgress(ofSegmentsKeyed key: String) {
+        guard !clipProgress.isEmpty else { return }
+        for segment in segments where segment.key == key {
+            for clipID in segment.clipIDs {
+                clipProgress[clipID]?.update(progress(forClip: clipID))
+            }
+        }
+    }
+
     private var isIdle: Bool {
         guard !isPlaying, !isExporting, !isInteracting else { return false }
         if isForced { return true }
@@ -239,5 +300,23 @@ final class RenderScheduler {
         let composed = try await CompositionExporter.buildComposedTimeline(for: project, timelineID: timelineID)
         if version == planVersion { exportBuild = (version, composed) }
         return composed
+    }
+}
+
+/// How much of one clip is rendered, while some of it still isn't (see
+/// `RenderScheduler.progressCell(forClip:)`); nil when it needs no
+/// rendering or all is done.
+@MainActor
+@Observable
+final class ClipRenderProgress {
+    private(set) var value: Double?
+
+    init(value: Double?) {
+        self.value = value
+    }
+
+    /// Sets the value, telling its view only when it changed.
+    func update(_ value: Double?) {
+        if self.value != value { self.value = value }
     }
 }

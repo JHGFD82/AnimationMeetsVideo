@@ -13,13 +13,32 @@ struct ClipWaveform: View {
     static let fadeRange: CGFloat = 32
 
     let url: URL
-    /// The file time at the left edge of the drawn part of the clip, in
-    /// seconds, and how many seconds of file each point covers.
-    let fileStart: Double
-    let secondsPerPoint: Double
+    /// Which file time each point across is.
+    let fileTimes: WaveformFileTimes
     let width: CGFloat
     let height: CGFloat
     var splitsChannels = false
+    /// Off, a waveform not read yet isn't read, until it is on again: for
+    /// a clip being dragged.
+    var loads = true
+
+    init(url: URL, fileTimes: WaveformFileTimes, width: CGFloat, height: CGFloat, splitsChannels: Bool = false, loads: Bool = true) {
+        self.url = url
+        self.fileTimes = fileTimes
+        self.width = width
+        self.height = height
+        self.splitsChannels = splitsChannels
+        self.loads = loads
+    }
+
+    /// Sound read at one speed: `fileStart` (in seconds of the file) at
+    /// the left edge, and `secondsPerPoint` more for each point across.
+    init(url: URL, fileStart: Double, secondsPerPoint: Double, width: CGFloat, height: CGFloat, splitsChannels: Bool = false) {
+        self.init(
+            url: url, fileTimes: .linear(start: fileStart, secondsPerPoint: secondsPerPoint),
+            width: width, height: height, splitsChannels: splitsChannels
+        )
+    }
 
     /// How strongly a layer `height` tall shows its waveform, 0 to 1.
     static func strength(atHeight height: CGFloat) -> Double {
@@ -33,7 +52,8 @@ struct ClipWaveform: View {
     }
 
     var body: some View {
-        if let waveform = WaveformCache.shared.waveform(for: url), !waveform.peaks.isEmpty {
+        let cache = WaveformCache.shared
+        if let waveform = loads ? cache.waveform(for: url) : cache.loadedWaveform(for: url), !waveform.peaks.isEmpty {
             let bands: [Int?] = splitsChannels ? waveform.channels.indices.map { $0 } : [nil]
             Canvas(rendersAsynchronously: true) { context, size in
                 let bandHeight = size.height / CGFloat(bands.count)
@@ -73,14 +93,53 @@ struct ClipWaveform: View {
         var path = Path()
         var x: CGFloat = 0
         while x < band.width {
-            let start = fileStart + Double(x) * secondsPerPoint
+            let start = fileTimes.seconds(atX: x)
             // Backwards, the file is read toward its start.
-            let end = start + Double(step) * secondsPerPoint
+            let end = fileTimes.seconds(atX: x + step)
             let peak = CGFloat(waveform.peak(from: min(start, end), to: max(start, end), channel: channel))
             let half = max(0.5, peak * reach)
             path.addRect(CGRect(x: x, y: middle - half, width: step - 0.6, height: half * 2))
             x += step
         }
         return path
+    }
+}
+
+/// Which time of a file each point across a waveform shows: straight
+/// between anchors, and on along the last stretch past the ends. Two
+/// anchors draw sound read at one speed; a clip whose speed changes along
+/// it is anchored every few points, and where each speed is set.
+struct WaveformFileTimes: Equatable, Sendable {
+    struct Anchor: Equatable, Sendable {
+        /// Points from the left edge.
+        var x: CGFloat
+        /// Seconds of the file.
+        var seconds: Double
+    }
+
+    /// Sorted by `x`, at least two, apart.
+    let anchors: [Anchor]
+
+    init(anchors: [Anchor]) {
+        var sorted = anchors.sorted { $0.x < $1.x }
+        if sorted.count == 1 { sorted.append(Anchor(x: sorted[0].x + 1, seconds: sorted[0].seconds)) }
+        self.anchors = sorted
+    }
+
+    static func linear(start: Double, secondsPerPoint: Double) -> WaveformFileTimes {
+        WaveformFileTimes(anchors: [Anchor(x: 0, seconds: start), Anchor(x: 1, seconds: start + secondsPerPoint)])
+    }
+
+    func seconds(atX x: CGFloat) -> Double {
+        guard anchors.count >= 2 else { return anchors.first?.seconds ?? 0 }
+        // The stretch holding `x`, or the nearest end one.
+        var low = 0, high = anchors.count - 1
+        while high - low > 1 {
+            let middle = (low + high) / 2
+            if anchors[middle].x <= x { low = middle } else { high = middle }
+        }
+        let a = anchors[low], b = anchors[high]
+        guard b.x > a.x else { return a.seconds }
+        return a.seconds + (b.seconds - a.seconds) * Double((x - a.x) / (b.x - a.x))
     }
 }

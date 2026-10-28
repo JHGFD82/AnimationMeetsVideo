@@ -20,6 +20,9 @@ struct ClipThumbnails: View {
     let drawnX: CGFloat
     let width: CGFloat
     let height: CGFloat
+    /// Off while the clip is dragged: no picture is read until it is let
+    /// go, and the tiles keep what they show (see `FilmstripThumbnail`).
+    var loads = true
 
     /// The shortest band of pictures worth drawing.
     static let minimumHeight: CGFloat = 22
@@ -36,7 +39,7 @@ struct ClipThumbnails: View {
         ZStack(alignment: .topLeading) {
             if let url = media.url, last > first {
                 ForEach(first..<last, id: \.self) { index in
-                    FilmstripThumbnail(url: url, time: time(atTile: index, width: tile), height: height, keepsPictureWhileLoading: true)
+                    FilmstripThumbnail(url: url, time: time(atTile: index, width: tile), height: height, keepsPictureWhileLoading: true, loads: loads)
                         .frame(width: tile, height: height)
                         .clipped()
                         .offset(x: CGFloat(index) * tile - into)

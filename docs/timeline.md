@@ -525,13 +525,35 @@ Motion it goes there at once. A trim is still drawn where it will land. The func
 `resolvedTrimEnd(of:…)`) do not change the project, and the editing
 functions commit what they return.
 
+- **Shift** while moving keeps the clip on its own layer: it only moves
+  in time, wherever the pointer goes up or down.
+- **Escape** while moving, trimming or slipping cancels: the clip springs
+  back to where it was and nothing is edited. The rest of that drag does
+  nothing until the button comes up; Escape then doesn't also clear the
+  selection.
+- An edit let go of that the project **refuses** springs back at once,
+  with the block's rim flashing in the warning colour and the alert
+  sound, rather than sitting in the wrong place until it gives up.
+- The pointer over a clip is an open hand with the Arrow, closed while
+  the clip is carried, and the resize arrows with Slip.
+- While a clip is carried or trimmed its pictures and sound aren't read:
+  the tiles keep what they show, and what is new comes in once let go.
+
+A clip too narrow on screen to read (under 24 points) is drawn as its
+fill and outline alone. One under 6 points still takes a press a little
+either side of it, to select or move it, and its trim handles narrow so
+its middle still moves it. A clip turned off is drawn faded and grey,
+pictures included.
+
 ## Waveforms
 
 Clips of sound alone (audio files and detached sound) draw their waveform,
 faded, behind their label once their layer is at least 64 points tall,
 fading in fully over the next 32: vertical zoom (a vertical pinch, or the
 area's layer height slider) is what brings them up. Only the part of the
-clip on screen is drawn, one mirrored bar every two points. The waveform is
+clip on screen is drawn, one mirrored bar every two points. A clip whose
+speed changes along it is drawn as far into the file as it plays at each
+point (`WaveformFileTimes`), not at its first speed throughout. The waveform is
 a coarse envelope of each file (`Waveform`: the loudest sample in each
 1/200 s window, scaled to the file's loudest), read the first time a clip
 asks for it and kept for the session (`WaveformCache`). Replacing media
@@ -831,6 +853,9 @@ its edges, and a press there trims rather than starting a lasso.
 
 The lasso's rectangle fades out when the button comes up.
 
+- **Right-click a clip** to select it as its menu opens, unless it is
+  already selected or picked with others, which stay as they are so the
+  menu acts on them all.
 - **Click empty space or press Escape** to select nothing: no clip, layer,
   section or lasso. (A click in empty space used to do nothing, so a
   selected clip stayed selected.) **⌘A** picks every clip of the timeline

@@ -1120,6 +1120,56 @@ struct UISnapshots {
         )
     }
 
+    /// Clip blocks on the timeline, a row each: a video clip with its
+    /// pictures; the same selected, with its shadow outside it only; the
+    /// same turned off, grey and faded, then also selected, its shadow's
+    /// cleared inside not showing through; clips too narrow for a name,
+    /// drawn as fill and outline; a sound clip's volume ramping up.
+    @Test func clipBlocks() async throws {
+        let movie = FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-blocks-\(UUID().uuidString).mov")
+        defer { try? FileManager.default.removeItem(at: movie) }
+        try await writeMovie(to: movie, segments: [(60, 24), (200, 24), (120, 24), (230, 24)])
+        let footage = MediaClip(
+            name: "Skate", kind: .video, url: movie, duration: CMTime(value: 4, timescale: 1),
+            frameRate: 24, colorSpace: .rec709, codecName: "H.264"
+        )
+        func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferredTimescale: 600) }
+        let video = TimelineClip(source: .media(footage.id), startOffset: seconds(0.4), trimStart: .zero, trimEnd: seconds(4))
+        var off = video
+        off.enabled = false
+        let narrow = TimelineClip(source: .media(footage.id), startOffset: seconds(0.4), trimStart: .zero, trimEnd: seconds(0.3))
+        let sliver = TimelineClip(source: .media(footage.id), startOffset: seconds(1.2), trimStart: .zero, trimEnd: seconds(0.08))
+        let wide = TimelineClip(source: .media(footage.id), startOffset: seconds(1.6), trimStart: .zero, trimEnd: seconds(2))
+        var song = TimelineClip(source: .media(UUID()), startOffset: seconds(0.4), trimStart: .zero, trimEnd: seconds(8))
+        song.streams = .audio
+        song.volume = AnimatedValue(0, keyframes: [Keyframe(time: seconds(1), value: -30), Keyframe(time: seconds(5), value: 0)])
+
+        func block(_ model: ClipBlockModel) -> some View {
+            ClipBlockView(model: model, handlers: LiveClipHandlers(.inert()))
+        }
+        func row(_ height: CGFloat, @ViewBuilder _ blocks: () -> some View) -> some View {
+            ZStack(alignment: .topLeading) { blocks() }
+                .frame(width: 520, height: height, alignment: .topLeading)
+        }
+        let pictures = ResolvedClipInfo.media(footage)
+        let view = VStack(alignment: .leading, spacing: 14) {
+            row(64) { block(.sample(video, info: pictures, height: 64)) }
+            row(64) { block(.sample(video, info: pictures, selected: true, height: 64)) }
+            row(64) { block(.sample(off, info: pictures, height: 64)) }
+            row(64) { block(.sample(off, info: pictures, selected: true, height: 64)) }
+            row(40) {
+                block(.sample(narrow, info: pictures))
+                block(.sample(sliver, info: pictures))
+                block(.sample(wide, info: pictures))
+            }
+            row(40) { block(.sample(song, info: nil, color: Design.ClipTone.audio.color, showsVolumeLine: true)) }
+        }
+        .padding(20)
+        .background(Design.Surface.base.color)
+        .preferredColorScheme(.dark)
+        try await SnapshotSupport.render(view, "clip-blocks", size: CGSize(width: 560, height: 460), settle: .seconds(2))
+    }
+
     /// A selected effect outlined whole, its controls included, in the
     /// active panel (accent) and in one that isn't (grey).
     @Test func selectedEffectOutline() throws {

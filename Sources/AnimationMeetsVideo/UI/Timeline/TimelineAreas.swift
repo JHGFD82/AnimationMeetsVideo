@@ -393,6 +393,17 @@ extension TimelineView {
         .accessibilityHidden(true)
     }
 
+    /// Carries out `edit` of a clip and says whether it was made: whether
+    /// the clip, or the layer it is on, is different afterwards. The host
+    /// applies an edit before `dispatch` returns, so the project read back
+    /// has it; one it refused leaves the clip as it was.
+    func clipEdit(_ clipID: UUID, _ edit: () -> Void) -> Bool {
+        let before = host.readProject().clipAndLayer(clipID, in: timelineID)
+        edit()
+        let after = host.readProject().clipAndLayer(clipID, in: timelineID)
+        return before?.clip != after?.clip || before?.layer.id != after?.layer.id
+    }
+
     /// A fixed-height groove between layers, so the two columns line up and
     /// layer positions can be worked out for dragging.
     private var separator: some View {
@@ -435,10 +446,14 @@ extension TimelineView {
                         expandedJoint: expandedJoint,
                         onSelectClip: { clip in host.dispatch(TimelineAction.selectClip(layer: layer.id, clip: clip)) },
                         resolveMove: { clip, pointer, start in resolveMove(clip, from: layer.id, pointer: pointer, to: start) },
-                        onMoveClip: { clipID, target, newStart in host.dispatch(TimelineAction.moveClip(layer: layer.id, clip: clipID, toLayer: target, start: newStart)) },
+                        onMoveClip: { clipID, target, newStart in
+                            clipEdit(clipID) { host.dispatch(TimelineAction.moveClip(layer: layer.id, clip: clipID, toLayer: target, start: newStart)) }
+                        },
                         onMoveClipToNewLayer: { clipID, kind, start in
                             newLayerHover = nil
-                            host.dispatch(TimelineAction.moveClipToNewLayer(layer: layer.id, clip: clipID, kind: kind, start: start))
+                            return clipEdit(clipID) {
+                                host.dispatch(TimelineAction.moveClipToNewLayer(layer: layer.id, clip: clipID, kind: kind, start: start))
+                            }
                         },
                         onDraggingClip: { dragging in draggingClipLayerID = dragging ? layer.id : nil },
                         pushed: pushedClips.flatMap { $0.layerID == layer.id ? $0.clips : nil } ?? [:],
@@ -450,8 +465,12 @@ extension TimelineView {
                                 host.dispatch(TimelineAction.selectTransition(layer: layer.id, clip: clip, .leading))
                             }
                         },
-                        onTrimClipStart: { clipID, newStart in host.dispatch(TimelineAction.trimClipStart(layer: layer.id, clip: clipID, newStart)) },
-                        onTrimClipEnd: { clipID, newEnd in host.dispatch(TimelineAction.trimClipEnd(layer: layer.id, clip: clipID, newEnd)) },
+                        onTrimClipStart: { clipID, newStart in
+                            clipEdit(clipID) { host.dispatch(TimelineAction.trimClipStart(layer: layer.id, clip: clipID, newStart)) }
+                        },
+                        onTrimClipEnd: { clipID, newEnd in
+                            clipEdit(clipID) { host.dispatch(TimelineAction.trimClipEnd(layer: layer.id, clip: clipID, newEnd)) }
+                        },
                         sceneTracks: sceneTracksAction,
                         onSetTransition: { clipID, kind, edge in host.dispatch(TimelineAction.setTransition(layer: layer.id, clip: clipID, kind, edge)) },
                         onRemoveTransition: { clipID, edge in host.dispatch(TimelineAction.removeTransition(layer: layer.id, clip: clipID, edge)) },
@@ -461,7 +480,9 @@ extension TimelineView {
                         tool: tool,
                         snap: { timeline.snappedToFrame($0) },
                         onBlade: { clipID, time in host.dispatch(TimelineAction.bladeClip(layer: layer.id, clip: clipID, at: time)) },
-                        onSlip: { clipID, delta in host.dispatch(TimelineAction.slipClip(layer: layer.id, clip: clipID, by: delta)) },
+                        onSlip: { clipID, delta in
+                            clipEdit(clipID) { host.dispatch(TimelineAction.slipClip(layer: layer.id, clip: clipID, by: delta)) }
+                        },
                         liveSnap: liveSnap,
                         snapTolerance: snapTolerance,
                         onSnapIndicator: { viewportModel.snapIndicator = $0 },

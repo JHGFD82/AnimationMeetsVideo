@@ -82,6 +82,9 @@ struct ConfirmFlash: NSViewRepresentable {
     var color: Color = Design.accent
     var cornerRadius: CGFloat = Design.Radius.chip
     var lineWidth: CGFloat = 1.5
+    /// Flashes with Reduce Motion on too, for a flash that is the only
+    /// sign of what happened (an edit refused).
+    var evenWithReducedMotion = false
 
     func makeNSView(context: Context) -> FlashView {
         let view = FlashView()
@@ -93,7 +96,7 @@ struct ConfirmFlash: NSViewRepresentable {
         view.configure(color: NSColor(color), cornerRadius: cornerRadius, lineWidth: lineWidth)
         guard view.lastToken != token else { return }
         view.lastToken = token
-        guard !Design.Motion.isReduced else { return }
+        guard evenWithReducedMotion || !Design.Motion.isReduced else { return }
         view.flash(duration: Design.Motion.flashDuration)
     }
 
@@ -139,10 +142,11 @@ extension View {
     func confirmFlash(
         token: Int,
         color: Color = Design.accent,
-        cornerRadius: CGFloat = Design.Radius.chip
+        cornerRadius: CGFloat = Design.Radius.chip,
+        evenWithReducedMotion: Bool = false
     ) -> some View {
         overlay {
-            ConfirmFlash(token: token, color: color, cornerRadius: cornerRadius)
+            ConfirmFlash(token: token, color: color, cornerRadius: cornerRadius, evenWithReducedMotion: evenWithReducedMotion)
                 .allowsHitTesting(false)
         }
     }

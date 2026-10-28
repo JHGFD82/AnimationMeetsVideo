@@ -37,6 +37,11 @@ Follow Google's change-description conventions for every commit.
   the views in `Tests/AnimationMeetsVideoTests/UI/UISnapshots.swift` to
   PNGs in that folder, and is skipped when the variable isn't set. Add a
   case there for a view you change that has none.
+- To check clicks, drags and keys on a view with real events, run
+  `UI_EVENTS=1 swift test --filter <suite>` (for example
+  `ClipBlockInteractionTests`). Those suites use `EventHarness` in
+  `Tests/AnimationMeetsVideoTests/Support/`, which opens a key window
+  and so takes the focus; they are skipped when the variable isn't set.
 - New UI follows the rules in `docs/accessibility.md`: drawn or gesture-
   driven views need an accessibility element with actions, icon-only
   buttons need labels, and anything a drag does needs a keyboard path.
