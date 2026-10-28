@@ -20,8 +20,6 @@ struct ClipThumbnails: View {
     let drawnX: CGFloat
     let width: CGFloat
     let height: CGFloat
-    /// Off, the pictures are drawn grey, as the clip plays as a gap.
-    var enabled = true
     /// Off while the clip is dragged: no picture is read until it is let
     /// go, and the tiles keep what they show (see `FilmstripThumbnail`).
     var loads = true
@@ -49,14 +47,6 @@ struct ClipThumbnails: View {
             }
         }
         .frame(width: width, height: height, alignment: .topLeading)
-        // Grey through a wash only there while turned off, rather than a
-        // filter on every clip's pictures, or a modifier that would make
-        // the tiles anew (and load their pictures again) on each toggle.
-        .overlay {
-            if !enabled {
-                Rectangle().fill(.gray).blendMode(.saturation)
-            }
-        }
         .clipped()
         .allowsHitTesting(false)
         .accessibilityHidden(true)

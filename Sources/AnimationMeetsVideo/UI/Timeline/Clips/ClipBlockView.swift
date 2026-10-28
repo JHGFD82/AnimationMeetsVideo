@@ -137,7 +137,8 @@ struct ClipBlockView: View {
         }()
         let showsDetail = drawnWidth >= Self.detailWidth
         // Turned off: still where it is, drawn faded and grey, since it
-        // plays as a gap.
+        // plays as a gap. The outline is outside the clip shape, which
+        // bounds the wash that greys what is on the block.
         let tone = model.clip.enabled ? model.typeColor : model.typeColor.greyed()
 
         ZStack(alignment: .topLeading) {
@@ -192,7 +193,7 @@ struct ClipBlockView: View {
                             ClipThumbnails(
                                 clip: shown, media: pictures, pixelsPerSecond: model.pixelsPerSecond,
                                 liveX: liveX, drawnX: drawnX, width: drawnWidth, height: model.height - Self.labelBand,
-                                enabled: model.clip.enabled, loads: !isLifted && !isTrimming
+                                loads: !isLifted && !isTrimming
                             )
                         }
                     }
@@ -209,6 +210,19 @@ struct ClipBlockView: View {
             .overlay(alignment: .bottomLeading) {
                 if let renderer {
                     ClipRenderProgressView(cell: renderer.progressCell(forClip: model.clip.id))
+                }
+            }
+            // Turned off: what is drawn on the block, pictures, badges and
+            // marks, loses its colour, as it plays as a gap (the fill and
+            // outline are drawn grey already); white text keeps its
+            // lightness, so it stays readable. A saturation blend, there
+            // only while the clip is off, rather than a filter on every
+            // block; the clip shape bounds it, so no compositing group.
+            .overlay {
+                if !model.clip.enabled {
+                    Rectangle().fill(.gray).blendMode(.saturation)
+                        .frame(width: drawnWidth, height: model.height)
+                        .allowsHitTesting(false)
                 }
             }
             .clipShape(shape)

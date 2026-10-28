@@ -102,8 +102,9 @@ extension Design {
     /// and the selected outline still marks it.
     ///
     /// A clip turned off is drawn in `tone.greyed()`, here and in its
-    /// outline, rather than through a saturation filter over the whole
-    /// block, which costs a compositing pass even when it does nothing.
+    /// outline. The saturation wash over what is drawn on the block can't
+    /// grey this fill: it is translucent, and a blend over it keeps some of
+    /// the colour.
     static func clipFill(_ tone: Color, selected: Bool, enabled: Bool = true) -> LinearGradient {
         let tone = enabled ? tone : tone.greyed()
         return LinearGradient(
