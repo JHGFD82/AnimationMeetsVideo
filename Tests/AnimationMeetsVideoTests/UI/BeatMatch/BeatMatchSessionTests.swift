@@ -160,6 +160,56 @@ import Testing
         #expect(session.map.beat(at: nudged) == nil)
     }
 
+    @Test func theLoopIsWatchedOnlyWhileOnePlays() throws {
+        let session = try session("beat-match-session-loop")
+        defer { session.end() }
+        session.chooseOneTempo()
+        session.addBeat(at: 8, position: 1)
+        let beat = try #require(session.selectedBeat)
+        // The player's status, as if it had started.
+        session.playingChanged(true)
+        #expect(!session.isWatchingLoop)
+        session.isLooping = true
+        #expect(session.isWatchingLoop)
+        let first = try #require(session.watchedLoop)
+
+        // What the loop is worked out from changing moves the watch.
+        session.nudgeSelected(by: 0.01)
+        let nudged = try #require(session.watchedLoop)
+        #expect(nudged != first)
+        session.setBeatsPerMeasure(3)
+        #expect(try #require(session.watchedLoop).upperBound - nudged.upperBound < 0)
+        session.selectedBeat = nil
+        #expect(!session.isWatchingLoop)
+        session.selectedBeat = CMTimeAdd(beat, CMTime(value: 480, timescale: 48_000))
+        #expect(session.isWatchingLoop)
+
+        session.isLooping = false
+        #expect(!session.isWatchingLoop && session.watchedLoop == nil)
+        session.isLooping = true
+        session.playingChanged(false)
+        #expect(!session.isWatchingLoop)
+        session.playingChanged(true)
+        #expect(session.isWatchingLoop)
+        session.end()
+        #expect(!session.isWatchingLoop && session.watchedLoop == nil)
+    }
+
+    @Test func aLoopPastTheSongsEndJumpsBackJustShortOfIt() async throws {
+        let session = try session("beat-match-session-loop-end")
+        defer { session.end() }
+        for _ in 0..<200 where session.audio == nil { try await Task.sleep(for: .milliseconds(50)) }
+        session.chooseOneTempo()
+        session.addBeat(at: 39.5, position: 1)
+        session.playingChanged(true)
+        session.isLooping = true
+        let loop = try #require(session.watchedLoop)
+        let unclamped = try #require(session.loopRange)
+        #expect(unclamped.upperBound > 40)
+        #expect(abs(loop.upperBound - (40 - BeatMatchSession.loopEndMargin)) < 1e-3)
+        #expect(loop.lowerBound == unclamped.lowerBound)
+    }
+
     @Test func confirmWaitsForAFilledSectionAndFillingLeavesTheView() async throws {
         let session = try session("beat-match-session-confirm")
         defer { session.end() }

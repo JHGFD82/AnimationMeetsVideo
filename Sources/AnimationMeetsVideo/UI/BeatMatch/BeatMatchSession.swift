@@ -106,8 +106,11 @@ final class BeatMatchSession: SecondsViewport {
 
     /// Jumps back at the end of the loop, only while one plays.
     @ObservationIgnored private var loopObserver: Any?
-    /// The loop `loopObserver` watches the end of.
-    @ObservationIgnored private var activeLoop: ClosedRange<Double>?
+    /// The loop `loopObserver` watches the end of, while one plays.
+    @ObservationIgnored private(set) var watchedLoop: ClosedRange<Double>?
+    var isWatchingLoop: Bool { loopObserver != nil }
+    /// Where the song's audio ends in the file, once its tracks are read.
+    @ObservationIgnored private var songEnd: CMTime?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
     @ObservationIgnored private var loading: Task<Void, Never>?
     /// The fill running off the main thread, which an edit to the draft
@@ -153,9 +156,10 @@ final class BeatMatchSession: SecondsViewport {
         refreshTicks()
         loading = Task { [weak self] in
             do {
-                let song = try await Self.audioOnly(url: url)
+                let (song, end) = try await Self.audioOnly(url: url)
                 // Reading tracks doesn't stop when the session ends.
                 try Task.checkCancellation()
+                self?.songEnd = end
                 self?.player.replaceCurrentItem(with: AVPlayerItem(asset: song))
                 // Put where it was put while the tracks were read.
                 if let self, playhead > 0 { seek(to: playhead) }
@@ -179,15 +183,16 @@ final class BeatMatchSession: SecondsViewport {
         clicks.isEnabled = false
         if let loopObserver { player.removeTimeObserver(loopObserver) }
         loopObserver = nil
-        activeLoop = nil
+        watchedLoop = nil
         statusObservation = nil
     }
 
     /// The file's audio alone, at the file's own times, for the player, so
     /// a video's picture is never decoded: the tracks it plays by default,
     /// or the first if it has none on. Made off the main thread, since
-    /// putting tracks in a composition reads them there and then.
-    nonisolated private static func audioOnly(url: URL) async throws -> sending AVMutableComposition {
+    /// putting tracks in a composition reads them there and then. Gives
+    /// where the audio ends, too.
+    nonisolated private static func audioOnly(url: URL) async throws -> sending (song: AVMutableComposition, end: CMTime) {
         let asset = MediaFile.asset(at: url)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         var played: [AVAssetTrack] = []
@@ -197,12 +202,14 @@ final class BeatMatchSession: SecondsViewport {
         if played.isEmpty { played = Array(tracks.prefix(1)) }
         guard !played.isEmpty else { throw BeatDetector.DetectionError.noAudioTrack }
         let composition = AVMutableComposition()
+        var end = CMTime.zero
         for track in played {
             let range = try await track.load(.timeRange)
             let part = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
             try part?.insertTimeRange(range, of: track, at: range.start)
+            end = CMTimeMaximum(end, range.end)
         }
-        return composition
+        return (composition, end)
     }
 
     /// Puts the draft back to `map`, as an undo or redo does, and makes
@@ -899,7 +906,7 @@ final class BeatMatchSession: SecondsViewport {
         var clamped = seconds.clamped(between: 0, and: duration.seconds)
         // Past the end of a playing loop is back at its start, as it would
         // be a moment later.
-        if isPlaying, let loop = activeLoop, clamped >= loop.upperBound { clamped = loop.lowerBound }
+        if isPlaying, let loop = watchedLoop, clamped >= loop.upperBound { clamped = loop.lowerBound }
         playhead = clamped
         tapRun = nil
         let fileTime = CMTimeAdd(CMTime(seconds: clamped, preferredTimescale: 48_000), alignment)
@@ -911,17 +918,25 @@ final class BeatMatchSession: SecondsViewport {
     /// the time. The loop is worked out here, when what it depends on
     /// changes, rather than as the song plays. The view doesn't follow the
     /// playhead: the person browses the song and clicks where to hear.
+    ///
+    /// A loop running past the song's end jumps back just short of it:
+    /// at the end itself the player pauses (`actionAtItemEnd`), and the
+    /// pause would end the loop before anything could start it again.
     private func refreshLoop() {
-        let loop = isPlaying ? loopRange : nil
-        guard loop != activeLoop else { return }
+        var loop = isPlaying ? loopRange : nil
+        if let range = loop, let songEnd {
+            let last = CMTimeSubtract(songEnd, alignment).seconds - Self.loopEndMargin
+            loop = range.lowerBound < last ? range.lowerBound...min(range.upperBound, last) : nil
+        }
+        guard loop != watchedLoop else { return }
         if let loopObserver { player.removeTimeObserver(loopObserver) }
         loopObserver = nil
-        activeLoop = loop
+        watchedLoop = loop
         guard let loop else { return }
         let end = CMTimeAdd(CMTime(seconds: loop.upperBound, preferredTimescale: 48_000), alignment)
         loopObserver = player.addBoundaryTimeObserver(forTimes: [NSValue(time: end)], queue: .main) { [weak self] in
             MainActor.assumeIsolated {
-                guard let self, let loop = self.activeLoop else { return }
+                guard let self, let loop = self.watchedLoop else { return }
                 self.seek(to: loop.lowerBound)
             }
         }
@@ -929,7 +944,11 @@ final class BeatMatchSession: SecondsViewport {
         if playerSeconds() >= loop.upperBound { seek(to: loop.lowerBound) }
     }
 
-    private func playingChanged(_ playing: Bool) {
+    /// How far short of the song's end a loop past it jumps back.
+    static let loopEndMargin = 0.02
+
+    /// The player started or stopped, as its status reports.
+    func playingChanged(_ playing: Bool) {
         guard playing != isPlaying else { return }
         isPlaying = playing
         tapRun = nil
