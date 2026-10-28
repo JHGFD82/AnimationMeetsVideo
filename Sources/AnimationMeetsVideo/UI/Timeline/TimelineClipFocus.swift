@@ -32,24 +32,23 @@ extension TimelineView {
     }
 
     /// The white light over the focused clip, laid out in the tracks' own
-    /// coordinates for the layers of `kind`, and nothing if it isn't
+    /// coordinates for an area's laid-out layers, and nothing if it isn't
     /// among them.
     @ViewBuilder
-    func focusHighlight(_ kind: LayerKind, pixelsPerSecond: CGFloat) -> some View {
-        let layers = areaLayers(kind)
-        if let focus = highlightedFocus, let index = layers.firstIndex(where: { $0.id == focus.layerID }),
-           let clip = layers[index].clips.first(id: focus.clipID) {
+    func focusHighlight(_ blocks: [LayerBlock], pixelsPerSecond: CGFloat) -> some View {
+        if let focus = highlightedFocus, let block = blocks.first(where: { $0.id == focus.layerID }),
+           let clip = block.layer.clips.first(id: focus.clipID) {
             ClipFocusHighlight {
                 if highlightedFocus?.id == focus.id { highlightedFocus = nil }
             }
             .frame(
                 width: max(2, CGFloat(clip.placedDuration.seconds) * pixelsPerSecond),
-                height: clipRowHeight(of: layers[index])
+                height: block.clipRowHeight
             )
             // Also what the area scrolls to.
             .id(focus.id)
             .padding(.leading, CGFloat(clip.startOffset.seconds) * pixelsPerSecond)
-            .padding(.top, tops(of: layers)[index])
+            .padding(.top, block.top)
         }
     }
 }

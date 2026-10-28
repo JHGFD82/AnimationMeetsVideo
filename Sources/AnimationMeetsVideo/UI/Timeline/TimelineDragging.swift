@@ -4,29 +4,20 @@ import SwiftUI
 // Dragging layers to reorder them, and clips across layers.
 extension TimelineView {
     /// Where a layer dragged by `dy` would go among the layers of its
-    /// area: the number of others whose middle is above its middle.
-    func dropPosition(forLayer id: UUID, dy: CGFloat) -> Int? {
-        guard let kind = timeline.layer(id: id)?.kind else { return nil }
-        let layers = areaLayers(kind)
-        let tops = tops(of: layers)
-        guard let from = layers.firstIndex(id: id) else { return nil }
-        let middle = tops[from] + blockHeight(of: layers[from]) / 2 + dy
-        return layers.indices.filter { index in
-            index != from && tops[index] + blockHeight(of: layers[index]) / 2 < middle
-        }.count
+    /// area (`blocks`, laid out): the number of others whose middle is
+    /// above its middle.
+    func dropPosition(forLayer id: UUID, dy: CGFloat, among blocks: [LayerBlock]) -> Int? {
+        guard let from = blocks.first(where: { $0.id == id }) else { return nil }
+        let middle = from.top + from.height / 2 + dy
+        return blocks.filter { $0.id != id && $0.top + $0.height / 2 < middle }.count
     }
 
-    /// A line where a layer dragged in this area will land.
+    /// A line where a layer dragged in this area (`blocks`) will land.
     @ViewBuilder
-    func layerDropIndicator(_ kind: LayerKind) -> some View {
-        if let drag = layerDrag, timeline.layer(id: drag.id)?.kind == kind,
-           let position = dropPosition(forLayer: drag.id, dy: drag.dy) {
-            let layers = areaLayers(kind)
-            let tops = tops(of: layers)
-            let others = layers.indices.filter { layers[$0].id != drag.id }
-            let y = position < others.count
-                ? tops[others[position]]
-                : tops.last.map { $0 + blockHeight(of: layers[layers.count - 1]) } ?? 0
+    func layerDropIndicator(_ blocks: [LayerBlock]) -> some View {
+        if let drag = layerDrag, let position = dropPosition(forLayer: drag.id, dy: drag.dy, among: blocks) {
+            let others = blocks.filter { $0.id != drag.id }
+            let y = position < others.count ? others[position].top : blocks.last?.bottom ?? 0
             InsertionLine()
                 .offset(y: y - 3.5)
         }
@@ -53,7 +44,7 @@ extension TimelineView {
     func endLayerDrag(_ id: UUID, dy: CGFloat) {
         let copying = CopyDragCursor.update()
         CopyDragCursor.end()
-        if let kind = timeline.layer(id: id)?.kind, let position = dropPosition(forLayer: id, dy: dy) {
+        if let kind = timeline.layer(id: id)?.kind, let position = dropPosition(forLayer: id, dy: dy, among: blocks(for: kind)) {
             if copying {
                 // The place counts the layers left in, the original among
                 // them, which is above the line when dragged down.

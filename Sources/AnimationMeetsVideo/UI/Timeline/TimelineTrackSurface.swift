@@ -18,6 +18,9 @@ struct TimelineTrackSurface: View {
 extension TimelineView {
     @ViewBuilder
     func trackSurface(in geometry: GeometryProxy) -> some View {
+        // Read throughout, and each read asks every revealed layer whether
+        // it has sound.
+        let labelColumnWidth = labelColumnWidth
         let trackWidth = geometry.size.width - labelColumnWidth
         let viewport = viewport(width: trackWidth)
         let scrollbarHeight = viewport.maxScrollX > 0 ? TimelineScrollbar.height : 0
@@ -91,7 +94,7 @@ extension TimelineView {
                             commitLiveAreaLayout()
                         }
                     )
-                    area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, structure: structure)
+                    area(kind, height: areaHeights[kind] ?? 0, viewport: viewport, structure: structure, labelColumnWidth: labelColumnWidth)
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
