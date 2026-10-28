@@ -24,7 +24,8 @@ and the beats they confirm are what the timeline uses.
   **sections** at the start. Either way the result is a **beat map**: the
   song's beats, each with its place in the measure, saved with the project.
 - The panel works on a draft with its own undo (⌘Z and ⇧⌘Z, or the
-  footer's buttons). **Confirm**, offered once a section has its beats
+  footer's buttons), of the last 100 steps; nudges of one beat in a row,
+  each soon after the last, are one step. **Confirm**, offered once a section has its beats
   filled, puts it on the
   timeline as one undo step there, and turns on that song's beat markers
   (the view options' picker chooses its Music layer). **Cancel**, or the

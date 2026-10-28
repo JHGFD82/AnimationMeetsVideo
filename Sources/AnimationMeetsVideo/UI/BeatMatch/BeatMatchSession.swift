@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import CoreMedia
 import Observation
@@ -134,6 +135,7 @@ final class BeatMatchSession: SecondsViewport {
         // Given the song's audio once its tracks are read (`audioOnly`).
         player = AVPlayer()
         player.actionAtItemEnd = .pause
+        undoManager.levelsOfUndo = Self.undoLevels
         clicks = BeatClickPlayer(player: player)
         // Out of the devices chosen in Settings, like the editor's sound.
         player.audioOutputDeviceUniqueID = AudioDevices.playbackUID
@@ -208,6 +210,7 @@ final class BeatMatchSession: SecondsViewport {
     private func restore(_ map: BeatMap) {
         let current = self.map
         self.map = map
+        nudgeRun = nil
         undoManager.registerUndo(withTarget: self) { $0.restore(current) }
         undoRevision += 1
         mapChanged()
@@ -252,9 +255,11 @@ final class BeatMatchSession: SecondsViewport {
 
     /// Changes the draft at once, as one undo step, and gives what the
     /// change returned. Being in place, a nudge or drop never shows the
-    /// old map for a frame.
+    /// old map for a frame. `joiningLastStep` folds the change into the
+    /// undo step before it instead, for a run of nudges.
     @discardableResult
-    private func edit<Result>(_ change: (inout BeatMap) -> Result) -> Result {
+    private func edit<Result>(joiningLastStep: Bool = false, _ change: (inout BeatMap) -> Result) -> Result {
+        nudgeRun = nil
         message = nil
         fillHints = []
         if let filling {
@@ -265,8 +270,10 @@ final class BeatMatchSession: SecondsViewport {
         let before = map
         let result = change(&map)
         if map != before {
-            undoManager.registerUndo(withTarget: self) { $0.restore(before) }
-            undoRevision += 1
+            if !joiningLastStep {
+                undoManager.registerUndo(withTarget: self) { $0.restore(before) }
+                undoRevision += 1
+            }
             mapChanged()
         }
         return result
@@ -790,10 +797,25 @@ final class BeatMatchSession: SecondsViewport {
     }
 
     /// Moves the selected beat by `seconds`, landing on a sample.
+    /// Nudges of one beat in a row, each soon after the last (an arrow
+    /// key held, or pressed again and again), undo as one step.
     func nudgeSelected(by seconds: Double) {
         guard let beat = selectedBeat else { return }
-        moveBeat(at: beat, to: beat.seconds + seconds)
+        let now = ContinuousClock.now
+        let continues = nudgeRun.map { $0.beat == beat && now - $0.at <= Self.nudgeRunGap } ?? false
+        let target = sampleTime(beat.seconds + seconds)
+        guard let moved = edit(joiningLastStep: continues, { map in map.moveBeat(at: beat, to: target) }) else { return }
+        selectedBeat = moved
+        nudgeRun = (moved, now)
     }
+
+    /// The beat the last nudge left, and when, while nudges run on.
+    @ObservationIgnored private var nudgeRun: (beat: CMTime, at: ContinuousClock.Instant)?
+    /// Longer than the wait before a held key repeats, so holding one is
+    /// one run.
+    private static var nudgeRunGap: Duration { .seconds(max(0.3, NSEvent.keyRepeatDelay + 0.1)) }
+    /// Steps of the draft's undo history kept; each holds a whole map.
+    static let undoLevels = 100
 
     /// One sample of the file, for the finest nudge.
     var sampleDuration: Double { 1 / (audio?.sampleRate ?? 48_000) }

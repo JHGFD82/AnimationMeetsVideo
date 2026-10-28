@@ -69,6 +69,43 @@ import Testing
         #expect(ranges(session) == [[0, 12], [12, 15]])
     }
 
+    @Test func nudgesInARowUndoAsOneStep() throws {
+        // A short song: making one holds the main actor, which timing
+        // tests running alongside feel.
+        let song = try SnapshotSupport.clickSong(named: "beat-match-session-nudge", seconds: 10)
+        let session = BeatMatchSession(asset: song, url: try #require(song.url))
+        defer { session.end() }
+        session.undoManager.groupsByEvent = false
+        func step(_ change: () -> Void) {
+            session.undoManager.beginUndoGrouping()
+            change()
+            session.undoManager.endUndoGrouping()
+        }
+        step { session.chooseOneTempo() }
+        step { session.addBeat(at: 8, position: 1) }
+        let placed = try #require(session.selectedBeat)
+        step { session.nudgeSelected(by: 0.001) }
+        // The nudges after the first register nothing; in the app no group
+        // opens for them, so none is opened here.
+        session.nudgeSelected(by: 0.001)
+        session.nudgeSelected(by: 0.001)
+        #expect(abs(try #require(session.selectedBeat).seconds - (placed.seconds + 0.003)) < 1e-4)
+        session.undo()
+        #expect(session.selectedBeat == nil)
+        #expect(session.map.beat(at: placed) != nil)
+        session.redo()
+        let nudged = try #require(session.map.sections.first?.beats.first?.time)
+        #expect(abs(nudged.seconds - (placed.seconds + 0.003)) < 1e-4)
+
+        // Another edit in between starts a new step.
+        session.selectedBeat = nudged
+        step { session.nudgeSelected(by: 0.001) }
+        step { session.setSelectedPosition(2) }
+        step { session.nudgeSelected(by: 0.001) }
+        session.undo()
+        #expect(session.map.beat(at: CMTimeAdd(nudged, CMTime(value: 48, timescale: 48_000))) != nil)
+    }
+
     @Test func confirmWaitsForAFilledSectionAndFillingLeavesTheView() async throws {
         let session = try session("beat-match-session-confirm")
         defer { session.end() }
