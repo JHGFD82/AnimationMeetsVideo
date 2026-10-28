@@ -288,10 +288,12 @@ extension TimelineView {
                 }
                 // Alternating tone, faint enough to read as banding rather
                 // than as two kinds of layer. With the grooves it is what
-                // keeps a tall stack of layers legible at a glance.
+                // keeps a tall stack of layers legible at a glance. The
+                // drag tint goes innermost, over the opaque base, or it
+                // wouldn't show.
+                .background(isDragged ? Design.accent.opacity(0.18) : .clear)
                 .background(index.isMultiple(of: 2) ? Color.clear : Color.white.opacity(0.018))
                 .background(Design.Surface.base.color)
-                .background(isDragged ? Design.accent.opacity(0.18) : .clear)
                 .shadow(color: .black.opacity(isDragged ? 0.45 : 0), radius: 6, y: 2)
                 .offset(y: isDragged ? layerDrag?.dy ?? 0 : 0)
                 .zIndex(isDragged ? 1 : 0)
