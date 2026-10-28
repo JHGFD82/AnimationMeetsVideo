@@ -12,5 +12,10 @@
     {"id": "thresholdChannels", "name": "Channels", "type": "choice", "default": "brightness", "options": [{"id": "brightness", "name": "Brightness"}, {"id": "each", "name": "Each Channel"}]}
   ],
   "amount": true,
+  "graph": {"handles": [
+    {"name": "Level", "x": "thresholdLevel / 100", "y": "0.5", "set": {"thresholdLevel": "x * 100"}},
+    {"name": "Softness", "x": "(thresholdLevel + thresholdSoftness / 2) / 100", "y": "1",
+     "set": {"thresholdSoftness": "max(x * 100 - thresholdLevel, 0) * 2"}}
+  ]},
   "arguments": ["thresholdLevel / 100", "thresholdSoftness / 100", "index(thresholdChannels)"]
 }

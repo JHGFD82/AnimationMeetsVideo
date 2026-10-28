@@ -12,5 +12,8 @@
     {"id": "solarizeChannels", "name": "Channels", "type": "choice", "default": "luminance", "options": [{"id": "luminance", "name": "Brightness"}, {"id": "each", "name": "Each Channel"}]}
   ],
   "amount": true,
+  "graph": {"handles": [
+    {"name": "Threshold", "x": "solarizeLevel / 100", "y": "solarizeLevel / 100", "set": {"solarizeLevel": "x * 100"}}
+  ]},
   "arguments": ["solarizeLevel / 100", "folds", "index(solarizeChannels)"]
 }

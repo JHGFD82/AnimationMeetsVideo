@@ -305,7 +305,7 @@ extension EditingProject {
     func keyframingTargets(forEffectAt index: Int, in clip: TimelineClip) -> [KeyframingTarget] {
         func numeric(_ effects: ArraySlice<Effect>) -> [KeyframingTarget] {
             effects.filter { !$0.kind.isKeyframing }.flatMap { effect in
-                effect.controls.filter { !$0.kind.isChoice }.map { KeyframingTarget.control(effectID: effect.id, controlID: $0.id) }
+                effect.controls.filter { !$0.kind.isChoice && !$0.kind.isCurve }.map { KeyframingTarget.control(effectID: effect.id, controlID: $0.id) }
             }
         }
         var targets = numeric(clip.effects.dropFirst(index + 1))
@@ -327,7 +327,7 @@ extension EditingProject {
             func holds(_ effects: ArraySlice<Effect>) -> Bool {
                 effects.contains { effect in
                     effect.id == effectID && !effect.kind.isKeyframing
-                        && effect.controls.contains { $0.id == controlID && !$0.kind.isChoice }
+                        && effect.controls.contains { $0.id == controlID && !$0.kind.isChoice && !$0.kind.isCurve }
                 }
             }
             return holds(clip.effects[(index + 1)...]) || (playsAudio(clip) && holds(clip.audioEffects[...]))

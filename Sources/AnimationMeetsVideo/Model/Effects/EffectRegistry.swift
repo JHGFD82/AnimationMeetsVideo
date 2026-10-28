@@ -204,6 +204,11 @@ struct ControlDefinition: Sendable {
     var choiceOptions: [(id: String, name: String)] = []
     /// What a new choice control picks.
     var defaultChoice: String?
+    /// Whether it is a tone curve (`ToneCurve`), its points' numbers in
+    /// turn, edited on its effect's graph rather than as numbers.
+    var isCurve = false
+    /// For a curve: the color its line is drawn in on the graph.
+    var curveTint = CurveTint.white
 
     init(
         _ kind: ControlKind, _ name: String, _ effectKind: EffectKind, defaults: [Double] = [], unit: String = "",
@@ -239,6 +244,19 @@ struct ControlDefinition: Sendable {
         effectKind = .equalizer
         defaultValues = band.defaultValues
         componentNames = band.componentNames
+    }
+
+    /// A tone curve, starting at `defaults` (the identity unless given).
+    init(_ kind: ControlKind, _ name: String, _ effectKind: EffectKind, curve defaults: ToneCurve = .identity, tint: CurveTint) {
+        self.kind = kind
+        self.name = name
+        self.effectKind = effectKind
+        defaultValues = defaults.values
+        range = 0...1
+        dragStep = 0.01
+        componentNames = []
+        isCurve = true
+        curveTint = tint
     }
 }
 

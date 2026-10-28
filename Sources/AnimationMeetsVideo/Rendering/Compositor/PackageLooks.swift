@@ -151,6 +151,11 @@ enum PackageLookRenderer {
             // Each moment as of this pass; the picture reaching the step for
             // no delay, or for one the composition hasn't where it says so.
             let others: [CIImage] = package.pictures.map { wanted in
+                // A curve's table, from the step's numbers, never as light.
+                if wanted.source == .curve, let control = wanted.control {
+                    let numbers = step.numbers[control] ?? package.controls.first { $0.kind == control }?.defaultValues ?? []
+                    return ToneCurveTable.image(ToneCurve(values: numbers))
+                }
                 guard wanted.source == .moment, let delay = wanted.delay else { return pictures[wanted.id].map(read) ?? CIImage(color: .clear) }
                 let frames = (delay.number(values) / frameDuration.seconds).rounded()
                 guard frames > 0 else { return picture }
@@ -199,7 +204,12 @@ enum PackageLookRenderer {
         case .general:
             let extent: CGRect
             let input: CIImage
-            if package.edges == .clamped {
+            if package.readsOnlyItsPixel {
+                // Each pixel where it is, as a color kernel draws.
+                extent = region.integral
+                guard !extent.isEmpty, !extent.isInfinite else { return picture }
+                input = picture.cropped(to: extent)
+            } else if package.edges == .clamped {
                 extent = region.integral
                 guard !extent.isEmpty, !extent.isInfinite else { return picture }
                 input = picture.cropped(to: extent).clampedToExtent()
@@ -207,11 +217,20 @@ enum PackageLookRenderer {
                 extent = canvas.integral
                 input = picture.composited(over: clear).cropped(to: canvas)
             }
-            // The others, as the picture is past its edges: transparent.
-            let others: [Any] = pictures.map { $0.composited(over: clear).cropped(to: canvas) }
+            // The others, as the picture is past its edges: transparent. A
+            // curve's table is read whole, wherever it lies.
+            let others: [Any] = zip(package.pictures, pictures).map { wanted, image in
+                wanted.source == .curve ? image : image.composited(over: clear).cropped(to: canvas)
+            }
+            let tables = Dictionary(uniqueKeysWithValues: zip(package.pictures, pictures).enumerated()
+                .filter { $0.element.0.source == .curve }.map { (Int32($0.offset + 1), $0.element.1.extent) })
             let image = kernel.apply(
                 extent: extent,
-                roiCallback: { _, rect in reach.map { rect.insetBy(dx: -abs($0) - 1, dy: -abs($0) - 1) } ?? canvas },
+                roiCallback: { index, rect in
+                    if let table = tables[index] { return table }
+                    if package.readsOnlyItsPixel { return rect }
+                    return reach.map { rect.insetBy(dx: -abs($0) - 1, dy: -abs($0) - 1) } ?? canvas
+                },
                 arguments: [input, spaceIndex] + others + arguments
             )
             guard let image else { return picture }

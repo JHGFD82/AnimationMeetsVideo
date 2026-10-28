@@ -284,6 +284,14 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
         })
     }
 
+    /// Changes the single value and every keyframe's value by `transform`,
+    /// keeping their times and eases: a curve's point added or removed at
+    /// every keyframe, so they still blend point by point.
+    mutating func mapValues(_ transform: (Value) -> Value) {
+        value = transform(value)
+        for index in keyframes.indices { keyframes[index].value = transform(keyframes[index].value) }
+    }
+
     /// Sorted, keeping the last of any keyframes that share a time.
     private static func normalized(_ keyframes: [Keyframe<Value>]) -> [Keyframe<Value>] {
         var result: [Keyframe<Value>] = []

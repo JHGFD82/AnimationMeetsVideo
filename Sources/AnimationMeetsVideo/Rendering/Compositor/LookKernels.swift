@@ -133,6 +133,19 @@ enum LookKernels {
         return (float(v) + 0.5) / float(1u << (2u * bits));
     }
 
+    // MARK: Curves
+
+    // What tone `t` becomes on a curve, read from its table (a curve
+    // picture, `ToneCurveTable`): tones from black to white across its
+    // pixels, each one's new tone in red, and in green the slope it leaves
+    // white at, which tones past white carry on along. Below black it holds.
+    inline float curveTone(coreimage::sampler table, float t) {
+        float4 e = table.extent();
+        float at = e.x + 0.5 + clamp(t, 0.0, 1.0) * (e.z - 1.0);
+        float4 c = table.sample(table.transform(float2(at, e.y + 0.5)));
+        return t > 1.0 ? c.r + (t - 1.0) * c.g : c.r;
+    }
+
     // MARK: Distortion
 
     inline float2 turned(float2 v, float angle) {

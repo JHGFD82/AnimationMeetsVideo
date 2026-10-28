@@ -15,5 +15,13 @@
     {"id": "outputWhite", "name": "Output White", "type": "number", "default": 100, "range": [0, 400], "unit": "%"}
   ],
   "amount": true,
+  "graph": {"handles": [
+    {"name": "Black", "x": "inputBlack / 100", "y": "outputBlack / 100",
+     "set": {"inputBlack": "x * 100", "outputBlack": "y * 100"}},
+    {"name": "Gamma", "x": "(inputBlack + (inputWhite - inputBlack) * pow(0.5, levelsGamma)) / 100", "y": "(outputBlack + outputWhite) / 200",
+     "set": {"levelsGamma": "log(max(min((x * 100 - inputBlack) / (inputWhite - inputBlack), 0.999), 0.001)) / log(0.5)"}},
+    {"name": "White", "x": "inputWhite / 100", "y": "outputWhite / 100",
+     "set": {"inputWhite": "x * 100", "outputWhite": "y * 100"}}
+  ]},
   "arguments": ["index(levelsChannel)", "inputBlack / 100", "inputWhite / 100", "levelsGamma", "outputBlack / 100", "outputWhite / 100"]
 }

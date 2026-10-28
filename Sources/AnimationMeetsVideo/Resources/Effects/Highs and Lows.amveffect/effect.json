@@ -13,5 +13,11 @@
     {"id": "highlightRange", "name": "Highlight Range", "type": "number", "default": 50, "range": [10, 100], "unit": "%"}
   ],
   "amount": true,
+  "graph": {"handles": [
+    {"name": "Shadows", "x": "shadowRange / 300", "y": "shadowRange / 300 + shadows / 100 * (1 + 0.5 * (shadows > 0)) * 4 * shadowRange / 2700",
+     "set": {"shadowRange": "x * 300", "shadows": "(y - x) / (4 * x / 9) / (1 + 0.5 * (y > x)) * 100"}},
+    {"name": "Highlights", "x": "1 - highlightRange / 300", "y": "1 - highlightRange / 300 + highlights / 100 * (1 + 0.5 * (highlights < 0)) * 4 * highlightRange / 2700",
+     "set": {"highlightRange": "(1 - x) * 300", "highlights": "(y - x) / (4 * (1 - x) / 9) / (1 + 0.5 * (y < x)) * 100"}}
+  ]},
   "arguments": ["shadows / 100", "highlights / 100", "shadowRange / 100", "highlightRange / 100"]
 }

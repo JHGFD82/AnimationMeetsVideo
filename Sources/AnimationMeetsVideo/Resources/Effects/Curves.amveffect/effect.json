@@ -1,0 +1,25 @@
+{
+  "formatVersion": 1,
+  "id": "curves",
+  "version": 1,
+  "name": "Curves",
+  "category": "correction",
+  "symbol": "point.bottomleft.forward.to.point.topright.scurvepath",
+  "kernel": {"file": "kernel.metal", "function": "amvCurves", "type": "general"},
+  "controls": [
+    {"id": "masterCurve", "name": "RGB", "type": "curve"},
+    {"id": "redCurve", "name": "Red", "type": "curve", "tint": "red"},
+    {"id": "greenCurve", "name": "Green", "type": "curve", "tint": "green"},
+    {"id": "blueCurve", "name": "Blue", "type": "curve", "tint": "blue"}
+  ],
+  "amount": true,
+  "perPixel": true,
+  "pictures": [
+    {"id": "master", "from": "curve", "control": "masterCurve"},
+    {"id": "red", "from": "curve", "control": "redCurve"},
+    {"id": "green", "from": "curve", "control": "greenCurve"},
+    {"id": "blue", "from": "curve", "control": "blueCurve"}
+  ],
+  "graph": {"curves": ["masterCurve", "redCurve", "greenCurve", "blueCurve"]},
+  "arguments": []
+}
