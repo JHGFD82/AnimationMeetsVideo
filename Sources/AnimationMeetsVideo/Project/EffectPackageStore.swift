@@ -566,31 +566,49 @@ enum EffectPackageStore {
     // MARK: Reading
 
     /// How many parameters the kernel's function declares, less a
-    /// `destination`, which Core Image passes itself; nil when its
-    /// declaration (`[[stitchable]]`, the type a `warp` kernel or another
-    /// returns, the name) isn't found, which compiling it then reports.
-    /// Only counted, not checked for type.
+    /// `destination`, which Core Image passes itself: across lines, with
+    /// comments, qualifiers and default values. Nil when its declaration
+    /// (`[[stitchable]]`, the type a `warp` kernel or another returns, the
+    /// name) isn't found, which compiling it then reports, or when its list
+    /// can't be read with certainty (brackets that don't balance, or a
+    /// preprocessor line inside), which is logged once rather than risk
+    /// reporting a mismatch that isn't there. Only counted, not checked for
+    /// type.
     static func parameterCount(of function: String, in source: String, warp: Bool) -> Int? {
         let code = source.replacing(/\/\/[^\n]*|\/\*[\s\S]*?\*\//, with: " ")
-        let declaration = "\\[\\[\\s*stitchable\\s*\\]\\]\\s*" + (warp ? "float2" : "float4") + "\\s+" + NSRegularExpression.escapedPattern(for: function) + "\\s*\\("
+        let declaration = "\\[\\[\\s*stitchable\\s*\\]\\]\\s*" + (warp ? "float2" : "float4") + "\\s+"
+            + NSRegularExpression.escapedPattern(for: function) + "\\s*\\("
         guard let start = code.range(of: declaration, options: .regularExpression) else { return nil }
         var parameters: [String] = []
         var current = ""
         var depth = 0
+        var closed = false
         for character in code[start.upperBound...] {
             if depth == 0, character == ")" || character == "," {
                 parameters.append(current)
                 current = ""
-                if character == ")" { break }
+                if character == ")" {
+                    closed = true
+                    break
+                }
                 continue
             }
             if "(<[".contains(character) { depth += 1 }
             if ")>]".contains(character) { depth -= 1 }
+            if depth < 0 { break }
             current.append(character)
+        }
+        guard closed, !parameters.contains(where: { $0.contains("#") }) else {
+            let first = uncounted.withLock { $0.insert(function).inserted }
+            if first { NSLog("The parameters of kernel \(function) couldn't be counted with certainty, so its arguments aren't checked against them.") }
+            return nil
         }
         return parameters.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && !$0.contains("destination") }.count
     }
+
+    /// The kernels whose parameters couldn't be counted, logged once each.
+    private static let uncounted = Mutex<Set<String>>([])
 
     /// Turns a checked effect.json into a package, throwing the first
     /// problem the shape can't catch, with where it is.

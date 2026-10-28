@@ -257,6 +257,63 @@ import Testing
     }
 }
 
+/// Counting a kernel's parameters as written.
+@Suite struct KernelSignatureTests {
+    private func count(_ source: String, warp: Bool = false) -> Int? {
+        EffectPackageStore.parameterCount(of: "exGlow", in: source, warp: warp)
+    }
+
+    @Test func parametersAreCountedHoweverTheyAreWritten() {
+        // Across lines.
+        #expect(count("""
+        extern "C" [[stitchable]] float4 exGlow(
+            coreimage::sample_t s,
+            float space,
+            float strength
+        ) { return s; }
+        """) == 3)
+        // Comments inside, with commas of their own.
+        #expect(count("""
+        extern "C" [[stitchable]] float4 exGlow(coreimage::sample_t s, /* the space, as the app's */ float space,
+            float strength // how much, from 0, to 1
+        ) { return s; }
+        """) == 3)
+        // A default value, qualifiers and an address space.
+        #expect(count("""
+        extern "C" [[stitchable]] float4 exGlow(coreimage::sample_t s, const float space, float strength = 1.0, constant float2& offset)
+        """) == 4)
+        // A template's comma, and the destination Core Image passes itself.
+        #expect(count("""
+        extern "C" [[stitchable]] float4 exGlow(coreimage::sampler s, float space, vec<float, 2> offset, coreimage::destination dest)
+        """) == 3)
+        // Another function whose name starts the same, before it.
+        #expect(count("""
+        extern "C" [[stitchable]] float4 exGlowHelper(coreimage::sample_t s, float space) { return s; }
+        float4 exGlowing(float4 c) { return c; }
+        extern "C" [[stitchable]] float4 exGlow(coreimage::sample_t s, float space, float a, float b) { return exGlowing(s); }
+        """) == 4)
+        // A warp's, found by its float2.
+        #expect(count("extern \"C\" [[stitchable]] float2 exGlow(float a, coreimage::destination dest) { return dest.coord(); }", warp: true) == 1)
+    }
+
+    @Test func aListThatCantBeReadIsntCounted() {
+        // Declared as another type than the kernel's.
+        #expect(count("extern \"C\" [[stitchable]] float2 exGlow(float a, coreimage::destination dest)") == nil)
+        // A preprocessor line inside.
+        #expect(count("""
+        extern "C" [[stitchable]] float4 exGlow(coreimage::sample_t s, float space
+        #if WIDE
+            , float width
+        #endif
+        ) { return s; }
+        """) == nil)
+        // Never closed.
+        #expect(count("extern \"C\" [[stitchable]] float4 exGlow(coreimage::sample_t s, float space") == nil)
+        // A bracket that closes what it didn't open.
+        #expect(count("extern \"C\" [[stitchable]] float4 exGlow(coreimage::sample_t s, float a = b > c, float space)") == nil)
+    }
+}
+
 /// What the app hands out: the packages that ship, and the one new ones
 /// are made from.
 @Suite struct ShippedEffectPackageTests {

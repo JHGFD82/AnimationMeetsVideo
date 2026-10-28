@@ -181,7 +181,13 @@ the color space (not to a warp), the other `pictures`, the `arguments`
 and Amount, a `destination` not counting. A count that differs is
 reported at `arguments` with both counts ("exGlow takes 9 parameters,
 but is given 8: its picture, the color space, 5 arguments and Amount").
-Types aren't checked; compiling does that.
+The list may span lines and hold comments, qualifiers (`const`,
+`constant float2&`) and default values. The check runs last, so a more
+particular problem is said first, and is skipped, for compiling to
+report instead, when the declaration isn't found or returns another
+type than `kernel.type` implies, and when the list can't be read with
+certainty (brackets that don't balance, a preprocessor line inside),
+which is logged once. Types aren't checked; compiling does that.
 
 Where each type draws, as the built-in looks of that type do:
 
