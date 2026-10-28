@@ -10,6 +10,17 @@ private func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferr
         BeatSection(kind: .consistent, start: .zero, end: seconds(100), beatsPerMeasure: perMeasure, isConfirmed: true, beats: beats)
     }
 
+    @Test func beatsAreFoundOnlyAtTheirExactTime() {
+        let section = section(beats: (0..<9).map { MappedBeat(time: seconds(Double($0) * 0.5)) })
+        for index in section.beats.indices {
+            #expect(section.beatIndex(at: section.beats[index].time) == index)
+        }
+        #expect(section.beatIndex(at: seconds(0.25)) == nil)
+        #expect(section.beatIndex(at: seconds(-1)) == nil)
+        #expect(section.beatIndex(at: seconds(10)) == nil)
+        #expect(self.section(beats: []).beatIndex(at: .zero) == nil)
+    }
+
     @Test func positionsCountOutFromThePinnedBeats() {
         var beats = (0..<10).map { MappedBeat(time: seconds(Double($0))) }
         beats[3] = MappedBeat(time: seconds(3), position: 1, isPinned: true)

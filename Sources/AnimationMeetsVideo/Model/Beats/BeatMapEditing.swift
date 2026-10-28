@@ -142,9 +142,7 @@ extension BeatMap {
     /// Where the beat at exactly `time` is: its section and index there.
     func beatIndex(at time: CMTime) -> (section: Int, beat: Int)? {
         for (sectionIndex, section) in sections.enumerated() {
-            if let beat = section.beats.firstIndex(where: { CMTimeCompare($0.time, time) == 0 }) {
-                return (sectionIndex, beat)
-            }
+            if let beat = section.beatIndex(at: time) { return (sectionIndex, beat) }
         }
         return nil
     }
@@ -164,9 +162,10 @@ extension BeatMap {
     /// past a section's edge, into that section, which grows to take it.
     /// An anchor in a section not filled yet is a downbeat; in a filled one
     /// it takes the place after the beat before it; `position`, when given,
-    /// overrides either. Gives the beat's time, or nil outside every section.
+    /// overrides either. Gives the section it went into and the beat as
+    /// numbered there, or nil outside every section.
     @discardableResult
-    mutating func addBeat(at time: CMTime, reach: CMTime, position: Int? = nil) -> CMTime? {
+    mutating func addBeat(at time: CMTime, reach: CMTime, position: Int? = nil) -> (section: Int, beat: MappedBeat)? {
         let index = sectionIndex(containing: time) ?? sections.indices.min { a, b in
             distance(from: time, to: sections[a]) < distance(from: time, to: sections[b])
         }.flatMap { CMTimeCompare(distance(from: time, to: sections[$0]), reach) <= 0 ? $0 : nil }
@@ -188,7 +187,8 @@ extension BeatMap {
         section.normalize()
         sections[index] = section
         recountPositions()
-        return time
+        guard let added = sections[index].beatIndex(at: time) else { return nil }
+        return (index, sections[index].beats[added])
     }
 
     private func distance(from time: CMTime, to section: BeatSection) -> CMTime {
@@ -223,7 +223,7 @@ extension BeatMap {
     @discardableResult
     mutating func copyBeat(at time: CMTime, to target: CMTime) -> CMTime? {
         guard let beat = beat(at: time), CMTimeCompare(time, target) != 0 else { return nil }
-        return addBeat(at: target, reach: .zero, position: beat.position)
+        return addBeat(at: target, reach: .zero, position: beat.position)?.beat.time
     }
 
     /// Draws a copy of section `id` with its start at `start`, the section

@@ -672,12 +672,20 @@ final class BeatMatchSession: SecondsViewport {
     // MARK: Beats
 
     /// Drops a pinned beat (an anchor, before a section is filled) at a
-    /// time, at `position` in the measure if given.
-    func addBeat(at seconds: Double, position: Int? = nil) {
+    /// time, at `position` in the measure if given. Gives the beat as
+    /// numbered in its section, and the section's ID.
+    @discardableResult
+    func addBeat(at seconds: Double, position: Int? = nil) -> (section: UUID, beat: MappedBeat)? {
         let time = sampleTime(seconds)
-        edit { map in map.addBeat(at: time, reach: CMTime(value: 1, timescale: 1), position: position) }
+        let added = edit { map in map.addBeat(at: time, reach: CMTime(value: 1, timescale: 1), position: position) }
         selectedBeat = time
-        if let index = map.sectionIndex(containing: time) { selectedSectionID = map.sections[index].id }
+        guard let added else {
+            if let index = map.sectionIndex(containing: time) { selectedSectionID = map.sections[index].id }
+            return nil
+        }
+        let section = map.sections[added.section].id
+        selectedSectionID = section
+        return (section, added.beat)
     }
 
     /// The beats tapped in a row with M while the song plays: their
@@ -712,16 +720,18 @@ final class BeatMatchSession: SecondsViewport {
     }
 
     private func tap(at seconds: Double) {
-        guard isPlaying else { return addBeat(at: seconds) }
+        guard isPlaying else {
+            addBeat(at: seconds)
+            return
+        }
         let time = sampleTime(seconds)
         var position: Int?
         if let run = tapRun, let index = map.sectionIndex(containing: time), map.sections[index].id == run.section,
            seconds > run.seconds, seconds - run.seconds <= Self.longestTapGap {
             position = run.position.modulo(map.sections[index].beatsPerMeasure) + 1
         }
-        addBeat(at: seconds, position: position)
-        if let index = map.sectionIndex(containing: time), let beat = map.beat(at: time) {
-            tapRun = TapRun(section: map.sections[index].id, position: beat.position, seconds: seconds)
+        if let added = addBeat(at: seconds, position: position) {
+            tapRun = TapRun(section: added.section, position: added.beat.position, seconds: seconds)
         }
     }
 
@@ -785,15 +795,24 @@ final class BeatMatchSession: SecondsViewport {
     /// Selects the beat before or after the selected one (or the playhead),
     /// and moves the playhead a little before it, to hear it come.
     func selectBeat(step: Int) {
-        let beats = map.sections.flatMap(\.beats).map(\.time)
-        guard !beats.isEmpty else { return }
         let reference = selectedBeat?.seconds ?? livePlayhead
-        let target = step > 0
-            ? beats.first { $0.seconds > reference + 1e-6 }
-            : beats.last { $0.seconds < reference - 1e-6 }
-        guard let target else { return }
+        // Sections and their beats are in time order, so only the section
+        // the next beat is in needs looking through.
+        let found: (section: UUID, time: CMTime)?
+        if step > 0 {
+            let section = map.sections.first { ($0.beats.last?.time.seconds ?? -.infinity) > reference + 1e-6 }
+            found = section.flatMap { section in
+                section.beats.first { $0.time.seconds > reference + 1e-6 }.map { (section.id, $0.time) }
+            }
+        } else {
+            let section = map.sections.last { ($0.beats.first?.time.seconds ?? .infinity) < reference - 1e-6 }
+            found = section.flatMap { section in
+                section.beats.last { $0.time.seconds < reference - 1e-6 }.map { (section.id, $0.time) }
+            }
+        }
+        guard let (section, target) = found else { return }
         selectedBeat = target
-        if let index = map.sectionIndex(containing: target) { selectedSectionID = map.sections[index].id }
+        selectedSectionID = section
         reveal(target.seconds)
     }
 

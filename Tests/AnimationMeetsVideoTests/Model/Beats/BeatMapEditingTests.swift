@@ -118,7 +118,9 @@ private let snap = s(0.5)
         // Just past the end, the section grows to take it.
         let added = map.addBeat(at: s(10.2), reach: snap)
         let outside = try #require(added)
-        #expect(map.sections[0].contains(outside))
+        // It takes the place after the beat before it, and says so.
+        #expect(outside.section == 0 && outside.beat.position == 3)
+        #expect(map.sections[0].contains(outside.beat.time))
         #expect(map.addBeat(at: s(20), reach: snap) == nil)
     }
 
