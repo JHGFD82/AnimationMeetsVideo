@@ -8,12 +8,31 @@ import Testing
     private let folder = FileManager.default.temporaryDirectory
         .appending(path: "amv-making-packages-\(UUID().uuidString)", directoryHint: .isDirectory)
 
-    @Test func aPackagesIDIsItsNameInCamelCase() {
-        #expect(EffectPackageStore.userID(for: "My Glow") == "user.myGlow")
-        #expect(EffectPackageStore.userID(for: "  neon   edges 2 ") == "user.neonEdges2")
-        #expect(EffectPackageStore.userID(for: "Rainbow-Smear!") == "user.rainbowSmear")
-        #expect(EffectPackageStore.userID(for: "2 Fast") == nil)
-        #expect(EffectPackageStore.userID(for: "…") == nil)
+    @Test func aPackagesIDIsItsNameInCamelCase() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        func id(_ name: String) -> String { EffectPackageStore.userID(for: name, in: folder) }
+        #expect(id("My Glow") == "user.myGlow")
+        #expect(id("  neon   edges 2 ") == "user.neonEdges2")
+        #expect(id("Rainbow-Smear!") == "user.rainbowSmear")
+        // Other scripts are written in Latin letters, as IDs and Metal
+        // names must be.
+        #expect(id("Crème Brûlée") == "user.cremeBrulee")
+        #expect(id("Ölfarbe Glühen") == "user.olfarbeGluhen")
+        #expect(id("Straße") == "user.strasse")
+        #expect(id("光") == "user.guang")
+        #expect(id("Свет") == "user.svet")
+        // A name with no letter to start it takes the first free
+        // `user.effect`, past those of packages in the folder.
+        #expect(id("2 Fast") == "user.effect")
+        #expect(id("★") == "user.effect")
+        #expect(id("…") == "user.effect")
+        let first = try EffectPackageStore.makePackage(named: "★", in: folder)
+        #expect(try EffectPackageStore.read(first).id == "user.effect")
+        #expect(id("★★") == "user.effect2")
+        let second = try EffectPackageStore.read(try EffectPackageStore.makePackage(named: "★★", in: folder))
+        // Named exactly as typed, its kernel a Metal name.
+        #expect(second.id == "user.effect2" && second.name == "★★" && second.kernelFunction == "userEffect2")
+        #expect(PackageKernels.problem(for: second) == nil)
     }
 
     @Test func aNewPackageReadsCompilesAndIsNamedAsAsked() throws {
@@ -33,7 +52,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: folder) }
         try EffectPackageStore.makePackage(named: "My Glow", in: folder)
         #expect(throws: (any Error).self) { try EffectPackageStore.makePackage(named: "My Glow", in: folder) }
-        #expect(throws: (any Error).self) { try EffectPackageStore.makePackage(named: "2 Fast", in: folder) }
+        #expect(throws: (any Error).self) { try EffectPackageStore.makePackage(named: "  ", in: folder) }
     }
 
     @Test func aPackageIsAddedBesideThoseInstalled() throws {

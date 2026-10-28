@@ -223,16 +223,47 @@ enum EffectPackageStore {
     // MARK: Making one
 
     /// The ID a package made from the app takes: `user.` and its name in
-    /// camel case, of its letters and digits ("My Glow" is `user.myGlow`).
-    /// Nil for a name with no letter to start it.
-    static func userID(for name: String) -> String? {
-        camelCase(name).map { "user.\($0)" }
+    /// camel case, of its letters and digits ("My Glow" is `user.myGlow`),
+    /// those of other scripts written in Latin letters first ("Ölfarbe" is
+    /// `user.olfarbe`, "光" is `user.guang`), as IDs and Metal names must
+    /// be. A name with no letter to start it ("2 Fast", "★") takes
+    /// `user.effect`, or `user.effect2` and on, the first neither installed
+    /// nor taken by a package in `folder`.
+    static func userID(for name: String, in folder: URL = defaultFolder) -> String {
+        identity(for: name, in: folder).id
+    }
+
+    /// The ID a package called `name` takes (`userID`), and its kernel's
+    /// function: the ID's name with `user` in front, so it can't be a
+    /// Metal word such as `half`.
+    private static func identity(for name: String, in folder: URL) -> (id: String, function: String) {
+        if let camel = camelCase(name) {
+            return ("user.\(camel)", "user" + camel.prefix(1).uppercased() + camel.dropFirst())
+        }
+        let inFolder = packageIDs(in: folder)
+        for number in 1... {
+            let suffix = number == 1 ? "" : String(number)
+            let id = "user.effect\(suffix)"
+            if EffectRegistry.current.effect(named: id) == nil, !inFolder.contains(id) { return (id, "userEffect\(suffix)") }
+        }
+        preconditionFailure("Every ID is taken")
     }
 
     private static func camelCase(_ name: String) -> String? {
-        let words = name.split { !($0.isASCII && ($0.isLetter || $0.isNumber)) }
+        let latin = name.applyingTransform(StringTransform("Any-Latin; Latin-ASCII"), reverse: false) ?? name
+        let words = latin.split { !($0.isASCII && ($0.isLetter || $0.isNumber)) }
         guard let first = words.first, first.first?.isLetter == true else { return nil }
         return first.prefix(1).lowercased() + first.dropFirst() + words.dropFirst().map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined()
+    }
+
+    /// The IDs the packages in `folder` give, read or not, as far as their
+    /// effect.json says one.
+    private static func packageIDs(in folder: URL) -> Set<String> {
+        let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? []
+        return Set(urls.filter { $0.pathExtension == EffectPackage.fileExtension }.compactMap { url in
+            let data = try? Data(contentsOf: url.appending(path: manifestName))
+            return (data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any])?["id"] as? String
+        })
     }
 
     /// Writes a new package called `name` into `folder`: a Tint, as in the
@@ -240,9 +271,8 @@ enum EffectPackageStore {
     /// into something else. Returns its folder.
     static func makePackage(named name: String, in folder: URL = defaultFolder) throws -> URL {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let id = userID(for: name), let camel = camelCase(name) else {
-            throw EffectPackageError("Give it a name that starts with a letter.")
-        }
+        guard !name.isEmpty else { throw EffectPackageError("Give it a name.") }
+        let (id, function) = identity(for: name, in: folder)
         guard EffectRegistry.current.effect(named: id) == nil else {
             throw EffectPackageError("An effect called \"\(id)\" is already installed.")
         }
@@ -250,9 +280,6 @@ enum EffectPackageStore {
         guard !FileManager.default.fileExists(atPath: url.path) else {
             throw EffectPackageError("The Effects folder already has a package called \"\(name)\".")
         }
-        // Kernel functions are Metal names, so this one can't be a Metal
-        // word such as `half`.
-        let function = "user" + camel.prefix(1).uppercased() + camel.dropFirst()
         let manifest = """
         {
           "formatVersion": 1,
@@ -295,7 +322,7 @@ enum EffectPackageStore {
     static func copyPackage(_ package: EffectPackage, in folder: URL = defaultFolder) throws -> URL {
         let taken = { (name: String) in
             FileManager.default.fileExists(atPath: folder.appending(path: "\(name).\(EffectPackage.fileExtension)").path)
-                || userID(for: name).map { EffectRegistry.current.effect(named: $0) != nil } ?? true
+                || EffectRegistry.current.effect(named: userID(for: name, in: folder)) != nil
         }
         var name = "\(package.name) Copy"
         var number = 2
@@ -303,7 +330,7 @@ enum EffectPackageStore {
             name = "\(package.name) Copy \(number)"
             number += 1
         }
-        guard let id = userID(for: name) else { throw EffectPackageError("\(package.name) can't be copied: its name has no letter to start an ID.") }
+        let id = userID(for: name, in: folder)
         let url = folder.appending(path: "\(name).\(EffectPackage.fileExtension)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: package.url, to: url)
