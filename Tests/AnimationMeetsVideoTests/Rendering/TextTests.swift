@@ -251,9 +251,11 @@ extension DrawingFixture {
         // viewer follows as it goes.
         #expect(CompositionKey(project: fixture.project) != CompositionKey(project: before))
         #expect(StructureKey(project: fixture.project) == StructureKey(project: before))
-        // The words name the clip, so they stay in it.
-        fixture.setText("Other", ofClip: text.clipID)
-        #expect(StructureKey(project: fixture.project) != StructureKey(project: before))
+        // Nor do its words or font, which the compositor lays out as it
+        // draws; the timeline still sees them, since they name the clip.
+        fixture.setText("Other", font: "HelveticaNeue", ofClip: text.clipID)
+        #expect(StructureKey(project: fixture.project) == StructureKey(project: before))
+        #expect(fixture.project.structure != before.structure)
     }
 
     @Test func aCursorKernsThePairAroundIt() {

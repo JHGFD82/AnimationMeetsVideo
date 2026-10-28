@@ -357,7 +357,10 @@ Built (step 3a):
     to match a neighbour, so its row stays put. Runs and font axes
     are values to the viewer, as controls are (`Effect.bare` leaves
     them out of `StructureKey`), so a drag of one is held and drawn
-    as it goes, not rebuilt each step. Its font,
+    as it goes, not rebuilt each step. The words and font are left
+    out of `StructureKey` too, so typing or picking a font is drawn
+    at once without building the player again; `structure` keeps
+    them, since they name the clip. Its font,
     case, position, underline and strikethrough are choices and hold
     still. They combine with the block's by replacing: a setting a run
     has replaces the block's for its letters, its own keyframes with it,
