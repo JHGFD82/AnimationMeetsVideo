@@ -1,6 +1,7 @@
 import CoreImage
 import Foundation
 import Observation
+import Synchronization
 
 /// An effect package that can't be used, and why.
 struct EffectPackageProblem: Identifiable, Equatable, Sendable {
@@ -183,12 +184,12 @@ enum EffectPackageStore {
     /// `builtIn` packages, which ship with the app, may take IDs without a
     /// dot.
     static func load(from folder: URL, builtIn: Bool = false) -> EffectPackageLibrary {
-        guard let urls = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else {
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil, options: .skipsHiddenFiles) else {
             return EffectPackageLibrary()
         }
         var library = EffectPackageLibrary()
         for url in urls.sorted(by: { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending })
-        where url.pathExtension == EffectPackage.fileExtension && !url.lastPathComponent.hasPrefix(".") {
+        where url.pathExtension == EffectPackage.fileExtension {
             do {
                 library.packages.append(try read(url, builtIn: builtIn))
             } catch {
@@ -307,12 +308,14 @@ enum EffectPackageStore {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: package.url, to: url)
         let manifest = url.appending(path: manifestName)
-        try String(contentsOf: manifest, encoding: .utf8).renamed(id: (package.id, id), name: (package.name, name)).write(
-            to: manifest, atomically: true, encoding: .utf8
-        )
-        // Read back, so a manifest the text edit missed is written whole.
+        let text = try String(contentsOf: manifest, encoding: .utf8)
+        let renamed = text.renamed(id: (package.id, id), name: (package.name, name))
+        try renamed.text.write(to: manifest, atomically: true, encoding: .utf8)
+        if renamed.certain { return url }
+        // Read back when the text edit missed a key or may have changed a
+        // control's instead, so a manifest it got wrong is written whole.
         if let copy = try? read(url), copy.id == id, copy.name == name, copy.version == 1 { return url }
-        var json = try JSONSerialization.jsonObject(with: Data(contentsOf: manifest)) as? [String: Any] ?? [:]
+        var json = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] ?? [:]
         json["id"] = id
         json["name"] = name
         json["version"] = 1
@@ -602,7 +605,7 @@ enum EffectPackageStore {
             for (index, entry) in (json["after"] as? [[String: Any]] ?? []).enumerated() {
                 let path = "after[\(index)]"
                 let name = entry["filter"] as! String
-                guard let filter = CIFilter(name: name) else {
+                guard let inputKeys = Self.inputKeys(ofFilter: name) else {
                     throw JSONShapeError(message: "Core Image has no filter \"\(name)\"", path: path + ".filter")
                 }
                 if let given = entry["parameters"], !(given is [String: Any]) {
@@ -611,7 +614,7 @@ enum EffectPackageStore {
                 var parameters: [(key: String, value: EffectExpression)] = []
                 for (key, value) in (entry["parameters"] as? [String: Any] ?? [:]).sorted(by: { $0.key < $1.key }) {
                     let place = path + ".parameters." + key
-                    guard filter.inputKeys.contains(key), key != kCIInputImageKey else {
+                    guard inputKeys.contains(key), key != kCIInputImageKey else {
                         throw JSONShapeError(message: "\(name) has no input \"\(key)\"", path: place)
                     }
                     guard let text = value as? String else { throw JSONShapeError(message: "Expected text", path: place) }
@@ -690,8 +693,22 @@ enum EffectPackageStore {
             return graph
         }
 
+        /// Each Core Image filter's input keys, by name, or nil for a name
+        /// it has no filter by: looked up once, as making a filter only to
+        /// ask is slow.
+        private static let filterInputs = Mutex<[String: Set<String>?]>([:])
+
+        private static func inputKeys(ofFilter name: String) -> Set<String>? {
+            if let known = filterInputs.withLock({ $0[name] }) { return known }
+            let keys = CIFilter(name: name).map { Set($0.inputKeys) }
+            filterInputs.withLock { $0[name] = keys }
+            return keys
+        }
+
         /// The kernel's Metal source, which must be a file in the package
-        /// and hold the function named.
+        /// and hold the function named: the name whole, then an opening
+        /// parenthesis, so a misspelled one is caught here rather than when
+        /// it is compiled.
         private func kernelSource(file: String, function: String) throws -> String {
             guard !file.isEmpty, !file.contains("/"), !file.hasPrefix(".") else {
                 throw JSONShapeError(message: "\"\(file)\" isn't a file in the package", path: "kernel.file")
@@ -699,7 +716,8 @@ enum EffectPackageStore {
             guard let source = try? String(contentsOf: url.appending(path: file), encoding: .utf8) else {
                 throw JSONShapeError(message: "The package has no file \"\(file)\"", path: "kernel.file")
             }
-            guard source.contains(function) else {
+            let call = "\\b" + NSRegularExpression.escapedPattern(for: function) + "\\s*\\("
+            guard source.range(of: call, options: .regularExpression) != nil else {
                 throw JSONShapeError(message: "\(file) has no function \"\(function)\"", path: "kernel.function")
             }
             return source
@@ -820,21 +838,26 @@ enum EffectPackageStore {
     }
 }
 
-private extension String {
+extension String {
     /// The manifest with its ID, name and version those of a copy: each the
-    /// first of its key, as the top level's come before the controls'.
-    func renamed(id: (old: String, new: String), name: (old: String, new: String)) -> String {
+    /// first of its key, as the top level's come before the controls'. It
+    /// is `certain` when each was found once, so the edit can only have
+    /// been of the top level's.
+    func renamed(id: (old: String, new: String), name: (old: String, new: String)) -> (text: String, certain: Bool) {
         func quoted(_ text: String) -> String { String(data: try! JSONEncoder().encode(text), encoding: .utf8)! }
         var text = self
+        func replaceFirst(_ pattern: String, with replacement: String) -> Bool {
+            let found = text.ranges(of: try! Regex(pattern))
+            guard let first = found.first else { return false }
+            text.replaceSubrange(first, with: replacement)
+            return found.count == 1
+        }
+        var certain = true
         for (key, old, new) in [("id", quoted(id.old), quoted(id.new)), ("name", quoted(name.old), quoted(name.new))] {
-            if let range = text.range(of: "\"\(key)\"\\s*:\\s*" + NSRegularExpression.escapedPattern(for: old), options: .regularExpression) {
-                text.replaceSubrange(range, with: "\"\(key)\": \(new)")
-            }
+            certain = replaceFirst("\"\(key)\"\\s*:\\s*" + NSRegularExpression.escapedPattern(for: old), with: "\"\(key)\": \(new)") && certain
         }
-        if let range = text.range(of: #""version"\s*:\s*\d+"#, options: .regularExpression) {
-            text.replaceSubrange(range, with: #""version": 1"#)
-        }
-        return text
+        certain = replaceFirst(#""version"\s*:\s*\d+"#, with: #""version": 1"#) && certain
+        return (text, certain)
     }
 }
 
