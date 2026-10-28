@@ -33,9 +33,15 @@ final class ClipDragBook {
     /// up; nil between drags. Fixed when it begins, so changing tools
     /// during one doesn't turn a move into a slip.
     private(set) var kind: Kind?
-    /// Escape cancelled the drag: its other moves, and its end, do nothing.
-    /// Until the button comes up.
+    /// Escape cancelled the last drag. Cleared only when the next one
+    /// begins, so nothing the cancelled one still reports, its end
+    /// included, can be taken for a new drag.
     private(set) var isCancelled = false
+
+    /// Whether the drag in progress was cancelled: its other moves, and
+    /// its end, do nothing. A press that never became a drag (a click)
+    /// isn't one.
+    var isCancelledDrag: Bool { kind != nil && isCancelled }
     private var escape: DragEscape?
     /// How far a slip in progress moves the footage.
     var slipDelta: CMTime?
@@ -80,7 +86,6 @@ final class ClipDragBook {
     /// The button came up.
     func finish() {
         kind = nil
-        isCancelled = false
         escape?.end()
         escape = nil
     }

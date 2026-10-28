@@ -1116,7 +1116,8 @@ struct UISnapshots {
 
     /// Clip blocks on the timeline, a row each: a video clip with its
     /// pictures; the same selected, with its shadow outside it only; the
-    /// same turned off, grey and faded; clips too narrow for a name,
+    /// same turned off, grey and faded, then also selected, its shadow's
+    /// cleared inside not showing through; clips too narrow for a name,
     /// drawn as fill and outline; a sound clip's volume ramping up.
     @Test func clipBlocks() async throws {
         let movie = FileManager.default.temporaryDirectory.appending(path: "amv-snapshot-blocks-\(UUID().uuidString).mov")
@@ -1149,6 +1150,7 @@ struct UISnapshots {
             row(64) { block(.sample(video, info: pictures, height: 64)) }
             row(64) { block(.sample(video, info: pictures, selected: true, height: 64)) }
             row(64) { block(.sample(off, info: pictures, height: 64)) }
+            row(64) { block(.sample(off, info: pictures, selected: true, height: 64)) }
             row(40) {
                 block(.sample(narrow, info: pictures))
                 block(.sample(sliver, info: pictures))
@@ -1159,7 +1161,7 @@ struct UISnapshots {
         .padding(20)
         .background(Design.Surface.base.color)
         .preferredColorScheme(.dark)
-        try await SnapshotSupport.render(view, "clip-blocks", size: CGSize(width: 560, height: 380), settle: .seconds(2))
+        try await SnapshotSupport.render(view, "clip-blocks", size: CGSize(width: 560, height: 460), settle: .seconds(2))
     }
 
     /// A selected effect outlined whole, its controls included, in the

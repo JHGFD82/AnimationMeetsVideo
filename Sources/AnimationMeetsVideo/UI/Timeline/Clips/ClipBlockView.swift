@@ -256,7 +256,10 @@ struct ClipBlockView: View {
             }
             .opacity(model.clip.enabled ? 1 : 0.45)
             .offset(y: isLifted ? -3 : 0)
-            .confirmFlash(token: flashCount, color: flashRefused ? Design.statusWarning : Design.textOnColor)
+            // A refusal flashes even with Reduce Motion on, when the clip
+            // goes back without moving: a rim fading is a colour, not a
+            // movement, and with the alert sound it is all that says so.
+            .confirmFlash(token: flashCount, color: flashRefused ? Design.statusWarning : Design.textOnColor, evenWithReducedMotion: flashRefused)
             .editorAnimation(Design.Motion.select, value: model.isSelected)
             .editorAnimation(Design.Motion.select, value: isLifted)
             .dropDestination(for: ClipDropPayload.self) { payloads, location in
@@ -327,7 +330,7 @@ struct ClipBlockView: View {
                     guard model.tool == .arrow, transitionEdge(atX: value.location.x, liveX: liveX) == nil else { return }
                     handlers.onOpenNested?()
                 },
-                including: offered.openNested ? .all : .subviews
+                including: Self.doubleClickMask(opensNested: offered.openNested)
             )
             // A click selects the clip, or the transition under it.
             .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(space)).onEnded { value in
@@ -396,6 +399,14 @@ struct ClipBlockView: View {
         .accessibilityActions { accessibilityEditActions }
         .onChange(of: model.clip.music) { _, _ in musicPointDraft = nil }
         .onChange(of: model.tool) { _, _ in setBladeX(nil) }
+        // A block taken away mid-drag (a trim that scrolled it out of the
+        // row) never hears its gesture end: let go of what the drag holds.
+        .onDisappear {
+            guard drag.kind != nil else { return }
+            drag.finish()
+            autoScroll?.end()
+            CopyDragCursor.end()
+        }
         .onChange(of: model.clip) { _, _ in
             if pendingDrop != nil {
                 endDrop()
@@ -520,6 +531,13 @@ struct ClipBlockView: View {
         width >= 3 * trimHandleWidth ? trimHandleWidth : max(2, width / 4)
     }
 
+    /// Whether the block watches for double-clicks: only a nested
+    /// timeline's, which a double-click opens. Off is `.subviews`, never
+    /// `.none`, which would switch off the gestures inside the block too.
+    static func doubleClickMask(opensNested: Bool) -> GestureMask {
+        opensNested ? .all : .subviews
+    }
+
     /// The pointer over the block: an open hand with the arrow, closed
     /// while the clip is carried (but for an Option-drag, which shows the
     /// copy pointer); the resize arrows with the slip tool, which slides
@@ -545,7 +563,7 @@ struct ClipBlockView: View {
             guard let kind = ClipDragBook.Kind(tool: model.tool) else { return }
             drag.begin(kind) { cancelDrag() }
         }
-        guard !drag.isCancelled else { return }
+        guard !drag.isCancelledDrag else { return }
         switch drag.kind {
         case .move: moveChanged(value)
         case .slip: slipChanged(value)
@@ -555,7 +573,7 @@ struct ClipBlockView: View {
 
     private func dragEnded(liveX: CGFloat) {
         defer { drag.finish() }
-        guard !drag.isCancelled else { return }
+        guard !drag.isCancelledDrag else { return }
         switch drag.kind {
         case .move: moveEnded(liveX: liveX)
         case .slip: slipEnded()
@@ -602,11 +620,11 @@ struct ClipBlockView: View {
         let copying = CopyDragCursor.update()
         if isCopying != copying { isCopying = copying }
         autoScroll?.track(pointerX: value.location.x) {
-            if !drag.isCancelled { preview() }
+            if !drag.isCancelledDrag { preview() }
         }
         if !onOwnLayer {
             autoScroll?.trackVertically(pointer: value.location) {
-                if !drag.isCancelled { preview() }
+                if !drag.isCancelledDrag { preview() }
             }
         }
     }
@@ -827,15 +845,15 @@ struct ClipBlockView: View {
                             drag.begin(.trim) { cancelDrag() }
                             autoScroll?.begin()
                         }
-                        guard !drag.isCancelled else { return }
+                        guard !drag.isCancelledDrag else { return }
                         trimChanged(edge, translation: value.translation.width)
                         autoScroll?.track(pointerX: value.location.x) {
-                            if !drag.isCancelled { trimChanged(edge, translation: value.translation.width) }
+                            if !drag.isCancelledDrag { trimChanged(edge, translation: value.translation.width) }
                         }
                     }
                     .onEnded { _ in
                         defer { drag.finish() }
-                        guard !drag.isCancelled else { return }
+                        guard !drag.isCancelledDrag else { return }
                         autoScroll?.end()
                         trimEnded(edge)
                     }

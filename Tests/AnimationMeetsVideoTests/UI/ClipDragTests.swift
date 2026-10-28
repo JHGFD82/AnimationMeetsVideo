@@ -28,6 +28,14 @@ struct ClipDragTests {
         }
     }
 
+    /// Only a nested timeline's clip watches for double-clicks; others
+    /// switch it off with `.subviews`, never `.none`.
+    @Test func onlyNestedClipsWatchForDoubleClicks() {
+        #expect(ClipBlockView.doubleClickMask(opensNested: true) == .all)
+        #expect(ClipBlockView.doubleClickMask(opensNested: false) == .subviews)
+        #expect(ClipBlockView.doubleClickMask(opensNested: false) != .none)
+    }
+
     @Test func aCancelledDragIgnoresTheRestUntilTheButtonComesUp() {
         let book = ClipDragBook()
         var escaped = 0
@@ -36,15 +44,19 @@ struct ClipDragTests {
         #expect(DragEscape.isActive)
 
         book.cancel()
-        #expect(book.isCancelled)
+        #expect(book.isCancelledDrag)
         #expect(book.kind == .move)
         #expect(!DragEscape.isActive)
 
+        // The flag outlives the drag's end, so nothing it still reports
+        // is taken for a new drag; a click, which never begins one, isn't
+        // held back by it.
         book.finish()
         #expect(book.kind == nil)
-        #expect(!book.isCancelled)
+        #expect(book.isCancelled)
+        #expect(!book.isCancelledDrag)
 
-        // The next drag starts afresh.
+        // The next drag clears it as it begins.
         book.begin(.trim) {}
         #expect(book.kind == .trim)
         #expect(!book.isCancelled)
