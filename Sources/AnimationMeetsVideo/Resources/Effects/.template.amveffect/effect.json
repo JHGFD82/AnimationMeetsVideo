@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "id": "__ID__",
+  "version": 1,
+  "name": "__NAME__",
+  "category": "recolor",
+  "symbol": "wand.and.stars",
+  "kernel": { "file": "kernel.metal", "function": "__FUNCTION__", "type": "color" },
+  "controls": [
+    { "id": "tint", "name": "Tint", "type": "color", "default": [1, 0.6, 0.2] },
+    { "id": "strength", "name": "Strength", "type": "number", "default": 100, "range": [0, 200], "unit": "%" }
+  ],
+  "amount": true,
+  "arguments": ["tint", "strength / 100"]
+}

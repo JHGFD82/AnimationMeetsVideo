@@ -364,9 +364,14 @@ enum EffectPackageStore {
         })
     }
 
-    /// Writes a new package called `name` into `folder`: a Tint, as in the
-    /// guide (docs/effect-packages.md, "Writing one by hand"), to change
-    /// into something else. Returns its folder.
+    /// The folder name of the package new ones are made from, among those
+    /// that ship (hidden, so it isn't read as one of them): a Tint, as in
+    /// the guide (docs/effect-packages.md, "Writing one by hand"), with
+    /// `__ID__`, `__NAME__` and `__FUNCTION__` where a new one's go.
+    static let templateName = ".template.\(EffectPackage.fileExtension)"
+
+    /// Writes a new package called `name` into `folder`, from the template
+    /// (`templateName`), to change into something else. Returns its folder.
     static func makePackage(named name: String, in folder: URL = defaultFolder) throws -> URL {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { throw EffectPackageError("Give it a name.") }
@@ -378,38 +383,22 @@ enum EffectPackageStore {
         guard !FileManager.default.fileExists(atPath: url.path) else {
             throw EffectPackageError("The Effects folder already has a package called \"\(name)\".")
         }
-        let manifest = """
-        {
-          "formatVersion": 1,
-          "id": "\(id)",
-          "version": 1,
-          "name": \(String(data: try JSONEncoder().encode(name), encoding: .utf8)!),
-          "category": "recolor",
-          "symbol": "wand.and.stars",
-          "kernel": { "file": "kernel.metal", "function": "\(function)", "type": "color" },
-          "controls": [
-            { "id": "tint", "name": "Tint", "type": "color", "default": [1, 0.6, 0.2] },
-            { "id": "strength", "name": "Strength", "type": "number", "default": 100, "range": [0, 200], "unit": "%" }
-          ],
-          "amount": true,
-          "arguments": ["tint", "strength / 100"]
+        guard let template = builtInFolder?.appending(path: templateName, directoryHint: .isDirectory),
+              FileManager.default.fileExists(atPath: template.path)
+        else {
+            throw EffectPackageError("The app's starting package is missing.")
         }
-
-        """
-        let kernel = """
-        // Each pixel's tones multiplied by a color, `strength` of the way: a
-        // starting point. See docs/effect-packages.md for what a package can
-        // say, and the looks that ship for kernels of every kind.
-        extern "C" [[stitchable]] float4 \(function)(coreimage::sample_t s, float space, float4 tint, float strength, float amount) {
-            float3 t = toTones(straight(s), space);
-            float3 tinted = t * mix(float3(1.0), tint.rgb, strength);
-            return mixed(s, fromTones(tinted, space), amount);
+        let quotedName = String(data: try JSONEncoder().encode(name), encoding: .utf8)!
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: template, to: url)
+        for file in try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)
+        where ["json", "metal"].contains(file.pathExtension) {
+            let text = try String(contentsOf: file, encoding: .utf8)
+                .replacingOccurrences(of: "\"__NAME__\"", with: quotedName)
+                .replacingOccurrences(of: "__ID__", with: id)
+                .replacingOccurrences(of: "__FUNCTION__", with: function)
+            try text.write(to: file, atomically: true, encoding: .utf8)
         }
-
-        """
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        try manifest.write(to: url.appending(path: manifestName), atomically: true, encoding: .utf8)
-        try kernel.write(to: url.appending(path: "kernel.metal"), atomically: true, encoding: .utf8)
         return url
     }
 
