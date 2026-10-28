@@ -133,7 +133,9 @@ struct TextOutline: Equatable, Sendable {
                 horizontalScale: max(1, style.horizontalScale ?? horizontalScale), verticalScale: max(1, style.verticalScale ?? verticalScale),
                 textCase: style.textCase ?? textCase, underline: style.underline ?? underline,
                 strikethrough: style.strikethrough ?? strikethrough, fill: style.fill, stroke: style.stroke,
-                kerning: style.kerning ?? 0, position: style.position ?? .normal, strokeWidth: style.strokeWidth
+                kerning: style.kerning ?? 0, position: style.position ?? .normal, strokeWidth: style.strokeWidth,
+                leading: max(0, style.leading ?? leading), characterRotation: style.characterRotation ?? characterRotation,
+                offsetX: style.offsetX ?? 0, offsetY: style.offsetY ?? 0
             )
         }
     }
@@ -265,7 +267,6 @@ struct TextOutline: Equatable, Sendable {
     /// them, mixed toward an animator's fill, and faded.
     func pieces(fill: [Double]?, stroke: [Double]?) -> [Piece] {
         let laid = TextLayout.shared.laid(setting)
-        let turn = setting.characterRotation * .pi / 180
         let anchor = setting.anchor.fraction
         let toFrame = CGAffineTransform(
             translationX: center.x - laid.size.width * anchor.x, y: center.y - laid.size.height * anchor.y
@@ -289,6 +290,7 @@ struct TextOutline: Equatable, Sendable {
             // Character Rotation turns the letter alone, as in Illustrator;
             // its rules stay level.
             var turned = CGAffineTransform.identity
+            let turn = laid.styles[glyph.style].characterRotation * .pi / 180
             if turn != 0 {
                 let pivot = CGPoint(x: glyph.advance / 2, y: -glyph.middle)
                 turned = CGAffineTransform(translationX: -pivot.x, y: -pivot.y)

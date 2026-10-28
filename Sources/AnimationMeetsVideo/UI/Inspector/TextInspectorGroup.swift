@@ -15,7 +15,8 @@ import SwiftUI
 /// outright here, not keyframed: one animated in the effects panel shows
 /// its value at the playhead read-only (`InspectorControlRow`). With
 /// letters selected in the words, Character styles them apart instead
-/// (`TextSelectionRows`). Its fill and stroke follow in
+/// (`TextSelectionRows`), leading, kerning, rotation and where they sit
+/// included. Its fill and stroke follow in
 /// `PaintInspectorGroup`.
 ///
 /// Driven by the `Effect` it is given alone, wherever in a clip that is.
@@ -131,11 +132,11 @@ struct TextInspectorGroup: View {
             blockFill: effect.control(.fill)?.values(at: time) ?? [1, 1, 1, 1],
             blockStroke: effect.control(.stroke)?.values(at: time) ?? [0, 0, 0, 1],
             blockStrokeWidth: ShapeStroke(geometryOf: effect, at: time).width,
-            playhead: playhead, onChange: changeSelection
+            playhead: playhead, onChange: changeSelection, onChangeKerning: changeKerning
         )
         missingFontNote(style.fontName ?? content.fontName)
-        note("Leading, Kerning and Character Rotation are the whole block's:")
-        grid([[.leading, .kerning], [.characterRotation]])
+        note("The kerning method is the whole block's:")
+        grid([[.kerning]])
     }
 
     /// Kerning set by hand between the two letters either side of the
@@ -157,6 +158,13 @@ struct TextInspectorGroup: View {
 
     private func changeSelection(_ change: (inout TextRunStyle) -> Void) {
         let range = selection
+        onEdit { $0.text?.changeStyle(in: range, change) }
+    }
+
+    /// Kerning for the selection: after each selected letter but the last
+    /// (`TextContent.kerningRange`).
+    private func changeKerning(_ change: (inout TextRunStyle) -> Void) {
+        let range = content.kerningRange(of: selection)
         onEdit { $0.text?.changeStyle(in: range, change) }
     }
 

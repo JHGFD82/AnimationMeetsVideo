@@ -32,6 +32,15 @@ struct TextStyle: Hashable, Sendable {
     var position: TextPosition?
     /// Pixels; the stroke's other settings are the block's.
     var strokeWidth: Double?
+    /// Pixels, baseline to baseline; 0 is Auto. A line is spaced by the
+    /// largest of its letters'.
+    var leading: Double?
+    /// Degrees each letter turns about its middle, clockwise.
+    var characterRotation: Double?
+    /// Pixels the letters move right and down from where they are set,
+    /// leaving the other letters where they are.
+    var offsetX: Double?
+    var offsetY: Double?
 
     static let none = TextStyle()
 
@@ -59,6 +68,10 @@ struct TextRunStyle: Equatable, Sendable {
     var kerning: AnimatedValue<Double>?
     var position: TextPosition?
     var strokeWidth: AnimatedValue<Double>?
+    var leading: AnimatedValue<Double>?
+    var characterRotation: AnimatedValue<Double>?
+    var offsetX: AnimatedValue<Double>?
+    var offsetY: AnimatedValue<Double>?
 
     static let none = TextRunStyle()
 
@@ -66,7 +79,10 @@ struct TextRunStyle: Equatable, Sendable {
 
     /// The settings that are numbers, for editing and easing them alike.
     static var numbers: [WritableKeyPath<TextRunStyle, AnimatedValue<Double>?>] {
-        [\.size, \.tracking, \.baselineShift, \.horizontalScale, \.verticalScale, \.kerning, \.strokeWidth]
+        [
+            \.size, \.tracking, \.baselineShift, \.horizontalScale, \.verticalScale, \.kerning, \.strokeWidth, \.leading,
+            \.characterRotation, \.offsetX, \.offsetY,
+        ]
     }
     /// The settings that are colors.
     static var colors: [WritableKeyPath<TextRunStyle, AnimatedValue<ComponentValue>?>] { [\.fill, \.stroke] }
@@ -89,6 +105,10 @@ struct TextRunStyle: Equatable, Sendable {
         kerning = style.kerning.map { AnimatedValue($0) }
         position = style.position
         strokeWidth = style.strokeWidth.map { AnimatedValue($0) }
+        leading = style.leading.map { AnimatedValue($0) }
+        characterRotation = style.characterRotation.map { AnimatedValue($0) }
+        offsetX = style.offsetX.map { AnimatedValue($0) }
+        offsetY = style.offsetY.map { AnimatedValue($0) }
     }
 
     /// Its settings at source time `time`.
@@ -98,7 +118,8 @@ struct TextRunStyle: Equatable, Sendable {
             baselineShift: baselineShift?.value(at: time), horizontalScale: horizontalScale?.value(at: time),
             verticalScale: verticalScale?.value(at: time), textCase: textCase, underline: underline, strikethrough: strikethrough,
             fill: fill?.value(at: time).values, stroke: stroke?.value(at: time).values, kerning: kerning?.value(at: time),
-            position: position, strokeWidth: strokeWidth?.value(at: time)
+            position: position, strokeWidth: strokeWidth?.value(at: time), leading: leading?.value(at: time),
+            characterRotation: characterRotation?.value(at: time), offsetX: offsetX?.value(at: time), offsetY: offsetY?.value(at: time)
         )
     }
 
@@ -127,16 +148,21 @@ struct TextRunStyle: Equatable, Sendable {
 /// of `TextRunStyle`. The inspector gives letters their own of one; the
 /// effects panel keyframes it.
 enum TextRunSetting: String, CaseIterable, Hashable, Sendable {
-    case size, tracking, kerning, baselineShift, verticalScale, horizontalScale, fill, stroke, strokeWidth
+    case size, leading, tracking, kerning, baselineShift, verticalScale, horizontalScale, characterRotation, offsetX, offsetY
+    case fill, stroke, strokeWidth
 
     var name: String {
         switch self {
         case .size: "Size"
+        case .leading: "Leading"
         case .tracking: "Tracking"
         case .kerning: "Kerning"
         case .baselineShift: "Baseline Shift"
         case .verticalScale: "Vertical Scale"
         case .horizontalScale: "Horizontal Scale"
+        case .characterRotation: "Character Rotation"
+        case .offsetX: "Offset X"
+        case .offsetY: "Offset Y"
         case .fill: "Fill"
         case .stroke: "Stroke"
         case .strokeWidth: "Stroke Width"
@@ -145,8 +171,9 @@ enum TextRunSetting: String, CaseIterable, Hashable, Sendable {
 
     var unit: String {
         switch self {
-        case .size, .baselineShift, .strokeWidth: " px"
+        case .size, .leading, .baselineShift, .strokeWidth, .offsetX, .offsetY: " px"
         case .verticalScale, .horizontalScale: "%"
+        case .characterRotation: "°"
         case .tracking, .kerning, .fill, .stroke: ""
         }
     }
@@ -156,8 +183,10 @@ enum TextRunSetting: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .size, .verticalScale, .horizontalScale: 1...10_000
         case .tracking, .kerning: -1000...10_000
-        case .baselineShift: -100_000...100_000
+        case .baselineShift, .offsetX, .offsetY: -100_000...100_000
+        case .leading: 0...100_000
         case .strokeWidth: 0...10_000
+        case .characterRotation: -36_000...36_000
         case .fill, .stroke: 0...1
         }
     }
@@ -169,12 +198,16 @@ enum TextRunSetting: String, CaseIterable, Hashable, Sendable {
     var number: WritableKeyPath<TextRunStyle, AnimatedValue<Double>?>? {
         switch self {
         case .size: \.size
+        case .leading: \.leading
         case .tracking: \.tracking
         case .kerning: \.kerning
         case .baselineShift: \.baselineShift
         case .verticalScale: \.verticalScale
         case .horizontalScale: \.horizontalScale
         case .strokeWidth: \.strokeWidth
+        case .characterRotation: \.characterRotation
+        case .offsetX: \.offsetX
+        case .offsetY: \.offsetY
         case .fill, .stroke: nil
         }
     }
@@ -328,6 +361,18 @@ extension TextContent {
         let after = text.rangeOfComposedCharacterSequence(at: index)
         let isBreak = { (range: NSRange) in text.substring(with: range).contains(where: \.isNewline) }
         return isBreak(before) || isBreak(after) ? nil : before
+    }
+
+    /// The letters whose kerning by hand sets the space within `selection`:
+    /// all but its last letter, so the pairs inside it open or close and
+    /// the space after it stays; a single letter, the pair it begins.
+    func kerningRange(of selection: NSRange) -> NSRange {
+        let text = string as NSString
+        let lower = max(0, min(selection.location, text.length)), upper = max(lower, min(NSMaxRange(selection), text.length))
+        guard upper > lower else { return NSRange(location: lower, length: 0) }
+        let last = text.rangeOfComposedCharacterSequence(at: upper - 1)
+        let end = last.location > lower ? last.location : upper
+        return NSRange(location: lower, length: end - lower)
     }
 
     /// Changes the style of the letters in `range` (kept to the words) with

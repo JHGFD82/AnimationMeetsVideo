@@ -9,6 +9,12 @@ import SwiftUI
 /// underline and strikethrough buttons that stay lit, as in the block's
 /// Character group.
 ///
+/// Kerning here is by hand, after each selected letter but the last, so
+/// it opens or closes the pairs within the selection; with one letter
+/// selected, the pair it begins. The kerning method (Metrics, Optical,
+/// None) stays the block's. Offset X and Y move the letters from where
+/// they are set without moving the others.
+///
 /// A number or color is set outright, as the block's are: the letters'
 /// own settings are keyframed in the effects panel, under a header of their
 /// letters (`EffectsPanel.runRow`), and one animated there shows here
@@ -27,16 +33,33 @@ struct TextSelectionRows: View {
     /// The playhead in the clip's source time, snapped to a frame.
     let playhead: PlayheadTime
     let onChange: ((inout TextRunStyle) -> Void) -> Void
+    /// Changes the style of the letters kerning applies to: all selected
+    /// but the last, or the one alone.
+    let onChangeKerning: ((inout TextRunStyle) -> Void) -> Void
 
     var body: some View {
         let letter = block.letterStyle(style.at(playhead.now))
         FontPickerRows(fontName: style.fontName ?? letter.fontName) { name in onChange { $0.fontName = name } }
         if style.fontName != nil { resetRow("Font") { $0.fontName = nil } }
-        number("Size", \.size, block: block.size, unit: " px", range: 1...10_000)
-        number("Tracking", \.tracking, block: block.tracking, unit: "", range: -1000...10_000)
-        number("Baseline Shift", \.baselineShift, block: block.baselineShift, unit: " px", range: -100_000...100_000)
-        number("Vertical Scale", \.verticalScale, block: block.verticalScale, unit: "%", range: 1...10_000)
-        number("Horizontal Scale", \.horizontalScale, block: block.horizontalScale, unit: "%", range: 1...10_000)
+        number(.size, block: block.size)
+        number(.leading, block: block.leading, label: { $0 == 0 ? "Auto" : NumericExpression.format($0, maxFractionDigits: 1) + " px" })
+            .help("Baseline to baseline; a line is spaced by the largest leading of its letters. 0 is Auto, 120% of the size.")
+        TextRunNumberRow(
+            name: TextRunSetting.kerning.name, own: style.kerning, block: 0, unit: "", range: TextRunSetting.kerning.range,
+            playhead: playhead, onChange: { change in onChangeKerning { change(&$0.kerning) } }
+        )
+        .help("Thousandths of an em between the selected letters, besides the block's kerning method and the tracking")
+        number(.tracking, block: block.tracking)
+        number(.baselineShift, block: block.baselineShift)
+        number(.verticalScale, block: block.verticalScale)
+        number(.horizontalScale, block: block.horizontalScale)
+        // Its full name doesn't fit the row's name.
+        number(.characterRotation, block: block.characterRotation, name: "Rotation")
+            .help("Degrees each selected letter turns about its middle, clockwise")
+        number(.offsetX, block: 0)
+            .help("Moves the selected letters right from where they are set, leaving the others in place")
+        number(.offsetY, block: 0)
+            .help("Moves the selected letters down from where they are set, leaving the others in place")
         InspectorLabelledRow("Case") {
             PanelSegmentedPicker(
                 name: "Case",
@@ -63,17 +86,17 @@ struct TextSelectionRows: View {
         }
         color("Fill", \.fill, block: blockFill)
         color("Stroke", \.stroke, block: blockStroke)
-        number("Stroke Width", \.strokeWidth, block: blockStrokeWidth, unit: " px", range: 0...10_000)
+        number(.strokeWidth, block: blockStrokeWidth)
     }
 
     /// A number the letters can have their own of, keyframed or not.
     private func number(
-        _ name: String, _ path: WritableKeyPath<TextRunStyle, AnimatedValue<Double>?>, block: Double, unit: String,
-        range: ClosedRange<Double>
+        _ setting: TextRunSetting, block: Double, name: String? = nil, label: ((Double) -> String)? = nil
     ) -> some View {
-        TextRunNumberRow(
-            name: name, own: style[keyPath: path], block: block, unit: unit, range: range, playhead: playhead,
-            onChange: { change in onChange { change(&$0[keyPath: path]) } }
+        let path = setting.number!
+        return TextRunNumberRow(
+            name: name ?? setting.name, own: style[keyPath: path], block: block, unit: setting.unit, range: setting.range, label: label,
+            playhead: playhead, onChange: { change in onChange { change(&$0[keyPath: path]) } }
         )
     }
 
@@ -169,6 +192,8 @@ struct TextRunNumberRow: View {
     let block: Double
     let unit: String
     let range: ClosedRange<Double>
+    /// How the value reads in place of the number and unit ("Auto").
+    var label: ((Double) -> String)?
     let playhead: PlayheadTime
     /// Changes the letters' own value; setting nil gives them the block's.
     let onChange: ((inout AnimatedValue<Double>?) -> Void) -> Void
@@ -185,7 +210,7 @@ struct TextRunNumberRow: View {
                 .frame(width: InspectorControlRow.nameWidth, alignment: .leading)
             PanelField(glyph: nil, name: name) {
                 NumericField(
-                    value: value.value(at: time), unit: unit, dragStep: 1, dragRange: range,
+                    value: value.value(at: time), unit: unit, label: label, dragStep: 1, dragRange: range,
                     accessibilityName: value.isAnimated ? "Selected letters' \(lowercase), animated" : "Selected letters' \(lowercase)"
                 ) { picked in
                     let at = playhead.current
