@@ -2,81 +2,115 @@ import AppKit
 import CoreMedia
 import SwiftUI
 
+/// One layer of an area as it is laid out: where it starts, how tall each
+/// of its rows is, and what it shows. Worked out once per redraw of the
+/// area (`TimelineView.blocks(for:)`), as the header column, the tracks
+/// and their drops all lay the layers out alike, and what goes into it
+/// (whether a layer has sound, an open joint) walks the layer's clips.
+struct LayerBlock: Identifiable {
+    let layer: TimelineLayer
+    /// Its place among the layers of its area, from the top.
+    let index: Int
+    /// Where it starts, from the top of its area.
+    let top: CGFloat
+    let displayName: String
+    let clipRowHeight: CGFloat
+    /// The incoming clip of the open joint, when it is on this layer.
+    let expandedJoint: UUID?
+    /// The joining transition whose footage is open on this layer.
+    let joint: TransitionJoint?
+    /// Whether the open joint has a sound lane, to choose how the sound
+    /// crossfades: either clip's sound is still attached to its picture. A
+    /// transition of sound has its kind's shape, and no lane.
+    let jointHasSound: Bool
+    let hasLinkedAudio: Bool
+    let showsLinkedAudio: Bool
+    let audioLaneHeight: CGFloat
+    /// Whether the layer's sound has channels to show apart: sound layers
+    /// always, video layers while their linked audio is shown.
+    let canShowChannels: Bool
+    let showsChannels: Bool
+    /// Whether the layer has a volume row to show: Sound and Music layers
+    /// have a layer volume, video layers only their clips'.
+    let hasProperties: Bool
+    let showsVolume: Bool
+    /// Whether the layer's clips draw their volume across them: while L is
+    /// on, for every layer with sound.
+    let showsVolumeLines: Bool
+    /// Everything the layer shows, top to bottom, separator included. The
+    /// header column and the track area lay out the same rows, so this is
+    /// its height in both.
+    let height: CGFloat
+
+    var id: UUID { layer.id }
+    var bottom: CGFloat { top + height }
+}
+
 /// The timeline's areas: how tall each layer's rows are, and each area's
 /// layer headers beside their tracks, scrolling up and down on its own.
 extension TimelineView {
     // MARK: - Heights
-
-    /// The joining transition whose footage is open on this layer.
-    private func shownJoint(in layer: TimelineLayer) -> TransitionJoint? {
-        guard let id = expandedJoint, layer.clips.contains(where: { $0.id == id }) else { return nil }
-        return project.joint(at: id, in: timelineID, layer: layer.id)
-    }
-
-    /// Whether an open joint has a sound lane, to choose how the sound
-    /// crossfades: either clip's sound is still attached to its picture. A
-    /// transition of sound has its kind's shape, and no lane.
-    private func jointHasSound(_ joint: TransitionJoint) -> Bool {
-        !joint.transition.kind.isAudio && (project.playsAudio(joint.outgoing) || project.playsAudio(joint.incoming))
-    }
-
-    /// The height of what an expanded transition opens under its layer:
-    /// its footage, and its sound when it has some.
-    private func expandedJointHeight(of layer: TimelineLayer) -> CGFloat {
-        guard let joint = shownJoint(in: layer) else { return 0 }
-        return TransitionFootageLane.height + (jointHasSound(joint) ? TransitionSoundLane.height : 0)
-    }
-
-    /// Everything one layer shows, top to bottom. The header column and the
-    /// track area lay out the same rows, so this is each layer's height in
-    /// both.
-    func blockHeight(of layer: TimelineLayer) -> CGFloat {
-        clipRowHeight(of: layer)
-            + expandedJointHeight(of: layer)
-            + (showsLinkedAudio(of: layer) ? audioLaneHeight(of: layer) : 0)
-            + (showsVolume(of: layer) ? VolumeLane.height : 0)
-            + separatorHeight
-    }
 
     /// The layers an area shows, top to bottom.
     func areaLayers(_ kind: LayerKind) -> [TimelineLayer] {
         timeline.layers.filter { $0.kind == kind }
     }
 
-    /// Where each of `layers` starts, from the top of its area.
-    func tops(of layers: [TimelineLayer]) -> [CGFloat] {
-        var tops: [CGFloat] = []
-        var y: CGFloat = 0
-        for layer in layers {
-            tops.append(y)
-            y += blockHeight(of: layer)
+    /// The layers an area shows, top to bottom, laid out.
+    func blocks(for kind: LayerKind) -> [LayerBlock] {
+        let layout = shownAreaLayout
+        var blocks: [LayerBlock] = []
+        var top: CGFloat = 0
+        for layer in timeline.layers where layer.kind == kind {
+            let layerHeight = layout.height(of: layer.id, kind: layer.kind)
+            let expanded = expandedJoint.flatMap { id in layer.clips.contains { $0.id == id } ? id : nil }
+            let joint = expanded.flatMap { project.joint(at: $0, in: timelineID, layer: layer.id) }
+            let jointHasSound = joint.map {
+                !$0.transition.kind.isAudio && (project.playsAudio($0.outgoing) || project.playsAudio($0.incoming))
+            } ?? false
+            let hasLinkedAudio = project.layerHasLinkedAudio(layer)
+            let showsLinkedAudio = audioRevealed.contains(layer.id) && hasLinkedAudio
+            let canShowChannels = layer.kind == .video ? showsLinkedAudio : true
+            let showsChannels = channelsRevealed.contains(layer.id) && canShowChannels
+            // Linked audio is shown under video, at a little over half its
+            // height, or tall enough for two channels when they're apart.
+            let lane = max(22, (layerHeight * 0.6).rounded())
+            let audioLaneHeight = showsChannels ? max(lane, Self.channelBandHeight) * 2 : lane
+            let playsAudio = project.layerPlaysAudio(layer)
+            let hasProperties = layer.kind.isAudio && playsAudio
+            let showsVolume = volumeRevealed.contains(layer.id) && hasProperties
+            let clipRowHeight = Self.clipRowHeight(of: layer, height: layerHeight, showsChannels: showsChannels)
+            let height = clipRowHeight
+                + (joint == nil ? 0 : TransitionFootageLane.height + (jointHasSound ? TransitionSoundLane.height : 0))
+                + (showsLinkedAudio ? audioLaneHeight : 0)
+                + (showsVolume ? VolumeLane.height : 0)
+                + separatorHeight
+            blocks.append(LayerBlock(
+                layer: layer,
+                index: blocks.count,
+                top: top,
+                displayName: project.displayName(of: layer, in: timeline),
+                clipRowHeight: clipRowHeight,
+                expandedJoint: expanded,
+                joint: joint,
+                jointHasSound: jointHasSound,
+                hasLinkedAudio: hasLinkedAudio,
+                showsLinkedAudio: showsLinkedAudio,
+                audioLaneHeight: audioLaneHeight,
+                canShowChannels: canShowChannels,
+                showsChannels: showsChannels,
+                hasProperties: hasProperties,
+                showsVolume: showsVolume,
+                showsVolumeLines: volumeRevealed.contains(layer.id) && playsAudio,
+                height: height
+            ))
+            top += height
         }
-        return tops
-    }
-
-    /// Linked audio is shown under video, at a little over half its height,
-    /// or tall enough for two channels when they're shown apart.
-    private func audioLaneHeight(of layer: TimelineLayer) -> CGFloat {
-        let lane = max(22, (shownAreaLayout.height(of: layer.id, kind: layer.kind) * 0.6).rounded())
-        return showsChannels(of: layer) ? max(lane, Self.channelBandHeight) * 2 : lane
-    }
-
-    private func showsLinkedAudio(of layer: TimelineLayer) -> Bool {
-        audioRevealed.contains(layer.id) && project.layerHasLinkedAudio(layer)
+        return blocks
     }
 
     /// The shortest band one channel gets when a layer shows them apart.
     private static let channelBandHeight: CGFloat = 32
-
-    /// Whether the layer's sound has channels to show apart: sound layers
-    /// always, video layers while their linked audio is shown.
-    private func canShowChannels(of layer: TimelineLayer) -> Bool {
-        layer.kind == .video ? showsLinkedAudio(of: layer) : true
-    }
-
-    private func showsChannels(of layer: TimelineLayer) -> Bool {
-        channelsRevealed.contains(layer.id) && canShowChannels(of: layer)
-    }
 
     /// Adjustment layers' one fixed height: their clips have no picture or
     /// sound to show, only a name, so they aren't resized.
@@ -85,32 +119,20 @@ extension TimelineView {
     /// The clips' row: the layer's height, doubled (with a floor) on sound
     /// layers showing their channels, so each gets a band. Adjustment
     /// layers are always `adjustmentRowHeight`.
-    func clipRowHeight(of layer: TimelineLayer) -> CGFloat {
-        if layer.isAdjustment { return Self.adjustmentRowHeight }
-        let height = shownAreaLayout.height(of: layer.id, kind: layer.kind)
-        guard layer.kind != .video, showsChannels(of: layer) else { return height }
-        return max(height, Self.channelBandHeight) * 2
+    private static func clipRowHeight(of layer: TimelineLayer, height: CGFloat, showsChannels: Bool) -> CGFloat {
+        if layer.isAdjustment { return adjustmentRowHeight }
+        guard layer.kind != .video, showsChannels else { return height }
+        return max(height, channelBandHeight) * 2
     }
 
-    /// Wider while a volume row is showing, to fit its values.
+    /// Wider while a volume row is showing, to fit its values. Only a
+    /// revealed layer is asked whether it has one, which walks its clips.
     var labelColumnWidth: CGFloat {
-        timeline.layers.contains { showsVolume(of: $0) } ? 300 : 150
+        volumeRevealed.isEmpty || !timeline.layers.contains { showsVolume(of: $0) } ? 150 : 300
     }
 
     func showsVolume(of layer: TimelineLayer) -> Bool {
-        volumeRevealed.contains(layer.id) && hasProperties(layer)
-    }
-
-    /// Whether the layer's clips draw their volume across them: while L is
-    /// on, for every layer with sound.
-    private func showsVolumeLines(of layer: TimelineLayer) -> Bool {
-        volumeRevealed.contains(layer.id) && project.layerPlaysAudio(layer)
-    }
-
-    /// Whether the layer has a volume row to show: Sound and Music layers
-    /// have a layer volume, video layers only their clips'.
-    private func hasProperties(_ layer: TimelineLayer) -> Bool {
-        layer.kind.isAudio && project.layerPlaysAudio(layer)
+        volumeRevealed.contains(layer.id) && layer.kind.isAudio && project.layerPlaysAudio(layer)
     }
 
     // MARK: - Actions
@@ -137,14 +159,16 @@ extension TimelineView {
     // MARK: - Areas
 
     /// One area: its layers' names beside their tracks, scrolling up and
-    /// down on its own.
+    /// down on its own. `labelColumnWidth` is the surface's, worked out
+    /// once for every area.
     func area(
-        _ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, structure: EditingProject
+        _ kind: LayerKind, height: CGFloat, viewport: TimelineViewport, structure: EditingProject, labelColumnWidth: CGFloat
     ) -> some View {
-        ScrollViewReader { scroller in
+        let blocks = blocks(for: kind)
+        return ScrollViewReader { scroller in
             ScrollView(.vertical) {
                 HStack(alignment: .top, spacing: 0) {
-                    layerHeaders(kind)
+                    layerHeaders(blocks)
                         .frame(width: labelColumnWidth, alignment: .topLeading)
                         .frame(minHeight: height, alignment: .top)
                         .grooved(.trailing)
@@ -160,8 +184,8 @@ extension TimelineView {
                             onHover: { hover in if hover != newLayerHover { newLayerHover = hover } },
                             onDrop: { payloads, kind in _ = host.dropScenes(payloads, onLayer: nil, at: playheadTime, kind: kind) }
                         ))
-                    layerTracks(kind, areaHeight: height, viewport: viewport, structure: structure)
-                        .overlay(alignment: .topLeading) { focusHighlight(kind, pixelsPerSecond: viewport.pixelsPerSecond) }
+                    layerTracks(kind, blocks: blocks, areaHeight: height, viewport: viewport, structure: structure)
+                        .overlay(alignment: .topLeading) { focusHighlight(blocks, pixelsPerSecond: viewport.pixelsPerSecond) }
                         .offset(x: -viewport.scrollX)
                         .frame(width: viewport.width, alignment: .topLeading)
                         .rubberBandStretch(viewportModel.zoomBand)
@@ -173,7 +197,7 @@ extension TimelineView {
                         // wide as the timeline, hid the Done beside it.
                         .contentShape(Rectangle())
                 }
-                .overlay(alignment: .topLeading) { layerDropIndicator(kind) }
+                .overlay(alignment: .topLeading) { layerDropIndicator(blocks) }
                 .edgeAutoScroll(areaScroller(kind))
             }
             // A clip focused from Find All comes to the middle of its area,
@@ -196,25 +220,26 @@ extension TimelineView {
         }
     }
 
-    private func layerHeaders(_ kind: LayerKind) -> some View {
-        let layers = areaLayers(kind)
-        return VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
+    private func layerHeaders(_ blocks: [LayerBlock]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(blocks) { block in
+                let layer = block.layer
+                let index = block.index
                 let isDragged = layerDrag?.id == layer.id
                 VStack(alignment: .leading, spacing: 0) {
                     LayerHeaderRow(
                         number: index + 1,
                         layer: layer,
-                        displayName: project.displayName(of: layer, in: timeline),
-                        height: clipRowHeight(of: layer),
+                        displayName: block.displayName,
+                        height: block.clipRowHeight,
                         canMoveUp: index > 0,
-                        canMoveDown: index < layers.count - 1,
-                        isExpanded: hasProperties(layer) ? showsVolume(of: layer) : nil,
+                        canMoveDown: index < blocks.count - 1,
+                        isExpanded: block.hasProperties ? block.showsVolume : nil,
                         onToggleExpanded: { toggleExpanded(layer) },
-                        isAudioExpanded: project.layerHasLinkedAudio(layer) ? showsLinkedAudio(of: layer) : nil,
+                        isAudioExpanded: block.hasLinkedAudio ? block.showsLinkedAudio : nil,
                         onToggleAudio: { toggleLinkedAudio(layer) },
                         onDetachAudio: { host.dispatch(TimelineAction.detachAudio(layer: layer.id, clips: nil)) },
-                        isChannelsExpanded: canShowChannels(of: layer) ? showsChannels(of: layer) : nil,
+                        isChannelsExpanded: block.canShowChannels ? block.showsChannels : nil,
                         onToggleChannels: { toggleChannels(layer) },
                         onRename: { name in host.dispatch(TimelineAction.renameLayer(layer.id, name)) },
                         onMove: { offset in host.dispatch(TimelineAction.moveLayer(layer.id, offset)) },
@@ -230,20 +255,20 @@ extension TimelineView {
                         onDelete: { deleteLayer(layer.id) }
                     )
                     .equatable()
-                    if let joint = shownJoint(in: layer) {
-                        jointHeader(joint, on: layer)
+                    if let joint = block.joint {
+                        jointHeader(joint, hasSound: block.jointHasSound, on: layer)
                     }
-                    if showsLinkedAudio(of: layer) {
+                    if block.showsLinkedAudio {
                         Label("Linked audio", systemImage: "waveform")
                             .font(Design.Typeface.label)
                             .foregroundStyle(Design.textSecondary)
                             .padding(.leading, 30)
-                            .frame(height: audioLaneHeight(of: layer), alignment: .leading)
+                            .frame(height: block.audioLaneHeight, alignment: .leading)
                             .contextMenu {
                                 Button("Detach Audio") { host.dispatch(TimelineAction.detachAudio(layer: layer.id, clips: nil)) }
                             }
                     }
-                    if showsVolume(of: layer) {
+                    if block.showsVolume {
                         volumeHeader(of: layer)
                     }
                     separator
@@ -252,7 +277,7 @@ extension TimelineView {
                     // Adjustment layers keep one height.
                     if !layer.isAdjustment {
                         LayerResizeDivider(
-                            onChanged: { dy, flags in resizeLayer(layer, by: dy, flags: flags) },
+                            onChanged: { dy, flags in resizeLayer(block, by: dy, flags: flags) },
                             onEnded: { layerResize = nil },
                             onStep: { step in
                                 areaLayout.setHeight(areaLayout.height(of: layer.id, kind: layer.kind) + step, of: layer.id, kind: layer.kind)
@@ -263,10 +288,12 @@ extension TimelineView {
                 }
                 // Alternating tone, faint enough to read as banding rather
                 // than as two kinds of layer. With the grooves it is what
-                // keeps a tall stack of layers legible at a glance.
+                // keeps a tall stack of layers legible at a glance. The
+                // drag tint goes innermost, over the opaque base, or it
+                // wouldn't show.
+                .background(isDragged ? Design.accent.opacity(0.18) : .clear)
                 .background(index.isMultiple(of: 2) ? Color.clear : Color.white.opacity(0.018))
                 .background(Design.Surface.base.color)
-                .background(isDragged ? Design.accent.opacity(0.18) : .clear)
                 .shadow(color: .black.opacity(isDragged ? 0.45 : 0), radius: 6, y: 2)
                 .offset(y: isDragged ? layerDrag?.dy ?? 0 : 0)
                 .zIndex(isDragged ? 1 : 0)
@@ -278,7 +305,7 @@ extension TimelineView {
     /// What an open joint shows beside its footage, and its sound when it
     /// has some: what they are, and the sound's crossfade.
     @ViewBuilder
-    private func jointHeader(_ joint: TransitionJoint, on layer: TimelineLayer) -> some View {
+    private func jointHeader(_ joint: TransitionJoint, hasSound: Bool, on layer: TimelineLayer) -> some View {
         HStack {
             Label(joint.transition.kind.isAudio ? "Transition audio" : "Transition video", systemImage: "square.on.square.dashed")
                 .font(Design.Typeface.label)
@@ -290,7 +317,7 @@ extension TimelineView {
         .padding(.leading, 30)
         .padding(.trailing, 8)
         .frame(height: TransitionFootageLane.height)
-        if jointHasSound(joint) {
+        if hasSound {
             HStack {
                 Label("Transition audio", systemImage: "waveform")
                     .font(Design.Typeface.label)
@@ -338,13 +365,14 @@ extension TimelineView {
     /// Resizes a layer from its names-column divider, `dy` from where the
     /// drag began: the layer alone, with Option every layer of its area,
     /// with Option-Shift every shown layer, all to the same height.
-    private func resizeLayer(_ layer: TimelineLayer, by dy: CGFloat, flags: NSEvent.ModifierFlags) {
+    private func resizeLayer(_ block: LayerBlock, by dy: CGFloat, flags: NSEvent.ModifierFlags) {
+        let layer = block.layer
         if layerResize?.id != layer.id {
             layerResize = (layer.id, areaLayout.height(of: layer.id, kind: layer.kind))
         }
         guard let start = layerResize?.startHeight else { return }
         // A layer showing its channels draws its row twice as tall.
-        let height = start + dy / (layer.kind != .video && showsChannels(of: layer) ? 2 : 1)
+        let height = start + dy / (layer.kind != .video && block.showsChannels ? 2 : 1)
         if flags.contains(.option), flags.contains(.shift) {
             areaLayout.setHeightOfAllShown(height, layers: timeline.layers.map(\.id))
         } else if flags.contains(.option) {
@@ -358,20 +386,23 @@ extension TimelineView {
     /// down over the layers it adjusts (those in the same area), so what an
     /// adjustment affects can be read off the timeline. Brighter while the
     /// clip is selected; dashed around the clip alone when the layer it
-    /// reaches down to is above it.
-    private func reachBoxes(of layers: [TimelineLayer], pixelsPerSecond: CGFloat) -> some View {
-        let tops = tops(of: layers)
-        return ZStack(alignment: .topLeading) {
-            ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
-                if layer.isAdjustment {
-                    ForEach(layer.clips) { clip in
+    /// reaches down to is above it. Only clips in or near `visibleX` (as
+    /// `LayerClipRow` culls them) get one.
+    @ViewBuilder
+    private func reachBoxes(of blocks: [LayerBlock], pixelsPerSecond: CGFloat, visibleX: ClosedRange<CGFloat>) -> some View {
+        if blocks.contains(where: { $0.layer.isAdjustment }) {
+            let indexByID = Dictionary(uniqueKeysWithValues: blocks.map { ($0.id, $0.index) })
+            ZStack(alignment: .topLeading) {
+                ForEach(blocks.filter { $0.layer.isAdjustment }) { block in
+                    let layer = block.layer
+                    ForEach(layer.clips.filter { LayerClipRow.isVisible($0, pixelsPerSecond: pixelsPerSecond, in: visibleX) }) { clip in
                         let reached = project.reachedLayers(of: clip, on: layer, in: timeline)
-                        let bottom = reached.compactMap { target in layers.firstIndex(id: target.id) }.max() ?? index
+                        let bottom = reached.compactMap { indexByID[$0.id] }.max() ?? block.index
                         let isSelected = selection?.timelineClipID == clip.id
                         let tone = Design.ClipTone.adjustment.color
                         let shape = RoundedRectangle(cornerRadius: Design.Radius.chip, style: .continuous)
-                        let y0 = tops[index]
-                        let y1 = tops[bottom] + blockHeight(of: layers[bottom]) - separatorHeight
+                        let y0 = block.top
+                        let y1 = blocks[bottom].bottom - separatorHeight
                         shape
                             .fill(tone.opacity(reached.isEmpty ? 0 : isSelected ? 0.12 : 0.06))
                             .overlay {
@@ -388,9 +419,9 @@ extension TimelineView {
                     }
                 }
             }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 
     /// Carries out `edit` of a clip and says whether it was made: whether
@@ -411,39 +442,59 @@ extension TimelineView {
             .frame(height: separatorHeight)
     }
 
-    /// Every layer's clips and keyframe lanes, laid out across the whole
-    /// span in unscrolled coordinates; the caller shifts them into view.
-    private func layersHeight(_ kind: LayerKind) -> CGFloat {
-        areaLayers(kind).reduce(0) { $0 + blockHeight(of: $1) }
+    /// This area's clips picked with the lasso, by layer.
+    private func groupSelected(in blocks: [LayerBlock]) -> [UUID: Set<UUID>] {
+        guard !groupSelection.isEmpty else { return [:] }
+        var picked: [UUID: Set<UUID>] = [:]
+        for block in blocks {
+            let ids = block.layer.clips.lazy.map(\.id).filter(groupSelection.contains)
+            if !ids.isEmpty { picked[block.id] = Set(ids) }
+        }
+        return picked
     }
 
+    /// Every layer's clips and keyframe lanes, laid out across the whole
+    /// span in unscrolled coordinates; the caller shifts them into view.
     /// `structure` is `project.structure`, which the rows compare.
     private func layerTracks(
-        _ kind: LayerKind, areaHeight: CGFloat, viewport: TimelineViewport, structure: EditingProject
+        _ kind: LayerKind, blocks: [LayerBlock], areaHeight: CGFloat, viewport: TimelineViewport, structure: EditingProject
     ) -> some View {
         let pixelsPerSecond = viewport.pixelsPerSecond
         let contentWidth = viewport.contentWidth
+        let visibleX = viewport.visibleContentX
         let snapTolerance = snapTolerance(viewport)
+        let frameRate = timeline.frameRate
+        let layersHeight = blocks.last?.bottom ?? 0
+        let groupSelected = groupSelected(in: blocks)
+        // Rows compare these, so a row is handed only what is on its own
+        // layer: selecting or pushing on another layer leaves it as it was.
+        let pushed = pushedClips
+        let musicMarks = kind == .music ? selectedMusicMarks : [:]
+        let openTimeline = openTimelineAction
+        let sceneTracks = sceneTracksAction
+        let trimPreview = trimPreviewAction
+        let scrub = scrubAction
         return VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(areaLayers(kind).enumerated()), id: \.element.id) { index, layer in
+            ForEach(blocks) { block in
+                let layer = block.layer
                 VStack(spacing: 0) {
                     LayerClipRow(
                         layer: layer,
-                        name: project.displayName(of: layer, in: timeline),
-                        frameRate: timeline.frameRate,
+                        name: block.displayName,
+                        frameRate: frameRate,
                         project: project,
                         structure: structure,
                         timelineID: timelineID,
-                        selection: selection,
-                        groupSelected: groupSelection.isEmpty ? [] : groupSelection.intersection(layer.clips.map(\.id)),
+                        selection: selection?.layerID == layer.id ? selection : nil,
+                        groupSelected: groupSelected[layer.id] ?? [],
                         onToggleGroup: { toggleInGroup($0) },
-                        onOpenTimeline: openTimelineAction,
+                        onOpenTimeline: openTimeline,
                         pixelsPerSecond: pixelsPerSecond,
                         width: contentWidth,
-                        height: clipRowHeight(of: layer),
-                        showsChannels: layer.kind != .video && showsChannels(of: layer),
-                        visibleX: viewport.visibleContentX,
-                        expandedJoint: expandedJoint,
+                        height: block.clipRowHeight,
+                        showsChannels: layer.kind != .video && block.showsChannels,
+                        visibleX: visibleX,
+                        expandedJoint: block.expandedJoint,
                         onSelectClip: { clip in host.dispatch(TimelineAction.selectClip(layer: layer.id, clip: clip)) },
                         resolveMove: { clip, pointer, start in resolveMove(clip, from: layer.id, pointer: pointer, to: start) },
                         onMoveClip: { clipID, target, newStart in
@@ -456,7 +507,7 @@ extension TimelineView {
                             }
                         },
                         onDraggingClip: { dragging in draggingClipLayerID = dragging ? layer.id : nil },
-                        pushed: pushedClips.flatMap { $0.layerID == layer.id ? $0.clips : nil } ?? [:],
+                        pushed: pushed?.layerID == layer.id ? pushed?.clips ?? [:] : [:],
                         onMovePreview: { preview in showMovePreview(preview, from: layer.id) },
                         onDropScenes: { payloads, time in host.dropScenes(payloads, onLayer: layer.id, at: time, kind: nil) },
                         onEditJoint: { clipID in
@@ -471,7 +522,7 @@ extension TimelineView {
                         onTrimClipEnd: { clipID, newEnd in
                             clipEdit(clipID) { host.dispatch(TimelineAction.trimClipEnd(layer: layer.id, clip: clipID, newEnd)) }
                         },
-                        sceneTracks: sceneTracksAction,
+                        sceneTracks: sceneTracks,
                         onSetTransition: { clipID, kind, edge in host.dispatch(TimelineAction.setTransition(layer: layer.id, clip: clipID, kind, edge)) },
                         onRemoveTransition: { clipID, edge in host.dispatch(TimelineAction.removeTransition(layer: layer.id, clip: clipID, edge)) },
                         onSelectTransition: { clip, edge in host.dispatch(TimelineAction.selectTransition(layer: layer.id, clip: clip, edge)) },
@@ -486,7 +537,7 @@ extension TimelineView {
                         liveSnap: liveSnap,
                         snapTolerance: snapTolerance,
                         onSnapIndicator: { viewportModel.snapIndicator = $0 },
-                        onTrimPreview: trimPreviewAction,
+                        onTrimPreview: trimPreview,
                         onApplyJointEdit: { clipID, edit in host.dispatch(TimelineAction.applyJointEdit(layer: layer.id, clip: clipID, edit)) },
                         onSetTransitionDuration: { clipID, edge, duration in host.dispatch(TimelineAction.setTransitionDuration(layer: layer.id, clip: clipID, edge, duration)) },
                         onAddEffect: { clipID, kind in
@@ -512,7 +563,7 @@ extension TimelineView {
                         onSetPassThrough: { clipID, value in
                             host.dispatch(TimelineAction.editProject { $0.editClip(clipID, in: timelineID) { $0.passThrough = value } })
                         },
-                        showsVolumeLines: showsVolumeLines(of: layer),
+                        showsVolumeLines: block.showsVolumeLines,
                         // The host applies an edit before `dispatch`
                         // returns, so it needn't keep `change`.
                         onEditTime: { clipID, change in
@@ -532,7 +583,7 @@ extension TimelineView {
                             let time = at ?? livePlayheadTime
                             host.dispatch(TimelineAction.editProject { $0.attachToMusic(clipID, in: timelineID, at: time) })
                         },
-                        musicMarks: layer.kind == .music ? selectedMusicMarks : [:],
+                        musicMarks: musicMarks,
                         onMotionDesign: { clipID in
                             let ids = groupSelection.contains(clipID) ? groupSelection : [clipID]
                             motionDesign?.open(clips: ids, in: timelineID, of: project)
@@ -547,15 +598,15 @@ extension TimelineView {
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                         geometryStore.layerRows[layer.id] = frame
                     }
-                    if let joint = shownJoint(in: layer) {
+                    if let joint = block.joint {
                         TransitionFootageLane(
                             joint: joint,
-                            frameRate: timeline.frameRate,
+                            frameRate: frameRate,
                             outgoingName: project.resolvedInfo(for: joint.outgoing.source)?.name ?? "Clip",
                             incomingName: project.resolvedInfo(for: joint.incoming.source)?.name ?? "Clip",
                             pixelsPerSecond: pixelsPerSecond,
                             width: contentWidth,
-                            visibleX: viewport.visibleContentX,
+                            visibleX: visibleX,
                             preview: { edit in
                                 var copy = project
                                 copy.applyJointEdit(edit, at: joint.incoming.id, in: timelineID, layer: layer.id)
@@ -563,9 +614,9 @@ extension TimelineView {
                             },
                             onCommit: { edit in host.dispatch(TimelineAction.applyJointEdit(layer: layer.id, clip: joint.incoming.id, edit)) },
                             tool: tool,
-                            onTrimPreview: trimPreviewAction
+                            onTrimPreview: trimPreview
                         )
-                        if jointHasSound(joint) {
+                        if block.jointHasSound {
                             TransitionSoundLane(
                                 joint: joint,
                                 projectCrossfade: project.jointAudioCrossfade,
@@ -575,29 +626,29 @@ extension TimelineView {
                             )
                         }
                     }
-                    if showsLinkedAudio(of: layer) {
+                    if block.showsLinkedAudio {
                         LinkedAudioLane(
                             layer: layer,
                             project: project,
                             pixelsPerSecond: pixelsPerSecond,
                             width: contentWidth,
-                            height: audioLaneHeight(of: layer),
-                            showsChannels: showsChannels(of: layer),
-                            visibleX: viewport.visibleContentX,
+                            height: block.audioLaneHeight,
+                            showsChannels: block.showsChannels,
+                            visibleX: visibleX,
                             onSelectClip: { clip in host.dispatch(TimelineAction.selectClip(layer: layer.id, clip: clip)) },
                             onDetachAudio: { clipID in host.dispatch(TimelineAction.detachAudio(layer: layer.id, clips: [clipID])) }
                         )
                     }
-                    if showsVolume(of: layer) {
+                    if block.showsVolume {
                         PlayheadReader(playhead: playhead) { parked in
                             VolumeLane(
                                 volume: layer.volume,
                                 currentTime: timeline.snappedToFrame(parked),
                                 pixelsPerSecond: pixelsPerSecond,
                                 width: contentWidth,
-                                visibleX: viewport.visibleContentX,
+                                visibleX: visibleX,
                                 snap: { timeline.snappedToFrame($0) },
-                                onSeek: scrubAction,
+                                onSeek: scrub,
                                 onMove: { from, to, copy in host.dispatch(TimelineAction.editVolume(layer: layer.id) { $0.moveKeyframe(at: from, to: to, copying: copy) }) },
                                 onDelete: { time in host.dispatch(TimelineAction.editVolume(layer: layer.id) { $0.removeKeyframe(at: time) }) },
                                 onEase: { time, preset in host.dispatch(TimelineAction.editVolume(layer: layer.id) { $0.applyEase(preset, at: time) }) }
@@ -608,17 +659,17 @@ extension TimelineView {
                 }
                 // The same banding as the header column, so a layer reads
                 // as one band all the way across the window.
-                .background(index.isMultiple(of: 2) ? Color.clear : Color.white.opacity(0.018))
+                .background(block.index.isMultiple(of: 2) ? Color.clear : Color.white.opacity(0.018))
                 .zIndex(draggingClipLayerID == layer.id ? 1 : 0)
             }
             // Fills the rest of the area, so media dropped anywhere below the
             // layers (or in an empty area) gets a new layer of its kind.
-            NewLayerDropRow(height: max(newLayerRowHeight, areaHeight - layersHeight(kind)), kind: kind) { payloads, x in
+            NewLayerDropRow(height: max(newLayerRowHeight, areaHeight - layersHeight), kind: kind) { payloads, x in
                 host.dropScenes(payloads, onLayer: nil, at: CMTime(seconds: max(0, Double(x / pixelsPerSecond)), preferredTimescale: 600), kind: kind)
             }
         }
         .frame(width: contentWidth, alignment: .topLeading)
-        .overlay(alignment: .topLeading) { reachBoxes(of: areaLayers(kind), pixelsPerSecond: pixelsPerSecond) }
+        .overlay(alignment: .topLeading) { reachBoxes(of: blocks, pixelsPerSecond: pixelsPerSecond, visibleX: visibleX) }
         // A generator (text or a shape) from the browser dropped on the
         // video area, but not on a clip (which handles it itself), makes a
         // clip where it lands: on the layer under it, or on a new layer at
@@ -632,11 +683,8 @@ extension TimelineView {
                 return true
             }
             guard kind == .video, let generator = payloads.first?.generator?.kind else { return false }
-            let layers = areaLayers(kind)
-            let under = zip(layers, tops(of: layers)).first { layer, top in
-                location.y >= top && location.y < top + blockHeight(of: layer)
-            }
-            addGenerator(generator, onLayer: under?.0.id, at: time)
+            let under = blocks.first { location.y >= $0.top && location.y < $0.bottom }
+            addGenerator(generator, onLayer: under?.id, at: time)
             return true
         }
     }
