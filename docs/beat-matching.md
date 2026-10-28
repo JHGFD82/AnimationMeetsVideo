@@ -351,6 +351,30 @@ the pinned one), and wraps positions into the measure.
   4th… measure. Snapping uses what is drawn. Detected beats have no
   measures, so they keep thinning by powers of two as before. **Built.**
 
+## Decisions
+
+Settled, with the reasons, so they aren't proposed again:
+
+- **The beat list is the saved record, not a tempo formula.** A section
+  could be stored as a start, a tempo and a phase, with its beats worked
+  out from them, but only a click-track section is an exact grid. A
+  section played live (`intent`) has each beat snapped onto the onset
+  heard there, off the grid, and a ramp's beats are fitted to the music,
+  not drawn from a curve. A formula would lose both; pinning every beat
+  to keep them is the beat list again. Beats are in time order within a
+  section, so finding one is a binary search.
+- **The onset curve's 2.9 ms hop and the whole song's samples are
+  kept on purpose.** The waveform zooms down to single samples, which
+  takes the samples themselves (the coarser levels are only for zoomed
+  out), and beats are placed within a few milliseconds, which a curve at
+  100–200 Hz couldn't do.
+- **The panel plays the song with `AVPlayer`**, of an audio-only
+  composition, rather than through the tick's `AVAudioEngine`. The
+  player gives the chosen output device, seeking and latency matching;
+  the tick lands on the beat already, scheduled at host times taken from
+  the player item's timebase, and MIDI taps are placed through that same
+  timebase.
+
 ## Building it
 
 1. Only music is analyzed. **Built.**
