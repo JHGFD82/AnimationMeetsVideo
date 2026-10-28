@@ -69,18 +69,19 @@ import Testing
         #expect(ranges(session) == [[0, 12], [12, 15]])
     }
 
+    /// Runs `change` as one event's worth of undo, as the app's events
+    /// group them, for a session whose manager doesn't group by event.
+    private func step(_ session: BeatMatchSession, _ change: () -> Void) {
+        session.undoManager.beginUndoGrouping()
+        change()
+        session.undoManager.endUndoGrouping()
+    }
+
     @Test func nudgesInARowUndoAsOneStep() throws {
-        // A short song: making one holds the main actor, which timing
-        // tests running alongside feel.
-        let song = try SnapshotSupport.clickSong(named: "beat-match-session-nudge", seconds: 10)
-        let session = BeatMatchSession(asset: song, url: try #require(song.url))
+        let session = try session("beat-match-session-nudge")
         defer { session.end() }
         session.undoManager.groupsByEvent = false
-        func step(_ change: () -> Void) {
-            session.undoManager.beginUndoGrouping()
-            change()
-            session.undoManager.endUndoGrouping()
-        }
+        func step(_ change: () -> Void) { self.step(session, change) }
         step { session.chooseOneTempo() }
         step { session.addBeat(at: 8, position: 1) }
         let placed = try #require(session.selectedBeat)
@@ -104,6 +105,59 @@ import Testing
         step { session.nudgeSelected(by: 0.001) }
         session.undo()
         #expect(session.map.beat(at: CMTimeAdd(nudged, CMTime(value: 48, timescale: 48_000))) != nil)
+    }
+
+    /// Nudging opens no undo group of its own, so undoing in the middle of
+    /// a run, with the event's group still open as in the app, undoes it.
+    @Test func undoDuringARunOfNudgesUndoesTheRun() throws {
+        let session = try session("beat-match-session-nudge-undo")
+        defer { session.end() }
+        session.undoManager.groupsByEvent = false
+        step(session) { session.chooseOneTempo() }
+        step(session) { session.addBeat(at: 8, position: 1) }
+        let placed = try #require(session.selectedBeat)
+        session.undoManager.beginUndoGrouping()
+        session.nudgeSelected(by: 0.001)
+        session.nudgeSelected(by: 0.001)
+        session.undoManager.endUndoGrouping()
+        // Within the run, as a held key's next press would be.
+        session.undo()
+        #expect(session.map.beat(at: placed) != nil)
+        #expect(session.canUndo && session.canRedo)
+        // The run is over: a nudge now is a step of its own.
+        session.selectedBeat = placed
+        step(session) { session.nudgeSelected(by: 0.001) }
+        session.undo()
+        #expect(session.map.beat(at: placed) != nil)
+        session.undo()
+        #expect(session.map.sections.first?.beats.isEmpty == true)
+    }
+
+    @Test func aFillAfterNudgesIsAStepOfItsOwn() async throws {
+        let session = try session("beat-match-session-nudge-fill")
+        defer { session.end() }
+        for _ in 0..<200 where session.audio == nil { try await Task.sleep(for: .milliseconds(50)) }
+        session.undoManager.groupsByEvent = false
+        step(session) { session.chooseOneTempo() }
+        step(session) { session.addBeat(at: 8.25, position: 1) }
+        step(session) { session.addBeat(at: 16.25, position: 1) }
+        let placed = try #require(session.selectedBeat)
+        step(session) { session.nudgeSelected(by: 0.001) }
+        session.nudgeSelected(by: 0.001)
+        let nudged = try #require(session.selectedBeat)
+        // The fill lands in an event of its own, after the nudges.
+        session.undoManager.beginUndoGrouping()
+        session.fillSelected()
+        for _ in 0..<100 where session.isFilling { try await Task.sleep(for: .milliseconds(50)) }
+        session.undoManager.endUndoGrouping()
+        #expect(session.map.sections.first?.isConfirmed == true)
+
+        session.undo()
+        #expect(session.map.sections.first?.isConfirmed == false)
+        #expect(session.map.beat(at: nudged) != nil)
+        session.undo()
+        #expect(session.map.beat(at: placed) != nil)
+        #expect(session.map.beat(at: nudged) == nil)
     }
 
     @Test func confirmWaitsForAFilledSectionAndFillingLeavesTheView() async throws {

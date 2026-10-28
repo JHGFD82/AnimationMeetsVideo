@@ -812,8 +812,8 @@ final class BeatMatchSession: SecondsViewport {
     /// The beat the last nudge left, and when, while nudges run on.
     @ObservationIgnored private var nudgeRun: (beat: CMTime, at: ContinuousClock.Instant)?
     /// Longer than the wait before a held key repeats, so holding one is
-    /// one run.
-    private static var nudgeRunGap: Duration { .seconds(max(0.3, NSEvent.keyRepeatDelay + 0.1)) }
+    /// one run: from 300 ms, up to a second for the longest waits.
+    private static var nudgeRunGap: Duration { .seconds((NSEvent.keyRepeatDelay + 0.1).clamped(between: 0.3, and: 1)) }
     /// Steps of the draft's undo history kept; each holds a whole map.
     static let undoLevels = 100
 
