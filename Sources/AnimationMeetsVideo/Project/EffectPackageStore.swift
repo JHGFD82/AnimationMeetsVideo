@@ -572,6 +572,33 @@ enum EffectPackageStore {
 
     // MARK: Reading
 
+    /// How many parameters the kernel's function declares, less a
+    /// `destination`, which Core Image passes itself; nil when its
+    /// declaration (`[[stitchable]]`, the type a `warp` kernel or another
+    /// returns, the name) isn't found, which compiling it then reports.
+    /// Only counted, not checked for type.
+    static func parameterCount(of function: String, in source: String, warp: Bool) -> Int? {
+        let code = source.replacing(/\/\/[^\n]*|\/\*[\s\S]*?\*\//, with: " ")
+        let declaration = "\\[\\[\\s*stitchable\\s*\\]\\]\\s*" + (warp ? "float2" : "float4") + "\\s+" + NSRegularExpression.escapedPattern(for: function) + "\\s*\\("
+        guard let start = code.range(of: declaration, options: .regularExpression) else { return nil }
+        var parameters: [String] = []
+        var current = ""
+        var depth = 0
+        for character in code[start.upperBound...] {
+            if depth == 0, character == ")" || character == "," {
+                parameters.append(current)
+                current = ""
+                if character == ")" { break }
+                continue
+            }
+            if "(<[".contains(character) { depth += 1 }
+            if ")>]".contains(character) { depth -= 1 }
+            current.append(character)
+        }
+        return parameters.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !$0.contains("destination") }.count
+    }
+
     /// Turns a checked effect.json into a package, throwing the first
     /// problem the shape can't catch, with where it is.
     private struct Reader {
@@ -751,6 +778,24 @@ enum EffectPackageStore {
             }
 
             let graph = try (json["graph"] as? [String: Any]).map { try self.graph($0, package: id, names: names) }
+
+            // Last, so a more particular problem is said first.
+            let hasAmount = amountIndex != nil || json["amount"] as? Bool == true
+            if let declared = EffectPackageStore.parameterCount(of: function, in: source, warp: kernelType == .warp) {
+                // What the renderer passes before the arguments, and after.
+                var given: [String] = []
+                if kernelType != .warp { given += ["its picture", "the color space"] }
+                if !pictures.isEmpty { given.append(pictures.count == 1 ? "1 other picture" : "\(pictures.count) other pictures") }
+                given.append(arguments.count == 1 ? "1 argument" : "\(arguments.count) arguments")
+                if hasAmount { given.append("Amount") }
+                let count = (kernelType == .warp ? 0 : 2) + pictures.count + arguments.count + (hasAmount ? 1 : 0)
+                guard declared == count else {
+                    let list = given.count > 1 ? given.dropLast().joined(separator: ", ") + " and " + given.last! : given[0]
+                    throw JSONShapeError(
+                        message: "\(function) takes \(declared) parameters, but is given \(count): \(list)", path: "arguments"
+                    )
+                }
+            }
 
             return EffectPackage(
                 url: url, id: id, version: version, name: json["name"] as! String,

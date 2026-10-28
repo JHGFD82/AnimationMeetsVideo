@@ -40,15 +40,15 @@ import Testing
     }
     """
 
-    private func read(_ manifest: [String: Any]) throws -> EffectPackage {
-        let url = try writeEffectPackage(manifest, kernel: kernel, in: folder, named: "Tone.amveffect")
+    private func read(_ manifest: [String: Any], kernel: String? = nil) throws -> EffectPackage {
+        let url = try writeEffectPackage(manifest, kernel: kernel ?? self.kernel, in: folder, named: "Tone.amveffect")
         defer { try? FileManager.default.removeItem(at: folder) }
         return try EffectPackageStore.read(url)
     }
 
-    private func problem(_ manifest: [String: Any]) -> String? {
+    private func problem(_ manifest: [String: Any], kernel: String? = nil) -> String? {
         do {
-            _ = try read(manifest)
+            _ = try read(manifest, kernel: kernel)
             return nil
         } catch {
             return error.localizedDescription
@@ -125,7 +125,7 @@ import Testing
             controls.append(["id": "other", "name": "Other", "type": "curve"])
             $0["controls"] = controls
             $0["pictures"] = [["id": "table", "from": "curve", "control": "shape"], ["id": "more", "from": "curve", "control": "other"]]
-        }) == nil)
+        }, kernel: kernel.replacingOccurrences(of: "coreimage::sampler table,", with: "coreimage::sampler table, coreimage::sampler more,")) == nil)
     }
 
     @Test func expressionsCanRaiseToAPowerAndTakeALogarithm() throws {
