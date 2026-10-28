@@ -328,6 +328,31 @@ import Testing
     @Test func theTemplateIsShippedButNotRead() throws {
         let folder = try #require(EffectPackageStore.builtInFolder)
         #expect(FileManager.default.fileExists(atPath: folder.appending(path: EffectPackageStore.templateName).appending(path: "effect.json").path))
-        #expect(!EffectRegistry.builtInPackages.packages.contains { $0.url.lastPathComponent.hasPrefix(".") })
+        let library = EffectPackageStore.loadBuiltIn()
+        #expect(!library.packages.contains { $0.url.lastPathComponent == EffectPackageStore.templateName })
+        #expect(!library.problems.contains { $0.url.lastPathComponent == EffectPackageStore.templateName })
+    }
+
+    @Test func theTemplateFilledInReadsCountsAndCompiles() throws {
+        let template = try #require(EffectPackageStore.builtInFolder).appending(path: EffectPackageStore.templateName)
+        let folder = FileManager.default.temporaryDirectory.appending(path: "amv-template-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appending(path: "Filled.amveffect", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: template, to: url)
+        for name in ["effect.json", "kernel.metal"] {
+            let file = url.appending(path: name)
+            let text = try String(contentsOf: file, encoding: .utf8)
+            #expect(text.contains("__ID__") || text.contains("__FUNCTION__"), "\(name) has its placeholders")
+            try text.replacingOccurrences(of: "\"__NAME__\"", with: "\"Filled\"")
+                .replacingOccurrences(of: "__ID__", with: "user.filled")
+                .replacingOccurrences(of: "__FUNCTION__", with: "userFilled")
+                .write(to: file, atomically: true, encoding: .utf8)
+        }
+        // Read, which counts its parameters against its arguments.
+        let package = try EffectPackageStore.read(url)
+        #expect(package.id == "user.filled" && package.name == "Filled" && package.kernelFunction == "userFilled")
+        #expect(EffectPackageStore.parameterCount(of: package.kernelFunction, in: package.kernelSource, warp: false) != nil)
+        #expect(PackageKernels.problem(for: package) == nil)
     }
 }
