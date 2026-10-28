@@ -9,7 +9,8 @@ under [Not yet](#not-yet). `EffectKind` and `ControlKind`
 are names looked up in an `EffectRegistry` of the effects written in
 Swift (BuiltInEffects.swift), the 77 looks that ship as packages
 (Resources/Effects) and the person's packages, which
-`EffectPackageStore` reads from the Effects folder at launch. A
+`EffectPackageStore` reads from the Effects folder at launch, and again
+as one changes there while the app runs. A
 package's look is listed, saved and drawn like any other
 (`PackageLookRenderer`), and one whose package is missing is kept.
 The looks of [psychedelic-effects.md](psychedelic-effects.md) moved out
@@ -172,6 +173,16 @@ each other. A kernel that compiles as another type
 than `kernel.type` says (a warp declared as a color kernel) is refused
 with that mistake.
 
+Reading the package checks what it can of the kernel before compiling:
+`kernel.function` must appear as a whole name followed by `(`, and the
+function's parameters (`[[stitchable]]`, `float4` or a warp's `float2`,
+then the name) are counted against what the app passes: the picture and
+the color space (not to a warp), the other `pictures`, the `arguments`
+and Amount, a `destination` not counting. A count that differs is
+reported at `arguments` with both counts ("exGlow takes 9 parameters,
+but is given 8: its picture, the color space, 5 arguments and Amount").
+Types aren't checked; compiling does that.
+
 Where each type draws, as the built-in looks of that type do:
 
 - **color**: over the picture, one pixel at a time. A generator draws
@@ -220,7 +231,10 @@ each of two copies of the filter lets a choice pick.
 - **The person's**:
   `~/Library/Application Support/AnimationMeetsVideo/Effects/`, beside
   the Presets folder. Installing one means copying it there; the app
-  reads the folder at launch.
+  reads the folder at launch, away from the main thread
+  (`EffectPackageStatus.installAtLaunch`). Opening a project, and making
+  or installing a package, wait until it has (`packagesInstalled`), so a
+  project's package effects are known before it is read.
 
 The person's packages load after the built-in ones. One whose `id` is
 already taken is refused, so a built-in effect can't be replaced by
@@ -230,7 +244,10 @@ preset problems are in its Presets tab.
 
 Kernels are compiled in the background just after launch, not at first
 use, so a mistake shows up in the library at once
-(`EffectPackageStatus`). One that doesn't compile stays listed, its
+(`EffectPackageStatus`), several at a time, one fewer than the Mac has
+cores. A package installed or changed while that runs keeps its own
+result: each package's problem is set or cleared as it is compiled, and
+a result for a version older than the newest sent to compile is dropped. One that doesn't compile stays listed, its
 chip marked with a warning, and is listed under "Can't Be Used" too; it
 can be added, but leaves the picture as it is, and its note in the
 effects panel says why. The message is the Metal compiler's first error
@@ -292,8 +309,9 @@ look, and then edited by hand.
    where: a line of `effect.json`'s path ("Unknown name \"strenght\" at
    arguments[1]") or of `kernel.metal`'s ("kernel.metal:3:24: use of
    undeclared identifier 'tnt'").
-5. Change it and open the app again to see the change; packages are read
-   at launch (reloading while it runs is under [Not yet](#not-yet)).
+5. Change it and save: the app reads it again (see [Changing one while
+   the app runs](#changing-one-while-the-app-runs)). A change to its
+   controls shows when the app is opened again.
 
 What to know:
 
@@ -320,20 +338,31 @@ Status: **built**.
 
 - **New Effect Package…**, in the File menu and the effects library's
   context menu (beside **Show Effects Folder**), asks for a name and
-  writes a package like Tint above into the Effects folder, under the ID
-  `user.` and the name's letters and digits in camel case ("My Glow" is
-  `user.myGlow`), its kernel function `user` and the same (`userMyGlow`,
-  never a Metal word). It is installed at once and its `kernel.metal`
-  shown in Finder. A name without a letter to start it, or one whose
-  folder or ID is taken, says so instead (`EffectPackageStore.makePackage`).
+  writes a package into the Effects folder, under the ID `user.` and the
+  name's letters and digits in camel case ("My Glow" is `user.myGlow`),
+  other scripts written in Latin letters first ("Crème Brûlée" is
+  `user.cremeBrulee`, "光" is `user.guang`), its kernel function `user`
+  and the same (`userMyGlow`, never a Metal word). A name with no letter
+  to start it ("2 Fast", "★") takes `user.effect`, or `user.effect2` and
+  on, the first neither installed nor given by a package in the folder;
+  the package keeps the name as typed. It is installed at once and its
+  `kernel.metal` shown in Finder. An empty name, or one whose folder or
+  ID is taken, says so instead (`EffectPackageStore.makePackage`). The
+  package is copied from a template that ships with the others,
+  `Resources/Effects/.template.amveffect` (a Tint like the one above),
+  with `__ID__`, `__NAME__` and `__FUNCTION__` filled in; hidden, it is
+  never read as a package, and changing it changes what new ones start
+  as without changing the code.
 - **Make a Package from This**, in the context menu of a look's chip in
   the library (every look is a package), copies its folder into the
   Effects folder as a new one, "Twirl Copy" with the ID `user.twirlCopy`
   and version 1 ("Twirl Copy 2" for a second), its controls and kernel as
-  they were, then installs it and shows its kernel in Finder. Only the
-  manifest's first `id`, `name` and `version` change, the top level's,
-  so its layout stays; a copy that doesn't then read as intended is
-  written whole instead (`EffectPackageStore.copyPackage`).
+  they were, then installs it and shows its kernel in Finder. Its ID
+  falls back as a new one's does. Only the manifest's first `id`, `name`
+  and `version` change, the top level's, so its layout stays. When each
+  was found once that is certain; otherwise (a control named as the
+  package, say) the copy is read back, and one that doesn't read as
+  intended is written whole instead (`EffectPackageStore.copyPackage`).
 - **Opening a package**: `Packaging/Info.plist` declares `.amveffect` as
   a package type (`com.jhgfd.animationmeetsvideo.effect`, kept in sync
   with `EffectPackageStore.packageTypeIdentifier`), so Finder shows one
@@ -345,7 +374,8 @@ Status: **built**.
   - one already in the Effects folder and installed says so;
   - one whose folder name or ID another package there has asks whether to
     replace it. Replacing removes the other's folder and takes effect at
-    the next launch. A look of the app's can't be replaced: their IDs
+    the next launch, or at once for one of the same folder name and shape
+    (see [Changing one while the app runs](#changing-one-while-the-app-runs)). A look of the app's can't be replaced: their IDs
     have no dot, and every other package's needs one.
 
 A package made or opened this way is installed at once, beside the others
@@ -354,8 +384,52 @@ adding an effect kind changes no effect already in a project. The
 library lists it as `EffectPackageStatus`, which it watches, says one
 was installed, and its kernel is compiled then. An effect of its kind in the open
 project that loaded as missing comes back when the project is opened
-again. Replacing an installed package takes effect at the next launch,
-as editing one does, since effects in the open project use its controls.
+again. Replacing an installed package takes effect as editing one does
+(see below), since effects in the open project use its controls.
+
+### Changing one while the app runs
+
+The app watches the Effects folder with FSEvents
+(`EffectFolderWatcher`, `EffectPackageStatus.startWatching`), making it
+first if there is none yet. FSEvents sees a change anywhere inside a
+package; each package changed is read again
+(`EffectPackageStatus.reload`) once it has gone 0.3 s without changing,
+so an editor's save and rename into place read it once, and reloads run
+one after another so an older read never lands after a newer one. Only
+the packages changed are read, and one whose files' modification dates
+are as when it was last read isn't read again. The app's own writes
+(making, copying or installing one) are read once and found installed
+as they are. What a read finds (`EffectRegistry.reloading`):
+
+- **A new package** is installed, as one opened from Finder is.
+- **A changed package** replaces the one installed, and its kernel is
+  compiled again, when each control both versions have holds values of
+  the same size and choices of the same options, and it reads the same
+  pictures (`EffectPackage.keepsValues`). Controls only one version has
+  don't matter: an effect already made keeps one the package dropped,
+  shown and edited as before, until it is saved, which leaves it out;
+  and one the package added is at its default, as a deleted control
+  is. The viewer draws again at once: the composition's key holds the
+  content hash of each of the person's packages its clips use, and
+  render keys hold it too.
+- **A changed package whose controls change size or choices, or whose
+  pictures change**, stays as it was, listed under "Can't Be Used" with
+  why, until the app is opened again: the values effects hold would
+  need conforming where they are read first (a comment at the check in
+  `EffectRegistry.reloading` names the places).
+- **A package that can no longer be read** is listed under "Can't Be
+  Used" with its problem, and the version installed before stays in use.
+- **A package removed, or whose ID changed**, is no longer listed, and
+  the new ID is installed. Effects of the old one already in open
+  projects draw and edit as they did, and their note in the effects
+  panel says so; saved, they open as missing.
+
+Effects keep working because the registry keeps the definitions of the
+effects and controls it stops listing (`retiredEffects` and
+`retiredControls`), so looking up a kind in an open project never fails
+for a package changed under it. A project saved with a control its
+package doesn't list still opens that effect as missing, as below: only
+controls dropped while the app ran are left out on saving.
 
 ## Pictures besides the clip's
 
@@ -562,8 +636,8 @@ the kind it was saved as, why it is missing, and the saved JSON.
 ## Render keys and caches
 
 A look step's render key gains the package's `id`, `version` and a hash
-of its kernel source, so editing a kernel and relaunching never shows a
-frame cached from the old one, in the viewer or in `Cache/Renders/`.
+of its kernel source, so editing a kernel never shows a frame cached
+from the old one, in the viewer or in `Cache/Renders/`.
 
 ## Safety
 
@@ -609,7 +683,8 @@ from the start: Color Correction
   `ControlDefinition`: name, symbol, category, controls, ranges, units,
   defaults and flags. The built-in definitions are tables in
   BuiltInEffects.swift; `EffectPackageStore.installAtLaunch` adds each
-  package's, read from `effect.json`, before a project is opened. Tests
+  package's, read from `effect.json` in the background, before a project
+  is opened. Tests
   give theirs through `EffectRegistry.override`, a task-local, so they
   don't change what other tests see.
 - A package's controls are scoped to it: its `levels` is
@@ -649,7 +724,6 @@ from the start: Color Correction
 
 ## Not yet
 
-- **Reloading without relaunching**, by watching the Effects folder.
 - **Embedding packages in a project** (`Effects/` in the `.amv`
   package), so a project opens with its effects elsewhere. Needs a rule
   for when the embedded and installed versions differ.
@@ -690,3 +764,9 @@ In order, each step usable on its own:
     **Built.**
 13. Make a Package from This. **Built.**
 14. `.amveffect` as a Finder package type, opened by the app. **Built.**
+15. Reading packages at launch in the background, compiling kernels
+    several at a time, and reading a package again as it changes in the
+    Effects folder, effects of a changed or removed one in open projects
+    kept working and the viewer drawn again. **Built.**
+16. Counting a kernel's parameters against its arguments on reading,
+    and new packages made from a template that ships. **Built.**

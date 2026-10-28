@@ -142,6 +142,11 @@ import Testing
              "\"../kernel.metal\" isn't a file in the package at kernel.file."),
             (changed { $0["kernel"] = ["file": "kernel.metal", "function": "exBlur", "type": "general"] },
              "kernel.metal has no function \"exBlur\" at kernel.function."),
+            (changed { $0["arguments"] = ["radius * scale", "fract(speed * seconds)", "tint", "center(middle)", "gains"] },
+             "exGlow takes 9 parameters, but is given 8: its picture, the color space, 5 arguments and Amount at arguments."),
+            // Only the whole name, called, is the function.
+            (changed { $0["kernel"] = ["file": "kernel.metal", "function": "exGlo", "type": "general"] },
+             "kernel.metal has no function \"exGlo\" at kernel.function."),
             (changed { $0["kernel"] = ["file": "kernel.metal", "function": "exGlow", "type": "color"]; $0["input"] = nil },
              "A color kernel reads only its own pixel, so it has no reach at reach."),
             (changed { $0["reach"] = "tint" }, "Expected one number, not 4 numbers at reach."),
@@ -173,6 +178,13 @@ import Testing
             #expect(try problem(manifest) == "The package can't be used. " + message)
         }
         #expect(try problem(changed { $0["formatVersion"] = 2 }) == "The package has format version 2; this app reads version 1.")
+        #expect(try problem(changed { $0["formatVersion"] = true }) == "The package has format version none; this app reads version 1.")
+        // A manifest that isn't JSON gives no version.
+        let unreadable = try write(glow)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try Data("{ \"formatVersion\": 1,".utf8).write(to: unreadable.appending(path: "effect.json"))
+        let error = #expect(throws: (any Error).self) { try EffectPackageStore.read(unreadable) }
+        #expect(error?.localizedDescription == "The package has format version none; this app reads version 1.")
         // Packages that ship with the app keep the names their effects
         // were saved under before they were packages.
         #expect(try problem(changed { $0["id"] = "glow" }, builtIn: true) == nil)
@@ -242,5 +254,23 @@ import Testing
         let saved = try PresetStore.save(read.bundle, named: "Again", in: folder)
         let json = try JSONSerialization.jsonObject(with: Data(contentsOf: saved.url)) as! [String: Any]
         #expect(NSArray(array: json["effects"] as! [[String: Any]]) == NSArray(array: effects))
+    }
+}
+
+/// What the app hands out: the packages that ship, and the one new ones
+/// are made from.
+@Suite struct ShippedEffectPackageTests {
+    @Test func everyShippedPackageReadsAndItsParametersAreCounted() throws {
+        #expect(EffectRegistry.builtInPackages.problems.isEmpty)
+        for package in EffectRegistry.builtInPackages.packages {
+            // The check of its arguments against its kernel ran.
+            #expect(EffectPackageStore.parameterCount(of: package.kernelFunction, in: package.kernelSource, warp: package.kernelType == .warp) != nil, "\(package.id)")
+        }
+    }
+
+    @Test func theTemplateIsShippedButNotRead() throws {
+        let folder = try #require(EffectPackageStore.builtInFolder)
+        #expect(FileManager.default.fileExists(atPath: folder.appending(path: EffectPackageStore.templateName).appending(path: "effect.json").path))
+        #expect(!EffectRegistry.builtInPackages.packages.contains { $0.url.lastPathComponent.hasPrefix(".") })
     }
 }

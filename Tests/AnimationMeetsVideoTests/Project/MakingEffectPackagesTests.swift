@@ -120,6 +120,10 @@ import Testing
         // Opened again: its folder name is taken.
         #expect(try EffectPackageStore.opening(glow, into: effects).1 == .replace(existing: [copied]))
 
+        // In the Effects folder but not installed, as one put there by hand
+        // while the app runs: installed from where it is.
+        #expect(try EffectPackageStore.opening(copied, into: effects).1 == .install(destination: copied))
+
         // Installed, and opened from the Effects folder itself.
         let installed = EffectRegistry.withBuiltIns([try EffectPackageStore.read(copied)])
         try EffectRegistry.$override.withValue(installed) {
@@ -127,11 +131,48 @@ import Testing
             // Another folder with the same ID replaces the installed one.
             let renamed = try downloaded("Shine", renamedTo: "user.glow")
             #expect(try EffectPackageStore.opening(renamed, into: effects).1 == .replace(existing: [copied]))
+            // One whose folder name another has, and whose ID the installed
+            // one has, replaces both.
+            let shine = try EffectPackageStore.copyIn(renamed, into: effects)
+            #expect(try EffectPackageStore.opening(renamed, into: effects).1 == .replace(existing: [shine, copied]))
         }
 
         // Replacing removes the old folder and copies the new one.
         try EffectPackageStore.copyIn(glow, into: effects, replacing: [copied])
         #expect(FileManager.default.fileExists(atPath: copied.appending(path: "effect.json").path))
+    }
+
+    @Test func aCopysManifestIsEditedOnlyWhereItIsSure() throws {
+        let manifest = """
+        { "id": "com.example.glow", "name": "Glow", "version": 3,
+          "controls": [{ "id": "glow", "name": "Glow", "type": "number", "default": 1 }] }
+        """
+        // The package's name is a control's too: the first, the top level's,
+        // is changed, but it can't be sure that is the right one.
+        let shared = manifest.renamed(id: ("com.example.glow", "user.glowCopy"), name: ("Glow", "Glow Copy"))
+        #expect(!shared.certain)
+        #expect(shared.text.contains(#""name": "Glow Copy", "version": 1"#))
+        #expect(shared.text.contains(#"{ "id": "glow", "name": "Glow", "type""#))
+        // Each key once: sure.
+        let alone = manifest.replacingOccurrences(of: #""name": "Glow", "type""#, with: #""name": "Shine", "type""#)
+            .renamed(id: ("com.example.glow", "user.glowCopy"), name: ("Glow", "Glow Copy"))
+        #expect(alone.certain && alone.text.contains(#""id": "user.glowCopy""#))
+        // A key not found at all: not sure either.
+        #expect(!manifest.renamed(id: ("com.example.other", "user.x"), name: ("Glow", "Glow Copy")).certain)
+    }
+
+    @Test func aCopyWhoseControlSharesItsNameIsRenamedAtTheTopLevel() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        // Keys sorted, so the controls come before the package's own name.
+        let controls: [[String: Any]] = [["id": "glow", "name": "Glow", "type": "number", "default": 1]]
+        let url = try writeEffectPackage(
+            effectManifest("com.example.glow", function: "exGlow", controls: controls, arguments: ["glow"]).merging(["name": "Glow"]) { $1 },
+            kernel: "extern \"C\" [[stitchable]] float4 exGlow(coreimage::sample_t s, float space, float glow) { return s; }",
+            in: folder.appending(path: "Downloads"), named: "Glow.amveffect"
+        )
+        let copy = try EffectPackageStore.read(try EffectPackageStore.copyPackage(try EffectPackageStore.read(url), in: folder))
+        #expect(copy.id == "user.glowCopy" && copy.name == "Glow Copy" && copy.version == 1)
+        #expect(copy.controls.map(\.name) == ["Glow"])
     }
 
     @Test func aPackageCantTakeTheIDOfOneThatShips() throws {
