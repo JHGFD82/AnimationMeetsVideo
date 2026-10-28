@@ -15,6 +15,10 @@ import SwiftUI
 /// None) stays the block's. Offset X and Y move the letters from where
 /// they are set without moving the others.
 ///
+/// A color well's drag is held to one side of the project, as the block's
+/// is (`HeldColorWell`), so the viewer follows it without the editor
+/// redrawing at each step.
+///
 /// A number or color is set outright, as the block's are: the letters'
 /// own settings are keyframed in the effects panel, under a header of their
 /// letters (`EffectsPanel.runRow`), and one animated there shows here
@@ -123,7 +127,7 @@ struct TextSelectionRows: View {
             Text(name)
                 .foregroundStyle(Design.textSecondary)
                 .frame(width: InspectorControlRow.nameWidth, alignment: .leading)
-            ColorPicker(name, selection: Binding(
+            HeldColorWell(name: name, selection: Binding(
                 get: {
                     let c = value.value(at: time).values.map { CGFloat($0) }
                     return c.count == 4 ? CGColor(srgbRed: c[0], green: c[1], blue: c[2], alpha: c[3]) : CGColor(gray: 1, alpha: 1)
@@ -144,7 +148,7 @@ struct TextSelectionRows: View {
                         }
                     }
                 }
-            ), supportsOpacity: true)
+            ))
             .labelsHidden()
             .controlSize(.small)
             .accessibilityLabel(value.isAnimated ? "Selected letters' \(lowercase), animated" : "Selected letters' \(lowercase)")
