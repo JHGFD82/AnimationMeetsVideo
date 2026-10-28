@@ -159,7 +159,7 @@ struct EffectKind: RawRepresentable, Hashable, Identifiable, Sendable {
 
     /// Every registered kind that can be added and saved, in the library's
     /// order.
-    static var all: [EffectKind] { EffectRegistry.current.effects.filter { !$0.isHidden }.map(\.kind) }
+    static var all: [EffectKind] { EffectRegistry.current.addable }
 
     var id: Self { self }
 
@@ -184,7 +184,7 @@ struct EffectKind: RawRepresentable, Hashable, Identifiable, Sendable {
     var isShape: Bool { category == .shapes }
 
     /// Whether it draws a shape of its own, rather than stroking others.
-    var drawsShape: Bool { isShape && self != .stroke && self != .textAnimator }
+    var drawsShape: Bool { definition.drawsShape }
 
     var systemImage: String { definition.systemImage }
 
@@ -204,16 +204,13 @@ struct EffectKind: RawRepresentable, Hashable, Identifiable, Sendable {
 
     /// Whether it is one of the looks of docs/psychedelic-effects.md, or
     /// another package's, which are drawn as a `.look` step.
-    var isLook: Bool { EffectPackageStore.categories.contains(category) }
+    var isLook: Bool { definition.isLook }
 
     /// Whether it reads beside each pixel or moves pixels, rather than
     /// changing each one where it is: a warp or general kernel, or a
     /// built-in filter after it (a blur). Opacity and shapes above it are
     /// settled first, and a Stroke below it has no outline to follow.
-    var readsBesidePixels: Bool {
-        guard let package = definition.package else { return category == .distortion }
-        return (package.kernelType != .color && !package.readsOnlyItsPixel) || !package.after.isEmpty
-    }
+    var readsBesidePixels: Bool { definition.readsBesidePixels }
 
     /// Whether it replaces the picture with one it makes, rather than
     /// changing the one that reaches it.
@@ -254,18 +251,10 @@ struct ControlKind: RawRepresentable, Hashable, Identifiable, Sendable {
     /// shown dimmed there. A compressor's, limiter's or voice isolation's
     /// controls always matter: at their defaults they still work. So do a
     /// shape's, which draw it.
-    var hasNeutralDefault: Bool {
-        switch effectKind {
-        case .compressor, .limiter, .voiceIsolation: false
-        // A Keyframing effect's settings are what it makes keyframes from,
-        // and a look's what it looks like.
-        case _ where effectKind.isKeyframing || effectKind.isLook: false
-        default: !effectKind.isShape
-        }
-    }
+    var hasNeutralDefault: Bool { definition.hasNeutralDefault }
 
     /// Whether the control is a choice from a list rather than numbers.
-    var isChoice: Bool { !choiceOptions.isEmpty }
+    var isChoice: Bool { !definition.choiceOptions.isEmpty }
 
     /// What a choice offers, as raw values and names; empty for numbers.
     var choiceOptions: [(id: String, name: String)] { definition.choiceOptions }
@@ -294,9 +283,7 @@ struct ControlKind: RawRepresentable, Hashable, Identifiable, Sendable {
 
     /// The names of its components, for a graph's legend; none for a
     /// curve, whose numbers are its points, not values to graph.
-    var componentNames: [String] {
-        definition.componentNames ?? (isChoice ? [] : isColor ? ["Red", "Green", "Blue", "Alpha"] : [name])
-    }
+    var componentNames: [String] { definition.legend }
 
     /// What the control holds while it changes nothing.
     var defaultValues: [Double] { definition.defaultValues }
@@ -315,14 +302,19 @@ struct ControlKind: RawRepresentable, Hashable, Identifiable, Sendable {
 
     /// A component limited to what the control allows; a count is whole.
     func clamped(_ component: Double) -> Double {
-        let whole = isWhole ? component.rounded() : component
-        guard let range else { return whole }
+        Self.clamped(component, definition)
+    }
+
+    private static func clamped(_ component: Double, _ definition: ControlDefinition) -> Double {
+        let whole = definition.isWhole ? component.rounded() : component
+        guard let range = definition.range else { return whole }
         return whole.clamped(between: range.lowerBound, and: range.upperBound)
     }
 
     /// A shown value with its unit.
     func label(_ shown: Double) -> String {
-        NumericExpression.format(shown, maxFractionDigits: dragStep < 1 ? 2 : 1) + unit
+        let definition = definition
+        return NumericExpression.format(shown, maxFractionDigits: definition.dragStep < 1 ? 2 : 1) + definition.unit
     }
 
     // MARK: Components
@@ -330,33 +322,45 @@ struct ControlKind: RawRepresentable, Hashable, Identifiable, Sendable {
     /// Whether a new control of this kind is on: an EQ's bands start off,
     /// to be switched on as they're needed, and so does a Text Animator's
     /// Fill, which would otherwise recolor the letters it selects.
-    var startsEnabled: Bool { EqualizerBand(controlKind: self) == nil && self != .animatorFill && self != .animatorStroke }
+    var startsEnabled: Bool { equalizerBand == nil && self != .animatorFill && self != .animatorStroke }
+
+    /// The EQ band the control is, if it is one.
+    var equalizerBand: EqualizerBand? { definition.equalizerBand }
 
     /// The unit of one component. Most controls' components share one; an
     /// EQ band's frequency, gain and Q each have their own.
     func unit(ofComponent index: Int) -> String {
-        EqualizerBand(controlKind: self)?.unit(ofComponent: index) ?? unit
+        let definition = definition
+        return definition.equalizerBand?.unit(ofComponent: index) ?? definition.unit
     }
 
     /// What one component is limited to, if anything.
     func range(ofComponent index: Int) -> ClosedRange<Double>? {
-        EqualizerBand(controlKind: self)?.range(ofComponent: index) ?? range
+        let definition = definition
+        return definition.equalizerBand?.range(ofComponent: index) ?? definition.range
     }
 
     /// How far one point of dragging one component moves it.
     func dragStep(ofComponent index: Int) -> Double {
-        EqualizerBand(controlKind: self)?.dragStep(ofComponent: index) ?? dragStep
+        let definition = definition
+        return definition.equalizerBand?.dragStep(ofComponent: index) ?? definition.dragStep
     }
 
     /// One component limited to what the control allows there.
     func clamped(_ component: Double, index: Int) -> Double {
-        guard EqualizerBand(controlKind: self) != nil, let range = range(ofComponent: index) else { return clamped(component) }
+        let definition = definition
+        guard let band = definition.equalizerBand else { return Self.clamped(component, definition) }
+        let range = band.range(ofComponent: index)
         return component.clamped(between: range.lowerBound, and: range.upperBound)
     }
 
     /// One component's shown value with its unit.
     func label(_ shown: Double, component index: Int) -> String {
-        NumericExpression.format(shown, maxFractionDigits: dragStep(ofComponent: index) < 1 ? 2 : 1) + unit(ofComponent: index)
+        let definition = definition
+        let band = definition.equalizerBand
+        let step = band?.dragStep(ofComponent: index) ?? definition.dragStep
+        let unit = band?.unit(ofComponent: index) ?? definition.unit
+        return NumericExpression.format(shown, maxFractionDigits: step < 1 ? 2 : 1) + unit
     }
 }
 
@@ -404,17 +408,18 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     /// default throughout.
     var isNoOp: Bool {
         guard enabled else { return true }
-        guard kind.hasNeutralDefault else { return false }
-        if let band = EqualizerBand(controlKind: kind) {
+        let definition = kind.definition
+        guard definition.hasNeutralDefault else { return false }
+        if let band = definition.equalizerBand {
             // A cut always cuts; a shelf or bell does nothing at 0 dB,
             // wherever it is.
             guard let gain = band.gainIndex else { return false }
-            let values = number.isAnimated ? number.keyframes.map(\.value.values) : [number.value.values]
-            return values.allSatisfy { !$0.indices.contains(gain) || $0[gain] == 0 }
+            func flat(_ value: ComponentValue) -> Bool { !value.values.indices.contains(gain) || value.values[gain] == 0 }
+            return number.isAnimated ? number.keyframes.allSatisfy { flat($0.value) } : flat(number.value)
         }
         if kind == .mode { return blendMode == .normal }
         if kind == .matteMode { return false }
-        let defaults = ComponentValue(values: kind.defaultValues)
+        let defaults = definition.defaultValue
         if number.isAnimated { return number.keyframes.allSatisfy { $0.value == defaults } }
         return number.value == defaults
     }
@@ -422,7 +427,10 @@ struct EffectControl: Identifiable, Equatable, Sendable {
     /// Whether it holds what a new control of its kind does: not animated,
     /// at its default value or option, and not a squircle. Whether it is on
     /// doesn't count.
-    var isAtDefault: Bool { isAtDefault(like: EffectControl(kind: kind)) }
+    var isAtDefault: Bool {
+        let definition = kind.definition
+        return !number.isAnimated && number.value == definition.defaultValue && choice == definition.defaultChoice && !squircle
+    }
 
     /// Whether it holds what `fresh`, a new control of its kind as its
     /// effect would make it (a shape's size fitted to the frame), does.
@@ -452,11 +460,11 @@ struct EffectControl: Identifiable, Equatable, Sendable {
         guard newValue.isFinite, !kind.isChoice else { return }
         var values = number.value(at: time).values
         guard values.indices.contains(index) else { return }
-        let old = values
+        let old = values[index]
         values[index] = kind.clamped(newValue, index: index)
         if kind.isLinkable, linked, values.count == 2 {
             let other = 1 - index
-            values[other] = old[index] != 0 ? old[other] * newValue / old[index] : newValue
+            values[other] = old != 0 ? values[other] * newValue / old : newValue
         }
         number.set(ComponentValue(values: values), at: time)
     }
@@ -541,12 +549,13 @@ struct Effect: Identifiable, Equatable, Sendable {
         if kind.isKeyframing { return true }
         // A package's look that needs its pictures does nothing without them
         // (Displace, a map: an input, or the picture before an earlier step).
-        if let drawsWhen = kind.definition.package?.drawsWhen,
+        let definition = kind.definition
+        if let drawsWhen = definition.package?.drawsWhen,
            drawsWhen.number(PictureFlags(hasInput: input != nil, hasAgainst: against != nil)) == 0 {
             return true
         }
         // A look always changes the picture, unless it is mixed in at none.
-        if kind.isLook {
+        if definition.isLook {
             guard let amount = control(.amount), amount.enabled else { return false }
             return !amount.number.isAnimated && amount.number.value.values.first == 0
         }
@@ -601,9 +610,12 @@ struct Effect: Identifiable, Equatable, Sendable {
     /// a shape's sized to `frame` as one added to a timeline is, which is
     /// what Reset goes back to.
     func freshControl(_ kind: ControlKind, in frame: CGSize?) -> EffectControl {
-        var fresh = Effect(kind: self.kind)
-        if let frame { fresh.sizeShape(to: frame) }
-        return fresh.control(kind) ?? EffectControl(kind: kind)
+        var fresh = EffectControl(kind: kind, enabled: kind.startsEnabled)
+        if let frame, self.kind.controlKinds.contains(kind),
+           let values = Effect.shapeValues(of: kind, in: self.kind, sizedTo: frame) {
+            fresh.number = AnimatedValue(ComponentValue(values: values))
+        }
+        return fresh
     }
 
     /// Deletes a control. Without it the effect does nothing for it.
@@ -628,11 +640,7 @@ struct Effect: Identifiable, Equatable, Sendable {
     func duplicated(named name: String? = nil) -> Effect {
         var copy = self
         copy.id = UUID()
-        copy.controls = controls.map { control in
-            var control = control
-            control.id = UUID()
-            return control
-        }
+        for index in copy.controls.indices { copy.controls[index].id = UUID() }
         copy.missing = missing?.withNewControlIDs()
         if let name { copy.name = name }
         return copy
@@ -712,9 +720,17 @@ extension TimelineClip {
         return nil
     }
 
+    /// The list holding the effect with ID `id` and where it is in it, if
+    /// the clip has it.
+    func location(ofEffect id: UUID) -> (stack: WritableKeyPath<TimelineClip, [Effect]>, index: Int)? {
+        if let index = effects.index(of: id) { return (\.effects, index) }
+        if let index = audioEffects.index(of: id) { return (\.audioEffects, index) }
+        return nil
+    }
+
     /// The effect with ID `id`, in either list.
     func effect(id: UUID) -> Effect? {
-        stack(holding: id).flatMap { self[keyPath: $0].first(id: id) }
+        effects.first(id: id) ?? audioEffects.first(id: id)
     }
 
     /// The span of time in which something in the clip's stack, or its
@@ -805,9 +821,9 @@ extension EditingProject {
         if let frame = timeline(id: timelineID)?.frameSize { effect.sizeShape(to: frame) }
         let count = clip[keyPath: stack].count
         let at = (index ?? (kind.isKeyframing ? 0 : count)).clamped(between: 0, and: count)
-        var placed = clip
-        placed[keyPath: stack].insert(effect, at: at)
         if kind.isKeyframing {
+            var placed = clip
+            placed[keyPath: stack].insert(effect, at: at)
             // The first that no other Keyframing effect writes to, since two
             // on one control would undo each other.
             let taken = Set(placed.effects.compactMap { $0.keyframing?.target })
@@ -825,18 +841,21 @@ extension EditingProject {
     /// makes its keyframes again; one pointed somewhere else leaves what it
     /// wrote on its old target as plain keyframes.
     mutating func editEffect(_ effectID: UUID, ofClip clipID: UUID, in timelineID: UUID, _ change: (inout Effect) -> Void) {
-        var before: Effect?
-        var after: Effect?
+        var changedKeyframing = false
         editClip(clipID, in: timelineID) { clip in
-            guard let stack = clip.stack(holding: effectID), let index = clip[keyPath: stack].index(of: effectID) else { return }
-            before = clip[keyPath: stack][index]
+            guard let (stack, index) = clip.location(ofEffect: effectID) else { return }
+            // Only a Keyframing effect is compared with how it was. Holding
+            // a copy of any other would make the change copy its controls.
+            let before = clip[keyPath: stack][index].keyframing == nil ? nil : clip[keyPath: stack][index]
             change(&clip[keyPath: stack][index])
-            after = clip[keyPath: stack][index]
-            if let old = before?.keyframing?.target, old != after?.keyframing?.target {
+            guard let before else { return }
+            let after = clip[keyPath: stack][index]
+            if let old = before.keyframing?.target, old != after.keyframing?.target {
                 clip.releaseKeyframes(of: effectID, on: old)
             }
+            changedKeyframing = after.kind.isKeyframing && after != before
         }
-        if let after, after.kind.isKeyframing, after != before {
+        if changedKeyframing {
             regenerateKeyframes(ofEffect: effectID, onClip: clipID, in: timelineID)
         }
     }
@@ -854,7 +873,7 @@ extension EditingProject {
     /// Moves an effect to `index` in its stack (0 is the top).
     mutating func moveEffect(_ effectID: UUID, ofClip clipID: UUID, in timelineID: UUID, toIndex index: Int) {
         editClip(clipID, in: timelineID) { clip in
-            guard let stack = clip.stack(holding: effectID), let from = clip[keyPath: stack].index(of: effectID) else { return }
+            guard let (stack, from) = clip.location(ofEffect: effectID) else { return }
             let effect = clip[keyPath: stack].remove(at: from)
             clip[keyPath: stack].insert(effect, clampedAt: index)
         }
@@ -865,7 +884,7 @@ extension EditingProject {
     mutating func duplicateEffect(_ effectID: UUID, ofClip clipID: UUID, in timelineID: UUID) -> UUID? {
         var copyID: UUID?
         editClip(clipID, in: timelineID) { clip in
-            guard let stack = clip.stack(holding: effectID), let index = clip[keyPath: stack].index(of: effectID) else { return }
+            guard let (stack, index) = clip.location(ofEffect: effectID) else { return }
             let original = clip[keyPath: stack][index]
             var copy = original.duplicated(named: Effect.make(original.kind, among: clip[keyPath: stack]).name)
             // Two effects writing to one control would undo each other.
@@ -905,7 +924,8 @@ extension TimelineClip {
         }
         for stack in [\TimelineClip.effects, \.audioEffects] {
             for e in self[keyPath: stack].indices {
-                for c in self[keyPath: stack][e].controls.indices where self[keyPath: stack][e].controls[c].number.keyframe(at: source) != nil {
+                for c in self[keyPath: stack][e].controls.indices
+                where self[keyPath: stack][e].controls[c].number.isAnimated && self[keyPath: stack][e].controls[c].number.keyframe(at: source) != nil {
                     self[keyPath: stack][e].controls[c].number.applyEase(preset, at: source)
                     eased = true
                 }

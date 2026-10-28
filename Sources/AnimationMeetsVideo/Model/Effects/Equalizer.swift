@@ -33,7 +33,7 @@ enum EqualizerBand: Int, CaseIterable, Identifiable, Sendable {
     var id: Self { self }
 
     init?(controlKind: ControlKind) {
-        guard let band = Self.allCases.first(where: { $0.controlKind == controlKind }) else { return nil }
+        guard let band = controlKind.equalizerBand else { return nil }
         self = band
     }
 

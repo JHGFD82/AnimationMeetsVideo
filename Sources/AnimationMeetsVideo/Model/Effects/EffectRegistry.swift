@@ -10,6 +10,9 @@ struct EffectRegistry: Sendable {
     let effects: [EffectDefinition]
     /// The packages that couldn't be installed, and why.
     let problems: [EffectPackageProblem]
+    /// The kinds that can be added and saved, in the library's order
+    /// (`EffectKind.all`).
+    let addable: [EffectKind]
     private let effectsByName: [String: EffectDefinition]
     private let controlsByName: [String: ControlDefinition]
 
@@ -34,13 +37,18 @@ struct EffectRegistry: Sendable {
             effects.append(package.definition)
             controls += package.controls
         }
+        effects = effects.map { $0.resolved() }
         let order = Dictionary(uniqueKeysWithValues: BuiltInEffects.libraryOrder.enumerated().map { ($1, $0) })
         self.effects = effects.enumerated()
             .sorted { (order[$0.element.kind.rawValue] ?? Int.max, $0.offset) < (order[$1.element.kind.rawValue] ?? Int.max, $1.offset) }
             .map(\.element)
         self.problems = problems
-        effectsByName = Dictionary(uniqueKeysWithValues: effects.map { ($0.kind.rawValue, $0) })
-        controlsByName = Dictionary(uniqueKeysWithValues: controls.map { ($0.kind.rawValue, $0) })
+        addable = self.effects.filter { !$0.isHidden }.map(\.kind)
+        let effectsByName = Dictionary(uniqueKeysWithValues: effects.map { ($0.kind.rawValue, $0) })
+        self.effectsByName = effectsByName
+        controlsByName = Dictionary(uniqueKeysWithValues: controls.map {
+            ($0.kind.rawValue, $0.resolved(owner: effectsByName[$0.effectKind.rawValue]))
+        })
     }
 
     /// The packages that ship with the app, read once.
@@ -149,6 +157,12 @@ struct EffectDefinition: Sendable {
     /// saved under its own name.
     var isHidden = false
 
+    // Worked out from the rest when the registry is made, so that reading
+    // one costs a single lookup (see `EffectKind`).
+    fileprivate(set) var isLook = false
+    fileprivate(set) var drawsShape = false
+    fileprivate(set) var readsBesidePixels = false
+
     init(
         _ kind: EffectKind, _ name: String, _ category: EffectCategory, _ systemImage: String, controls: [ControlKind],
         reshapesTarget: Bool = false, takesInput: Bool = false, readsAgainst: Bool = false,
@@ -175,6 +189,18 @@ struct EffectDefinition: Sendable {
     ) {
         self.init(kind, name, category, systemImage, controls: sections.flatMap(\.kinds), reshapesTarget: reshapesTarget)
         self.sections = sections
+    }
+
+    fileprivate func resolved() -> EffectDefinition {
+        var resolved = self
+        resolved.isLook = EffectPackageStore.categories.contains(category)
+        resolved.drawsShape = category == .shapes && kind != .stroke && kind != .textAnimator
+        if let package {
+            resolved.readsBesidePixels = (package.kernelType != .color && !package.readsOnlyItsPixel) || !package.after.isEmpty
+        } else {
+            resolved.readsBesidePixels = category == .distortion
+        }
+        return resolved
     }
 }
 
@@ -209,6 +235,14 @@ struct ControlDefinition: Sendable {
     var isCurve = false
     /// For a curve: the color its line is drawn in on the graph.
     var curveTint = CurveTint.white
+    /// For an EQ band's control: the band.
+    var equalizerBand: EqualizerBand?
+
+    // Worked out from the rest when the registry is made (see
+    // `ControlKind`).
+    fileprivate(set) var hasNeutralDefault = true
+    fileprivate(set) var defaultValue = ComponentValue(values: [])
+    fileprivate(set) var legend: [String] = []
 
     init(
         _ kind: ControlKind, _ name: String, _ effectKind: EffectKind, defaults: [Double] = [], unit: String = "",
@@ -244,6 +278,7 @@ struct ControlDefinition: Sendable {
         effectKind = .equalizer
         defaultValues = band.defaultValues
         componentNames = band.componentNames
+        equalizerBand = band
     }
 
     /// A tone curve, starting at `defaults` (the identity unless given).
@@ -257,6 +292,25 @@ struct ControlDefinition: Sendable {
         componentNames = []
         isCurve = true
         curveTint = tint
+    }
+
+    /// With what follows from the rest filled in; `owner` is the definition
+    /// of `effectKind`.
+    fileprivate func resolved(owner: EffectDefinition?) -> ControlDefinition {
+        var resolved = self
+        // A compressor's, limiter's or voice isolation's controls always
+        // matter: at their defaults they still work. So do a shape's, which
+        // draw it, a Keyframing effect's, which it makes keyframes from,
+        // and a look's, which are what it looks like.
+        if let owner {
+            resolved.hasNeutralDefault = switch owner.kind {
+            case .compressor, .limiter, .voiceIsolation: false
+            default: !(owner.category == .keyframing || owner.isLook || owner.category == .shapes)
+            }
+        }
+        resolved.defaultValue = ComponentValue(values: defaultValues)
+        resolved.legend = componentNames ?? (!choiceOptions.isEmpty ? [] : isColor ? ["Red", "Green", "Blue", "Alpha"] : [name])
+        return resolved
     }
 }
 

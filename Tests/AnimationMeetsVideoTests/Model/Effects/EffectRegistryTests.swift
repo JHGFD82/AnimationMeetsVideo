@@ -52,4 +52,38 @@ import Testing
             }
         }
     }
+
+    /// What the registry works out once for each kind is what reading its
+    /// definition would give.
+    @Test func whatIsWorkedOutAgreesWithTheDefinitions() {
+        for kind in registry.effects.map(\.kind) {
+            let definition = kind.definition
+            #expect(kind.isLook == EffectPackageStore.categories.contains(definition.category), "\(kind.rawValue)")
+            #expect(kind.drawsShape == (kind.isShape && kind != .stroke && kind != .textAnimator), "\(kind.rawValue)")
+            for control in kind.controlKinds where control.effectKind == kind {
+                let neutral = switch kind {
+                case .compressor, .limiter, .voiceIsolation: false
+                default: !(kind.isKeyframing || kind.isLook || kind.isShape)
+                }
+                #expect(control.hasNeutralDefault == neutral, "\(control.rawValue)")
+                #expect(control.definition.defaultValue.values == control.defaultValues, "\(control.rawValue)")
+                #expect(control.equalizerBand == EqualizerBand.allCases.first { $0.controlKind == control }, "\(control.rawValue)")
+            }
+        }
+        #expect(EffectKind.all == registry.effects.filter { !$0.isHidden }.map(\.kind))
+    }
+
+    /// A fresh control is the one a new effect, sized to the frame, holds.
+    @Test func aFreshControlIsANewEffectsControl() {
+        let frame = CGSize(width: 1920, height: 1080)
+        for kind in EffectKind.all {
+            var made = Effect(kind: kind)
+            made.sizeShape(to: frame)
+            for control in made.controls {
+                let fresh = made.freshControl(control.kind, in: frame)
+                #expect(fresh.number == control.number && fresh.choice == control.choice, "\(control.kind.rawValue)")
+                #expect(control.isAtDefault == control.isAtDefault(like: EffectControl(kind: control.kind)))
+            }
+        }
+    }
 }

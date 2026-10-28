@@ -19,18 +19,24 @@ extension Effect {
     /// as tall (its inner points halfway in), and text a ninth of its
     /// height (120 pixels in HD).
     mutating func sizeShape(to frame: CGSize) {
-        let side = Double(frame.height / 2).rounded()
-        func set(_ kind: ControlKind, _ values: [Double]) {
-            changeControl(kind) { $0.number = AnimatedValue(ComponentValue(values: values)) }
+        for index in controls.indices {
+            if let values = Self.shapeValues(of: controls[index].kind, in: kind, sizedTo: frame) {
+                controls[index].number = AnimatedValue(ComponentValue(values: values))
+            }
         }
-        switch kind {
-        case .rectangle: set(.shapeSize, [Double(frame.width / 2).rounded(), side])
-        case .ellipse: set(.shapeSize, [side, side])
-        case .polygon, .star:
-            set(.radius, [side / 2])
-            set(.innerRadius, [(side / 4).rounded()])
-        case .text: set(.fontSize, [max(1, Double(frame.height / 9).rounded())])
-        default: break
+    }
+
+    /// What `sizeShape` sets a control of `control` kind to in an effect of
+    /// `kind`; nil for one it leaves alone.
+    static func shapeValues(of control: ControlKind, in kind: EffectKind, sizedTo frame: CGSize) -> [Double]? {
+        let side = Double(frame.height / 2).rounded()
+        switch (kind, control) {
+        case (.rectangle, .shapeSize): return [Double(frame.width / 2).rounded(), side]
+        case (.ellipse, .shapeSize): return [side, side]
+        case (.polygon, .radius), (.star, .radius): return [side / 2]
+        case (.polygon, .innerRadius), (.star, .innerRadius): return [(side / 4).rounded()]
+        case (.text, .fontSize): return [max(1, Double(frame.height / 9).rounded())]
+        default: return nil
         }
     }
 }

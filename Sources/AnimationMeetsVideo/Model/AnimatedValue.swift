@@ -162,7 +162,8 @@ struct AnimatedValue<Value: Interpolatable>: Equatable, Sendable {
     }
 
     func keyframe(at time: CMTime) -> Keyframe<Value>? {
-        keyframes.first { $0.time == time }
+        let index = keyframes.lowerBound(of: time) { $0.time }
+        return index < keyframes.count && keyframes[index].time == time ? keyframes[index] : nil
     }
 
     /// The same with every keyframe `delta` later (earlier if negative).
