@@ -106,8 +106,10 @@ final class BeatMatchSession: SecondsViewport {
 
     /// Jumps back at the end of the loop, only while one plays.
     @ObservationIgnored private var loopObserver: Any?
-    /// The loop `loopObserver` watches the end of, while one plays.
+    /// The loop `loopObserver` watches the end of, while one plays; set
+    /// only here, read by tests.
     @ObservationIgnored private(set) var watchedLoop: ClosedRange<Double>?
+    /// Whether a loop's end is being watched, for tests.
     var isWatchingLoop: Bool { loopObserver != nil }
     /// Where the song's audio ends in the file, once its tracks are read.
     @ObservationIgnored private var songEnd: CMTime?
@@ -947,7 +949,8 @@ final class BeatMatchSession: SecondsViewport {
     /// How far short of the song's end a loop past it jumps back.
     static let loopEndMargin = 0.02
 
-    /// The player started or stopped, as its status reports.
+    /// The player started or stopped, as its status reports. Not private,
+    /// for tests, which drive it to follow the loop without playing audio.
     func playingChanged(_ playing: Bool) {
         guard playing != isPlaying else { return }
         isPlaying = playing

@@ -203,10 +203,12 @@ import Testing
         session.addBeat(at: 39.5, position: 1)
         session.playingChanged(true)
         session.isLooping = true
+        // The song's audio runs its whole duration, so its end is the end.
+        let end = session.duration.seconds
         let loop = try #require(session.watchedLoop)
         let unclamped = try #require(session.loopRange)
-        #expect(unclamped.upperBound > 40)
-        #expect(abs(loop.upperBound - (40 - BeatMatchSession.loopEndMargin)) < 1e-3)
+        #expect(unclamped.upperBound > end)
+        #expect(abs(loop.upperBound - (end - BeatMatchSession.loopEndMargin)) < 1e-3)
         #expect(loop.lowerBound == unclamped.lowerBound)
     }
 

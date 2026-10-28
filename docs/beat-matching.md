@@ -90,7 +90,10 @@ step.
    1 ms, ⌥ by one sample of the file, and ⇧ by 10 ms; there are no nudge
    buttons. A loop toggle repeats the
    two bars around the selected anchor: a boundary observer at the loop's
-   end jumps back, installed only while a loop plays.
+   end jumps back, installed only while a loop plays. A loop whose end
+   lies past the song's audio jumps back `loopEndMargin` (20 ms) short of
+   where the audio ends: the player pauses at the end of its item, and
+   that pause would take the loop down before it could jump back.
 3. **Confirm.** The number of beats between the anchors comes from a rough
    tempo estimate. Dividing the time between the anchors by that number
    gives the exact period. The panel shows the tempo with two decimals; the
