@@ -157,7 +157,7 @@ original time.
   both ends: each beat is searched within a quarter of a gap of its even
   place, scoring the onset there against how far each gap strays from the
   expected one. Peaks are placed between frames with a parabola. A beat
-  is searched at most 96 frames (279 ms) either side, which only limits
+  is searched at most 0.28 s either side, which only limits
   tempos under 54 BPM.
 - **Past the outer anchors** the beats step on a period at a time, to the
   section's edge. For intent each step moves to the strongest onset within
@@ -174,7 +174,10 @@ original time.
   it was put. A pinned beat that snapping moved keeps where the person
   put it: the panel says how far it moved, and **Undo Snap** puts it back,
   where fills then leave it (saved as `heard` and `unsnapped` on the
-  beat). Moving it by hand forgets where it was heard.
+  beat), and leaves it out of lining up the curve (see Onset timing):
+  it is meant to sit where it is, not where its onset is heard. **Snap
+  Again** snaps that one beat back onto its onset without filling again.
+  Moving it by hand forgets where it was heard.
 - **Onset timing.** Spectral flux peaks about 14 ms before a sharp hit,
   because it rises as soon as the hit enters the analysis window. The
   anchors are lined up by ear, so the curve is shifted by the median

@@ -31,19 +31,25 @@ import Testing
             kind: .consistent, start: .zero, end: BeatFitting.time(360, sampleRate: rate), steadiness: steadiness, beats: pins
         )
         let map = BeatMap(sections: [section])
-        let clock = ContinuousClock()
-        var filled = map
-        let elapsed = try clock.measure {
-            filled = try BeatFitting.fill(map, section: section.id, curve: curve, sampleRate: rate, duration: BeatFitting.time(361, sampleRate: rate))
-        }
+        // The fill's own processor time: the whole suite runs in parallel,
+        // and waiting for a core isn't the fill's.
+        let before = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+        let filled = try BeatFitting.fill(map, section: section.id, curve: curve, sampleRate: rate, duration: BeatFitting.time(361, sampleRate: rate))
+        let elapsed = Duration.nanoseconds(Int64(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - before))
         print("BeatFittingPerformanceTests \(steadiness): \(elapsed)")
         let found = filled.sections[0].beats
         // Steady by intent, anchors a beat apart double the tempo: the
         // refined count search scores no beat between them at 0, below a
         // chain with one. Only the time is held to here.
         if steadiness == .click { #expect(found.count == beats.count) }
-        // Debug builds run several times slower than release, which this
-        // is meant for; the bound leaves room for that.
-        #expect(elapsed < .seconds(1), "\(elapsed)")
+        // A release build takes a few milliseconds. A debug build, beside
+        // the rest of the suite, takes most of a second; it was 18 to 31
+        // before the rework.
+        #if DEBUG
+        let bound = Duration.seconds(3)
+        #else
+        let bound = Duration.seconds(1)
+        #endif
+        #expect(elapsed < bound, "\(elapsed)")
     }
 }

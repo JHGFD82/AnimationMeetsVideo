@@ -261,6 +261,7 @@ extension BeatMap {
                     .map { beat in
                         var moved = beat
                         moved.time = CMTimeAdd(beat.time, shift)
+                        moved.heardTime = beat.heardTime.map { CMTimeAdd($0, shift) }
                         return moved
                     }
                     .filter { copy.contains($0.time) }

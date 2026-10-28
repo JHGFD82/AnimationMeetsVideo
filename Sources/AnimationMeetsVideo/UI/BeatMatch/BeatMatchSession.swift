@@ -766,6 +766,17 @@ final class BeatMatchSession: SecondsViewport {
         if let restored = edit({ map in map.undoSnap(at: beat) }) { selectedBeat = restored }
     }
 
+    /// Lets the selected beat snap onto its onset again, after Undo Snap.
+    func snapAgain() {
+        guard let audio, let beat = selectedBeat else { return }
+        let snapped = edit { map -> CMTime? in
+            guard let result = BeatFitting.snapAgain(map, at: beat, curve: audio.curve, sampleRate: audio.sampleRate) else { return nil }
+            map = result.map
+            return result.time
+        }
+        if let snapped { selectedBeat = snapped }
+    }
+
     func unpinSelected() {
         guard let beat = selectedBeat else { return }
         edit { map in map.unpin(at: beat) }

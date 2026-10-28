@@ -229,11 +229,10 @@ enum BeatFitting {
     static let steadyReach = 0.15
     static let chainReach = 0.25
     static let rampReach = 0.25
-    /// The most frames a chained beat is searched either side of its even
-    /// place, which bounds the chain's work on fine curves: past a quarter
-    /// of a beat at 60 BPM on the panel's curve, so it limits only slower
-    /// tempos there.
-    static let chainReachFrames = 96
+    /// The furthest, in seconds, a chained beat is searched either side of
+    /// its even place, which bounds the chain's work on fine curves: a
+    /// quarter of a beat at 54 BPM, so it limits only slower tempos.
+    static let chainReachSeconds = 0.28
     /// How far, as a share of the expected count, the number of beats
     /// between two anchors is searched.
     static let countSearch = 0.12
@@ -365,6 +364,32 @@ enum BeatFitting {
         return pins
     }
 
+    /// The times of the beats that line the curve up with how the music is
+    /// heard (see `aligned`): not those the person put back off their
+    /// onset, which are meant to sit where they are, not where they hear it.
+    private static func heard(_ beats: [MappedBeat]) -> [Double] {
+        beats.filter(\.snapsToOnset).map(\.time.seconds)
+    }
+
+    /// The map with the beat at `time` snapping onto its onset again, after
+    /// its snap was undone, and where it went; nil without such a beat.
+    static func snapAgain(_ map: BeatMap, at time: CMTime, curve: OnsetCurve, sampleRate: Double) -> (map: BeatMap, time: CMTime)? {
+        guard let (sectionIndex, beatIndex) = map.beatIndex(at: time), !map.sections[sectionIndex].beats[beatIndex].snapsToOnset else {
+            return nil
+        }
+        var map = map
+        var section = map.sections[sectionIndex]
+        section.beats[beatIndex].snapsToOnset = true
+        let curve = aligned(curve, to: heard(section.pinnedBeats))
+        guard let beat = snapped([section.beats[beatIndex]], curve: curve, sampleRate: sampleRate).first,
+              !section.beats.indices.contains(where: { $0 != beatIndex && CMTimeCompare(section.beats[$0].time, beat.time) == 0 })
+        else { return nil }
+        section.beats[beatIndex] = beat
+        section.normalize()
+        map.sections[sectionIndex] = section
+        return (map, beat.time)
+    }
+
     /// Whether `period`, in seconds, is one beats can step at.
     private static func usable(_ period: Double) -> Bool { period.isFinite && period > 1e-4 }
 
@@ -394,7 +419,7 @@ enum BeatFitting {
         let distinct = distinctPins(of: section, sampleRate: sampleRate)
         guard distinct.count >= 2 || (typed != nil && !distinct.isEmpty) else { throw Failure.needsTwoAnchors }
         var report = FillReport()
-        let curve = aligned(curve, to: distinct.map(\.time.seconds))
+        let curve = aligned(curve, to: heard(distinct))
         // Beats placed by ear are a few milliseconds off; each moves onto
         // its onset, and stays pinned.
         let pins = snapped(distinct, curve: curve, sampleRate: sampleRate)
@@ -741,7 +766,7 @@ enum BeatFitting {
         var added = zip(times, times.dropFirst()).map { ($0 + $1) / 2 }
         if times[0] - period / 2 >= section.start.seconds { added.append(times[0] - period / 2) }
         if times[times.count - 1] + period / 2 < section.end.seconds { added.append(times[times.count - 1] + period / 2) }
-        let aligned = aligned(curve, to: section.pinnedBeats.map(\.time.seconds))
+        let aligned = aligned(curve, to: heard(section.pinnedBeats))
         var result = section
         result.beats += snapped(added.map { MappedBeat(time: time($0, sampleRate: sampleRate)) }, curve: aligned, sampleRate: sampleRate)
         result.normalize()
@@ -817,7 +842,9 @@ enum BeatFitting {
             throw Failure.needsBothEnds
         }
         guard usable(startPeriod), usable(endPeriod) else { throw Failure.unusableTempo }
-        let curve = aligned(curve, to: fixed.map(\.time))
+        // The neighbours' beats are on their onsets already, as the curve
+        // was aligned when they were filled.
+        let curve = aligned(curve, to: [before?.beats.last, after?.beats.first].compactMap { $0?.time.seconds } + heard(pinned))
         // Inner pinned beats: the period where they are on an even ramp.
         let span = fixed[fixed.count - 1].time - fixed[0].time
         let periods = fixed.map { point in
@@ -925,7 +952,7 @@ enum BeatFitting {
         for index in 0..<inner {
             let frame = frames[index + 1]
             let gap = min(frame - frames[index], frames[index + 2] - frame)
-            let reach = min(max(1, gap * share), Double(chainReachFrames))
+            let reach = min(max(1, gap * share), max(1, (chainReachSeconds * curve.framesPerSecond).rounded(.down)))
             let low = OnsetCurve.index((frame - reach).rounded(.down)), high = OnsetCurve.index((frame + reach).rounded(.up))
             lows[index] = low
             widths[index] = max(low, high) - low + 1

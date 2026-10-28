@@ -243,6 +243,46 @@ private func worstError(_ found: [MappedBeat], _ truth: [Double]) -> Double {
         #expect(map.beat(at: time(heard + 0.001))?.snapsToOnset == true)
     }
 
+    @Test func aPinPutBackOffItsOnsetDoesNotShiftTheOthers() throws {
+        let (curve, truth) = clickCurve(bpm: 120, seconds: 30)
+        // On its onset as heard, and one the person means 12 ms late.
+        var section = rawSection(0, 30, pins: [(truth[4], 1), (truth[36] + 0.012, 1)])
+        section.beats[1].snapsToOnset = false
+        let (filled, _) = try BeatFitting.fillConsistent(section, curve: curve, sampleRate: rate)
+        let kept = try #require(filled.beats.first { !$0.snapsToOnset })
+        #expect(kept.time == time(truth[36] + 0.012))
+        // Lined up by the other pin alone, the beats stay on the clicks;
+        // counting the late one would move them 6 ms.
+        let generated = filled.beats.filter { !$0.isPinned }
+        #expect(worstError(generated, truth) < 0.001, "\(worstError(generated, truth))")
+    }
+
+    @Test func snapAgainMovesOneBeatBackOntoItsOnset() throws {
+        let (curve, truth) = clickCurve(bpm: 120, seconds: 30)
+        var section = rawSection(0, 30, pins: [(truth[4], 1), (truth[20] + 0.008, 1), (truth[36], 1)])
+        section.beats[1].snapsToOnset = false
+        let map = BeatMap(sections: [section])
+        let (again, moved) = try #require(BeatFitting.snapAgain(map, at: time(truth[20] + 0.008), curve: curve, sampleRate: rate))
+        #expect(abs(moved.seconds - truth[20]) < 0.001)
+        let beat = try #require(again.beat(at: moved))
+        #expect(beat.snapsToOnset && beat.isPinned && beat.heardTime == time(truth[20] + 0.008))
+        // Only that beat moved.
+        #expect(again.sections[0].beats.count == 3)
+        #expect(again.beat(at: time(truth[4])) != nil && again.beat(at: time(truth[36])) != nil)
+        // A beat that snaps already has nothing to snap again.
+        #expect(BeatFitting.snapAgain(again, at: moved, curve: curve, sampleRate: rate) == nil)
+    }
+
+    @Test func aCopiedSectionsSnappedBeatsKeepWhereTheyWereHeard() throws {
+        var section = rawSection(0, 10, pins: [(2, 1)])
+        section.beats[0].heardTime = time(1.99)
+        var map = BeatMap(sections: [section], usesSections: true)
+        let copied = map.copySection(section.id, to: time(20), duration: time(40))
+        let copy = try #require(copied)
+        let beat = try #require(map.section(id: copy)?.beats.first)
+        #expect(beat.time == time(22) && beat.heardTime == time(21.99))
+    }
+
     @Test func aCancelledFillStops() async throws {
         let (curve, beats) = BeatFittingPerformanceTests.song()
         let pins = [beats[300], beats[301]].map { MappedBeat(time: time($0), position: 1, isPinned: true) }

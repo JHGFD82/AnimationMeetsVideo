@@ -669,6 +669,10 @@ struct BeatMatchView: View {
                 if beat.heardTime != nil {
                     Button("Undo Snap", action: session.undoSnap)
                         .help("Put the beat back where you placed it; fills then leave it there")
+                } else if beat.isPinned, !beat.snapsToOnset {
+                    Button("Snap Again", action: session.snapAgain)
+                        .help("Move the beat onto its onset again, as fills do")
+                        .disabled(session.audio == nil)
                 }
                 if beat.isPinned {
                     Button("Unpin", action: session.unpinSelected)
