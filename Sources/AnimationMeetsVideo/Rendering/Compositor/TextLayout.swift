@@ -30,6 +30,15 @@ final class TextLayout: @unchecked Sendable {
         var position = TextPosition.normal
         /// The run's own stroke width; nil where the block's is used.
         var strokeWidth: Double?
+        /// Baseline to baseline; 0 is Auto, 120% of the size. A line is
+        /// spaced by the largest of its letters'.
+        var leading = 0.0
+        /// Degrees each letter turns about its middle, clockwise.
+        var characterRotation = 0.0
+        /// How far the letters move, right and down, from where they are
+        /// set, after the block is laid out.
+        var offsetX = 0.0
+        var offsetY = 0.0
         /// An OpenType feature the letters' font draws them with (its own
         /// superscripts), set as they are laid out.
         var feature: String?
@@ -363,9 +372,11 @@ final class TextLayout: @unchecked Sendable {
             lines[index].width += lines[index].kerning.total
         }
 
-        // Each line's height and spacing from its own letters.
-        func metrics(of line: CTLine) -> (ascent: Double, descent: Double, size: Double) {
-            var result = (ascent: 0.0, descent: 0.0, size: 0.0)
+        // Each line's height and spacing from its own letters: the
+        // largest leading of its letters, as Illustrator spaces lines.
+        func leading(of style: LetterStyle) -> Double { style.leading > 0 ? style.leading : style.size * 1.2 }
+        func metrics(of line: CTLine) -> (ascent: Double, descent: Double, leading: Double) {
+            var result = (ascent: 0.0, descent: 0.0, leading: 0.0)
             let runs = CTLineGetGlyphRuns(line) as? [CTRun] ?? []
             for run in runs {
                 let attributes = CTRunGetAttributes(run) as NSDictionary
@@ -374,11 +385,11 @@ final class TextLayout: @unchecked Sendable {
                 let runFont = value as! CTFont
                 result.ascent = max(result.ascent, CTFontGetAscent(runFont))
                 result.descent = max(result.descent, CTFontGetDescent(runFont))
-                result.size = max(result.size, style.size)
+                result.leading = max(result.leading, leading(of: style))
             }
             if runs.isEmpty {
                 let blockFont = font(of: block)
-                result = (CTFontGetAscent(blockFont), CTFontGetDescent(blockFont), block.size)
+                result = (CTFontGetAscent(blockFont), CTFontGetDescent(blockFont), leading(of: block))
             }
             return result
         }
@@ -390,7 +401,7 @@ final class TextLayout: @unchecked Sendable {
         var baseline = lineMetrics.first?.ascent ?? 0
         for (index, line) in lines.enumerated() {
             if index > 0 {
-                baseline += setting.leading > 0 ? setting.leading : lineMetrics[index].size * 1.2
+                baseline += lineMetrics[index].leading
                 if line.startsParagraph { baseline += setting.spaceAfter + setting.spaceBefore }
             }
             baselines.append(baseline)
@@ -581,7 +592,9 @@ final class TextLayout: @unchecked Sendable {
                 guard !outline.isEmpty || !rules.isEmpty else { continue }
                 laid.glyphs.append(Laid.Glyph(
                     outline: outline,
-                    origin: CGPoint(x: origin.x + positions[k].x, y: origin.y - positions[k].y - style.baselineShift),
+                    origin: CGPoint(
+                        x: origin.x + positions[k].x + style.offsetX, y: origin.y - positions[k].y - style.baselineShift + style.offsetY
+                    ),
                     advance: advances[k].width, middle: middle, style: styleIndex,
                     character: characters.indices.contains(unit) ? characters[unit] : 0,
                     letter: letters.indices.contains(unit) ? letters[unit] : 0,

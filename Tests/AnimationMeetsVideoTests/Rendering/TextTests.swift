@@ -193,6 +193,71 @@ extension DrawingFixture {
         #expect(bounds(plain).width < bounds(unkerned).width)
     }
 
+    @Test func kerningASelectionSpacesThePairsInsideIt() {
+        let content = TextContent(string: "AVAV")
+        // The pairs within it, not the one after its last letter.
+        #expect(content.kerningRange(of: NSRange(location: 0, length: 3)) == NSRange(location: 0, length: 2))
+        // One letter alone kerns the pair it begins.
+        #expect(content.kerningRange(of: NSRange(location: 1, length: 1)) == NSRange(location: 1, length: 1))
+        #expect(TextContent(string: "A😀").kerningRange(of: NSRange(location: 0, length: 3)) == NSRange(location: 0, length: 1))
+
+        let plain = setting("AVAV")
+        var kerned = plain
+        kerned.runs = [TextStyleRun(start: 0, length: 2, style: TextStyle(kerning: 100))]
+        // Two pairs of 10 pixels each.
+        #expect(abs(bounds(kerned).width - bounds(plain).width - 20) < 0.5)
+    }
+
+    @Test func aRunSetsItsOwnLeadingRotationAndOffset() {
+        let one = bounds(setting("Hello"))
+        // A line is spaced by the largest leading of its letters.
+        var spaced = setting("Hello\nHello")
+        spaced.runs = [TextStyleRun(start: 6, length: 1, style: TextStyle(leading: 300))]
+        #expect(abs(bounds(spaced).height - one.height - 300) < 0.5)
+        var tighter = setting("Hello\nHello") { $0.leading = 300 }
+        tighter.runs = [TextStyleRun(start: 6, length: 5, style: TextStyle(leading: 50))]
+        #expect(abs(bounds(tighter).height - one.height - 50) < 0.5)
+
+        // Only the run's letter turns.
+        var turned = setting("II")
+        turned.runs = [TextStyleRun(start: 1, length: 1, style: TextStyle(characterRotation: 90))]
+        let letters = TextOutline(setting: turned, center: .zero).pieces(fill: [1, 1, 1, 1], stroke: nil)
+        #expect(letters.count == 2)
+        let first = letters[0].path.boundingBoxOfPath, second = letters[1].path.boundingBoxOfPath
+        #expect(first.height > first.width * 2)
+        #expect(second.width > second.height * 2)
+
+        // An offset moves the run's letters and leaves the others.
+        let plain = pieces(setting("HI"))[0].path.boundingBoxOfPath
+        var moved = setting("HI")
+        moved.runs = [TextStyleRun(start: 1, length: 1, style: TextStyle(offsetX: 30, offsetY: 40))]
+        let parts = pieces(moved).map(\.path.boundingBoxOfPath)
+        #expect(parts.count == 2)
+        #expect(abs(parts[0].minX - plain.minX) < 0.5 && abs(parts[0].minY - plain.minY) < 0.5)
+        #expect(abs(parts[1].maxX - plain.maxX - 30) < 0.5)
+        #expect(abs(parts[1].maxY - plain.maxY - 40) < 0.5)
+    }
+
+    @Test func aRunsValuesDontChangeWhatThePlayerIsBuiltFrom() throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let text = try fixture.addShape(.text)
+        fixture.setText("Words", ofClip: text.clipID)
+        let before = fixture.project
+        fixture.project.editClip(text.clipID, in: fixture.timelineID) { clip in
+            clip.effects[0].text?.changeStyle(in: NSRange(location: 0, length: 2)) { $0.size = AnimatedValue(240) }
+        }
+        // A drag of the selected letters' size is a value drag, which the
+        // viewer follows as it goes.
+        #expect(CompositionKey(project: fixture.project) != CompositionKey(project: before))
+        #expect(StructureKey(project: fixture.project) == StructureKey(project: before))
+        // Nor do its words or font, which the compositor lays out as it
+        // draws; the timeline still sees them, since they name the clip.
+        fixture.setText("Other", font: "HelveticaNeue", ofClip: text.clipID)
+        #expect(StructureKey(project: fixture.project) == StructureKey(project: before))
+        #expect(fixture.project.structure != before.structure)
+    }
+
     @Test func aCursorKernsThePairAroundIt() {
         let content = TextContent(string: "AV\nW")
         #expect(content.kerningPair(at: 1) == NSRange(location: 0, length: 1))
@@ -850,7 +915,7 @@ extension DrawingFixture {
                 style = TextRunStyle(fixed: TextStyle(
                     fontName: "HelveticaNeue", size: 80, tracking: 20, baselineShift: 4, horizontalScale: 90, verticalScale: 110,
                     textCase: .allCaps, underline: true, strikethrough: false, fill: [1, 0, 0, 1], stroke: [0, 1, 0, 0.5],
-                    kerning: -40, position: .subscript, strokeWidth: 3
+                    kerning: -40, position: .subscript, strokeWidth: 3, leading: 90, characterRotation: 15, offsetX: -5, offsetY: 7
                 ))
                 // Keyframed, a number and a color.
                 style.size?.setAnimated(true, at: .zero)

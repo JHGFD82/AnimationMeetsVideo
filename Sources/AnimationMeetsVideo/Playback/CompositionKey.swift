@@ -108,6 +108,9 @@ extension CompositionKey {
 /// values patched in; one that differs (a clip added, moved, trimmed or
 /// retimed, a transition, the layers' order, a replaced file, an effect
 /// added, removed or turned off, a pan moved off center) is built again.
+/// A Text effect's words and font are left out too: the compositor lays
+/// text out as it draws, so typing or picking a font is drawn at once.
+/// (`EditingProject.structure` keeps them, since they name the clip.)
 struct StructureKey: Equatable {
     private var composition: CompositionKey
 
@@ -121,7 +124,11 @@ struct StructureKey: Equatable {
             for l in composition.timelines[t].layers.indices {
                 for c in composition.timelines[t].layers[l].clips.indices {
                     composition.timelines[t].layers[l].clips[c].effects =
-                        composition.timelines[t].layers[l].clips[c].effects.map(Effect.bare)
+                        composition.timelines[t].layers[l].clips[c].effects.map { effect in
+                            var bare = Effect.bare(effect)
+                            bare.text = nil
+                            return bare
+                        }
                     composition.timelines[t].layers[l].clips[c].anchorPoint = AnimatedValue(.zero)
                 }
             }

@@ -319,20 +319,30 @@ Built (step 3a):
   words and font.
 - **Styled runs.** `TextContent.runs` set some letters apart from the
   block: each a range of UTF-16 code units (as the text editor counts)
-  and a `TextStyle` of optional settings: font, size, tracking, baseline
-  shift, vertical and horizontal scale, case, underline, strikethrough,
+  and a `TextStyle` of optional settings: font, size, leading, kerning by
+  hand, tracking, baseline shift, vertical and horizontal scale,
+  character rotation, an X and Y offset, case, underline, strikethrough,
   and fill and stroke colors. The words are typed in an AppKit text view
   (`TextWordsEditor`), since SwiftUI's editor doesn't say what is
   selected. With letters selected, the inspector's Character group sets
   theirs (`TextSelectionRows`): each row shows the first selected
   letter's own setting, or the block's dimmer, a button gives the
-  block's back, and Clear Styling gives back all of them. Leading,
-  Kerning and Character Rotation stay the block's. Typing keeps runs on
+  block's back, and Clear Styling gives back all of them. Only the
+  kerning method (Metrics, Optical, None) stays the block's. Kerning
+  set on a selection goes after each selected letter but the last
+  (`TextContent.kerningRange`), so it opens or closes the pairs inside
+  it; with one letter selected, the pair it begins. A line is spaced by
+  the largest leading of its letters (Auto, 0, being 120% of a letter's
+  size), as in Illustrator. Character rotation turns each of the run's
+  letters alone. Offset X and Y move the letters right and down from
+  where they are set, after the block is laid out, so the other letters
+  and the block's size stay put; on a path they move along it and away
+  from it. Typing keeps runs on
   their letters: what is typed takes the style of the letter before it,
   and an edit the editor makes itself (an undo) keeps the styles of what
   is unchanged at either end. Adjacent letters styled alike are one run.
-  - **Keyframes.** A run's numbers (size, tracking, baseline shift,
-    scales, kerning by hand, stroke width) and colors are values that can
+  - **Keyframes.** A run's numbers (size, leading, tracking, baseline
+    shift, scales, kerning by hand, rotation, offsets, stroke width) and colors are values that can
     be keyframed in the clip's source time (`TextRunStyle`). The
     inspector gives letters their own of a setting; the effects panel
     keyframes it: after the text's other sections, each run with a
@@ -344,7 +354,14 @@ Built (step 3a):
     it starts at). Its ⋯ menu gives the letters the block's setting back,
     which takes the row away. Editing a run's keyframes there
     (`TextContent.changeRun`) keeps it a run of its own even if it comes
-    to match a neighbour, so its row stays put. Its font,
+    to match a neighbour, so its row stays put. Runs and font axes
+    are values to the viewer, as controls are (`Effect.bare` leaves
+    them out of `StructureKey`), so a drag of one is held and drawn
+    as it goes, not rebuilt each step. The words and font are left
+    out of `StructureKey` too, so typing or picking a font is drawn
+    at once without building the player again; `structure` keeps
+    them, since they name the clip. The letters' color wells hold
+    their drags as the block's do (`HeldColorWell`). Its font,
     case, position, underline and strikethrough are choices and hold
     still. They combine with the block's by replacing: a setting a run
     has replaces the block's for its letters, its own keyframes with it,

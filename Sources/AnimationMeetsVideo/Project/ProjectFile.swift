@@ -621,6 +621,11 @@ struct ProjectFile: Codable {
         /// A `TextPosition` name.
         var position: String?
         var strokeWidth: PropertyEntry<Double>?
+        var leading: PropertyEntry<Double>?
+        var characterRotation: PropertyEntry<Double>?
+        /// Pixels the letters move right and down from where they are set.
+        var offsetX: PropertyEntry<Double>?
+        var offsetY: PropertyEntry<Double>?
 
         init(_ run: TextRun) {
             func number(_ value: AnimatedValue<Double>?) -> PropertyEntry<Double>? { value.map { PropertyEntry($0) { $0 } } }
@@ -642,6 +647,10 @@ struct ProjectFile: Codable {
             kerning = number(style.kerning)
             position = style.position?.rawValue
             strokeWidth = number(style.strokeWidth)
+            leading = number(style.leading)
+            characterRotation = number(style.characterRotation)
+            offsetX = number(style.offsetX)
+            offsetY = number(style.offsetY)
         }
 
         var run: TextRun {
@@ -664,6 +673,10 @@ struct ProjectFile: Codable {
             style.kerning = number(kerning)
             style.position = position.flatMap(TextPosition.init(rawValue:))
             style.strokeWidth = number(strokeWidth)
+            style.leading = number(leading)
+            style.characterRotation = number(characterRotation)
+            style.offsetX = number(offsetX)
+            style.offsetY = number(offsetY)
             return TextRun(start: start, length: length, style: style)
         }
 
@@ -677,7 +690,8 @@ struct ProjectFile: Codable {
                 .optional("underline", .bool), .optional("strikethrough", .bool),
                 .optional("fill", color), .optional("stroke", color), .optional("kerning", number),
                 .optional("position", .choice(TextPosition.allCases.map(\.rawValue), noun: "position")),
-                .optional("strokeWidth", number),
+                .optional("strokeWidth", number), .optional("leading", number), .optional("characterRotation", number),
+                .optional("offsetX", number), .optional("offsetY", number),
             ]))
         }
     }
