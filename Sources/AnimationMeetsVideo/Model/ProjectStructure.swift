@@ -44,6 +44,11 @@ extension Effect {
         var effect = effect
         effect.controls = []
         effect.pasteChanges = []
+        // A Text effect's words and font name its clip, but its styled
+        // runs and its font's axes are values the compositor takes as it
+        // draws, as controls' are, so dragging one is a value drag.
+        effect.text?.runs = []
+        effect.text?.variations = []
         return effect
     }
 }

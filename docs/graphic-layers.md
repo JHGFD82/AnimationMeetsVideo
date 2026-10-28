@@ -344,7 +344,10 @@ Built (step 3a):
     it starts at). Its ⋯ menu gives the letters the block's setting back,
     which takes the row away. Editing a run's keyframes there
     (`TextContent.changeRun`) keeps it a run of its own even if it comes
-    to match a neighbour, so its row stays put. Its font,
+    to match a neighbour, so its row stays put. Runs and font axes
+    are values to the viewer, as controls are (`Effect.bare` leaves
+    them out of `StructureKey`), so a drag of one is held and drawn
+    as it goes, not rebuilt each step. Its font,
     case, position, underline and strikethrough are choices and hold
     still. They combine with the block's by replacing: a setting a run
     has replaces the block's for its letters, its own keyframes with it,

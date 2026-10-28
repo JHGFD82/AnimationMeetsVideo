@@ -193,6 +193,24 @@ extension DrawingFixture {
         #expect(bounds(plain).width < bounds(unkerned).width)
     }
 
+    @Test func aRunsValuesDontChangeWhatThePlayerIsBuiltFrom() throws {
+        var fixture = try DrawingFixture()
+        defer { fixture.cleanUp() }
+        let text = try fixture.addShape(.text)
+        fixture.setText("Words", ofClip: text.clipID)
+        let before = fixture.project
+        fixture.project.editClip(text.clipID, in: fixture.timelineID) { clip in
+            clip.effects[0].text?.changeStyle(in: NSRange(location: 0, length: 2)) { $0.size = AnimatedValue(240) }
+        }
+        // A drag of the selected letters' size is a value drag, which the
+        // viewer follows as it goes.
+        #expect(CompositionKey(project: fixture.project) != CompositionKey(project: before))
+        #expect(StructureKey(project: fixture.project) == StructureKey(project: before))
+        // The words name the clip, so they stay in it.
+        fixture.setText("Other", ofClip: text.clipID)
+        #expect(StructureKey(project: fixture.project) != StructureKey(project: before))
+    }
+
     @Test func aCursorKernsThePairAroundIt() {
         let content = TextContent(string: "AV\nW")
         #expect(content.kerningPair(at: 1) == NSRange(location: 0, length: 1))
