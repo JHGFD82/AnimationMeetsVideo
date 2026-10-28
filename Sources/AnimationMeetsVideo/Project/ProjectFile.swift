@@ -921,6 +921,25 @@ struct ProjectFile: Codable {
         var position: Int
         /// Absent unless the person placed or moved the beat.
         var pinned: Bool?
+        /// Absent unless a fill snapped the pinned beat off where it was put.
+        var heard: TimeEntry?
+        /// Absent unless the person undid the beat's snap.
+        var unsnapped: Bool?
+
+        init(_ beat: MappedBeat) {
+            time = TimeEntry(beat.time)
+            position = beat.position
+            pinned = beat.isPinned ? true : nil
+            heard = beat.heardTime.map(TimeEntry.init)
+            unsnapped = beat.snapsToOnset ? nil : true
+        }
+
+        var beat: MappedBeat {
+            MappedBeat(
+                time: time.time, position: position, isPinned: pinned ?? false,
+                heardTime: heard?.time, snapsToOnset: !(unsnapped ?? false)
+            )
+        }
     }
 
     struct BeatSectionEntry: Codable {
@@ -944,7 +963,7 @@ struct ProjectFile: Codable {
             measureSet = section.isMeasureSet ? true : nil
             steadiness = section.steadiness.rawValue
             confirmed = section.isConfirmed
-            beats = section.beats.map { BeatEntry(time: TimeEntry($0.time), position: $0.position, pinned: $0.isPinned ? true : nil) }
+            beats = section.beats.map(BeatEntry.init)
         }
 
         /// The shape check has already limited the kind and steadiness to
@@ -954,7 +973,7 @@ struct ProjectFile: Codable {
                 id: id, kind: BeatSection.Kind(rawValue: kind) ?? .none, start: start.time, end: end.time,
                 beatsPerMeasure: beatsPerMeasure, isMeasureSet: measureSet ?? false, steadiness: BeatSection.Steadiness(rawValue: steadiness) ?? .click,
                 isConfirmed: confirmed,
-                beats: beats.map { MappedBeat(time: $0.time.time, position: $0.position, isPinned: $0.pinned ?? false) }
+                beats: beats.map(\.beat)
             )
             section.normalize()
             return section
@@ -1249,6 +1268,7 @@ extension ProjectFile {
                 .required("confirmed", .bool),
                 .required("beats", .array(.object(object([
                     .required("time", .time), .required("position", .integer), .optional("pinned", .bool),
+                    .optional("heard", .time), .optional("unsnapped", .bool),
                 ])))),
             ])))),
         ]))

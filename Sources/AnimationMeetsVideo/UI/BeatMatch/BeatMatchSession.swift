@@ -17,7 +17,9 @@ final class BeatMatchSession: SecondsViewport {
     /// Original time `t` is at `t + alignment` in the file.
     let alignment: CMTime
 
-    private(set) var audio: BeatMatchAudio?
+    private(set) var audio: BeatMatchAudio? {
+        didSet { refreshProvisionalTempo() }
+    }
     private(set) var loadProgress = 0.0
     private(set) var loadError: String?
     /// The draft being edited.
@@ -79,7 +81,9 @@ final class BeatMatchSession: SecondsViewport {
 
     // MARK: Editing
 
-    var selectedSectionID: UUID?
+    var selectedSectionID: UUID? {
+        didSet { if selectedSectionID != oldValue { refreshProvisionalTempo() } }
+    }
     /// The selected beat, by its time.
     var selectedBeat: CMTime?
     /// The kind a drawn or filled section gets.
@@ -88,11 +92,22 @@ final class BeatMatchSession: SecondsViewport {
     var isDrawing: Bool
     /// What went wrong with the last fill, or a hint, until the next edit.
     private(set) var message: String?
+    /// What the person should know about the last fill, until the next edit.
+    private(set) var fillHints: [String] = []
     private(set) var isFilling = false
+    /// The tempo the onsets around the selected section's lone anchor
+    /// suggest, shown before the second anchor is placed.
+    private(set) var provisionalTempo: Double?
 
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
     @ObservationIgnored private var loading: Task<Void, Never>?
+    /// The fill running off the main thread, which an edit to the draft
+    /// cancels, since its result would replace the edit.
+    @ObservationIgnored private var filling: Task<(map: BeatMap, report: BeatFitting.FillReport), Error>?
+    @ObservationIgnored private var estimating: Task<Void, Never>?
+    /// The section and anchor `provisionalTempo` is for.
+    @ObservationIgnored private var estimated: [AnyHashable]?
 
     init(asset: MediaClip, url: URL) {
         assetID = asset.id
@@ -140,6 +155,8 @@ final class BeatMatchSession: SecondsViewport {
     /// Stops playing and reading; the session is done with.
     func end() {
         loading?.cancel()
+        filling?.cancel()
+        estimating?.cancel()
         player.pause()
         clicks.isEnabled = false
         if let timeObserver { player.removeTimeObserver(timeObserver) }
@@ -190,6 +207,7 @@ final class BeatMatchSession: SecondsViewport {
         if let beat = selectedBeat, map.beat(at: beat) == nil { selectedBeat = nil }
         if map.isEmpty && !map.usesSections { isDrawing = false }
         refreshTicks()
+        refreshProvisionalTempo()
     }
 
     /// Changes the draft at once, as one undo step, and gives what the
@@ -198,6 +216,12 @@ final class BeatMatchSession: SecondsViewport {
     @discardableResult
     private func edit<Result>(_ change: (inout BeatMap) -> Result) -> Result {
         message = nil
+        fillHints = []
+        if let filling {
+            filling.cancel()
+            self.filling = nil
+            isFilling = false
+        }
         let before = map
         let result = change(&map)
         if map != before {
@@ -314,10 +338,14 @@ final class BeatMatchSession: SecondsViewport {
                 }
                 return Guidance(lead: "Find a downbeat, beat 1 of a measure, near the middle of this section.", tips: tips)
             case 1:
-                return Guidance(lead: "Line the tick up with the beat, then place a second anchor well away from it.", tips: [
+                var tips = [
                     "← → move the anchor 1 ms, with ⌥ one sample, with ⇧ 10 ms.",
                     "Put the second anchor near the far end of the section.",
-                ])
+                ]
+                if let tempo = provisionalTempo {
+                    tips.insert("The music around it sounds like about \(Int(tempo.rounded())) BPM.", at: 0)
+                }
+                return Guidance(lead: "Line the tick up with the beat, then place a second anchor well away from it.", tips: tips)
             default:
                 return Guidance(lead: "Check both anchors by ear, then Fill Beats (Return).")
             }
@@ -370,25 +398,94 @@ final class BeatMatchSession: SecondsViewport {
     }
 
     /// Fills section `id` of `map` off the main thread, then makes the
-    /// draft the result, as one undo step.
+    /// draft the result, as one undo step. A fill already running is
+    /// cancelled for this one.
     private func fill(_ map: BeatMap, section id: UUID, tempo: Double?) {
-        guard let audio, !isFilling else { return }
+        guard let audio else { return }
+        filling?.cancel()
         let duration = self.duration
         isFilling = true
         message = nil
+        fillHints = []
+        let work = Task.detached(priority: .userInitiated) {
+            try BeatFitting.fillReporting(map, section: id, curve: audio.curve, sampleRate: audio.sampleRate, duration: duration, tempo: tempo)
+        }
+        filling = work
         Task {
-            let result = await Task.detached(priority: .userInitiated) {
-                Result { try BeatFitting.fill(map, section: id, curve: audio.curve, sampleRate: audio.sampleRate, duration: duration, tempo: tempo) }
-            }.value
+            let result = await work.result
+            // A later fill, or an edit to the draft, took over.
+            guard filling == work else { return }
+            filling = nil
             isFilling = false
             switch result {
             case .success(let filled):
-                edit { map in map = filled }
+                // In one assignment, so the waveform never shows half a fill.
+                edit { map in map = filled.map }
+                fillHints = Self.hints(for: filled.report)
                 selectNextToMark(after: id)
+            case .failure(is CancellationError):
+                break
             case .failure(let error):
-                message = error.localizedDescription
+                message = Self.describe(error)
             }
         }
+    }
+
+    /// A failure as the panel shows it: what went wrong, then what to do.
+    static func describe(_ error: Error) -> String {
+        guard let error = error as? LocalizedError, let suggestion = error.recoverySuggestion else { return error.localizedDescription }
+        return [error.errorDescription ?? error.localizedDescription, suggestion].joined(separator: " ")
+    }
+
+    /// What a fill did that the person might not expect, in their words.
+    static func hints(for report: BeatFitting.FillReport) -> [String] {
+        var hints: [String] = []
+        if report.measureOverruledOnsets {
+            hints.append("The anchors' places in the measure settled how many beats lie between them. If the beats drift off the music, check which beat each anchor is on.")
+        }
+        if report.beatCount > 0, report.quietBeats * 4 > report.beatCount {
+            hints.append("\(report.quietBeats) of \(report.beatCount) beats looked quiet here, with no clear onset to snap to, so they keep the grid. Listen through them.")
+        }
+        if report.droppedSilentBeats > 0 {
+            hints.append("The music stops before the section's edge, so the beats stop with it.")
+        }
+        switch report.edges {
+        case .unchanged: break
+        case .moved: hints.append("The section's edges snapped to its first beat and to the beat after its last.")
+        case .tooShort: hints.append("The section's edges stayed put: its beats left no room to snap them to.")
+        }
+        return hints
+    }
+
+    /// Works out `provisionalTempo` for the selected section, a moment
+    /// after its lone anchor stops moving.
+    private func refreshProvisionalTempo() {
+        guard let audio, let section = selectedSection, section.kind == .consistent, !section.isConfirmed else {
+            return clearProvisionalTempo()
+        }
+        let pins = BeatFitting.distinctPins(of: section, sampleRate: audio.sampleRate)
+        guard pins.count == 1, let pin = pins.first else { return clearProvisionalTempo() }
+        let key: [AnyHashable] = [section.id, pin.time.value, pin.time.timescale, section.start.seconds, section.end.seconds]
+        guard key != estimated else { return }
+        estimated = key
+        estimating?.cancel()
+        provisionalTempo = nil
+        estimating = Task { [weak self] in
+            // Nudging an anchor moves it many times a second.
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            let tempo = await Task.detached(priority: .userInitiated) {
+                (try? BeatFitting.provisionalTempo(around: pin.time.seconds, in: section, curve: audio.curve)) ?? nil
+            }.value
+            guard !Task.isCancelled else { return }
+            self?.provisionalTempo = tempo
+        }
+    }
+
+    private func clearProvisionalTempo() {
+        estimating?.cancel()
+        estimated = nil
+        if provisionalTempo != nil { provisionalTempo = nil }
     }
 
     // MARK: Copy and paste
@@ -660,6 +757,24 @@ final class BeatMatchSession: SecondsViewport {
     func setSelectedPosition(_ position: Int) {
         guard let beat = selectedBeat else { return }
         edit { map in map.setPosition(of: beat, to: position) }
+    }
+
+    /// Puts the selected beat back where the person placed it, before a
+    /// fill snapped it onto its onset.
+    func undoSnap() {
+        guard let beat = selectedBeat else { return }
+        if let restored = edit({ map in map.undoSnap(at: beat) }) { selectedBeat = restored }
+    }
+
+    /// Lets the selected beat snap onto its onset again, after Undo Snap.
+    func snapAgain() {
+        guard let audio, let beat = selectedBeat else { return }
+        let snapped = edit { map -> CMTime? in
+            guard let result = BeatFitting.snapAgain(map, at: beat, curve: audio.curve, sampleRate: audio.sampleRate) else { return nil }
+            map = result.map
+            return result.time
+        }
+        if let snapped { selectedBeat = snapped }
     }
 
     func unpinSelected() {

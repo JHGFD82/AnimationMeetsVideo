@@ -211,6 +211,8 @@ extension BeatMap {
         let moved = CMTimeMinimum(CMTimeMaximum(target, low), high)
         section.beats[beatIndex].time = moved
         section.beats[beatIndex].isPinned = true
+        // Placed by hand now, so no longer where a snap moved it.
+        section.beats[beatIndex].heardTime = nil
         sections[sectionIndex] = section
         return moved
     }
@@ -259,6 +261,7 @@ extension BeatMap {
                     .map { beat in
                         var moved = beat
                         moved.time = CMTimeAdd(beat.time, shift)
+                        moved.heardTime = beat.heardTime.map { CMTimeAdd($0, shift) }
                         return moved
                     }
                     .filter { copy.contains($0.time) }
@@ -289,6 +292,24 @@ extension BeatMap {
     mutating func unpin(at time: CMTime) {
         guard let (sectionIndex, beatIndex) = beatIndex(at: time) else { return }
         sections[sectionIndex].beats[beatIndex].isPinned = false
+        sections[sectionIndex].beats[beatIndex].heardTime = nil
+        sections[sectionIndex].beats[beatIndex].snapsToOnset = true
+    }
+
+    /// Puts a pinned beat a fill snapped back where the person put it,
+    /// where fills then leave it. Gives its time, or nil when it wasn't
+    /// snapped or another beat is there.
+    @discardableResult
+    mutating func undoSnap(at time: CMTime) -> CMTime? {
+        guard let (sectionIndex, beatIndex) = beatIndex(at: time),
+              let heard = sections[sectionIndex].beats[beatIndex].heardTime,
+              !sections[sectionIndex].beats.contains(where: { CMTimeCompare($0.time, heard) == 0 })
+        else { return nil }
+        sections[sectionIndex].beats[beatIndex].time = heard
+        sections[sectionIndex].beats[beatIndex].heardTime = nil
+        sections[sectionIndex].beats[beatIndex].snapsToOnset = false
+        sections[sectionIndex].normalize()
+        return heard
     }
 
     /// Sets a section's beats per measure and renumbers.

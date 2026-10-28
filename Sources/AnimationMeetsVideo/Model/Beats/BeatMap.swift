@@ -175,6 +175,12 @@ struct MappedBeat: Equatable, Sendable {
     /// Placed or moved by the person. Analysis never moves a pinned beat,
     /// and positions are counted out from them.
     var isPinned = false
+    /// Where the person put a pinned beat that a fill then snapped onto its
+    /// onset, so the panel can show how far it moved and put it back.
+    var heardTime: CMTime?
+    /// Off once the person put a snapped beat back: fills then leave it
+    /// exactly where it is.
+    var snapsToOnset = true
 
     var isDownbeat: Bool { position == 1 }
 }

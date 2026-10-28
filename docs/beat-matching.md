@@ -68,7 +68,10 @@ step.
 
 1. **Place two anchors.** The panel asks for a beat near the middle of the
    section, then a second one well away from it, ideally near the far
-   end. Each anchor is dropped on the waveform or at the playhead (M), and
+   end. Once the first is down, the panel says roughly what tempo the
+   music around it has (`BeatFitting.provisionalTempo`, from the 12
+   seconds around it), worked out off the main thread a moment after
+   the anchor stops moving. Each anchor is dropped on the waveform or at the playhead (M), and
    is beat 1 unless the person picks another position. While the song
    plays, M can be tapped along with it: each tap drops a pinned beat
    where the song is, and taps in a row count on through the section's
@@ -123,7 +126,9 @@ original time.
 - **Tempo.** A typed tempo wins. Otherwise, when reanalyzing, it is the
   median gap of the beats already there. Otherwise it is estimated from the
   onsets around the anchors, by autocorrelation weighted toward 120 BPM
-  as detection does.
+  as detection does, over at most a minute from the middle of that
+  stretch. The estimate is kept on the curve, so filling the same stretch
+  again doesn't work it out again.
 - **Count between the anchors.** Every count within 12% of the gap over
   that tempo is tried. *Click*: the score is the mean onset under an even
   grid carried two measures past each anchor, leaving out the anchors
@@ -141,13 +146,19 @@ original time.
   the period is fitted to the whole section. First a search near it, as
   wide as the anchors' uncertainty (5 ms each) over their span allows, for
   the grid stepping out from the outer anchors that lands on the strongest
-  onsets. Then a least-squares fit of the onset peaks near that grid.
+  onsets. The candidates are taken in blocks of 17, each scored first by
+  a bound no grid in it can beat (the onsets in a window wide enough for
+  all of them), so only blocks that could hold the best are scored step
+  by step: the same answer as trying every step, at a fraction of the
+  work. Then a least-squares fit of the onset peaks near that grid.
   Beats past the anchors step at this period; between pinned beats they
   stay evenly spaced.
 - **Refining** (intent and ramps) is Ellis's dynamic programming held at
   both ends: each beat is searched within a quarter of a gap of its even
   place, scoring the onset there against how far each gap strays from the
-  expected one. Peaks are placed between frames with a parabola.
+  expected one. Peaks are placed between frames with a parabola. A beat
+  is searched at most 0.28 s either side, which only limits
+  tempos under 54 BPM.
 - **Past the outer anchors** the beats step on a period at a time, to the
   section's edge. For intent each step moves to the strongest onset within
   15% of the gap. Steps stop where the music does: after two measures (eight
@@ -160,7 +171,13 @@ original time.
   than anyone places a beat by ear, and far short of the next beat. A beat
   with no clear onset near stays put, which keeps a click section's grid
   through quiet beats. A beat moved further than that by hand stays where
-  it was put.
+  it was put. A pinned beat that snapping moved keeps where the person
+  put it: the panel says how far it moved, and **Undo Snap** puts it back,
+  where fills then leave it (saved as `heard` and `unsnapped` on the
+  beat), and leaves it out of lining up the curve (see Onset timing):
+  it is meant to sit where it is, not where its onset is heard. **Snap
+  Again** snaps that one beat back onto its onset without filling again.
+  Moving it by hand forgets where it was heard.
 - **Onset timing.** Spectral flux peaks about 14 ms before a sharp hit,
   because it rises as soon as the hit enters the analysis window. The
   anchors are lined up by ear, so the curve is shifted by the median
@@ -170,6 +187,20 @@ original time.
 - **Ramps** try every count within 15% of what an even change of tempo
   holds. A count away from that costs a little (a tenth of the chain's
   tightness), because ramps are seldom even.
+
+- **What can't be filled.** Pinned beats are sorted and any on the same
+  sample count once. A fill stops with a message saying what to do when
+  it has too few anchors, when no usable tempo comes out (*Couldn't find
+  a tempo here. Try pinning two beats farther apart.*), or when a
+  consistent section is shorter than two beats at its tempo.
+- **Off the main thread.** A fill runs detached and its result lands in
+  one assignment, as one undo step. Editing the draft while it runs, or
+  filling again, cancels it: the long searches check for cancellation.
+- **After a fill** the panel notes what the person might not expect,
+  from the fill's report (`BeatFitting.FillReport`): that the anchors'
+  places in the measure settled the count over the onsets, that over a
+  quarter of the beats had no clear onset to snap to, that the beats stop
+  where the music does before the edge, and whether the edges snapped.
 
 ## Sections
 
