@@ -15,6 +15,14 @@ struct EffectRegistry: Sendable {
     let addable: [EffectKind]
     private let effectsByName: [String: EffectDefinition]
     private let controlsByName: [String: ControlDefinition]
+    /// The definitions of effects and controls that packages changed or
+    /// removed while the app runs stopped listing, by name. Effects in open
+    /// projects may still hold them, so they are looked up here when the
+    /// registry no longer lists them, and such an effect keeps drawing and
+    /// editing as it did; it can't be added again, and a control saves no
+    /// more (`ProjectFile.EffectEntry`).
+    private var retiredEffects: [String: EffectDefinition] = [:]
+    private var retiredControls: [String: ControlDefinition] = [:]
 
     /// The Swift effects and controls, then each package's, in order, the
     /// built-in ones sorted into `BuiltInEffects.libraryOrder`. A package
@@ -79,22 +87,33 @@ struct EffectRegistry: Sendable {
     /// one made or opened while the app runs. Throws if its ID is taken.
     func adding(_ package: EffectPackage) throws -> EffectRegistry {
         guard effect(named: package.id) == nil else { throw EffectRegistryError.taken(package.id) }
+        return changingTheirs { packages, _ in packages.append(package) }
+    }
+
+    /// This registry with the person's packages and the problems of
+    /// packages not shipped with the app as `change` leaves them, the
+    /// built-in effects as they are.
+    func changingTheirs(_ change: (inout [EffectPackage], inout [EffectPackageProblem]) -> Void) -> EffectRegistry {
         let builtIn = Set(Self.builtInPackages.packages.map(\.id))
         let shipped = Set(Self.builtInPackages.problems.map(\.url))
-        let theirs = effects.compactMap(\.package).filter { !builtIn.contains($0.id) }
-        return Self.withBuiltIns(theirs + [package], problems: problems.filter { !shipped.contains($0.url) })
+        var theirs = effects.compactMap(\.package).filter { !builtIn.contains($0.id) }
+        var problems = problems.filter { !shipped.contains($0.url) }
+        change(&theirs, &problems)
+        var changed = Self.withBuiltIns(theirs, problems: problems)
+        changed.retiredEffects = retiredEffects.merging(effectsByName) { $1 }.filter { changed.effectsByName[$0.key] == nil }
+        changed.retiredControls = retiredControls.merging(controlsByName) { $1 }.filter { changed.controlsByName[$0.key] == nil }
+        return changed
+    }
+
+    /// Whether `kind` was a package's that was removed or renamed while the
+    /// app runs: still drawn where it is, but no longer listed.
+    func isRetired(_ kind: EffectKind) -> Bool {
+        effectsByName[kind.rawValue] == nil && retiredEffects[kind.rawValue] != nil
     }
 
     /// Adds `package` to the registry in use (see `adding`).
     static func add(_ package: EffectPackage) throws {
         try installed.withLock { registry in registry = try registry.adding(package) }
-    }
-
-    /// Puts `packages` beside the built-in effects, replacing any installed
-    /// before, with `problems` the packages that couldn't be read.
-    static func install(_ packages: [EffectPackage], problems: [EffectPackageProblem] = []) {
-        let registry = withBuiltIns(packages, problems: problems)
-        installed.withLock { $0 = registry }
     }
 
     /// The effect kind saved as `name`, if there is one.
@@ -104,12 +123,16 @@ struct EffectRegistry: Sendable {
     func control(named name: String) -> ControlDefinition? { controlsByName[name] }
 
     func definition(of kind: EffectKind) -> EffectDefinition {
-        guard let definition = effectsByName[kind.rawValue] else { preconditionFailure("No effect kind \"\(kind.rawValue)\"") }
+        guard let definition = effectsByName[kind.rawValue] ?? retiredEffects[kind.rawValue] else {
+            preconditionFailure("No effect kind \"\(kind.rawValue)\"")
+        }
         return definition
     }
 
     func definition(of kind: ControlKind) -> ControlDefinition {
-        guard let definition = controlsByName[kind.rawValue] else { preconditionFailure("No control kind \"\(kind.rawValue)\"") }
+        guard let definition = controlsByName[kind.rawValue] ?? retiredControls[kind.rawValue] else {
+            preconditionFailure("No control kind \"\(kind.rawValue)\"")
+        }
         return definition
     }
 }

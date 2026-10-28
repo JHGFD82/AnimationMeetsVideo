@@ -732,7 +732,13 @@ struct ProjectFile: Codable {
             keyframing = effect.keyframing.map(KeyframingEntry.init)
             text = effect.kind == .text ? effect.text.map(TextEntry.init) : nil
             pasteChanges = effect.pasteChanges.isEmpty ? nil : effect.pasteChanges.map(PasteChangeRecord.init)
-            controls = effect.controls.map(ControlEntry.init)
+            // A control its package stopped listing while the app ran is
+            // left out, as the package no longer reads it (see
+            // `EffectRegistry.reloading`). One a project was saved with that
+            // the package doesn't list loads the effect as missing instead,
+            // so it never gets here.
+            let listed = effect.kind.definition.package == nil ? nil : Set(effect.kind.controlKinds)
+            controls = effect.controls.filter { listed?.contains($0.kind) ?? true }.map(ControlEntry.init)
         }
 
         init(from decoder: Decoder) throws {

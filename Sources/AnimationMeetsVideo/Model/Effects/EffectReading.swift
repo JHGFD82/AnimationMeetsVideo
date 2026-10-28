@@ -55,6 +55,12 @@ extension EditingProject {
         let effect = clip.effects[index]
         // Said even while it is off, as it explains what the effect is.
         if let missing = effect.missing { return EffectNote(text: missing.explanation, dims: true) }
+        if EffectRegistry.current.isRetired(effect.kind) {
+            return EffectNote(
+                text: "Its package was removed from the Effects folder, or took another ID, so it can't be added again. This one draws as it did until the project is closed; saved, it opens as missing.",
+                dims: false
+            )
+        }
         guard effect.enabled else { return nil }
         if let package = effect.kind.definition.package, let problem = PackageKernels.knownProblem(for: package) {
             return EffectNote(text: "Its kernel doesn't compile, so it leaves the picture as it is. \(problem)", dims: true)
