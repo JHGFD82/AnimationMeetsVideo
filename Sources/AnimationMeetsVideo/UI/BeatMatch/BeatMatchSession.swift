@@ -124,7 +124,8 @@ final class BeatMatchSession: SecondsViewport {
         map = asset.beatMap
         original = asset.beatMap
         isDrawing = asset.beatMap.usesSections && !asset.beatMap.sections.contains { !$0.pinnedBeats.isEmpty || $0.isConfirmed }
-        player = AVPlayer(playerItem: AVPlayerItem(asset: MediaFile.asset(at: url)))
+        // Given the song's audio once its tracks are read (`audioOnly`).
+        player = AVPlayer()
         player.actionAtItemEnd = .pause
         clicks = BeatClickPlayer(player: player)
         // Out of the devices chosen in Settings, like the editor's sound.
@@ -152,6 +153,12 @@ final class BeatMatchSession: SecondsViewport {
                     Task { @MainActor in self?.loadProgress = value }
                 }
                 self?.audio = audio
+                let song = try await Self.audioOnly(url: url)
+                // Reading tracks doesn't stop when the session ends.
+                try Task.checkCancellation()
+                self?.player.replaceCurrentItem(with: AVPlayerItem(asset: song))
+                // Put where it was put while the tracks were read.
+                if let self, playhead > 0 { seek(to: playhead) }
             } catch is CancellationError {
             } catch {
                 self?.loadError = error.localizedDescription
@@ -176,6 +183,28 @@ final class BeatMatchSession: SecondsViewport {
     private func restore(_ map: BeatMap) {
         let current = self.map
         self.map = map
+    /// The file's audio alone, at the file's own times, for the player, so
+    /// a video's picture is never decoded: the tracks it plays by default,
+    /// or the first if it has none on. Made off the main thread, since
+    /// putting tracks in a composition reads them there and then.
+    nonisolated private static func audioOnly(url: URL) async throws -> sending AVMutableComposition {
+        let asset = MediaFile.asset(at: url)
+        let tracks = try await asset.loadTracks(withMediaType: .audio)
+        var played: [AVAssetTrack] = []
+        for track in tracks {
+            if try await track.load(.isEnabled) { played.append(track) }
+        }
+        if played.isEmpty { played = Array(tracks.prefix(1)) }
+        guard !played.isEmpty else { throw BeatDetector.DetectionError.noAudioTrack }
+        let composition = AVMutableComposition()
+        for track in played {
+            let range = try await track.load(.timeRange)
+            let part = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+            try part?.insertTimeRange(range, of: track, at: range.start)
+        }
+        return composition
+    }
+
         undoManager.registerUndo(withTarget: self) { $0.restore(current) }
         undoRevision += 1
         mapChanged()
@@ -857,6 +886,9 @@ final class BeatMatchSession: SecondsViewport {
         isPlaying = playing
         tapRun = nil
         if !playing { playhead = playerSeconds() }
+            // Not before the song's audio is read: with nothing to play
+            // the player would wait, and seem to play.
+            guard player.currentItem != nil else { return }
     }
 
     /// Where the song is now, playing or not.

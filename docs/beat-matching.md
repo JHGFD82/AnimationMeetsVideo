@@ -18,7 +18,8 @@ and the beats they confirm are what the timeline uses.
   floating panel for the clip's asset. While it is open the main window is
   darkened and wholly inactive: no clicks, hovering, skimming, scrolling
   or pinching reach it (`WindowInputBlock`), and a click on it brings the
-  panel back. The panel plays the song on its own.
+  panel back. The panel plays the song on its own: only its audio, so a
+  video's picture is never decoded.
 - The person marks one tempo for the whole song, or switches to
   **sections** at the start. Either way the result is a **beat map**: the
   song's beats, each with its place in the measure, saved with the project.
