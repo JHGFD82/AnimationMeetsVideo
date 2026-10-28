@@ -27,8 +27,9 @@ struct AnimationMeetsVideoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
-        // Before any project is read, so its package effects are known.
-        EffectPackageStore.installAtLaunch()
+        // In the background; a project waits for it before it is read, so
+        // its package effects are known.
+        EffectPackageStatus.shared.installAtLaunch()
         // The projects open at the last quit are opened again by the first
         // window (`ProjectWindows.projectsToReopen`). Windows the system
         // restored as well would race it for the same projects, so its

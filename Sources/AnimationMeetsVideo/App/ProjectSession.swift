@@ -160,6 +160,9 @@ final class ProjectSession {
     @discardableResult
     func open(_ url: URL) async -> Bool {
         guard isEmpty else { return isOpen(url) }
+        // Its package effects are known once launch has installed them.
+        await EffectPackageStatus.shared.packagesInstalled()
+        guard isEmpty else { return isOpen(url) }
         do {
             try ProjectStore.validatePackage(at: url)
             let lock = try ProjectLock.acquire(at: url)

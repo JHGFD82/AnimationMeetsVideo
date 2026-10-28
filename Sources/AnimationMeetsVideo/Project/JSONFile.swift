@@ -13,7 +13,23 @@ enum JSONFile {
     /// version or none: "The preset has format version 2; this app reads
     /// version 1." Nil when it gives `version`.
     static func versionMismatch(in data: Data, expecting version: Int, noun: String) -> String? {
-        let found = formatVersion(of: data)
+        mismatch(formatVersion(of: data), expecting: version, noun: noun)
+    }
+
+    /// As `versionMismatch(in:expecting:noun:)`, for a file already parsed
+    /// (nil for one that isn't a JSON object), so it isn't parsed again.
+    static func versionMismatch(in object: [String: Any]?, expecting version: Int, noun: String) -> String? {
+        mismatch(object.flatMap(formatVersion(of:)), expecting: version, noun: noun)
+    }
+
+    /// The `formatVersion` a parsed file gives, read as the decoder reads
+    /// it: a whole number, not true or false.
+    static func formatVersion(of object: [String: Any]) -> Int? {
+        guard let number = object["formatVersion"] as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        return Int(exactly: number.doubleValue)
+    }
+
+    private static func mismatch(_ found: Int?, expecting version: Int, noun: String) -> String? {
         guard found != version else { return nil }
         return "The \(noun) has format version \(found.map(String.init) ?? "none"); this app reads version \(version)."
     }

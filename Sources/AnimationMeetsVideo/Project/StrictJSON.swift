@@ -79,6 +79,12 @@ enum StrictJSON {
         try check(value, against: shape, path: "")
     }
 
+    /// Checks a value already parsed against `shape`, as `validate` checks
+    /// `data` once parsed.
+    static func validate(_ value: Any, against shape: JSONShape) throws {
+        try check(value, against: shape, path: "")
+    }
+
     static func check(_ value: Any, against shape: JSONShape, path: String) throws {
         switch shape {
         case .any:

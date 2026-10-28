@@ -10,10 +10,10 @@ struct EffectPackageProblem: Identifiable, Equatable, Sendable {
     var id: URL { url }
 }
 
-/// What the effects library shows of the packages' kernels: which don't
-/// compile, and why, once they have been compiled in the background after
-/// launch. The packages that couldn't be read or installed are the
-/// registry's `problems`.
+/// The person's packages as the app runs: installed at launch, away from
+/// the main thread; and their kernels compiled in the background, and which
+/// don't compile, and why, for the effects library. The packages that
+/// couldn't be read or installed are the registry's `problems`.
 @MainActor
 @Observable
 final class EffectPackageStatus {
@@ -21,36 +21,91 @@ final class EffectPackageStatus {
 
     /// Why each package's kernel doesn't compile, by package ID.
     private(set) var kernelProblems: [String: String]
-    /// Bumped as a package is installed while the app runs, so what lists
-    /// the effects (read from the registry, which isn't observed) does again.
+    /// Bumped as packages are installed or changed while the app runs, so
+    /// what lists the effects (read from the registry, which isn't
+    /// observed) does again.
     private(set) var revision = 0
+
+    /// Reading and installing the person's packages at launch, which what
+    /// reads a project or installs a package waits for.
+    @ObservationIgnored private var launch: Task<Void, Never>?
+    /// The content hash each package's kernel was last sent to compile at,
+    /// by ID, so a compile that finishes after a newer one's doesn't put
+    /// back what it found.
+    @ObservationIgnored private var compiling: [String: String] = [:]
 
     init(kernelProblems: [String: String] = [:]) {
         self.kernelProblems = kernelProblems
     }
 
+    /// Reads the person's packages in `folder` and installs them in the
+    /// background (`EffectPackageStore.installAtLaunch`). Called once at
+    /// launch; `packagesInstalled` waits for it.
+    func installAtLaunch(from folder: URL = EffectPackageStore.defaultFolder) {
+        launch = Task {
+            await EffectPackageStore.installAtLaunch(from: folder)
+            revision += 1
+        }
+    }
+
+    /// Returns once launch has installed the person's packages; at once if
+    /// it has, or isn't installing any. Reading a project waits for this,
+    /// so its package effects are known.
+    func packagesInstalled() async {
+        await launch?.value
+    }
+
     /// Reads the package at `url`, adds it to the registry beside those
     /// installed, and compiles its kernel. Throws why it can't be used.
     func install(_ url: URL) async throws -> EffectPackage {
+        await packagesInstalled()
         let package = try EffectPackageStore.read(url)
         try EffectRegistry.add(package)
         revision += 1
-        let problem = await Task.detached(priority: .userInitiated) { PackageKernels.problem(for: package) }.value
-        kernelProblems[package.id] = problem
+        await compile([package], priority: .userInitiated)
         return package
     }
 
     /// Compiles each package's kernel away from the main thread, then
     /// says which failed.
     func compileKernels(of packages: [EffectPackage]) async {
-        kernelProblems = await Task.detached(priority: .utility) {
+        await compile(packages, priority: .utility)
+    }
+
+    /// Compiles `packages`' kernels a few at a time, then sets or clears
+    /// each one's problem, unless a newer version of it was sent to compile
+    /// meanwhile; problems of packages not among them are kept.
+    private func compile(_ packages: [EffectPackage], priority: TaskPriority) async {
+        for package in packages { compiling[package.id] = package.contentHash }
+        let problems = await Task.detached(priority: priority) { await Self.problems(compiling: packages) }.value
+        for package in packages where compiling[package.id] == package.contentHash {
+            kernelProblems[package.id] = problems[package.id]
+        }
+    }
+
+    /// Why each of `packages`' kernels doesn't compile, by ID. Compiled
+    /// as many at once as there are cores less one, left for the rest of
+    /// the app; `PackageKernels` keeps its outcomes behind a lock, and
+    /// compiles each from its own source.
+    nonisolated private static func problems(compiling packages: [EffectPackage]) async -> [String: String] {
+        let width = max(1, ProcessInfo.processInfo.activeProcessorCount - 1)
+        return await withTaskGroup(of: (String, String?).self) { group in
+            var waiting = packages.makeIterator()
+            func start() -> Bool {
+                guard let package = waiting.next() else { return false }
+                group.addTask { (package.id, PackageKernels.problem(for: package)) }
+                return true
+            }
+            for _ in 0..<width where !start() { break }
             var problems: [String: String] = [:]
-            for package in packages {
-                if let problem = PackageKernels.problem(for: package) { problems[package.id] = problem }
+            for await (id, problem) in group {
+                if let problem { problems[id] = problem }
+                _ = start()
             }
             return problems
-        }.value
+        }
     }
+
 }
 
 struct EffectPackageLibrary: Sendable {
@@ -101,10 +156,19 @@ enum EffectPackageStore {
         return library
     }
 
-    /// Reads the person's packages and installs them beside the built-in
-    /// effects. Called once at launch, before a project is opened.
-    static func installAtLaunch(from folder: URL = defaultFolder) {
-        let library = load(from: folder)
+    /// Reads the person's packages away from the main thread and installs
+    /// them beside the built-in effects, then starts compiling every
+    /// package's kernel. Called once at launch, by
+    /// `EffectPackageStatus.installAtLaunch`, which a project waits for
+    /// before it is read.
+    @MainActor
+    static func installAtLaunch(from folder: URL = defaultFolder) async {
+        let library = await Task.detached(priority: .userInitiated) {
+            // The built-in packages, read the first time the registry is
+            // used, are read here rather than on the main thread.
+            _ = EffectRegistry.builtIn
+            return load(from: folder)
+        }.value
         for problem in library.problems {
             NSLog("The effect package \(problem.url.lastPathComponent) can't be used: \(problem.message)")
         }
@@ -112,7 +176,7 @@ enum EffectPackageStore {
         // Compiled now rather than at first use, so a kernel's mistake shows
         // up at once and the first frame of a look doesn't wait on it.
         let packages = EffectRegistry.current.effects.compactMap(\.package)
-        Task { @MainActor in await EffectPackageStatus.shared.compileKernels(of: packages) }
+        Task { await EffectPackageStatus.shared.compileKernels(of: packages) }
     }
 
     /// Every package in the folder, and each that couldn't be read.
@@ -140,14 +204,15 @@ enum EffectPackageStore {
         guard let data = try? Data(contentsOf: manifest) else {
             throw EffectPackageError("The package has no \(manifestName).")
         }
-        if let problem = JSONFile.versionMismatch(in: data, expecting: EffectPackage.formatVersion, noun: "package") {
+        // Parsed once, for its version, its shape and the package. One that
+        // isn't a JSON object gives no version.
+        let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        if let problem = JSONFile.versionMismatch(in: parsed, expecting: EffectPackage.formatVersion, noun: "package") {
             throw EffectPackageError(problem)
         }
+        guard let object = parsed else { throw EffectPackageError("The package's \(manifestName) isn't a JSON object.") }
         do {
-            try StrictJSON.validate(data, against: shape)
-            guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw JSONShapeError(message: "Expected an object", path: "")
-            }
+            try StrictJSON.validate(object, against: shape)
             return try Reader(url: url, builtIn: builtIn, manifest: data).package(from: object)
         } catch let problem as JSONShapeError {
             throw EffectPackageError("The package can't be used. \(problem.sentence)")

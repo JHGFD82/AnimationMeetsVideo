@@ -73,6 +73,8 @@ final class NewEffectPackagePrompt {
     /// its kernel in Finder.
     private func installNew(_ write: @escaping () throws -> URL) {
         Task {
+            // Its name is checked against the packages launch installs.
+            await EffectPackageStatus.shared.packagesInstalled()
             do {
                 let url = try write()
                 let package = try await EffectPackageStatus.shared.install(url)
@@ -84,9 +86,16 @@ final class NewEffectPackagePrompt {
     }
 
     /// Installs a package opened from Finder: copied into the Effects folder
-    /// and installed at once, or once it is confirmed to replace one there,
-    /// at the next launch.
+    /// and installed at once, or once it is confirmed to replace one there.
+    /// Weighed against the packages launch installs, once it has.
     func open(_ url: URL) {
+        Task {
+            await EffectPackageStatus.shared.packagesInstalled()
+            offer(url)
+        }
+    }
+
+    private func offer(_ url: URL) {
         let opening: (EffectPackage, EffectPackageStore.Opening)
         do {
             opening = try EffectPackageStore.opening(url)
