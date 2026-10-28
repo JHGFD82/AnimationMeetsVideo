@@ -99,7 +99,7 @@ import Testing
         let timelineID: UUID
         let clipID: UUID
 
-        init(coalescing: Duration = .zero, planDelay: Duration = .milliseconds(20)) {
+        init(coalescing: Duration = .zero, planDelay: Duration = .milliseconds(20), clock: any Clock<Duration> = ContinuousClock()) {
             var project = EditingProject.empty
             let media = MediaClip(
                 name: "m", kind: .video, url: URL(fileURLWithPath: "/tmp/none.mov"), duration: CMTime(value: 4, timescale: 1),
@@ -109,7 +109,8 @@ import Testing
             timelineID = project.rootTimelineID
             self.project = project
             pipeline = ViewerPipeline(
-                player: player, renderer: renderer, coalescing: coalescing, planDelay: planDelay, build: builder.build
+                player: player, renderer: renderer, coalescing: coalescing, planDelay: planDelay, clock: clock,
+                build: builder.build
             )
         }
 
@@ -207,7 +208,10 @@ import Testing
     }
 
     @Test func valueEditsDrawWithoutSwapping() async throws {
-        var h = Harness(planDelay: .milliseconds(500))
+        // The plan delay is waited on a clock that moves only when told, so
+        // the edits are a burst however slowly the machine runs them.
+        let clock = ManualClock()
+        var h = Harness(planDelay: .milliseconds(500), clock: clock)
         h.builder.gate.open()
         h.pipeline.send(.appeared(h.source(), at: .zero))
         try await eventually { h.player.swapped.count == 1 }
@@ -217,8 +221,14 @@ import Testing
             h.pipeline.show(h.source())
         }
         try await eventually { h.player.shownValues == 20 }
+        try await settle(h)
+        // The edits are drawn as they come, and none builds.
+        #expect(h.pipeline.buildsStarted == builds)
+        clock.advance(by: .milliseconds(499))
+        try await settle(h)
         #expect(h.pipeline.buildsStarted == builds)
         // The renderer's plan is made again once they pause; nothing swaps.
+        clock.advance(by: .milliseconds(1))
         try await eventually { h.pipeline.buildsStarted == builds + 1 && h.renderer.updates == 2 }
         try await settle(h)
         #expect(h.pipeline.buildsStarted == builds + 1)

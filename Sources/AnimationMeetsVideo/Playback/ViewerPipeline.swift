@@ -133,6 +133,9 @@ final class ViewerPipeline {
     @ObservationIgnored private let build: Builder
     @ObservationIgnored private let coalescing: Duration
     @ObservationIgnored private let planDelay: Duration
+    /// What `coalescing` and `planDelay` are waited on: a test's clock
+    /// moves only when the test says.
+    @ObservationIgnored private let clock: any Clock<Duration>
     @ObservationIgnored private let continuation: AsyncStream<Event>.Continuation
     @ObservationIgnored private var loop: Task<Void, Never>?
 
@@ -166,12 +169,14 @@ final class ViewerPipeline {
 
     init(
         player: ViewerPlayer, renderer: ViewerRenderer?, coalescing: Duration = .milliseconds(75),
-        planDelay: Duration = .milliseconds(300), build: @escaping Builder
+        planDelay: Duration = .milliseconds(300), clock: any Clock<Duration> = ContinuousClock(),
+        build: @escaping Builder
     ) {
         self.player = player
         self.renderer = renderer
         self.coalescing = coalescing
         self.planDelay = planDelay
+        self.clock = clock
         self.build = build
         isPlaying = player.isPlaying
         let (stream, continuation) = AsyncStream<Event>.makeStream()
@@ -411,8 +416,8 @@ final class ViewerPipeline {
             advance()
             return
         }
-        debounce = Task { [weak self] in
-            try? await Task.sleep(for: delay)
+        debounce = Task { [weak self, clock] in
+            try? await clock.sleep(for: delay)
             guard !Task.isCancelled, let self else { return }
             self.debounce = nil
             self.advance()
