@@ -50,7 +50,9 @@ final class BeatMatchSession: SecondsViewport {
     private(set) var playhead = 0.0
     private(set) var isPlaying = false
     /// Repeats the two measures around the selected beat.
-    var isLooping = false
+    var isLooping = false {
+        didSet { if isLooping != oldValue { refreshLoop() } }
+    }
     var clicksOn = true {
         didSet { clicks.isEnabled = clicksOn }
     }
@@ -85,7 +87,9 @@ final class BeatMatchSession: SecondsViewport {
         didSet { if selectedSectionID != oldValue { refreshProvisionalTempo() } }
     }
     /// The selected beat, by its time.
-    var selectedBeat: CMTime?
+    var selectedBeat: CMTime? {
+        didSet { if selectedBeat != oldValue { refreshLoop() } }
+    }
     /// The kind a drawn or filled section gets.
     var drawKind: BeatSection.Kind = .consistent
     /// True while sections are being drawn, before they are marked.
@@ -99,7 +103,10 @@ final class BeatMatchSession: SecondsViewport {
     /// suggest, shown before the second anchor is placed.
     private(set) var provisionalTempo: Double?
 
-    @ObservationIgnored private var timeObserver: Any?
+    /// Jumps back at the end of the loop, only while one plays.
+    @ObservationIgnored private var loopObserver: Any?
+    /// The loop `loopObserver` watches the end of.
+    @ObservationIgnored private var activeLoop: ClosedRange<Double>?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
     @ObservationIgnored private var loading: Task<Void, Never>?
     /// The fill running off the main thread, which an edit to the draft
@@ -137,11 +144,6 @@ final class BeatMatchSession: SecondsViewport {
         selectedSectionID = asset.beatMap.sections.first { $0.kind == .consistent && !$0.isConfirmed }?.id
             ?? asset.beatMap.sections.first?.id
 
-        // Only for looping, which changes nothing the views read.
-        let interval = CMTime(value: 1, timescale: 60)
-        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            MainActor.assumeIsolated { self?.playerMoved(to: time) }
-        }
         statusObservation = player.observe(\.timeControlStatus) { [weak self] player, _ in
             let playing = player.timeControlStatus != .paused
             Task { @MainActor in self?.playingChanged(playing) }
@@ -149,16 +151,16 @@ final class BeatMatchSession: SecondsViewport {
         refreshTicks()
         loading = Task { [weak self] in
             do {
-                let audio = try await BeatMatchAudio.load(url: url, alignment: asset.alignmentOffset) { value in
-                    Task { @MainActor in self?.loadProgress = value }
-                }
-                self?.audio = audio
                 let song = try await Self.audioOnly(url: url)
                 // Reading tracks doesn't stop when the session ends.
                 try Task.checkCancellation()
                 self?.player.replaceCurrentItem(with: AVPlayerItem(asset: song))
                 // Put where it was put while the tracks were read.
                 if let self, playhead > 0 { seek(to: playhead) }
+                let audio = try await BeatMatchAudio.load(url: url, alignment: asset.alignmentOffset) { value in
+                    Task { @MainActor in self?.loadProgress = value }
+                }
+                self?.audio = audio
             } catch is CancellationError {
             } catch {
                 self?.loadError = error.localizedDescription
@@ -173,16 +175,12 @@ final class BeatMatchSession: SecondsViewport {
         estimating?.cancel()
         player.pause()
         clicks.isEnabled = false
-        if let timeObserver { player.removeTimeObserver(timeObserver) }
-        timeObserver = nil
+        if let loopObserver { player.removeTimeObserver(loopObserver) }
+        loopObserver = nil
+        activeLoop = nil
         statusObservation = nil
     }
 
-    /// Puts the draft back to `map`, as an undo or redo does, and makes
-    /// the reverse undoable.
-    private func restore(_ map: BeatMap) {
-        let current = self.map
-        self.map = map
     /// The file's audio alone, at the file's own times, for the player, so
     /// a video's picture is never decoded: the tracks it plays by default,
     /// or the first if it has none on. Made off the main thread, since
@@ -205,6 +203,11 @@ final class BeatMatchSession: SecondsViewport {
         return composition
     }
 
+    /// Puts the draft back to `map`, as an undo or redo does, and makes
+    /// the reverse undoable.
+    private func restore(_ map: BeatMap) {
+        let current = self.map
+        self.map = map
         undoManager.registerUndo(withTarget: self) { $0.restore(current) }
         undoRevision += 1
         mapChanged()
@@ -244,6 +247,7 @@ final class BeatMatchSession: SecondsViewport {
         if map.isEmpty && !map.usesSections { isDrawing = false }
         refreshTicks()
         refreshProvisionalTempo()
+        refreshLoop()
     }
 
     /// Changes the draft at once, as one undo step, and gives what the
@@ -860,6 +864,9 @@ final class BeatMatchSession: SecondsViewport {
         if isPlaying {
             player.pause()
         } else {
+            // Not before the song's audio is read: with nothing to play
+            // the player would wait, and seem to play.
+            guard player.currentItem != nil else { return }
             playhead = playerSeconds()
             if playhead >= duration.seconds - 0.01 { seek(to: 0) }
             player.play()
@@ -867,18 +874,37 @@ final class BeatMatchSession: SecondsViewport {
     }
 
     func seek(to seconds: Double) {
-        let clamped = seconds.clamped(between: 0, and: duration.seconds)
+        var clamped = seconds.clamped(between: 0, and: duration.seconds)
+        // Past the end of a playing loop is back at its start, as it would
+        // be a moment later.
+        if isPlaying, let loop = activeLoop, clamped >= loop.upperBound { clamped = loop.lowerBound }
         playhead = clamped
         tapRun = nil
         let fileTime = CMTimeAdd(CMTime(seconds: clamped, preferredTimescale: 48_000), alignment)
         player.seek(to: fileTime, toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
-    /// The view doesn't follow the playhead: the person browses the song
-    /// and clicks where to hear while it plays.
-    private func playerMoved(to time: CMTime) {
-        guard isPlaying, time.isNumeric, let loop = loopRange else { return }
-        if CMTimeSubtract(time, alignment).seconds >= loop.upperBound { seek(to: loop.lowerBound) }
+    /// Watches for the end of the loop while one plays, and for nothing
+    /// otherwise, so no time observer runs on the main thread the rest of
+    /// the time. The loop is worked out here, when what it depends on
+    /// changes, rather than as the song plays. The view doesn't follow the
+    /// playhead: the person browses the song and clicks where to hear.
+    private func refreshLoop() {
+        let loop = isPlaying ? loopRange : nil
+        guard loop != activeLoop else { return }
+        if let loopObserver { player.removeTimeObserver(loopObserver) }
+        loopObserver = nil
+        activeLoop = loop
+        guard let loop else { return }
+        let end = CMTimeAdd(CMTime(seconds: loop.upperBound, preferredTimescale: 48_000), alignment)
+        loopObserver = player.addBoundaryTimeObserver(forTimes: [NSValue(time: end)], queue: .main) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let loop = self.activeLoop else { return }
+                self.seek(to: loop.lowerBound)
+            }
+        }
+        // Already past its end, which the boundary would never see.
+        if playerSeconds() >= loop.upperBound { seek(to: loop.lowerBound) }
     }
 
     private func playingChanged(_ playing: Bool) {
@@ -886,9 +912,7 @@ final class BeatMatchSession: SecondsViewport {
         isPlaying = playing
         tapRun = nil
         if !playing { playhead = playerSeconds() }
-            // Not before the song's audio is read: with nothing to play
-            // the player would wait, and seem to play.
-            guard player.currentItem != nil else { return }
+        refreshLoop()
     }
 
     /// Where the song is now, playing or not.
